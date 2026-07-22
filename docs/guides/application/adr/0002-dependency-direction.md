@@ -18,3 +18,9 @@ The initial rules are:
 7. There is one HTMX implementation package: `WebUIToolkit.MVVM.Html.Htmx`.
 
 Cross-domain integration occurs through versioned packages, schemas, manifests, conformance corpora, and approved public APIs. Direct project references across worktrees are not accepted as a handoff.
+
+The integrated source solution may declare an explicitly allowlisted development-only
+`ProjectReference` when a clean checkout otherwise cannot bootstrap a package edge.
+The allowlist lives in `eng/ownership.json`, is enforced by the architecture gate, and
+does not replace package-only consumer verification. Wave B initially permits only the
+MVVM compiler/build owner to reference MVVM protocol/core for this purpose.

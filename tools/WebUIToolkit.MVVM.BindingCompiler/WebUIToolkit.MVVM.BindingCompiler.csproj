@@ -12,12 +12,20 @@
     <ToolCommandName>wut-bindings</ToolCommandName>
     <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <WebUIToolkitUsePackedDependencies Condition="'$(WebUIToolkitUsePackedDependencies)' == ''">false</WebUIToolkitUsePackedDependencies>
     <WebUIToolkitMvvmBindingEnabled>false</WebUIToolkitMvvmBindingEnabled>
     <RestoreAdditionalProjectSources Condition="'$(WebUIToolkitLocalPackageSource)' != ''">$(RestoreAdditionalProjectSources);$(WebUIToolkitLocalPackageSource)</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(WebUIToolkitUsePackedDependencies)' != 'true'">
+    <ProjectReference Include="..\..\src\WebUIToolkit.MVVM.Build\WebUIToolkit.MVVM.Build.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(WebUIToolkitUsePackedDependencies)' == 'true'">
     <PackageReference Include="WebUIToolkit.MVVM.Build" Version="[1.0.0]" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

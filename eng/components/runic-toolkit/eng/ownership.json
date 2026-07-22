@@ -1,6 +1,9 @@
 {
   "version": 1,
   "worktreeRoot": "../WebUIToolkit.worktrees",
+  "allowedProjectReferences": [
+    { "from": "mvvm-compiler-build", "to": "mvvm-protocol-core", "reason": "Integrated source-build edge; packed artifacts remain the release boundary." }
+  ],
   "tasks": [
     { "name": "mvvm-protocol-core", "branch": "work/mvvm-protocol-core", "paths": ["protocol/mvvm/*", "src/WebUIToolkit.MVVM/*", "tests/WebUIToolkit.MVVM.Tests/*", "tests/WebUIToolkit.MVVM.Protocol.Tests/*", "tests/WebUIToolkit.MVVM.AotSmoke/*"] },
     { "name": "mvvm-compiler-build", "branch": "work/mvvm-compiler-build", "paths": ["src/WebUIToolkit.MVVM.Build/*", "tools/WebUIToolkit.MVVM.BindingCompiler/*", "tests/WebUIToolkit.MVVM.Build.Tests/*", "tests/WebUIToolkit.MVVM.BindingCompiler.Tests/*"] },

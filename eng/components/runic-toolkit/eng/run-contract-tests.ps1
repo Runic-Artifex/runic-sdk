@@ -7,10 +7,22 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $testRoot = Join-Path $repositoryRoot 'tests'
+$exclusionsPath = Join-Path $PSScriptRoot 'solution-exclusions.txt'
+$excluded = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($line in Get-Content -LiteralPath $exclusionsPath) {
+    $candidate = $line.Trim()
+    if ($candidate.Length -gt 0 -and -not $candidate.StartsWith('#')) {
+        [void]$excluded.Add($candidate.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
+    }
+}
 
 $projects = Get-ChildItem -LiteralPath $testRoot -Filter '*.csproj' -Recurse -File |
     Sort-Object FullName |
-    Where-Object { $_.BaseName -notmatch 'AotSmoke' } |
+    Where-Object {
+        $relativePath = [System.IO.Path]::GetRelativePath($repositoryRoot, $_.FullName)
+        -not $excluded.Contains($relativePath)
+    } |
     Where-Object {
         [xml]$projectDocument = Get-Content -LiteralPath $_.FullName -Raw
         $outputTypes = @($projectDocument.Project.PropertyGroup.OutputType)

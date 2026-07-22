@@ -58,6 +58,6 @@ When a project or dependency changes, refresh and commit lock files before verif
 
 ## Status
 
-Gate G1 is complete. Eight Wave A domains are integrated into a complete 24-project default solution, with executable contract suites, deterministic lock files, namespace/ownership enforcement, and Native-AOT feasibility evidence. Wave B kernel work is active in parallel tasks for MVVM runtime/compiler, web SDK, templates, Hosting, Flow, text resources, command line, collections, and dependency notices.
+Gate G2 is complete. All ten Wave B domains are integrated into a complete 63-project default solution, with 79-project architecture coverage, executable contract suites, deterministic package locks and corpora, package-consumer evidence, browser conformance, and Native-AOT validation. Wave C is ready but has not been started.
 
 ADR 0004 records an explicit publication hold: no source license has been granted, and public visibility does not grant reuse or redistribution rights. API ownership, dependency licensing, package names, notices, SBOM linkage, and publication terms must be reviewed before reusable artifacts are published.

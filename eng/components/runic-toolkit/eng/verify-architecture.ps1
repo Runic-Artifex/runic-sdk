@@ -52,7 +52,14 @@ foreach ($project in $projects) {
 
         $targetOwner = Get-PathOwner $targetRelativePath
         if ($targetOwner -ne $projectOwner) {
-            throw "Cross-owner ProjectReference is forbidden: '$projectRelativePath' ($projectOwner) -> '$targetRelativePath' ($targetOwner). Use a packed handoff."
+            $allowed = @(
+                $registry.allowedProjectReferences | Where-Object {
+                    $_.from -eq $projectOwner -and $_.to -eq $targetOwner
+                }
+            ).Count -eq 1
+            if (-not $allowed) {
+                throw "Cross-owner ProjectReference is forbidden: '$projectRelativePath' ($projectOwner) -> '$targetRelativePath' ($targetOwner). Use a packed handoff."
+            }
         }
     }
 }

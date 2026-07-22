@@ -1,4 +1,14 @@
-# Projects intentionally exercised by dedicated performance or RID/AOT gates.
+# Projects intentionally exercised by dedicated package-consumer or RID/AOT gates.
 tests/WebUIToolkit.Collections.AotSmoke/WebUIToolkit.Collections.AotSmoke.csproj
+tests/WebUIToolkit.Collections.PackageConsumer/WebUIToolkit.Collections.PackageConsumer.csproj
+tests/WebUIToolkit.CommandLine.AotSmoke/WebUIToolkit.CommandLine.AotSmoke.csproj
+tests/WebUIToolkit.DependencyNotices.Runtime.AotSmoke/WebUIToolkit.DependencyNotices.Runtime.AotSmoke.csproj
+tests/WebUIToolkit.DependencyNotices.Packaging.Tests/WebUIToolkit.DependencyNotices.Packaging.Tests.csproj
+tests/WebUIToolkit.Hosting.PackageTests/WebUIToolkit.Hosting.PackageTests.csproj
 tests/WebUIToolkit.MVVM.AotSmoke/WebUIToolkit.MVVM.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.Flow.AotSmoke/WebUIToolkit.MVVM.Flow.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.Flow.PackageConsumer/WebUIToolkit.MVVM.Flow.PackageConsumer.csproj
 tests/WebUIToolkit.MVVM.Html.Tests/AotSmoke/WebUIToolkit.MVVM.Html.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.Html.Tests/PackageConsumer/Consumer/PackageConsumer.csproj
+tests/WebUIToolkit.TextResources.AotTests/WebUIToolkit.TextResources.AotTests.csproj
+tests/WebUIToolkit.TextResources.PackageTests/WebUIToolkit.TextResources.PackageTests.csproj

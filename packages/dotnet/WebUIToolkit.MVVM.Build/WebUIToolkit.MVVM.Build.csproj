@@ -9,10 +9,15 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <WebUIToolkitUsePackedDependencies Condition="'$(WebUIToolkitUsePackedDependencies)' == ''">false</WebUIToolkitUsePackedDependencies>
     <RestoreAdditionalProjectSources Condition="'$(WebUIToolkitLocalPackageSource)' != ''">$(RestoreAdditionalProjectSources);$(WebUIToolkitLocalPackageSource)</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(WebUIToolkitUsePackedDependencies)' != 'true'">
+    <ProjectReference Include="..\WebUIToolkit.MVVM\WebUIToolkit.MVVM.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(WebUIToolkitUsePackedDependencies)' == 'true'">
     <PackageReference Include="WebUIToolkit.MVVM" Version="[1.0.0]" />
   </ItemGroup>
 
