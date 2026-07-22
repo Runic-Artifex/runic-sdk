@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "WebUIToolkit.Hosting": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "VE3vkhYfjG1R5YXvWdVtWvGE3X/l39rChxx2e8KCph8iVd2RseB+pBTYkAt76ow+y+qJIeKvejKdgyN0GGyu6Q==",
+        "dependencies": {
+          "WebUIToolkit.Hosting.Abstractions": "1.0.0"
+        }
+      },
+      "WebUIToolkit.Hosting.Abstractions": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "eJRx++q2yOEN636huaX1pe1mCpA+XvQy+Ytq5Ko0p+FyJmxnYFJRPMM8zNksm7uvOPFxZbos6Z/8aXDMp0fgWQ=="
+      },
+      "WebUIToolkit.Hosting.Build": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "xFADlfoWT1K0FGiN1m26ZXxFqwmqWMc+JadmrdZ/eDCKhDUZgK55CSf84rVi9lDSUEqzu8nivina20HlXEa6eA==",
+        "dependencies": {
+          "WebUIToolkit.Hosting.Abstractions": "1.0.0"
+        }
+      }
+    }
+  }
+}

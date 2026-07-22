@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(MSBuildThisFileDirectory)..\..\.packages\hosting-wave-b</RestoreAdditionalProjectSources>
+    <NoWarn>$(NoWarn);CA1812;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WebUIToolkit.Hosting" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.Hosting.Abstractions" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.Hosting.Build" Version="1.0.0" />
+  </ItemGroup>
+</Project>

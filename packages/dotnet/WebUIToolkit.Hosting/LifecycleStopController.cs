@@ -9,14 +9,19 @@ internal sealed class LifecycleStopController : IApplicationStopController, IDis
     private readonly CancellationTokenSource _stoppingSource = new();
     private readonly Task _completion;
     private readonly Action _onStopWon;
+    private readonly Action<StopReason>? _onStopSelected;
     private readonly TaskCompletionSource<StopReason> _requested =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _requestWon;
 
-    internal LifecycleStopController(Task completion, Action onStopWon)
+    internal LifecycleStopController(
+        Task completion,
+        Action onStopWon,
+        Action<StopReason>? onStopSelected = null)
     {
         _completion = completion;
         _onStopWon = onStopWon;
+        _onStopSelected = onStopSelected;
     }
 
     public CancellationToken Stopping => _stoppingSource.Token;
@@ -32,6 +37,7 @@ internal sealed class LifecycleStopController : IApplicationStopController, IDis
             return false;
         }
 
+        _onStopSelected?.Invoke(reason);
         _onStopWon();
         _requested.TrySetResult(reason);
         try

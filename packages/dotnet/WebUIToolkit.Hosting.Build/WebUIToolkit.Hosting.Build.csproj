@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.Hosting.Build</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting.Build</RootNamespace>
+    <PackageId>WebUIToolkit.Hosting.Build</PackageId>
+    <Description>Deterministic frontend asset manifest construction for WebUIToolkit hosting.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WebUIToolkit.Hosting.Abstractions\WebUIToolkit.Hosting.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

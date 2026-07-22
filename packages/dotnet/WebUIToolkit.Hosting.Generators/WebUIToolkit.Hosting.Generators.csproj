@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitGeneratorTargetFramework)</TargetFramework>
+    <AssemblyName>WebUIToolkit.Hosting.Generators</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting.Generators</RootNamespace>
+    <Description>Dependency-neutral contracts for deterministic WebUIToolkit hosting generation.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

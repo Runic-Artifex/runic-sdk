@@ -1,17 +1,63 @@
 # WebUIToolkit.Hosting.Abstractions
 
-Wave A freezes the dependency-neutral vocabulary consumed by the lifecycle kernel.
-The assembly targets `net10.0`, references only the BCL, and does not reference MVVM,
-command-line, `cs-webui`, dependency injection, or a concrete Generic Host package.
+`WebUIToolkit.Hosting.Abstractions` contains the dependency-neutral vocabulary shared
+by the Hosting lifecycle, composition kernel, build tooling, and future adapters. The
+assembly targets the repository's `net10.0` policy and references only the BCL. It does
+not reference MVVM, CommandLine, Microsoft.Extensions Hosting/DI/logging, a native
+runtime, or external lowercase `cs-webui`.
+
+The complete declared surface is recorded in [PUBLIC-API.md](PUBLIC-API.md).
+
+## Contract groups
+
+- Launch and routing: `LaunchDecision`, `ILaunchIntentResolver`, mode runners, route
+  selection, and stable runner-cardinality errors.
+- Validation and lifecycle: immutable validation inputs/errors, host and participant
+  seams, stop convergence, states, phases, timeout options, stable failures/results,
+  and exit-code policy.
+- Assets: normalized manifest-relative metadata, deterministic manifests, and a
+  manifest/validate/open-only provider seam.
+- Browser hosting: validated host/window options, factory/host/window lifetime seams,
+  close signaling, and dispatcher-affine asynchronous work without native handles.
+- Observability: ordered sanitized lifecycle events and a non-owning sink boundary;
+  the kernel queues delivery so sink latency and failures are isolated from lifecycle work.
+
+All concrete implementations must preserve explicit registration. These contracts do
+not authorize runtime assembly discovery or dynamic activation.
+
+## Deterministic and security guarantees
+
+Contract data snapshots consumer-owned collections where ownership crosses into
+Hosting. Asset paths are normalized to forward-slash application-relative paths and
+reject rooted, drive-qualified, empty, current-directory, parent-directory, query,
+fragment, colon, control-character, encoded-separator, and encoded-traversal forms.
+Media types reject control characters. SHA-256 values are exactly 64 hexadecimal
+characters and normalize to lowercase. Compressed variants must be distinct from their
+source and from each other.
+
+Browser application/window identifiers accept only ASCII letters, digits, periods,
+hyphens, and underscores. Window titles reject empty values and control characters;
+window dimensions must be positive. Browser interfaces expose neither a native handle
+nor an implementation-specific runtime type. Close callbacks are signaling boundaries,
+not application-logic execution contexts.
+
+Stable validation/failure messages and lifecycle events do not echo launch arguments,
+exception messages, asset content, native payloads, or authorization data.
 
 ## Diagnostic allocation
 
-The Hosting family owns `WUTHOST0001`–`WUTHOST9999`. Wave A allocates the following
-exact identities; the shared registry update remains an orchestrator handoff:
+The Hosting family owns `WUTHOST0001`-`WUTHOST9999`. Wave A/B allocates the following
+exact identities; shared registry changes remain an orchestrator handoff:
 
 | Identity | Meaning |
 |---|---|
-| `WUTHOST0001`–`WUTHOST0007` | Reserved for the generator diagnostics renamed from the application-host plan |
+| `WUTHOST0001` | Missing or ambiguous WebUi runtime adapter (error) |
+| `WUTHOST0002` | Missing UI root view or session (error) |
+| `WUTHOST0003` | Duplicate command or launch token (error) |
+| `WUTHOST0004` | Inaccessible generated factory target (error) |
+| `WUTHOST0005` | Reflection fallback in an AOT application (warning) |
+| `WUTHOST0006` | Missing or ambiguous frontend entry point (error) |
+| `WUTHOST0007` | Async lifecycle callback without cancellation (warning) |
 | `WUTHOST1001` | Validation or invalid-launch failure |
 | `WUTHOST1101` | Host start failure |
 | `WUTHOST1102` | Participant start failure |
@@ -25,16 +71,53 @@ exact identities; the shared registry update remains an orchestrator handoff:
 | `WUTHOST1404` | Host disposal failure |
 | `WUTHOST1405` | Total shutdown timeout |
 
-All messages attached to these identities are safe summaries. Exceptions are retained
-for in-process diagnostics but exception messages are not promoted to stable output.
+Exceptions may be retained in-process on `ApplicationFailure`, but their messages are
+not promoted to stable diagnostics or lifecycle events.
 
-## H0 decisions for orchestrator review
+## Lifecycle event allocation
+
+The Hosting family reserves event IDs 11000-11999. Wave B allocates:
+
+| Identity | Event type |
+|---:|---|
+| 11000 | `ApplicationStateTransitionEvent` |
+| 11001 | `ApplicationLaunchEvent` |
+| 11002 | `ApplicationStopRequestedEvent` |
+| 11003 | Primary `ApplicationFailureEvent` |
+| 11004 | Secondary `ApplicationFailureEvent` |
+| 11005 | `ApplicationTimeoutEvent` |
+| 11006 | `ApplicationCompletionEvent` |
+
+Sequences and timestamps are assigned by the Hosting kernel, not event constructors.
+Consumers may construct the immutable records for testing, but must not infer global
+ordering across application instances from their per-kernel sequence values. A failure
+event retains only an exact `WUTHOST` plus four-ASCII-digit code; foreign or malformed
+codes become `null`.
+
+## Frozen lifecycle decisions
 
 - One immutable lifecycle selects exactly one `LaunchKind` and mode runner.
-- Host, participant, mode, and stop seams remain neutral; later Generic Host, MVVM,
-  command-line, and external `cs-webui` adapters depend on these contracts.
+- Validation completes before host startup. Composition validation checks decision
+  shape, non-`Invalid` route cardinality, common validators, then selected-mode
+  validators; an invalid launch requires no runner.
 - Startup is phase-then-registration order. Only completed participants stop, in
   reverse completion order.
-- The first terminal result or failure remains primary. A later teardown failure can
-  replace success, but it cannot replace a non-zero result or earlier failure.
-- Every bounded wait uses an injected `TimeProvider`; timeout advances cleanup.
+- The first terminal non-success result or failure remains primary. A later teardown
+  failure can replace success, but cannot replace an earlier non-zero result/failure.
+- Competing stop sources converge on one request and completion; disposal is
+  idempotent.
+- Every bounded wait and event timestamp uses an injected `TimeProvider`; aggregate
+  startup and shutdown deadlines cap individual waits.
+
+## Dependency manifest and Wave C boundary
+
+`WebUIToolkit.Hosting.Abstractions` has no authored project or runtime-package
+dependency. Its shipping-project lock records only SDK-supplied ILLink build tooling.
+The runtime kernel and deterministic manifest builder depend inward on it;
+generator/build tooling is not a runtime dependency of this assembly.
+
+Wave C supplies the Generic Host, MVVM/root-session, WebUi/external `cs-webui`,
+CommandLine, structured logging, and runtime asset-provider implementations. No
+concrete adapter type belongs in this package, and lower-level MVVM/CommandLine/native
+packages must not reference Hosting abstractions merely to participate in Hosting;
+their adapter packages translate into these seams.
