@@ -2,22 +2,55 @@
 
 This executable uses no reflection, dynamic code, serializer discovery,
 suppression, or trim descriptors. It exercises range add/insert/remove/replace/
-move, clear, snapshot isolation, Range and Reset policy, comparer/FIFO `UpdateTo`,
-and keyed `UpdateTo` while validating deterministic content, identity, event, and
-result behavior.
+move, clear, snapshot and event-payload isolation, exact notification ordering,
+Range and Reset policy, comparer/FIFO `UpdateTo`, keyed `UpdateTo`, no-op/result
+contracts, reentrancy rejection, and pre-mutation/subscriber exception behavior.
+
+The promotion matrix covers the desktop hosts currently supported by this smoke:
+
+| Host/toolchain | RID |
+| --- | --- |
+| Windows x64 with Visual Studio C++ build tools | `win-x64` |
+| Linux x64 with the Native-AOT compiler/linker prerequisites | `linux-x64` |
+| Apple Silicon macOS with Xcode command-line tools | `osx-arm64` |
+
+Run the host-aware harness from PowerShell 7. It auto-detects the RID, rejects
+cross-compilation, runs the managed smoke, publishes and runs the native binary,
+then restores portable assets and verifies that both committed lock files are
+byte-for-byte unchanged:
+
+```powershell
+./tests/WebUIToolkit.Collections.AotSmoke/run-native-smoke.ps1
+```
+
+Release jobs may state their matching RID explicitly:
+
+```powershell
+./tests/WebUIToolkit.Collections.AotSmoke/run-native-smoke.ps1 -RuntimeIdentifier win-x64
+./tests/WebUIToolkit.Collections.AotSmoke/run-native-smoke.ps1 -RuntimeIdentifier linux-x64
+./tests/WebUIToolkit.Collections.AotSmoke/run-native-smoke.ps1 -RuntimeIdentifier osx-arm64
+```
+
+For environments without PowerShell, use the equivalent parameterized commands
+below, replacing `<rid>` with the RID matching the current host:
 
 ```console
 dotnet build -c Release src/WebUIToolkit.Collections
 dotnet restore --locked-mode tests/WebUIToolkit.Collections.AotSmoke
-dotnet restore -r win-x64 -p:PublishAot=true -p:PublishTrimmed=true -p:NuGetLockFilePath=obj/aot.packages.lock.json -p:RestoreLockedMode=false tests/WebUIToolkit.Collections.AotSmoke
-dotnet publish -c Release -r win-x64 --no-restore -p:PublishAot=true -p:PublishTrimmed=true -p:NuGetLockFilePath=obj/aot.packages.lock.json tests/WebUIToolkit.Collections.AotSmoke
+dotnet run -c Release --no-restore --project tests/WebUIToolkit.Collections.AotSmoke
+dotnet restore -r <rid> --disable-parallel -p:PublishAot=true -p:PublishTrimmed=true -p:NuGetLockFilePath=obj/aot.packages.lock.json -p:RestoreLockedMode=false tests/WebUIToolkit.Collections.AotSmoke
+dotnet publish -c Release -r <rid> --no-restore -p:PublishAot=true -p:PublishTrimmed=true -p:NuGetLockFilePath=obj/aot.packages.lock.json tests/WebUIToolkit.Collections.AotSmoke
+dotnet restore --locked-mode tests/WebUIToolkit.Collections.AotSmoke
 ```
 
-The RID-specific smoke consumes that built shipping assembly directly. Its native
-restore lock is generated below ignored `obj/`, keeping every committed lock
-portable while still compiling the real shipping binary into the native executable.
+The RID-specific smoke consumes the built shipping assembly through the explicit
+Release-bin `HintPath`. A non-reference-producing project edge orders the shipping
+build deterministically without changing the assembly under test. RID properties
+therefore do participate in the restore graph, but the global native lock override
+routes the entire graph to the ignored `obj/aot.packages.lock.json`; neither
+committed portable lock is eligible for a RID-specific rewrite.
 
 Run the native executable from the publish directory. Success prints one stable
 `PASS` line and exits zero; validation failures print one `FAIL` line and exit one.
-Additional runtime identifiers should be validated with their own temporary native
-restore before release evidence is accepted.
+Promotion evidence is host-specific: a RID is accepted only after the native
+binary has been built and executed on a matching host with its required toolchain.

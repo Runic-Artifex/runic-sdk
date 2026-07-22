@@ -8,6 +8,8 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/WebUIToolkit.Collections/WebUIToolkit.Collections.csproj"
+                      ReferenceOutputAssembly="false" />
     <Reference Include="WebUIToolkit.Collections">
       <HintPath>../../src/WebUIToolkit.Collections/bin/Release/net10.0/WebUIToolkit.Collections.dll</HintPath>
       <Private>true</Private>

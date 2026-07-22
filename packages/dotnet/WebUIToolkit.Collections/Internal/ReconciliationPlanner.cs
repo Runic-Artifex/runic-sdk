@@ -26,7 +26,7 @@ internal static class ReconciliationPlanner
             var existing = current[currentIndex];
             var resolved = resolveMatch is null ? existing : resolveMatch(existing, target[targetIndex]);
             desired[targetIndex] = resolved;
-            replace[targetIndex] = !SameInstanceOrValue(existing, resolved);
+            replace[targetIndex] = ShouldReplace(existing, resolved, resolveMatch is not null);
         }
 
         var tree = new ReconciliationOrderTree<T>();
@@ -80,13 +80,15 @@ internal static class ReconciliationPlanner
         return new ReconciliationPlan<T>(desired, edits.ToArray(), added, removed, moved, replaced);
     }
 
-    private static bool SameInstanceOrValue<T>(T left, T right)
+    private static bool ShouldReplace<T>(T existing, T resolved, bool resolverWasProvided)
     {
-        if (!typeof(T).IsValueType)
+        if (typeof(T).IsValueType)
         {
-            return ReferenceEquals(left, right);
+            // Generic equality can deliberately ignore value-type fields. Once a resolver is
+            // supplied, applying its returned value is the only way to honor the public contract.
+            return resolverWasProvided;
         }
 
-        return EqualityComparer<T>.Default.Equals(left, right);
+        return !ReferenceEquals(existing, resolved);
     }
 }
