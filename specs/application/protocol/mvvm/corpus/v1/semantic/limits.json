@@ -1,0 +1,26 @@
+{
+  "hardCeilings": {
+    "maxFrameBytes": 1048576,
+    "maxJsonDepth": 32,
+    "maxGeneralStringUtf8Bytes": 65536,
+    "maxObjectProperties": 4096,
+    "maxObjectPropertyNameUtf8Bytes": 128,
+    "maxArrayItems": 10000,
+    "maxContractUtf8Bytes": 128,
+    "capabilityTokenCharacters": 43,
+    "maxSanitizedMessageUtf8Bytes": 256,
+    "maxSessions": 16,
+    "maxPendingRequestsPerSession": 64,
+    "maxSnapshotMembers": 4096,
+    "maxPatchChanges": 1024,
+    "maxCollectionItems": 10000,
+    "maxInsertedOrReplacedItemsPerPatch": 10000,
+    "maxCommandTimeoutMilliseconds": 300000
+  },
+  "expectedAtCeiling": "accepted",
+  "expectedAboveCeiling": {
+    "code": "limit.exceeded",
+    "consumerInvocations": 0,
+    "revisionIncrements": 0
+  }
+}

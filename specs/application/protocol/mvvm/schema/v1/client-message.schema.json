@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WebUIToolkit MVVM protocol v1 client message",
+  "oneOf": [
+    { "$ref": "#/$defs/handshake" },
+    { "$ref": "#/$defs/open" },
+    { "$ref": "#/$defs/setProperty" },
+    { "$ref": "#/$defs/execute" },
+    { "$ref": "#/$defs/cancel" },
+    { "$ref": "#/$defs/ack" },
+    { "$ref": "#/$defs/requestSnapshot" },
+    { "$ref": "#/$defs/close" }
+  ],
+  "$defs": {
+    "handshake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "handshake" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["supportedVersions", "capabilities"],
+          "properties": {
+            "supportedVersions": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "common.schema.json#/$defs/version" }
+            },
+            "capabilities": { "$ref": "common.schema.json#/$defs/capabilitySet" }
+          }
+        }
+      }
+    },
+    "open": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "contract", "view", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "open" },
+        "contract": { "$ref": "common.schema.json#/$defs/contract" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      }
+    },
+    "setProperty": {
+      "$ref": "#/$defs/mutationEnvelope"
+    },
+    "execute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "baseRevision", "capability", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "execute" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "capability": { "$ref": "common.schema.json#/$defs/capabilityToken" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["member"],
+          "properties": {
+            "member": { "$ref": "common.schema.json#/$defs/member" },
+            "argument": { "$ref": "common.schema.json#/$defs/jsonValue" }
+          }
+        }
+      }
+    },
+    "mutationEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "baseRevision", "capability", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "setProperty" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "capability": { "$ref": "common.schema.json#/$defs/capabilityToken" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["member", "value"],
+          "properties": {
+            "member": { "$ref": "common.schema.json#/$defs/member" },
+            "value": { "$ref": "common.schema.json#/$defs/jsonValue" }
+          }
+        }
+      }
+    },
+    "cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "capability", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "cancel" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "capability": { "$ref": "common.schema.json#/$defs/capabilityToken" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["targetRequest"],
+          "properties": {
+            "targetRequest": { "$ref": "common.schema.json#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "ack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "capability", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "ack" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "capability": { "$ref": "common.schema.json#/$defs/capabilityToken" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["revision"],
+          "properties": {
+            "revision": { "$ref": "common.schema.json#/$defs/revision" }
+          }
+        }
+      }
+    },
+    "requestSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "capability", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "requestSnapshot" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "capability": { "$ref": "common.schema.json#/$defs/capabilityToken" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      }
+    },
+    "close": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "capability", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "close" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "capability": { "$ref": "common.schema.json#/$defs/capabilityToken" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reason": { "$ref": "common.schema.json#/$defs/sanitizedMessage" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "kind": "fault",
+  "request": "00000000-0000-4000-8000-000000000001",
+  "payload": {
+    "code": "exception.stack",
+    "message": "Rejected.",
+    "retryable": false
+  }
+}

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.MVVM</AssemblyName>
+    <RootNamespace>WebUIToolkit.MVVM</RootNamespace>
+    <PackageId>WebUIToolkit.MVVM</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Native-AOT-friendly protocol, session, and runtime contracts for WebUIToolkit MVVM integrations.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="/" />
+    <None Update="PUBLIC-API.md" Pack="true" PackagePath="docs/" />
+  </ItemGroup>
+</Project>
