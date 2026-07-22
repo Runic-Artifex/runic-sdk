@@ -125,20 +125,36 @@ public sealed class ContentAddressedEvidenceStore
         string expectedSha256,
         CancellationToken cancellationToken)
     {
-        await using FileStream stream = new(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            bufferSize: 64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        byte[] actual = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
-        string actualSha256 = Convert.ToHexStringLower(actual);
-        if (!string.Equals(expectedSha256, actualSha256, StringComparison.Ordinal))
+        const int maximumAttempts = 8;
+        for (int attempt = 0; ; attempt++)
         {
-            throw new AcquisitionException(
-                NoticeDiagnosticCodes.AcquisitionDigestMismatch,
-                $"The existing cache entry for '{expectedSha256}' contains different bytes.");
+            try
+            {
+                await using FileStream stream = new(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    bufferSize: 64 * 1024,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+                byte[] actual = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+                string actualSha256 = Convert.ToHexStringLower(actual);
+                if (!string.Equals(expectedSha256, actualSha256, StringComparison.Ordinal))
+                {
+                    throw new AcquisitionException(
+                        NoticeDiagnosticCodes.AcquisitionDigestMismatch,
+                        $"The existing cache entry for '{expectedSha256}' contains different bytes.");
+                }
+
+                return;
+            }
+            catch (IOException) when (attempt < maximumAttempts - 1)
+            {
+                // A concurrent atomic move can make the destination visible before Windows
+                // releases its final sharing handle. Preserve verification and retry briefly.
+                int delayMilliseconds = Math.Min(10 << attempt, 160);
+                await Task.Delay(delayMilliseconds, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 

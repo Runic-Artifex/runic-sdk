@@ -20,6 +20,7 @@ internal static class CacheTests
         tests.Add("cache.rejects-corrupt-existing-entry", RejectsCorruptExistingAsync);
         tests.Add("cache.enforces-limit-on-existing-entry", EnforcesLimitOnExistingAsync);
         tests.Add("cache.concurrent-writers-converge", ConcurrentWritersConvergeAsync);
+        tests.Add("cache.waits-for-transient-share-lock", WaitsForTransientShareLockAsync);
         tests.Add("cache.differing-writer-never-overwrites", DifferingWriterNeverOverwritesAsync);
     }
 
@@ -125,6 +126,28 @@ internal static class CacheTests
         Assert.Equal(NoticeDiagnosticCodes.AcquisitionDigestMismatch, bad.Result.Code);
         byte[] stored = await File.ReadAllBytesAsync(store.GetPath(digest)).ConfigureAwait(false);
         Assert.True(approved.SequenceEqual(stored));
+    }
+
+    private static async ValueTask WaitsForTransientShareLockAsync()
+    {
+        using TemporaryDirectory directory = new();
+        ContentAddressedEvidenceStore store = new(directory.Path);
+        byte[] bytes = "existing"u8.ToArray();
+        string digest = Digest(bytes);
+        string path = store.GetPath(digest);
+        await File.WriteAllBytesAsync(path, bytes).ConfigureAwait(false);
+
+        Task<CacheCommitResult> commit;
+        using (FileStream exclusive = new(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            commit = store.CommitAsync(new MemoryStream(bytes), digest, 1024).AsTask();
+            await Task.Delay(50).ConfigureAwait(false);
+            Assert.False(commit.IsCompleted);
+        }
+
+        CacheCommitResult result = await commit.ConfigureAwait(false);
+        Assert.True(result.WasAlreadyCached);
+        Assert.Equal(path, result.Path);
     }
 
     private static async Task<AcquisitionException> CaptureAcquisitionExceptionAsync<T>(ValueTask<T> operation)
