@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Standalone implementation plan for a deterministic, Native-AOT-safe observable range collection for .NET MVVM applications.">
+  <title>Observable Range Collection — Implementation Plan</title>
+  <style>
+    :root{--ink:#f7f5ff;--muted:#b9b2cc;--faint:#807694;--page:#0e0a16;--surface:#1a1428;--surface2:#241a37;--line:#46365f;--violet:#bd9cff;--pink:#ef91ca;--green:#80d6a0;--amber:#f3c66e;--red:#ff8d8d;--radius:18px;--content:1180px}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:radial-gradient(circle at 11% -8%,rgba(189,156,255,.16),transparent 35rem),radial-gradient(circle at 92% 3%,rgba(239,145,202,.1),transparent 32rem),var(--page);font:16px/1.65 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--pink);text-decoration:none}a:hover{text-decoration:underline}code,pre{font-family:"Cascadia Code",Consolas,monospace}code{padding:.12rem .35rem;border:1px solid rgba(189,156,255,.2);border-radius:6px;color:#eadfff;background:rgba(189,156,255,.08)}pre{margin:1rem 0 0;padding:1.15rem 1.25rem;overflow:auto;border:1px solid var(--line);border-radius:14px;color:#eee6ff;background:#0b0811;line-height:1.55}pre code{padding:0;border:0;background:none}h1,h2,h3{margin:0;line-height:1.15;letter-spacing:-.025em}h1{max-width:980px;font-size:clamp(2.8rem,7vw,5.8rem)}h2{font-size:clamp(2rem,4vw,3.2rem)}h3{font-size:1.22rem}p{margin:.65rem 0 0}ul,ol{padding-left:1.25rem}li+li{margin-top:.4rem}.skip{position:fixed;top:.7rem;left:.7rem;z-index:50;padding:.55rem .8rem;transform:translateY(-150%);border-radius:8px;color:var(--page);background:var(--violet)}.skip:focus{transform:none}.topbar{position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(70,54,95,.85);background:rgba(14,10,22,.9);backdrop-filter:blur(16px)}.topbar-inner{display:flex;align-items:center;justify-content:space-between;gap:1.4rem;width:min(calc(100% - 2rem),var(--content));min-height:64px;margin:auto}.brand{display:flex;align-items:center;gap:.7rem;color:var(--ink);font-weight:760}.mark{display:grid;width:32px;height:32px;place-items:center;border-radius:9px;color:var(--page);background:linear-gradient(135deg,var(--violet),var(--pink))}nav{display:flex;gap:1rem;overflow-x:auto;white-space:nowrap}nav a{color:var(--muted);font-size:.87rem}nav a:hover{color:var(--ink);text-decoration:none}.wrap{width:min(calc(100% - 2rem),var(--content));margin:auto}.hero{padding:clamp(5rem,11vw,8.5rem) 0 5rem}.eyebrow{display:inline-flex;align-items:center;gap:.55rem;margin-bottom:1.2rem;color:var(--violet);font-size:.8rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.eyebrow:before{width:24px;height:2px;content:"";background:var(--violet)}.lede{max-width:880px;margin-top:1.4rem;color:var(--muted);font-size:clamp(1.08rem,2vw,1.32rem)}.pills{display:flex;flex-wrap:wrap;gap:.65rem;margin-top:2rem}.pill{padding:.42rem .7rem;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:rgba(26,20,40,.76);font-size:.84rem}.pill strong{color:var(--ink)}.decisions{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;overflow:hidden;margin-top:4rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--line)}.decision{min-height:150px;padding:1.3rem;background:var(--surface)}.decision span{color:var(--violet);font-size:.76rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.decision strong{display:block;margin-top:.6rem}.decision p{color:var(--muted);font-size:.9rem;line-height:1.5}section{padding:5rem 0;scroll-margin-top:64px}section+section{border-top:1px solid rgba(70,54,95,.56)}.section-head{display:grid;grid-template-columns:.65fr 1.35fr;gap:2rem;margin-bottom:2.4rem}.section-head p{max-width:760px;color:var(--muted);font-size:1.05rem}.kicker{margin-bottom:.5rem;color:var(--pink);font-size:.78rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:1rem}.card{grid-column:span 4;padding:1.35rem;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(145deg,rgba(36,26,55,.94),rgba(26,20,40,.94))}.card.wide{grid-column:span 6}.card.full{grid-column:1/-1}.card p,.card li{color:var(--muted)}.number{display:grid;width:2.1rem;height:2.1rem;margin-bottom:1rem;place-items:center;border:1px solid rgba(189,156,255,.34);border-radius:9px;color:var(--violet);background:rgba(189,156,255,.09);font-size:.78rem;font-weight:800}.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}table{width:100%;border-collapse:collapse}th,td{padding:1rem 1.1rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--faint);background:rgba(14,10,22,.35);font-size:.77rem;letter-spacing:.08em;text-transform:uppercase}td{color:var(--muted)}td:first-child{color:var(--ink);font-weight:720}tr:last-child td{border-bottom:0}.callout{margin-top:1rem;padding:1rem 1.15rem;border-left:3px solid var(--violet);border-radius:0 12px 12px 0;color:var(--muted);background:rgba(189,156,255,.09)}.callout.warn{border-left-color:var(--amber);background:rgba(243,198,110,.09)}.callout.danger{border-left-color:var(--red);background:rgba(255,141,141,.08)}.callout strong{color:var(--ink)}.phase-list{display:grid;gap:1rem}.phase{display:grid;grid-template-columns:88px minmax(0,1fr) 165px;gap:1.2rem;padding:1.3rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}.phase-id{color:var(--violet);font-size:.78rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.phase p,.phase li{color:var(--muted)}.effort{padding-left:1rem;border-left:1px solid var(--line);color:var(--muted)}.effort strong{display:block;color:var(--ink);font-size:1.1rem}.gate{display:block;margin-top:.65rem;color:var(--green);font-size:.82rem;font-weight:700}footer{padding:3rem 0 4rem;border-top:1px solid var(--line);color:var(--faint)}.footer-inner{display:flex;justify-content:space-between;gap:1rem}button{padding:.55rem .8rem;border:1px solid var(--line);border-radius:9px;color:var(--muted);background:var(--surface);cursor:pointer}button:hover{color:var(--ink);border-color:var(--violet)}@media(max-width:900px){nav{display:none}.decisions{grid-template-columns:repeat(2,1fr)}.section-head{grid-template-columns:1fr}.card,.card.wide{grid-column:1/-1}.phase{grid-template-columns:1fr}.effort{padding:0;border:0}}@media(max-width:560px){.decisions{grid-template-columns:1fr}.footer-inner{flex-direction:column}}@media print{:root{--ink:#111827;--muted:#334155;--faint:#64748b;--page:white;--surface:white;--line:#cbd5e1}body{background:white;font-size:11pt}.topbar,button{display:none}.hero,section{padding:2rem 0}.card,.table-wrap,.phase,pre{break-inside:avoid}a{color:#5b21b6;text-decoration:underline}}
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to collection plan</a>
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="library-candidates.html"><span class="mark">R</span><span>Observable Range Collection</span></a><nav aria-label="Collection plan sections"><a href="#decision">Decision</a><a href="#api">API</a><a href="#events">Events</a><a href="#update">UpdateTo</a><a href="#safety">Safety</a><a href="#tests">Tests</a><a href="#roadmap">Roadmap</a></nav></div></header>
+  <main id="main">
+    <div class="hero wrap">
+      <div class="eyebrow">Dedicated collection utility plan · draft 1</div>
+      <h1>Range mutations with boring, exact semantics.</h1>
+      <p class="lede">Build a small, dependency-free observable collection for .NET applications that need efficient range changes and deterministic synchronization with MVVM Views. It extends the standard collection notification model; it does not pretend to be thread-safe, a reactive query engine, or a frontend transport.</p>
+      <div class="pills"><span class="pill"><strong>Working namespace</strong> CsWebUi.Collections</span><span class="pill"><strong>Initial home</strong> utilities project</span><span class="pill"><strong>Dependency</strong> BCL only</span><span class="pill"><strong>Target</strong> .NET 10</span><span class="pill"><strong>Runtime</strong> Native AOT</span><span class="pill"><strong>Updated</strong> 17 July 2026</span></div>
+      <div class="decisions">
+        <div class="decision"><span>Packaging</span><strong>Utilities first</strong><p>Ship inside a focused collections project; publish a standalone package only after independent adoption proves the extra package is useful.</p></div>
+        <div class="decision"><span>Contract</span><strong>BCL notifications</strong><p><code>ObservableCollection&lt;T&gt;</code>, <code>INotifyCollectionChanged</code>, and <code>INotifyPropertyChanged</code> remain the compatibility surface.</p></div>
+        <div class="decision"><span>Concurrency</span><strong>Single-owner mutation</strong><p>No locks, dispatcher capture, or implicit marshalling. The caller owns thread/dispatcher affinity.</p></div>
+        <div class="decision"><span>Diffs</span><strong>Deterministic, bounded</strong><p><code>UpdateTo</code> preserves matched instances and falls back to Reset when granular changes would be noisy.</p></div>
+      </div>
+    </div>
+
+    <section id="decision"><div class="wrap"><div class="section-head"><div><div class="kicker">01 · Product decision</div><h2>A utility, not a framework</h2></div><p>The implementation is valuable because the BCL collection exposes only single-item mutation helpers. Its public boundary must remain useful to ordinary desktop, web-hosted, console, test, and server code without depending on a specific MVVM framework.</p></div>
+      <div class="grid">
+        <article class="card"><div class="number">01</div><h3>Own</h3><p>Range insertion, removal, replacement and movement; deterministic reconciliation; standard notifications; immutable event payloads; snapshots; reentrancy protection.</p></article>
+        <article class="card"><div class="number">02</div><h3>Do not own</h3><p>Dispatching, synchronization contexts, serialization, web protocols, selection state, paging, virtualization, reactive queries, persistence, validation or item property tracking.</p></article>
+        <article class="card"><div class="number">03</div><h3>Promotion gate</h3><p>Begin in <code>CsWebUi.Collections</code> under a utilities project. Promote to a standalone <code>CsWebUi.Collections.Observable</code> package only when at least two unrelated consumers use it without depending on the MVVM runtime.</p></article>
+      </div>
+      <div class="callout"><strong>Stable-name rule:</strong> use the independent <code>CsWebUi.Collections</code> namespace from the start. Moving the assembly later then does not force source changes or couple the collection to a particular frontend.</div>
+    </div></section>
+
+    <section id="api"><div class="wrap"><div class="section-head"><div><div class="kicker">02 · Public API</div><h2>One sealed type, a few explicit options</h2></div><p>The first release deliberately favors index-based operations. Item-based removal is ambiguous in the presence of duplicates and therefore remains outside v1 until a real use case establishes strict matching semantics.</p></div>
+<pre><code>namespace CsWebUi.Collections;
+
+public sealed class ObservableRangeCollection&lt;T&gt; : ObservableCollection&lt;T&gt;
+{
+    public ObservableRangeCollection();
+    public ObservableRangeCollection(IEnumerable&lt;T&gt; items);
+    public ObservableRangeCollection(ObservableRangeCollectionOptions options);
+    public ObservableRangeCollection(
+        IEnumerable&lt;T&gt; items,
+        ObservableRangeCollectionOptions options);
+
+    public void AddRange(IEnumerable&lt;T&gt; items);
+    public void InsertRange(int index, IEnumerable&lt;T&gt; items);
+    public void RemoveRange(int index, int count);
+    public void ReplaceRange(int index, int count, IEnumerable&lt;T&gt; replacement);
+    public void MoveRange(int oldIndex, int count, int newIndex);
+
+    public CollectionUpdateResult UpdateTo(
+        IEnumerable&lt;T&gt; target,
+        IEqualityComparer&lt;T&gt;? comparer = null,
+        Func&lt;T, T, T&gt;? resolveMatch = null,
+        CollectionUpdateOptions? options = null);
+
+    public CollectionUpdateResult UpdateTo&lt;TKey&gt;(
+        IEnumerable&lt;T&gt; target,
+        Func&lt;T, TKey&gt; keySelector,
+        IEqualityComparer&lt;TKey&gt;? keyComparer = null,
+        Func&lt;T, T, T&gt;? resolveMatch = null,
+        CollectionUpdateOptions? options = null)
+        where TKey : notnull;
+
+    public T[] ToSnapshot();
+}
+
+public sealed record ObservableRangeCollectionOptions
+{
+    public RangeNotificationMode RangeNotifications { get; init; }
+        = RangeNotificationMode.Range;
+}
+
+public enum RangeNotificationMode { Range, Reset }
+public enum UpdateNotificationMode { Auto, Granular, Reset }
+
+public sealed record CollectionUpdateOptions
+{
+    public UpdateNotificationMode Notifications { get; init; }
+        = UpdateNotificationMode.Auto;
+    public int MaxGranularEvents { get; init; } = 64;
+    public int ResetRatioMinimumCount { get; init; } = 64;
+    public double ResetChangeRatio { get; init; } = 0.35;
+}
+
+public readonly record struct CollectionUpdateResult(
+    int Added, int Removed, int Moved, int Replaced,
+    int NotificationCount, bool UsedReset)
+{
+    public bool Changed =&gt; Added != 0 || Removed != 0 ||
+                           Moved != 0 || Replaced != 0;
+}</code></pre>
+      <div class="grid" style="margin-top:1rem">
+        <article class="card wide"><h3>Argument rules</h3><ul><li>All source sequences are non-null and enumerated exactly once into a private buffer before structural mutation.</li><li>Enumeration, comparer, key-selector, or match-resolver failure leaves the collection structure unchanged.</li><li><code>index</code> is in <code>[0, Count]</code> for insertion; existing ranges require <code>index &gt;= 0</code>, <code>count &gt;= 0</code>, and <code>index + count &lt;= Count</code> without integer overflow.</li><li>Self-sources such as <code>AddRange(collection)</code> are safe because input is materialized first.</li><li>Empty ranges and already-satisfied updates are no-ops: no property or collection notifications.</li></ul></article>
+        <article class="card wide"><h3>Operation rules</h3><ul><li><code>AddRange</code> is <code>InsertRange(Count, items)</code>.</li><li><code>ReplaceRange(index, 0, items)</code> inserts; an empty replacement removes.</li><li><code>MoveRange</code>'s <code>newIndex</code> is the block's start index in the <em>final</em> collection after removal; it must be in <code>[0, Count - count]</code>.</li><li>A move whose old and final start indices are equal is a no-op.</li><li><code>ToSnapshot</code> returns a new shallow <code>T[]</code>; later collection changes cannot alter its membership or order.</li></ul></article>
+      </div>
+      <div class="callout warn"><strong>API approval gate:</strong> before release, compile the declaration above into an approval file. Adding convenience overloads is easy later; removing ambiguous overloads is not.</div>
+    </div></section>
+
+    <section id="events"><div class="wrap"><div class="section-head"><div><div class="kicker">03 · Notification contract</div><h2>Observers see the post-mutation collection</h2></div><p>Every event follows the BCL's observable collection conventions. Range payloads are private read-only copies, never the caller's mutable list. Handlers may enumerate or snapshot the collection but may not structurally modify it during notification.</p></div>
+      <div class="table-wrap"><table><thead><tr><th>Mutation</th><th>PropertyChanged order</th><th>CollectionChanged in Range mode</th></tr></thead><tbody>
+        <tr><td>Add / Insert range</td><td><code>Count</code>, then <code>Item[]</code></td><td>One <code>Add</code>, immutable new-items list, insertion index</td></tr>
+        <tr><td>Remove range</td><td><code>Count</code>, then <code>Item[]</code></td><td>One <code>Remove</code>, immutable old-items list, original start index</td></tr>
+        <tr><td>Replace, equal counts</td><td><code>Item[]</code></td><td>One <code>Replace</code>, immutable new/old lists, common index</td></tr>
+        <tr><td>Replace, unequal counts</td><td><code>Count</code> only when changed, then <code>Item[]</code></td><td>One <code>Reset</code>; a single standard Replace is not used for unequal cardinality</td></tr>
+        <tr><td>Move range</td><td><code>Item[]</code></td><td>One <code>Move</code>, immutable moved-items list, final new index and original old index</td></tr>
+        <tr><td>Clear</td><td><code>Count</code>, then <code>Item[]</code>, unless already empty</td><td>One <code>Reset</code></td></tr>
+        <tr><td>UpdateTo granular</td><td>Normal property sequence for every coherent step</td><td>Deterministic single-item Add, Remove, Move, or Replace events</td></tr>
+        <tr><td>UpdateTo reset</td><td><code>Count</code> only when changed, then <code>Item[]</code></td><td>Final content is installed, then one <code>Reset</code></td></tr>
+      </tbody></table></div>
+      <div class="grid" style="margin-top:1rem">
+        <article class="card"><h3>Reset mode</h3><p>When collection options select <code>RangeNotificationMode.Reset</code>, every multi-item range operation emits the appropriate property changes followed by one Reset. Existing single-item APIs retain ordinary BCL events.</p></article>
+        <article class="card"><h3>Event exceptions</h3><p>Subscriber exceptions propagate. The mutation that preceded the failing event remains applied; there is no rollback. For granular <code>UpdateTo</code>, the collection remains coherent but may be only partially reconciled.</p></article>
+        <article class="card"><h3>Compatibility tests</h3><p>Test event action, item identity, copied payload, indices, property ordering, handler-visible collection state, and no-op silence against hand-written expected traces.</p></article>
+      </div>
+      <div class="callout danger"><strong>Do not fake atomicity:</strong> standard observable events are synchronous. Range methods complete one structural mutation before one event. Granular reconciliation intentionally exposes a sequence of valid intermediate states; consumers requiring one refresh must select Reset.</div>
+    </div></section>
+
+    <section id="update"><div class="wrap"><div class="section-head"><div><div class="kicker">04 · Reconciliation</div><h2><code>UpdateTo</code> preserves identity by default</h2></div><p>Reconciliation turns the current sequence into a target sequence while retaining matched object instances where possible. This matters for ViewModels with subscriptions, focus, validation state, or expensive initialization.</p></div>
+      <div class="grid">
+        <article class="card"><div class="number">01</div><h3>Materialize</h3><p>Enumerate the target once. Snapshot current entries. Validate options and keyed uniqueness. No structural mutation has happened.</p></article>
+        <article class="card"><div class="number">02</div><h3>Match</h3><p>The comparer overload pairs each target occurrence with the first unmatched equal current occurrence in original order. This FIFO rule makes duplicates deterministic.</p></article>
+        <article class="card"><div class="number">03</div><h3>Resolve</h3><p>For each match in target order, call <code>resolveMatch(existing, incoming)</code>. The default returns <code>existing</code>. The returned instance becomes the desired item.</p></article>
+        <article class="card"><div class="number">04</div><h3>Plan</h3><p>Generate a deterministic left-to-right edit script: retain, move an already-matched item forward, insert an unmatched target, replace a matched item resolved to another instance, then remove unmatched tail items.</p></article>
+        <article class="card"><div class="number">05</div><h3>Select notifications</h3><p>Granular always applies the script. Reset always installs the desired list once. Auto uses the documented event-count and change-ratio thresholds.</p></article>
+        <article class="card"><div class="number">06</div><h3>Apply</h3><p>Apply the chosen plan under the mutation guard. Return operation and notification counts. A successful result guarantees sequence equality under the chosen match contract.</p></article>
+      </div>
+      <div class="table-wrap" style="margin-top:1rem"><table><thead><tr><th>Concern</th><th>Required decision</th></tr></thead><tbody>
+        <tr><td>Default identity</td><td><code>EqualityComparer&lt;T&gt;.Default</code>; equal occurrences match FIFO and retain the existing instance.</td></tr>
+        <tr><td>Keyed identity</td><td>Keys must be unique in both current and target snapshots. Null or duplicate keys throw <code>ArgumentException</code> before mutation, with the side and key position identified in the message.</td></tr>
+        <tr><td>Match resolver</td><td>Called exactly once per match before structural mutation. It may return existing, incoming, or another item. It must not structurally mutate this collection; that attempt throws <code>InvalidOperationException</code>.</td></tr>
+        <tr><td>Auto reset</td><td>Reset when planned event count exceeds <code>MaxGranularEvents</code>, or when the larger sequence has at least <code>ResetRatioMinimumCount</code> items and <code>eventCount / max(oldCount, newCount)</code> exceeds <code>ResetChangeRatio</code>.</td></tr>
+        <tr><td>Complexity</td><td>Keyed matching must be O(n) expected matching plus edit planning no worse than O(n log n). Arbitrary comparer/FIFO duplicate matching may be O(n²); document keyed use for large collections.</td></tr>
+        <tr><td>Minimality</td><td>The edit script must be deterministic and reasonably compact, not mathematically minimal. Correct identity, order, and bounded notification volume take priority over minimum edit distance.</td></tr>
+      </tbody></table></div>
+      <div class="callout"><strong>Resolver example:</strong> returning <code>existing</code> preserves a live ViewModel; returning <code>incoming</code> replaces immutable records. A consumer that copies fields into the existing item may do so in the resolver, but those item-level changes are the consumer's responsibility and cannot be rolled back.</div>
+    </div></section>
+
+    <section id="safety"><div class="wrap"><div class="section-head"><div><div class="kicker">05 · Ownership and safety</div><h2>Single-threaded by contract, guarded against reentrancy</h2></div><p>Observable collections are normally bound to one UI or application context. Hiding cross-thread access behind locks would not make synchronous event handlers, item mutation, or UI adapters safe.</p></div>
+      <div class="grid">
+        <article class="card wide"><h3>Threading policy</h3><ul><li>The type is not thread-safe and captures no <code>SynchronizationContext</code>.</li><li>All reads, enumeration, mutations, and subscriptions must be coordinated by the owner.</li><li>Concurrent read/write and write/write access is unsupported even if it appears to work.</li><li>A frontend or MVVM bridge must marshal inbound work through its own dispatcher before calling collection APIs.</li><li>No <code>Invoke</code>, <code>Post</code>, async mutation, lock, or dispatcher overload belongs in this package.</li></ul></article>
+        <article class="card wide"><h3>Reentrancy policy</h3><ul><li>Seal the type and route inherited <code>InsertItem</code>, <code>RemoveItem</code>, <code>SetItem</code>, <code>MoveItem</code>, and <code>ClearItems</code> through one guard.</li><li>Reject every structural mutation attempted from <code>PropertyChanged</code>, <code>CollectionChanged</code>, input enumeration, key selection, comparison, or match resolution.</li><li>Throw <code>InvalidOperationException</code> consistently, independent of subscriber count.</li><li>Reading, enumerating, snapshotting, and changing properties on contained items remain allowed during notification.</li></ul></article>
+        <article class="card"><h3>Enumeration</h3><p>Live enumeration follows normal <code>List&lt;T&gt;</code> fail-fast behavior when structurally modified. It is not a snapshot and provides no concurrent-read guarantee.</p></article>
+        <article class="card"><h3>Snapshots</h3><p><code>ToSnapshot</code> is shallow: collection membership and ordering are copied, contained reference objects are not cloned. It is safe from later structural changes, not from item mutation.</p></article>
+        <article class="card"><h3>Items</h3><p>The collection does not subscribe to <code>INotifyPropertyChanged</code> on items. Generated bindings continue to observe item ViewModels through their normal mechanisms.</p></article>
+      </div>
+      <div class="callout warn"><strong>Exception-safety boundary:</strong> argument validation, enumeration, matching, and planning complete before structural mutation. Once synchronous notifications begin, external handler failures cannot be made transactional without changing standard observable semantics.</div>
+    </div></section>
+
+    <section id="bridge"><div class="wrap"><div class="section-head"><div><div class="kicker">06 · MVVM bridge</div><h2>Translate notifications; do not couple the collection</h2></div><p>The collection remains transport-neutral. A generated MVVM bridge can recognize standard actions and serialize typed item payloads using its existing generated metadata.</p></div>
+      <div class="table-wrap"><table><thead><tr><th>Collection action</th><th>Bridge behavior</th><th>Recovery</th></tr></thead><tbody>
+        <tr><td>Add / Remove / Replace</td><td>Send one typed range patch with index and item payloads; preserve list order and one binding-session revision.</td><td>If the client rejects the revision, send a full generated snapshot.</td></tr>
+        <tr><td>Move</td><td>Send old index, new final index, and count. The client performs one block move without recreating retained item bindings.</td><td>Fall back to snapshot when the target adapter cannot represent block move.</td></tr>
+        <tr><td>Reset</td><td>Read <code>ToSnapshot</code> after the event and send a replace-all patch. Diff reconstruction from old state is unnecessary.</td><td>Snapshot is already authoritative.</td></tr>
+        <tr><td>Granular UpdateTo</td><td>Forward ordered events or coalesce them in the bridge's scheduler. Coalescing is a transport policy and must preserve the final revision.</td><td>On disconnect/reconnect, discard queued deltas and send the current snapshot.</td></tr>
+      </tbody></table></div>
+      <div class="grid" style="margin-top:1rem">
+        <article class="card"><h3>Generated metadata</h3><p>Source generation supplies item serializers and binding descriptors. The collection performs no reflection, runtime type scanning, or JSON work.</p></article>
+        <article class="card"><h3>Adapter conformance</h3><p>Angular, React, Vue, Svelte, and HTMX adapters receive the same action/index/item trace and must converge to the same DOM-visible ordering.</p></article>
+        <article class="card"><h3>Virtualization</h3><p>Virtualized Views may interpret changes against their window, but the source collection always describes the complete logical list. Paging is a separate abstraction.</p></article>
+      </div>
+      <div class="callout"><strong>No custom wire event in v1:</strong> avoid a second parallel change-event protocol until bridge benchmarks prove standard notifications insufficient. Reset plus snapshot is the universal escape hatch.</div>
+    </div></section>
+
+    <section id="layout"><div class="wrap"><div class="section-head"><div><div class="kicker">07 · Repository layout</div><h2>Small production core, disproportionate tests</h2></div><p>The implementation should be understandable in one sitting. Diff planning remains internal so algorithms and performance can evolve without public API churn.</p></div>
+<pre><code>src/
+  CsWebUi.Collections/
+    CsWebUi.Collections.csproj
+    ObservableRangeCollection.cs
+    ObservableRangeCollectionOptions.cs
+    CollectionUpdateOptions.cs
+    CollectionUpdateResult.cs
+    Internal/
+      DiffPlanner.cs
+      MatchPlan.cs
+      EventItemSnapshot.cs
+      MutationGuard.cs
+
+test/
+  CsWebUi.Collections.Tests/
+    RangeMutationTests.cs
+    NotificationTraceTests.cs
+    ReentrancyTests.cs
+    ExceptionSafetyTests.cs
+    UpdateToTests.cs
+    UpdateToPropertyTests.cs
+    SnapshotTests.cs
+  CsWebUi.Collections.AotSmoke/
+    Program.cs
+
+benchmarks/
+  CsWebUi.Collections.Benchmarks/
+    RangeMutationBenchmarks.cs
+    ReconciliationBenchmarks.cs
+
+docs/
+  collections/
+    observable-range-collection.md
+    notification-contract.md
+    migration-from-observable-collection.md</code></pre>
+      <div class="grid" style="margin-top:1rem"><article class="card"><h3>Project defaults</h3><p>Target <code>net10.0</code>, enable nullable and implicit usings, treat warnings as errors, enable trim and AOT analyzers, generate XML documentation, and keep the production project BCL-only.</p></article><article class="card"><h3>API discipline</h3><p>Commit public API approval files. Every API change includes compatibility notes and updated notification traces. Strong naming is a repository-wide policy, not a collection-specific decision.</p></article><article class="card"><h3>Package path</h3><p>If promoted, package as <code>CsWebUi.Collections.Observable</code> while retaining <code>CsWebUi.Collections</code>. The broader utilities package must not reference MVVM, hosting, CLI, browser, or frontend packages.</p></article></div>
+    </div></section>
+
+    <section id="tests"><div class="wrap"><div class="section-head"><div><div class="kicker">08 · Verification</div><h2>Examples are not enough for sequence algorithms</h2></div><p>Combine conventional unit tests with generated operation sequences, model comparison, notification trace validation, package consumption, Native AOT execution, and allocation benchmarks.</p></div>
+      <div class="table-wrap"><table><thead><tr><th>Suite</th><th>Required coverage</th></tr></thead><tbody>
+        <tr><td>Range methods</td><td>Empty/single/many inputs, beginning/middle/end, self-source, duplicates, null items where <code>T</code> permits, invalid/overflowing ranges, unequal replacement, overlapping block moves and no-op moves</td></tr>
+        <tr><td>Notification traces</td><td>Exact property order, event action, copied old/new payloads, indices, post-event collection state, Range versus Reset options, no-op silence and subscriber exceptions</td></tr>
+        <tr><td>UpdateTo examples</td><td>Append, trim, reorder, insert/remove mix, immutable replacement, retained instances, resolver output, duplicate FIFO matching, unique keys, duplicate-key rejection and all notification modes</td></tr>
+        <tr><td>Property tests</td><td>Generate current/target lists and operation sequences; after successful execution compare to a simple <code>List&lt;T&gt;</code> model, replay emitted edits, assert index validity, preserved matches and snapshot equality</td></tr>
+        <tr><td>Reentrancy</td><td>Mutation attempts from every property/collection callback, comparer, key selector, resolver, and source iterator; one and multiple subscribers must behave identically</td></tr>
+        <tr><td>Exception safety</td><td>Throwing iterator/comparer/key selector/resolver leaves structure unchanged; throwing subscriber leaves a documented coherent state; later operations remain usable</td></tr>
+        <tr><td>Bridge contract</td><td>Replay standard events into a shadow list for every range and generated reconciliation case; Reset replaces from snapshot; reconnect converges</td></tr>
+        <tr><td>Package/AOT</td><td>Restore the packed artifact into an empty app, publish Native AOT, execute every action including keyed UpdateTo, verify output and require zero trim/AOT warnings</td></tr>
+      </tbody></table></div>
+      <div class="grid" style="margin-top:1rem">
+        <article class="card wide"><h3>Property-test oracle</h3><p>Use a plain <code>List&lt;T&gt;</code> as the structural oracle and a separate shadow observer that knows only emitted event arguments. After every successful public call, collection, oracle, shadow, and snapshot must contain equivalent sequences.</p></article>
+        <article class="card wide"><h3>Benchmark matrix</h3><p>Measure 10, 100, 1,000, and 10,000 items; append/remove/replace/move; 1%, 10%, and 50% reconciliation churn; keyed and duplicate comparer paths; Range, Granular, and Reset. Record time, allocations, event count, and retained identities.</p></article>
+      </div>
+      <div class="callout warn"><strong>Performance gate:</strong> do not promise a universal speedup over repeated <code>Add</code>. Report the workload and observer cost. The goal is fewer coherent notifications and bounded synchronization work, not a benchmark headline.</div>
+    </div></section>
+
+    <section id="alternatives"><div class="wrap"><div class="section-head"><div><div class="kicker">09 · Alternatives and non-goals</div><h2>Keep attractive complexity outside v1</h2></div><p>Several adjacent features sound convenient but weaken the collection's contract or belong at another layer.</p></div>
+      <div class="table-wrap"><table><thead><tr><th>Alternative</th><th>Decision</th><th>Reason</th></tr></thead><tbody>
+        <tr><td>Repeated ordinary Add/Remove</td><td>Supported baseline, not the range implementation</td><td>Correct but produces excessive notifications and bridge traffic for bulk changes.</td></tr>
+        <tr><td>Always Reset</td><td>Available option, not default</td><td>Maximally compatible but loses identity-preserving move/replace information and may recreate frontend state.</td></tr>
+        <tr><td>Custom change-set-only event</td><td>Defer</td><td>Would reduce BCL interoperability and create a second observer ecosystem before evidence requires it.</td></tr>
+        <tr><td>Item-based RemoveRange</td><td>Defer</td><td>Duplicate matching, missing-item behavior, comparer selection, and event grouping require a separate explicit contract.</td></tr>
+        <tr><td>Async/thread-safe collection</td><td>Reject</td><td>Locks cannot safely marshal synchronous UI observers; dispatch belongs to the owning application or frontend adapter.</td></tr>
+        <tr><td>Automatic item-property forwarding</td><td>Reject</td><td>Changes event meaning, adds subscription lifetime, and duplicates MVVM binding behavior.</td></tr>
+        <tr><td>Minimal edit distance</td><td>Reject as a requirement</td><td>CPU and allocation cost can exceed the value; deterministic bounded edits and Reset fallback are sufficient.</td></tr>
+        <tr><td>Virtualized/paged collection</td><td>Separate library</td><td>Loading, eviction, total count, cancellation, and errors are a different abstraction.</td></tr>
+      </tbody></table></div>
+    </div></section>
+
+    <section id="roadmap"><div class="wrap"><div class="section-head"><div><div class="kicker">10 · Roadmap</div><h2>Five small, gated phases</h2></div><p>Land standard range behavior before the diff engine. Each phase produces an independently testable artifact and freezes semantics before optimization.</p></div>
+      <div class="phase-list">
+        <article class="phase"><div class="phase-id">Phase R0</div><div><h3>Contract and trace fixtures</h3><p>Approve API, indices, no-op behavior, property/event order, range payload copying, Reset behavior, threading and reentrancy. Build the shadow-list trace harness first.</p><span class="gate">Gate: every public operation has an executable expected trace and invalid-argument matrix.</span></div><div class="effort"><strong>2–3 days</strong>Specification</div></article>
+        <article class="phase"><div class="phase-id">Phase R1</div><div><h3>Range mutation kernel</h3><p>Implement options, materialization, mutation guard, Add/Insert/Remove/Replace/Move, inherited single-item paths, snapshots and unit tests.</p><span class="gate">Gate: Range and Reset modes pass trace, reentrancy, exception, and self-source tests.</span></div><div class="effort"><strong>3–5 days</strong>Core collection</div></article>
+        <article class="phase"><div class="phase-id">Phase R2</div><div><h3>Reconciliation engine</h3><p>Implement comparer/FIFO and unique-key matching, resolver, deterministic edit planning, thresholds, results, property tests and benchmark baselines.</p><span class="gate">Gate: generated current/target pairs converge and replay into the same shadow sequence while retaining expected identities.</span></div><div class="effort"><strong>1–2 weeks</strong>Highest risk</div></article>
+        <article class="phase"><div class="phase-id">Phase R3</div><div><h3>MVVM bridge conformance</h3><p>Consume standard events through the generated binding bridge, test block moves, snapshots, coalescing, stale revisions and reconnect across supported View targets.</p><span class="gate">Gate: every adapter reaches identical logical order without collection-specific handwritten binding code.</span></div><div class="effort"><strong>3–5 days</strong>Integration</div></article>
+        <article class="phase"><div class="phase-id">Phase R4</div><div><h3>Package and AOT hardening</h3><p>Pack/restore smoke app, Native AOT publish/run, API approvals, XML docs, examples, compatibility notes, benchmark report and package-promotion decision.</p><span class="gate">Gate: packed consumer runs warning-free under Native AOT and the standalone-package gate is explicitly accepted or deferred.</span></div><div class="effort"><strong>3–5 days</strong>Release confidence</div></article>
+      </div>
+      <div class="callout"><strong>Indicative total:</strong> 3–5 engineer-weeks including reconciliation property tests and bridge conformance. A range-only first release is approximately one week and is a valid stopping point if <code>UpdateTo</code> has no immediate consumer.</div>
+    </div></section>
+
+    <section id="acceptance"><div class="wrap"><div class="section-head"><div><div class="kicker">11 · Acceptance</div><h2>Definition of done</h2></div><p>The candidate is complete only when its behavior can be implemented and verified from this public specification without access to another repository, product, or historical implementation.</p></div>
+      <div class="grid">
+        <article class="card"><h3>Semantics</h3><p>Every method, index, duplicate, no-op, notification, exception, resolver, reset threshold, reentrancy, and threading rule above is implemented and documented.</p></article>
+        <article class="card"><h3>Correctness</h3><p>Unit and property suites prove model equality, event replay, identity retention, copied payloads, coherent failure states, and deterministic results.</p></article>
+        <article class="card"><h3>Compatibility</h3><p>Ordinary <code>INotifyCollectionChanged</code> observers work without referencing custom events; adapters handle Range and Reset; a migration example starts from <code>ObservableCollection&lt;T&gt;</code>.</p></article>
+        <article class="card"><h3>AOT</h3><p>The production assembly contains no reflection discovery, expression compilation, dynamic code, runtime serializer lookup, dispatcher, or frontend dependency and passes packed Native AOT execution.</p></article>
+        <article class="card"><h3>Performance</h3><p>Benchmarks publish allocations, event counts, and time across the defined matrix; Auto thresholds are justified by measured bridge behavior and then treated as versioned defaults.</p></article>
+        <article class="card"><h3>Release</h3><p>Public API approval, XML docs, notification contract, examples, package metadata, license, changelog, and compatibility policy are present; promotion to a separate package is evidence-based.</p></article>
+      </div>
+    </div></section>
+  </main>
+  <footer><div class="wrap footer-inner"><div>Observable Range Collection plan · Draft 1 · 17 July 2026 · <a href="library-candidates.html">Return to candidates</a></div><button type="button" onclick="window.print()">Print / save as PDF</button></div></footer>
+</body>
+</html>

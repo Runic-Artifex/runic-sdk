@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "worktreeRoot": "../WebUIToolkit.worktrees",
+  "tasks": [
+    { "name": "mvvm-protocol-core", "branch": "work/mvvm-protocol-core", "paths": ["protocol/mvvm/*", "src/WebUIToolkit.MVVM/*", "tests/WebUIToolkit.MVVM.Tests/*", "tests/WebUIToolkit.MVVM.Protocol.Tests/*", "tests/WebUIToolkit.MVVM.AotSmoke/*"] },
+    { "name": "mvvm-compiler-build", "branch": "work/mvvm-compiler-build", "paths": ["src/WebUIToolkit.MVVM.Build/*", "tools/WebUIToolkit.MVVM.BindingCompiler/*", "tests/WebUIToolkit.MVVM.Build.Tests/*", "tests/WebUIToolkit.MVVM.BindingCompiler.Tests/*"] },
+    { "name": "web-sdk-conformance", "branch": "work/web-sdk-conformance", "paths": ["web/packages/mvvm/*", "web/packages/conformance/*", "web/fixtures/conformance/*"] },
+    { "name": "angular", "branch": "work/angular", "paths": ["web/packages/mvvm-angular/*", "samples/Angular/*"] },
+    { "name": "react", "branch": "work/react", "paths": ["web/packages/mvvm-react/*", "samples/React/*"] },
+    { "name": "vue", "branch": "work/vue", "paths": ["web/packages/mvvm-vue/*", "samples/Vue/*"] },
+    { "name": "svelte", "branch": "work/svelte", "paths": ["web/packages/mvvm-svelte/*", "samples/Svelte/*"] },
+    { "name": "communitytoolkit", "branch": "work/communitytoolkit", "paths": ["src/WebUIToolkit.MVVM.CommunityToolkit/*", "tests/WebUIToolkit.MVVM.CommunityToolkit.Tests/*"] },
+    { "name": "reactiveui", "branch": "work/reactiveui", "paths": ["src/WebUIToolkit.MVVM.ReactiveUI/*", "tests/WebUIToolkit.MVVM.ReactiveUI.Tests/*"] },
+    { "name": "template-engine", "branch": "work/template-engine", "paths": ["src/WebUIToolkit.MVVM.Html/*", "src/WebUIToolkit.MVVM.Html.Compiler/*", "src/WebUIToolkit.MVVM.Html.Build/*", "src/WebUIToolkit.MVVM.Html.Testing/*", "src/WebUIToolkit.MVVM.Html.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Html.ReactiveUI/*", "tools/dotnet-cwhtml/*", "spec/templates/*", "tests/WebUIToolkit.MVVM.Html.Tests/*"] },
+    { "name": "htmx", "branch": "work/htmx", "paths": ["src/WebUIToolkit.MVVM.Html.Htmx/*", "src/WebUIToolkit.MVVM.Html.Htmx.Js/*", "tests/WebUIToolkit.MVVM.Html.Htmx.Tests/*", "samples/Htmx/*"] },
+    { "name": "hosting", "branch": "work/hosting", "paths": ["src/WebUIToolkit.Hosting/*", "src/WebUIToolkit.Hosting.Abstractions/*", "src/WebUIToolkit.Hosting.WebUi/*", "src/WebUIToolkit.Hosting.CommandLine/*", "src/WebUIToolkit.Hosting.Generators/*", "src/WebUIToolkit.Hosting.Build/*", "tests/WebUIToolkit.Hosting.*/*", "samples/Hosting.*/*"] },
+    { "name": "flow", "branch": "work/flow", "paths": ["src/WebUIToolkit.MVVM.Flow/*", "src/WebUIToolkit.MVVM.Flow.Generators/*", "src/WebUIToolkit.MVVM.Flow.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Flow.ReactiveUI/*", "tests/WebUIToolkit.MVVM.Flow.*/*", "samples/Flow.*/*"] },
+    { "name": "text-resources", "branch": "work/text-resources", "paths": ["src/WebUIToolkit.TextResources*/*", "tools/dotnet-textresources/*", "spec/text-resources/*", "tests/WebUIToolkit.TextResources.*/*", "samples/TextResources.*/*"] },
+    { "name": "command-line", "branch": "work/command-line", "paths": ["src/WebUIToolkit.CommandLine*/*", "eng/cli-evaluation/*", "spec/command-line/*", "tests/WebUIToolkit.CommandLine.*/*", "samples/CommandLine.*/*"] },
+    { "name": "collections", "branch": "work/collections", "paths": ["src/WebUIToolkit.Collections*/*", "tests/WebUIToolkit.Collections.*/*", "benchmarks/WebUIToolkit.Collections.*/*"] },
+    { "name": "dependency-notices", "branch": "work/dependency-notices", "paths": ["src/WebUIToolkit.DependencyNotices*/*", "spec/dependency-notices/*", "tests/WebUIToolkit.DependencyNotices.*/*", "samples/DependencyNotices.*/*"] }
+  ]
+}

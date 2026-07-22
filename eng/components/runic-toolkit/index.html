@@ -1,0 +1,1496 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Implementation plan for a Native-AOT-friendly HTML View layer spanning Angular, React, Vue, Svelte, HTMX, and a typed C# template compiler.">
+  <title>CsWebUi.MVVM — Implementation Plan</title>
+  <style>
+    :root {
+      --ink: #f4f7fb;
+      --muted: #a9b5c6;
+      --faint: #718096;
+      --page: #081018;
+      --surface: #101b27;
+      --surface-2: #142332;
+      --surface-3: #1a2d3e;
+      --line: #294055;
+      --cyan: #4dd7d0;
+      --cyan-soft: rgba(77, 215, 208, .12);
+      --blue: #74a7ff;
+      --blue-soft: rgba(116, 167, 255, .12);
+      --amber: #f7c66b;
+      --amber-soft: rgba(247, 198, 107, .12);
+      --red: #ff8585;
+      --green: #79d69b;
+      --radius: 18px;
+      --shadow: 0 20px 60px rgba(0, 0, 0, .24);
+      --content: 1180px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% -10%, rgba(77, 215, 208, .12), transparent 35rem),
+        radial-gradient(circle at 90% 3%, rgba(116, 167, 255, .13), transparent 34rem),
+        var(--page);
+      font: 16px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+    code {
+      padding: .12rem .35rem;
+      border: 1px solid rgba(116, 167, 255, .16);
+      border-radius: 6px;
+      color: #d8e7ff;
+      background: rgba(116, 167, 255, .08);
+    }
+    pre {
+      margin: 1rem 0 0;
+      padding: 1.1rem 1.25rem;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: #dce9f7;
+      background: #09131d;
+      line-height: 1.55;
+    }
+    pre code { padding: 0; border: 0; background: none; }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.15; letter-spacing: -.025em; }
+    h1 { max-width: 850px; font-size: clamp(2.9rem, 8vw, 6.4rem); font-weight: 760; }
+    h2 { font-size: clamp(2rem, 4vw, 3.25rem); }
+    h3 { font-size: 1.25rem; }
+    p { margin: .65rem 0 0; }
+    ul, ol { padding-left: 1.25rem; }
+    li + li { margin-top: .4rem; }
+
+    .skip-link {
+      position: fixed;
+      top: .75rem;
+      left: .75rem;
+      z-index: 100;
+      padding: .6rem .9rem;
+      transform: translateY(-150%);
+      border-radius: 8px;
+      color: var(--page);
+      background: var(--cyan);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(41, 64, 85, .85);
+      background: rgba(8, 16, 24, .88);
+      backdrop-filter: blur(16px);
+    }
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      width: min(calc(100% - 2rem), var(--content));
+      min-height: 64px;
+      margin: 0 auto;
+    }
+    .brand { display: flex; align-items: center; gap: .75rem; color: var(--ink); font-weight: 700; }
+    .mark {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border-radius: 9px;
+      color: var(--page);
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      box-shadow: 0 0 24px rgba(77, 215, 208, .2);
+    }
+    .topnav { display: flex; gap: 1.2rem; overflow-x: auto; white-space: nowrap; }
+    .topnav a { color: var(--muted); font-size: .9rem; }
+    .topnav a:hover { color: var(--ink); text-decoration: none; }
+
+    .wrap { width: min(calc(100% - 2rem), var(--content)); margin: 0 auto; }
+    .hero { padding: clamp(5rem, 12vw, 9rem) 0 5rem; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .55rem;
+      margin-bottom: 1.25rem;
+      color: var(--cyan);
+      font-size: .82rem;
+      font-weight: 750;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { width: 24px; height: 2px; content: ""; background: var(--cyan); }
+    .hero .lede { max-width: 790px; margin-top: 1.5rem; color: var(--muted); font-size: clamp(1.1rem, 2vw, 1.35rem); }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 2rem; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: .45rem;
+      padding: .42rem .7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(16, 27, 39, .72);
+      font-size: .84rem;
+    }
+    .pill strong { color: var(--ink); }
+    .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); }
+
+    .decision-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      overflow: hidden;
+      margin-top: 4rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--line);
+      box-shadow: var(--shadow);
+    }
+    .decision { min-height: 155px; padding: 1.35rem; background: var(--surface); }
+    .decision span { color: var(--cyan); font-size: .78rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+    .decision strong { display: block; margin-top: .65rem; font-size: 1.07rem; }
+    .decision p { color: var(--muted); font-size: .9rem; line-height: 1.5; }
+
+    section { padding: 5rem 0; scroll-margin-top: 64px; }
+    section + section { border-top: 1px solid rgba(41, 64, 85, .55); }
+    .section-head { display: grid; grid-template-columns: .65fr 1.35fr; gap: 2rem; margin-bottom: 2.5rem; }
+    .section-head p { max-width: 720px; color: var(--muted); font-size: 1.05rem; }
+    .section-kicker { margin-bottom: .5rem; color: var(--blue); font-size: .8rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
+    .card {
+      grid-column: span 4;
+      padding: 1.35rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(20, 35, 50, .9), rgba(16, 27, 39, .9));
+    }
+    .card.wide { grid-column: span 6; }
+    .card.full { grid-column: 1 / -1; }
+    .card p, .card li { color: var(--muted); }
+    .card h3 + p { margin-top: .65rem; }
+    .number {
+      display: grid;
+      width: 2.1rem;
+      height: 2.1rem;
+      margin-bottom: 1rem;
+      place-items: center;
+      border: 1px solid rgba(77, 215, 208, .3);
+      border-radius: 9px;
+      color: var(--cyan);
+      background: var(--cyan-soft);
+      font-size: .82rem;
+      font-weight: 800;
+    }
+
+    .boundary {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 1rem 1.1rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--faint); background: rgba(8, 16, 24, .35); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
+    td { color: var(--muted); }
+    td:first-child { color: var(--ink); font-weight: 700; }
+    tr:last-child td { border-bottom: 0; }
+    .yes { color: var(--green); }
+    .no { color: var(--red); }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      align-items: stretch;
+      gap: .8rem;
+      padding: 1.25rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(9, 19, 29, .68);
+    }
+    .layer { padding: 1.25rem; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .layer small { color: var(--cyan); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    .layer ul { margin-bottom: 0; color: var(--muted); font-size: .9rem; }
+    .arrow { align-self: center; color: var(--blue); font-size: 1.5rem; }
+    .flow-note { margin-top: 1rem; color: var(--faint); text-align: center; font-size: .88rem; }
+
+    .callout {
+      margin-top: 1rem;
+      padding: 1rem 1.15rem;
+      border-left: 3px solid var(--cyan);
+      border-radius: 0 12px 12px 0;
+      color: var(--muted);
+      background: var(--cyan-soft);
+    }
+    .callout.warning { border-left-color: var(--amber); background: var(--amber-soft); }
+    .callout strong { color: var(--ink); }
+
+    .phase-list { display: grid; gap: 1rem; }
+    .phase {
+      display: grid;
+      grid-template-columns: 90px minmax(0, 1fr) 180px;
+      gap: 1.25rem;
+      padding: 1.35rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+    .phase-id { color: var(--cyan); font-size: .82rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .phase h3 { margin-bottom: .55rem; }
+    .phase p { color: var(--muted); }
+    .phase ul { margin-bottom: 0; color: var(--muted); }
+    .effort { padding-left: 1rem; border-left: 1px solid var(--line); color: var(--muted); }
+    .effort strong { display: block; color: var(--ink); font-size: 1.2rem; }
+    .gate { display: block; margin-top: .65rem; color: var(--green); font-size: .82rem; font-weight: 700; }
+
+    .repo-tree { color: #c6d8eb; }
+    .repo-tree .dim { color: var(--faint); }
+
+    .checklist { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; padding: 0; list-style: none; }
+    .checklist li { margin: 0; }
+    .checklist label {
+      display: flex;
+      gap: .75rem;
+      height: 100%;
+      padding: .9rem 1rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .checklist input { width: 1.05rem; height: 1.05rem; margin-top: .25rem; accent-color: var(--cyan); }
+    .checklist input:checked + span { color: var(--green); text-decoration: line-through; text-decoration-color: rgba(121, 214, 155, .35); }
+
+    .risk-high { color: var(--red); }
+    .risk-medium { color: var(--amber); }
+    .risk-low { color: var(--green); }
+
+    .footer { padding: 3rem 0 4rem; border-top: 1px solid var(--line); color: var(--faint); }
+    .footer-inner { display: flex; justify-content: space-between; gap: 1rem; }
+    .print-button {
+      padding: .55rem .8rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--muted);
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .print-button:hover { color: var(--ink); border-color: var(--cyan); }
+
+    @media (max-width: 900px) {
+      .topnav { display: none; }
+      .decision-strip { grid-template-columns: repeat(2, 1fr); }
+      .section-head { grid-template-columns: 1fr; }
+      .card, .card.wide { grid-column: 1 / -1; }
+      .architecture { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); justify-self: center; }
+      .phase { grid-template-columns: 1fr; }
+      .effort { padding: 0; border: 0; }
+    }
+
+    @media (max-width: 560px) {
+      .decision-strip, .checklist { grid-template-columns: 1fr; }
+      .hero { padding-top: 4rem; }
+      .footer-inner { flex-direction: column; }
+    }
+
+    @media print {
+      :root { --ink: #111827; --muted: #334155; --faint: #64748b; --page: white; --surface: white; --surface-2: white; --line: #cbd5e1; }
+      body { background: white; font-size: 11pt; }
+      .topbar, .print-button { display: none; }
+      .hero { padding: 2rem 0; }
+      section { padding: 2rem 0; break-inside: avoid; }
+      .card, .phase, .architecture, .boundary { box-shadow: none; break-inside: avoid; }
+      .decision-strip { box-shadow: none; }
+      pre { color: #111827; background: #f8fafc; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to plan</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top" aria-label="CsWebUi.MVVM plan home">
+        <span class="mark">C</span>
+        <span>CsWebUi.MVVM</span>
+      </a>
+      <nav class="topnav" aria-label="Plan sections">
+        <a href="#scope">Boundary</a>
+        <a href="#view-layer">View layer</a>
+        <a href="#frameworks">Frameworks</a>
+        <a href="#frontends">Frontends</a>
+        <a href="#templates">Templates</a>
+        <a href="#aot">Native AOT</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="library-candidates.html">Candidates ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div id="top" class="hero wrap">
+      <div class="eyebrow">Implementation plan · draft 4</div>
+      <h1>MVVM for a web UI—without giving up Native AOT.</h1>
+      <p class="lede">
+        Build a reusable, framework-conscious bridge on top of
+        <a href="https://github.com/ViktorJannicke/cs-webui">cs-webui</a> that gives HTML and web frameworks the same role XAML and code-behind have in desktop MVVM: the browser renders the View, C# supplies the ViewModel/DataContext, and a generated binding layer connects them. Angular, React, Vue, Svelte, and HTMX are first-class View targets, all safe for trimming and Native AOT.
+      </p>
+      <div class="hero-meta">
+        <span class="pill"><span class="dot"></span> Planning baseline</span>
+        <span class="pill"><strong>Target</strong> .NET 10</span>
+        <span class="pill"><strong>Views</strong> Angular · React · Vue · Svelte · HTMX</span>
+        <span class="pill"><strong>Host</strong> cs-webui</span>
+        <span class="pill"><strong>Updated</strong> 17 July 2026</span>
+      </div>
+
+      <div class="decision-strip" aria-label="Key decisions">
+        <div class="decision">
+          <span>View layer</span>
+          <strong>Five first-party targets</strong>
+          <p>Framework components or compiled C# templates replace XAML while View-only behavior stays in the View.</p>
+        </div>
+        <div class="decision">
+          <span>Binding</span>
+          <strong>DataContext semantics</strong>
+          <p>Mapped ViewModels expose supported properties, commands, collections, and validation by convention.</p>
+        </div>
+        <div class="decision">
+          <span>Generation</span>
+          <strong>A XAML-like binding compiler</strong>
+          <p>Build-time C# and TypeScript replace runtime reflection and handwritten adapters.</p>
+        </div>
+        <div class="decision">
+          <span>Runtime</span>
+          <strong>Native-AOT-first</strong>
+          <p>No assembly scanning, runtime code generation, or unbounded serializer metadata.</p>
+        </div>
+      </div>
+    </div>
+
+    <section id="outcome">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">01 · Outcome</div>
+            <h2>What this repository should become</h2>
+          </div>
+          <p>
+            A small infrastructure product, not a second application framework. It supplies the repeatable bridge between .NET MVVM state and several web View technologies while letting each consumer own its presentation, domain services, and visual system.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="number">01</div>
+            <h3>Reusable runtime</h3>
+            <p>Lifecycle, request dispatch, state snapshots and patches, notifications, cancellation, reconnect, and structured errors.</p>
+          </article>
+          <article class="card">
+            <div class="number">02</div>
+            <h3>Generated binding layer</h3>
+            <p>Closed, statically reachable getters, setters, commands, subscriptions, serializer metadata, and typed web clients generated from mapped ViewModels.</p>
+          </article>
+          <article class="card">
+            <div class="number">03</div>
+            <h3>Frontend integrations</h3>
+            <p>Native reactive primitives and lifecycle adapters for Angular, React, Vue, and Svelte, plus server-driven HTMX Views—without prescribing a design system.</p>
+          </article>
+          <article class="card wide">
+            <div class="number">04</div>
+            <h3>Reference implementation</h3>
+            <p>A non-proprietary sample proves navigation, editing, validation, progress, cancellation, dialogs, reconnect, disposal, and a published Native AOT executable.</p>
+          </article>
+          <article class="card wide">
+            <div class="number">05</div>
+            <h3>Adoption seam</h3>
+            <p>A consumer UI library maps existing ViewModels to any supported web View. Standard bindings require no handwritten transport DTOs, controllers, or adapter classes.</p>
+          </article>
+        </div>
+        <div class="callout">
+          <strong>Self-contained implementation contract:</strong> this document, the linked template-engine plan, and the companion candidate plans are the complete public planning inputs. Implementers must not require private source trees, unpublished APIs, historical desktop implementations, or conversation context. When a detail is intentionally undecided, an ADR and its acceptance test are a deliverable of the phase that owns the decision.
+        </div>
+      </div>
+    </section>
+
+    <section id="scope">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">02 · Boundary</div>
+            <h2>Generic here. Product behavior elsewhere.</h2>
+          </div>
+          <p>
+            The boundary is enforced both by repository ownership and by public API design. The generic packages never reference consumer namespaces, assets, resource keys, workflows, or domain models.
+          </p>
+        </div>
+
+        <div class="boundary">
+          <table>
+            <thead>
+              <tr><th>Concern</th><th>CsWebUi.MVVM</th><th>Consumer UI library</th><th>Applications</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Protocol, handshake, dispatch</td><td class="yes">Owns</td><td>Consumes</td><td>Configures</td></tr>
+              <tr><td>C# / TypeScript generation</td><td class="yes">Owns</td><td>Uses annotations</td><td>Uses generated clients</td></tr>
+              <tr><td>ViewModel binding projection</td><td class="yes">Compiler + framework adapters</td><td>Maps ViewModel to View</td><td>May opt members out</td></tr>
+              <tr><td>Frontend state / command adapters</td><td class="yes">Owns five integrations</td><td>Composes</td><td>Chooses View stack</td></tr>
+              <tr><td>Typed HTML template compiler</td><td class="yes">Owns engine + HTMX bridge</td><td>Authors templates/partials</td><td>Uses compiled Views</td></tr>
+              <tr><td>Visual components and CSS</td><td class="no">No design system</td><td class="yes">Owns</td><td>Overrides/extends</td></tr>
+              <tr><td>Branding, icons, fonts, tokens</td><td class="no">Excluded</td><td class="yes">Owns</td><td>Supplies brand data</td></tr>
+              <tr><td>Navigation and dialog policy</td><td>Lifecycle primitives only</td><td class="yes">Owns UX semantics</td><td>Chooses routes</td></tr>
+              <tr><td>File/process/OS operations</td><td class="no">Excluded</td><td>Defines neutral requests</td><td class="yes">Implements capabilities</td></tr>
+              <tr><td>Domain workflows and texts</td><td class="no">Excluded</td><td class="no">Shared UI only</td><td class="yes">Owns</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout warning">
+          <strong>Hard exclusion:</strong> Microsoft.Web.WebView2 is not a dependency. Window creation, embedded browser ownership, server startup, and native webview transport remain responsibilities of <code>cs-webui</code>.
+        </div>
+        <div class="callout">
+          <strong>Companion library portfolio:</strong> reusable application hosting, navigation/dialog/workflow/operation mechanics, generated text resources, and command-line hosting are specified in the <a href="library-candidates.html">candidate plans</a>. Generic engines may incubate beside this project, while product routes, workflow definitions, text content, commands, capabilities, and UX policy remain consumer-owned.
+        </div>
+        <div class="grid" style="margin-top: 1rem">
+          <article class="card wide">
+            <h3>Normative language</h3>
+            <p><strong>Must</strong> and <strong>must not</strong> are release requirements. <strong>Should</strong> records the preferred design and requires an ADR to deviate. <strong>May</strong> is optional. “Core” means the <code>CsWebUi.MVVM</code> .NET package plus the framework-neutral <code>cs-webui-mvvm</code> TypeScript package; it never means a consumer application.</p>
+          </article>
+          <article class="card wide">
+            <h3>Explicit non-goals for 1.0</h3>
+            <p>No remote-browser hosting, authentication framework, general RPC, arbitrary object graph synchronization, runtime View discovery, visual component kit, router, dialog policy, persistence, offline mutation queue, SSR for the JavaScript adapters, mobile embedding, or compatibility layer for desktop UI frameworks. Accessibility helpers may be supplied, but accessibility remains a View responsibility.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-layer">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">03 · View layer</div>
+            <h2>The WPF authoring model, translated to the web</h2>
+          </div>
+          <p>
+            Application developers should experience this as a View technology—not as an RPC system. They author a C# ViewModel, a web View, and optional web code-behind. CsWebUi.MVVM supplies the equivalent of DataContext, the binding engine, view discovery/mapping, dispatcher crossing, and lifetime cleanup.
+          </p>
+        </div>
+
+        <div class="boundary">
+          <table>
+            <thead><tr><th>Desktop MVVM concept</th><th>CsWebUi.MVVM equivalent</th><th>Owned by</th></tr></thead>
+            <tbody>
+              <tr><td>XAML</td><td>HTML, framework component template, or compiled <code>.cwhtml</code></td><td>Consumer View</td></tr>
+              <tr><td>XAML code-behind</td><td>TypeScript component/controller, or C# template code-behind for HTMX</td><td>Consumer View</td></tr>
+              <tr><td>DataContext</td><td>Typed <code>WebViewContext&lt;TViewModel&gt;</code> scoped to one view instance</td><td>CsWebUi.MVVM</td></tr>
+              <tr><td>Binding engine</td><td>Generated property/collection/validation subscriptions and command dispatch</td><td>CsWebUi.MVVM</td></tr>
+              <tr><td>DataTemplate/view mapping</td><td>Explicit C# contract registration plus web component registry</td><td>Framework + consumer mapping</td></tr>
+              <tr><td>Dispatcher</td><td>Serialized session execution over the local cs-webui transport</td><td>CsWebUi.MVVM</td></tr>
+              <tr><td>Loaded/Unloaded</td><td>Open/activate/deactivate/close with deterministic subscription and scope disposal</td><td>Framework integration</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid" style="margin-top: 1rem">
+          <article class="card wide">
+            <h3>What a consumer writes</h3>
+            <ul>
+              <li>An ordinary C# ViewModel using BCL MVVM contracts, CommunityToolkit.MVVM, or ReactiveUI.</li>
+              <li>An Angular, React, Vue, or Svelte View with optional TypeScript code-behind—or a typed <code>.cwhtml</code> View with optional C# code-behind.</li>
+              <li>One explicit mapping between the logical ViewModel contract and the web View.</li>
+              <li>Attributes only for opt-out, naming, advanced serialization, or intentionally exposed nonstandard behavior.</li>
+            </ul>
+          </article>
+          <article class="card wide">
+            <h3>What the framework writes</h3>
+            <ul>
+              <li>Typed getter/setter delegates, command executors, change subscriptions, and validation adapters.</li>
+              <li>AOT-safe JSON metadata, TypeScript types, property handles, command handles, and binding manifests.</li>
+              <li>Angular signals/directives, React hooks, Vue composables, Svelte runes/stores, or generated HTMX endpoints and fragments.</li>
+              <li>Session creation, DataContext replacement, dispatch, reconnect, and teardown mechanics.</li>
+            </ul>
+          </article>
+        </div>
+
+        <pre aria-label="Illustrative Angular view using generated bindings"><code>&lt;!-- settings.component.html: the XAML equivalent --&gt;
+&lt;input [webModel]="vm.serverName" /&gt;
+&lt;web-validation [for]="vm.serverName" /&gt;
+&lt;button [webCommand]="vm.save"&gt;Save&lt;/button&gt;
+&lt;progress *ngIf="vm.save.isRunning()" /&gt;
+
+// settings.component.ts: the code-behind equivalent
+export class SettingsComponent {
+  readonly vm = injectWebView(SettingsViewModelContract);
+}</code></pre>
+
+        <div class="callout">
+          <strong>Authoring rule:</strong> view policy stays in C# ViewModels; DOM state, focus, measurement, animation, and browser-specific behavior stay in TypeScript code-behind. The framework connects them but does not collapse the separation.
+        </div>
+        <div class="callout warning">
+          <strong>HTML-framework boundary:</strong> no frontend framework is a Core dependency. Angular, React, Vue, and Svelte adapt the same generated property/command handles; HTMX consumes the same ViewModel contract through compiled HTML fragments and generated endpoints. Plain HTML/TypeScript and future adapters remain possible without changing .NET bindings or the transport protocol.
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">04 · Architecture</div>
+            <h2>A generated binding engine over a narrow protocol</h2>
+          </div>
+          <p>
+            The .NET side keeps ordinary ViewModels. Mapping a ViewModel opts its supported public binding surface into a local View contract. The binding compiler generates direct access and subscriptions; the TypeScript client presents that surface as typed properties, collections, validation, and commands.
+          </p>
+        </div>
+
+        <div class="architecture" role="img" aria-label="A web View target communicates through generated bindings and cs-webui transport with a generated .NET dispatcher and ViewModel adapters">
+          <div class="layer">
+            <small>Web process</small>
+            <h3>Web View target</h3>
+            <ul>
+              <li>Framework component or HTMX fragment</li>
+              <li>Generated typed bindings</li>
+              <li>Native reactive state or rendered HTML</li>
+            </ul>
+          </div>
+          <div class="arrow" aria-hidden="true">⇄</div>
+          <div class="layer">
+            <small>Protocol seam</small>
+            <h3>cs-webui binding</h3>
+            <ul>
+              <li><code>mvvm.invoke</code></li>
+              <li>Versioned envelopes</li>
+              <li>Push events / snapshots</li>
+            </ul>
+          </div>
+          <div class="arrow" aria-hidden="true">⇄</div>
+          <div class="layer">
+            <small>.NET process</small>
+            <h3>Generated dispatcher</h3>
+            <ul>
+              <li>Direct generated bindings</li>
+              <li>Generated JSON metadata</li>
+              <li>Scoped view-model sessions</li>
+            </ul>
+          </div>
+        </div>
+        <p class="flow-note">State flows .NET → web. Intent flows web → .NET. A monotonic revision reconciles reconnects and rejects stale writes.</p>
+
+        <div class="grid" style="margin-top: 1rem">
+          <article class="card wide">
+            <h3>Runtime packages</h3>
+            <ul>
+              <li><code>CsWebUi.MVVM</code> — public .NET abstractions and mapping attributes, runtime, registration API, serializer context hooks.</li>
+              <li><code>CsWebUi.MVVM.Build</code> — binding compiler, MSBuild integration, analyzers, and generated C#/TypeScript; distributed as transitive build assets, never loaded at runtime.</li>
+              <li><code>CsWebUi.MVVM.CommunityToolkit</code> — first-party CommunityToolkit.MVVM conventions and richer command/validation support.</li>
+              <li><code>CsWebUi.MVVM.ReactiveUI</code> — first-party ReactiveUI properties, observables, commands, activation, and disposal.</li>
+              <li><code>cs-webui-mvvm</code> — framework-neutral TypeScript protocol client.</li>
+              <li><code>cs-webui-mvvm-angular</code> — Angular providers, signals, lifecycle, and component registry.</li>
+              <li><code>cs-webui-mvvm-react</code> — React context, hooks, external-store subscriptions, and lifecycle.</li>
+              <li><code>cs-webui-mvvm-vue</code> — Vue plugin, refs, composables, directives, and lifecycle.</li>
+              <li><code>cs-webui-mvvm-svelte</code> — Svelte runes/store bridge, context, actions, and teardown.</li>
+              <li><code>CsWebUi.MVVM.Html</code> / <code>.Htmx</code> — typed template runtime/compiler assets and HTMX request/fragment integration.</li>
+            </ul>
+          </article>
+          <article class="card wide">
+            <h3>Key runtime abstractions</h3>
+            <ul>
+              <li><code>IWebUiBindingAdapter</code> is the low-level extension point used by generated and framework-specific bindings.</li>
+              <li><code>IWebUiSession</code> owns scope, view model, subscriptions, revision, and disposal.</li>
+              <li><code>IWebUiClient</code> pushes snapshots, patches, events, errors, and command availability.</li>
+              <li><code>WebUiContract</code> is a stable string-backed logical view identity.</li>
+              <li><code>IWebUiSessionFactory</code> opens an explicitly registered contract in a new DI scope and is the only runtime entry point that resolves a ViewModel.</li>
+              <li><code>IWebUiDispatcher</code> serializes mutations per session and never executes consumer code on the transport callback.</li>
+            </ul>
+          </article>
+        </div>
+
+        <pre aria-label="Normative runtime API sketch"><code>public readonly record struct WebUiContract(string Value);
+public readonly record struct WebUiSessionId(Guid Value);
+
+public interface IWebUiSession : IAsyncDisposable
+{
+    WebUiSessionId Id { get; }
+    WebUiContract Contract { get; }
+    long Revision { get; }
+    ValueTask&lt;WebUiSnapshot&gt; SnapshotAsync(CancellationToken cancellationToken);
+    ValueTask&lt;WebUiResponse&gt; DispatchAsync(WebUiRequest request, CancellationToken cancellationToken);
+}
+
+public interface IWebUiSessionFactory
+{
+    ValueTask&lt;IWebUiSession&gt; OpenAsync(
+        WebUiContract contract,
+        WebUiOpenArguments arguments,
+        CancellationToken cancellationToken);
+}
+
+services.AddCsWebUiMvvm(options =&gt;
+{
+    options.Contracts.Map&lt;SettingsViewModel&gt;("settings");
+    options.Limits.MaxSessions = 16;
+});</code></pre>
+
+        <div class="callout">
+          <strong>Registration semantics:</strong> contracts are ordinal, case-sensitive, non-empty UTF-8 identifiers limited to 128 bytes. Duplicate contracts fail during registration. Missing contracts, duplicate generated member IDs, incompatible serializers, and selecting more than one binding adapter for a ViewModel fail host validation before the webview opens. A session creates one child DI scope, resolves one ViewModel and one generated adapter from that scope, and disposes subscriptions, ViewModel, then scope in reverse creation order. Async disposal is awaited; repeated close is idempotent.
+        </div>
+        <div class="callout warning">
+          <strong>Dependency direction:</strong> <code>CsWebUi.MVVM.Build</code> consumes project metadata and emits Core adapters but is never a runtime dependency; <code>CommunityToolkit/ReactiveUI → CsWebUi.MVVM</code>; <code>CsWebUi.MVVM.Htmx → CsWebUi.MVVM.Html + CsWebUi.MVVM</code>; every JavaScript framework adapter → <code>cs-webui-mvvm</code>. Core must not reference an MVVM integration, template compiler, frontend framework, or companion application library. Frontend adapters must not reference one another.
+        </div>
+
+        <div class="callout">
+          <strong>Binding boundary:</strong> explicitly mapping a ViewModel opts in its supported public bindable surface—not arbitrary methods, injected services, or an unbounded object graph. Properties and recognized commands bind by convention; <code>[WebUiIgnore]</code> opts out, while complex/nonstandard types require an explicit web contract or custom adapter.
+        </div>
+      </div>
+    </section>
+
+    <section id="protocol">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">05 · Protocol</div>
+            <h2>Small enough to reason about</h2>
+          </div>
+          <p>
+            Start with a single protocol version and one request entry point. Separate message kinds are represented by typed envelopes rather than accumulating ad-hoc cs-webui bindings.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Identity</h3>
+            <p>Protocol version, contract ID, session ID, request ID, view instance ID, and monotonic state revision.</p>
+          </article>
+          <article class="card">
+            <h3>Client → host</h3>
+            <p>Handshake, open, close, execute command, set property, cancel request, acknowledge revision, and request snapshot.</p>
+          </article>
+          <article class="card">
+            <h3>Host → client</h3>
+            <p>Handshake result, snapshot, property patch, collection change, command state, validation, domain-neutral event, result, and fault.</p>
+          </article>
+          <article class="card wide">
+            <h3>Correctness rules</h3>
+            <ul>
+              <li>Messages for an individual session are serialized; unrelated sessions may run concurrently.</li>
+              <li>Every mutation carries the revision it was based on. Stale writes fail predictably or request a fresh snapshot.</li>
+              <li>Reconnect starts with a full snapshot. Patches are an optimization, never the only source of truth.</li>
+              <li>Cancellation and timeout are first-class results. Exceptions are sanitized before crossing the boundary.</li>
+            </ul>
+          </article>
+          <article class="card wide">
+            <h3>Security and limits</h3>
+            <ul>
+              <li>Local-only server by default; public binding requires an explicit opt-in outside this library.</li>
+              <li>Per-session random capability token attached during bootstrap and checked for every invocation.</li>
+              <li>Configurable maximum payload, collection patch, command duration, pending request count, and sessions.</li>
+              <li>No remote type names, arbitrary method names, filesystem paths, or stack traces in protocol messages.</li>
+            </ul>
+          </article>
+        </div>
+        <pre aria-label="Canonical protocol envelope"><code>{
+  "v": 1,
+  "kind": "setProperty",
+  "contract": "settings",
+  "session": "8b5cb7e9-8084-4fb9-b9ba-8bb47602ee82",
+  "view": "root",
+  "request": "bd86214e-f76c-4035-b1df-f4c7d329d5f3",
+  "baseRevision": 12,
+  "payload": { "member": 1, "value": "example" }
+}</code></pre>
+        <div class="callout">
+          <strong>Schema ownership:</strong> canonical JSON Schemas live under <code>protocol/schema/v1/</code>; valid and invalid examples live under <code>protocol/corpus/v1/</code>. Schemas and the accompanying protocol specification are the hand-reviewed source of truth. C# and TypeScript wire models, discriminators, serializer contexts, and corpus tests are generated from them and must never be edited independently. The wire references stable numeric member IDs; generated APIs expose their logical names from the binding manifest. CLR or TypeScript type names never appear on the wire. Session and request IDs use lowercase hyphenated UUIDs, revisions are non-negative signed 64-bit integers, and all comparisons and encodings are culture-invariant.
+        </div>
+        <div class="callout warning">
+          <strong>Version and failure rules:</strong> the handshake negotiates one protocol major and advertised optional capabilities. Unknown message kinds, unknown members, invalid payloads, stale revisions, limits, cancellations, timeouts, and disposed sessions return stable machine codes (<code>protocol.unsupported</code>, <code>request.invalid</code>, <code>member.unknown</code>, <code>revision.stale</code>, <code>limit.exceeded</code>, <code>request.cancelled</code>, <code>request.timeout</code>, <code>session.closed</code>) plus a sanitized message. Minor additions are capability-gated; a breaking wire change requires a new schema directory and protocol major. A successful mutation increments the session revision exactly once; rejected mutations do not increment it.
+        </div>
+      </div>
+    </section>
+
+    <section id="generation">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">06 · Binding compilation</div>
+            <h2>Compile bindings the way XAML compiles bindings</h2>
+          </div>
+          <p>
+            Binding compilation helps precisely where AOT, independent MVVM generators, and a cross-language View boundary meet. The build inspects the final ViewModel shape, validates the mapped binding surface, and emits all C#, serializer, manifest, TypeScript, and template artifacts before the application and selected View build consume them.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="card">
+            <h3>IDE analyzer</h3>
+            <ul>
+              <li>Validates view mappings and attributes immediately.</li>
+              <li>Reports unsupported types and ambiguous binding names.</li>
+              <li>Offers framework-aware diagnostics and code fixes.</li>
+              <li>Does not depend on another generator's output.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Binding compiler</h3>
+            <ul>
+              <li>Runs as an MSBuild-integrated design-time compiler before final C# and web builds.</li>
+              <li>Uses Roslyn symbols and framework plugins; it never loads or executes the consumer assembly.</li>
+              <li>Generates direct getters, setters, command calls, subscriptions, registries, and serializer contexts.</li>
+              <li>Writes only to intermediate output; tracked source is never rewritten by a normal build.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Web contract output</h3>
+            <ul>
+              <li>Generates DTOs, property/command handles, validation maps, and logical view identifiers.</li>
+              <li>Generates framework-neutral TypeScript plus typed helpers for Angular, React, Vue, and Svelte; HTMX uses generated C# routes and fragment descriptors.</li>
+              <li>Uses deterministic ordering, invariant formatting, and protocol/compiler version headers.</li>
+              <li>Supports materialized snapshots for API review and a <code>verify</code> CI mode.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="callout warning">
+          <strong>Why a binding compiler instead of only a Roslyn Source Generator:</strong> generators have no defined execution order and see the same initial compilation, so one generator cannot reliably consume properties emitted by CommunityToolkit.MVVM or ReactiveUI.SourceGenerators. The binding compiler performs a separate design-time compilation, observes the complete generated ViewModel surface, and then emits inputs that the final C# and View builds compile normally. See the <a href="https://github.com/reactiveui/ReactiveUI.SourceGenerators">ReactiveUI.SourceGenerators interoperability note</a>.
+        </div>
+
+        <div class="boundary" style="margin-top: 1rem">
+          <table>
+            <thead><tr><th>Order</th><th>Build stage</th><th>Normative input</th><th>Output</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>Discovery compilation</td><td>Consumer sources, references, analyzer configuration, and third-party generators</td><td>In-memory post-generator Roslyn compilation; no consumer assembly execution</td></tr>
+              <tr><td>2</td><td>Binding compiler</td><td>Post-generator symbols plus explicit ViewModel mappings</td><td><code>obj/CsWebUi.MVVM/contracts/</code> manifest, C# adapters, JSON context declarations, TypeScript contracts, diagnostics</td></tr>
+              <tr><td>3</td><td>Final C# compilation</td><td>Original sources, normal third-party generator outputs, and generated binding C#</td><td>Application/runtime assemblies</td></tr>
+              <tr><td>4</td><td>Frontend/template build</td><td>Generated contract manifest and TypeScript or template inputs</td><td>Versioned embedded web assets and asset manifest</td></tr>
+              <tr><td>5</td><td>Verify</td><td>Clean regeneration from packed tools</td><td>Byte comparison, schema/corpus run, public API diff, no untracked output</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <strong>MSBuild contract:</strong> <code>CsWebUiGenerateBindings</code> runs before <code>CoreCompile</code> and before the selected web build, declares complete <code>Inputs</code>/<code>Outputs</code>, and writes only under <code>IntermediateOutputPath</code>. Its discovery compilation excludes CsWebUi-generated files to prevent recursion. Design-time builds may emit diagnostics and contracts but must not run npm, launch a browser, or modify tracked files. Identical semantic inputs must produce byte-identical UTF-8/LF output across machines; absolute paths and timestamps are forbidden.
+        </div>
+
+        <pre aria-label="Illustrative C sharp view model mapping"><code>// Existing ViewModel: no web adapter or transport DTO required.
+[WebUiViewModel("settings")]
+public partial class SettingsViewModel : ObservableValidator
+{
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Required]
+    private string serverName = "";
+
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private Task SaveAsync(CancellationToken cancellationToken) =&gt; /* ... */;
+
+    private bool CanSave() =&gt; !HasErrors;
+}</code></pre>
+
+        <pre aria-label="Illustrative generated TypeScript client"><code>export interface SettingsState {
+  serverName: string;
+}
+
+export interface SettingsViewModelBinding extends WebViewContext&lt;SettingsState&gt; {
+  readonly serverName: WebProperty&lt;string&gt;;
+  readonly save: WebCommand&lt;void, void&gt; &amp; AsyncCommandState;
+}</code></pre>
+
+        <div class="callout">
+          <strong>Escape hatch:</strong> manual <code>IWebUiBindingAdapter</code> implementations remain supported for unusual object graphs or highly optimized projections. They are an advanced extension point, not the normal consumer workflow.
+        </div>
+      </div>
+    </section>
+
+    <section id="frameworks">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">07 · MVVM frameworks</div>
+            <h2>First-party adapters, not consumer boilerplate</h2>
+          </div>
+          <p>
+            The core binding model starts with the portable contracts familiar from desktop MVVM. Separate packages add compile-time recognition and richer runtime semantics for popular frameworks without forcing those dependencies on every consumer.
+          </p>
+        </div>
+
+        <div class="boundary">
+          <table>
+            <thead><tr><th>Integration</th><th>Recognized surface</th><th>Generated behavior</th><th>Package</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>BCL / POCO baseline</td>
+                <td><code>INotifyPropertyChanged</code>, <code>INotifyCollectionChanged</code>, <code>INotifyDataErrorInfo</code>, <code>ICommand</code></td>
+                <td>One-/two-way properties, collection deltas, errors, <code>CanExecute</code>, execution, and cleanup</td>
+                <td><code>CsWebUi.MVVM</code></td>
+              </tr>
+              <tr>
+                <td>CommunityToolkit.MVVM</td>
+                <td><code>ObservableObject</code>, <code>ObservableValidator</code>, <code>[ObservableProperty]</code>, <code>[RelayCommand]</code>, relay command interfaces</td>
+                <td>Generated property names, validation, dependent command state, async execution, running/cancel state, and typed parameters</td>
+                <td><code>CsWebUi.MVVM.CommunityToolkit</code></td>
+              </tr>
+              <tr>
+                <td>ReactiveUI</td>
+                <td><code>ReactiveObject</code>, <code>IReactiveObject</code>, <code>[Reactive]</code>, <code>[ObservableAsProperty]</code>, <code>ReactiveCommand&lt;,&gt;</code>, activation</td>
+                <td>Observable values, output properties, typed command input/output, <code>CanExecute</code>, <code>IsExecuting</code>, command faults, activation, and disposable subscriptions</td>
+                <td><code>CsWebUi.MVVM.ReactiveUI</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid" style="margin-top: 1rem">
+          <article class="card wide">
+            <h3>Convention with a safe boundary</h3>
+            <ul>
+              <li>A ViewModel is invisible until explicitly mapped or marked with <code>[WebUiViewModel]</code>.</li>
+              <li>Once mapped, supported public observable properties and recognized commands bind by convention—matching DataContext expectations.</li>
+              <li>Ordinary public methods, injected services, delegates, streams, and unknown object graphs are never exposed automatically.</li>
+              <li><code>[WebUiIgnore]</code> removes a member; <code>[WebUiName]</code> stabilizes its web name; <code>[WebUiData]</code> explicitly admits a complex DTO graph.</li>
+            </ul>
+          </article>
+          <article class="card wide">
+            <h3>Compatibility policy</h3>
+            <ul>
+              <li>Each framework integration is a separate NuGet package with no reference from Core back to the framework.</li>
+              <li>Support one current major and one previous major where their public contracts permit it; publish the tested version matrix.</li>
+              <li>Compile compatibility tests against real framework packages and their source generators—not hand-written fakes.</li>
+              <li>A framework convention change must produce a clear build diagnostic and manual-adapter fallback, never silent missing bindings.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="grid" style="margin-top: 1rem">
+          <article class="card wide">
+            <h3>CommunityToolkit.MVVM mapping</h3>
+            <p>The integration understands toolkit source attributes in original source and verifies their generated public members in the design-time compilation. <code>IAsyncRelayCommand</code> contributes execution, cancellation, and running state; <code>ObservableValidator</code> contributes validation without a consumer adapter.</p>
+            <p><a href="https://learn.microsoft.com/dotnet/communitytoolkit/mvvm/">Official MVVM Toolkit documentation</a></p>
+          </article>
+          <article class="card wide">
+            <h3>ReactiveUI mapping</h3>
+            <p>The integration subscribes to reactive properties and command observables using generated closed delegates. Command results and faults cross as typed results/faults, while activation and every Rx subscription are tied to the web View session's disposal.</p>
+            <p><a href="https://www.reactiveui.net/docs/handbook/commands/">Official ReactiveUI command documentation</a></p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <strong>Extensibility:</strong> publish a documented binding-compiler plugin API so future integrations—such as Prism, Caliburn.Micro, or custom in-house MVVM bases—can describe observable properties, commands, validation, activation, and disposal without changing the transport protocol or frontend packages.
+        </div>
+      </div>
+    </section>
+
+    <section id="frontends">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">08 · Frontend frameworks</div>
+            <h2>One View contract, five native authoring experiences</h2>
+          </div>
+          <p>
+            The framework-neutral TypeScript client owns transport, revisions, commands, validation, reconnect, and disposal. Each first-party View adapter translates that contract into the frontend's native reactivity and lifecycle instead of asking consumers to learn a lowest-common-denominator wrapper API.
+          </p>
+        </div>
+
+        <div class="boundary">
+          <table>
+            <thead><tr><th>View target</th><th>Native integration</th><th>Lifecycle obligations</th><th>Package</th></tr></thead>
+            <tbody>
+              <tr><td>Angular</td><td>Signals, DI providers, directives, component registry, strict template types</td><td>DestroyRef teardown, zone-independent updates, lazy view loading</td><td><code>cs-webui-mvvm-angular</code></td></tr>
+              <tr><td>React</td><td>Context/provider, typed hooks, <code>useSyncExternalStore</code>, command hooks</td><td>Concurrent-safe snapshots, Strict Mode double-mount safety, unmount disposal</td><td><code>cs-webui-mvvm-react</code></td></tr>
+              <tr><td>Vue</td><td>Plugin, provide/inject, refs, computed values, composables, directives</td><td>Effect-scope ownership, unmount cleanup, no lost reactivity when destructuring</td><td><code>cs-webui-mvvm-vue</code></td></tr>
+              <tr><td>Svelte</td><td>Context, generated rune-friendly state facades, store compatibility, actions</td><td>Compiler-aware updates, effect cleanup, component-destroy disposal</td><td><code>cs-webui-mvvm-svelte</code></td></tr>
+              <tr><td>HTMX</td><td>Generated endpoints, form binding, compiled HTML fragments, OOB swaps, triggers</td><td>Request/session correlation, fragment consistency, push-triggered refresh</td><td><code>CsWebUi.MVVM.Htmx</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid" style="margin-top: 1rem">
+          <article class="card">
+            <h3>React</h3>
+            <p>Use immutable revision snapshots and <code>useSyncExternalStore</code> so concurrent rendering reads a consistent external ViewModel store. Hooks expose typed properties, validation, and command state.</p>
+            <p><a href="https://react.dev/reference/react/useSyncExternalStore">Official React external-store API</a></p>
+          </article>
+          <article class="card">
+            <h3>Vue</h3>
+            <p>Expose properties as linked refs and commands through composables. Component effect scopes own every subscription; generated helpers preserve Vue reactivity during destructuring.</p>
+            <p><a href="https://vuejs.org/guide/reusability/composables">Official Vue composables guide</a></p>
+          </article>
+          <article class="card">
+            <h3>Svelte</h3>
+            <p>Target Svelte's current rune-based model while retaining store-compatible adapters where useful. Generated state facades make updates visible to the compiler without consumer subscription code.</p>
+            <p><a href="https://svelte.dev/docs/svelte/what-are-runes">Official Svelte runes documentation</a></p>
+          </article>
+          <article class="card wide">
+            <h3>Cross-framework semantic contract</h3>
+            <p>The public API may look native in each framework, but behavior is identical: initial snapshot, ordered updates, two-way property writes, collection changes, command parameters/results, <code>CanExecute</code>, running/cancel state, validation, nested Views, reconnect, DataContext replacement, and deterministic teardown.</p>
+          </article>
+          <article class="card wide">
+            <h3>Support and release policy</h3>
+            <p>Each adapter is independently packaged but released in lock-step with Core. Support one current framework major at a time, add the previous major only where maintenance cost remains bounded, and publish an exact compatibility matrix. A shared conformance kit prevents an adapter from becoming a second-class target.</p>
+          </article>
+        </div>
+        <div class="callout">
+          <strong>Adapter conformance API:</strong> every JavaScript adapter must implement the framework-neutral test driver operations <code>mount(contract, host)</code>, <code>replaceContext(session)</code>, <code>read(member)</code>, <code>write(member, value)</code>, <code>execute(command, parameter)</code>, <code>cancel(request)</code>, <code>disconnect()</code>, <code>reconnect()</code>, and <code>unmount()</code>. The shared kit owns fixtures and expected event traces; adapters own only framework mounting and observation. Required fixture IDs are <code>properties</code>, <code>collections</code>, <code>commands</code>, <code>validation</code>, <code>nested-view</code>, <code>replacement</code>, <code>reconnect</code>, <code>stale-write</code>, <code>cancellation</code>, <code>fault</code>, and <code>teardown</code>. No adapter may waive a fixture for a stable release.
+        </div>
+      </div>
+    </section>
+
+    <section id="templates">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">09 · Typed HTML + HTMX</div>
+            <h2>Server-driven Views deserve a real compiler</h2>
+          </div>
+          <p>
+            HTMX follows a different model from the TypeScript frameworks: C# owns most state and interaction, while the browser swaps compiled HTML fragments. A Maud-inspired template language provides concise markup, C# expressions and control flow, automatic escaping, composition, strong diagnostics, and a tiny AOT-safe runtime.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="card">
+            <div class="number">01</div>
+            <h3><code>.cwhtml</code> templates</h3>
+            <p>HTML-shaped, brace-based syntax with typed C# splices, <code>@if</code>, <code>@foreach</code>, <code>@switch</code>, attributes, partials, components, layouts, and fragments.</p>
+          </article>
+          <article class="card">
+            <div class="number">02</div>
+            <h3>Generated renderer</h3>
+            <p>Templates compile into direct <code>HtmlWriter</code> calls and typed render methods. No runtime parsing, expression compilation, reflection, or MVC/Razor dependency.</p>
+          </article>
+          <article class="card">
+            <div class="number">03</div>
+            <h3>HTMX bridge</h3>
+            <p>Generated command/form endpoints render named fragments, validation, out-of-band updates, response triggers, focus hints, and revision metadata.</p>
+          </article>
+        </div>
+
+        <pre aria-label="Illustrative Maud-inspired C sharp HTML template"><code>@view SettingsView(SettingsViewModel model)
+
+main #settings .settings-page {
+    h1 { (model.Title) }
+
+    form hx-post=(Htmx.Command(model.SaveCommand))
+         hx-target="#settings" hx-swap="outerHTML" {
+        label for="serverName" { "Server name" }
+        input #serverName name=(Bind.Name(model.ServerName))
+               value=(model.ServerName);
+        @validation(model.ServerName)
+        button type="submit" disabled[=!model.SaveCommand.CanExecute(null)] {
+            "Save"
+        }
+    }
+}</code></pre>
+
+        <div class="callout">
+          <strong>Separate design:</strong> the template language, compiler pipeline, safety model, editor experience, HTMX request model, test matrix, and its own 16–24 engineer-week estimate are specified in <a href="template-engine.html">the dedicated template-engine plan</a>.
+        </div>
+        <div class="callout warning">
+          <strong>AOT rationale:</strong> ASP.NET Core's current Native AOT matrix supports Minimal APIs but not MVC. The template engine therefore compiles directly to a small renderer and generated endpoints instead of depending on MVC or runtime Razor compilation. <a href="https://learn.microsoft.com/aspnet/core/fundamentals/native-aot?view=aspnetcore-10.0">Official Native AOT compatibility guidance</a>.
+        </div>
+      </div>
+    </section>
+
+    <section id="aot">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">10 · Native AOT</div>
+            <h2>A release gate, not a later optimization</h2>
+          </div>
+          <p>
+            Every architecture decision is tested against a published Native AOT executable from the first implementation slice. “Works when trimmed” is insufficient; the automated test must start the host and execute a complete browser-to-view-model round trip.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Required properties</h3>
+            <ul>
+              <li><code>IsAotCompatible=true</code></li>
+              <li><code>IsTrimmable=true</code></li>
+              <li>Trim and AOT analyzers enabled</li>
+              <li>Warnings treated as errors</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Forbidden runtime patterns</h3>
+            <ul>
+              <li>Assembly or member scanning</li>
+              <li><code>Type.GetType</code> dispatch</li>
+              <li><code>Activator.CreateInstance</code></li>
+              <li>Expression compilation / emit</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Serializer rules</h3>
+            <ul>
+              <li>Only <code>JsonTypeInfo&lt;T&gt;</code></li>
+              <li>No polymorphic <code>object</code></li>
+              <li>Closed message union</li>
+              <li>Build error for unknown shapes</li>
+            </ul>
+          </article>
+          <article class="card full">
+            <h3>AOT acceptance smoke test</h3>
+            <p>On Windows x64: restore from packed artifacts, publish with <code>PublishAot=true</code>, launch the executable, load each View target through cs-webui, open a sample View, change a bound value, execute an async command, observe state and availability or the returned fragment, close the window, and verify deterministic disposal with exit code 0. The same host is exercised separately with Angular, React, Vue, Svelte, and HTMX assets.</p>
+          </article>
+        </div>
+        <div class="callout warning">
+          <strong>Gate mechanics:</strong> CI publishes a fresh package-consumer project with <code>PublishAot=true</code>, <code>PublishTrimmed=true</code>, <code>TrimMode=full</code>, <code>EnableTrimAnalyzer=true</code>, <code>EnableAotAnalyzer=true</code>, and all trim/AOT warnings treated as errors. The test runs the published binary—not <code>dotnet run</code>—and exercises the protocol corpus plus every adapter fixture. Suppressions, <code>DynamicDependency</code>, reflection roots, and serializer fallbacks require a public ADR naming the exact member and proving why generation cannot replace it; no blanket warning suppression is accepted.
+        </div>
+      </div>
+    </section>
+
+    <section id="layout">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">11 · Repository</div>
+            <h2>Proposed source layout</h2>
+          </div>
+          <p>
+            Keep the runtime, generators, web packages, samples, and validation harness together so a protocol change cannot be merged without updating both sides and proving the packaged consumer experience.
+          </p>
+        </div>
+        <pre class="repo-tree"><code>CsWebUi.MVVM/
+├─ protocol/
+│  ├─ schema/v1/                       <span class="dim"># canonical JSON Schemas</span>
+│  └─ corpus/v1/                       <span class="dim"># valid + invalid cross-language fixtures</span>
+├─ src/
+│  ├─ CsWebUi.MVVM/                    <span class="dim"># public runtime + abstractions</span>
+│  ├─ CsWebUi.MVVM.Build/              <span class="dim"># analyzer + transitive MSBuild assets</span>
+│  ├─ CsWebUi.MVVM.CommunityToolkit/   <span class="dim"># Toolkit compiler/runtime plugin</span>
+│  ├─ CsWebUi.MVVM.ReactiveUI/         <span class="dim"># ReactiveUI compiler/runtime plugin</span>
+│  ├─ CsWebUi.MVVM.Html/               <span class="dim"># typed markup runtime + compiler assets</span>
+│  └─ CsWebUi.MVVM.Htmx/               <span class="dim"># endpoints, forms + fragment results</span>
+├─ tools/
+│  └─ CsWebUi.MVVM.BindingCompiler/    <span class="dim"># C# + JSON + TS binding compilation</span>
+├─ web/
+│  ├─ packages/mvvm/                   <span class="dim"># framework-neutral TS client</span>
+│  ├─ packages/conformance/            <span class="dim"># adapter driver + mandatory fixtures</span>
+│  ├─ packages/mvvm-angular/           <span class="dim"># Angular signals + DI</span>
+│  ├─ packages/mvvm-react/             <span class="dim"># React context + hooks</span>
+│  ├─ packages/mvvm-vue/               <span class="dim"># Vue refs + composables</span>
+│  ├─ packages/mvvm-svelte/            <span class="dim"># Svelte runes/stores + context</span>
+│  └─ workspace/                       <span class="dim"># shared build/test config</span>
+├─ samples/
+│  └─ Counter/
+│     ├─ Counter.ViewModels/            <span class="dim"># POCO, Toolkit + ReactiveUI examples</span>
+│     ├─ Counter.Host/                  <span class="dim"># .NET cs-webui host + mappings</span>
+│     ├─ Counter.Angular/
+│     ├─ Counter.React/
+│     ├─ Counter.Vue/
+│     ├─ Counter.Svelte/
+│     └─ Counter.Htmx/                 <span class="dim"># same scenarios in every View target</span>
+├─ test/
+│  ├─ CsWebUi.MVVM.Tests/
+│  ├─ CsWebUi.MVVM.BindingCompiler.Tests/
+│  ├─ CsWebUi.MVVM.CommunityToolkit.Tests/
+│  ├─ CsWebUi.MVVM.ReactiveUI.Tests/
+│  ├─ CsWebUi.MVVM.Protocol.Tests/
+│  ├─ CsWebUi.MVVM.Angular.Tests/
+│  ├─ CsWebUi.MVVM.React.Tests/
+│  ├─ CsWebUi.MVVM.Vue.Tests/
+│  ├─ CsWebUi.MVVM.Svelte.Tests/
+│  ├─ CsWebUi.MVVM.Html.Tests/
+│  ├─ CsWebUi.MVVM.Htmx.Tests/
+│  ├─ CsWebUi.MVVM.PackageTests/
+│  ├─ CsWebUi.MVVM.NativeAot.Tests/
+│  └─ consumers/                       <span class="dim"># restore-only NuGet/npm test apps</span>
+├─ docs/
+│  ├─ architecture.md
+│  ├─ protocol.md
+│  ├─ compatibility.md
+│  ├─ native-aot.md
+│  └─ adoption.md
+├─ eng/                                <span class="dim"># deterministic build, pack + verification scripts</span>
+├─ Directory.Build.props
+├─ Directory.Packages.props
+├─ global.json
+├─ index.html
+└─ template-engine.html</code></pre>
+        <div class="callout">
+          <strong>Packaging preference:</strong> consumers reference Core, at most one .NET MVVM integration, and one View adapter. Matching compiler/analyzer assets flow transitively. Every frontend package remains independent, while a conformance kit and lock-step protocol versions keep behavior aligned.
+        </div>
+        <div class="boundary" style="margin-top: 1rem">
+          <table>
+            <thead><tr><th>Artifact</th><th>Direct dependencies</th><th>Must contain</th><th>Must not contain</th></tr></thead>
+            <tbody>
+              <tr><td><code>CsWebUi.MVVM</code></td><td>cs-webui transport API, BCL, Microsoft DI abstractions</td><td>Mapping attributes, registration, sessions, dispatcher, generated-adapter interfaces, protocol runtime</td><td>Frontend, Toolkit, ReactiveUI, template, visual, or application policy</td></tr>
+              <tr><td><code>CsWebUi.MVVM.Build</code></td><td>Roslyn/MSBuild assets; private compiler tool</td><td>Analyzer, targets, compiler invocation</td><td>Runtime transport, public mapping attributes, or consumer assembly loading</td></tr>
+              <tr><td>.NET integration packages</td><td><code>CsWebUi.MVVM</code> plus exactly one MVVM framework</td><td>Recognition plugin and runtime lifecycle adapter</td><td>Frontend code or dependencies on another integration</td></tr>
+              <tr><td><code>cs-webui-mvvm</code></td><td>TypeScript only; transport port interface</td><td>Wire client, store, request correlation, reconnect, validation</td><td>DOM or frontend-framework dependency</td></tr>
+              <tr><td>Frontend npm packages</td><td><code>cs-webui-mvvm</code> plus one peer framework</td><td>Native lifecycle/reactivity adapter</td><td>.NET-generated application contracts or another framework</td></tr>
+              <tr><td>HTML / HTMX packages</td><td>Runtime and HTML compiler/runtime as applicable</td><td>Generated renderers, forms, endpoint/fragment integration</td><td>MVC, runtime Razor compilation, browser framework</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warning">
+          <strong>Versioning:</strong> NuGet and npm artifacts share a release train and protocol major. Runtime packages use SemVer; generated manifests record runtime, compiler, schema, and adapter versions. Runtime must reject a mismatched protocol major and a newer unsupported manifest format before opening a session. Exact package versions are used in samples and package tests; peer framework ranges are published in <code>docs/compatibility.md</code>.
+        </div>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">12 · Roadmap</div>
+            <h2>Thirteen gated work packages</h2>
+          </div>
+          <p>
+            Estimates are engineering ranges, not commitments. They include implementation and automated tests but exclude consumer-specific screens and design systems. The first compiler and AOT spikes should narrow the remaining ranges before broad work begins.
+          </p>
+        </div>
+
+        <div class="phase-list">
+          <article class="phase">
+            <div class="phase-id">Phase 0</div>
+            <div>
+              <h3>Foundation and upstream verification</h3>
+              <p>Pin cs-webui, document its embedded webview lifecycle and AOT constraints, select protocol framing, record ADRs, and prove a hand-written request/response through a published AOT host.</p>
+              <span class="gate">Gate: AOT spike opens a real framework-neutral web View and executes one typed command.</span>
+            </div>
+            <div class="effort"><strong>1–2 weeks</strong>Highest uncertainty retired first</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 1</div>
+            <div>
+              <h3>Protocol and runtime kernel</h3>
+              <p>Implement envelopes, handshake, session lifecycle, scopes, direct dispatch, revisions, results, sanitized faults, cancellation, timeouts, size limits, and deterministic disposal.</p>
+              <span class="gate">Gate: runtime tests cover concurrency, stale revisions, failure, cancellation, and cleanup.</span>
+            </div>
+            <div class="effort"><strong>2–3 weeks</strong>Protocol v1 becomes reviewable</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 2</div>
+            <div>
+              <h3>Binding compiler and diagnostics</h3>
+              <p>Build the two-stage design-time compilation, framework plugin API, C# binding delegates, serializer metadata, deterministic TypeScript output, MSBuild ordering, IDE diagnostics, and public API snapshots.</p>
+              <span class="gate">Gate: generated members from another source generator are visible, compiled, and AOT-safe without reflection.</span>
+            </div>
+            <div class="effort"><strong>4–6 weeks</strong>Central technical risk</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 3</div>
+            <div>
+              <h3>Portable MVVM binding baseline</h3>
+              <p>Bind <code>INotifyPropertyChanged</code>, <code>INotifyCollectionChanged</code>, <code>INotifyDataErrorInfo</code>, and <code>ICommand</code>; add state patches, two-way writes, command state, validation, batching, and leak-free teardown.</p>
+              <span class="gate">Gate: an ordinary BCL-only ViewModel works like a DataContext with no handwritten adapter.</span>
+            </div>
+            <div class="effort"><strong>2–3 weeks</strong>Framework-neutral baseline</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 4</div>
+            <div>
+              <h3>CommunityToolkit.MVVM integration</h3>
+              <p>Recognize toolkit-generated properties and commands; map validators, dependent <code>CanExecute</code>, typed parameters, async execution, progress/running state, and cancellation through generated bindings.</p>
+              <span class="gate">Gate: the toolkit sample uses only its existing ViewModel attributes plus one View mapping.</span>
+            </div>
+            <div class="effort"><strong>2–3 weeks</strong>Primary conventional adapter</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 5</div>
+            <div>
+              <h3>ReactiveUI integration</h3>
+              <p>Map reactive/source-generated properties, output properties, typed <code>ReactiveCommand</code> input/results, <code>CanExecute</code>, <code>IsExecuting</code>, fault routing, activation, schedulers, and deterministic Rx disposal.</p>
+              <span class="gate">Gate: reactive sample subscriptions and activation are scoped exactly to the web View instance.</span>
+            </div>
+            <div class="effort"><strong>3–4 weeks</strong>Reactive lifecycle depth</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 6</div>
+            <div>
+              <h3>Framework-neutral TypeScript SDK and conformance kit</h3>
+              <p>Complete generated property/command handles, immutable snapshots, validation, collections, reconnect, disposal, fake transport, adapter test harness, and shared behavioral fixtures.</p>
+              <span class="gate">Gate: a frontend adapter can implement the complete semantic contract without importing another framework adapter.</span>
+            </div>
+            <div class="effort"><strong>2–3 weeks</strong>Shared frontend foundation</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 7</div>
+            <div>
+              <h3>Angular View layer</h3>
+              <p>Add generated typed contexts, signals, <code>webModel</code>/<code>webCommand</code>/validation directives, component mapping, DataContext replacement, lifecycle hooks, code-behind helpers, and test utilities.</p>
+              <span class="gate">Gate: an Angular template binds like XAML without handwritten transport, DTO, or subscription code.</span>
+            </div>
+            <div class="effort"><strong>2–3 weeks</strong>First component target</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 8</div>
+            <div>
+              <h3>React View layer</h3>
+              <p>Add providers, generated hooks, <code>useSyncExternalStore</code> snapshots, property/command hooks, error boundaries, lazy View mapping, Strict Mode tests, and unmount disposal.</p>
+              <span class="gate">Gate: concurrent rendering and Strict Mode cannot duplicate a session, command execution, or subscription.</span>
+            </div>
+            <div class="effort"><strong>2–3 weeks</strong>Concurrent UI target</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 9</div>
+            <div>
+              <h3>Vue and Svelte View layers</h3>
+              <p>Implement Vue refs/composables/effect scopes and Svelte rune/store facades/actions, including framework-native lifecycle, generated types, collection updates, validation, commands, and component mapping.</p>
+              <span class="gate">Gate: both adapters pass the same conformance corpus as Angular and React with no semantic exclusions.</span>
+            </div>
+            <div class="effort"><strong>4–6 weeks</strong>Two compiler-reactive targets</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 10</div>
+            <div>
+              <h3>Typed HTML template compiler</h3>
+              <p>Implement the Maud-inspired <code>.cwhtml</code> grammar, parser, C# expression/type integration, generated renderers, contextual escaping, composition, fragments, forms, validation helpers, source maps, diagnostics, and development tooling.</p>
+              <span class="gate">Gate: templates compile to direct AOT-safe render code and the security corpus proves escaped-by-default output.</span>
+            </div>
+            <div class="effort"><strong>11–17 weeks</strong>Independent compiler product</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 11</div>
+            <div>
+              <h3>HTMX View layer</h3>
+              <p>Generate typed command/form endpoints, fragment rendering, validation responses, out-of-band swaps, triggers, focus/scroll hints, revision checks, and the minimal cs-webui push companion.</p>
+              <span class="gate">Gate: the complete sample runs with C# ViewModels, <code>.cwhtml</code> Views, and no application JavaScript.</span>
+            </div>
+            <div class="effort"><strong>5–7 weeks</strong>Server-driven target</div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-id">Phase 12</div>
+            <div>
+              <h3>Hardening, documentation, and first adoption</h3>
+              <p>Add security/stress tests, framework version matrices, multi-session isolation, AOT/trimming CI, package restore tests, production builds for all targets, SBOM/license review, performance baselines, authoring guides, and one real consumer vertical slice.</p>
+              <span class="gate">Gate: every packed View target passes conformance, Native AOT, browser integration, documentation, and package-consumer suites.</span>
+            </div>
+            <div class="effort"><strong>4–6 weeks</strong>Release confidence</div>
+          </article>
+        </div>
+
+        <div class="callout warning">
+          <strong>Indicative total:</strong> 44–66 engineer-weeks for Core, both .NET MVVM integrations, four TypeScript framework adapters, the typed template engine, and HTMX. With three to four engineers and parallel adapter/compiler work after Phase 6, expect roughly 20–30 calendar weeks. The binding-compiler, template grammar, and AOT spikes—not optimism—should reset the estimate.
+        </div>
+        <div class="callout">
+          <strong>Dependency and parallelization rule:</strong> Phases 0→1→2→3→6 form the runtime critical path. Phases 4 and 5 may run in parallel after Phase 3. Angular and React may run in parallel after Phase 6; Vue and Svelte follow the same frozen conformance API. The template compiler may start after Phase 1's protocol and safety contracts stabilize, but HTMX waits for both the template renderer and Phase 3 bindings. Hardening begins continuously, while Phase 12 closes only after every preceding gate. A phase is not complete when code merely exists: its packed artifacts, public documentation, API approval, tests, and gate evidence must all be committed.
+        </div>
+      </div>
+    </section>
+
+    <section id="testing">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">13 · Verification</div>
+            <h2>One contract, tested from both ends</h2>
+          </div>
+          <p>
+            The protocol corpus is shared across .NET and TypeScript tests. Every release candidate is consumed from locally packed NuGet and npm artifacts so project references cannot hide packaging defects.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>.NET runtime</h3>
+            <p>Session isolation, scope ownership, state revisions, cancellation, timeout, errors, disposal, batching, backpressure, and concurrency.</p>
+          </article>
+          <article class="card">
+            <h3>Binding compiler</h3>
+            <p>Golden outputs, determinism, diagnostics, MSBuild ordering, other-generator interoperability, public API approval, and adversarial type shapes.</p>
+          </article>
+          <article class="card">
+            <h3>Web client</h3>
+            <p>Envelope parsing, correlation, snapshots, patches, reconnect, stale revisions, command state, validation, and malformed messages.</p>
+          </article>
+          <article class="card">
+            <h3>Frontend conformance</h3>
+            <p>Run the same generated scenarios through Angular, React, Vue, Svelte, and HTMX: state, commands, validation, nested Views, replacement, reconnect, focus hints, and teardown.</p>
+          </article>
+          <article class="card">
+            <h3>End to end</h3>
+            <p>Real cs-webui transport, each production frontend build, typed action round trips, HTMX fragment swaps, reconnect, multiple sessions, shutdown, and resource cleanup.</p>
+          </article>
+          <article class="card">
+            <h3>Native AOT</h3>
+            <p>Package restore, Windows x64 publish, zero trim/AOT warnings, startup, full interaction, clean exit, and binary-size baseline.</p>
+          </article>
+          <article class="card full">
+            <h3>MVVM framework compatibility matrix</h3>
+            <p>Compile and execute real BCL-only, CommunityToolkit.MVVM, and ReactiveUI ViewModels across every supported package version. Cover generated/manual properties, read-only output properties, two-way writes, collection changes, validation, sync/async/parameterized commands, command results/faults, cancellation, activation, and subscription disposal.</p>
+          </article>
+          <article class="card full">
+            <h3>Template compiler and HTMX security matrix</h3>
+            <p>Golden parser/renderer output, C# type diagnostics, HTML5 parsing, text/attribute/URL escaping, malicious input corpus, trusted-markup gates, partials/layouts/fragments, form binding, stale revisions, OOB swaps, generated endpoints, snapshot determinism, benchmarks, and Native AOT execution.</p>
+          </article>
+        </div>
+        <div class="boundary" style="margin-top: 1rem">
+          <table>
+            <thead><tr><th>Deliverable</th><th>Definition of done</th></tr></thead>
+            <tbody>
+              <tr><td>Protocol</td><td>Versioned schemas, specification, valid/invalid corpus, generated C#/TypeScript models, compatibility tests, limits, error codes, and threat review agree byte-for-byte.</td></tr>
+              <tr><td>.NET runtime</td><td>Approved public API; explicit DI registration; deterministic scope/subscription disposal; concurrency, limits, fault, cancellation, and reconnect tests; no reflection-based discovery.</td></tr>
+              <tr><td>Binding build</td><td>Works after Toolkit and ReactiveUI generation, is incremental and deterministic, reports actionable source locations, never executes consumer code, and passes clean-build/restore-only package tests.</td></tr>
+              <tr><td>MVVM integration</td><td>Published supported-version matrix; real-framework property, command, validation, activation, scheduler, cancellation, and disposal tests; manual-adapter escape hatch documented.</td></tr>
+              <tr><td>Frontend adapter</td><td>Production build, typed public API, framework-native lifecycle, every shared fixture, reconnect and repeated-mount stress tests, package-consumer sample, and accessibility integration guidance.</td></tr>
+              <tr><td>HTML / HTMX</td><td>Dedicated template-plan gates pass, generated endpoints and fragments pass protocol/conformance tests, the malicious-input corpus is escaped, and no application JavaScript is required by the reference sample.</td></tr>
+              <tr><td>Release train</td><td>All artifacts packed, signed/provenanced as project policy requires, restored from an empty cache, SBOM/license notices generated, compatibility and migration notes published, and the Native AOT executable completes every end-to-end scenario.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="risks">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">14 · Risks</div>
+            <h2>Known pressure points</h2>
+          </div>
+          <p>These are architecture risks, not backlog trivia. Each has an explicit retirement action and must remain visible in milestone reviews.</p>
+        </div>
+        <div class="boundary">
+          <table>
+            <thead><tr><th>Risk</th><th>Level</th><th>Mitigation / decision gate</th></tr></thead>
+            <tbody>
+              <tr><td>cs-webui Native AOT or embedded-resource incompatibility</td><td class="risk-high">High</td><td>Phase 0 publishes and runs the real host before generator work starts; upstream fixes remain isolated and contributed back.</td></tr>
+              <tr><td>Protocol becomes a remote object system</td><td class="risk-high">High</td><td>Keep closed message kinds, explicit ViewModel mapping, recognized bindable member kinds, versioned contracts, and no arbitrary method/type invocation.</td></tr>
+              <tr><td>State patch ordering and reconnect races</td><td class="risk-high">High</td><td>Per-session serialized execution, monotonic revisions, acknowledgement, and authoritative snapshot recovery.</td></tr>
+              <tr><td>Source generators cannot consume each other's output</td><td class="risk-high">High</td><td>Validate the two-stage binding compiler in Phase 2; keep analyzer and compiler responsibilities separate and test with the actual framework generators.</td></tr>
+              <tr><td>Binding compiler complexity delays usable vertical slice</td><td class="risk-medium">Medium</td><td>Hand-write the protocol spike, then compile only the proven property/command seam; deliver diagnostics and the BCL baseline before richer adapters.</td></tr>
+              <tr><td>MVVM framework conventions change</td><td class="risk-medium">Medium</td><td>Separate integration packages, real-package compatibility matrices, pinned supported ranges, explicit diagnostics, and a manual adapter escape hatch.</td></tr>
+              <tr><td>Reactive subscriptions leak or use the wrong scheduler</td><td class="risk-high">High</td><td>Tie activation and every subscription to a session-owned composite disposable; test close, reconnect, DataContext replacement, and concurrent commands.</td></tr>
+              <tr><td>Frontend version churn multiplies maintenance</td><td class="risk-high">High</td><td>Keep the TypeScript core separate, support explicit major ranges, share a conformance kit, release adapters independently but protocol-compatible, and budget quarterly upgrades.</td></tr>
+              <tr><td>Template language becomes a second Razor</td><td class="risk-high">High</td><td>Freeze a small Maud-inspired grammar, reuse C# for expressions/control flow, publish explicit non-goals, and require an ADR for every syntax feature.</td></tr>
+              <tr><td>Template output introduces XSS or unsafe URLs</td><td class="risk-high">High</td><td>Contextual escaping by default, typed trusted markup, no dynamic script/style interpolation, URL policy, CSP, fuzzing, and security review before 1.0.</td></tr>
+              <tr><td>Five View adapters dilute quality</td><td class="risk-high">High</td><td>One semantic contract, identical sample scenarios, parity gates, framework-native public APIs, named maintainers, and no stable release with skipped conformance rows.</td></tr>
+              <tr><td>Product concerns creep into generic packages</td><td class="risk-medium">Medium</td><td>Namespace/reference architecture tests and public API review; only the neutral Counter sample belongs here.</td></tr>
+              <tr><td>Large collections overwhelm JSON bridge</td><td class="risk-medium">Medium</td><td>Batch/coalesce changes, configurable limits, measured virtualization patterns, and snapshot thresholds.</td></tr>
+              <tr><td>Publication and licensing assumptions</td><td class="risk-low">Open decision</td><td>The repository is public. Choose a source license only after dependency/license review and API ownership agreement; public visibility alone does not grant reuse rights.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="adoption">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">15 · Adoption</div>
+            <h2>How a UI library consumes it</h2>
+          </div>
+          <p>
+            Adoption happens through a thin View package and a product-owned web workspace or compiled template project. Existing renderer-neutral ViewModels are mapped directly; the selected View adapter handles standard binding mechanics while consumer code owns the actual HTML View.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="number">A</div>
+            <h3>Reference</h3>
+            <p><code>Product.UI.Web</code> references <code>CsWebUi.MVVM</code>, its chosen .NET MVVM integration, and exactly one View adapter; the build compiler emits the required C# and web contracts.</p>
+          </article>
+          <article class="card">
+            <div class="number">B</div>
+            <h3>Map</h3>
+            <p>The consumer maps each ViewModel contract to a framework component or compiled HTML View. Standard properties, collections, validation, and commands need no adapter code; only exceptional object graphs use explicit adapters.</p>
+          </article>
+          <article class="card">
+            <div class="number">C</div>
+            <h3>Render</h3>
+            <p>The consumer's View package owns theming, components/partials, shell, navigation, dialogs, icons, branding, and accessibility regardless of the selected target.</p>
+          </article>
+          <article class="card wide">
+            <div class="number">D</div>
+            <h3>Integrate consumers vertically</h3>
+            <p>Port one complete flow first—startup, shell, navigation, form, validation, operation, and dialog—then repeat in a second independent consumer. Avoid building the entire component catalog before a real application validates the seam.</p>
+          </article>
+          <article class="card wide">
+            <div class="number">E</div>
+            <h3>Keep platform capabilities outside</h3>
+            <p>File picking, process execution, shutdown, native dialogs, and installation services remain application capabilities invoked by view models. The generic bridge only transports their typed inputs, progress, results, and faults.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="backlog">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">16 · Start here</div>
+            <h2>First implementation backlog</h2>
+          </div>
+          <p>These issues turn the plan into executable work. Checkboxes are stored only in this browser and do not replace repository issue tracking.</p>
+        </div>
+        <ul class="checklist" id="plan-checklist">
+          <li><label><input type="checkbox" data-key="adr-boundary"><span>ADR: generic/product boundary and dependency direction</span></label></li>
+          <li><label><input type="checkbox" data-key="license"><span>Dependency and license audit; choose repository license/visibility</span></label></li>
+          <li><label><input type="checkbox" data-key="pin-upstream"><span>Pin cs-webui version/commit and document required upstream APIs</span></label></li>
+          <li><label><input type="checkbox" data-key="aot-spike"><span>Native AOT cs-webui + framework-neutral round-trip spike</span></label></li>
+          <li><label><input type="checkbox" data-key="protocol-adr"><span>Protocol v1 ADR and JSON schema/message corpus</span></label></li>
+          <li><label><input type="checkbox" data-key="protocol-codegen"><span>Schema-driven C#/TypeScript wire model generation and compatibility tests</span></label></li>
+          <li><label><input type="checkbox" data-key="runtime-shell"><span>.NET runtime and test project shells with AOT analyzers</span></label></li>
+          <li><label><input type="checkbox" data-key="session"><span>Session lifecycle, scope ownership, revision, and disposal</span></label></li>
+          <li><label><input type="checkbox" data-key="binding-compiler"><span>Two-stage binding-compiler spike with another source generator</span></label></li>
+          <li><label><input type="checkbox" data-key="bcl-bindings"><span>BCL MVVM property, collection, validation, and ICommand bindings</span></label></li>
+          <li><label><input type="checkbox" data-key="toolkit"><span>CommunityToolkit.MVVM compiler/runtime integration and sample</span></label></li>
+          <li><label><input type="checkbox" data-key="reactiveui"><span>ReactiveUI compiler/runtime integration, activation, and disposal sample</span></label></li>
+          <li><label><input type="checkbox" data-key="ts-tool"><span>Deterministic TypeScript bindings and verification corpus</span></label></li>
+          <li><label><input type="checkbox" data-key="conformance"><span>Framework-neutral adapter driver and mandatory fixture IDs</span></label></li>
+          <li><label><input type="checkbox" data-key="angular"><span>Angular DataContext, signals, directives, and neutral Counter Views</span></label></li>
+          <li><label><input type="checkbox" data-key="react"><span>React external-store hooks, Strict Mode tests, and Counter Views</span></label></li>
+          <li><label><input type="checkbox" data-key="vue-svelte"><span>Vue composables and Svelte runes/stores with shared conformance tests</span></label></li>
+          <li><label><input type="checkbox" data-key="template-grammar"><span>Template grammar ADR, parser spike, escaping model, and AOT renderer</span></label></li>
+          <li><label><input type="checkbox" data-key="htmx"><span>HTMX generated endpoints, forms, fragments, OOB swaps, and push refresh</span></label></li>
+          <li><label><input type="checkbox" data-key="package-test"><span>NuGet/npm packed-consumer smoke tests</span></label></li>
+          <li><label><input type="checkbox" data-key="aot-gate"><span>Published-binary AOT gate for all adapters with zero analyzer warnings</span></label></li>
+          <li><label><input type="checkbox" data-key="adoption-slice"><span>Consumer vertical-slice adoption outside this repository</span></label></li>
+        </ul>
+
+        <div class="callout" style="margin-top: 2rem">
+          <strong>Definition of done for 1.0:</strong> a consumer can reference packed artifacts, map an existing BCL, CommunityToolkit.MVVM, or ReactiveUI ViewModel to Angular, React, Vue, Svelte, or compiled HTMX Views, bind properties, collections, validation, and commands without handwritten bridge/DTO/subscription code, and publish through cs-webui as Native AOT without trim/AOT warnings. All five targets pass the same cancellation, activation, reconnect, DataContext replacement, validation, command, and disposal contract; HTMX additionally passes the template safety and fragment-swap contract.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <div>CsWebUi.MVVM implementation plan · Draft 4 · 17 July 2026</div>
+      <button class="print-button" type="button" onclick="window.print()">Print / save as PDF</button>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const prefix = "cswebui-mvvm-plan:";
+      document.querySelectorAll("#plan-checklist input[data-key]").forEach(input => {
+        const key = prefix + input.dataset.key;
+        try {
+          input.checked = localStorage.getItem(key) === "done";
+          input.addEventListener("change", () => {
+            localStorage.setItem(key, input.checked ? "done" : "todo");
+          });
+        } catch {
+          // The plan remains fully usable when local storage is unavailable.
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# ADR 0003: Parallel task and worktree ownership
+
+- Status: Accepted
+- Date: 2026-07-22
+
+## Decision
+
+Every implementation stream uses one long-lived Codex task, one branch, one Git worktree, and an exclusive path set. Parallel agents inside that task may edit only disjoint owned paths; one integrator owns commits.
+
+Only the orchestrator edits root solution files, `Directory.*`, `global.json`, lockfiles, shared CI/release files, the contract registry, and cross-repository documentation.
+
+Each handoff contains:
+
+- branch and commit SHA;
+- owned-path diff;
+- approved public API and package IDs;
+- dependency/version manifest;
+- schema, protocol, and diagnostic versions;
+- packed artifacts in the local feed;
+- deterministic fixtures or goldens;
+- test, package-consumer, trim, and Native-AOT evidence;
+- migration notes and open risks.
+
+Contract-breaking requests merge through the orchestrator first. Consumers then rebase onto the new gated baseline.
