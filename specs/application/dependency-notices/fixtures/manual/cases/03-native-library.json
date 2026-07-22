@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "manualComponents": [
+    {
+      "purl": "pkg:generic/native-renderer@3.1.0?arch=x86_64&os=windows",
+      "displayName": "Native Renderer",
+      "revision": "native-fixture-3.1.0",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "sha256": "e746e4978d77417c2dd71a916012faea77fe9fa9f5256ba20cc1c96886fb3656",
+          "path": "dependency-notices.assets/sha256/e746e4978d77417c2dd71a916012faea77fe9fa9f5256ba20cc1c96886fb3656",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        },
+        {
+          "kind": "notice",
+          "sha256": "ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "path": "dependency-notices.assets/sha256/ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        }
+      ],
+      "modified": false
+    }
+  ]
+}

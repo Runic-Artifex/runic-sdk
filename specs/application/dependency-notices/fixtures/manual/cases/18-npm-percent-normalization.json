@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "manualComponents": [
+    {
+      "purl": "pkg:npm/%40%46ixture/Name@1.0.0",
+      "displayName": "@Fixture/Name",
+      "revision": "fixture-revision-1",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "sha256": "2926e284cf97e9a85e260eea758038038adecbc43eb83a9072ba7e87464af474",
+          "path": "dependency-notices.assets/sha256/2926e284cf97e9a85e260eea758038038adecbc43eb83a9072ba7e87464af474",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        }
+      ],
+      "modified": false
+    }
+  ]
+}

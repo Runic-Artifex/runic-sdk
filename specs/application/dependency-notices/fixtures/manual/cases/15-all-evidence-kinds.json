@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "manualComponents": [
+    {
+      "purl": "pkg:generic/evidence-gallery@1.0.0",
+      "displayName": "Evidence Gallery",
+      "revision": "fixture-revision-1",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "sha256": "2926e284cf97e9a85e260eea758038038adecbc43eb83a9072ba7e87464af474",
+          "path": "dependency-notices.assets/sha256/2926e284cf97e9a85e260eea758038038adecbc43eb83a9072ba7e87464af474",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        },
+        {
+          "kind": "notice",
+          "sha256": "ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "path": "dependency-notices.assets/sha256/ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        },
+        {
+          "kind": "attribution",
+          "sha256": "ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "path": "dependency-notices.assets/sha256/ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        },
+        {
+          "kind": "authors",
+          "sha256": "ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "path": "dependency-notices.assets/sha256/ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        },
+        {
+          "kind": "modification",
+          "sha256": "864350f389d2b6b51b9a871ad9ace0d7c4cc9a9f38aab617eb855e0e66c98a6d",
+          "path": "dependency-notices.assets/sha256/864350f389d2b6b51b9a871ad9ace0d7c4cc9a9f38aab617eb855e0e66c98a6d",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        }
+      ],
+      "modified": true,
+      "modificationNotice": "Synthetic fixture modification."
+    }
+  ]
+}

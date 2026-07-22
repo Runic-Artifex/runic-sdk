@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "manualComponents": [
+    {
+      "purl": "pkg:generic/no-evidence@1.0.0",
+      "displayName": "Fixture Component",
+      "revision": "fixture-revision-1",
+      "licenseExpression": "MIT",
+      "evidence": [],
+      "modified": false
+    }
+  ]
+}

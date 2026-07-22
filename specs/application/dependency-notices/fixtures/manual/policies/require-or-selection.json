@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "defaultDecision": "review",
+  "licenses": {
+    "allow": [
+      "MIT",
+      "Apache-2.0"
+    ],
+    "deny": [
+      "LicenseRef-Prohibited"
+    ],
+    "review": [
+      "NOASSERTION",
+      "LicenseRef-*"
+    ]
+  },
+  "missingEvidence": "error",
+  "orExpressions": "require-explicit-selection",
+  "overrides": []
+}
