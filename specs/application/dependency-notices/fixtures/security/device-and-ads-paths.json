@@ -1,0 +1,18 @@
+{
+  "rejected": [
+    "CON",
+    "con.txt",
+    "CON .txt",
+    "NUL",
+    "nul.log",
+    "PRN",
+    "AUX.json",
+    "COM1",
+    "com9.bin",
+    "LPT1",
+    "lpt9.txt",
+    "nested/notice.txt:secret",
+    "nested\\notice.txt:$DATA",
+    "directory:stream/file.txt"
+  ]
+}

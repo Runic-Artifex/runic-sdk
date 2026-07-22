@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <PackageId>WebUIToolkit.DependencyNotices.Build</PackageId>
+    <Description>Thin buildTransitive integration for invoking the packaged Dependency Notices CLI.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);CS1591;NU5128</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/WebUIToolkit.DependencyNotices.Build.props"
+          Pack="true"
+          PackagePath="buildTransitive/" />
+    <None Include="buildTransitive/WebUIToolkit.DependencyNotices.Build.targets"
+          Pack="true"
+          PackagePath="buildTransitive/" />
+  </ItemGroup>
+</Project>

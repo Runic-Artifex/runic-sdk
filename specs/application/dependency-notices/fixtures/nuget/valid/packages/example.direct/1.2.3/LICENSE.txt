@@ -1,0 +1,1 @@
+Example Direct synthetic MIT license fixture.

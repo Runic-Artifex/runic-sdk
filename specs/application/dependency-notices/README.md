@@ -10,6 +10,7 @@ Wave A freezes major schema version `1` for the offline manual-component path. S
 | Policy | `dependency-notices.policy.schema.v1.json` | 1 |
 | Evidence lock | `dependency-notices.lock.schema.v1.json` | 1 |
 | Generated notice document | `dependency-notices.document.schema.v1.json` | 1 |
+| Generated notice document with complete evidence and SBOM linkage | `dependency-notices.document.schema.v2.json` | 2 |
 | Machine-readable diagnostics | `dependency-notices.diagnostics.schema.v1.json` | 1 |
 
 Canonical JSON uses UTF-8 without BOM, LF newlines, ordinal property and collection ordering defined by the producing contract, invariant values, lowercase SHA-256, and normalized `/` relative paths. Generated documents contain no timestamps, host names, home directories, restore roots, or temporary paths.

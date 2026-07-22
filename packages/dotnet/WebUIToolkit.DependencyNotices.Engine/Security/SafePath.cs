@@ -22,7 +22,10 @@ public static class SafePath
             .Replace('/', Path.DirectorySeparatorChar);
         foreach (string segment in normalizedSeparators.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
         {
-            if (segment is "." or ".." || segment.Contains(':', StringComparison.Ordinal) || segment.Contains('\0', StringComparison.Ordinal))
+            if (segment is "." or ".." ||
+                segment.Contains(':', StringComparison.Ordinal) ||
+                segment.Contains('\0', StringComparison.Ordinal) ||
+                IsReservedDeviceName(segment))
             {
                 throw Unsafe(relativePath);
             }
@@ -32,6 +35,21 @@ public static class SafePath
         EnsureContained(fullRoot, candidate, relativePath);
         EnsureNoLinkEscape(fullRoot, candidate, relativePath);
         return candidate;
+    }
+
+    private static bool IsReservedDeviceName(string segment)
+    {
+        string trimmed = segment.TrimEnd(' ', '.');
+        int extension = trimmed.IndexOf('.', StringComparison.Ordinal);
+        string name = (extension < 0 ? trimmed : trimmed[..extension]).TrimEnd(' ', '.').ToUpperInvariant();
+        if (name is "CON" or "PRN" or "AUX" or "NUL")
+        {
+            return true;
+        }
+
+        return name.Length == 4 &&
+            (name.StartsWith("COM", StringComparison.Ordinal) || name.StartsWith("LPT", StringComparison.Ordinal)) &&
+            name[3] is >= '1' and <= '9';
     }
 
     private static void EnsureNoLinkEscape(string fullRoot, string candidate, string original)

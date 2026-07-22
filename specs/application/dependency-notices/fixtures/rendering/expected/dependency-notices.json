@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 2,
+  "artifactName": "Demo \u003CSuite\u003E",
+  "artifactVersion": "2.0.0",
+  "dependencies": [
+    {
+      "packageUrl": "pkg:npm/%40scope/alpha@2.0.0?x=%22%3E%3C",
+      "name": "Alpha \u0026 \u003CCo\u003E",
+      "version": "2.0.0",
+      "ecosystem": "npm",
+      "scope": "runtime",
+      "isDirect": true,
+      "observedLicenseExpression": "MIT OR LicenseRef-Internal",
+      "effectiveLicenseExpression": "MIT",
+      "selectedLicenseExpression": "MIT",
+      "assets": [
+        {
+          "kind": "license",
+          "sha256": "40d717900dc43df8c216e4a5001ede534f020d8fa0978be6ae2ec13ed42cc34d",
+          "mediaType": "text/plain; charset=utf-8",
+          "text": "Alpha license\nLine \u003Ctwo\u003E \u0026 \u0022quoted\u0022\n",
+          "origin": "package/LICENSE",
+          "isOverride": false
+        }
+      ],
+      "decisions": [
+        {
+          "subject": "MIT",
+          "outcome": "allow",
+          "rule": "allow-mit"
+        }
+      ],
+      "sbomComponentReference": "component-alpha",
+      "isModified": true,
+      "modificationNotice": "Patched \u003Clocally\u003E \u0026 reviewed."
+    },
+    {
+      "packageUrl": "pkg:nuget/Zeta@10.0.0",
+      "name": "Zeta",
+      "version": "10.0.0",
+      "ecosystem": "nuGet",
+      "scope": "runtime",
+      "isDirect": false,
+      "observedLicenseExpression": "Apache-2.0",
+      "effectiveLicenseExpression": "Apache-2.0",
+      "selectedLicenseExpression": null,
+      "assets": [
+        {
+          "kind": "license",
+          "sha256": "40d717900dc43df8c216e4a5001ede534f020d8fa0978be6ae2ec13ed42cc34d",
+          "mediaType": "text/plain; charset=utf-8",
+          "text": "Alpha license\nLine \u003Ctwo\u003E \u0026 \u0022quoted\u0022\n",
+          "origin": "package/LICENSE",
+          "isOverride": false
+        }
+      ],
+      "decisions": [
+        {
+          "subject": "Apache-2.0",
+          "outcome": "allow",
+          "rule": "allow-apache"
+        }
+      ],
+      "sbomComponentReference": "component-zeta",
+      "isModified": false,
+      "modificationNotice": null
+    }
+  ],
+  "sbom": {
+    "format": "cycloneDx",
+    "documentReference": "bom.json",
+    "serialNumber": "urn:uuid:test"
+  },
+  "diagnostics": [
+    {
+      "code": "WUTNOTICE4002",
+      "severity": "warning",
+      "message": "Review owner: \u003Clegal\u003E \u0026 security.",
+      "packageUrl": "pkg:nuget/Zeta@10.0.0",
+      "source": "policy/review.json",
+      "offset": 4,
+      "remediation": "Record review."
+    }
+  ]
+}

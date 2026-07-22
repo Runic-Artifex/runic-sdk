@@ -15,6 +15,7 @@ internal static class CoreTests
         tests.Add("evidence digest validation rejects noncanonical hex", EvidenceDigestValidation);
         tests.Add("component ordering is name version then canonical PURL", ComponentOrdering);
         tests.Add("diagnostic catalog uses unique reserved identities", DiagnosticCatalog);
+        tests.Add("contract versions preserve Wave A and expose additive document v2", ContractVersions);
     }
 
     private static void EvidenceDigestIsExact()
@@ -59,6 +60,16 @@ internal static class CoreTests
             Assert.Equal(13, code.Length);
             Assert.True(unique.Add(code), $"Duplicate diagnostic code {code}.");
         }
+    }
+
+    private static void ContractVersions()
+    {
+        Assert.Equal(1, NoticeContractVersions.Configuration);
+        Assert.Equal(1, NoticeContractVersions.Policy);
+        Assert.Equal(1, NoticeContractVersions.EvidenceLock);
+        Assert.Equal(1, NoticeContractVersions.DiagnosticDocument);
+        Assert.Equal(1, NoticeContractVersions.NoticeDocumentV1);
+        Assert.Equal(2, NoticeContractVersions.NoticeDocument);
     }
 
     private static ManualDependencyComponent Component(string name, string version, string purl) =>

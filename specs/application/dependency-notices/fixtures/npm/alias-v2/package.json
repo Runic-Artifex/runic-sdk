@@ -1,0 +1,1 @@
+{ "name": "alias-root", "version": "1.0.0", "dependencies": { "alias-name": "npm:actual-package@7.1.0" } }

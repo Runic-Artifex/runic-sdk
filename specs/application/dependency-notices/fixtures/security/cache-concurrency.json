@@ -1,0 +1,5 @@
+{
+  "writers": 16,
+  "invariant": "one-content-addressed-file-no-temporary-files",
+  "collisionPolicy": "existing-different-bytes-must-never-be-overwritten"
+}

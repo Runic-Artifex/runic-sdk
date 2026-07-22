@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "toolVersion": "2.0.0-test",
+  "inputs": [
+    {
+      "name": "dependency-notices.lock.json",
+      "sha256": "d8c9f2728aa278ebcd33ccedf3ad309a866870ad5fb93a03526b4b7655c9e911"
+    },
+    {
+      "name": "policy/dependency-notices.policy.json",
+      "sha256": "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0"
+    }
+  ],
+  "evidenceLockSha256": "e92248ac7237e8dfc712c692ab53af0e17f4a1ea09cd287e8c0fe87a8ee430a5",
+  "selectedRoots": [
+    "src/alpha",
+    "src/zeta"
+  ],
+  "profiles": [
+    "distribution",
+    "runtime"
+  ],
+  "outputs": [
+    {
+      "name": "THIRD-PARTY-NOTICES.txt",
+      "sha256": "bf404feb9ae035dfde344c0fe2f9c523bc4a36c6fbaf2f7a97368dbf01a2e427"
+    },
+    {
+      "name": "dependency-notices.html",
+      "sha256": "1c002a20e82917926a8cd5b3850ab61d232bc3bd32ffbc776c1cbb66bae163a3"
+    },
+    {
+      "name": "dependency-notices.json",
+      "sha256": "a7c2a13386d6ee999be5a06791154187474184c1d45b84d84dc3ec6695063062"
+    }
+  ]
+}

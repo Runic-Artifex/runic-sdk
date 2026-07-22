@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <PackageId>WebUIToolkit.DependencyNotices.Sbom</PackageId>
+    <Description>BCL-only constrained SBOM readers and deterministic dependency reconciliation.</Description>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WebUIToolkit.DependencyNotices.Core/WebUIToolkit.DependencyNotices.Core.csproj" />
+  </ItemGroup>
+</Project>
