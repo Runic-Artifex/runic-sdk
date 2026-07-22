@@ -1,0 +1,1 @@
+{"protocol":"webuitoolkit.cli/1","requestId":"req-copy-0005","command":"copy","success":false,"exitCode":4,"payloadType":null,"payload":null,"fault":{"code":"WUTCLI4000","message":"The command was cancelled.","details":{},"retryable":true},"diagnostics":[]}

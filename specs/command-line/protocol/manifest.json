@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "protocol": "webuitoolkit.cli/1",
+  "outputEnvironmentVariable": "WEBUITOOLKIT_CLI_OUTPUT",
+  "implementationNamespace": "WebUIToolkit.CommandLine",
+  "encoding": "utf-8",
+  "framing": "one-json-object-one-lf",
+  "limits": {
+    "framedBytes": 1048576,
+    "jsonDepth": 32,
+    "requestIdBytes": 128,
+    "commandBytes": 512,
+    "payloadTypeBytes": 128,
+    "codeBytes": 64,
+    "messageBytes": 4096,
+    "diagnosticCount": 64,
+    "faultDetailCount": 32,
+    "diagnosticArgumentCount": 16,
+    "detailKeyBytes": 64,
+    "detailValueBytes": 1024,
+    "diagnosticKindBytes": 128,
+    "diagnosticCommandPathBytes": 512,
+    "diagnosticMessageKeyBytes": 128,
+    "diagnosticArgumentBytes": 1024
+  },
+  "fixtures": [
+    { "id": "protocol.success", "class": "valid", "path": "examples/success.json", "outcome": "success" },
+    { "id": "protocol.command-fault", "class": "valid", "path": "examples/command-fault.json", "outcome": "command-failure" },
+    { "id": "protocol.validation", "class": "valid", "path": "examples/validation.json", "outcome": "validation" },
+    { "id": "protocol.host-fault", "class": "valid", "path": "examples/host-fault.json", "outcome": "host-failure" },
+    { "id": "protocol.cancelled", "class": "valid", "path": "examples/cancelled.json", "outcome": "cancelled" },
+    { "id": "protocol.invalid-structures", "class": "semantic-corpus", "path": "invalid-structures.json", "caseCount": 23 },
+    { "id": "protocol.wire-inputs", "class": "malformed-or-hostile", "path": "wire-inputs.json", "caseCount": 15 }
+  ]
+}

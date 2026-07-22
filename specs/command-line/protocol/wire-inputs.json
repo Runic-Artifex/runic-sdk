@@ -1,0 +1,89 @@
+{
+  "formatVersion": 1,
+  "protocol": "webuitoolkit.cli/1",
+  "representation": "base64-encoded-wire-bytes-or-deterministic-wire-recipe",
+  "cases": [
+    {
+      "id": "wire.empty",
+      "wireUtf8Base64": "",
+      "expected": { "kind": "protocol-error", "reason": "missing-envelope" }
+    },
+    {
+      "id": "wire.bom",
+      "wireUtf8Base64": "77u/eyJwcm90b2NvbCI6IndlYnVpdG9vbGtpdC5jbGkvMSJ9Cg==",
+      "expected": { "kind": "protocol-error", "reason": "utf8-bom" }
+    },
+    {
+      "id": "wire.invalid-utf8",
+      "wireUtf8Base64": "/3t9Cg==",
+      "expected": { "kind": "protocol-error", "reason": "invalid-utf8" }
+    },
+    {
+      "id": "wire.no-terminal-lf",
+      "wireUtf8Base64": "e30=",
+      "expected": { "kind": "protocol-error", "reason": "invalid-framing" }
+    },
+    {
+      "id": "wire.crlf",
+      "wireUtf8Base64": "e30NCg==",
+      "expected": { "kind": "protocol-error", "reason": "invalid-framing" }
+    },
+    {
+      "id": "wire.two-lfs",
+      "wireUtf8Base64": "e30KCg==",
+      "expected": { "kind": "protocol-error", "reason": "invalid-framing" }
+    },
+    {
+      "id": "wire.leading-space",
+      "wireUtf8Base64": "IHt9Cg==",
+      "expected": { "kind": "protocol-error", "reason": "invalid-framing" }
+    },
+    {
+      "id": "wire.two-values",
+      "wireUtf8Base64": "e30ge30K",
+      "expected": { "kind": "protocol-error", "reason": "multiple-json-values" }
+    },
+    {
+      "id": "wire.truncated-json",
+      "wireUtf8Base64": "eyJwcm90b2NvbCI6IndlYnVpdG9vbGtpdC5jbGkvMSIK",
+      "expected": { "kind": "protocol-error", "reason": "malformed-json" }
+    },
+    {
+      "id": "wire.duplicate-property",
+      "wireUtf8Base64": "eyJwcm90b2NvbCI6IndlYnVpdG9vbGtpdC5jbGkvMSIsInByb3RvY29sIjoid2VidWl0b29sa2l0LmNsaS8xIn0K",
+      "expected": { "kind": "protocol-error", "reason": "duplicate-property" }
+    },
+    {
+      "id": "wire.ansi-prefix",
+      "wireUtf8Base64": "G1szMW17fQo=",
+      "expected": { "kind": "protocol-error", "reason": "stdout-contamination" }
+    },
+    {
+      "id": "wire.log-prefix",
+      "wireUtf8Base64": "aW5mbzogc3RhcnRpbmcKeyJwcm90b2NvbCI6IndlYnVpdG9vbGtpdC5jbGkvMSJ9Cg==",
+      "expected": { "kind": "protocol-error", "reason": "stdout-contamination" }
+    },
+    {
+      "id": "wire.hostile-fault-content",
+      "wireUtf8Base64": "eyJwcm90b2NvbCI6IndlYnVpdG9vbGtpdC5jbGkvMSIsInJlcXVlc3RJZCI6InJlcS0xMyIsImNvbW1hbmQiOiJzdGF0dXMiLCJzdWNjZXNzIjpmYWxzZSwiZXhpdENvZGUiOjcwLCJwYXlsb2FkVHlwZSI6bnVsbCwicGF5bG9hZCI6bnVsbCwiZmF1bHQiOnsiY29kZSI6IldVVENMSTUwMDAiLCJtZXNzYWdlIjoiU3lzdGVtLkludmFsaWRPcGVyYXRpb25FeGNlcHRpb246IHNlY3JldFxuIGF0IEM6XFxzb3VyY2VcXEhvc3QuY3M6MTAiLCJkZXRhaWxzIjp7IlRPS0VOIjoic3VwZXItc2VjcmV0In0sInJldHJ5YWJsZSI6ZmFsc2V9LCJkaWFnbm9zdGljcyI6W119Cg==",
+      "expected": { "kind": "protocol-error", "reason": "unsafe-fault-content" }
+    },
+    {
+      "id": "wire.excessive-depth",
+      "wireUtf8Base64": "eyJ4IjpbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1swXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dfQo=",
+      "expected": { "kind": "protocol-error", "reason": "json-depth-limit" }
+    },
+    {
+      "id": "wire.oversized",
+      "wireRecipe": {
+        "kind": "repeat-utf8",
+        "prefix": "{\"protocol\":\"webuitoolkit.cli/1\",\"padding\":\"",
+        "value": "a",
+        "count": 1048576,
+        "suffix": "\"}\n"
+      },
+      "expectedWireBytes": 1048623,
+      "expected": { "kind": "protocol-error", "reason": "framed-byte-limit" }
+    }
+  ]
+}

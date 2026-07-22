@@ -1,0 +1,288 @@
+using System;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using System.Threading;
+using System.Threading.Tasks;
+using WebUIToolkit.CommandLine;
+using WebUIToolkit.CommandLine.Processes;
+
+namespace WebUIToolkit.CommandLine.AotSmoke;
+
+internal static class Program
+{
+    private static async Task<int> Main()
+    {
+        CommandCatalog catalog = new CommandCatalogBuilder()
+            .Command<SmokeOptions, SmokeHandler, SmokeResult>(
+                "smoke",
+                command => command
+                    .BindWith(SmokeOptionsBinder.Instance)
+                    .CreateHandlerWith(SmokeHandlerFactory.Instance)
+                    .Produces(SmokeResultCodec.Instance))
+            .Build();
+
+        ParseOutcome parse = PortableCommandSyntaxAdapter.Instance.Parse(
+            catalog,
+            ["smoke"],
+            new ParseSettings(outputEnvironmentValue: "json"));
+
+        if (parse.Kind != ParseOutcomeKind.Invocation ||
+            parse.Invocation is null ||
+            parse.Invocation.OutputClassification.Mode != CommandOutputMode.Json ||
+            parse.Invocation.OutputClassification.Source != CommandOutputModeSource.Environment)
+        {
+            return 10;
+        }
+
+        var commandConsole = new BufferCommandConsole();
+        var request = new CommandExecutionRequest(
+            parse.Invocation,
+            commandConsole,
+            CultureInfo.InvariantCulture,
+            "aot-smoke-1");
+        var executor = new CommandExecutor(EmptyScopeFactory.Instance);
+        CommandExecutionResult execution = await executor.ExecuteAsync(
+            request,
+            new CommandOutputDispatcher()).ConfigureAwait(false);
+
+        if (!execution.IsSuccess || execution.ExitCode != CommandExitCodes.Success)
+        {
+            return 20;
+        }
+
+        string json = commandConsole.StandardOutput;
+        if (commandConsole.StandardError.Length != 0 || !ValidateEnvelope(json))
+        {
+            return 30;
+        }
+
+        Console.Out.Write(json);
+        return 0;
+    }
+
+    private static bool ValidateEnvelope(string json)
+    {
+        if (!json.EndsWith('\n') || json.Contains('\u001b'))
+        {
+            return false;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        int propertyCount = 0;
+        foreach (JsonProperty unused in root.EnumerateObject())
+        {
+            propertyCount++;
+        }
+
+        return propertyCount == 9 &&
+            root.GetProperty("protocol").GetString() == CliProtocol.Identity &&
+            root.GetProperty("requestId").GetString() == "aot-smoke-1" &&
+            root.GetProperty("command").GetString() == "smoke" &&
+            root.GetProperty("success").GetBoolean() &&
+            root.GetProperty("exitCode").GetInt32() == 0 &&
+            root.GetProperty("payloadType").GetString() == SmokeResultCodec.PayloadIdentity &&
+            root.GetProperty("payload").GetProperty("childExitCode").GetInt32() == 0 &&
+            root.GetProperty("fault").ValueKind == JsonValueKind.Null &&
+            root.GetProperty("diagnostics").GetArrayLength() == 0;
+    }
+}
+
+internal sealed class SmokeOptions;
+
+internal sealed class SmokeResult
+{
+    public SmokeResult(int childExitCode, string childState)
+    {
+        ChildExitCode = childExitCode;
+        ChildState = childState;
+    }
+
+    public int ChildExitCode { get; }
+
+    public string ChildState { get; }
+}
+
+internal sealed class SmokeOptionsBinder : ICommandOptionsBinder<SmokeOptions>
+{
+    internal static SmokeOptionsBinder Instance { get; } = new();
+
+    private SmokeOptionsBinder()
+    {
+    }
+
+    public ValueTask<CommandOutcome<SmokeOptions>> BindAsync(
+        ParsedInvocation invocation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(invocation);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(CommandOutcome.Success(new SmokeOptions()));
+    }
+}
+
+internal sealed class SmokeHandlerFactory : ICommandHandlerFactory<SmokeHandler>
+{
+    internal static SmokeHandlerFactory Instance { get; } = new();
+
+    private SmokeHandlerFactory()
+    {
+    }
+
+    public SmokeHandler Create(IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        return new SmokeHandler();
+    }
+}
+
+internal sealed class SmokeHandler : ICommandHandler<SmokeOptions, SmokeResult>
+{
+    public async ValueTask<CommandOutcome<SmokeResult>> ExecuteAsync(
+        SmokeOptions options,
+        CommandExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(context);
+
+        string fileName;
+        string[] arguments;
+        if (OperatingSystem.IsWindows())
+        {
+            fileName = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe";
+            arguments = ["/d", "/c", "exit", "0"];
+        }
+        else
+        {
+            fileName = "/bin/sh";
+            arguments = ["-c", "exit 0"];
+        }
+
+        var request = new ProcessRequest(
+            fileName,
+            arguments,
+            options: new ProcessExecutionOptions(
+                timeout: TimeSpan.FromSeconds(10),
+                standardOutputLimitBytes: 4096,
+                standardErrorLimitBytes: 4096));
+        var runner = new ProcessRunner(new LocalExecutablePolicy());
+        ProcessResult result = await runner.RunAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (result.State != ProcessState.Exited || result.ExitCode != 0)
+        {
+            CommandFault fault = result.Fault ??
+                new CommandFault("WUTCLI_SMOKE_CHILD_FAILED", "The bounded child process failed.");
+            return CommandOutcome.Failure<SmokeResult>(CommandExitCategory.CommandFailure, fault);
+        }
+
+        return CommandOutcome.Success(new SmokeResult(result.ExitCode.Value, result.State.ToString()));
+    }
+}
+
+internal sealed class SmokeResultCodec : ICommandResultCodec<SmokeResult>
+{
+    internal const string PayloadIdentity = "webuitoolkit.cli.smoke/1";
+
+    internal static SmokeResultCodec Instance { get; } = new();
+
+    private SmokeResultCodec()
+    {
+    }
+
+    public string PayloadType => PayloadIdentity;
+
+    public JsonTypeInfo<SmokeResult> TypeInfo => SmokeJsonContext.Default.SmokeResult;
+
+    public ValueTask WriteHumanAsync(
+        SmokeResult value,
+        ICommandConsole console,
+        CultureInfo culture,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(console);
+        ArgumentNullException.ThrowIfNull(culture);
+        return console.WriteOutAsync(
+            string.Create(
+                culture,
+                $"Child exited with {value.ChildExitCode}.\n").AsMemory(),
+            cancellationToken);
+    }
+}
+
+internal sealed class BufferCommandConsole : ICommandConsole
+{
+    private readonly StringBuilder standardOutput = new();
+    private readonly StringBuilder standardError = new();
+
+    public bool IsInteractive => false;
+
+    public bool IsInputRedirected => true;
+
+    public bool IsOutputRedirected => true;
+
+    public bool IsErrorRedirected => true;
+
+    public string StandardOutput => standardOutput.ToString();
+
+    public string StandardError => standardError.ToString();
+
+    public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<string?>(null);
+    }
+
+    public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        standardOutput.Append(value.Span);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        standardOutput.Append(Encoding.UTF8.GetString(value.Span));
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        standardError.Append(value.Span);
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class EmptyScopeFactory : ICommandExecutionScopeFactory
+{
+    internal static EmptyScopeFactory Instance { get; } = new();
+
+    private EmptyScopeFactory()
+    {
+    }
+
+    public ICommandExecutionScope CreateScope() => new EmptyScope();
+
+    private sealed class EmptyScope : ICommandExecutionScope, IServiceProvider
+    {
+        public IServiceProvider Services => this;
+
+        public object? GetService(Type serviceType)
+        {
+            ArgumentNullException.ThrowIfNull(serviceType);
+            return null;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(SmokeResult))]
+internal sealed partial class SmokeJsonContext : JsonSerializerContext;
