@@ -6,7 +6,7 @@ Implementation uses the parent namespace and package identity `WebUIToolkit`. Th
 
 The intended authoring model mirrors XAML-based MVVM: a framework component or compiled HTML template is the View, TypeScript or C# is optional code-behind, a C# ViewModel acts as the DataContext, and generated bindings connect properties, collections, validation, commands, and lifecycle without handwritten transport code.
 
-The current deliverables are standalone HTML plans. Open them directly in a browser; they have no external runtime dependencies and include print styling for PDF export:
+The repository now includes the Wave A contract/runtime baseline alongside the original standalone HTML plans. Open the plans directly in a browser; they have no external runtime dependencies and include print styling for PDF export:
 
 - [Overall implementation plan](./index.html)
 - [Maud-inspired typed template engine and HTMX plan](./template-engine.html)
@@ -58,4 +58,6 @@ When a project or dependency changes, refresh and commit lock files before verif
 
 ## Status
 
-Gate G0 bootstrap is complete. ADR 0004 records an explicit publication hold: no source license has been granted, and public visibility does not grant reuse or redistribution rights. API ownership, dependency licensing, package names, notices, SBOM linkage, and publication terms must be reviewed before reusable artifacts are published.
+Gate G1 is complete. Eight Wave A domains are integrated into a complete 24-project default solution, with executable contract suites, deterministic lock files, namespace/ownership enforcement, and Native-AOT feasibility evidence. Wave B kernel work is active in parallel tasks for MVVM runtime/compiler, web SDK, templates, Hosting, Flow, text resources, command line, collections, and dependency notices.
+
+ADR 0004 records an explicit publication hold: no source license has been granted, and public visibility does not grant reuse or redistribution rights. API ownership, dependency licensing, package names, notices, SBOM linkage, and publication terms must be reviewed before reusable artifacts are published.
