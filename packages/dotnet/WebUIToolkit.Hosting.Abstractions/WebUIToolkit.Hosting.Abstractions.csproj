@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.Hosting.Abstractions</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting</RootNamespace>
+    <PackageId>WebUIToolkit.Hosting.Abstractions</PackageId>
+    <Description>Dependency-neutral application hosting contracts for WebUIToolkit.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
