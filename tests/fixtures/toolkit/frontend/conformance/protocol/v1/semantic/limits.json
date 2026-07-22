@@ -11,6 +11,7 @@
     "maxSanitizedMessageUtf8Bytes": 256,
     "maxSessions": 16,
     "maxPendingRequestsPerSession": 64,
+    "maxDistinctAdmittedRequestsPerSessionLifetime": 65536,
     "maxSnapshotMembers": 4096,
     "maxPatchChanges": 1024,
     "maxCollectionItems": 10000,
@@ -22,5 +23,13 @@
     "code": "limit.exceeded",
     "consumerInvocations": 0,
     "revisionIncrements": 0
+  },
+  "lifetimeRequestBudget": {
+    "counts": ["open", "admittedSessionBoundControl", "admittedSessionBoundMutation"],
+    "throughDistinctRequest": 65536,
+    "afterFinalBudgetedRequestCompletes": "closeSession",
+    "laterRequest": "session.closed",
+    "laterRequestConsumerInvocations": 0,
+    "completedRequestIdEvictionAllowed": false
   }
 }

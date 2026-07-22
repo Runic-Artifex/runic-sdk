@@ -88,8 +88,8 @@ For a real-browser smoke, build both workspaces, serve the repository root over
 HTTP, and open `web/packages/conformance/test/browser-smoke.html`. The harness
 loads both ESM packages through an import map, fetches the committed corpus, and
 marks `#result[data-status="passed"]` with deterministic JSON. Without an
-application-specific lifecycle adapter the expected aggregate is 82 total,
-49 parser-backed passes, 0 failures, and 33 explicit skips.
+application-specific lifecycle adapter the expected aggregate is 92 total,
+55 parser-backed passes, 0 failures, and 37 explicit skips.
 
 `npm pack --dry-run` can inspect the package surface; only `dist`, this README,
 and npm package metadata are included. The repository root owns workspace

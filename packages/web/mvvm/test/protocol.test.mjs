@@ -263,9 +263,9 @@ test("keeps canonical snapshot member order compatible with the shared corpus", 
   const source = await readFile(new URL("valid/host-opened.json", corpusRoot), "utf8");
   const opened = parseHostMessage(source);
 
-  // The canonical corpus interleaves member kinds, so its IDs are not globally sorted.
-  // Preserve wire order until the protocol text and shared corpus agree on one rule.
-  assert.deepEqual(opened.payload.snapshot.members.map((member) => member.member), [1, 2, 3, 1]);
+  // Property validation immediately follows its property while the remaining
+  // members stay in ascending member-id order. Preserve that canonical wire order.
+  assert.deepEqual(opened.payload.snapshot.members.map((member) => member.member), [1, 1, 2, 3]);
 });
 
 test("bounds general strings, arrays, object properties, and property-name bytes", () => {

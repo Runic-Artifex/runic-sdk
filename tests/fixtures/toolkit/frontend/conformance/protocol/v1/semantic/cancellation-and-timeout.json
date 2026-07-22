@@ -6,6 +6,7 @@
       "targetFault": "request.cancelled",
       "cancelAccepted": true,
       "revisionIncrements": 0,
+      "lateCommitAllowed": false,
       "terminalOutcomeCount": 1
     },
     {
@@ -14,6 +15,7 @@
       "targetFault": null,
       "cancelAccepted": false,
       "revisionIncrements": 1,
+      "atomicCommitAndCompletedResultWon": true,
       "terminalOutcomeCount": 1
     },
     {
@@ -22,7 +24,42 @@
       "targetFault": "request.timeout",
       "cancelAccepted": false,
       "revisionIncrements": 0,
+      "lateCommitAllowed": false,
       "terminalOutcomeCount": 1
     }
-  ]
+  ],
+  "adapterCommitInvariant": {
+    "stageProjectedChangesUntilTerminalAct": true,
+    "atomicAct": ["mutationCommit", "completedBindingResultPublication"],
+    "completedResultContainsCompleteProjection": true,
+    "cancellationOrDeadlineBeforeCompletedResult": "discardOrRollbackStagedChanges",
+    "subsequentMutationOrCommitAllowed": false,
+    "directPrepublicationMutation": "consumerContractViolation",
+    "violatingLateCommittedResult": "discardAndQuarantineSession",
+    "violatingLateRevisionIncrements": 0,
+    "violatingLateWireMessages": 0
+  },
+  "cancelProtocol": {
+    "authenticatedDeduplicatedAndAdmitted": true,
+    "countsAgainst": ["pendingRequestBound", "lifetimeRequestBound"],
+    "targetLookupState": "bounded",
+    "repeatedCancelSignalWork": "bounded",
+    "unboundedTaskCallbackOrQueueEntryPerCancelAllowed": false,
+    "winnerDecisionAwaitsAdapterReturn": false,
+    "cancellationWinPublicationOrder": ["targetRequestCancelledFault", "cancelResult"],
+    "acceptedWhenCancellationWins": true,
+    "cancelResultRevision": "authoritativeRevisionAtSerializedWinnerDecision",
+    "cancelAdvancesRevision": false
+  },
+  "incompleteAdapterTerminal": {
+    "winningConditions": ["cancellation", "deadline"],
+    "markSessionUnusableBeforeTerminalPublication": true,
+    "admitFurtherConsumerWork": false,
+    "transition": "closedTeardown",
+    "awaitAdapterReturnBeforeTargetTerminal": false,
+    "lateReturnExceptionPatchOrCommit": "cleanupAndSanitizedContractViolationOnly",
+    "lateRevisionIncrements": 0,
+    "lateWireMessages": 0,
+    "canReviveSession": false
+  }
 }

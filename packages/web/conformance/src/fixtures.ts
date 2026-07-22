@@ -13,8 +13,8 @@ const MAX_FIXTURE_PATH_LENGTH = 1_024;
 const MAX_FIXTURE_ARRAY_ITEMS = 10_000;
 const MAX_FIXTURE_JSON_DEPTH = 64;
 const expectedSuites = Object.freeze([
-  ["protocol-schema", 27],
-  ["protocol-semantic", 8],
+  ["protocol-schema", 33],
+  ["protocol-semantic", 12],
   ["state-lifecycle", 8],
   ["command-lifecycle", 6],
   ["reconnect-lifecycle", 5],
@@ -122,7 +122,7 @@ export async function loadFixtureManifest(
     }
     totalCases += expected[1];
   }
-  if (totalCases !== 82) throw new TypeError("Fixture manifest must declare exactly 82 cases.");
+  if (totalCases !== 92) throw new TypeError("Fixture manifest must declare exactly 92 cases.");
   return value as unknown as ConformanceFixtureManifest;
 }
 

@@ -7,7 +7,7 @@ consume the same files without importing a particular SDK implementation.
 ## Contents
 
 - `protocol/v1/` is a byte-identical mirror of `protocol/mvvm/corpus/v1/`.
-  Its manifest contains 27 schema cases and eight protocol semantic cases.
+  Its manifest contains 33 schema cases and 12 protocol semantic cases.
 - `vectors/state-lifecycle.json` contains eight state, revision, patch,
   collection, command-state, and validation scenarios.
 - `vectors/command-lifecycle.json` contains six deterministic command,
@@ -18,7 +18,7 @@ consume the same files without importing a particular SDK implementation.
 - `manifest.json` is the machine-readable entry point. It records suite counts
   and a SHA-256 digest and byte length for every data file.
 
-The complete corpus has 82 cases: 35 upstream protocol cases and 47 web SDK
+The complete corpus has 92 cases: 45 upstream protocol cases and 47 web SDK
 cases. A lifecycle `scenario` may contain several ordered steps; the case total
 counts scenarios, not individual steps or assertions.
 

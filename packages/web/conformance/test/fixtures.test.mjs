@@ -27,16 +27,16 @@ test("the fixture entry point has stable complete totals", async () => {
   assert.equal(manifest.formatVersion, 1);
   assert.equal(manifest.protocolIdentity, "webuitoolkit.mvvm/1");
   assert.deepEqual(manifest.totals, {
-    cases: 82,
-    upstreamProtocolCases: 35,
+    cases: 92,
+    upstreamProtocolCases: 45,
     webSdkCases: 47,
-    integrityFiles: 40,
+    integrityFiles: 50,
   });
   assert.deepEqual(
     manifest.suites.map(({ id, caseCount }) => [id, caseCount]),
     [
-      ["protocol-schema", 27],
-      ["protocol-semantic", 8],
+      ["protocol-schema", 33],
+      ["protocol-semantic", 12],
       ["state-lifecycle", 8],
       ["command-lifecycle", 6],
       ["reconnect-lifecycle", 5],
@@ -61,10 +61,10 @@ test("every registered fixture has the committed byte length and SHA-256", async
 test("the web protocol corpus is a byte-identical mirror", async (t) => {
   const fixtureManifest = await readJson(new URL("manifest.json", fixtureRoot));
   const protocolEntries = fixtureManifest.files.filter(({ path }) => path.startsWith("protocol/v1/"));
-  assert.equal(protocolEntries.length, 36);
+  assert.equal(protocolEntries.length, 46);
   assert.equal(
     fixtureManifest.upstream.manifestSha256,
-    "88dda9c6928a7cf135f4c4f200bb4db1ffdaf1bce9607c588168ed1359014177",
+    "de9ca1ee0e16b67cfc75b9d9b35d47d41da741bbc91607080461fa0b5901579b",
   );
   for (const { path } of protocolEntries) {
     const relative = path.slice("protocol/v1/".length);
@@ -184,8 +184,8 @@ test("fixture document validators enforce identity, uniqueness, and structure", 
   const protocol = validateProtocolManifest(
     await readJson(new URL("protocol/v1/manifest.json", fixtureRoot)),
   );
-  assert.equal(protocol.cases.length, 27);
-  assert.equal(protocol.semanticCases.length, 8);
+  assert.equal(protocol.cases.length, 33);
+  assert.equal(protocol.semanticCases.length, 12);
 
   for (const name of ["state-lifecycle", "command-lifecycle", "reconnect-lifecycle"]) {
     const document = validateScenarioDocument(
@@ -214,7 +214,7 @@ test("fixture document validators enforce identity, uniqueness, and structure", 
   );
 });
 
-test("fixture manifests require the canonical six-suite 82-case inventory", async () => {
+test("fixture manifests require the canonical six-suite 92-case inventory", async () => {
   const canonical = await readJson(new URL("manifest.json", fixtureRoot));
   const mutations = [
     { ...structuredClone(canonical), formatVersion: 2 },

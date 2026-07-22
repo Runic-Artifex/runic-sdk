@@ -11,9 +11,9 @@
       "revision": 0,
       "members": [
         { "type": "property", "member": 1, "value": "ready" },
+        { "type": "validation", "member": 1, "errors": [] },
         { "type": "collection", "member": 2, "items": [1, 2, 3] },
-        { "type": "command", "member": 3, "canExecute": true, "isExecuting": false },
-        { "type": "validation", "member": 1, "errors": [] }
+        { "type": "command", "member": 3, "canExecute": true, "isExecuting": false }
       ]
     }
   }
