@@ -1,0 +1,85 @@
+<Project>
+  <PropertyGroup>
+    <WebUIToolkitMvvmBindingGeneratedDirectory Condition="'$(WebUIToolkitMvvmBindingGeneratedDirectory)' == ''">$(IntermediateOutputPath)WebUIToolkit.MVVM.Bindings</WebUIToolkitMvvmBindingGeneratedDirectory>
+    <WebUIToolkitMvvmBindingInputList>$([System.IO.Path]::Combine('$(WebUIToolkitMvvmBindingGeneratedDirectory)', 'inputs.rsp'))</WebUIToolkitMvvmBindingInputList>
+    <WebUIToolkitMvvmBindingStamp>$([System.IO.Path]::Combine('$(WebUIToolkitMvvmBindingGeneratedDirectory)', 'bindings.stamp'))</WebUIToolkitMvvmBindingStamp>
+    <WebUIToolkitMvvmBindingGeneratedFiles>$([System.IO.Path]::Combine('$(WebUIToolkitMvvmBindingGeneratedDirectory)', 'generated-files.list'))</WebUIToolkitMvvmBindingGeneratedFiles>
+    <WebUIToolkitMvvmBindingGeneratedArtifacts>$([System.IO.Path]::Combine('$(WebUIToolkitMvvmBindingGeneratedDirectory)', 'generated-artifacts.list'))</WebUIToolkitMvvmBindingGeneratedArtifacts>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(WebUIToolkitMvvmBindingEnabled)' == 'true'">
+    <WebUIToolkitMvvmBinding Include="@(None->WithMetadataValue('Extension', '$(WebUIToolkitMvvmBindingExtension)'))" />
+    <AdditionalFiles Include="@(WebUIToolkitMvvmBinding)" />
+  </ItemGroup>
+
+  <Target Name="WebUIToolkitMvvmValidateBuildPaths"
+          BeforeTargets="WebUIToolkitMvvmPrepareBindings"
+          Condition="'$(WebUIToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and ('@(WebUIToolkitMvvmBinding)' != '' or Exists('$(WebUIToolkitMvvmBindingGeneratedDirectory)'))">
+    <PropertyGroup>
+      <_WebUIToolkitMvvmIntermediateRootWithSeparator>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)', '$(MSBuildProjectDirectory)'))</_WebUIToolkitMvvmIntermediateRootWithSeparator>
+      <_WebUIToolkitMvvmIntermediateRoot>$([System.IO.Path]::TrimEndingDirectorySeparator('$(_WebUIToolkitMvvmIntermediateRootWithSeparator)'))</_WebUIToolkitMvvmIntermediateRoot>
+      <_WebUIToolkitMvvmGeneratedRoot>$([System.IO.Path]::GetFullPath('$(WebUIToolkitMvvmBindingGeneratedDirectory)', '$(MSBuildProjectDirectory)'))</_WebUIToolkitMvvmGeneratedRoot>
+      <_WebUIToolkitMvvmGeneratedRelative>$([System.IO.Path]::GetRelativePath('$(_WebUIToolkitMvvmIntermediateRoot)', '$(_WebUIToolkitMvvmGeneratedRoot)'))</_WebUIToolkitMvvmGeneratedRelative>
+      <WebUIToolkitMvvmBindingGeneratedDirectory>$(_WebUIToolkitMvvmGeneratedRoot)</WebUIToolkitMvvmBindingGeneratedDirectory>
+    </PropertyGroup>
+    <Error Condition="$([System.IO.Path]::IsPathRooted('$(_WebUIToolkitMvvmGeneratedRelative)')) or '$(_WebUIToolkitMvvmGeneratedRelative)' == '..' or $([System.String]::Copy('$(_WebUIToolkitMvvmGeneratedRelative)').StartsWith('..\')) or $([System.String]::Copy('$(_WebUIToolkitMvvmGeneratedRelative)').StartsWith('../'))"
+           Code="WUTMVVM0902"
+           Text="WebUIToolkitMvvmBindingGeneratedDirectory must be contained by IntermediateOutputPath." />
+  </Target>
+
+  <Target Name="WebUIToolkitMvvmPrepareBindings"
+          BeforeTargets="WebUIToolkitMvvmCompileBindings"
+          DependsOnTargets="WebUIToolkitMvvmValidateBuildPaths"
+          Condition="'$(WebUIToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(WebUIToolkitMvvmBinding)' != ''">
+    <MakeDir Directories="$(WebUIToolkitMvvmBindingGeneratedDirectory)" />
+    <WriteLinesToFile File="$(WebUIToolkitMvvmBindingInputList)"
+                      Lines="@(WebUIToolkitMvvmBinding->'%(FullPath)')"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true"
+                      Encoding="UTF-8" />
+  </Target>
+
+  <Target Name="WebUIToolkitMvvmCompileBindings"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="WebUIToolkitMvvmPrepareBindings"
+          Condition="'$(WebUIToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(WebUIToolkitMvvmBinding)' != ''">
+    <Error Condition="!Exists('$(WebUIToolkitMvvmBindingHostPath)')"
+           Code="WUTMVVM0901"
+           Text="The WebUIToolkit MVVM binding compiler host was not found at '$(WebUIToolkitMvvmBindingHostPath)'." />
+    <Exec Command="&quot;$(WebUIToolkitMvvmDotNetHost)&quot; exec &quot;$(WebUIToolkitMvvmBindingHostPath)&quot; --project-directory &quot;$(MSBuildProjectDirectory)&quot; --intermediate-directory &quot;$(_WebUIToolkitMvvmIntermediateRoot)&quot; --output-directory &quot;$(WebUIToolkitMvvmBindingGeneratedDirectory)&quot; --input-list &quot;$(WebUIToolkitMvvmBindingInputList)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="WebUIToolkitMvvmCollectGeneratedBindings"
+          BeforeTargets="CoreCompile"
+          AfterTargets="WebUIToolkitMvvmCompileBindings"
+          Condition="'$(WebUIToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(WebUIToolkitMvvmBinding)' != ''">
+    <ReadLinesFromFile File="$(WebUIToolkitMvvmBindingGeneratedFiles)">
+      <Output TaskParameter="Lines" ItemName="_WebUIToolkitMvvmGeneratedCompile" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(WebUIToolkitMvvmBindingGeneratedArtifacts)">
+      <Output TaskParameter="Lines" ItemName="_WebUIToolkitMvvmGeneratedArtifact" />
+    </ReadLinesFromFile>
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('%(_WebUIToolkitMvvmGeneratedCompile.Identity)', '^WebUIToolkit\.MVVM\.[0-9a-f]{64}\.g\.cs$'))"
+           Code="WUTMVVM0903"
+           Text="The generated source inventory contains an unsafe file name." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('%(_WebUIToolkitMvvmGeneratedArtifact.Identity)', '^(WebUIToolkit\.MVVM\.[0-9a-f]{64}\.g\.cs|webuitoolkit\.mvvm\.[0-9a-f]{64}\.contract\.json)$'))"
+           Code="WUTMVVM0903"
+           Text="The generated artifact inventory contains an unsafe file name." />
+    <ItemGroup>
+      <Compile Include="@(_WebUIToolkitMvvmGeneratedCompile->'$(WebUIToolkitMvvmBindingGeneratedDirectory)\%(Identity)')" />
+      <FileWrites Include="@(_WebUIToolkitMvvmGeneratedArtifact->'$(WebUIToolkitMvvmBindingGeneratedDirectory)\%(Identity)');$(WebUIToolkitMvvmBindingGeneratedFiles);$(WebUIToolkitMvvmBindingGeneratedArtifacts);$(WebUIToolkitMvvmBindingStamp);$(WebUIToolkitMvvmBindingInputList)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="WebUIToolkitMvvmCleanRemovedBindings"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="WebUIToolkitMvvmValidateBuildPaths"
+          Condition="'$(WebUIToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(WebUIToolkitMvvmBinding)' == '' and Exists('$(WebUIToolkitMvvmBindingGeneratedDirectory)')">
+    <Error Condition="!Exists('$(WebUIToolkitMvvmBindingHostPath)')"
+           Code="WUTMVVM0901"
+           Text="The WebUIToolkit MVVM binding compiler host was not found at '$(WebUIToolkitMvvmBindingHostPath)'." />
+    <Exec Command="&quot;$(WebUIToolkitMvvmDotNetHost)&quot; exec &quot;$(WebUIToolkitMvvmBindingHostPath)&quot; --clean --project-directory &quot;$(MSBuildProjectDirectory)&quot; --intermediate-directory &quot;$(_WebUIToolkitMvvmIntermediateRoot)&quot; --output-directory &quot;$(WebUIToolkitMvvmBindingGeneratedDirectory)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+</Project>

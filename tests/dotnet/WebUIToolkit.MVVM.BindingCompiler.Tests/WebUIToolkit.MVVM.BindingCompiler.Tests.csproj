@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>WebUIToolkit.MVVM.BindingCompiler.Tests</AssemblyName>
+    <RootNamespace>WebUIToolkit.MVVM.BindingCompiler.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\tools\WebUIToolkit.MVVM.BindingCompiler\WebUIToolkit.MVVM.BindingCompiler.csproj" />
+  </ItemGroup>
+</Project>
