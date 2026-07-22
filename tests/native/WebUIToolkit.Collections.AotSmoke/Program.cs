@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using WebUIToolkit.Collections;
 
@@ -18,6 +20,9 @@ internal static class Program
             RunAutoUpdate();
             RunComparerUpdate();
             RunKeyedUpdate();
+            RunPayloadIsolationAndOrdering();
+            RunResultSurface();
+            RunReentrancyAndExceptionSafety();
             Console.WriteLine("WebUIToolkit.Collections Native-AOT smoke: PASS");
             return 0;
         }
@@ -146,12 +151,113 @@ internal static class Program
         AssertSequence(actions, [NotifyCollectionChangedAction.Reset], "Keyed reset action");
     }
 
+    private static void RunPayloadIsolationAndOrdering()
+    {
+        var collection = new ObservableRangeCollection<int>();
+        var trace = new List<string>();
+        IList? payload = null;
+        ((INotifyPropertyChanged)collection).PropertyChanged += (_, eventArgs) => trace.Add(eventArgs.PropertyName!);
+        collection.CollectionChanged += (_, eventArgs) =>
+        {
+            trace.Add(eventArgs.Action.ToString());
+            payload = eventArgs.NewItems;
+        };
+
+        int[] source = [10, 11];
+        collection.AddRange(source);
+        source[0] = 99;
+
+        AssertSequence(trace, ["Count", "Item[]", "Add"], "notification ordering");
+        IList capturedPayload = payload ??
+            throw new InvalidOperationException("AddRange did not expose its copied notification payload.");
+        Assert(capturedPayload.IsReadOnly, "AddRange notification payload was mutable.");
+        AssertSequence(capturedPayload.Cast<int>(), [10, 11], "notification payload isolation");
+        AssertThrows<NotSupportedException>(() => capturedPayload[0] = 42, "notification payload mutation");
+    }
+
+    private static void RunResultSurface()
+    {
+        var unchanged = new ObservableRangeCollection<int>([1, 2, 3]);
+        int notifications = 0;
+        unchanged.CollectionChanged += (_, _) => notifications++;
+
+        CollectionUpdateResult noOp = unchanged.UpdateTo([1, 2, 3]);
+        Assert(!noOp.Changed, "No-op UpdateTo reported a change.");
+        Assert(noOp == default, "No-op UpdateTo returned nonzero counters.");
+        Assert(notifications == 0, "No-op UpdateTo emitted a notification.");
+
+        var result = new CollectionUpdateResult(
+            Added: 1,
+            Removed: 2,
+            Moved: 3,
+            Replaced: 4,
+            NotificationCount: 5,
+            UsedReset: true);
+        Assert(
+            result.Changed && result.Added == 1 && result.Removed == 2 && result.Moved == 3 &&
+            result.Replaced == 4 && result.NotificationCount == 5 && result.UsedReset,
+            "CollectionUpdateResult public surface was inconsistent.");
+    }
+
+    private static void RunReentrancyAndExceptionSafety()
+    {
+        var reentrant = new ObservableRangeCollection<int>();
+        bool rejected = false;
+        reentrant.CollectionChanged += (_, _) =>
+        {
+            try
+            {
+                reentrant.Add(99);
+            }
+            catch (InvalidOperationException)
+            {
+                rejected = true;
+            }
+        };
+
+        reentrant.AddRange([1, 2]);
+        Assert(rejected, "A notification callback was allowed to mutate reentrantly.");
+        AssertSequence(reentrant, [1, 2], "reentrancy rejection content");
+
+        var exceptionSafe = new ObservableRangeCollection<int>([7, 8]);
+        AssertThrows<InvalidOperationException>(
+            () => exceptionSafe.ReplaceRange(0, 1, ThrowingSequence()),
+            "throwing source materialization");
+        AssertSequence(exceptionSafe, [7, 8], "pre-mutation exception safety");
+
+        var subscriberFailure = new ObservableRangeCollection<int>();
+        subscriberFailure.CollectionChanged += (_, _) => throw new TestException();
+        AssertThrows<TestException>(() => subscriberFailure.AddRange([3, 4]), "subscriber exception propagation");
+        AssertSequence(subscriberFailure, [3, 4], "subscriber exception coherence");
+    }
+
+    private static IEnumerable<int> ThrowingSequence()
+    {
+        yield return 9;
+        throw new InvalidOperationException("Expected smoke-test source failure.");
+    }
+
     private static void Assert(bool condition, string message)
     {
         if (!condition)
         {
             throw new InvalidOperationException(message);
         }
+    }
+
+    private static void AssertThrows<TException>(Action action, string operation)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"{operation} did not throw {typeof(TException).Name}.");
     }
 
     private static void AssertSequence<T>(IEnumerable<T> actual, IEnumerable<T> expected, string operation)
@@ -175,4 +281,6 @@ internal static class Program
 
         public int GetHashCode(Item obj) => obj.Key;
     }
+
+    private sealed class TestException : Exception;
 }

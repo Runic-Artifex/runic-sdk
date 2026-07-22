@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -9,33 +10,70 @@ namespace WebUIToolkit.Collections.Benchmarks;
 
 internal static class Program
 {
+    private const int WarmUpPasses = 3;
+
     private static readonly int[] FullSizes = [10, 100, 1_000, 10_000];
     private static readonly int[] QuickSizes = [10, 100, 1_000];
     private static readonly int[] ChurnPercentages = [1, 10, 50];
 
     public static int Main(string[] args)
     {
-        if (args.Length > 1 || (args.Length == 1 && args[0] is not "--quick" and not "--full"))
+        if (!TryParseMode(args, out ExecutionMode mode))
         {
-            Console.Error.WriteLine("Usage: WebUIToolkit.Collections.Benchmarks [--quick|--full]");
+            Console.Error.WriteLine("Usage: WebUIToolkit.Collections.Benchmarks [--quick|--full|--gate]");
             return 2;
         }
 
-        bool quick = args.Length == 0 || args[0] == "--quick";
-        int[] sizes = quick ? QuickSizes : FullSizes;
         WarmUp();
-        Console.WriteLine("scenario,policy,size,churn_percent,repetitions,elapsed_us,allocated_bytes,events,retained_identities");
+        int[] sizes = mode == ExecutionMode.Quick ? QuickSizes : FullSizes;
+        var results = new List<BenchmarkResult>(sizes.Length * 20);
+
+        Console.WriteLine(BenchmarkResult.CsvHeader);
         foreach (int size in sizes)
         {
-            int repetitions = quick ? 3 : GetFullRepetitions(size);
-            RunRangeMatrix(size, repetitions);
+            int repetitions = mode switch
+            {
+                ExecutionMode.Quick => 3,
+                ExecutionMode.Full => GetFullRepetitions(size),
+                _ => 1,
+            };
+
+            RunRangeMatrix(size, repetitions, results);
             foreach (int churn in ChurnPercentages)
             {
-                RunReconciliationMatrix(size, churn, repetitions);
+                RunReconciliationMatrix(size, churn, repetitions, results);
             }
         }
 
-        return 0;
+        if (mode != ExecutionMode.Gate)
+        {
+            return 0;
+        }
+
+        return EvaluateGate(results);
+    }
+
+    private static bool TryParseMode(string[] args, out ExecutionMode mode)
+    {
+        mode = ExecutionMode.Quick;
+        if (args.Length == 0 || (args.Length == 1 && args[0] == "--quick"))
+        {
+            return true;
+        }
+
+        if (args.Length == 1 && args[0] == "--full")
+        {
+            mode = ExecutionMode.Full;
+            return true;
+        }
+
+        if (args.Length == 1 && args[0] == "--gate")
+        {
+            mode = ExecutionMode.Gate;
+            return true;
+        }
+
+        return false;
     }
 
     private static int GetFullRepetitions(int size) => size switch
@@ -48,47 +86,74 @@ internal static class Program
 
     private static void WarmUp()
     {
-        var range = new ObservableRangeCollection<Item>(CreateItems(16, 0));
-        range.AddRange(CreateItems(2, 100));
-        range.RemoveRange(0, 2);
-        range.ReplaceRange(0, 2, CreateItems(2, 200));
-        range.MoveRange(0, 2, range.Count - 2);
+        for (int pass = 0; pass < WarmUpPasses; pass++)
+        {
+            foreach (RangeNotificationMode notificationMode in new[]
+                     {
+                         RangeNotificationMode.Range,
+                         RangeNotificationMode.Reset,
+                     })
+            {
+                var range = new ObservableRangeCollection<Item>(
+                    CreateItems(32, pass * 1_000),
+                    new ObservableRangeCollectionOptions { RangeNotifications = notificationMode });
+                range.CollectionChanged += CountNotification;
+                range.AddRange(CreateItems(4, 100_000));
+                range.RemoveRange(2, 4);
+                range.ReplaceRange(2, 4, CreateItems(4, 200_000));
+                range.MoveRange(0, 4, range.Count - 4);
+            }
 
-        Item[] keyedTarget = CreateKeyedTarget(range.ToSnapshot(), 10);
-        range.UpdateTo(
-            keyedTarget,
-            static item => item.Key,
-            resolveMatch: static (existing, _) => existing,
-            options: CreateUpdateOptions(UpdateNotificationMode.Granular));
+            foreach (UpdateNotificationMode notificationMode in new[]
+                     {
+                         UpdateNotificationMode.Auto,
+                         UpdateNotificationMode.Granular,
+                         UpdateNotificationMode.Reset,
+                     })
+            {
+                var keyed = new ObservableRangeCollection<Item>(CreateItems(32, 0));
+                keyed.CollectionChanged += CountNotification;
+                keyed.UpdateTo(
+                    CreateKeyedTarget(keyed.ToSnapshot(), 10),
+                    static item => item.Key,
+                    resolveMatch: static (existing, _) => existing,
+                    options: CreateUpdateOptions(notificationMode));
 
-        Item[] duplicateTarget = CreateDuplicateTarget(range.ToSnapshot(), 10);
-        range.UpdateTo(
-            duplicateTarget,
-            new GroupComparer(),
-            resolveMatch: static (existing, _) => existing,
-            options: CreateUpdateOptions(UpdateNotificationMode.Reset));
+                var duplicate = new ObservableRangeCollection<Item>(CreateItems(32, 0));
+                duplicate.CollectionChanged += CountNotification;
+                duplicate.UpdateTo(
+                    CreateDuplicateTarget(duplicate.ToSnapshot(), 10),
+                    new GroupComparer(),
+                    resolveMatch: static (existing, _) => existing,
+                    options: CreateUpdateOptions(notificationMode));
+            }
+        }
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
     }
 
-    private static void RunRangeMatrix(int size, int repetitions)
+    private static void CountNotification(object? sender, NotifyCollectionChangedEventArgs args)
+    {
+    }
+
+    private static void RunRangeMatrix(int size, int repetitions, ICollection<BenchmarkResult> results)
     {
         foreach (RangeNotificationMode mode in new[] { RangeNotificationMode.Range, RangeNotificationMode.Reset })
         {
-            MeasureRange("range-append", mode, size, repetitions, static (collection, count) =>
-                collection.AddRange(CreateItems(count, 1_000_000)));
-            MeasureRange("range-remove", mode, size, repetitions, static (collection, count) =>
-                collection.RemoveRange((collection.Count - count) / 2, count));
-            MeasureRange("range-replace", mode, size, repetitions, static (collection, count) =>
-                collection.ReplaceRange((collection.Count - count) / 2, count, CreateItems(count, 2_000_000)));
-            MeasureRange("range-move", mode, size, repetitions, static (collection, count) =>
-                collection.MoveRange(0, count, collection.Count - count));
+            AddResult(results, MeasureRange("range-append", mode, size, repetitions, static (collection, count) =>
+                collection.AddRange(CreateItems(count, 1_000_000))));
+            AddResult(results, MeasureRange("range-remove", mode, size, repetitions, static (collection, count) =>
+                collection.RemoveRange((collection.Count - count) / 2, count)));
+            AddResult(results, MeasureRange("range-replace", mode, size, repetitions, static (collection, count) =>
+                collection.ReplaceRange((collection.Count - count) / 2, count, CreateItems(count, 2_000_000))));
+            AddResult(results, MeasureRange("range-move", mode, size, repetitions, static (collection, count) =>
+                collection.MoveRange(0, count, collection.Count - count)));
         }
     }
 
-    private static void MeasureRange(
+    private static BenchmarkResult MeasureRange(
         string scenario,
         RangeNotificationMode mode,
         int size,
@@ -118,19 +183,23 @@ internal static class Program
             retained += CountRetained(initial, collection);
         }
 
-        WriteResult(scenario, mode.ToString(), size, null, repetitions, elapsedTicks, allocatedBytes, events, retained);
+        return new BenchmarkResult(scenario, mode.ToString(), size, null, repetitions, elapsedTicks, allocatedBytes, events, retained);
     }
 
-    private static void RunReconciliationMatrix(int size, int churnPercent, int repetitions)
+    private static void RunReconciliationMatrix(
+        int size,
+        int churnPercent,
+        int repetitions,
+        ICollection<BenchmarkResult> results)
     {
         foreach (UpdateNotificationMode mode in new[] { UpdateNotificationMode.Granular, UpdateNotificationMode.Reset })
         {
-            MeasureKeyed(size, churnPercent, repetitions, mode);
-            MeasureDuplicateComparer(size, churnPercent, repetitions, mode);
+            AddResult(results, MeasureKeyed(size, churnPercent, repetitions, mode));
+            AddResult(results, MeasureDuplicateComparer(size, churnPercent, repetitions, mode));
         }
     }
 
-    private static void MeasureKeyed(int size, int churnPercent, int repetitions, UpdateNotificationMode mode)
+    private static BenchmarkResult MeasureKeyed(int size, int churnPercent, int repetitions, UpdateNotificationMode mode)
     {
         long elapsedTicks = 0;
         long allocatedBytes = 0;
@@ -158,10 +227,23 @@ internal static class Program
             retained += CountRetained(initial, collection);
         }
 
-        WriteResult("reconcile-keyed", mode.ToString(), size, churnPercent, repetitions, elapsedTicks, allocatedBytes, events, retained);
+        return new BenchmarkResult(
+            "reconcile-keyed",
+            mode.ToString(),
+            size,
+            churnPercent,
+            repetitions,
+            elapsedTicks,
+            allocatedBytes,
+            events,
+            retained);
     }
 
-    private static void MeasureDuplicateComparer(int size, int churnPercent, int repetitions, UpdateNotificationMode mode)
+    private static BenchmarkResult MeasureDuplicateComparer(
+        int size,
+        int churnPercent,
+        int repetitions,
+        UpdateNotificationMode mode)
     {
         long elapsedTicks = 0;
         long allocatedBytes = 0;
@@ -190,8 +272,115 @@ internal static class Program
             retained += CountRetained(initial, collection);
         }
 
-        WriteResult("reconcile-duplicate", mode.ToString(), size, churnPercent, repetitions, elapsedTicks, allocatedBytes, events, retained);
+        return new BenchmarkResult(
+            "reconcile-duplicate",
+            mode.ToString(),
+            size,
+            churnPercent,
+            repetitions,
+            elapsedTicks,
+            allocatedBytes,
+            events,
+            retained);
     }
+
+    private static void AddResult(ICollection<BenchmarkResult> results, BenchmarkResult result)
+    {
+        results.Add(result);
+        Console.WriteLine(result.ToCsv());
+    }
+
+    private static int EvaluateGate(IReadOnlyCollection<BenchmarkResult> results)
+    {
+        var failures = new List<string>();
+        foreach (BenchmarkResult result in results)
+        {
+            int expectedEvents = GetExpectedEvents(result);
+            if (result.Events != expectedEvents)
+            {
+                failures.Add($"{result.Identity}: events {result.Events}, expected {expectedEvents}");
+            }
+
+            int expectedRetained = GetExpectedRetainedIdentities(result);
+            if (result.RetainedIdentities != expectedRetained)
+            {
+                failures.Add($"{result.Identity}: retained identities {result.RetainedIdentities}, expected {expectedRetained}");
+            }
+
+            long allocationCeiling = checked(GetAllocationCeilingPerOperation(result) * result.Repetitions);
+            if (result.AllocatedBytes > allocationCeiling)
+            {
+                failures.Add($"{result.Identity}: allocated {result.AllocatedBytes} bytes, ceiling {allocationCeiling}");
+            }
+        }
+
+        if (results.Count != FullSizes.Length * (8 + (ChurnPercentages.Length * 4)))
+        {
+            failures.Add($"matrix: produced {results.Count} rows, expected 80");
+        }
+
+        if (failures.Count == 0)
+        {
+            Console.Error.WriteLine($"GATE PASS: {results.Count} rows satisfied performance-gate-v1.");
+            return 0;
+        }
+
+        Console.Error.WriteLine($"GATE FAIL: {failures.Count} performance-gate-v1 violation(s).");
+        foreach (string failure in failures)
+        {
+            Console.Error.WriteLine($"  {failure}");
+        }
+
+        return 1;
+    }
+
+    private static int GetExpectedEvents(BenchmarkResult result)
+    {
+        if (result.Scenario.StartsWith("range-", StringComparison.Ordinal))
+        {
+            return result.Repetitions;
+        }
+
+        if (result.Policy == nameof(UpdateNotificationMode.Reset))
+        {
+            return result.Repetitions;
+        }
+
+        int churnCount = GetChurnCount(result.Size, result.ChurnPercent ?? throw new InvalidOperationException());
+        return checked(2 * churnCount * result.Repetitions);
+    }
+
+    private static int GetExpectedRetainedIdentities(BenchmarkResult result)
+    {
+        int retainedPerOperation;
+        if (result.Scenario is "range-append" or "range-move")
+        {
+            retainedPerOperation = result.Size;
+        }
+        else if (result.Scenario is "range-remove" or "range-replace")
+        {
+            retainedPerOperation = result.Size - Math.Max(1, result.Size / 10);
+        }
+        else
+        {
+            retainedPerOperation = result.Size - GetChurnCount(
+                result.Size,
+                result.ChurnPercent ?? throw new InvalidOperationException());
+        }
+
+        return checked(retainedPerOperation * result.Repetitions);
+    }
+
+    private static long GetAllocationCeilingPerOperation(BenchmarkResult result) => result.Scenario switch
+    {
+        "range-append" => checked(65_536L + (256L * result.Size)),
+        "range-remove" or "range-move" => checked(65_536L + (64L * result.Size)),
+        "range-replace" => checked(65_536L + (128L * result.Size)),
+        "reconcile-keyed" or "reconcile-duplicate" => checked(262_144L + (1_024L * result.Size)),
+        _ => throw new InvalidOperationException($"No allocation ceiling is defined for '{result.Scenario}'."),
+    };
+
+    private static int GetChurnCount(int size, int churnPercent) => Math.Max(1, checked(size * churnPercent / 100));
 
     private static CollectionUpdateOptions CreateUpdateOptions(UpdateNotificationMode mode) => new()
     {
@@ -214,7 +403,7 @@ internal static class Program
 
     private static Item[] CreateKeyedTarget(Item[] initial, int churnPercent)
     {
-        int churnCount = Math.Max(1, checked(initial.Length * churnPercent / 100));
+        int churnCount = GetChurnCount(initial.Length, churnPercent);
         var target = new Item[initial.Length];
         int retainedCount = initial.Length - churnCount;
         for (int index = 0; index < retainedCount; index++)
@@ -233,7 +422,7 @@ internal static class Program
 
     private static Item[] CreateDuplicateTarget(Item[] initial, int churnPercent)
     {
-        int churnCount = Math.Max(1, checked(initial.Length * churnPercent / 100));
+        int churnCount = GetChurnCount(initial.Length, churnPercent);
         var target = new Item[initial.Length];
         int retainedCount = initial.Length - churnCount;
         for (int index = 0; index < retainedCount; index++)
@@ -288,28 +477,45 @@ internal static class Program
         }
     }
 
-    private static void WriteResult(
-        string scenario,
-        string policy,
-        int size,
-        int? churnPercent,
-        int repetitions,
-        long elapsedTicks,
-        long allocatedBytes,
-        int events,
-        int retained)
+    private enum ExecutionMode
     {
-        double elapsedMicroseconds = elapsedTicks * 1_000_000d / Stopwatch.Frequency;
-        Console.WriteLine(string.Join(",",
-            scenario,
-            policy,
-            size.ToString(CultureInfo.InvariantCulture),
-            churnPercent?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-            repetitions.ToString(CultureInfo.InvariantCulture),
-            elapsedMicroseconds.ToString("F1", CultureInfo.InvariantCulture),
-            allocatedBytes.ToString(CultureInfo.InvariantCulture),
-            events.ToString(CultureInfo.InvariantCulture),
-            retained.ToString(CultureInfo.InvariantCulture)));
+        Quick,
+        Full,
+        Gate,
+    }
+
+    private sealed record BenchmarkResult(
+        string Scenario,
+        string Policy,
+        int Size,
+        int? ChurnPercent,
+        int Repetitions,
+        long ElapsedTicks,
+        long AllocatedBytes,
+        int Events,
+        int RetainedIdentities)
+    {
+        public const string CsvHeader =
+            "scenario,policy,size,churn_percent,repetitions,elapsed_us,allocated_bytes,events,retained_identities";
+
+        public string Identity => string.Create(
+            CultureInfo.InvariantCulture,
+            $"{Scenario}/{Policy}/size={Size}/churn={ChurnPercent?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
+
+        public string ToCsv()
+        {
+            double elapsedMicroseconds = ElapsedTicks * 1_000_000d / Stopwatch.Frequency;
+            return string.Join(",",
+                Scenario,
+                Policy,
+                Size.ToString(CultureInfo.InvariantCulture),
+                ChurnPercent?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                Repetitions.ToString(CultureInfo.InvariantCulture),
+                elapsedMicroseconds.ToString("F1", CultureInfo.InvariantCulture),
+                AllocatedBytes.ToString(CultureInfo.InvariantCulture),
+                Events.ToString(CultureInfo.InvariantCulture),
+                RetainedIdentities.ToString(CultureInfo.InvariantCulture));
+        }
     }
 
     private sealed class Item(int key, int group)

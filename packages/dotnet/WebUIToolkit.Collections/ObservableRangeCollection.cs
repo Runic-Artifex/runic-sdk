@@ -125,11 +125,7 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
             }
 
             RaiseCountAndIndexerChanged();
-            RaiseRangeOrReset(
-                new NotifyCollectionChangedEventArgs(
-                    NotifyCollectionChangedAction.Add,
-                    ToReadOnlyPayload(buffer),
-                    index));
+            RaiseAddOrReset(buffer, index);
         }
     }
 
@@ -166,11 +162,7 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
             }
 
             RaiseCountAndIndexerChanged();
-            RaiseRangeOrReset(
-                new NotifyCollectionChangedEventArgs(
-                    NotifyCollectionChangedAction.Remove,
-                    ToReadOnlyPayload(removedItems),
-                    index));
+            RaiseRemoveOrReset(removedItems, index);
         }
     }
 
@@ -210,22 +202,19 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
                 return;
             }
 
-            T[] removedItems = CopyRange(index, count);
-
             if (count == buffer.Count)
             {
+                T[]? removedItems = _rangeNotificationMode == RangeNotificationMode.Range
+                    ? CopyRange(index, count)
+                    : null;
+
                 for (int offset = 0; offset < buffer.Count; offset++)
                 {
                     Items[index + offset] = buffer[offset];
                 }
 
                 OnPropertyChanged(IndexerPropertyChangedEventArgs);
-                RaiseRangeOrReset(
-                    new NotifyCollectionChangedEventArgs(
-                        NotifyCollectionChangedAction.Replace,
-                        ToReadOnlyPayload(buffer),
-                        ToReadOnlyPayload(removedItems),
-                        index));
+                RaiseReplaceOrReset(buffer, removedItems, index);
                 return;
             }
 
@@ -277,12 +266,7 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
             }
 
             OnPropertyChanged(IndexerPropertyChangedEventArgs);
-            RaiseRangeOrReset(
-                new NotifyCollectionChangedEventArgs(
-                    NotifyCollectionChangedAction.Move,
-                    ToReadOnlyPayload(movedItems),
-                    newIndex,
-                    oldIndex));
+            RaiseMoveOrReset(movedItems, newIndex, oldIndex);
         }
     }
 
@@ -379,7 +363,7 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
 
     private static ReadOnlyCollection<T> ToReadOnlyPayload(List<T> items)
     {
-        return Array.AsReadOnly(items.ToArray());
+        return items.AsReadOnly();
     }
 
     private static ReadOnlyCollection<T> ToReadOnlyPayload(T[] items)
@@ -406,11 +390,7 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
         }
 
         RaiseCountAndIndexerChanged();
-        RaiseRangeOrReset(
-            new NotifyCollectionChangedEventArgs(
-                NotifyCollectionChangedAction.Add,
-                ToReadOnlyPayload(buffer),
-                index));
+        RaiseAddOrReset(buffer, index);
     }
 
     private void RemoveBufferedRange(int index, int count)
@@ -428,11 +408,7 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
         }
 
         RaiseCountAndIndexerChanged();
-        RaiseRangeOrReset(
-            new NotifyCollectionChangedEventArgs(
-                NotifyCollectionChangedAction.Remove,
-                ToReadOnlyPayload(removedItems),
-                index));
+        RaiseRemoveOrReset(removedItems, index);
     }
 
     private void ReplaceUnequalRange(int index, int count, List<T> replacement)
@@ -533,12 +509,66 @@ public sealed partial class ObservableRangeCollection<T> : ObservableCollection<
         OnPropertyChanged(IndexerPropertyChangedEventArgs);
     }
 
-    private void RaiseRangeOrReset(NotifyCollectionChangedEventArgs rangeEvent)
+    private void RaiseAddOrReset(List<T> addedItems, int index)
     {
+        if (_rangeNotificationMode == RangeNotificationMode.Reset)
+        {
+            OnCollectionChanged(ResetCollectionChangedEventArgs);
+            return;
+        }
+
         OnCollectionChanged(
-            _rangeNotificationMode == RangeNotificationMode.Range
-                ? rangeEvent
-                : ResetCollectionChangedEventArgs);
+            new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Add,
+                ToReadOnlyPayload(addedItems),
+                index));
+    }
+
+    private void RaiseRemoveOrReset(T[] removedItems, int index)
+    {
+        if (_rangeNotificationMode == RangeNotificationMode.Reset)
+        {
+            OnCollectionChanged(ResetCollectionChangedEventArgs);
+            return;
+        }
+
+        OnCollectionChanged(
+            new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Remove,
+                ToReadOnlyPayload(removedItems),
+                index));
+    }
+
+    private void RaiseReplaceOrReset(List<T> addedItems, T[]? removedItems, int index)
+    {
+        if (_rangeNotificationMode == RangeNotificationMode.Reset)
+        {
+            OnCollectionChanged(ResetCollectionChangedEventArgs);
+            return;
+        }
+
+        OnCollectionChanged(
+            new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Replace,
+                ToReadOnlyPayload(addedItems),
+                ToReadOnlyPayload(removedItems!),
+                index));
+    }
+
+    private void RaiseMoveOrReset(T[] movedItems, int newIndex, int oldIndex)
+    {
+        if (_rangeNotificationMode == RangeNotificationMode.Reset)
+        {
+            OnCollectionChanged(ResetCollectionChangedEventArgs);
+            return;
+        }
+
+        OnCollectionChanged(
+            new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Move,
+                ToReadOnlyPayload(movedItems),
+                newIndex,
+                oldIndex));
     }
 
     private readonly record struct Initialization(
