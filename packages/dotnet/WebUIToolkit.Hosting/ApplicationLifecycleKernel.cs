@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,12 +16,15 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
     private readonly object _secondarySync = new();
     private readonly ApplicationLifecycleDescriptor _descriptor;
     private readonly TimeProvider _timeProvider;
+    private readonly LifecycleEventPublisher _events;
     private readonly ApplicationLifecycleStateMachine _stateMachine = new();
     private readonly TaskCompletionSource<ApplicationRunResult> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly LifecycleStopController _stopController;
     private readonly List<IApplicationStartupParticipant> _startedParticipants = [];
     private readonly List<ApplicationFailure> _secondaryFailures = [];
+    private readonly ConditionalWeakTable<ApplicationRunResult, ApplicationFailure>
+        _deferredExitPolicyFailures = new();
     private ShutdownDeadline? _shutdownDeadline;
     private Outcome? _outcome;
     private Task? _disposeTask;
@@ -34,10 +38,28 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
     public ApplicationLifecycleKernel(
         ApplicationLifecycleDescriptor descriptor,
         TimeProvider? timeProvider = null)
+        : this(descriptor, timeProvider, lifecycleEventSink: null)
+    {
+    }
+
+    /// <summary>Initializes a lifecycle kernel with structured event delivery.</summary>
+    /// <param name="descriptor">The immutable lifecycle collaborators.</param>
+    /// <param name="timeProvider">The clock used for every bounded wait and event timestamp.</param>
+    /// <param name="lifecycleEventSink">
+    /// The optional sink that receives ordered, sanitized lifecycle events. Sink failures are ignored.
+    /// </param>
+    public ApplicationLifecycleKernel(
+        ApplicationLifecycleDescriptor descriptor,
+        TimeProvider? timeProvider,
+        IApplicationLifecycleEventSink? lifecycleEventSink)
     {
         _descriptor = descriptor ?? throw new ArgumentNullException(nameof(descriptor));
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _stopController = new LifecycleStopController(_completion.Task, StartShutdownDeadline);
+        _events = new LifecycleEventPublisher(_timeProvider, lifecycleEventSink);
+        _stopController = new LifecycleStopController(
+            _completion.Task,
+            StartShutdownDeadline,
+            _events.StopRequested);
     }
 
     /// <summary>Gets the current serialized lifecycle state.</summary>
@@ -115,6 +137,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
 
         try
         {
+            _events.LaunchSelected(decision.Kind);
             SetState(ApplicationState.Validating);
             await ValidateAsync(decision, lifecycleCancellation.Token).ConfigureAwait(false);
 
@@ -177,6 +200,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
             ApplicationRunResult result = _outcome!.Result;
             SetState(result.IsSuccess ? ApplicationState.Stopped : ApplicationState.Faulted);
             _completion.TrySetResult(result);
+            _events.Completion(result, GetSecondaryFailureCount());
         }
 
         return await _completion.Task.ConfigureAwait(false);
@@ -247,6 +271,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         }
         catch (TimeoutException exception)
         {
+            _events.Timeout(ApplicationLifecycleTimeoutKind.Startup);
             CapturePrimary(CreateFailureResult(CreateFailure(
                 ApplicationFailureCategory.HostStartup,
                 ApplicationFailureCodes.StartupTimeout,
@@ -284,6 +309,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
             }
             catch (TimeoutException exception)
             {
+                _events.Timeout(ApplicationLifecycleTimeoutKind.Startup);
                 CapturePrimary(CreateFailureResult(CreateFailure(
                     ApplicationFailureCategory.HostStartup,
                     ApplicationFailureCodes.StartupTimeout,
@@ -357,7 +383,10 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         if (winner == runnerTask)
         {
             await CaptureRunnerResultAsync(decision.Kind, runnerTask, externalCancellation).ConfigureAwait(false);
-            _stopController.RequestStop(StopReason.ModeCompleted);
+            _stopController.RequestStop(
+                _outcome!.Result.Failure is null
+                    ? StopReason.ModeCompleted
+                    : StopReason.FatalFailure);
             return;
         }
 
@@ -383,6 +412,11 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         }
         catch (TimeoutException exception)
         {
+            _events.Timeout(
+                limitedByTotal
+                    ? ApplicationLifecycleTimeoutKind.TotalShutdown
+                    : ApplicationLifecycleTimeoutKind.ModeStop,
+                limitedByTotal);
             RecordCleanupFailure(CreateFailure(
                 ApplicationFailureCategory.Shutdown,
                 limitedByTotal
@@ -460,6 +494,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
             await RunCleanupAsync(
                 participant.StopAsync,
                 _descriptor.TimeoutSnapshot.ParticipantStopTimeout,
+                ApplicationLifecycleTimeoutKind.ParticipantStop,
                 ApplicationFailureCodes.ParticipantStop,
                 "An application startup participant failed to stop.",
                 deadline).ConfigureAwait(false);
@@ -470,6 +505,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
             await RunCleanupAsync(
                 _descriptor.Host.StopAsync,
                 _descriptor.TimeoutSnapshot.HostStopTimeout,
+                ApplicationLifecycleTimeoutKind.HostStop,
                 ApplicationFailureCodes.HostStop,
                 "The application host failed to stop.",
                 deadline).ConfigureAwait(false);
@@ -481,6 +517,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
     private async Task RunCleanupAsync(
         Func<CancellationToken, ValueTask> operation,
         TimeSpan operationTimeout,
+        ApplicationLifecycleTimeoutKind timeoutKind,
         string failureCode,
         string safeMessage,
         ShutdownDeadline deadline)
@@ -513,6 +550,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         if (timeout == TimeSpan.Zero && !operationTask.IsCompletedSuccessfully)
         {
             Observe(operationTask);
+            _events.Timeout(ApplicationLifecycleTimeoutKind.TotalShutdown, totalShutdownDeadlineExpired: true);
             RecordCleanupFailure(CreateFailure(
                 ApplicationFailureCategory.Shutdown,
                 ApplicationFailureCodes.TotalShutdownTimeout,
@@ -529,6 +567,9 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         {
             CancelWithoutThrowing(operationCancellation);
             Observe(operationTask);
+            _events.Timeout(
+                limitedByTotal ? ApplicationLifecycleTimeoutKind.TotalShutdown : timeoutKind,
+                limitedByTotal);
             RecordCleanupFailure(CreateFailure(
                 ApplicationFailureCategory.Shutdown,
                 limitedByTotal ? ApplicationFailureCodes.TotalShutdownTimeout : ApplicationFailureCodes.StopTimeout,
@@ -579,6 +620,9 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         catch (TimeoutException exception)
         {
             Observe(disposeTask);
+            _events.Timeout(
+                ApplicationLifecycleTimeoutKind.HostDispose,
+                totalShutdownDeadlineExpired: true);
             RecordCleanupFailure(CreateFailure(
                 ApplicationFailureCategory.Shutdown,
                 ApplicationFailureCodes.TotalShutdownTimeout,
@@ -645,6 +689,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         ApplicationRunResult result = _outcome!.Result;
         SetState(result.IsSuccess ? ApplicationState.Stopped : ApplicationState.Faulted);
         _completion.TrySetResult(result);
+        _events.Completion(result, GetSecondaryFailureCount());
         SetState(ApplicationState.Disposed);
         _stopController.Dispose();
     }
@@ -674,7 +719,13 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
     private void CapturePrimary(ApplicationRunResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        Interlocked.CompareExchange(ref _outcome, new Outcome(result), null);
+        if (Interlocked.CompareExchange(ref _outcome, new Outcome(result), null) is null
+            && result.Failure is not null)
+        {
+            _events.Failure(result.Failure, isPrimary: true);
+        }
+
+        RecordDeferredExitPolicyFailure(result);
     }
 
     private void CaptureRunnerOutcome(ApplicationRunResult result)
@@ -690,20 +741,26 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         {
             RecordSecondary(result.Failure);
         }
+
+        RecordDeferredExitPolicyFailure(result);
     }
 
     private void RecordCleanupFailure(ApplicationFailure failure)
     {
+        ApplicationRunResult? mappedFailure = null;
         while (true)
         {
             Outcome? current = Volatile.Read(ref _outcome);
             if (current is null)
             {
+                mappedFailure ??= CreateFailureResult(failure);
                 if (Interlocked.CompareExchange(
                     ref _outcome,
-                    new Outcome(CreateFailureResult(failure)),
+                    new Outcome(mappedFailure),
                     null) is null)
                 {
+                    _events.Failure(failure, isPrimary: true);
+                    RecordDeferredExitPolicyFailure(mappedFailure);
                     return;
                 }
 
@@ -712,11 +769,14 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
 
             if (current.Result.IsSuccess)
             {
+                mappedFailure ??= CreateFailureResult(failure);
                 if (Interlocked.CompareExchange(
                     ref _outcome,
-                    new Outcome(CreateFailureResult(failure)),
+                    new Outcome(mappedFailure),
                     current) == current)
                 {
+                    _events.Failure(failure, isPrimary: true);
+                    RecordDeferredExitPolicyFailure(mappedFailure);
                     return;
                 }
 
@@ -724,6 +784,11 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
             }
 
             RecordSecondary(failure);
+            if (mappedFailure is not null)
+            {
+                RecordDeferredExitPolicyFailure(mappedFailure);
+            }
+
             return;
         }
     }
@@ -733,6 +798,16 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         lock (_secondarySync)
         {
             _secondaryFailures.Add(failure);
+        }
+
+        _events.Failure(failure, isPrimary: false);
+    }
+
+    private int GetSecondaryFailureCount()
+    {
+        lock (_secondarySync)
+        {
+            return _secondaryFailures.Count;
         }
     }
 
@@ -746,6 +821,7 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
     private ApplicationRunResult CreateFailureResult(ApplicationFailure failure)
     {
         int exitCode;
+        ApplicationFailure? exitPolicyFailure = null;
         try
         {
             exitCode = _descriptor.ExitCodePolicy.GetExitCode(failure);
@@ -757,15 +833,30 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
         catch (Exception exception)
         {
             exitCode = 1;
-            RecordSecondary(CreateFailure(
+            exitPolicyFailure = CreateFailure(
                 ApplicationFailureCategory.Unhandled,
                 ApplicationFailureCodes.RunnerFailure,
                 "The configured exit-code policy failed.",
                 exception,
-                isExpected: false));
+                isExpected: false);
         }
 
-        return new ApplicationRunResult(exitCode, failure);
+        ApplicationRunResult result = new(exitCode, failure);
+        if (exitPolicyFailure is not null)
+        {
+            _deferredExitPolicyFailures.Add(result, exitPolicyFailure);
+        }
+
+        return result;
+    }
+
+    private void RecordDeferredExitPolicyFailure(ApplicationRunResult result)
+    {
+        if (_deferredExitPolicyFailures.TryGetValue(result, out ApplicationFailure? failure)
+            && _deferredExitPolicyFailures.Remove(result))
+        {
+            RecordSecondary(failure);
+        }
     }
 
     private static ApplicationFailure CreateFailure(
@@ -780,7 +871,9 @@ public sealed class ApplicationLifecycleKernel : IAsyncDisposable
 
     private void SetState(ApplicationState next)
     {
+        ApplicationState previous = _stateMachine.State;
         _stateMachine.Transition(next);
+        _events.StateTransition(previous, next);
     }
 
     private static TimeSpan MinTimeout(TimeSpan first, TimeSpan second)
