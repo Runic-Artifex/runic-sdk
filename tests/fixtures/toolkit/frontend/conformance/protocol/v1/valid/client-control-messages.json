@@ -1,0 +1,44 @@
+[
+  {
+    "v": 1,
+    "kind": "cancel",
+    "session": "00000000-0000-4000-8000-000000000004",
+    "view": "00000000-0000-4000-8000-000000000002",
+    "request": "00000000-0000-4000-8000-000000000007",
+    "capability": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "payload": {
+      "targetRequest": "00000000-0000-4000-8000-000000000006"
+    }
+  },
+  {
+    "v": 1,
+    "kind": "ack",
+    "session": "00000000-0000-4000-8000-000000000004",
+    "view": "00000000-0000-4000-8000-000000000002",
+    "request": "00000000-0000-4000-8000-000000000008",
+    "capability": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "payload": {
+      "revision": 14
+    }
+  },
+  {
+    "v": 1,
+    "kind": "requestSnapshot",
+    "session": "00000000-0000-4000-8000-000000000004",
+    "view": "00000000-0000-4000-8000-000000000002",
+    "request": "00000000-0000-4000-8000-000000000009",
+    "capability": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "payload": {}
+  },
+  {
+    "v": 1,
+    "kind": "close",
+    "session": "00000000-0000-4000-8000-000000000004",
+    "view": "00000000-0000-4000-8000-000000000002",
+    "request": "00000000-0000-4000-8000-000000000010",
+    "capability": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "payload": {
+      "reason": "View disposed"
+    }
+  }
+]

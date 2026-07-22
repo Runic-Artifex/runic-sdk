@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "kind": "setProperty",
+  "session": "ffffffff-ffff-4fff-bfff-ffffffffffff",
+  "view": "ffffffff-ffff-4fff-afff-ffffffffffff",
+  "request": "ffffffff-ffff-4fff-9fff-ffffffffffff",
+  "baseRevision": 9223372036854775808,
+  "capability": "___________________________________________",
+  "payload": { "member": 1, "value": null }
+}

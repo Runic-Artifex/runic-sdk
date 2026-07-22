@@ -1,0 +1,9 @@
+{
+  "v": 2,
+  "kind": "handshake",
+  "request": "00000000-0000-4000-8000-000000000001",
+  "payload": {
+    "supportedVersions": [2],
+    "capabilities": []
+  }
+}

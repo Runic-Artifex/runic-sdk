@@ -1,0 +1,42 @@
+{
+  "initialRevision": 12,
+  "input": {
+    "v": 1,
+    "kind": "setProperty",
+    "session": "00000000-0000-4000-8000-000000000004",
+    "view": "00000000-0000-4000-8000-000000000002",
+    "request": "00000000-0000-4000-8000-000000000005",
+    "baseRevision": 12,
+    "capability": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "payload": { "member": 1, "value": "saved" }
+  },
+  "outputs": [
+    {
+      "v": 1,
+      "kind": "patch",
+      "session": "00000000-0000-4000-8000-000000000004",
+      "view": "00000000-0000-4000-8000-000000000002",
+      "payload": {
+        "fromRevision": 12,
+        "toRevision": 13,
+        "changes": [
+          { "type": "property", "member": 1, "value": "saved" }
+        ]
+      }
+    },
+    {
+      "v": 1,
+      "kind": "result",
+      "session": "00000000-0000-4000-8000-000000000004",
+      "view": "00000000-0000-4000-8000-000000000002",
+      "request": "00000000-0000-4000-8000-000000000005",
+      "payload": { "operation": "setProperty", "revision": 13 }
+    }
+  ],
+  "expected": {
+    "consumerInvocations": 1,
+    "finalRevision": 13,
+    "revisionIncrements": 1,
+    "terminalOutcomeCount": 1
+  }
+}

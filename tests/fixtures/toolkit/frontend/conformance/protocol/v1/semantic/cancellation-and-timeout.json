@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "id": "cancel-wins",
+      "signals": ["cancel", "completion"],
+      "targetFault": "request.cancelled",
+      "cancelAccepted": true,
+      "revisionIncrements": 0,
+      "terminalOutcomeCount": 1
+    },
+    {
+      "id": "completion-wins",
+      "signals": ["completion", "cancel"],
+      "targetFault": null,
+      "cancelAccepted": false,
+      "revisionIncrements": 1,
+      "terminalOutcomeCount": 1
+    },
+    {
+      "id": "timeout-wins",
+      "signals": ["timeout", "cancel", "completion"],
+      "targetFault": "request.timeout",
+      "cancelAccepted": false,
+      "revisionIncrements": 0,
+      "terminalOutcomeCount": 1
+    }
+  ]
+}
