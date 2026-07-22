@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "manualComponents": [
+    {
+      "purl": "pkg:generic/fixture-sans@1.2.0?type=font",
+      "displayName": "Fixture Sans",
+      "revision": "font-fixture-12",
+      "licenseExpression": "LicenseRef-Fixture-Permissive",
+      "evidence": [
+        {
+          "kind": "license",
+          "sha256": "f248c096ddbc58c275aa2396bb5570bb24dffaa71add46f8e790d55deaaa8129",
+          "path": "dependency-notices.assets/sha256/f248c096ddbc58c275aa2396bb5570bb24dffaa71add46f8e790d55deaaa8129",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        }
+      ],
+      "modified": false
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "manualComponents": [
+    {
+      "purl": "pkg:generic/fixture-icons@2026.07?type=image",
+      "displayName": "Fixture Icons",
+      "revision": "icons-fixture-202607",
+      "licenseExpression": "CC0-1.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "sha256": "f248c096ddbc58c275aa2396bb5570bb24dffaa71add46f8e790d55deaaa8129",
+          "path": "dependency-notices.assets/sha256/f248c096ddbc58c275aa2396bb5570bb24dffaa71add46f8e790d55deaaa8129",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        },
+        {
+          "kind": "attribution",
+          "sha256": "ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "path": "dependency-notices.assets/sha256/ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+          "mediaType": "text/plain",
+          "origin": "fixture://public-domain"
+        }
+      ],
+      "modified": false
+    }
+  ]
+}

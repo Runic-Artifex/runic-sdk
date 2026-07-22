@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WebUIToolkit Dependency Notices diagnostics",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^WUTNOTICE[1-7][0-9]{3}$" },
+          "severity": { "enum": ["info", "warning", "error"] },
+          "message": { "type": "string" },
+          "packageUrl": { "type": ["string", "null"] },
+          "source": { "type": ["string", "null"] },
+          "offset": { "type": ["integer", "null"], "minimum": 0 },
+          "remediation": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,819 @@
+{
+  "schemaVersion": 1,
+  "corpus": "WebUIToolkit.DependencyNotices manual component fixtures",
+  "evaluationDate": "2026-07-22",
+  "evidenceRoot": "dependency-notices.assets/sha256",
+  "evidence": [
+    {
+      "sha256": "2926e284cf97e9a85e260eea758038038adecbc43eb83a9072ba7e87464af474",
+      "length": 167,
+      "kind": "license"
+    },
+    {
+      "sha256": "e746e4978d77417c2dd71a916012faea77fe9fa9f5256ba20cc1c96886fb3656",
+      "length": 174,
+      "kind": "license"
+    },
+    {
+      "sha256": "f248c096ddbc58c275aa2396bb5570bb24dffaa71add46f8e790d55deaaa8129",
+      "length": 197,
+      "kind": "license"
+    },
+    {
+      "sha256": "ff1e2988263bb7858aa9013c3fb0a3980f3dd5355f8a45ea082b796580a2c53b",
+      "length": 127,
+      "kind": "notice"
+    },
+    {
+      "sha256": "864350f389d2b6b51b9a871ad9ace0d7c4cc9a9f38aab617eb855e0e66c98a6d",
+      "length": 141,
+      "kind": "modification"
+    }
+  ],
+  "cases": [
+    {
+      "id": "01-vendored-source",
+      "file": "cases/01-vendored-source.json",
+      "summary": "A vendored source component with exact generic identity.",
+      "tags": [
+        "manual",
+        "vendored",
+        "generic"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/vendored-parser@2.4.0"
+        ]
+      }
+    },
+    {
+      "id": "02-modified-fork",
+      "file": "cases/02-modified-fork.json",
+      "summary": "A modified fork with license and modification evidence.",
+      "tags": [
+        "manual",
+        "modified-fork",
+        "evidence"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/widget-engine-fork@4.2.1"
+        ]
+      }
+    },
+    {
+      "id": "03-native-library",
+      "file": "cases/03-native-library.json",
+      "summary": "A native library qualified by operating system and architecture.",
+      "tags": [
+        "manual",
+        "native",
+        "purl",
+        "evidence"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/native-renderer@3.1.0?arch=x86_64&os=windows"
+        ]
+      }
+    },
+    {
+      "id": "04-font-asset",
+      "file": "cases/04-font-asset.json",
+      "summary": "A font declared as a generic manual component.",
+      "tags": [
+        "manual",
+        "font",
+        "license-ref"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/fixture-sans@1.2.0?type=font"
+        ]
+      }
+    },
+    {
+      "id": "05-image-asset",
+      "file": "cases/05-image-asset.json",
+      "summary": "An image collection with license and attribution evidence.",
+      "tags": [
+        "manual",
+        "image",
+        "evidence"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/fixture-icons@2026.07?type=image"
+        ]
+      }
+    },
+    {
+      "id": "06-generic-purl-qualifiers",
+      "file": "cases/06-generic-purl-qualifiers.json",
+      "summary": "Generic PURL percent encoding and ordinal qualifier sorting.",
+      "tags": [
+        "purl",
+        "generic",
+        "canonicalization"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/Widget%20Engine@4.2.1?checksum=sha256:0123&download_url=https:%2F%2Fexample.invalid%2Fwidget.zip"
+        ]
+      }
+    },
+    {
+      "id": "07-nuget-purl",
+      "file": "cases/07-nuget-purl.json",
+      "summary": "NuGet PURL type canonicalization with preserved package-name spelling.",
+      "tags": [
+        "purl",
+        "nuget",
+        "canonicalization"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:nuget/Newtonsoft.Json@13.0.3"
+        ]
+      }
+    },
+    {
+      "id": "08-npm-purl",
+      "file": "cases/08-npm-purl.json",
+      "summary": "Unscoped npm PURL.",
+      "tags": [
+        "purl",
+        "npm"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:npm/chalk@5.3.0"
+        ]
+      }
+    },
+    {
+      "id": "09-scoped-npm-purl",
+      "file": "cases/09-scoped-npm-purl.json",
+      "summary": "Scoped npm PURL with encoded input slash.",
+      "tags": [
+        "purl",
+        "npm",
+        "scoped",
+        "canonicalization"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:npm/%40fixture/ui-kit@2.0.1"
+        ]
+      }
+    },
+    {
+      "id": "10-license-ref",
+      "file": "cases/10-license-ref.json",
+      "summary": "A locally defined SPDX LicenseRef linked to exact evidence.",
+      "tags": [
+        "spdx",
+        "license-ref"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/custom-codec@1.0.0"
+        ]
+      }
+    },
+    {
+      "id": "11-document-ref-license-ref",
+      "file": "cases/11-document-ref-license-ref.json",
+      "summary": "An SPDX external DocumentRef LicenseRef.",
+      "tags": [
+        "spdx",
+        "document-ref",
+        "license-ref"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/external-license-map@1.0.0"
+        ]
+      }
+    },
+    {
+      "id": "12-spdx-and-expression",
+      "file": "cases/12-spdx-and-expression.json",
+      "summary": "SPDX AND preserves evidence for both branches.",
+      "tags": [
+        "spdx",
+        "and",
+        "evidence"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/dual-obligations@1.0.0"
+        ]
+      }
+    },
+    {
+      "id": "13-spdx-or-expression",
+      "file": "cases/13-spdx-or-expression.json",
+      "summary": "SPDX OR requires an explicit policy selection.",
+      "tags": [
+        "spdx",
+        "or",
+        "policy"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [
+          "WUTNOTICE4004"
+        ],
+        "canonicalPurls": [
+          "pkg:generic/choice-license@1.0.0"
+        ]
+      },
+      "policyContext": {
+        "policyFile": "policies/require-or-selection.json",
+        "selectedLicense": null,
+        "expectedDecision": "rejected",
+        "note": "An OR branch is never chosen implicitly."
+      }
+    },
+    {
+      "id": "14-spdx-with-exception",
+      "file": "cases/14-spdx-with-exception.json",
+      "summary": "SPDX WITH attaches an exception to a license identifier.",
+      "tags": [
+        "spdx",
+        "with",
+        "exception"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/linking-library@1.0.0"
+        ]
+      }
+    },
+    {
+      "id": "15-all-evidence-kinds",
+      "file": "cases/15-all-evidence-kinds.json",
+      "summary": "License, notice, attribution, authors, and modification evidence.",
+      "tags": [
+        "evidence",
+        "kinds",
+        "modified"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/evidence-gallery@1.0.0"
+        ]
+      }
+    },
+    {
+      "id": "16-deterministic-ordering",
+      "file": "cases/16-deterministic-ordering.json",
+      "summary": "Ordinal ordering by display name, version, then canonical PURL.",
+      "tags": [
+        "ordering",
+        "determinism"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/zeta@1.0.0",
+          "pkg:generic/alpha@2.0.0",
+          "pkg:generic/alpha@10.0.0",
+          "pkg:generic/alpha-alt@2.0.0"
+        ],
+        "orderedPurls": [
+          "pkg:generic/alpha@10.0.0",
+          "pkg:generic/alpha-alt@2.0.0",
+          "pkg:generic/alpha@2.0.0",
+          "pkg:generic/zeta@1.0.0"
+        ]
+      }
+    },
+    {
+      "id": "17-nuget-case-normalization",
+      "file": "cases/17-nuget-case-normalization.json",
+      "summary": "Mixed-case NuGet input canonicalizes the type while preserving name spelling.",
+      "tags": [
+        "purl",
+        "nuget",
+        "canonicalization"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:nuget/Fixture.Package@1.2.3"
+        ]
+      }
+    },
+    {
+      "id": "18-npm-percent-normalization",
+      "file": "cases/18-npm-percent-normalization.json",
+      "summary": "Scoped npm percent encoding with preserved scope and name spelling.",
+      "tags": [
+        "purl",
+        "npm",
+        "canonicalization"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:npm/%40Fixture/Name@1.0.0"
+        ]
+      }
+    },
+    {
+      "id": "19-exact-override-target",
+      "file": "cases/19-exact-override-target.json",
+      "summary": "Exact PURL override records observed and effective expressions.",
+      "tags": [
+        "policy",
+        "override",
+        "exact"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:nuget/example@1.2.3"
+        ]
+      },
+      "policyContext": {
+        "evaluationDate": "2026-07-22",
+        "policyFile": "policies/exact-override.json",
+        "expectedObservedExpression": "NOASSERTION",
+        "expectedEffectiveExpression": "MIT",
+        "expectedDecision": "allowed"
+      }
+    },
+    {
+      "id": "20-unexpired-override-target",
+      "file": "cases/20-unexpired-override-target.json",
+      "summary": "A policy override that remains active at the fixed evaluation date.",
+      "tags": [
+        "policy",
+        "override",
+        "expiry"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/reviewed-component@2.0.0"
+        ]
+      },
+      "policyContext": {
+        "evaluationDate": "2026-07-22",
+        "policyFile": "policies/unexpired-override.json",
+        "expectedObservedExpression": "LicenseRef-Fixture-Permissive",
+        "expectedEffectiveExpression": "MIT",
+        "expectedDecision": "allowed-by-override"
+      }
+    },
+    {
+      "id": "21-expired-override-target",
+      "file": "cases/21-expired-override-target.json",
+      "summary": "An expired override cannot suppress the review decision.",
+      "tags": [
+        "policy",
+        "override",
+        "expiry"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [
+          "WUTNOTICE4002"
+        ],
+        "canonicalPurls": [
+          "pkg:generic/expired-component@2.0.0"
+        ]
+      },
+      "policyContext": {
+        "evaluationDate": "2026-07-22",
+        "policyFile": "policies/expired-override.json",
+        "expectedObservedExpression": "LicenseRef-Fixture-Permissive",
+        "expectedEffectiveExpression": "LicenseRef-Fixture-Permissive",
+        "expectedDecision": "rejected"
+      }
+    },
+    {
+      "id": "22-hostile-display-text",
+      "file": "cases/22-hostile-display-text.json",
+      "summary": "HTML and script-like text remains inert data and must be escaped by HTML output.",
+      "tags": [
+        "hostile",
+        "text",
+        "html"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/hostile-text@1.0.0"
+        ],
+        "htmlEscapingRequired": true
+      }
+    },
+    {
+      "id": "23-unicode-display-text",
+      "file": "cases/23-unicode-display-text.json",
+      "summary": "Unicode and distinct normalization forms remain stable.",
+      "tags": [
+        "hostile",
+        "unicode",
+        "determinism"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": [
+          "pkg:generic/unicode-text@1.0.0"
+        ],
+        "preserveTextCodePoints": true
+      }
+    },
+    {
+      "id": "24-empty-inventory",
+      "file": "cases/24-empty-inventory.json",
+      "summary": "An empty manual inventory is a valid deterministic no-op.",
+      "tags": [
+        "manual",
+        "empty"
+      ],
+      "expected": {
+        "inputValid": true,
+        "diagnostics": [],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "25-missing-purl",
+      "file": "cases/25-missing-purl.json",
+      "summary": "A component without a PURL is invalid.",
+      "tags": [
+        "invalid",
+        "missing-field",
+        "purl"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1002"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "26-missing-version",
+      "file": "cases/26-missing-version.json",
+      "summary": "A manual component whose PURL omits an exact version is invalid.",
+      "tags": [
+        "invalid",
+        "missing-field",
+        "version"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "27-missing-origin",
+      "file": "cases/27-missing-origin.json",
+      "summary": "A manual component without a declared origin is invalid.",
+      "tags": [
+        "invalid",
+        "missing-field",
+        "origin"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1002"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "28-missing-license-expression",
+      "file": "cases/28-missing-license-expression.json",
+      "summary": "A manual component without a license expression is invalid.",
+      "tags": [
+        "invalid",
+        "missing-field",
+        "spdx"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1002"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "29-empty-evidence",
+      "file": "cases/29-empty-evidence.json",
+      "summary": "A component with no evidence is incomplete.",
+      "tags": [
+        "invalid",
+        "missing-evidence"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE2001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "30-invalid-digest-format",
+      "file": "cases/30-invalid-digest-format.json",
+      "summary": "A digest must be exactly 64 lowercase hexadecimal characters.",
+      "tags": [
+        "invalid",
+        "evidence",
+        "digest"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE2002"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "31-digest-mismatch",
+      "file": "cases/31-digest-mismatch.json",
+      "summary": "A well-formed digest that does not name the referenced bytes fails closed.",
+      "tags": [
+        "invalid",
+        "evidence",
+        "digest"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE2002"
+        ],
+        "canonicalPurls": [],
+        "actualSha256": "2926e284cf97e9a85e260eea758038038adecbc43eb83a9072ba7e87464af474"
+      }
+    },
+    {
+      "id": "32-absolute-evidence-path",
+      "file": "cases/32-absolute-evidence-path.json",
+      "summary": "A Windows absolute evidence path is rejected.",
+      "tags": [
+        "hostile",
+        "path",
+        "absolute"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE6001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "33-traversal-evidence-path",
+      "file": "cases/33-traversal-evidence-path.json",
+      "summary": "Parent traversal cannot escape the declared fixture root.",
+      "tags": [
+        "hostile",
+        "path",
+        "traversal"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE6001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "34-device-evidence-path",
+      "file": "cases/34-device-evidence-path.json",
+      "summary": "A Windows device path is rejected.",
+      "tags": [
+        "hostile",
+        "path",
+        "device"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE6001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "35-network-evidence-path",
+      "file": "cases/35-network-evidence-path.json",
+      "summary": "Evidence cannot be fetched from a URL during offline generation.",
+      "tags": [
+        "hostile",
+        "offline",
+        "network"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE7001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "36-duplicate-purl-exact",
+      "file": "cases/36-duplicate-purl-exact.json",
+      "summary": "Two components with identical PURLs are rejected.",
+      "tags": [
+        "invalid",
+        "duplicate",
+        "purl"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1003"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "37-duplicate-purl-canonical",
+      "file": "cases/37-duplicate-purl-canonical.json",
+      "summary": "Different spellings that canonicalize to one PURL are duplicates.",
+      "tags": [
+        "invalid",
+        "duplicate",
+        "canonicalization"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1003"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "38-malformed-purl",
+      "file": "cases/38-malformed-purl.json",
+      "summary": "Text that is not a Package URL is rejected.",
+      "tags": [
+        "invalid",
+        "purl"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "39-invalid-spdx",
+      "file": "cases/39-invalid-spdx.json",
+      "summary": "An incomplete grouped SPDX expression reports a syntax error.",
+      "tags": [
+        "invalid",
+        "spdx",
+        "syntax"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE3001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "40-unresolved-license-ref",
+      "file": "cases/40-unresolved-license-ref.json",
+      "summary": "A LicenseRef whose evidence does not define it remains unresolved.",
+      "tags": [
+        "invalid",
+        "spdx",
+        "license-ref"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE3002"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "41-document-ref-malformed",
+      "file": "cases/41-document-ref-malformed.json",
+      "summary": "An empty DocumentRef identifier is invalid SPDX syntax.",
+      "tags": [
+        "invalid",
+        "spdx",
+        "document-ref"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE3001"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "42-null-component",
+      "file": "cases/42-null-component.json",
+      "summary": "Null is not a manual component.",
+      "tags": [
+        "invalid",
+        "json",
+        "null"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1002"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "43-invalid-schema-version",
+      "file": "cases/43-invalid-schema-version.json",
+      "summary": "Only fixture input schemaVersion 1 is supported.",
+      "tags": [
+        "invalid",
+        "schema-version"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1002"
+        ],
+        "canonicalPurls": []
+      }
+    },
+    {
+      "id": "44-hostile-control-text",
+      "file": "cases/44-hostile-control-text.json",
+      "summary": "A NUL in display text is rejected before rendering.",
+      "tags": [
+        "hostile",
+        "text",
+        "control"
+      ],
+      "expected": {
+        "inputValid": false,
+        "diagnostics": [
+          "WUTNOTICE1002"
+        ],
+        "canonicalPurls": []
+      }
+    }
+  ]
+}

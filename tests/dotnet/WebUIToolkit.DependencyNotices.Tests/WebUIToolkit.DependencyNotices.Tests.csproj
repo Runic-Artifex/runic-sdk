@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/WebUIToolkit.DependencyNotices.Core/WebUIToolkit.DependencyNotices.Core.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.DependencyNotices.Engine/WebUIToolkit.DependencyNotices.Engine.csproj" />
+  </ItemGroup>
+</Project>
