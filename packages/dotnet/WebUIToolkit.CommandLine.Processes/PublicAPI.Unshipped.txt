@@ -1,0 +1,101 @@
+#nullable enable
+namespace WebUIToolkit.CommandLine.Processes
+{
+    public enum ProcessStartFailureCategory
+    {
+        AccessDenied = 1,
+        InvalidRequest = 2,
+        NotFound = 0,
+        Other = 4,
+        Unsupported = 3,
+    }
+    public enum ProcessState
+    {
+        Cancelled = 4,
+        Exited = 0,
+        ExecutionFailed = 5,
+        Rejected = 2,
+        StartFailed = 1,
+        TimedOut = 3,
+    }
+    public interface IExecutablePolicy
+    {
+        WebUIToolkit.CommandLine.Processes.ExecutablePolicyDecision Evaluate(WebUIToolkit.CommandLine.Processes.ProcessRequest request);
+    }
+    public interface IProcessObserver
+    {
+        void OnCompleted(WebUIToolkit.CommandLine.Processes.ProcessState state, System.TimeSpan duration);
+        void OnStarted(System.DateTimeOffset startedAt);
+    }
+    public interface IProcessRunner
+    {
+        System.Threading.Tasks.ValueTask<WebUIToolkit.CommandLine.Processes.ProcessResult> RunAsync(WebUIToolkit.CommandLine.Processes.ProcessRequest request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public sealed class ExecutablePolicyDecision
+    {
+        public WebUIToolkit.CommandLine.CommandFault? Fault { get; }
+        public bool IsAllowed { get; }
+        public static WebUIToolkit.CommandLine.Processes.ExecutablePolicyDecision Allow();
+        public static WebUIToolkit.CommandLine.Processes.ExecutablePolicyDecision Reject(string code, string message);
+    }
+    public sealed class LocalExecutablePolicy : WebUIToolkit.CommandLine.Processes.IExecutablePolicy
+    {
+        public LocalExecutablePolicy(System.Collections.Generic.IEnumerable<string>? executableRoots = null, System.Collections.Generic.IEnumerable<string>? workingDirectoryRoots = null);
+        public WebUIToolkit.CommandLine.Processes.ExecutablePolicyDecision Evaluate(WebUIToolkit.CommandLine.Processes.ProcessRequest request);
+    }
+    public sealed class ProcessExecutionOptions
+    {
+        public const int DefaultOutputLimitBytes = 1048576;
+        public const int MaximumOutputLimitBytes = 16777216;
+        public ProcessExecutionOptions(System.TimeSpan? timeout = null, int standardOutputLimitBytes = 1048576, int standardErrorLimitBytes = 1048576, System.TimeSpan? drainGracePeriod = null, System.Text.Encoding? standardOutputEncoding = null, System.Text.Encoding? standardErrorEncoding = null);
+        public int StandardErrorLimitBytes { get; }
+        public System.Text.Encoding StandardErrorEncoding { get; }
+        public int StandardOutputLimitBytes { get; }
+        public System.Text.Encoding StandardOutputEncoding { get; }
+        public System.TimeSpan DrainGracePeriod { get; }
+        public System.TimeSpan Timeout { get; }
+        public static readonly System.TimeSpan DefaultDrainGracePeriod;
+        public static readonly System.TimeSpan MaximumDrainGracePeriod;
+    }
+    public static class ProcessFaultCodes
+    {
+        public const string ExecutableRejected = "WUTCLI6001";
+        public const string ExecutionFailed = "WUTCLI6006";
+        public const string InvalidPolicyDecision = "WUTCLI6003";
+        public const string PolicyEvaluationFailed = "WUTCLI6004";
+        public const string StartFailed = "WUTCLI6005";
+        public const string WorkingDirectoryRejected = "WUTCLI6002";
+    }
+    public sealed class ProcessOutput
+    {
+        public bool IsTruncated { get; }
+        public long ObservedByteCount { get; }
+        public string Text { get; }
+    }
+    public sealed class ProcessRequest
+    {
+        public ProcessRequest(string fileName, System.Collections.Generic.IEnumerable<string>? arguments = null, string? workingDirectory = null, System.Collections.Generic.IReadOnlyDictionary<string, string?>? environment = null, WebUIToolkit.CommandLine.Processes.ProcessExecutionOptions? options = null);
+        public System.Collections.Generic.IReadOnlyList<string> Arguments { get; }
+        public System.Collections.Generic.IReadOnlyDictionary<string, string?> Environment { get; }
+        public string FileName { get; }
+        public WebUIToolkit.CommandLine.Processes.ProcessExecutionOptions Options { get; }
+        public string? WorkingDirectory { get; }
+    }
+    public sealed class ProcessResult
+    {
+        public WebUIToolkit.CommandLine.CommandFault? Fault { get; }
+        public System.TimeSpan Duration { get; }
+        public System.DateTimeOffset EndedAt { get; }
+        public int? ExitCode { get; }
+        public WebUIToolkit.CommandLine.Processes.ProcessStartFailureCategory? StartFailureCategory { get; }
+        public WebUIToolkit.CommandLine.Processes.ProcessOutput StandardError { get; }
+        public WebUIToolkit.CommandLine.Processes.ProcessOutput StandardOutput { get; }
+        public System.DateTimeOffset StartedAt { get; }
+        public WebUIToolkit.CommandLine.Processes.ProcessState State { get; }
+    }
+    public sealed class ProcessRunner : WebUIToolkit.CommandLine.Processes.IProcessRunner
+    {
+        public ProcessRunner(WebUIToolkit.CommandLine.Processes.IExecutablePolicy executablePolicy, WebUIToolkit.CommandLine.Processes.IProcessObserver? observer = null, System.TimeProvider? timeProvider = null);
+        public System.Threading.Tasks.ValueTask<WebUIToolkit.CommandLine.Processes.ProcessResult> RunAsync(WebUIToolkit.CommandLine.Processes.ProcessRequest request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+}

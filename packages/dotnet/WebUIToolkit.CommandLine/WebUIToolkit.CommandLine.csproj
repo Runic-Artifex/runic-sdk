@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.CommandLine</AssemblyName>
+    <RootNamespace>WebUIToolkit.CommandLine</RootNamespace>
+    <PackageId>WebUIToolkit.CommandLine</PackageId>
+    <Description>Parser-neutral command catalog, execution, and output kernel for WebUIToolkit applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../WebUIToolkit.CommandLine.Abstractions/WebUIToolkit.CommandLine.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="PublicAPI.Unshipped.txt" Pack="true" PackagePath="" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>

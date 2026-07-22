@@ -1,0 +1,1 @@
+{"protocol":"webuitoolkit.cli/1","requestId":"req-export-0001","command":"export","success":true,"exitCode":0,"payloadType":"sample.export-result/1","payload":{"written":42,"outputPath":"result.json"},"fault":null,"diagnostics":[]}

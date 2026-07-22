@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.CommandLine.Processes</AssemblyName>
+    <RootNamespace>WebUIToolkit.CommandLine.Processes</RootNamespace>
+    <PackageId>WebUIToolkit.CommandLine.Processes</PackageId>
+    <Description>Bounded and cancellable local process execution for WebUIToolkit command-line clients.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WebUIToolkit.CommandLine.Abstractions\WebUIToolkit.CommandLine.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="PublicAPI.Unshipped.txt" Pack="true" PackagePath="" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>

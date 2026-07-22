@@ -1,0 +1,231 @@
+#nullable enable
+namespace WebUIToolkit.CommandLine
+{
+    public enum CommandExecutionEventKind
+    {
+        Bound = 1,
+        Completed = 3,
+        HandlerStarted = 2,
+        Started = 0,
+    }
+    public enum CommandOptionRepeatPolicy
+    {
+        Append = 1,
+        Error = 0,
+    }
+    public enum ParseOutcomeKind
+    {
+        Error = 3,
+        Help = 1,
+        Invocation = 0,
+        Version = 2,
+    }
+    public interface ICommandExecutionObserver
+    {
+        void Observe(WebUIToolkit.CommandLine.CommandExecutionEvent executionEvent);
+    }
+    public interface ICommandOptionsBinder<TOptions>
+    {
+        System.Threading.Tasks.ValueTask<WebUIToolkit.CommandLine.CommandOutcome<TOptions>> BindAsync(WebUIToolkit.CommandLine.ParsedInvocation invocation, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface ICommandOutcomeSink
+    {
+        System.Threading.Tasks.ValueTask WriteAsync<TResult>(WebUIToolkit.CommandLine.CommandDescriptor command, WebUIToolkit.CommandLine.CommandExecutionContext context, WebUIToolkit.CommandLine.CommandOutcome<TResult> outcome, WebUIToolkit.CommandLine.ICommandResultCodec<TResult> codec, int exitCode, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic> diagnostics, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface ICommandSyntaxAdapter
+    {
+        WebUIToolkit.CommandLine.ParseOutcome Parse(WebUIToolkit.CommandLine.CommandCatalog catalog, System.ReadOnlySpan<string> args, WebUIToolkit.CommandLine.ParseSettings settings);
+    }
+    public readonly record struct CommandArity
+    {
+        public CommandArity(int minimum, int? maximum);
+        public int Minimum { get; }
+        public int? Maximum { get; }
+        public static WebUIToolkit.CommandLine.CommandArity ExactlyOne { get; }
+        public static WebUIToolkit.CommandLine.CommandArity OneOrMore { get; }
+        public static WebUIToolkit.CommandLine.CommandArity Zero { get; }
+        public static WebUIToolkit.CommandLine.CommandArity ZeroOrMore { get; }
+        public static WebUIToolkit.CommandLine.CommandArity ZeroOrOne { get; }
+        public bool Accepts(int count);
+    }
+    public sealed class CommandArgumentDescriptor
+    {
+        public WebUIToolkit.CommandLine.CommandArity Arity { get; }
+        public bool IsSensitive { get; }
+        public string Id { get; }
+        public string Name { get; }
+        public string? DescriptionKey { get; }
+    }
+    public sealed class CommandBuilder<TOptions, THandler, TResult> where THandler : notnull, WebUIToolkit.CommandLine.ICommandHandler<TOptions, TResult>
+    {
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> Alias(params string[] aliases);
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> Argument(string id, string name, WebUIToolkit.CommandLine.CommandArity arity, bool isSensitive = false, string? descriptionKey = null);
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> BindWith(WebUIToolkit.CommandLine.ICommandOptionsBinder<TOptions> binder);
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> CreateHandlerWith(WebUIToolkit.CommandLine.ICommandHandlerFactory<THandler> factory);
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> Describe(string descriptionKey);
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> Option(string id, string name, WebUIToolkit.CommandLine.CommandArity arity, WebUIToolkit.CommandLine.CommandOptionRepeatPolicy repeatPolicy = WebUIToolkit.CommandLine.CommandOptionRepeatPolicy.Error, bool isSensitive = false, string? descriptionKey = null, params string[] aliases);
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> Produces(WebUIToolkit.CommandLine.ICommandResultCodec<TResult> codec);
+        public WebUIToolkit.CommandLine.CommandBuilder<TChildOptions, TChildHandler, TChildResult> Subcommand<TChildOptions, TChildHandler, TChildResult>(string name) where TChildHandler : notnull, WebUIToolkit.CommandLine.ICommandHandler<TChildOptions, TChildResult>;
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> Subcommand<TChildOptions, TChildHandler, TChildResult>(string name, System.Action<WebUIToolkit.CommandLine.CommandBuilder<TChildOptions, TChildHandler, TChildResult>> configure) where TChildHandler : notnull, WebUIToolkit.CommandLine.ICommandHandler<TChildOptions, TChildResult>;
+    }
+    public sealed class CommandCatalog
+    {
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDescriptor> Commands { get; }
+        public bool TryGetCommand(string token, out WebUIToolkit.CommandLine.CommandDescriptor? command);
+        public bool TryResolve(System.ReadOnlySpan<string> tokens, out WebUIToolkit.CommandLine.CommandDescriptor? command, out int consumed);
+    }
+    public sealed class CommandCatalogBuilder
+    {
+        public CommandCatalogBuilder();
+        public WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult> Command<TOptions, THandler, TResult>(string name) where THandler : notnull, WebUIToolkit.CommandLine.ICommandHandler<TOptions, TResult>;
+        public WebUIToolkit.CommandLine.CommandCatalogBuilder Command<TOptions, THandler, TResult>(string name, System.Action<WebUIToolkit.CommandLine.CommandBuilder<TOptions, THandler, TResult>> configure) where THandler : notnull, WebUIToolkit.CommandLine.ICommandHandler<TOptions, TResult>;
+        public WebUIToolkit.CommandLine.CommandCatalog Build();
+    }
+    public sealed class CommandCatalogValidationException : System.Exception
+    {
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandCatalogIssue> Issues { get; }
+    }
+    public sealed class CommandDescriptor
+    {
+        public System.Collections.Generic.IReadOnlyList<string> Aliases { get; }
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandArgumentDescriptor> Arguments { get; }
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandOptionDescriptor> Options { get; }
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDescriptor> Subcommands { get; }
+        public string Name { get; }
+        public string? DescriptionKey { get; }
+        public bool TryGetOption(string token, out WebUIToolkit.CommandLine.CommandOptionDescriptor? option);
+        public bool TryGetSubcommand(string token, out WebUIToolkit.CommandLine.CommandDescriptor? command);
+    }
+    public sealed class CommandExecutionRequest
+    {
+        public CommandExecutionRequest(WebUIToolkit.CommandLine.ParsedInvocation invocation, WebUIToolkit.CommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, string correlationId);
+        public System.Globalization.CultureInfo Culture { get; }
+        public WebUIToolkit.CommandLine.ICommandConsole Console { get; }
+        public WebUIToolkit.CommandLine.ParsedInvocation Invocation { get; }
+        public string CorrelationId { get; }
+    }
+    public sealed class CommandExecutionResult
+    {
+        public WebUIToolkit.CommandLine.CommandExitCategory ExitCategory { get; }
+        public WebUIToolkit.CommandLine.CommandFault? Fault { get; }
+        public bool IsSuccess { get; }
+        public int ExitCode { get; }
+    }
+    public sealed class CommandExecutor
+    {
+        public CommandExecutor(WebUIToolkit.CommandLine.ICommandExecutionScopeFactory scopeFactory, WebUIToolkit.CommandLine.IExitCodePolicy? exitCodePolicy = null, WebUIToolkit.CommandLine.ICommandExecutionObserver? observer = null);
+        public System.Threading.Tasks.ValueTask<WebUIToolkit.CommandLine.CommandExecutionResult> ExecuteAsync(WebUIToolkit.CommandLine.CommandExecutionRequest request, WebUIToolkit.CommandLine.ICommandOutcomeSink outcomeSink, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public sealed class CommandOptionDescriptor
+    {
+        public System.Collections.Generic.IReadOnlyList<string> Aliases { get; }
+        public WebUIToolkit.CommandLine.CommandArity Arity { get; }
+        public WebUIToolkit.CommandLine.CommandOptionRepeatPolicy RepeatPolicy { get; }
+        public bool IsSensitive { get; }
+        public string Id { get; }
+        public string Name { get; }
+        public string? DescriptionKey { get; }
+    }
+    public sealed class CommandOutputDispatcher : WebUIToolkit.CommandLine.ICommandOutcomeSink
+    {
+        public CommandOutputDispatcher();
+        public System.Threading.Tasks.ValueTask WriteAsync<T>(WebUIToolkit.CommandLine.CommandDescriptor command, WebUIToolkit.CommandLine.CommandExecutionContext context, WebUIToolkit.CommandLine.CommandOutcome<T> outcome, WebUIToolkit.CommandLine.ICommandResultCodec<T> codec, int exitCode, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic> diagnostics, System.Threading.CancellationToken cancellationToken);
+        public static System.Threading.Tasks.ValueTask DispatchAsync<T>(WebUIToolkit.CommandLine.CommandOutputMode mode, WebUIToolkit.CommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, WebUIToolkit.CommandLine.CommandResponse<T> response, WebUIToolkit.CommandLine.ICommandResultCodec<T> codec, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public sealed class CommandProtocolException : System.Exception
+    {
+        public CommandProtocolException(string kind, string message);
+        public CommandProtocolException(string kind, string message, System.Exception innerException);
+        public string Kind { get; }
+    }
+    public sealed class CommandResponse<T>
+    {
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic> Diagnostics { get; }
+        public T? Payload { get; }
+        public WebUIToolkit.CommandLine.CommandFault? Fault { get; }
+        public bool Success { get; }
+        public int ExitCode { get; }
+        public string Command { get; }
+        public string RequestId { get; }
+        public string? PayloadType { get; }
+    }
+    public sealed class CommandValueBinding
+    {
+        public CommandValueBinding(string id, System.Collections.Generic.IReadOnlyList<string> values);
+        public System.Collections.Generic.IReadOnlyList<string> Values { get; }
+        public string Id { get; }
+    }
+    public sealed class ParseOutcome
+    {
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic> Diagnostics { get; }
+        public WebUIToolkit.CommandLine.CommandOutputClassification? OutputClassification { get; }
+        public WebUIToolkit.CommandLine.HelpRequest? HelpRequest { get; }
+        public WebUIToolkit.CommandLine.ParseOutcomeKind Kind { get; }
+        public WebUIToolkit.CommandLine.ParsedInvocation? Invocation { get; }
+        public static WebUIToolkit.CommandLine.ParseOutcome FromError(WebUIToolkit.CommandLine.CommandDiagnostic diagnostic);
+        public static WebUIToolkit.CommandLine.ParseOutcome FromHelp(WebUIToolkit.CommandLine.HelpRequest request, WebUIToolkit.CommandLine.CommandOutputClassification outputClassification);
+        public static WebUIToolkit.CommandLine.ParseOutcome FromInvocation(WebUIToolkit.CommandLine.ParsedInvocation invocation);
+        public static WebUIToolkit.CommandLine.ParseOutcome FromOutputError(WebUIToolkit.CommandLine.CommandDiagnostic diagnostic, WebUIToolkit.CommandLine.CommandOutputClassification outputClassification);
+        public static WebUIToolkit.CommandLine.ParseOutcome FromVersion(WebUIToolkit.CommandLine.CommandOutputClassification outputClassification);
+    }
+    public sealed class ParseSettings
+    {
+        public ParseSettings(string? outputEnvironmentValue = null, WebUIToolkit.CommandLine.CommandOutputMode defaultOutputMode = WebUIToolkit.CommandLine.CommandOutputMode.Human);
+        public WebUIToolkit.CommandLine.CommandOutputMode DefaultOutputMode { get; }
+        public static WebUIToolkit.CommandLine.ParseSettings Default { get; }
+        public string? OutputEnvironmentValue { get; }
+    }
+    public sealed class ParsedInvocation
+    {
+        public ParsedInvocation(WebUIToolkit.CommandLine.CommandDescriptor command, WebUIToolkit.CommandLine.CommandPath path, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandValueBinding> options, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandValueBinding> arguments, WebUIToolkit.CommandLine.CommandOutputClassification outputClassification);
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandValueBinding> Arguments { get; }
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandValueBinding> Options { get; }
+        public WebUIToolkit.CommandLine.CommandDescriptor Command { get; }
+        public WebUIToolkit.CommandLine.CommandOutputClassification OutputClassification { get; }
+        public WebUIToolkit.CommandLine.CommandPath Path { get; }
+    }
+    public sealed class PortableCommandSyntaxAdapter : WebUIToolkit.CommandLine.ICommandSyntaxAdapter
+    {
+        public PortableCommandSyntaxAdapter();
+        public WebUIToolkit.CommandLine.ParseOutcome Parse(WebUIToolkit.CommandLine.CommandCatalog catalog, System.ReadOnlySpan<string> args, WebUIToolkit.CommandLine.ParseSettings settings);
+        public static WebUIToolkit.CommandLine.PortableCommandSyntaxAdapter Instance { get; }
+    }
+    public sealed record CommandCatalogIssue
+    {
+        public CommandCatalogIssue(string Code, string Location, string Message);
+        public string Code { get; init; }
+        public string Location { get; init; }
+        public string Message { get; init; }
+    }
+    public sealed record CommandExecutionEvent
+    {
+        public CommandExecutionEvent(WebUIToolkit.CommandLine.CommandExecutionEventKind Kind, WebUIToolkit.CommandLine.CommandPath Path, string CorrelationId, WebUIToolkit.CommandLine.CommandExitCategory? ExitCategory = null, int? ExitCode = null, string? FaultCode = null);
+        public WebUIToolkit.CommandLine.CommandExecutionEventKind Kind { get; init; }
+        public WebUIToolkit.CommandLine.CommandExitCategory? ExitCategory { get; init; }
+        public WebUIToolkit.CommandLine.CommandPath Path { get; init; }
+        public int? ExitCode { get; init; }
+        public string CorrelationId { get; init; }
+        public string? FaultCode { get; init; }
+    }
+    public sealed record HelpRequest
+    {
+        public HelpRequest(WebUIToolkit.CommandLine.CommandPath path);
+        public WebUIToolkit.CommandLine.CommandPath Path { get; }
+    }
+    public static class CommandJsonEnvelopeReader
+    {
+        public const int DefaultMaximumFrameBytes = 1048576;
+        public static WebUIToolkit.CommandLine.CommandResponse<T> Read<T>(System.ReadOnlySpan<byte> frame, string expectedPayloadType, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> payloadTypeInfo, int maximumFrameBytes = 1048576);
+    }
+    public static class CommandJsonEnvelopeWriter
+    {
+        public static byte[] Serialize<T>(WebUIToolkit.CommandLine.CommandResponse<T> response, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> payloadTypeInfo);
+        public static System.Threading.Tasks.ValueTask WriteAsync<T>(WebUIToolkit.CommandLine.ICommandConsole console, WebUIToolkit.CommandLine.CommandResponse<T> response, WebUIToolkit.CommandLine.ICommandResultCodec<T> codec, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public static class CommandResponse
+    {
+        public static WebUIToolkit.CommandLine.CommandResponse<T> Failed<T>(string requestId, string command, int exitCode, WebUIToolkit.CommandLine.CommandFault fault, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic>? diagnostics = null);
+        public static WebUIToolkit.CommandLine.CommandResponse<T> FromOutcome<T>(string requestId, string command, int exitCode, string payloadType, WebUIToolkit.CommandLine.CommandOutcome<T> outcome, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic>? diagnostics = null);
+        public static WebUIToolkit.CommandLine.CommandResponse<T> Succeeded<T>(string requestId, string command, string payloadType, T? payload, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic>? diagnostics = null);
+    }
+}

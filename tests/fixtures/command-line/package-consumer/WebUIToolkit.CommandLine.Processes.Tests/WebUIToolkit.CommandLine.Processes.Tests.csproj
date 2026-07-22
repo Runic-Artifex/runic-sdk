@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.CommandLine.Processes.Tests</AssemblyName>
+    <RootNamespace>WebUIToolkit.CommandLine.Processes.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WebUIToolkit.CommandLine.Processes\WebUIToolkit.CommandLine.Processes.csproj" />
+  </ItemGroup>
+</Project>
