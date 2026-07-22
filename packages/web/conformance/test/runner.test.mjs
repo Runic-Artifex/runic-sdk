@@ -34,17 +34,18 @@ function createSemanticRuntime(log = []) {
 
 test("the protocol runner executes every valid and invalid manifest case", async () => {
   const results = await runProtocolCorpus(source);
-  assert.equal(results.length, 27);
-  assert.equal(results.filter(({ status }) => status === "passed").length, 27);
+  assert.equal(results.length, 33);
+  assert.equal(results.filter(({ status }) => status === "passed").length, 33);
   assert.equal(results.filter(({ status }) => status !== "passed").length, 0);
   assert.deepEqual(results.map(({ id }) => id), [
     "client-handshake", "client-open", "client-set-property", "client-execute",
-    "client-control-messages", "boundary-identifiers", "boundary-numbers",
+    "client-control-messages", "all-capabilities-handshake", "boundary-identifiers", "boundary-numbers",
     "host-handshake-result", "host-opened", "host-result", "host-snapshot",
-    "host-patch", "host-fault", "host-closed", "unknown-kind", "uppercase-uuid",
+    "host-patch", "host-binding-vocabulary", "host-fault", "host-closed", "unknown-kind", "uppercase-uuid",
     "missing-capability", "negative-revision", "unknown-fault-code", "unsanitized-fault",
     "extra-envelope-property", "extra-payload-property", "bad-capability-token",
     "unsupported-version", "zero-member", "overlong-contract", "revision-overflow",
+    "duplicate-capability", "empty-patch", "opened-nonzero-revision", "unknown-collection-operation",
   ]);
 });
 
@@ -82,14 +83,14 @@ test("SDK-backed facets execute and unavailable lifecycle facets are explicit sk
 
   assert.deepEqual(
     [semantic.length, state.length, command.length, reconnect.length, hostile.length],
-    [8, 8, 6, 5, 28],
+    [12, 8, 6, 5, 28],
   );
   assert.ok(semantic.every(({ status }) => status === "passed"));
   assert.ok([...state, ...command, ...reconnect].every(({ status }) => status === "skipped"));
   assert.equal(hostile.filter(({ status }) => status === "passed").length, 22);
   assert.equal(hostile.filter(({ status }) => status === "skipped").length, 6);
   assert.equal(hostile.filter(({ status }) => status === "failed").length, 0);
-  assert.equal(log.filter((entry) => entry.startsWith("semantic:")).length, 8);
+  assert.equal(log.filter((entry) => entry.startsWith("semantic:")).length, 12);
   assert.deepEqual(hostile.filter(({ status }) => status === "skipped").map(({ id }) => id), [
     "depth-at-ceiling",
     "frame-at-byte-ceiling",
@@ -100,14 +101,14 @@ test("SDK-backed facets execute and unavailable lifecycle facets are explicit sk
   ]);
 });
 
-test("the aggregate browser-like report retains all 82 cases without claiming unavailable facets", async () => {
+test("the aggregate browser-like report retains all 92 cases without claiming unavailable facets", async () => {
   const report = await runConformance({ source, runtime: createBrowserRuntime() });
   assert.equal(report.format, CONFORMANCE_FORMAT);
   assert.equal(report.protocolIdentity, "webuitoolkit.mvvm/1");
   assert.equal(report.runtime, "browser-like");
   assert.equal(report.success, false);
-  assert.deepEqual(report.totals, { total: 82, passed: 49, failed: 0, skipped: 33 });
-  assert.equal(new Set(report.cases.map(({ id, suite }) => `${suite}:${id}`)).size, 82);
+  assert.deepEqual(report.totals, { total: 92, passed: 55, failed: 0, skipped: 37 });
+  assert.equal(new Set(report.cases.map(({ id, suite }) => `${suite}:${id}`)).size, 92);
   assert.equal(report.cases[0].id, "client-handshake");
   assert.equal(report.cases.at(-1).id, "prototype-pollution-payload-key");
 });
@@ -120,7 +121,7 @@ test("repeat runs produce byte-identical deterministic reports", async () => {
 
 test("missing runtime facets are explicit skips, never silent passes", async () => {
   const report = await runConformance({ source });
-  assert.deepEqual(report.totals, { total: 82, passed: 49, failed: 0, skipped: 33 });
+  assert.deepEqual(report.totals, { total: 92, passed: 55, failed: 0, skipped: 37 });
   assert.equal(report.success, false);
   assert.ok(report.cases.filter(({ status }) => status === "skipped").every(({ diagnostics }) => diagnostics.length === 1));
 });

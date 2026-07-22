@@ -1,0 +1,41 @@
+{
+  "observability": {
+    "bclSurfaces": ["ActivitySource", "Meter"],
+    "eventSourceRequired": false,
+    "allowedDimensions": ["mvvm.request.kind", "mvvm.outcome", "mvvm.fault.code", "mvvm.limit"],
+    "limitDimensionValues": ["sessions", "requests", "cancellation-control", "request-ledger"],
+    "forbiddenValues": ["capability", "payload", "contract", "session", "view", "request", "exception", "stackTrace", "sourcePath"],
+    "boundedCardinalityRequired": true,
+    "sanitizeBeforeLogging": true
+  },
+  "capability": {
+    "decodedBytes": 32,
+    "wireCharacters": 43,
+    "comparison": "constantTime",
+    "exposedByHostKinds": ["opened"],
+    "echoedByFaultsLogsMetricsOrTraces": false
+  },
+  "requestReplay": {
+    "requestIdUniqueForSessionLifetime": true,
+    "completedIdsRetainedUntilTombstoneRelease": true,
+    "maxDistinctAdmittedRequestsPerSessionLifetime": 65536,
+    "budgetCounts": ["open", "admittedSessionBoundControl", "admittedSessionBoundMutation"],
+    "perEntryEvictionAllowed": false,
+    "replayFault": "request.invalid",
+    "replayFaultScope": "activeSession",
+    "replayWhileSessionActiveFault": "request.invalid",
+    "consumerInvocations": 0,
+    "afterRequest65536Completes": "closeSession",
+    "laterRequestFault": "session.closed",
+    "closedSessionRuleTakesPrecedence": true
+  },
+  "identityMismatch": {
+    "distinguishSessionViewOrCapabilityFailure": false,
+    "echoAttackerControlledContent": false
+  },
+  "closeTombstone": {
+    "authenticatedCloseReplayReturnsSameTerminalState": true,
+    "otherRequestsReturn": "session.closed",
+    "postExpiryValidityDisclosure": false
+  }
+}

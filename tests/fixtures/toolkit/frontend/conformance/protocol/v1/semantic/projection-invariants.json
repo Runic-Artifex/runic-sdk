@@ -1,0 +1,57 @@
+{
+  "bindingVocabulary": {
+    "snapshotMemberTypes": ["property", "collection", "command", "validation"],
+    "patchChangeTypes": ["property", "collection", "collectionMove", "command", "validation"],
+    "collectionOperations": ["insert", "remove", "replace", "reset"]
+  },
+  "snapshotRules": {
+    "memberOrder": "ascendingNumericMemberThenTypeOrder",
+    "typeOrder": ["property", "collection", "command", "validation"],
+    "duplicateTypeMemberPairAllowed": false,
+    "replacesPropertiesCollectionsCommandsAndValidation": true
+  },
+  "patchCases": [
+    {
+      "id": "consecutive",
+      "localRevision": 40,
+      "fromRevision": 40,
+      "toRevision": 41,
+      "contentIdentity": "sha256:7e5370610fbc57b29b31ca96946867af",
+      "expected": "applyAtomically"
+    },
+    {
+      "id": "byte-equivalent-duplicate",
+      "localRevision": 41,
+      "fromRevision": 40,
+      "toRevision": 41,
+      "contentIdentity": "sha256:7e5370610fbc57b29b31ca96946867af",
+      "expected": "ignore"
+    },
+    {
+      "id": "conflicting-duplicate",
+      "localRevision": 41,
+      "fromRevision": 40,
+      "toRevision": 41,
+      "contentIdentity": "sha256:6a73cc894fce80797c5f22e4b48bd820",
+      "expected": "requestSnapshot"
+    },
+    {
+      "id": "revision-gap",
+      "localRevision": 41,
+      "fromRevision": 42,
+      "toRevision": 43,
+      "contentIdentity": "sha256:98ce42deef51bb139679264742b32ac7",
+      "expected": "requestSnapshot"
+    },
+    {
+      "id": "non-consecutive-transition",
+      "localRevision": 41,
+      "fromRevision": 41,
+      "toRevision": 43,
+      "contentIdentity": "sha256:d578b2a8c33ce31f50070f4076358ecc",
+      "expected": "requestSnapshot"
+    }
+  ],
+  "collectionIndexBasis": "stateAfterEarlierChangesInSamePatch",
+  "transactionChangeOrderPreserved": true
+}
