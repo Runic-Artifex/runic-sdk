@@ -7,7 +7,7 @@
 
 Every implementation stream uses one long-lived Codex task, one branch, one Git worktree, and an exclusive path set. Parallel agents inside that task may edit only disjoint owned paths; one integrator owns commits.
 
-Only the orchestrator edits root solution files, `Directory.*`, `global.json`, lockfiles, shared CI/release files, the contract registry, and cross-repository documentation.
+Only the orchestrator edits root solution files, `Directory.*`, `global.json`, root/shared lockfiles, shared CI/release files, the contract registry, and cross-repository documentation. A domain owns and commits `packages.lock.json` files located inside its registered project directories.
 
 Each handoff contains:
 
