@@ -12,7 +12,7 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | Text diagnostics | text-resources | `WUTTEXT0001`–`WUTTEXT0999` | ADR 0005 reserved |
 | CLI diagnostics | command-line | `WUTCLI0001`–`WUTCLI9999` | ADR 0005 reserved |
 | Notice diagnostics | dependency-notices | `WUTNOTICE1000`–`WUTNOTICE7999` | ADR 0005 reserved |
-| Hosting diagnostics | hosting | `WUTHOST0001`–`WUTHOST9999` | ADR 0005 reserved |
+| Hosting diagnostics | hosting | `WUTHOST0001`–`WUTHOST0007`, `WUTHOST1001`, `WUTHOST1101`–`WUTHOST1103`, `WUTHOST1201`–`WUTHOST1202`, `WUTHOST1301`, `WUTHOST1401`–`WUTHOST1405` | Allocated; remainder reserved by ADR 0005 |
 
 ## Package identities
 

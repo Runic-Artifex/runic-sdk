@@ -1,0 +1,4 @@
+# Projects intentionally exercised by dedicated performance or RID/AOT gates.
+tests/WebUIToolkit.Collections.AotSmoke/WebUIToolkit.Collections.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.AotSmoke/WebUIToolkit.MVVM.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.Html.Tests/AotSmoke/WebUIToolkit.MVVM.Html.AotSmoke.csproj

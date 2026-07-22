@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
     <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
     <PackageId>WebUIToolkit.DependencyNotices.Engine</PackageId>
     <Description>Offline manual-component engine for deterministic dependency notices.</Description>

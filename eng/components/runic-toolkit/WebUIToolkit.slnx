@@ -1,1 +1,32 @@
-<Solution />
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WebUIToolkit.Collections/WebUIToolkit.Collections.csproj" />
+    <Project Path="src/WebUIToolkit.CommandLine.Abstractions/WebUIToolkit.CommandLine.Abstractions.csproj" />
+    <Project Path="src/WebUIToolkit.DependencyNotices.Core/WebUIToolkit.DependencyNotices.Core.csproj" />
+    <Project Path="src/WebUIToolkit.DependencyNotices.Engine/WebUIToolkit.DependencyNotices.Engine.csproj" />
+    <Project Path="src/WebUIToolkit.Hosting.Abstractions/WebUIToolkit.Hosting.Abstractions.csproj" />
+    <Project Path="src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM/WebUIToolkit.MVVM.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.Flow/WebUIToolkit.MVVM.Flow.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.Html.Compiler/WebUIToolkit.MVVM.Html.Compiler.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.Html.Testing/WebUIToolkit.MVVM.Html.Testing.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.Html/WebUIToolkit.MVVM.Html.csproj" />
+    <Project Path="src/WebUIToolkit.TextResources.Compiler/WebUIToolkit.TextResources.Compiler.csproj" />
+    <Project Path="src/WebUIToolkit.TextResources/WebUIToolkit.TextResources.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WebUIToolkit.Collections.Tests/WebUIToolkit.Collections.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.CommandLine.Contracts.Tests/WebUIToolkit.CommandLine.Contracts.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.DependencyNotices.Tests/WebUIToolkit.DependencyNotices.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.Hosting.ContractTests/WebUIToolkit.Hosting.ContractTests.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.Flow.Tests/WebUIToolkit.MVVM.Flow.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.Html.Tests/WebUIToolkit.MVVM.Html.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.Protocol.Tests/WebUIToolkit.MVVM.Protocol.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.Tests/WebUIToolkit.MVVM.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.TextResources.Compiler.Tests/WebUIToolkit.TextResources.Compiler.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/dotnet-cwhtml/WebUIToolkit.DotNet.Cwhtml.csproj" />
+  </Folder>
+</Solution>

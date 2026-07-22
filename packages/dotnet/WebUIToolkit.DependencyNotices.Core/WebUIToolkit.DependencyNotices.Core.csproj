@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
     <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
     <PackageId>WebUIToolkit.DependencyNotices.Core</PackageId>
     <Description>BCL-only contracts and deterministic primitives for dependency notices.</Description>
