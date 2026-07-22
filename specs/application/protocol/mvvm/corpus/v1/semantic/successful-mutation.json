@@ -35,6 +35,8 @@
   ],
   "expected": {
     "consumerInvocations": 1,
+    "atomicCommitAndCompletedBindingResult": true,
+    "completedResultContainsCompleteProjection": true,
     "finalRevision": 13,
     "revisionIncrements": 1,
     "terminalOutcomeCount": 1

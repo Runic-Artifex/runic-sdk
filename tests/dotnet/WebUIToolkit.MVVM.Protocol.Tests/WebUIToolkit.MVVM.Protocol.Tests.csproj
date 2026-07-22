@@ -7,6 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM/WebUIToolkit.MVVM.csproj" />
+
     <Content Include="../../protocol/mvvm/schema/v1/*.json"
              Link="Protocol/schema/v1/%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />

@@ -7,6 +7,7 @@ namespace WebUIToolkit.MVVM;
 public sealed class MvvmSessionRegistry
 {
     private readonly Dictionary<MvvmContract, MvvmSessionActivator> _activators = [];
+    private readonly object _gate = new();
 
     /// <summary>Registers one logical contract using ordinal, case-sensitive identity.</summary>
     /// <exception cref="InvalidOperationException">The contract is already registered.</exception>
@@ -18,9 +19,12 @@ public sealed class MvvmSessionRegistry
         }
 
         ArgumentNullException.ThrowIfNull(activator);
-        if (!_activators.TryAdd(contract, activator))
+        lock (_gate)
         {
-            throw new InvalidOperationException($"The MVVM contract '{contract}' is already registered.");
+            if (!_activators.TryAdd(contract, activator))
+            {
+                throw new InvalidOperationException($"The MVVM contract '{contract}' is already registered.");
+            }
         }
 
         return this;
@@ -31,7 +35,10 @@ public sealed class MvvmSessionRegistry
     {
         MvvmLimits selectedLimits = limits ?? MvvmLimits.Default;
         selectedLimits.Validate();
-        return new MvvmSessionFactory(new Dictionary<MvvmContract, MvvmSessionActivator>(_activators), selectedLimits);
+        lock (_gate)
+        {
+            return new MvvmSessionFactory(new Dictionary<MvvmContract, MvvmSessionActivator>(_activators), selectedLimits);
+        }
     }
 }
 
@@ -61,87 +68,182 @@ internal sealed class MvvmSessionFactory : IMvvmSessionFactory
             throw new ArgumentException("A contract cannot be empty.", nameof(contract));
         }
 
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        using MvvmActivity activity = MvvmTelemetry.StartSessionOpen();
         if (!_activators.TryGetValue(contract, out MvvmSessionActivator? activator))
         {
+            MvvmTelemetry.SessionOpenFailed(activity, startedTimestamp, "contract_unknown");
             throw new KeyNotFoundException($"The MVVM contract '{contract}' is not registered.");
         }
 
-        lock (_lifetimeGate)
-        {
-            ObjectDisposedException.ThrowIf(_disposeState != 0, this);
-            if (_admittedSessions >= _limits.MaxSessions)
-            {
-                throw new InvalidOperationException("The configured MVVM session limit was exceeded.");
-            }
-
-            _admittedSessions++;
-            _openOperations++;
-        }
-
-        MvvmSessionActivation? activation = null;
-        bool admissionOwnedByOpen = true;
+        bool outcomeRecorded = false;
         try
         {
-            using var activationCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
-            activation = await activator(activationCancellation.Token).ConfigureAwait(false);
-            MvvmSession session;
+            cancellationToken.ThrowIfCancellationRequested();
+            bool sessionLimitExceeded;
             lock (_lifetimeGate)
             {
                 ObjectDisposedException.ThrowIf(_disposeState != 0, this);
-                cancellationToken.ThrowIfCancellationRequested();
-                MvvmSessionId sessionId;
-                do
+                sessionLimitExceeded = _admittedSessions >= _limits.MaxSessions;
+                if (!sessionLimitExceeded)
                 {
-                    sessionId = new MvvmSessionId(Guid.NewGuid());
+                    _admittedSessions++;
+                    _openOperations++;
                 }
-                while (_sessions.ContainsKey(sessionId));
-
-                session = new MvvmSession(
-                    sessionId,
-                    contract,
-                    CreateCapabilityToken(),
-                    activation,
-                    _limits,
-                    OnSessionClosedAsync);
-                if (!_sessions.TryAdd(session.Id, session))
-                {
-                    throw new InvalidOperationException("A unique MVVM session identifier could not be allocated.");
-                }
-
-                activation = null;
-                admissionOwnedByOpen = false;
             }
 
-            return session;
-        }
-        finally
-        {
+            if (sessionLimitExceeded)
+            {
+                MvvmTelemetry.BackpressureRejected("sessions");
+                MvvmTelemetry.SessionOpenFailed(activity, startedTimestamp, "limit_exceeded");
+                outcomeRecorded = true;
+                throw new InvalidOperationException("The configured MVVM session limit was exceeded.");
+            }
+
+            MvvmSessionActivation? activation = null;
+            bool admissionOwnedByOpen = true;
             try
             {
-                if (activation is not null)
+                using var activationCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
+                Task<MvvmSessionActivation> activationTask = Task.Run(
+                    async () => await activator(activationCancellation.Token).ConfigureAwait(false));
+                try
                 {
-                    await DisposeActivationAsync(activation).ConfigureAwait(false);
+                    activation = await activationTask.WaitAsync(activationCancellation.Token).ConfigureAwait(false);
                 }
+                catch (OperationCanceledException) when (activationCancellation.IsCancellationRequested)
+                {
+                    if (activationTask.IsCompleted)
+                    {
+                        // Observe the terminal task even if cancellation won WaitAsync's race.
+                        activation = await activationTask.ConfigureAwait(false);
+                    }
+                    else if (_shutdown.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            activation = await activationTask
+                                .WaitAsync(_limits.MaxShutdownDuration, CancellationToken.None)
+                                .ConfigureAwait(false);
+                        }
+                        catch (TimeoutException)
+                        {
+                            admissionOwnedByOpen = false;
+                            _ = ObserveLateActivationAndReleaseAdmissionAsync(
+                                activationTask,
+                                _limits.MaxShutdownDuration);
+                            throw new ObjectDisposedException(nameof(MvvmSessionFactory));
+                        }
+                    }
+                    else
+                    {
+                        admissionOwnedByOpen = false;
+                        _ = ObserveLateActivationAndReleaseAdmissionAsync(
+                            activationTask,
+                            _limits.MaxShutdownDuration);
+                        throw;
+                    }
+                }
+
+                if (activation is null)
+                {
+                    throw new InvalidOperationException("The MVVM session activator returned no activation.");
+                }
+                MvvmSession session;
+                lock (_lifetimeGate)
+                {
+                    ObjectDisposedException.ThrowIf(_disposeState != 0, this);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    MvvmSessionId sessionId;
+                    do
+                    {
+                        sessionId = new MvvmSessionId(Guid.NewGuid());
+                    }
+                    while (_sessions.ContainsKey(sessionId));
+
+                    session = new MvvmSession(
+                        sessionId,
+                        contract,
+                        CreateCapabilityToken(),
+                        activation,
+                        _limits,
+                        OnSessionClosedAsync);
+                    if (!_sessions.TryAdd(session.Id, session))
+                    {
+                        throw new InvalidOperationException("A unique MVVM session identifier could not be allocated.");
+                    }
+
+                    activation = null;
+                    admissionOwnedByOpen = false;
+                }
+
+                MvvmTelemetry.SessionOpenSucceeded(activity, startedTimestamp);
+                outcomeRecorded = true;
+                return session;
             }
             finally
             {
-                if (admissionOwnedByOpen)
+                try
                 {
-                    lock (_lifetimeGate)
+                    if (activation is not null)
                     {
-                        _admittedSessions--;
+                        bool disposalFinished = await DisposeActivationBoundedAsync(
+                            activation,
+                            _limits.MaxShutdownDuration,
+                            releaseAdmissionWhenLate: true).ConfigureAwait(false);
+                        if (!disposalFinished)
+                        {
+                            admissionOwnedByOpen = false;
+                        }
                     }
                 }
-
-                lock (_lifetimeGate)
+                finally
                 {
-                    _openOperations--;
-                    if (_disposeState != 0 && _openOperations == 0)
+                    if (admissionOwnedByOpen)
                     {
-                        _opensDrained.TrySetResult();
+                        lock (_lifetimeGate)
+                        {
+                            _admittedSessions--;
+                        }
+                    }
+
+                    lock (_lifetimeGate)
+                    {
+                        _openOperations--;
+                        if (_disposeState != 0 && _openOperations == 0)
+                        {
+                            _opensDrained.TrySetResult();
+                        }
                     }
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            if (!outcomeRecorded)
+            {
+                MvvmTelemetry.SessionOpenFailed(activity, startedTimestamp, "cancelled");
+            }
+
+            throw;
+        }
+        catch (ObjectDisposedException)
+        {
+            if (!outcomeRecorded)
+            {
+                MvvmTelemetry.SessionOpenFailed(activity, startedTimestamp, "disposed");
+            }
+
+            throw;
+        }
+        catch
+        {
+            if (!outcomeRecorded)
+            {
+                MvvmTelemetry.SessionOpenFailed(activity, startedTimestamp, "activation_failed");
+            }
+
+            throw;
         }
     }
 
@@ -187,18 +289,34 @@ internal sealed class MvvmSessionFactory : IMvvmSessionFactory
         Exception? firstFailure = null;
         try
         {
-            _shutdown.Cancel();
-            await _opensDrained.Task.ConfigureAwait(false);
-            foreach (MvvmSession session in sessions)
+            Task cancellation = Task.Run(async () =>
             {
                 try
                 {
-                    await session.DisposeAsync().ConfigureAwait(false);
+                    await _shutdown.CancelAsync().ConfigureAwait(false);
                 }
-                catch (Exception exception)
+                catch (Exception)
                 {
-                    firstFailure ??= exception;
+                    // Activation cancellation callbacks are consumer code and cannot break teardown.
                 }
+            });
+            Task[] sessionDisposals = sessions
+                .Select(static session => Task.Run(
+                    async () => await session.DisposeAsync().ConfigureAwait(false)))
+                .ToArray();
+            Task teardown = Task.WhenAll([cancellation, _opensDrained.Task, .. sessionDisposals]);
+            try
+            {
+                await teardown.WaitAsync(_limits.MaxShutdownDuration).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                _ = ObserveFailureAsync(teardown);
+                // Remaining consumer work is quarantined; disposing it concurrently is unsafe.
+            }
+            catch (Exception exception)
+            {
+                firstFailure = exception;
             }
         }
         finally
@@ -226,7 +344,34 @@ internal sealed class MvvmSessionFactory : IMvvmSessionFactory
         return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
-    private static async ValueTask DisposeActivationAsync(MvvmSessionActivation activation)
+    private async ValueTask<bool> DisposeActivationBoundedAsync(
+        MvvmSessionActivation activation,
+        TimeSpan shutdownDuration,
+        bool releaseAdmissionWhenLate = false)
+    {
+        Task disposal = Task.Run(async () => await DisposeActivationCoreAsync(activation).ConfigureAwait(false));
+        try
+        {
+            await disposal.WaitAsync(shutdownDuration).ConfigureAwait(false);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            if (releaseAdmissionWhenLate)
+            {
+                _ = ObserveDisposalAndReleaseAdmissionAsync(disposal);
+            }
+            else
+            {
+                _ = ObserveFailureAsync(disposal);
+            }
+
+            // Do not dispose dependent resources concurrently with a stuck adapter callback.
+            return false;
+        }
+    }
+
+    private static async Task DisposeActivationCoreAsync(MvvmSessionActivation activation)
     {
         Exception? firstFailure = null;
         try
@@ -265,14 +410,87 @@ internal sealed class MvvmSessionFactory : IMvvmSessionFactory
         }
     }
 
-    private ValueTask OnSessionClosedAsync(MvvmSession session)
+    private async Task ObserveLateActivationAndReleaseAdmissionAsync(
+        Task<MvvmSessionActivation> activationTask,
+        TimeSpan shutdownDuration)
+    {
+        bool releaseAdmission = false;
+        try
+        {
+            MvvmSessionActivation activation = await activationTask.ConfigureAwait(false);
+            if (activation is not null)
+            {
+                try
+                {
+                    releaseAdmission = await DisposeActivationBoundedAsync(
+                        activation,
+                        shutdownDuration,
+                        releaseAdmissionWhenLate: true).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Ordered cleanup completed and its failure is observed, so the slot is safe to release.
+                    releaseAdmission = true;
+                }
+            }
+            else
+            {
+                releaseAdmission = true;
+            }
+        }
+        catch (Exception)
+        {
+            // A canceled or failed activation owns no returned resources and is safe to release.
+            releaseAdmission = true;
+        }
+
+        if (releaseAdmission)
+        {
+            ReleaseAdmission();
+        }
+    }
+
+    private async Task ObserveDisposalAndReleaseAdmissionAsync(Task disposal)
+    {
+        await ObserveFailureAsync(disposal).ConfigureAwait(false);
+        ReleaseAdmission();
+    }
+
+    private void ReleaseAdmission()
     {
         lock (_lifetimeGate)
         {
-            if (_sessions.TryRemove(session.Id, out _))
+            _admittedSessions--;
+        }
+    }
+
+    private static async Task ObserveFailureAsync(Task operation)
+    {
+        try
+        {
+            await operation.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Detached consumer work is observed so it cannot become an unobserved failure.
+        }
+    }
+
+    private ValueTask OnSessionClosedAsync(MvvmSession session)
+    {
+        bool removed;
+        lock (_lifetimeGate)
+        {
+            removed = _sessions.TryRemove(session.Id, out _);
+            if (removed)
             {
                 _admittedSessions--;
             }
+        }
+
+        if (removed)
+        {
+            MvvmTelemetry.SessionClosed();
         }
 
         return ValueTask.CompletedTask;

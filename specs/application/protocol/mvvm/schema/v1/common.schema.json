@@ -13,7 +13,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128,
-      "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$",
       "description": "maxLength is an early code-point check; runtimes additionally enforce the normative 128 UTF-8 byte limit."
     },
     "capabilityToken": {
@@ -30,12 +30,41 @@
       ]
     },
     "capabilitySet": {
-      "type": "array",
-      "maxItems": 5,
-      "uniqueItems": true,
-      "items": {
-        "$ref": "#/$defs/capabilityName"
-      }
+      "description": "The complete closed set of v1 capability subsets in normative ordinal serialization order.",
+      "enum": [
+        [],
+        ["cancellation"],
+        ["collections"],
+        ["commandResults"],
+        ["patches"],
+        ["validation"],
+        ["cancellation", "collections"],
+        ["cancellation", "commandResults"],
+        ["cancellation", "patches"],
+        ["cancellation", "validation"],
+        ["collections", "commandResults"],
+        ["collections", "patches"],
+        ["collections", "validation"],
+        ["commandResults", "patches"],
+        ["commandResults", "validation"],
+        ["patches", "validation"],
+        ["cancellation", "collections", "commandResults"],
+        ["cancellation", "collections", "patches"],
+        ["cancellation", "collections", "validation"],
+        ["cancellation", "commandResults", "patches"],
+        ["cancellation", "commandResults", "validation"],
+        ["cancellation", "patches", "validation"],
+        ["collections", "commandResults", "patches"],
+        ["collections", "commandResults", "validation"],
+        ["collections", "patches", "validation"],
+        ["commandResults", "patches", "validation"],
+        ["cancellation", "collections", "commandResults", "patches"],
+        ["cancellation", "collections", "commandResults", "validation"],
+        ["cancellation", "collections", "patches", "validation"],
+        ["cancellation", "commandResults", "patches", "validation"],
+        ["collections", "commandResults", "patches", "validation"],
+        ["cancellation", "collections", "commandResults", "patches", "validation"]
+      ]
     },
     "revision": {
       "type": "integer",
@@ -51,7 +80,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 256,
-      "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$",
       "description": "The runtime also enforces 256 UTF-8 bytes and the semantic sanitization rules in protocol-v1.md."
     },
     "faultCode": {
@@ -115,6 +144,8 @@
         "members": {
           "type": "array",
           "maxItems": 4096,
+          "uniqueItems": true,
+          "description": "Canonical output is sorted by ascending member ID, then by the fixed property, collection, command, validation type order. uniqueItems is an early exact-duplicate check; the runtime additionally rejects duplicate (type, member) pairs, which JSON Schema cannot express for arbitrary integer member IDs.",
           "items": {
             "$ref": "#/$defs/snapshotMember"
           }
@@ -200,7 +231,31 @@
               "maxItems": 10000,
               "items": { "$ref": "#/$defs/jsonValue" }
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": { "operation": { "const": "reset" } },
+                "required": ["operation"]
+              },
+              "then": {
+                "properties": { "index": { "const": 0 } }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "operation": { "enum": ["insert", "remove", "replace"] }
+                },
+                "required": ["operation"]
+              },
+              "then": {
+                "properties": {
+                  "items": { "minItems": 1 }
+                }
+              }
+            }
+          ]
         },
         {
           "type": "object",

@@ -125,6 +125,7 @@
     },
     "ack": {
       "type": "object",
+      "description": "Advisory backpressure watermark. Runtime validation rejects an acknowledgement beyond the authoritative host revision.",
       "additionalProperties": false,
       "required": ["v", "kind", "session", "view", "request", "capability", "payload"],
       "properties": {
@@ -146,6 +147,7 @@
     },
     "requestSnapshot": {
       "type": "object",
+      "description": "Requests authoritative replacement state, including after reconnect or a patch gap/conflict.",
       "additionalProperties": false,
       "required": ["v", "kind", "session", "view", "request", "capability", "payload"],
       "properties": {

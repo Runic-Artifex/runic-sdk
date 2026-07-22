@@ -20,6 +20,15 @@ trailing non-whitespace data, comment, trailing comma, non-finite number, or a
 document deeper or larger than the negotiated limits. JSON object order is not
 semantic.
 
+Framing validation is performed on the received bytes, before construction of
+wire model objects or invocation of registration, binding, or consumer code.
+The UTF-8 decoder MUST use strict error handling: it MUST NOT replace malformed
+bytes, a lone surrogate escape, or an invalid surrogate pair with U+FFFD.
+Duplicate detection compares the decoded property-name scalar sequence, so
+`"kind"` and `"\u006bind"` are the same key. Limits apply to the complete
+decoded JSON tree, including application values nested below `value`,
+`argument`, `items`, and command results.
+
 All envelope and payload property names are the camelCase spellings in the
 schemas. Unknown properties and unknown `kind` values are invalid. A receiver
 MUST validate the applicable direction schema before dispatching consumer
@@ -29,15 +38,19 @@ without returning attacker-controlled content.
 
 Identifiers have these invariants:
 
-- `contract` is a non-empty, control-free UTF-8 string of at most 128 encoded
+- `contract` is a non-empty, C0/C1-control-free UTF-8 string of at most 128 encoded
   bytes. Comparison is ordinal and case-sensitive. Implementations MUST NOT
   case-fold, culture-transform, or Unicode-normalize it.
 - `session`, `view`, and `request` are non-nil RFC 4122 UUIDs serialized as 36
   lowercase ASCII characters with hyphens. UUID comparison is by its 128-bit
   value. Uppercase or alternate textual forms are invalid.
 - A request UUID is unique for the lifetime of its session. The host retains
-  completed request UUIDs until the session tombstone is released and rejects
-  a replay as `request.invalid` without invoking consumer code.
+  every admitted request UUID and terminal classification until the session
+  tombstone is released. While the session is active it rejects a replay as
+  `request.invalid` without invoking consumer code; after closure, the close
+  rules in section 4 take precedence. It MUST NOT evict individual entries from
+  a live session; the finite session request budget in section 7 bounds this
+  state.
 - `member` is an integer from 1 through 2,147,483,647. It is scoped by the
   opened contract and never derived from a display name.
 - A revision is a non-negative JSON integer from 0 through
@@ -47,6 +60,19 @@ Identifiers have these invariants:
   `bigint`; ordinary `JSON.parse` numbers are insufficient above
   9,007,199,254,740,991.
 - Encoding, number parsing, ordering, and comparison are culture-invariant.
+
+A conforming encoder emits valid UTF-8 without a BOM and never emits an
+unpaired surrogate or non-finite number. For a given wire model and projected
+JSON value it MUST emit the same bytes regardless of process culture, current
+thread culture, operating system, hash-map iteration order, or prior requests.
+It emits envelope and protocol payload properties in schema declaration order,
+snapshot arrays in the order defined in section 8, and capability arrays in
+ordinal order. Application JSON object properties are emitted in ordinal name
+order recursively; arrays retain their application order. Integer tokens use
+the shortest base-10 spelling with no leading zero, plus sign, or negative
+zero. Other numbers use the shortest finite round-trippable invariant spelling.
+Escaping choices MUST be stable within an implementation; receivers MUST NOT
+depend on an emitter's escaping choice.
 
 `capability` is a per-session bearer secret containing exactly 32 random bytes,
 encoded as 43 unpadded base64url ASCII characters. `opened` is the only host
@@ -91,6 +117,17 @@ intersection it implements. A client MUST NOT rely on an unselected capability.
 A new capability name requires a revised schema and corpus; a breaking message
 change requires a new protocol major and schema directory.
 
+Capabilities gate vocabulary as follows. `cancel` is accepted only when
+`cancellation` was selected. Collection snapshot members and collection patch
+changes require `collections`; command result `value` requires
+`commandResults`; `patch` messages require `patches`; and validation snapshot
+members and changes require `validation`. Command snapshot members and command
+changes themselves do not require `commandResults`. If `patches` is not
+selected, mutations still advance revision and their terminal result exposes
+the new revision; the client recovers changed projection with
+`requestSnapshot`. Using unselected vocabulary is `request.invalid` in the
+client direction and a protocol violation in the host direction.
+
 ## 4. Session and revision rules
 
 An `open` allocates one session and returns an `opened` snapshot at revision 0.
@@ -115,18 +152,45 @@ content is byte-equivalent to the already applied transition. A gap or conflict
 requires `requestSnapshot` and no speculative patch application.
 
 Observable changes caused during a mutation are committed as one transaction.
-If consumer code changes projected state and then throws, times out, or observes
-cancellation, the host MUST publish one patch, advance exactly once, and then
-send the winning sanitized fault at the new revision. It MUST NOT leave changed
-state at the old revision. Changes occurring outside a request are serialized
-as their own one-step patch transactions.
+A conforming binding adapter MUST stage them until mutation commit and
+publication of its completed binding result (`MvvmBindingResult` in the .NET
+runtime) can occur as one logical atomic act. The completed result contains the
+complete projection change set and either success or a declared committed
+failure. Once the runtime
+observes that completed result, the commit wins: it advances exactly once,
+publishes its patch when non-empty and selected, and then publishes the result
+or sanitized committed fault at the new revision.
+
+If cancellation, deadline, or an uncommitted consumer exception wins before
+that atomic act, the adapter MUST discard or roll back staged changes and MUST
+NOT subsequently mutate or commit them. The winning fault remains at the old
+revision. Directly mutating projected state before completed-result publication,
+or committing after another terminal condition won, violates the adapter
+contract. The runtime discards the late result and quarantines the session as
+described in section 5; it MUST NOT legitimize the violation by emitting a late
+patch or advancing revision. Changes genuinely originating outside a request
+are serialized as their own one-step patch transactions and are not a mechanism
+for relabeling a violating late mutation.
 
 A snapshot is authoritative and replaces all prior local members, command
-state, collections, and validation. Reconnect uses a new handshake followed by
-`requestSnapshot`; v1 does not require patch replay. `ack` is advisory
-backpressure information, never mutates state, and cannot acknowledge beyond
-the host revision. A successful `ack`, `cancel`, or repeated `close` does not
-advance revision.
+state, collections, and validation. On a replacement, omitted members are
+removed; clients MUST NOT merge the snapshot into old local state.
+
+After transport loss, reconnect uses a new handshake and then an authenticated
+`requestSnapshot` for the retained session. The session, view, and capability
+are the original values; `requestSnapshot.request` is new and unique. A host
+MAY expire a disconnected session according to a documented bounded retention
+policy, in which case the request returns `session.closed` and the client must
+`open` a new session. V1 does not require patch replay and a client MUST NOT
+resume by assuming that its last locally applied revision is authoritative.
+
+`ack` is advisory backpressure information and never mutates projected state.
+It reports the highest contiguous revision the client has fully applied. An
+acknowledgement greater than the host revision is `request.invalid` and does
+not change acknowledgement state. An acknowledgement at or below the greatest
+previously accepted value is a successful idempotent no-op. Otherwise the host
+advances the acknowledged value monotonically. A successful `ack`, `cancel`,
+or repeated `close` does not advance revision.
 
 `close` is idempotent. The first accepted close stops admission, cancels pending
 work, disposes session resources, and returns `closed`. While the session
@@ -142,10 +206,22 @@ or `closed` outcome. Transport receipt of `cancel` MAY signal a pending
 cancellation source outside the consumer-dispatch queue, but it MUST NOT invoke
 consumer code concurrently. Terminal publication remains session-serialized.
 
+A `cancel` is itself authenticated, deduplicated, admitted, and counted against
+both the pending and lifetime request bounds. Target lookup and cancellation
+signalling MUST use bounded state and MUST NOT create an unbounded task,
+callback, or queue entry per repeated cancel. The host makes the target winner
+decision without awaiting target consumer completion. If cancellation wins, it
+publishes the target's `request.cancelled` fault and then the cancel request's
+`result`; `accepted` is `true`. Otherwise the cancel result has `accepted:
+false`. Its `revision` is the authoritative revision at that serialized winner
+decision. An atomic target commit would already have won instead; the cancel
+itself never advances revision.
+
 The first terminal condition wins:
 
-1. Completion committed before cancellation or deadline remains successful;
-   later cancellation returns `accepted: false`.
+1. An atomic commit and completed binding result observed before cancellation
+   or deadline wins and is published as that result's success or committed
+   fault; later cancellation returns `accepted: false`.
 2. Cancellation observed before the deadline produces
    `request.cancelled`; the cancel result has `accepted: true`.
 3. Reaching the deadline before cancellation produces `request.timeout`;
@@ -155,9 +231,23 @@ The first terminal condition wins:
    exposed as `request.invalid` with a generic sanitized message.
 
 Cancellation is cooperative. If work ignores its token, the host still emits
-only the winning terminal fault and discards a late return value. Any projected
-state observed before that terminal condition follows the committed-change rule
-in section 4.
+only the winning terminal fault and discards a late return value. Cancellation
+or deadline winning before completed-result publication means there is no
+conforming target commit and no target revision advance, regardless of work the
+consumer performed privately or attempted to return later.
+
+When cancellation or deadline wins while the consumer operation has not
+returned, the host marks the session unusable before publishing the winning
+fault. It admits no further consumer work, transitions the session to closed
+teardown, and does not await the late operation for target terminal publication
+or progress by other sessions. A late return, exception, patch, or attempted
+commit is observed for resource cleanup and recorded only as a sanitized
+consumer contract violation; it produces no wire message, revision change, or
+session revival. Owned resources that cannot safely be released while the
+operation is running are retained only by that closed session and released when
+the operation returns; this retention is bounded by the host's session and
+pending-operation limits. The client opens a new session after
+`session.closed`.
 
 ## 6. Stable fault catalog
 
@@ -175,7 +265,14 @@ clients branch on the code and recovery fields.
 | `request.timeout` | The negotiated command deadline won. | Yes, when retry is safe for the application. |
 | `session.closed` | The session is closing, closed, expired, or otherwise unavailable. | Open a new session. |
 
-Fault messages MUST be non-empty, control-free UTF-8 of at most 256 bytes.
+`retryable` is exactly `true` for `revision.stale`, `limit.exceeded`, and
+`request.timeout`, and exactly `false` for every other v1 code. Only
+`revision.stale` carries `currentRevision` and `snapshotRequired`; there
+`snapshotRequired` is exactly `true`. Those recovery fields are absent for all
+other codes. `protocol.unsupported` is pre-session only. Pre-session faults are
+limited to `protocol.unsupported`, `request.invalid`, and `limit.exceeded`.
+
+Fault messages MUST be non-empty, C0/C1-control-free UTF-8 of at most 256 bytes.
 They MUST be selected from bounded implementation-owned templates and MUST NOT
 contain exception type names, stack traces, source locations, paths, secrets,
 payload values, arbitrary consumer text, or serialized exception data. A host
@@ -203,6 +300,7 @@ not UTF-16 code units. Exceeding any applicable limit produces
 | Sanitized message | 256 UTF-8 bytes | 256 UTF-8 bytes |
 | Concurrent sessions per host | 16 | 16 |
 | Pending requests per session | 64 | 64 |
+| Distinct admitted requests per session lifetime | 65,536 | 65,536 |
 | Members per snapshot | 4,096 | 4,096 |
 | Changes per patch | 1,024 | 1,024 |
 | Items per projected collection | 10,000 | 10,000 |
@@ -214,22 +312,114 @@ MUST additionally enforce every UTF-8 byte limit. Counts are checked before
 allocation where possible. The pending-request count includes queued and
 executing requests but excludes completed request tombstones.
 
+The lifetime request budget counts `open` as the first request and every
+distinct admitted session-bound request thereafter, including control requests.
+It is a fixed v1 lifecycle bound and is not a negotiated handshake limit. On
+completion of request 65,536, the host stops admission, retains all UUID
+tombstones, and moves the session to closed teardown; a later request observes
+`session.closed` without consumer dispatch and the client opens a new session.
+A request rejected before admission does not consume the budget. Hosts MUST NOT
+use tombstone eviction to extend the budget.
+
+### 7.1 Bounded admission and output
+
+Every per-host and per-session work queue MUST have a finite configured bound;
+an unbounded channel, task list, patch history, or completed-request cache is
+not conforming. The admission bound is `maxPendingRequests`. Admission is an
+atomic reservation made before queuing, and the reservation is held until the
+request's terminal response is handed to the bounded transport writer. When no
+reservation is available, the request is not queued or dispatched and receives
+`limit.exceeded` if a correlated response can be safely reserved.
+
+The transport writer MUST also be bounded and MUST reserve sufficient capacity
+for the terminal response of every admitted request. A mutation can produce at
+most one patch plus one terminal response. Implementations MAY stop reading or
+pause admission when writer capacity is exhausted. They MUST NOT drop, reorder,
+or replace an admitted request's terminal response. If the transport cannot
+make progress within the host's documented bounded write timeout, the host
+closes that transport and retains or expires the session under the reconnect
+rule in section 4.
+
+Retained patch history is optional and bounded. The host tracks acknowledgement
+monotonically but MUST NOT retain a patch merely because it is unacknowledged.
+When an implementation's unacknowledged-history bound is reached, it stops
+replay retention and/or live patch publication; it continues publishing
+terminal revisions. A client that observes a terminal revision ahead of its
+local revision, a patch gap, or a conflicting transition requests a snapshot.
+Ack therefore permits reclamation but never promises replay.
+
 ## 8. Snapshots, patches, and deterministic encoding
 
-Snapshot member arrays are sorted by ascending numeric member ID and contain no
-duplicate `(type, member)` pair. Patch changes preserve transaction order;
+The complete v1 binding vocabulary is `property`, `collection`, `command`, and
+`validation` snapshot members, plus those four patch change types and
+`collectionMove`. A numeric member is registered with exactly one principal
+kind: property, collection, or command. A validation entry uses the member ID
+of the property or collection it describes; an empty `errors` array explicitly
+clears validation for that member. Values and collection items are closed JSON
+trees, never encoded framework objects or type metadata.
+
+Snapshot member arrays contain exactly one entry for every currently projected
+principal member and, when selected, exactly one validation entry for each
+member having a validation projection (including an empty error list). They are
+sorted first by ascending numeric member ID and then by type in the fixed order
+`property`, `collection`, `command`, `validation`; no `(type, member)` pair may
+repeat. Each member ID and change MUST match its registered kind. A malformed
+adapter projection is an implementation error and MUST be rejected before it
+reaches the wire.
+
+Patch changes preserve transaction order;
 coalescing is allowed only when the resulting change sequence is observably
 equivalent. Collection indices refer to the collection state produced by all
 earlier changes in the same patch. A reset uses index zero and the complete new
 collection. Collection moves use the pre-move `from`, post-removal insertion
 `to`, and positive `count`.
 
+For `insert`, `items` is non-empty and is inserted immediately before `index`,
+where `index` may equal the pre-change count. For `remove`, `items` is non-empty
+and is the exact sequence removed beginning at `index`; a client MUST treat a
+mismatch as a conflict. For `replace`, `items` is the non-empty replacement
+sequence beginning at `index`; replacement removes the same number of existing
+items. For `reset`, `items` is the complete replacement and may be empty.
+Indices and counts MUST be in range at the instant the change is applied, and
+the collection MUST remain within its negotiated bound after every change.
+Command and validation changes replace the complete projected state for that
+member. Property changes replace the complete property value.
+
 Canonical corpus output uses the schema property order, lowercase UUIDs,
 shortest valid base-10 JSON number spelling, no insignificant whitespace, and a
 single trailing newline when stored as a file. Wire receivers MUST NOT depend
 on property order or whitespace.
 
-## 9. Compatibility and conformance
+## 9. Observability and security boundaries
+
+Observability is an implementation surface, not an extension of the wire
+schema. Implementations SHOULD expose BCL-friendly tracing, metrics, and logs
+(for example .NET `ActivitySource` and `Meter`) under a stable library-owned
+name. At minimum operators SHOULD be able to observe active sessions, admitted
+and rejected requests, pending work, request duration and outcome code, emitted
+snapshots and patches, and admission/writer pressure. Instrument creation and
+the disabled-listener path MUST be allocation-conscious and MUST NOT change
+protocol ordering or outcomes.
+
+Telemetry MUST NOT contain capability tokens, application JSON, contract values,
+view/session/request identifiers, member values, exception text, or close
+reasons by default. Suitable low-cardinality dimensions are protocol version,
+message kind, operation kind, terminal fault code, and coarse queue outcome.
+Contract or member identity MAY be exposed only through an explicit
+application-provided redaction/classification hook; raw values remain forbidden.
+Listener, exporter, and logging failures MUST NOT fail a request or session.
+
+Authentication is performed before request replay lookup, revision disclosure,
+member lookup, or consumer dispatch. Unknown session, wrong view, and wrong
+capability failures use the same public fault shape and MUST NOT reveal which
+comparison failed. Implementations SHOULD make those rejection paths
+indistinguishable in observable timing within practical limits. Request UUID
+tombstones and disconnected-session state are bounded and expire according to
+documented host policy. Secret buffers are not pooled or logged and are cleared
+when their lifetime ends where the platform permits. Corpus credentials are
+test vectors only and MUST NOT be used in production.
+
+## 10. Compatibility and conformance
 
 Wire version 1 accepts only the message kinds, properties, capabilities, and
 fault codes in these schemas. Optional behavior is used only after capability
@@ -245,3 +435,8 @@ Conformance requires:
 4. byte, depth, count, culture, duplicate-key, and sanitization checks are run
    outside JSON Schema; and
 5. test results are identical under different process cultures.
+
+In addition, production conformance exercises malformed UTF-8 and surrogate
+escapes, decoded duplicate names, deep and wide JSON, acknowledgement replay and
+future acknowledgement rejection, slow/non-reading transports, reconnect after
+patch loss, request UUID replay, wrong-capability probes, and telemetry redaction.
