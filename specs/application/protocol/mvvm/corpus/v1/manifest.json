@@ -1,0 +1,43 @@
+{
+  "protocolIdentity": "webuitoolkit.mvvm/1",
+  "schemaDraft": "https://json-schema.org/draft/2020-12/schema",
+  "cases": [
+    { "id": "client-handshake", "file": "valid/client-handshake.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Negotiates v1 and a supported capability subset." },
+    { "id": "client-open", "file": "valid/client-open.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Opens an ordinal contract for one lowercase UUID view." },
+    { "id": "client-set-property", "file": "valid/client-set-property.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Carries all authenticated mutation identity and revision fields." },
+    { "id": "client-execute", "file": "valid/client-execute.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Uses a numeric member ID and type-neutral JSON argument." },
+    { "id": "client-control-messages", "file": "valid/client-control-messages.json", "schema": "client", "documentMode": "eachItem", "valid": true, "reason": "Covers cancel, acknowledgement, snapshot recovery, and close." },
+    { "id": "boundary-identifiers", "file": "valid/boundary-identifiers.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Uses the 128-ASCII-byte contract boundary and lowercase UUID maxima." },
+    { "id": "boundary-numbers", "file": "valid/boundary-numbers.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Uses the signed 64-bit revision and signed 32-bit member maxima without binary64 coercion." },
+    { "id": "host-handshake-result", "file": "valid/host-handshake-result.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Advertises the selected version, capabilities, and effective limits." },
+    { "id": "host-opened", "file": "valid/host-opened.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Atomically returns the per-session capability and revision-zero snapshot." },
+    { "id": "host-result", "file": "valid/host-result.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Correlates a typed command result at the authoritative revision." },
+    { "id": "host-snapshot", "file": "valid/host-snapshot.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Provides authoritative reconnect state." },
+    { "id": "host-patch", "file": "valid/host-patch.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Carries a single atomic revision transition with closed change kinds." },
+    { "id": "host-fault", "file": "valid/host-fault.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Uses a stable code and sanitized bounded message." },
+    { "id": "host-closed", "file": "valid/host-closed.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Terminates an authenticated session without exposing its capability." },
+    { "id": "unknown-kind", "file": "invalid/unknown-kind.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Message kinds are a closed union; arbitrary invocation is forbidden." },
+    { "id": "uppercase-uuid", "file": "invalid/uppercase-uuid.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Wire UUIDs are lowercase hyphenated ASCII." },
+    { "id": "missing-capability", "file": "invalid/missing-capability.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Every session-bound client request requires the session capability." },
+    { "id": "negative-revision", "file": "invalid/negative-revision.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Revisions are non-negative signed 64-bit integers." },
+    { "id": "unknown-fault-code", "file": "invalid/unknown-fault-code.json", "schema": "host", "documentMode": "single", "valid": false, "reason": "Fault codes are the closed v1 catalog." },
+    { "id": "unsanitized-fault", "file": "invalid/unsanitized-fault.json", "schema": "host", "documentMode": "single", "valid": false, "reason": "Fault messages cannot contain control characters, stack traces, or paths." },
+    { "id": "extra-envelope-property", "file": "invalid/extra-envelope-property.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Envelope properties are closed and method names never appear on the wire." },
+    { "id": "extra-payload-property", "file": "invalid/extra-payload-property.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Payload properties are closed and CLR type names are forbidden." },
+    { "id": "bad-capability-token", "file": "invalid/bad-capability-token.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Capability tokens encode exactly 32 bytes as unpadded base64url." },
+    { "id": "unsupported-version", "file": "invalid/unsupported-version.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "This schema accepts only envelope version 1." },
+    { "id": "zero-member", "file": "invalid/zero-member.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Member identifiers start at one." },
+    { "id": "overlong-contract", "file": "invalid/overlong-contract.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "A 129-byte ASCII contract exceeds the 128 UTF-8 byte ceiling." },
+    { "id": "revision-overflow", "file": "invalid/revision-overflow.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "A revision cannot exceed signed 64-bit maximum." }
+  ],
+  "semanticCases": [
+    { "id": "successful-mutation", "file": "semantic/successful-mutation.json", "reason": "A committed mutation advances exactly once and patches before its terminal result." },
+    { "id": "stale-rejection", "file": "semantic/stale-rejection.json", "reason": "A stale write never invokes consumer code and never advances revision." },
+    { "id": "cancellation-and-timeout", "file": "semantic/cancellation-and-timeout.json", "reason": "The first terminal condition wins and produces exactly one target outcome." },
+    { "id": "reconnect-snapshot", "file": "semantic/reconnect-snapshot.json", "reason": "Reconnect recovery replaces local state with an authoritative snapshot." },
+    { "id": "limits", "file": "semantic/limits.json", "reason": "Records every hard v1 ceiling and the uniform no-dispatch rejection outcome." },
+    { "id": "fault-catalog", "file": "semantic/fault-catalog.json", "reason": "Freezes the exact eight machine-readable fault codes and recovery flags." },
+    { "id": "sanitization", "file": "semantic/sanitization.json", "reason": "Separates safe diagnostic templates from paths, stacks, secrets, and payload echoes." },
+    { "id": "culture-and-identities", "file": "semantic/culture-and-identities.json", "reason": "Freezes ordinal contract and lowercase UUID behavior across representative cultures." }
+  ]
+}

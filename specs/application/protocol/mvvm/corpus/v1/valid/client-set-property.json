@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "kind": "setProperty",
+  "session": "00000000-0000-4000-8000-000000000004",
+  "view": "00000000-0000-4000-8000-000000000002",
+  "request": "00000000-0000-4000-8000-000000000005",
+  "baseRevision": 12,
+  "capability": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "payload": {
+    "member": 1,
+    "value": "Grüße"
+  }
+}

@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WebUIToolkit MVVM protocol v1 host message",
+  "oneOf": [
+    { "$ref": "#/$defs/handshakeResult" },
+    { "$ref": "#/$defs/opened" },
+    { "$ref": "#/$defs/result" },
+    { "$ref": "#/$defs/snapshot" },
+    { "$ref": "#/$defs/patch" },
+    { "$ref": "#/$defs/sessionFault" },
+    { "$ref": "#/$defs/preSessionFault" },
+    { "$ref": "#/$defs/closed" }
+  ],
+  "$defs": {
+    "handshakeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "handshakeResult" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["selectedVersion", "capabilities", "limits"],
+          "properties": {
+            "selectedVersion": { "$ref": "common.schema.json#/$defs/version" },
+            "capabilities": { "$ref": "common.schema.json#/$defs/capabilitySet" },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "maxFrameBytes",
+                "maxJsonDepth",
+                "maxSessions",
+                "maxPendingRequests",
+                "maxSnapshotMembers",
+                "maxPatchChanges",
+                "maxCollectionItems",
+                "commandTimeoutMilliseconds"
+              ],
+              "properties": {
+                "maxFrameBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
+                "maxJsonDepth": { "type": "integer", "minimum": 1, "maximum": 32 },
+                "maxSessions": { "type": "integer", "minimum": 1, "maximum": 16 },
+                "maxPendingRequests": { "type": "integer", "minimum": 1, "maximum": 64 },
+                "maxSnapshotMembers": { "type": "integer", "minimum": 1, "maximum": 4096 },
+                "maxPatchChanges": { "type": "integer", "minimum": 1, "maximum": 1024 },
+                "maxCollectionItems": { "type": "integer", "minimum": 1, "maximum": 10000 },
+                "commandTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 300000 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "opened": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "contract", "session", "view", "request", "capability", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "opened" },
+        "contract": { "$ref": "common.schema.json#/$defs/contract" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "capability": { "$ref": "common.schema.json#/$defs/capabilityToken" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["snapshot"],
+          "properties": {
+            "snapshot": {
+              "allOf": [
+                { "$ref": "common.schema.json#/$defs/snapshotState" },
+                {
+                  "properties": {
+                    "revision": { "const": 0 }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "result" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "revision"],
+              "properties": {
+                "operation": { "const": "setProperty" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "revision"],
+              "properties": {
+                "operation": { "const": "execute" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" },
+                "value": { "$ref": "common.schema.json#/$defs/jsonValue" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "revision", "targetRequest", "accepted"],
+              "properties": {
+                "operation": { "const": "cancel" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" },
+                "targetRequest": { "$ref": "common.schema.json#/$defs/uuid" },
+                "accepted": { "type": "boolean" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "revision"],
+              "properties": {
+                "operation": { "const": "ack" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "snapshot" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": { "$ref": "common.schema.json#/$defs/snapshotState" }
+      }
+    },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "patch" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fromRevision", "toRevision", "changes"],
+          "properties": {
+            "fromRevision": { "$ref": "common.schema.json#/$defs/revision" },
+            "toRevision": { "$ref": "common.schema.json#/$defs/revision" },
+            "changes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1024,
+              "items": { "$ref": "common.schema.json#/$defs/patchChange" }
+            }
+          }
+        }
+      }
+    },
+    "sessionFault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "fault" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": { "$ref": "#/$defs/faultPayload" }
+      }
+    },
+    "preSessionFault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "fault" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": { "$ref": "#/$defs/faultPayload" }
+      }
+    },
+    "faultPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": { "$ref": "common.schema.json#/$defs/faultCode" },
+        "message": { "$ref": "common.schema.json#/$defs/sanitizedMessage" },
+        "retryable": { "type": "boolean" },
+        "currentRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "snapshotRequired": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "code": { "const": "revision.stale" } },
+            "required": ["code"]
+          },
+          "then": {
+            "required": ["currentRevision", "snapshotRequired"],
+            "properties": {
+              "retryable": { "const": true },
+              "snapshotRequired": { "const": true }
+            }
+          }
+        }
+      ]
+    },
+    "closed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "session", "view", "request", "payload"],
+      "properties": {
+        "v": { "$ref": "common.schema.json#/$defs/version" },
+        "kind": { "const": "closed" },
+        "session": { "$ref": "common.schema.json#/$defs/uuid" },
+        "view": { "$ref": "common.schema.json#/$defs/uuid" },
+        "request": { "$ref": "common.schema.json#/$defs/uuid" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["revision", "reason"],
+          "properties": {
+            "revision": { "$ref": "common.schema.json#/$defs/revision" },
+            "reason": { "$ref": "common.schema.json#/$defs/sanitizedMessage" }
+          }
+        }
+      }
+    }
+  }
+}
