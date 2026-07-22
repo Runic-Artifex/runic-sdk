@@ -6,7 +6,7 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 |---|---|---|---|
 | MVVM protocol | mvvm-protocol-core | `webuitoolkit.mvvm/1` | Reserved |
 | CLI protocol | command-line | `webuitoolkit.cli/1` | Reserved |
-| MVVM compiler diagnostics | mvvm-compiler-build | `WUTMVVM0001`–`WUTMVVM9999` | Reserved |
+| MVVM compiler diagnostics | mvvm-compiler-build | `WUTMVVM0001`–`WUTMVVM0003`, `WUTMVVM0901`–`WUTMVVM0903`, `WUTMVVM1001`–`WUTMVVM1006`, `WUTMVVM2001`–`WUTMVVM2013` | Allocated; remainder reserved |
 | Flow diagnostics | flow | `WUTFLOW0001`–`WUTFLOW0999` | ADR 0005 reserved |
 | Template diagnostics | template-engine | `WUTHTML0001`–`WUTHTML7999` | ADR 0005 reserved |
 | Text diagnostics | text-resources | `WUTTEXT0001`–`WUTTEXT0999` | ADR 0005 reserved |
@@ -35,7 +35,7 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | Family | ActivitySource/Meter prefix | Structured event range |
 |---|---|---|
 | MVVM | `WebUIToolkit.MVVM` | `10000`–`10999` |
-| Hosting | `WebUIToolkit.Hosting` | `11000`–`11999` |
+| Hosting | `WebUIToolkit.Hosting` | `11000`–`11006` allocated; `11007`–`11999` reserved |
 | Flow | `WebUIToolkit.MVVM.Flow` | `12000`–`12999` |
 | CommandLine | `WebUIToolkit.CommandLine` | `13000`–`13999` |
 | TextResources | `WebUIToolkit.TextResources` | `14000`–`14999` |
