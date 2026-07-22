@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <WebUIToolkitMvvmBindingEnabled Condition="'$(WebUIToolkitMvvmBindingEnabled)' == ''">true</WebUIToolkitMvvmBindingEnabled>
+    <WebUIToolkitMvvmBindingExtension Condition="'$(WebUIToolkitMvvmBindingExtension)' == ''">.wutmvvm</WebUIToolkitMvvmBindingExtension>
+    <WebUIToolkitMvvmBindingHostPath Condition="'$(WebUIToolkitMvvmBindingHostPath)' == ''">$(MSBuildThisFileDirectory)..\tools\net10.0\any\WebUIToolkit.MVVM.Build.dll</WebUIToolkitMvvmBindingHostPath>
+    <WebUIToolkitMvvmDotNetHost Condition="'$(WebUIToolkitMvvmDotNetHost)' == '' and '$(DotNetHostPath)' != ''">$(DotNetHostPath)</WebUIToolkitMvvmDotNetHost>
+    <WebUIToolkitMvvmDotNetHost Condition="'$(WebUIToolkitMvvmDotNetHost)' == ''">dotnet</WebUIToolkitMvvmDotNetHost>
+  </PropertyGroup>
+</Project>

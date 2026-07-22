@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>WebUIToolkit.MVVM.Build</AssemblyName>
+    <RootNamespace>WebUIToolkit.MVVM.Build</RootNamespace>
+    <PackageId>WebUIToolkit.MVVM.Build</PackageId>
+    <Description>Deterministic binding compiler and build integration for WebUIToolkit MVVM.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RestoreAdditionalProjectSources Condition="'$(WebUIToolkitLocalPackageSource)' != ''">$(RestoreAdditionalProjectSources);$(WebUIToolkitLocalPackageSource)</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WebUIToolkit.MVVM" Version="[1.0.0]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="/" />
+    <None Update="buildTransitive\WebUIToolkit.MVVM.Build.props" Pack="true" PackagePath="buildTransitive\WebUIToolkit.MVVM.Build.props" />
+    <None Update="buildTransitive\WebUIToolkit.MVVM.Build.targets" Pack="true" PackagePath="buildTransitive\WebUIToolkit.MVVM.Build.targets" />
+    <None Include="$(TargetDir)$(AssemblyName).dll" Pack="true" PackagePath="tools\net10.0\any\" Visible="false" />
+    <None Include="$(TargetDir)$(AssemblyName).deps.json" Pack="true" PackagePath="tools\net10.0\any\" Visible="false" />
+    <None Include="$(TargetDir)$(AssemblyName).runtimeconfig.json" Pack="true" PackagePath="tools\net10.0\any\" Visible="false" />
+  </ItemGroup>
+</Project>

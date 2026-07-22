@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>WebUIToolkit.MVVM.Build.Tests</AssemblyName>
+    <RootNamespace>WebUIToolkit.MVVM.Build.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WebUIToolkit.MVVM.Build\WebUIToolkit.MVVM.Build.csproj" />
+  </ItemGroup>
+</Project>
