@@ -34,6 +34,7 @@ These gates are cumulative. A milestone is incomplete until its implementation, 
 ## G4: Native AOT and release
 
 - Packed consumers publish and run actual executables with full trimming and Native AOT, zero owned trim/AOT warnings, deterministic cleanup, and exit code zero.
+- Repository smoke projects use `./eng/verify-native-aot.ps1`; RID-specific restore state is isolated under ignored `obj/aot.packages.lock.json` files so committed locks remain portable.
 - The vertical matrix runs the same scenario through Angular, React, Vue, Svelte, and compiled HTMX.
 - Clean-clone, empty-cache, offline, package-consumer, browser, security, fuzz, stress, leak, compatibility, and performance suites pass.
 - Release evidence includes API/package approvals, AOT logs, deterministic hashes, benchmark deltas, SBOM, dependency notices, provenance, migration notes, and compatibility matrices.
