@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "kind": "open",
+  "contract": "Example.Counter",
+  "view": "ABCDEF00-0000-4000-8000-000000000002",
+  "request": "00000000-0000-4000-8000-000000000003",
+  "payload": {}
+}

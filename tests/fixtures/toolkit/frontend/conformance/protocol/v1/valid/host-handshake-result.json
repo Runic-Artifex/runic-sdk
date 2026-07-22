@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "kind": "handshakeResult",
+  "request": "00000000-0000-4000-8000-000000000001",
+  "payload": {
+    "selectedVersion": 1,
+    "capabilities": ["cancellation", "patches"],
+    "limits": {
+      "maxFrameBytes": 1048576,
+      "maxJsonDepth": 32,
+      "maxSessions": 16,
+      "maxPendingRequests": 64,
+      "maxSnapshotMembers": 4096,
+      "maxPatchChanges": 1024,
+      "maxCollectionItems": 10000,
+      "commandTimeoutMilliseconds": 30000
+    }
+  }
+}

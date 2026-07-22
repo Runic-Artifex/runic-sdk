@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "value": "The request could not be completed.", "allowed": true, "reason": "Bounded implementation-owned text." },
+    { "value": "System.InvalidOperationException", "allowed": false, "reason": "Exception type name." },
+    { "value": "at Example.ViewModel.Save()", "allowed": false, "reason": "Stack frame." },
+    { "value": "C:\\users\\person\\secret.txt", "allowed": false, "reason": "Filesystem path." },
+    { "value": "token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "allowed": false, "reason": "Capability secret." },
+    { "value": "Input value: customer@example.test", "allowed": false, "reason": "Payload echo." }
+  ]
+}

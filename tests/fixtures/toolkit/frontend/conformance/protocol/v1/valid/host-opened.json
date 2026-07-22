@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "kind": "opened",
+  "contract": "Example.Counter",
+  "session": "00000000-0000-4000-8000-000000000004",
+  "view": "00000000-0000-4000-8000-000000000002",
+  "request": "00000000-0000-4000-8000-000000000003",
+  "capability": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "payload": {
+    "snapshot": {
+      "revision": 0,
+      "members": [
+        { "type": "property", "member": 1, "value": "ready" },
+        { "type": "collection", "member": 2, "items": [1, 2, 3] },
+        { "type": "command", "member": 3, "canExecute": true, "isExecuting": false },
+        { "type": "validation", "member": 1, "errors": [] }
+      ]
+    }
+  }
+}

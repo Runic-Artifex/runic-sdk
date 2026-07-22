@@ -1,0 +1,16 @@
+{
+  "cultures": ["en-US", "de-DE", "tr-TR", "ja-JP"],
+  "contractComparisons": [
+    { "left": "Example.I", "right": "Example.I", "equal": true },
+    { "left": "Example.I", "right": "Example.i", "equal": false },
+    { "left": "Example.I", "right": "Example.ı", "equal": false },
+    { "left": "Example.é", "right": "Example.é", "equal": false }
+  ],
+  "uuidText": {
+    "accepted": "abcdef00-0000-4000-8000-000000000002",
+    "rejected": "ABCDEF00-0000-4000-8000-000000000002"
+  },
+  "expectedIdenticalAcrossCultures": true,
+  "normalizationAllowed": false,
+  "caseFoldingAllowed": false
+}

@@ -1,0 +1,60 @@
+{
+  "format": "webuitoolkit.mvvm.conformance-scenarios/1",
+  "protocolIdentity": "webuitoolkit.mvvm/1",
+  "category": "command-lifecycle",
+  "clock": "manual-milliseconds",
+  "scenarios": [
+    {
+      "id": "execute-patch-precedes-successful-result",
+      "initial": { "revision": "12", "command:3": { "canExecute": true, "isExecuting": false }, "pending": [] },
+      "steps": [
+        { "action": "execute", "member": 3, "argument": { "count": 1 }, "request": "00000000-0000-4000-8000-000000000006", "expect": { "outboundKinds": ["execute"], "pending": ["00000000-0000-4000-8000-000000000006"] } },
+        { "action": "receive", "message": { "v": 1, "kind": "patch", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "payload": { "fromRevision": 12, "toRevision": 13, "changes": [{ "type": "command", "member": 3, "canExecute": false, "isExecuting": true }] } }, "expect": { "revision": "13", "settled": [] } },
+        { "action": "receive", "message": { "v": 1, "kind": "result", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000006", "payload": { "operation": "execute", "revision": 13, "value": { "saved": true } } }, "expect": { "resolved": { "saved": true }, "settlementCount": 1, "pending": [] } }
+      ]
+    },
+    {
+      "id": "cancel-wins-target-settles-once",
+      "initial": { "revision": "20", "pending": ["00000000-0000-4000-8000-000000000020"] },
+      "steps": [
+        { "action": "cancel", "targetRequest": "00000000-0000-4000-8000-000000000020", "request": "00000000-0000-4000-8000-000000000021", "expect": { "outboundKinds": ["cancel"] } },
+        { "action": "receive", "message": { "v": 1, "kind": "fault", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000020", "payload": { "code": "request.cancelled", "message": "The request was cancelled.", "retryable": false } }, "expect": { "targetRejectedCode": "request.cancelled", "targetSettlementCount": 1 } },
+        { "action": "receive", "message": { "v": 1, "kind": "result", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000021", "payload": { "operation": "cancel", "revision": 20, "targetRequest": "00000000-0000-4000-8000-000000000020", "accepted": true } }, "expect": { "cancelResolved": true, "revision": "20", "pending": [] } },
+        { "action": "receive", "message": { "v": 1, "kind": "result", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000020", "payload": { "operation": "execute", "revision": 21, "value": "late" } }, "expect": { "targetSettlementCount": 1, "lateTerminalIgnored": true } }
+      ]
+    },
+    {
+      "id": "completion-wins-before-cancel",
+      "initial": { "revision": "30", "pending": ["00000000-0000-4000-8000-000000000030"] },
+      "steps": [
+        { "action": "receive", "message": { "v": 1, "kind": "result", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000030", "payload": { "operation": "execute", "revision": 31, "value": "done" } }, "expect": { "resolved": "done", "settlementCount": 1 } },
+        { "action": "cancel", "targetRequest": "00000000-0000-4000-8000-000000000030", "request": "00000000-0000-4000-8000-000000000031", "expect": { "outboundKinds": ["cancel"] } },
+        { "action": "receive", "message": { "v": 1, "kind": "result", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000031", "payload": { "operation": "cancel", "revision": 31, "targetRequest": "00000000-0000-4000-8000-000000000030", "accepted": false } }, "expect": { "cancelResolved": false, "targetSettlementCount": 1 } }
+      ]
+    },
+    {
+      "id": "timeout-fault-is-terminal-and-retryable",
+      "initial": { "revision": "40", "pending": ["00000000-0000-4000-8000-000000000040"] },
+      "steps": [
+        { "action": "advanceClock", "milliseconds": 30000, "expect": { "localSettlement": "none-until-host-terminal" } },
+        { "action": "receive", "message": { "v": 1, "kind": "fault", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000040", "payload": { "code": "request.timeout", "message": "The request timed out.", "retryable": true } }, "expect": { "targetRejectedCode": "request.timeout", "retryable": true, "settlementCount": 1, "revision": "40" } }
+      ]
+    },
+    {
+      "id": "abort-signal-emits-one-cancel",
+      "initial": { "revision": "50", "pending": ["00000000-0000-4000-8000-000000000050"] },
+      "steps": [
+        { "action": "abort", "targetRequest": "00000000-0000-4000-8000-000000000050", "cancelRequest": "00000000-0000-4000-8000-000000000051", "expect": { "outboundKinds": ["cancel"], "outboundCount": 1 } },
+        { "action": "abort", "targetRequest": "00000000-0000-4000-8000-000000000050", "expect": { "outboundKinds": [], "outboundCount": 0 } }
+      ]
+    },
+    {
+      "id": "fault-after-state-patch-keeps-advanced-state",
+      "initial": { "revision": "60", "property:1": "before", "pending": ["00000000-0000-4000-8000-000000000060"] },
+      "steps": [
+        { "action": "receive", "message": { "v": 1, "kind": "patch", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "payload": { "fromRevision": 60, "toRevision": 61, "changes": [{ "type": "property", "member": 1, "value": "observed-before-cancel" }] } }, "expect": { "revision": "61", "property:1": "observed-before-cancel" } },
+        { "action": "receive", "message": { "v": 1, "kind": "fault", "session": "00000000-0000-4000-8000-000000000004", "view": "00000000-0000-4000-8000-000000000002", "request": "00000000-0000-4000-8000-000000000060", "payload": { "code": "request.cancelled", "message": "The request was cancelled.", "retryable": false, "currentRevision": 61 } }, "expect": { "revision": "61", "property:1": "observed-before-cancel", "targetRejectedCode": "request.cancelled" } }
+      ]
+    }
+  ]
+}
