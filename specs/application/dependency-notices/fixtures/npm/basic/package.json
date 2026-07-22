@@ -1,0 +1,8 @@
+{
+  "name": "fixture-root",
+  "version": "1.0.0",
+  "dependencies": { "alpha": "1.0.0" },
+  "devDependencies": { "dev-package": "4.0.0" },
+  "optionalDependencies": { "optional-package": "3.0.0" },
+  "peerDependencies": { "peer-package": "5.0.0" }
+}

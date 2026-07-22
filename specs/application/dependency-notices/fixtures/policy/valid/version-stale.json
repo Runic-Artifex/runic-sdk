@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "defaultDecision": "review",
+  "licenses": { "allow": ["MIT"], "deny": [], "review": ["LicenseRef-*"] },
+  "missingEvidence": "error",
+  "orExpressions": "require-explicit-selection",
+  "overrides": [
+    {
+      "id": "version-stale-correction",
+      "purl": "pkg:generic/widget@1.0.0",
+      "set": { "licenseExpression": "MIT", "licenseEvidenceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "reason": "Synthetic version staleness fixture.",
+      "approvedBy": "fixture-reviewer",
+      "createdOn": "2026-01-01",
+      "expiresAfter": "2.0.0"
+    }
+  ]
+}

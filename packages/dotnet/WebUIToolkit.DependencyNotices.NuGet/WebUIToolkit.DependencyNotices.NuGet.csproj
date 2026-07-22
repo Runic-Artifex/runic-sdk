@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <PackageId>WebUIToolkit.DependencyNotices.NuGet</PackageId>
+    <Description>Deterministic offline NuGet inventory adapter for dependency notices.</Description>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WebUIToolkit.DependencyNotices.Core/WebUIToolkit.DependencyNotices.Core.csproj" />
+  </ItemGroup>
+</Project>

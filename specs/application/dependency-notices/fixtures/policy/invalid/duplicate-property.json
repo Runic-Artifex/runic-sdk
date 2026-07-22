@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "schemaVersion": 1,
+  "defaultDecision": "review",
+  "licenses": { "allow": [], "deny": [], "review": [] },
+  "missingEvidence": "error",
+  "orExpressions": "require-explicit-selection",
+  "overrides": []
+}

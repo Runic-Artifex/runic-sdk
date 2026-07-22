@@ -1,0 +1,8 @@
+{
+  "marker": "<script>alert('notice')</script>",
+  "name": "</h3><script>alert('notice')</script><h3>",
+  "packageUrl": "javascript:alert('notice')?x=</code><img src=x onerror=alert(1)>",
+  "dangerousUrl": "javascript:alert(document.domain)",
+  "evidenceText": "license </pre><script>alert('notice')</script><pre>",
+  "digest": "\" onmouseover=\"alert('notice')\" data-digest=\""
+}

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using WebUIToolkit.DependencyNotices.Diagnostics;
 using WebUIToolkit.DependencyNotices.Evidence;
@@ -12,16 +13,33 @@ public static class ManualComponentScanner
 {
     private const int MaxConfigBytes = 1_048_576;
     private const int MaxEvidenceBytes = 16_777_216;
+    private const int MaxJsonPropertiesAndItems = 100_000;
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     public static ManualScanResult Scan(string rootDirectory, string configRelativePath)
     {
-        string configPath = SafePath.ResolveContainedPath(rootDirectory, configRelativePath);
-        byte[] configBytes = ReadBounded(configPath, MaxConfigBytes);
         List<NoticeDiagnostic> diagnostics = [];
         List<ManualDependencyComponent> components = [];
+        byte[] configBytes;
+        try
+        {
+            string configPath = SafePath.ResolveContainedPath(rootDirectory, configRelativePath);
+            configBytes = ReadBounded(configPath, MaxConfigBytes);
+        }
+        catch (NoticeSecurityException exception)
+        {
+            diagnostics.Add(new NoticeDiagnostic(exception.Code, NoticeDiagnosticSeverity.Error, exception.Message, Source: configRelativePath));
+            return new ManualScanResult(components, diagnostics);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            diagnostics.Add(InvalidConfig(configRelativePath, "The manual configuration is unavailable or exceeds its byte limit."));
+            return new ManualScanResult(components, diagnostics);
+        }
 
         try
         {
+            _ = StrictUtf8.GetString(configBytes);
             using JsonDocument document = JsonDocument.Parse(configBytes, new JsonDocumentOptions
             {
                 AllowTrailingCommas = false,
@@ -29,7 +47,8 @@ public static class ManualComponentScanner
                 MaxDepth = 32,
             });
             JsonElement root = document.RootElement;
-            EnsureNoDuplicateProperties(root);
+            int propertyAndItemCount = 0;
+            EnsureNoDuplicateProperties(root, ref propertyAndItemCount);
             if (root.ValueKind != JsonValueKind.Object ||
                 !root.TryGetProperty("schemaVersion", out JsonElement version) ||
                 version.ValueKind != JsonValueKind.Number ||
@@ -57,6 +76,14 @@ public static class ManualComponentScanner
                 Source: configRelativePath,
                 Offset: exception.BytePositionInLine is long offset && offset <= int.MaxValue ? (int)offset : null,
                 Remediation: "Validate the document against dependency-notices.schema.v1.json."));
+        }
+        catch (DecoderFallbackException)
+        {
+            diagnostics.Add(InvalidConfig(configRelativePath, "The manual configuration is not valid UTF-8."));
+        }
+        catch (InvalidOperationException)
+        {
+            diagnostics.Add(InvalidConfig(configRelativePath, "The manual configuration contains malformed Unicode or an invalid value kind."));
         }
 
         components.Sort(DependencyComponentComparer.Instance);
@@ -230,7 +257,40 @@ public static class ManualComponentScanner
             return;
         }
 
-        byte[] bytes = ReadBounded(fullPath, MaxEvidenceBytes);
+        byte[] bytes;
+        try
+        {
+            bytes = ReadBounded(fullPath, MaxEvidenceBytes);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            diagnostics.Add(new NoticeDiagnostic(
+                NoticeDiagnosticCodes.InvalidEvidenceEncoding,
+                NoticeDiagnosticSeverity.Error,
+                "Evidence is unavailable or exceeds its byte limit.",
+                packageUrl.CanonicalValue,
+                source));
+            return;
+        }
+
+        if (kind is NoticeAssetKind.License or NoticeAssetKind.Notice or NoticeAssetKind.Attribution or NoticeAssetKind.Authors or NoticeAssetKind.Modification)
+        {
+            try
+            {
+                _ = StrictUtf8.GetString(bytes);
+            }
+            catch (DecoderFallbackException)
+            {
+                diagnostics.Add(new NoticeDiagnostic(
+                    NoticeDiagnosticCodes.InvalidEvidenceEncoding,
+                    NoticeDiagnosticSeverity.Error,
+                    "Text evidence is not valid UTF-8.",
+                    packageUrl.CanonicalValue,
+                    source));
+                return;
+            }
+        }
+
         string actualDigest = EvidenceDigest.ComputeSha256(bytes);
         if (!StringComparer.Ordinal.Equals(expectedDigest, actualDigest))
         {
@@ -294,7 +354,7 @@ public static class ManualComponentScanner
         foreach (NoticeEvidence item in evidence)
         {
             byte[] bytes = ReadBounded(SafePath.ResolveContainedPath(rootDirectory, item.Path), MaxEvidenceBytes);
-            if (System.Text.Encoding.UTF8.GetString(bytes).Contains(value, StringComparison.Ordinal))
+            if (StrictUtf8.GetString(bytes).Contains(value, StringComparison.Ordinal))
             {
                 return true;
             }
@@ -305,9 +365,25 @@ public static class ManualComponentScanner
 
     private static bool ContainsInvalidControl(string value)
     {
-        foreach (char character in value)
+        for (int index = 0; index < value.Length; index++)
         {
-            if (char.IsControl(character) && character is not '\t' and not '\n' and not '\r')
+            char character = value[index];
+            if ((char.IsControl(character) && character is not '\t' and not '\n' and not '\r') ||
+                character == '\uFFFD')
+            {
+                return true;
+            }
+
+            if (char.IsHighSurrogate(character))
+            {
+                if (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1]))
+                {
+                    return true;
+                }
+
+                index++;
+            }
+            else if (char.IsLowSurrogate(character))
             {
                 return true;
             }
@@ -343,26 +419,38 @@ public static class ManualComponentScanner
         return false;
     }
 
-    private static void EnsureNoDuplicateProperties(JsonElement element)
+    private static void EnsureNoDuplicateProperties(JsonElement element, ref int propertyAndItemCount)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
             HashSet<string> names = new(StringComparer.Ordinal);
             foreach (JsonProperty property in element.EnumerateObject())
             {
+                propertyAndItemCount++;
+                if (propertyAndItemCount > MaxJsonPropertiesAndItems)
+                {
+                    throw new JsonException("The JSON property and item limit was exceeded.");
+                }
+
                 if (!names.Add(property.Name))
                 {
                     throw new JsonException($"Duplicate property '{property.Name}' is not allowed.");
                 }
 
-                EnsureNoDuplicateProperties(property.Value);
+                EnsureNoDuplicateProperties(property.Value, ref propertyAndItemCount);
             }
         }
         else if (element.ValueKind == JsonValueKind.Array)
         {
             foreach (JsonElement item in element.EnumerateArray())
             {
-                EnsureNoDuplicateProperties(item);
+                propertyAndItemCount++;
+                if (propertyAndItemCount > MaxJsonPropertiesAndItems)
+                {
+                    throw new JsonException("The JSON property and item limit was exceeded.");
+                }
+
+                EnsureNoDuplicateProperties(item, ref propertyAndItemCount);
             }
         }
     }

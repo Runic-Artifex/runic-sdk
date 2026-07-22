@@ -1,0 +1,20 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "fallback",
+  "documentNamespace": "https://example.invalid/spdx/fallback",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Example",
+      "name": "Example.Library",
+      "versionInfo": "3.0.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "nuget",
+          "referenceLocator": "Example.Library@3.0.0"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "transport": "synthetic-fake-handler-only",
+  "cases": [
+    { "id": "authorization-operation", "expectedCode": "WUTNOTICE7001" },
+    { "id": "authorization-allow-network", "expectedCode": "WUTNOTICE7001" },
+    { "id": "blocked-scheme", "expectedCode": "WUTNOTICE7002" },
+    { "id": "blocked-host", "expectedCode": "WUTNOTICE7002" },
+    { "id": "redirect-host", "expectedCode": "WUTNOTICE7003" },
+    { "id": "redirect-loop", "expectedCode": "WUTNOTICE7003" },
+    { "id": "declared-oversize", "expectedCode": "WUTNOTICE7004" },
+    { "id": "streamed-oversize", "expectedCode": "WUTNOTICE7004" },
+    { "id": "digest-mismatch", "expectedCode": "WUTNOTICE7005" },
+    { "id": "concurrent-cache-writers", "expectedCode": null },
+    { "id": "origin-index-determinism", "expectedCode": null }
+  ]
+}

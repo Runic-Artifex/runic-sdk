@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "defaultDecision": "review",
+  "licenses": { "allow": ["MIT"], "deny": [], "review": [] },
+  "missingEvidence": "error",
+  "orExpressions": "require-explicit-selection",
+  "overrides": [
+    {
+      "id": "noncanonical-target",
+      "purl": "pkg:GENERIC/widget@1.0.0",
+      "set": { "licenseExpression": "MIT", "licenseEvidenceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "reason": "Synthetic invalid identity fixture.",
+      "approvedBy": "fixture-reviewer",
+      "createdOn": "2026-01-01",
+      "expiresAfter": "2027-01-01"
+    }
+  ]
+}

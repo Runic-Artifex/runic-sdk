@@ -1,0 +1,16 @@
+{
+  "rejected": [
+    "../escape.txt",
+    "..\\escape.txt",
+    "nested/../../escape.txt",
+    "nested\\..\\..\\escape.txt",
+    "/absolute/escape.txt",
+    "\\absolute\\escape.txt",
+    "C:\\absolute\\escape.txt",
+    "\\\\server\\share\\escape.txt",
+    "\\\\?\\C:\\escape.txt",
+    "nested/./escape.txt",
+    "nested\\.\\escape.txt",
+    "nul\u0000suffix"
+  ]
+}

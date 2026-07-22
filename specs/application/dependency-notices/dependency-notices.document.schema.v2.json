@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WebUIToolkit generated dependency notice document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "artifactName", "artifactVersion", "dependencies", "sbom", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "artifactName": { "type": "string", "minLength": 1 },
+    "artifactVersion": { "type": ["string", "null"] },
+    "dependencies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dependency" }
+    },
+    "sbom": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/sbom" }
+      ]
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageUrl", "name", "version", "ecosystem", "scope", "isDirect", "observedLicenseExpression", "effectiveLicenseExpression", "selectedLicenseExpression", "assets", "decisions", "sbomComponentReference", "isModified", "modificationNotice"],
+      "properties": {
+        "packageUrl": { "type": "string", "pattern": "^pkg:" },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "ecosystem": { "enum": ["generic", "nuget", "npm"] },
+        "scope": { "enum": ["runtime", "development", "optional", "peer", "bundled", "unknown"] },
+        "isDirect": { "type": "boolean" },
+        "observedLicenseExpression": { "type": "string", "minLength": 1 },
+        "effectiveLicenseExpression": { "type": "string", "minLength": 1 },
+        "selectedLicenseExpression": { "type": ["string", "null"] },
+        "assets": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+        "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+        "sbomComponentReference": { "type": ["string", "null"] },
+        "isModified": { "type": "boolean" },
+        "modificationNotice": { "type": ["string", "null"] }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sha256", "mediaType", "text", "origin", "isOverride"],
+      "properties": {
+        "kind": { "enum": ["license", "notice", "attribution", "authors", "modification"] },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "text": { "type": "string" },
+        "origin": { "type": "string", "minLength": 1 },
+        "isOverride": { "type": "boolean" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "outcome", "rule"],
+      "properties": {
+        "subject": { "type": "string", "minLength": 1 },
+        "outcome": { "enum": ["allow", "review", "deny"] },
+        "rule": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sbom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "documentReference", "serialNumber"],
+      "properties": {
+        "format": { "enum": ["cycloneDx", "spdx"] },
+        "documentReference": { "type": "string", "minLength": 1 },
+        "serialNumber": { "type": ["string", "null"] }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message", "packageUrl", "source", "offset", "remediation"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^WUTNOTICE[1-7][0-9]{3}$" },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "message": { "type": "string" },
+        "packageUrl": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "offset": { "type": ["integer", "null"], "minimum": 0 },
+        "remediation": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
