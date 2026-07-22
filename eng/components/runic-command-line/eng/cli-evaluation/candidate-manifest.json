@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "webuitoolkit.cli.evaluation/1",
+  "evaluatedAtUtc": "2026-07-22T00:00:00Z",
+  "sdkVersion": "10.0.302",
+  "targetFramework": "net10.0",
+  "protocolIdentity": "webuitoolkit.cli/1",
+  "outputEnvironmentVariable": "WEBUITOOLKIT_CLI_OUTPUT",
+  "candidates": [
+    {
+      "id": "SystemCommandLine",
+      "package": "System.CommandLine",
+      "version": "2.0.10",
+      "license": "MIT",
+      "packageUrl": "https://www.nuget.org/packages/System.CommandLine/2.0.10",
+      "sourceUrl": "https://github.com/dotnet/command-line-api",
+      "catalogUrl": "https://api.nuget.org/v3/catalog0/data/2026.07.14.17.30.59/system.commandline.2.0.10.json"
+    },
+    {
+      "id": "SpectreConsoleCli",
+      "package": "Spectre.Console.Cli",
+      "version": "0.55.0",
+      "license": "MIT",
+      "packageUrl": "https://www.nuget.org/packages/Spectre.Console.Cli/0.55.0",
+      "sourceUrl": "https://github.com/spectreconsole/spectre.console.cli"
+    },
+    {
+      "id": "Cocona",
+      "package": "Cocona",
+      "version": "2.2.0",
+      "license": "MIT",
+      "packageUrl": "https://www.nuget.org/packages/Cocona/2.2.0",
+      "sourceUrl": "https://github.com/mayuki/Cocona"
+    },
+    {
+      "id": "CommandLineParser",
+      "package": "CommandLineParser",
+      "version": "2.9.1",
+      "license": "MIT",
+      "packageUrl": "https://www.nuget.org/packages/CommandLineParser/2.9.1",
+      "sourceUrl": "https://github.com/commandlineparser/commandline"
+    },
+    {
+      "id": "InHouse",
+      "package": null,
+      "version": "wave-a-spike",
+      "license": "repository publication hold (ADR 0004)",
+      "sourceUrl": "fixtures/InHouse"
+    }
+  ]
+}

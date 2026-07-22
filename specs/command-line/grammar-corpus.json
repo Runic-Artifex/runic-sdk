@@ -1,0 +1,113 @@
+{
+  "formatVersion": 1,
+  "protocol": "webuitoolkit.cli/1",
+  "tokenModel": "pre-tokenized-string-array",
+  "catalog": {
+    "commands": [
+      {
+        "path": ["status"],
+        "aliases": ["stat"],
+        "options": [
+          { "id": "verbose", "long": "--verbose", "aliases": ["-v", "/verbose"], "arity": { "minimum": 0, "maximum": 0 }, "repeat": "error" }
+        ],
+        "arguments": []
+      },
+      {
+        "path": ["cache"],
+        "aliases": ["c"],
+        "options": [],
+        "arguments": []
+      },
+      {
+        "path": ["cache", "clear"],
+        "aliases": ["purge"],
+        "options": [
+          { "id": "all", "long": "--all", "aliases": ["-a"], "arity": { "minimum": 0, "maximum": 0 }, "repeat": "error" }
+        ],
+        "arguments": []
+      },
+      {
+        "path": ["export"],
+        "aliases": [],
+        "options": [
+          { "id": "format", "long": "--format", "aliases": ["-f"], "arity": { "minimum": 1, "maximum": 1 }, "repeat": "error" },
+          { "id": "tag", "long": "--tag", "aliases": ["-t"], "arity": { "minimum": 1, "maximum": 1 }, "repeat": "append" },
+          { "id": "force", "long": "--force", "aliases": ["/force"], "arity": { "minimum": 0, "maximum": 0 }, "repeat": "error" }
+        ],
+        "arguments": [
+          { "id": "input", "arity": { "minimum": 1, "maximum": 1 } }
+        ]
+      },
+      {
+        "path": ["copy"],
+        "aliases": [],
+        "options": [],
+        "arguments": [
+          { "id": "source", "arity": { "minimum": 1, "maximum": 1 } },
+          { "id": "destination", "arity": { "minimum": 1, "maximum": 1 } }
+        ]
+      },
+      {
+        "path": ["echo"],
+        "aliases": [],
+        "options": [],
+        "arguments": [
+          { "id": "text", "arity": { "minimum": 0, "maximum": "unbounded" } }
+        ]
+      },
+      {
+        "path": ["run"],
+        "aliases": [],
+        "options": [],
+        "arguments": [
+          { "id": "program", "arity": { "minimum": 1, "maximum": 1 } },
+          { "id": "arguments", "arity": { "minimum": 0, "maximum": "unbounded" } }
+        ]
+      }
+    ]
+  },
+  "cases": [
+    { "id": "grammar.empty-input", "args": [], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1002", "kind": "unknown-command", "tokenIndex": 0 }] } },
+    { "id": "grammar.command.canonical", "args": ["status"], "expected": { "kind": "invocation", "commandPath": ["status"], "options": [], "arguments": [] } },
+    { "id": "grammar.command.case-sensitive", "args": ["Status"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1002", "kind": "unknown-command", "tokenIndex": 0 }] } },
+    { "id": "grammar.command.empty-token", "args": [""], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1002", "kind": "unknown-command", "tokenIndex": 0 }] } },
+    { "id": "grammar.command.alias", "args": ["stat"], "expected": { "kind": "invocation", "commandPath": ["status"], "options": [], "arguments": [] } },
+    { "id": "grammar.command.nested", "args": ["cache", "clear"], "expected": { "kind": "invocation", "commandPath": ["cache", "clear"], "options": [], "arguments": [] } },
+    { "id": "grammar.command.nested-aliases", "args": ["c", "purge", "-a"], "expected": { "kind": "invocation", "commandPath": ["cache", "clear"], "options": [{ "id": "all", "values": [] }], "arguments": [] } },
+    { "id": "grammar.option.long-flag", "args": ["status", "--verbose"], "expected": { "kind": "invocation", "commandPath": ["status"], "options": [{ "id": "verbose", "values": [] }], "arguments": [] } },
+    { "id": "grammar.option.short-flag", "args": ["status", "-v"], "expected": { "kind": "invocation", "commandPath": ["status"], "options": [{ "id": "verbose", "values": [] }], "arguments": [] } },
+    { "id": "grammar.option.slash-alias", "args": ["status", "/verbose"], "expected": { "kind": "invocation", "commandPath": ["status"], "options": [{ "id": "verbose", "values": [] }], "arguments": [] } },
+    { "id": "grammar.option.long-separated", "args": ["export", "--format", "json", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [{ "id": "format", "values": ["json"] }], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.option.long-equals", "args": ["export", "--format=json", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [{ "id": "format", "values": ["json"] }], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.option.short-separated", "args": ["export", "-f", "json", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [{ "id": "format", "values": ["json"] }], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.option.empty-separated-value", "args": ["export", "--format", "", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [{ "id": "format", "values": [""] }], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.option.empty-equals-value", "args": ["export", "--format=", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [{ "id": "format", "values": [""] }], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.option.repeat-append", "args": ["export", "--tag", "one", "-t", "two", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [{ "id": "tag", "values": ["one", "two"] }], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.option.repeat-identical-preserved", "args": ["export", "--tag", "same", "--tag", "same", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [{ "id": "tag", "values": ["same", "same"] }], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.option.duplicate-scalar", "args": ["export", "--format", "json", "-f", "yaml", "input.db"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1007", "kind": "duplicate-option", "tokenIndex": 3 }] } },
+    { "id": "grammar.option.duplicate-flag", "args": ["status", "-v", "--verbose"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1007", "kind": "duplicate-option", "tokenIndex": 2 }] } },
+    { "id": "grammar.option.missing-value", "args": ["export", "--format"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1003", "kind": "missing-option-value", "tokenIndex": 2 }] } },
+    { "id": "grammar.option.flag-rejects-equals", "args": ["status", "--verbose=true"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1004", "kind": "unexpected-option-value", "tokenIndex": 1 }] } },
+    { "id": "grammar.option.unknown-long", "args": ["status", "--quiet"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1001", "kind": "unknown-option", "tokenIndex": 1 }] } },
+    { "id": "grammar.option.short-bundle-unsupported", "args": ["status", "-vh"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1008", "kind": "unsupported-short-bundle", "tokenIndex": 1 }] } },
+    { "id": "grammar.argument.required", "args": ["export", "input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [], "arguments": [{ "id": "input", "values": ["input.db"] }] } },
+    { "id": "grammar.argument.missing", "args": ["copy", "source.txt"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1005", "kind": "missing-argument", "tokenIndex": 2 }] } },
+    { "id": "grammar.argument.unexpected", "args": ["status", "extra"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1006", "kind": "unexpected-argument", "tokenIndex": 1 }] } },
+    { "id": "grammar.argument.unbounded-empty", "args": ["echo"], "expected": { "kind": "invocation", "commandPath": ["echo"], "options": [], "arguments": [] } },
+    { "id": "grammar.argument.unbounded-many", "args": ["echo", "one", "two", "three"], "expected": { "kind": "invocation", "commandPath": ["echo"], "options": [], "arguments": [{ "id": "text", "values": ["one", "two", "three"] }] } },
+    { "id": "grammar.argument.empty-token-preserved", "args": ["echo", "", "tail"], "expected": { "kind": "invocation", "commandPath": ["echo"], "options": [], "arguments": [{ "id": "text", "values": ["", "tail"] }] } },
+    { "id": "grammar.argument.unicode-preserved", "args": ["echo", "Résumé", "東京", "😀", "é"], "expected": { "kind": "invocation", "commandPath": ["echo"], "options": [], "arguments": [{ "id": "text", "values": ["Résumé", "東京", "😀", "é"] }] } },
+    { "id": "grammar.argument.absolute-unix-path", "args": ["export", "/tmp/input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [], "arguments": [{ "id": "input", "values": ["/tmp/input.db"] }] } },
+    { "id": "grammar.argument.absolute-windows-path", "args": ["export", "C:\\data\\input.db"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [], "arguments": [{ "id": "input", "values": ["C:\\data\\input.db"] }] } },
+    { "id": "grammar.terminator.leading-hyphen-data", "args": ["run", "--", "-tool", "--flag"], "expected": { "kind": "invocation", "commandPath": ["run"], "options": [], "arguments": [{ "id": "program", "values": ["-tool"] }, { "id": "arguments", "values": ["--flag"] }] } },
+    { "id": "grammar.terminator.slash-alias-is-data", "args": ["export", "--", "/force"], "expected": { "kind": "invocation", "commandPath": ["export"], "options": [], "arguments": [{ "id": "input", "values": ["/force"] }] } },
+    { "id": "grammar.terminator.empty-data", "args": ["echo", "--", ""], "expected": { "kind": "invocation", "commandPath": ["echo"], "options": [], "arguments": [{ "id": "text", "values": [""] }] } },
+    { "id": "grammar.help.root-long", "args": ["--help"], "expected": { "kind": "help", "commandPath": [] } },
+    { "id": "grammar.help.root-short", "args": ["-h"], "expected": { "kind": "help", "commandPath": [] } },
+    { "id": "grammar.help.command", "args": ["status", "--help"], "expected": { "kind": "help", "commandPath": ["status"] } },
+    { "id": "grammar.help.nested-alias", "args": ["c", "purge", "-h"], "expected": { "kind": "help", "commandPath": ["cache", "clear"] } },
+    { "id": "grammar.version.root", "args": ["--version"], "expected": { "kind": "version" } },
+    { "id": "grammar.version.not-command-built-in", "args": ["status", "--version"], "expected": { "kind": "error", "diagnostics": [{ "code": "WUTCLI1001", "kind": "unknown-option", "tokenIndex": 1 }] } },
+    { "id": "grammar.terminator.help-is-data", "args": ["echo", "--", "--help"], "expected": { "kind": "invocation", "commandPath": ["echo"], "options": [], "arguments": [{ "id": "text", "values": ["--help"] }] } }
+  ]
+}
