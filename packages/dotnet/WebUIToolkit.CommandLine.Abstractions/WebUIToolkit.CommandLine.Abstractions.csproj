@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.CommandLine.Abstractions</AssemblyName>
+    <RootNamespace>WebUIToolkit.CommandLine</RootNamespace>
+    <PackageId>WebUIToolkit.CommandLine.Abstractions</PackageId>
+    <Description>Parser-neutral command-line contracts for WebUIToolkit applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="PublicAPI.Shipped.txt" Pack="true" PackagePath="" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>

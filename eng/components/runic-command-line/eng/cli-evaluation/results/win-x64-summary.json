@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "webuitoolkit.cli.evaluation-summary/1",
+  "evaluatedAt": "2026-07-22",
+  "sdkVersion": "10.0.302",
+  "runtimeIdentifier": "win-x64",
+  "protocolIdentity": "webuitoolkit.cli/1",
+  "outputEnvironmentVariable": "WEBUITOOLKIT_CLI_OUTPUT",
+  "corpusCaseCount": 33,
+  "candidates": [
+    {
+      "id": "SystemCommandLine",
+      "version": "2.0.10",
+      "restoreExitCode": 0,
+      "buildExitCode": 0,
+      "nativeAotPublishExitCode": 0,
+      "aotOrTrimWarnings": [],
+      "publishedBytes": 16870912,
+      "nativeDispositionMatches": 30,
+      "mismatches": ["G024", "G031", "G033"]
+    },
+    {
+      "id": "SpectreConsoleCli",
+      "version": "0.55.0",
+      "restoreExitCode": 0,
+      "buildExitCode": 1,
+      "nativeAotPublishExitCode": null,
+      "aotOrTrimWarnings": ["IL3050"],
+      "publishedBytes": 0,
+      "nativeDispositionMatches": null,
+      "mismatches": [],
+      "failure": "CommandApp is marked RequiresDynamicCode because Spectre.Console.Cli relies on reflection."
+    },
+    {
+      "id": "Cocona",
+      "version": "2.2.0",
+      "restoreExitCode": 0,
+      "buildExitCode": 0,
+      "nativeAotPublishExitCode": 1,
+      "aotOrTrimWarnings": ["IL2104", "IL3053"],
+      "publishedBytes": 0,
+      "nativeDispositionMatches": 17,
+      "mismatches": ["G001", "G002", "G004", "G005", "G009", "G010", "G011", "G013", "G014", "G021", "G022", "G023", "G024", "G030", "G031", "G033"]
+    },
+    {
+      "id": "CommandLineParser",
+      "version": "2.9.1",
+      "restoreExitCode": 0,
+      "buildExitCode": 0,
+      "nativeAotPublishExitCode": 1,
+      "aotOrTrimWarnings": ["IL2104"],
+      "publishedBytes": 0,
+      "nativeDispositionMatches": 19,
+      "mismatches": ["G005", "G009", "G010", "G012", "G013", "G017", "G021", "G024", "G026", "G027", "G028", "G029", "G032", "G033"]
+    },
+    {
+      "id": "InHouse",
+      "version": "wave-a-spike",
+      "restoreExitCode": 0,
+      "buildExitCode": 0,
+      "nativeAotPublishExitCode": 0,
+      "aotOrTrimWarnings": [],
+      "publishedBytes": 9200128,
+      "nativeDispositionMatches": 33,
+      "mismatches": []
+    }
+  ]
+}
