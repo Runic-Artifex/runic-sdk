@@ -5,11 +5,20 @@
     <AssemblyName>WebUIToolkit.MVVM.AotSmoke</AssemblyName>
     <RootNamespace>WebUIToolkit.MVVM.AotSmoke</RootNamespace>
     <PublishTrimmed>true</PublishTrimmed>
+    <PublishAot Condition="'$(MvvmNativeAot)' == 'true'">true</PublishAot>
     <TrimMode>full</TrimMode>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>
+    <MvvmUsePackage Condition="'$(MvvmUsePackage)' == ''">false</MvvmUsePackage>
+    <ManagePackageVersionsCentrally Condition="'$(MvvmUsePackage)' == 'true'">false</ManagePackageVersionsCentrally>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)/obj/**;$(MSBuildProjectDirectory)/bin/**</DefaultItemExcludes>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="'$(MvvmUsePackage)' != 'true'">
     <ProjectReference Include="../../src/WebUIToolkit.MVVM/WebUIToolkit.MVVM.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MvvmUsePackage)' == 'true'">
+    <PackageReference Include="WebUIToolkit.MVVM" Version="$(MvvmPackageVersion)" />
   </ItemGroup>
 </Project>

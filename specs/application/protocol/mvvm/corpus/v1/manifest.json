@@ -7,6 +7,7 @@
     { "id": "client-set-property", "file": "valid/client-set-property.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Carries all authenticated mutation identity and revision fields." },
     { "id": "client-execute", "file": "valid/client-execute.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Uses a numeric member ID and type-neutral JSON argument." },
     { "id": "client-control-messages", "file": "valid/client-control-messages.json", "schema": "client", "documentMode": "eachItem", "valid": true, "reason": "Covers cancel, acknowledgement, snapshot recovery, and close." },
+    { "id": "all-capabilities-handshake", "file": "valid/all-capabilities-handshake.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Offers the exact complete v1 capability vocabulary in deterministic ordinal order." },
     { "id": "boundary-identifiers", "file": "valid/boundary-identifiers.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Uses the 128-ASCII-byte contract boundary and lowercase UUID maxima." },
     { "id": "boundary-numbers", "file": "valid/boundary-numbers.json", "schema": "client", "documentMode": "single", "valid": true, "reason": "Uses the signed 64-bit revision and signed 32-bit member maxima without binary64 coercion." },
     { "id": "host-handshake-result", "file": "valid/host-handshake-result.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Advertises the selected version, capabilities, and effective limits." },
@@ -14,6 +15,7 @@
     { "id": "host-result", "file": "valid/host-result.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Correlates a typed command result at the authoritative revision." },
     { "id": "host-snapshot", "file": "valid/host-snapshot.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Provides authoritative reconnect state." },
     { "id": "host-patch", "file": "valid/host-patch.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Carries a single atomic revision transition with closed change kinds." },
+    { "id": "host-binding-vocabulary", "file": "valid/host-binding-vocabulary.json", "schema": "host", "documentMode": "eachItem", "valid": true, "reason": "Covers every snapshot member, patch change, and collection operation in the closed v1 binding vocabulary." },
     { "id": "host-fault", "file": "valid/host-fault.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Uses a stable code and sanitized bounded message." },
     { "id": "host-closed", "file": "valid/host-closed.json", "schema": "host", "documentMode": "single", "valid": true, "reason": "Terminates an authenticated session without exposing its capability." },
     { "id": "unknown-kind", "file": "invalid/unknown-kind.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Message kinds are a closed union; arbitrary invocation is forbidden." },
@@ -28,7 +30,11 @@
     { "id": "unsupported-version", "file": "invalid/unsupported-version.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "This schema accepts only envelope version 1." },
     { "id": "zero-member", "file": "invalid/zero-member.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Member identifiers start at one." },
     { "id": "overlong-contract", "file": "invalid/overlong-contract.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "A 129-byte ASCII contract exceeds the 128 UTF-8 byte ceiling." },
-    { "id": "revision-overflow", "file": "invalid/revision-overflow.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "A revision cannot exceed signed 64-bit maximum." }
+    { "id": "revision-overflow", "file": "invalid/revision-overflow.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "A revision cannot exceed signed 64-bit maximum." },
+    { "id": "duplicate-capability", "file": "invalid/duplicate-capability.json", "schema": "client", "documentMode": "single", "valid": false, "reason": "Capability negotiation is a set and rejects duplicate names." },
+    { "id": "empty-patch", "file": "invalid/empty-patch.json", "schema": "host", "documentMode": "single", "valid": false, "reason": "A wire patch describes changes and therefore contains at least one change." },
+    { "id": "opened-nonzero-revision", "file": "invalid/opened-nonzero-revision.json", "schema": "host", "documentMode": "single", "valid": false, "reason": "A newly opened session always starts with an authoritative revision-zero snapshot." },
+    { "id": "unknown-collection-operation", "file": "invalid/unknown-collection-operation.json", "schema": "host", "documentMode": "single", "valid": false, "reason": "Collection patch operations are the closed insert, remove, replace, and reset vocabulary." }
   ],
   "semanticCases": [
     { "id": "successful-mutation", "file": "semantic/successful-mutation.json", "reason": "A committed mutation advances exactly once and patches before its terminal result." },
@@ -38,6 +44,10 @@
     { "id": "limits", "file": "semantic/limits.json", "reason": "Records every hard v1 ceiling and the uniform no-dispatch rejection outcome." },
     { "id": "fault-catalog", "file": "semantic/fault-catalog.json", "reason": "Freezes the exact eight machine-readable fault codes and recovery flags." },
     { "id": "sanitization", "file": "semantic/sanitization.json", "reason": "Separates safe diagnostic templates from paths, stacks, secrets, and payload echoes." },
-    { "id": "culture-and-identities", "file": "semantic/culture-and-identities.json", "reason": "Freezes ordinal contract and lowercase UUID behavior across representative cultures." }
+    { "id": "culture-and-identities", "file": "semantic/culture-and-identities.json", "reason": "Freezes ordinal contract and lowercase UUID behavior across representative cultures." },
+    { "id": "strict-codec", "file": "semantic/strict-codec.json", "reason": "Rejects invalid UTF-8, BOMs, duplicate names, permissive JSON extensions, and character-count bypasses before dispatch." },
+    { "id": "projection-invariants", "file": "semantic/projection-invariants.json", "reason": "Freezes the binding vocabulary, snapshot ordering, atomic patch application, duplicate handling, and gap recovery." },
+    { "id": "reconnect-ack-backpressure", "file": "semantic/reconnect-ack-backpressure.json", "reason": "Defines reconnect sequencing, monotonic advisory acknowledgements, and bounded pending-request admission." },
+    { "id": "observability-security", "file": "semantic/observability-security.json", "reason": "Bounds BCL telemetry cardinality and prevents capabilities, identities, payloads, exceptions, and paths from leaking." }
   ]
 }

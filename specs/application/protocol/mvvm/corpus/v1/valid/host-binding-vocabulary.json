@@ -1,0 +1,38 @@
+[
+  {
+    "v": 1,
+    "kind": "snapshot",
+    "session": "00000000-0000-4000-8000-000000000004",
+    "view": "00000000-0000-4000-8000-000000000002",
+    "request": "00000000-0000-4000-8000-000000000022",
+    "payload": {
+      "revision": 20,
+      "members": [
+        { "type": "property", "member": 1, "value": { "name": "Ada", "active": true } },
+        { "type": "validation", "member": 1, "errors": ["A value is required."] },
+        { "type": "collection", "member": 2, "items": ["alpha", "beta"] },
+        { "type": "command", "member": 3, "canExecute": false, "isExecuting": true }
+      ]
+    }
+  },
+  {
+    "v": 1,
+    "kind": "patch",
+    "session": "00000000-0000-4000-8000-000000000004",
+    "view": "00000000-0000-4000-8000-000000000002",
+    "payload": {
+      "fromRevision": 20,
+      "toRevision": 21,
+      "changes": [
+        { "type": "property", "member": 1, "value": null },
+        { "type": "collection", "member": 2, "operation": "insert", "index": 2, "items": ["gamma"] },
+        { "type": "collection", "member": 2, "operation": "replace", "index": 0, "items": ["first"] },
+        { "type": "collection", "member": 2, "operation": "remove", "index": 1, "items": ["beta"] },
+        { "type": "collectionMove", "member": 2, "from": 1, "to": 0, "count": 1 },
+        { "type": "collection", "member": 2, "operation": "reset", "index": 0, "items": ["only"] },
+        { "type": "command", "member": 3, "canExecute": true, "isExecuting": false },
+        { "type": "validation", "member": 1, "errors": [] }
+      ]
+    }
+  }
+]

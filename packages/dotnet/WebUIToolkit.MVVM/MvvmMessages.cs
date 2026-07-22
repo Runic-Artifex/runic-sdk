@@ -221,6 +221,11 @@ public sealed record MvvmCollectionPatch : MvvmPatch
             throw new ArgumentException("A collection reset must use index zero.", nameof(index));
         }
 
+        if (operation != MvvmCollectionOperation.Reset && items.Count == 0)
+        {
+            throw new ArgumentException("Insert, remove, and replace operations require at least one item.", nameof(items));
+        }
+
         Operation = operation;
         Index = index;
         if (items.Any(static item => item.ValueKind == JsonValueKind.Undefined))
@@ -317,6 +322,8 @@ public sealed record MvvmValidationPatch : MvvmPatch
 /// <summary>A sanitized protocol fault.</summary>
 public sealed record MvvmFault
 {
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
+
     /// <summary>Creates a bounded fault safe to cross the local protocol boundary.</summary>
     public MvvmFault(string code, string message)
     {
@@ -352,7 +359,17 @@ public sealed record MvvmFault
             throw new ArgumentException("A fault message cannot become empty after sanitization.", nameof(message));
         }
 
-        if (Encoding.UTF8.GetByteCount(sanitized) <= 256)
+        int encodedByteCount;
+        try
+        {
+            encodedByteCount = StrictUtf8.GetByteCount(sanitized);
+        }
+        catch (EncoderFallbackException exception)
+        {
+            throw new ArgumentException("A protocol message must contain valid Unicode.", nameof(message), exception);
+        }
+
+        if (encodedByteCount <= 256)
         {
             return sanitized;
         }
@@ -491,4 +508,98 @@ public sealed record MvvmResponse
         JsonElement? payload,
         IReadOnlyList<MvvmPatch> patches) =>
         new(requestId, revision, false, payload, patches, fault, null);
+}
+
+/// <summary>Identifies which closed protocol schema applies to a wire message.</summary>
+public enum MvvmMessageDirection
+{
+    /// <summary>A message sent by a client to a host.</summary>
+    ClientToHost,
+
+    /// <summary>A message sent by a host to a client.</summary>
+    HostToClient,
+}
+
+/// <summary>A fully validated protocol version 1 wire message.</summary>
+/// <remarks>
+/// Instances can only be produced by <see cref="MvvmMessageCodec"/>. The owned JSON values remain
+/// valid for the lifetime of the instance and are detached from the caller's input buffer.
+/// </remarks>
+public sealed class MvvmWireMessage
+{
+    private readonly JsonElement _document;
+
+    internal MvvmWireMessage(MvvmMessageDirection direction, string kind, JsonElement document)
+    {
+        Direction = direction;
+        Kind = kind;
+        _document = document.Clone();
+    }
+
+    /// <summary>Gets the schema direction used to validate this message.</summary>
+    public MvvmMessageDirection Direction { get; }
+
+    /// <summary>Gets the closed protocol message discriminator.</summary>
+    public string Kind { get; }
+
+    /// <summary>Gets the validated version, which is always <see cref="MvvmProtocol.MajorVersion"/>.</summary>
+    public int Version => _document.GetProperty("v").GetInt32();
+
+    /// <summary>Gets the complete validated envelope as an owned JSON value.</summary>
+    public JsonElement Document => _document;
+
+    /// <summary>Gets the validated typed payload.</summary>
+    public JsonElement Payload => _document.GetProperty("payload");
+
+    /// <summary>Attempts to get an optional envelope property.</summary>
+    public bool TryGetProperty(string propertyName, out JsonElement value)
+    {
+        ArgumentNullException.ThrowIfNull(propertyName);
+        return _document.TryGetProperty(propertyName, out value);
+    }
+}
+
+/// <summary>A stable validation failure produced before a wire message is dispatched.</summary>
+public sealed class MvvmProtocolException : FormatException
+{
+    internal MvvmProtocolException(string code, string message, string path = "$")
+        : base(message)
+    {
+        Code = code;
+        Path = path;
+    }
+
+    /// <summary>Gets a stable machine-readable validation error code.</summary>
+    public string Code { get; }
+
+    /// <summary>Gets a bounded schema path containing no attacker-controlled property names.</summary>
+    public string Path { get; }
+}
+
+/// <summary>Stable validation error codes returned by the protocol version 1 codec.</summary>
+public static class MvvmValidationErrorCodes
+{
+    /// <summary>The frame exceeds an effective or hard byte limit.</summary>
+    public const string FrameLimitExceeded = "frame.limitExceeded";
+
+    /// <summary>The frame starts with a forbidden UTF-8 byte-order mark.</summary>
+    public const string ByteOrderMarkForbidden = "frame.byteOrderMarkForbidden";
+
+    /// <summary>The frame is not strictly encoded UTF-8.</summary>
+    public const string InvalidUtf8 = "frame.invalidUtf8";
+
+    /// <summary>The frame is not exactly one strict JSON document.</summary>
+    public const string InvalidJson = "json.invalid";
+
+    /// <summary>An object contains a duplicate decoded property name.</summary>
+    public const string DuplicateProperty = "json.duplicateProperty";
+
+    /// <summary>A parsed JSON value exceeds an effective or hard structural limit.</summary>
+    public const string JsonLimitExceeded = "json.limitExceeded";
+
+    /// <summary>The envelope is not a member of the applicable closed schema union.</summary>
+    public const string SchemaInvalid = "schema.invalid";
+
+    /// <summary>A schema-valid shape violates an additional protocol semantic invariant.</summary>
+    public const string SemanticInvalid = "message.semanticInvalid";
 }

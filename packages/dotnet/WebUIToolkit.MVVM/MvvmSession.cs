@@ -9,17 +9,28 @@ internal sealed class MvvmSession : IMvvmSession
 {
     private static readonly MvvmFault ClosedFault = new(MvvmFaultCodes.SessionClosed, "The session is closed.");
     private readonly IMvvmBindingAdapter _adapter;
+    private readonly MvvmBindingVocabulary? _vocabulary;
     private readonly object[] _ownedResources;
     private readonly MvvmLimits _limits;
     private readonly byte[] _capabilityBytes;
     private readonly Func<MvvmSession, ValueTask> _onClosed;
-    private readonly SemaphoreSlim _dispatchGate = new(1, 1);
+    private readonly object _admissionGate = new();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<MvvmRequestId, PendingRequest> _pending = new();
+    private readonly HashSet<MvvmRequestId> _seenRequestIds = [];
+    private readonly LinkedList<QueuedRequest> _dispatchQueue = [];
+    private readonly SemaphoreSlim _queueSignal = new(0);
+    private readonly Task _dispatchLoop;
+    private readonly TaskCompletionSource _requestsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _disposeCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Task? _abandonedConsumerTask;
+    private MvvmRequestId? _ledgerTerminalRequestId;
     private long _revision;
     private long _acknowledgedRevision = -1;
     private int _pendingCount;
+    private int _pendingCancellationCount;
+    private bool _queueCompleted;
+    private int _poisoned;
     private int _disposeState;
 
     internal MvvmSession(
@@ -35,9 +46,15 @@ internal sealed class MvvmSession : IMvvmSession
         CapabilityToken = capabilityToken;
         _capabilityBytes = Encoding.ASCII.GetBytes(capabilityToken);
         _adapter = activation.Adapter;
+        if (activation.Adapter is IMvvmBindingVocabularyProvider provider)
+        {
+            _vocabulary = provider.Vocabulary ??
+                throw new InvalidOperationException("The adapter vocabulary is unavailable.");
+        }
         _ownedResources = activation.OwnedResources.ToArray();
         _limits = limits;
         _onClosed = onClosed;
+        _dispatchLoop = RunDispatchLoopAsync();
     }
 
     public MvvmSessionId Id { get; }
@@ -48,12 +65,26 @@ internal sealed class MvvmSession : IMvvmSession
 
     public bool Authorizes(string capabilityToken)
     {
-        if (capabilityToken is null)
+        if (capabilityToken is null || capabilityToken.Length != _capabilityBytes.Length)
         {
             return false;
         }
 
-        byte[] candidate = Encoding.UTF8.GetBytes(capabilityToken);
+        Span<byte> candidate = stackalloc byte[43];
+        for (int index = 0; index < capabilityToken.Length; index++)
+        {
+            char character = capabilityToken[index];
+            bool isBase64Url = character is >= 'A' and <= 'Z' or
+                >= 'a' and <= 'z' or
+                >= '0' and <= '9' or '-' or '_';
+            if (!isBase64Url)
+            {
+                return false;
+            }
+
+            candidate[index] = (byte)character;
+        }
+
         return CryptographicOperations.FixedTimeEquals(candidate, _capabilityBytes);
     }
 
@@ -72,87 +103,113 @@ internal sealed class MvvmSession : IMvvmSession
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (Volatile.Read(ref _disposeState) != 0)
-        {
-            return MvvmResponse.Rejected(request.RequestId, Revision, ClosedFault);
-        }
-
-        if (request is MvvmCancelRequest cancellation)
-        {
-            return await CancelAsync(cancellation).ConfigureAwait(false);
-        }
-
-        if (Interlocked.Increment(ref _pendingCount) > _limits.MaxPendingRequests)
-        {
-            Interlocked.Decrement(ref _pendingCount);
-            return MvvmResponse.Rejected(
-                request.RequestId,
-                Revision,
-                MvvmFaultCodes.LimitExceeded,
-                "The session pending-request limit was exceeded.");
-        }
-
-        TimeSpan timeout = request is MvvmMutationRequest { Kind: MvvmMutationKind.ExecuteCommand }
-            ? _limits.MaxCommandDuration
-            : Timeout.InfiniteTimeSpan;
-        using var pending = new PendingRequest(timeout, cancellationToken, _shutdown.Token);
-        if (!_pending.TryAdd(request.RequestId, pending))
-        {
-            Interlocked.Decrement(ref _pendingCount);
-            return MvvmResponse.Rejected(
-                request.RequestId,
-                Revision,
-                MvvmFaultCodes.RequestInvalid,
-                "The request identifier is already in flight.");
-        }
-
+        string requestKind = RequestKind(request);
+        using MvvmActivity activity = MvvmTelemetry.StartRequest(requestKind);
+        long startedTimestamp = MvvmTelemetry.RequestAdmitted();
+        MvvmResponse response;
         try
         {
-            await _dispatchGate.WaitAsync(pending.Token).ConfigureAwait(false);
-            try
-            {
-                MvvmResponse response = request switch
-                {
-                    MvvmMutationRequest mutation => await MutateAsync(mutation, pending, pending.Token).ConfigureAwait(false),
-                    MvvmSnapshotRequest snapshot => await SnapshotAsync(snapshot, pending, pending.Token).ConfigureAwait(false),
-                    MvvmAcknowledgeRequest acknowledgement => Acknowledge(acknowledgement, pending),
-                    _ => MvvmResponse.Rejected(
-                        request.RequestId,
-                        Revision,
-                        MvvmFaultCodes.RequestInvalid,
-                        "The request kind is invalid."),
-                };
-                return Publish(pending, response);
-            }
-            finally
-            {
-                _dispatchGate.Release();
-            }
-        }
-        catch (OperationCanceledException) when (pending.Token.IsCancellationRequested)
-        {
-            pending.Complete();
-            return Publish(pending, CancellationResponse(request.RequestId, pending));
+            response = request is MvvmCancelRequest cancellation
+                ? await DispatchCancellationAsync(cancellation).ConfigureAwait(false)
+                : await DispatchQueuedAsync(request, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {
-            CancellationCause earlyCause = pending.Complete();
-            if (earlyCause != CancellationCause.Completed)
-            {
-                return Publish(pending, CancellationResponse(request.RequestId, pending));
-            }
-
-            return Publish(pending, MvvmResponse.Rejected(
+            response = MvvmResponse.Rejected(
                 request.RequestId,
                 Revision,
                 MvvmFaultCodes.RequestInvalid,
-                "The request could not be completed."));
+                "The request could not be completed.");
         }
-        finally
+
+        CloseAfterLedgerTerminal(request.RequestId);
+        string outcome = response.Succeeded ? "success" : "fault";
+        MvvmTelemetry.RequestCompleted(
+            activity,
+            startedTimestamp,
+            requestKind,
+            outcome,
+            response.Fault?.Code);
+        string? capacityLimit = BackpressureLimit(response);
+        if (capacityLimit is not null)
         {
-            _pending.TryRemove(request.RequestId, out _);
-            Interlocked.Decrement(ref _pendingCount);
+            MvvmTelemetry.BackpressureRejected(capacityLimit, requestKind);
         }
+
+        return response;
+    }
+
+    private async ValueTask<MvvmResponse> DispatchQueuedAsync(MvvmRequest request, CancellationToken cancellationToken)
+    {
+        TimeSpan timeout = request is MvvmMutationRequest { Kind: MvvmMutationKind.ExecuteCommand }
+            ? _limits.MaxCommandDuration
+            : Timeout.InfiniteTimeSpan;
+        QueuedRequest queued;
+        bool cancellationPending;
+        lock (_admissionGate)
+        {
+            if (_disposeState != 0 || _poisoned != 0)
+            {
+                return MvvmResponse.Rejected(request.RequestId, Revision, ClosedFault);
+            }
+
+            if (_seenRequestIds.Contains(request.RequestId))
+            {
+                return MvvmResponse.Rejected(
+                    request.RequestId,
+                    Revision,
+                    MvvmFaultCodes.RequestInvalid,
+                    "The request identifier has already been processed.");
+            }
+
+            if (_seenRequestIds.Count >= MvvmLimits.MaximumRequestLedgerEntries)
+            {
+                return MvvmResponse.Rejected(
+                    request.RequestId,
+                    Revision,
+                    MvvmFaultCodes.LimitExceeded,
+                    "The session request ledger limit was exceeded; open a new session.");
+            }
+
+            _seenRequestIds.Add(request.RequestId);
+            if (_seenRequestIds.Count == MvvmLimits.MaximumRequestLedgerEntries)
+            {
+                _ledgerTerminalRequestId = request.RequestId;
+            }
+
+            if (_pendingCount >= _limits.MaxPendingRequests)
+            {
+                return MvvmResponse.Rejected(
+                    request.RequestId,
+                    Revision,
+                    MvvmFaultCodes.LimitExceeded,
+                    "The session pending-request limit was exceeded.");
+            }
+
+            var pending = new PendingRequest(timeout, cancellationToken, _shutdown.Token);
+            queued = new QueuedRequest(request, pending);
+            if (!_pending.TryAdd(request.RequestId, pending))
+            {
+                pending.Dispose();
+                return MvvmResponse.Rejected(
+                    request.RequestId,
+                    Revision,
+                    MvvmFaultCodes.RequestInvalid,
+                    "The request identifier has already been processed.");
+            }
+
+            _pendingCount++;
+            queued.Node = _dispatchQueue.AddLast(queued);
+            cancellationPending = pending.SetCancellationCallback(queued.CancelBeforeStart);
+            _queueSignal.Release();
+        }
+
+        if (cancellationPending)
+        {
+            queued.CancelBeforeStart();
+        }
+
+        return await queued.Completion.Task.ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -164,56 +221,112 @@ internal sealed class MvvmSession : IMvvmSession
         }
 
         Exception? firstFailure = null;
+        Task? deferredCleanup = null;
+        long teardownStarted = Stopwatch.GetTimestamp();
         try
         {
-            _shutdown.Cancel();
+            lock (_admissionGate)
+            {
+                _queueCompleted = true;
+                if (_pendingCount == 0)
+                {
+                    _requestsDrained.TrySetResult();
+                }
+            }
 
-            await _dispatchGate.WaitAsync().ConfigureAwait(false);
-            try
+            _queueSignal.Release();
+            _shutdown.Cancel();
+            await _dispatchLoop.ConfigureAwait(false);
+            await _requestsDrained.Task.ConfigureAwait(false);
+            bool consumerQuiesced = true;
+            Task? abandonedConsumer = Volatile.Read(ref _abandonedConsumerTask);
+            if (abandonedConsumer is not null)
             {
                 try
                 {
-                    await _adapter.DisposeAsync().ConfigureAwait(false);
+                    consumerQuiesced = await AwaitWithinShutdownAsync(abandonedConsumer, teardownStarted).ConfigureAwait(false);
                 }
-                catch (Exception exception)
+                catch (Exception)
                 {
-                    firstFailure = exception;
+                    // Consumer exceptions are observed but never escape the protocol boundary.
                 }
+            }
 
-                for (int index = _ownedResources.Length - 1; index >= 0; index--)
+            try
+            {
+                if (consumerQuiesced)
                 {
+                    bool continueDisposal = true;
                     try
                     {
-                        switch (_ownedResources[index])
+                        Task adapterDisposal = StartAdapterDisposal();
+                        continueDisposal = await AwaitWithinShutdownAsync(adapterDisposal, teardownStarted).ConfigureAwait(false);
+                        if (!continueDisposal)
                         {
-                            case IAsyncDisposable asyncDisposable:
-                                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-                                break;
-                            case IDisposable disposable:
-                                disposable.Dispose();
-                                break;
+                            deferredCleanup = ScheduleDeferredCleanup(
+                                adapterDisposal,
+                                disposeAdapter: false,
+                                _ownedResources.Length - 1);
                         }
                     }
                     catch (Exception exception)
                     {
-                        firstFailure ??= exception;
+                        firstFailure = exception;
                     }
+
+                    for (int index = _ownedResources.Length - 1; continueDisposal && index >= 0; index--)
+                    {
+                        try
+                        {
+                            Task resourceDisposal = StartResourceDisposal(_ownedResources[index]);
+                            continueDisposal = await AwaitWithinShutdownAsync(resourceDisposal, teardownStarted).ConfigureAwait(false);
+                            if (!continueDisposal)
+                            {
+                                deferredCleanup = ScheduleDeferredCleanup(
+                                    resourceDisposal,
+                                    disposeAdapter: false,
+                                    index - 1);
+                            }
+                        }
+                        catch (Exception exception)
+                        {
+                            firstFailure ??= exception;
+                        }
+                    }
+                }
+                else if (abandonedConsumer is not null)
+                {
+                    deferredCleanup = ScheduleDeferredCleanup(
+                        abandonedConsumer,
+                        disposeAdapter: true,
+                        _ownedResources.Length - 1);
                 }
             }
             finally
             {
-                _dispatchGate.Release();
+                _queueSignal.Dispose();
+                _shutdown.Dispose();
             }
         }
         finally
         {
-            try
+            CryptographicOperations.ZeroMemory(_capabilityBytes);
+            if (deferredCleanup is null)
             {
-                await _onClosed(this).ConfigureAwait(false);
+                try
+                {
+                    Task closedCallback = Task.Run(async () =>
+                        await _onClosed(this).ConfigureAwait(false));
+                    _ = await AwaitWithinShutdownAsync(closedCallback, teardownStarted).ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    firstFailure ??= exception;
+                }
             }
-            catch (Exception exception)
+            else
             {
-                firstFailure ??= exception;
+                _ = CloseAfterDeferredCleanupAsync(deferredCleanup);
             }
 
             if (firstFailure is null)
@@ -232,25 +345,347 @@ internal sealed class MvvmSession : IMvvmSession
         }
     }
 
-    private async ValueTask<MvvmResponse> CancelAsync(MvvmCancelRequest request)
+    private async ValueTask<MvvmResponse> DispatchCancellationAsync(MvvmCancelRequest request)
     {
-        if (request.TargetRequestId == request.RequestId)
+        PendingRequest? target;
+        lock (_admissionGate)
         {
-            return MvvmResponse.Rejected(
-                request.RequestId,
-                Revision,
-                MvvmFaultCodes.RequestInvalid,
-                "A cancellation request cannot target itself.");
+            if (_disposeState != 0 || _poisoned != 0)
+            {
+                return MvvmResponse.Rejected(request.RequestId, Revision, ClosedFault);
+            }
+
+            if (_seenRequestIds.Contains(request.RequestId))
+            {
+                return MvvmResponse.Rejected(
+                    request.RequestId,
+                    Revision,
+                    MvvmFaultCodes.RequestInvalid,
+                    "The request identifier has already been processed.");
+            }
+
+            if (_seenRequestIds.Count >= MvvmLimits.MaximumRequestLedgerEntries)
+            {
+                return MvvmResponse.Rejected(
+                    request.RequestId,
+                    Revision,
+                    MvvmFaultCodes.LimitExceeded,
+                    "The session request ledger limit was exceeded; open a new session.");
+            }
+
+            _seenRequestIds.Add(request.RequestId);
+            if (_seenRequestIds.Count == MvvmLimits.MaximumRequestLedgerEntries)
+            {
+                _ledgerTerminalRequestId = request.RequestId;
+            }
+            if (request.TargetRequestId == request.RequestId)
+            {
+                return MvvmResponse.Rejected(
+                    request.RequestId,
+                    Revision,
+                    MvvmFaultCodes.RequestInvalid,
+                    "A cancellation request cannot target itself.");
+            }
+
+            _pending.TryGetValue(request.TargetRequestId, out target);
+            if (target is not null)
+            {
+                if (_pendingCancellationCount >= _limits.MaxPendingRequests)
+                {
+                    return MvvmResponse.Rejected(
+                        request.RequestId,
+                        Revision,
+                        MvvmFaultCodes.LimitExceeded,
+                        "The session cancellation-control limit was exceeded.");
+                }
+
+                _pendingCancellationCount++;
+            }
         }
 
-        if (!_pending.TryGetValue(request.TargetRequestId, out PendingRequest? target))
+        if (target is null)
         {
             return MvvmResponse.Success(request.RequestId, Revision, cancellationAccepted: false);
         }
 
-        bool accepted = target.Cancel();
-        long revision = accepted ? Revision : await target.Publication.ConfigureAwait(false);
-        return MvvmResponse.Success(request.RequestId, revision, cancellationAccepted: accepted);
+        try
+        {
+            bool accepted = target.Cancel();
+            long revision = await target.Publication.ConfigureAwait(false);
+            return MvvmResponse.Success(request.RequestId, revision, cancellationAccepted: accepted);
+        }
+        finally
+        {
+            lock (_admissionGate)
+            {
+                _pendingCancellationCount--;
+            }
+        }
+    }
+
+    private async Task RunDispatchLoopAsync()
+    {
+        while (true)
+        {
+            await _queueSignal.WaitAsync().ConfigureAwait(false);
+            QueuedRequest? queued;
+            lock (_admissionGate)
+            {
+                LinkedListNode<QueuedRequest>? node = _dispatchQueue.First;
+                if (node is null)
+                {
+                    if (_queueCompleted)
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                _dispatchQueue.Remove(node);
+                queued = node.Value;
+                queued.Node = null;
+            }
+
+            if (!queued.TryStart())
+            {
+                if (queued.IsCancelledBeforeStart)
+                {
+                    queued.Pending.Complete();
+                    MvvmResponse cancelled = CancellationResponse(queued.Request.RequestId, queued.Pending);
+                    Publish(queued.Pending, cancelled);
+                    CompleteQueuedRequest(queued);
+                    queued.Completion.TrySetResult(cancelled);
+                }
+
+                continue;
+            }
+
+            if (queued.Pending.Cause is not CancellationCause.None)
+            {
+                queued.Pending.Complete();
+                MvvmResponse cancelled = CancellationResponse(queued.Request.RequestId, queued.Pending);
+                Publish(queued.Pending, cancelled);
+                CompleteQueuedRequest(queued);
+                queued.Completion.TrySetResult(cancelled);
+                continue;
+            }
+
+            MvvmResponse response;
+            try
+            {
+                response = queued.Request switch
+                {
+                    MvvmMutationRequest mutation =>
+                        await MutateAsync(mutation, queued.Pending, queued.Pending.Token).ConfigureAwait(false),
+                    MvvmSnapshotRequest snapshot =>
+                        await SnapshotAsync(snapshot, queued.Pending, queued.Pending.Token).ConfigureAwait(false),
+                    MvvmAcknowledgeRequest acknowledgement => Acknowledge(acknowledgement, queued.Pending),
+                    _ => MvvmResponse.Rejected(
+                        queued.Request.RequestId,
+                        Revision,
+                        MvvmFaultCodes.RequestInvalid,
+                        "The request kind is invalid."),
+                };
+            }
+            catch (OperationCanceledException) when (queued.Pending.Token.IsCancellationRequested)
+            {
+                queued.Pending.Complete();
+                response = CancellationResponse(queued.Request.RequestId, queued.Pending);
+            }
+            catch (Exception)
+            {
+                CancellationCause earlyCause = queued.Pending.Complete();
+                response = earlyCause == CancellationCause.Completed
+                    ? MvvmResponse.Rejected(
+                        queued.Request.RequestId,
+                        Revision,
+                        MvvmFaultCodes.RequestInvalid,
+                        "The request could not be completed.")
+                    : CancellationResponse(queued.Request.RequestId, queued.Pending);
+            }
+
+            Publish(queued.Pending, response);
+            CompleteQueuedRequest(queued);
+            queued.Completion.TrySetResult(response);
+        }
+    }
+
+    private void CompleteQueuedRequest(QueuedRequest queued)
+    {
+        lock (_admissionGate)
+        {
+            if (queued.Node is not null)
+            {
+                _dispatchQueue.Remove(queued.Node);
+                queued.Node = null;
+            }
+
+            _pending.TryRemove(queued.Request.RequestId, out _);
+            _pendingCount--;
+            if (_disposeState != 0 && _pendingCount == 0)
+            {
+                _requestsDrained.TrySetResult();
+            }
+        }
+
+        queued.Pending.Dispose();
+    }
+
+    private async ValueTask<T?> InvokeConsumerAsync<T>(Func<ValueTask<T>> operation, PendingRequest pending)
+        where T : class
+    {
+        Task<T> consumerTask;
+        try
+        {
+            consumerTask = Task.Run(async () =>
+                await operation().ConfigureAwait(false));
+        }
+        catch
+        {
+            pending.Complete();
+            throw;
+        }
+
+        _ = consumerTask.ContinueWith(
+            static (_, state) => ((PendingRequest)state!).Complete(),
+            pending,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        CancellationCause cause = await pending.Terminal.ConfigureAwait(false);
+        if (cause == CancellationCause.Completed)
+        {
+            return await consumerTask.ConfigureAwait(false);
+        }
+
+        Volatile.Write(ref _abandonedConsumerTask, consumerTask);
+        PoisonSession();
+        ObserveLateConsumerTask(consumerTask);
+        return null;
+    }
+
+    private async ValueTask<bool> AwaitWithinShutdownAsync(Task task, long teardownStarted)
+    {
+        TimeSpan remaining = _limits.MaxShutdownDuration - Stopwatch.GetElapsedTime(teardownStarted);
+        if (remaining <= TimeSpan.Zero)
+        {
+            ObserveLateConsumerTask(task);
+            return false;
+        }
+
+        Task winner = await Task.WhenAny(task, Task.Delay(remaining)).ConfigureAwait(false);
+        if (!ReferenceEquals(winner, task))
+        {
+            ObserveLateConsumerTask(task);
+            return false;
+        }
+
+        await task.ConfigureAwait(false);
+        return true;
+    }
+
+    private Task StartAdapterDisposal() => Task.Run(async () =>
+        await _adapter.DisposeAsync().ConfigureAwait(false));
+
+    private static Task StartResourceDisposal(object resource) => resource switch
+    {
+        IAsyncDisposable asyncDisposable => Task.Run(async () =>
+            await asyncDisposable.DisposeAsync().ConfigureAwait(false)),
+        IDisposable disposable => Task.Run(disposable.Dispose),
+        _ => Task.CompletedTask,
+    };
+
+    private Task ScheduleDeferredCleanup(Task predecessor, bool disposeAdapter, int nextResourceIndex)
+    {
+        return Task.Run(async () =>
+        {
+            await ObserveCompletionAsync(predecessor).ConfigureAwait(false);
+            if (disposeAdapter)
+            {
+                await ObserveCompletionAsync(StartAdapterDisposal()).ConfigureAwait(false);
+            }
+
+            for (int index = nextResourceIndex; index >= 0; index--)
+            {
+                await ObserveCompletionAsync(StartResourceDisposal(_ownedResources[index])).ConfigureAwait(false);
+            }
+        });
+    }
+
+    private async Task CloseAfterDeferredCleanupAsync(Task deferredCleanup)
+    {
+        await ObserveCompletionAsync(deferredCleanup).ConfigureAwait(false);
+        await ObserveCompletionAsync(Task.Run(async () =>
+            await _onClosed(this).ConfigureAwait(false))).ConfigureAwait(false);
+    }
+
+    private static async Task ObserveCompletionAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Deferred teardown is best-effort; failures are observed and containment
+            // continues in dependency order.
+        }
+    }
+
+    private void PoisonSession()
+    {
+        if (Interlocked.Exchange(ref _poisoned, 1) != 0)
+        {
+            return;
+        }
+
+        lock (_admissionGate)
+        {
+            _queueCompleted = true;
+        }
+
+        _queueSignal.Release();
+        _shutdown.Cancel();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Automatic fail-closed teardown is observed through the shared disposal task.
+            }
+        });
+    }
+
+    private void CloseAfterLedgerTerminal(MvvmRequestId requestId)
+    {
+        bool closesSession;
+        lock (_admissionGate)
+        {
+            closesSession = _ledgerTerminalRequestId == requestId;
+            if (closesSession)
+            {
+                _ledgerTerminalRequestId = null;
+            }
+        }
+
+        if (closesSession)
+        {
+            PoisonSession();
+        }
+    }
+
+    private static void ObserveLateConsumerTask(Task task)
+    {
+        _ = task.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private async ValueTask<MvvmResponse> MutateAsync(
@@ -304,8 +739,24 @@ internal sealed class MvvmSession : IMvvmSession
                 "The session revision limit was exceeded.");
         }
 
-        MvvmBindingResult result = await _adapter.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
-        CancellationCause cause = pending.Complete();
+        MvvmBindingResult? result = await InvokeConsumerAsync(
+            () => _adapter.DispatchAsync(request, cancellationToken),
+            pending).ConfigureAwait(false);
+        CancellationCause cause = pending.Cause;
+        if (result is null)
+        {
+            return CancellationResponse(request.RequestId, pending);
+        }
+
+        if (result.Committed && !ValidatePatches(result.Patches))
+        {
+            PoisonSession();
+            return MvvmResponse.Rejected(
+                request.RequestId,
+                revision,
+                MvvmFaultCodes.RequestInvalid,
+                "The adapter produced an invalid projection.");
+        }
 
         bool resultExceedsLimit = result.Patches.Count > _limits.MaxPatchOperations || PayloadTooLarge(result.Payload, result.Patches);
         long nextRevision = revision;
@@ -340,11 +791,28 @@ internal sealed class MvvmSession : IMvvmSession
         PendingRequest pending,
         CancellationToken cancellationToken)
     {
-        MvvmSnapshot snapshot = await _adapter.SnapshotAsync(cancellationToken).ConfigureAwait(false);
-        CancellationCause cause = pending.Complete();
+        MvvmSnapshot? snapshot = await InvokeConsumerAsync(
+            () => _adapter.SnapshotAsync(cancellationToken),
+            pending).ConfigureAwait(false);
+        CancellationCause cause = pending.Cause;
         if (cause != CancellationCause.Completed)
         {
             return CancellationResponse(request.RequestId, pending);
+        }
+
+        if (snapshot is null)
+        {
+            return MvvmResponse.Rejected(request.RequestId, Revision, ClosedFault);
+        }
+
+        if (!ValidateSnapshot(snapshot))
+        {
+            PoisonSession();
+            return MvvmResponse.Rejected(
+                request.RequestId,
+                Revision,
+                MvvmFaultCodes.RequestInvalid,
+                "The adapter produced an invalid projection.");
         }
 
         if (!JsonWithinLimits(snapshot.State) ||
@@ -359,6 +827,42 @@ internal sealed class MvvmSession : IMvvmSession
         }
 
         return MvvmResponse.Success(request.RequestId, Revision, snapshot.State);
+    }
+
+    private bool ValidateSnapshot(MvvmSnapshot snapshot)
+    {
+        if (_vocabulary is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            MvvmProjectionValidator.ValidateSnapshot(snapshot, _vocabulary);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private bool ValidatePatches(IReadOnlyList<MvvmPatch> patches)
+    {
+        if (_vocabulary is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            MvvmProjectionValidator.ValidatePatches(patches, _vocabulary);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private MvvmResponse Acknowledge(MvvmAcknowledgeRequest request, PendingRequest pending)
@@ -408,6 +912,24 @@ internal sealed class MvvmSession : IMvvmSession
         CancellationCause.Timeout =>
             new MvvmFault(MvvmFaultCodes.RequestTimeout, "The request timed out."),
         CancellationCause.Shutdown => ClosedFault,
+        _ => null,
+    };
+
+    private static string RequestKind(MvvmRequest request) => request switch
+    {
+        MvvmMutationRequest { Kind: MvvmMutationKind.SetProperty } => "setProperty",
+        MvvmMutationRequest { Kind: MvvmMutationKind.ExecuteCommand } => "execute",
+        MvvmSnapshotRequest => "requestSnapshot",
+        MvvmAcknowledgeRequest => "ack",
+        MvvmCancelRequest => "cancel",
+        _ => "invalid",
+    };
+
+    private static string? BackpressureLimit(MvvmResponse response) => response.Fault switch
+    {
+        { Code: MvvmFaultCodes.LimitExceeded, Message: "The session pending-request limit was exceeded." } => "requests",
+        { Code: MvvmFaultCodes.LimitExceeded, Message: "The session cancellation-control limit was exceeded." } => "cancellation-control",
+        { Code: MvvmFaultCodes.LimitExceeded, Message: "The session request ledger limit was exceeded; open a new session." } => "request-ledger",
         _ => null,
     };
 
@@ -513,7 +1035,7 @@ internal sealed class MvvmSession : IMvvmSession
                 {
                     propertyCount++;
                     if (propertyCount > _limits.MaxObjectProperties ||
-                        Encoding.UTF8.GetByteCount(property.Name) > MvvmLimits.MaximumPropertyNameBytes ||
+                        Encoding.UTF8.GetByteCount(property.Name) > _limits.MaxPropertyNameBytes ||
                         !JsonWithinLimits(property.Value, depth + 1))
                     {
                         return false;
@@ -534,6 +1056,32 @@ internal sealed class MvvmSession : IMvvmSession
         members.ValueKind == JsonValueKind.Array &&
         members.GetArrayLength() > _limits.MaxSnapshotMembers;
 
+    private sealed class QueuedRequest
+    {
+        private int _state;
+
+        internal QueuedRequest(MvvmRequest request, PendingRequest pending)
+        {
+            Request = request;
+            Pending = pending;
+        }
+
+        internal MvvmRequest Request { get; }
+
+        internal PendingRequest Pending { get; }
+
+        internal LinkedListNode<QueuedRequest>? Node { get; set; }
+
+        internal TaskCompletionSource<MvvmResponse> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal bool TryStart() => Interlocked.CompareExchange(ref _state, 1, 0) == 0;
+
+        internal bool IsCancelledBeforeStart => Volatile.Read(ref _state) == 2;
+
+        internal void CancelBeforeStart() => Interlocked.CompareExchange(ref _state, 2, 0);
+    }
+
     private sealed class PendingRequest : IDisposable
     {
         private readonly CancellationTokenSource _combined = new();
@@ -542,7 +1090,10 @@ internal sealed class MvvmSession : IMvvmSession
         private readonly CancellationTokenRegistration _shutdownRegistration;
         private readonly CancellationTokenRegistration _timeoutRegistration;
         private readonly object _terminalGate = new();
+        private readonly TaskCompletionSource<CancellationCause> _terminal =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<long> _publication = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private Action? _cancellationCallback;
         private int _cause;
 
         internal PendingRequest(TimeSpan timeout, CancellationToken caller, CancellationToken shutdown)
@@ -562,10 +1113,26 @@ internal sealed class MvvmSession : IMvvmSession
 
         internal Task<long> Publication => _publication.Task;
 
+        internal Task<CancellationCause> Terminal => _terminal.Task;
+
         internal bool Cancel() => Signal(CancellationCause.Explicit);
+
+        internal bool SetCancellationCallback(Action callback)
+        {
+            ArgumentNullException.ThrowIfNull(callback);
+            lock (_terminalGate)
+            {
+                _cancellationCallback = callback;
+                return _cause is (int)CancellationCause.Caller or
+                    (int)CancellationCause.Explicit or
+                    (int)CancellationCause.Timeout or
+                    (int)CancellationCause.Shutdown;
+            }
+        }
 
         internal CancellationCause Complete()
         {
+            CancellationCause cause;
             lock (_terminalGate)
             {
                 if (_cause == (int)CancellationCause.None)
@@ -573,8 +1140,11 @@ internal sealed class MvvmSession : IMvvmSession
                     _cause = (int)CancellationCause.Completed;
                 }
 
-                return (CancellationCause)_cause;
+                cause = (CancellationCause)_cause;
             }
+
+            _terminal.TrySetResult(cause);
+            return cause;
         }
 
         internal void Publish(long revision) => _publication.TrySetResult(revision);
@@ -591,7 +1161,7 @@ internal sealed class MvvmSession : IMvvmSession
 
         private bool Signal(CancellationCause cause)
         {
-            bool won;
+            Action? cancellationCallback;
             lock (_terminalGate)
             {
                 if (_cause != (int)CancellationCause.None)
@@ -600,11 +1170,22 @@ internal sealed class MvvmSession : IMvvmSession
                 }
 
                 _cause = (int)cause;
-                won = true;
+                cancellationCallback = _cancellationCallback;
             }
 
-            _ = CancelSafelyAsync(_combined);
-            return won;
+            _terminal.TrySetResult(cause);
+            try
+            {
+                cancellationCallback?.Invoke();
+            }
+            catch (Exception)
+            {
+                // Session-owned cancellation publication is fail-closed and must not
+                // allow an observer callback to escape the protocol boundary.
+            }
+
+            _ = Task.Run(async () => await CancelSafelyAsync(_combined).ConfigureAwait(false));
+            return true;
         }
 
         private static async Task CancelSafelyAsync(CancellationTokenSource source)

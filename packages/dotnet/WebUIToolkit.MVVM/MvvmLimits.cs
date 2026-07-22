@@ -30,6 +30,10 @@ public sealed record MvvmLimits
     /// <summary>The protocol version 1 hard pending-request ceiling.</summary>
     public const int MaximumPendingRequests = 64;
 
+    /// <summary>The fixed version 1 lifetime ceiling for distinct admitted request identifiers.</summary>
+    /// <remarks>This lifecycle safety cap is fixed and is not an advertised effective limit.</remarks>
+    public const int MaximumRequestLedgerEntries = 65_536;
+
     /// <summary>The protocol version 1 hard session ceiling.</summary>
     public const int MaximumSessions = 16;
 
@@ -38,6 +42,9 @@ public sealed record MvvmLimits
 
     /// <summary>The protocol version 1 hard command timeout.</summary>
     public static TimeSpan MaximumCommandDuration { get; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>The runtime hard ceiling for cooperative activation and teardown grace.</summary>
+    public static TimeSpan MaximumShutdownDuration { get; } = TimeSpan.FromMinutes(5);
 
     /// <summary>The recommended bounded defaults for protocol version 1.</summary>
     public static MvvmLimits Default { get; } = new();
@@ -50,6 +57,9 @@ public sealed record MvvmLimits
 
     /// <summary>Gets the maximum general string size in UTF-8 bytes.</summary>
     public int MaxStringBytes { get; init; } = MaximumStringBytes;
+
+    /// <summary>Gets the maximum JSON property-name size in UTF-8 bytes.</summary>
+    public int MaxPropertyNameBytes { get; init; } = MaximumPropertyNameBytes;
 
     /// <summary>Gets the maximum properties in one JSON object.</summary>
     public int MaxObjectProperties { get; init; } = MaximumObjectProperties;
@@ -75,6 +85,9 @@ public sealed record MvvmLimits
     /// <summary>Gets the maximum duration of an adapter operation.</summary>
     public TimeSpan MaxCommandDuration { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>Gets the cooperative grace allowed for activation cancellation and teardown.</summary>
+    public TimeSpan MaxShutdownDuration { get; init; } = TimeSpan.FromSeconds(30);
+
     /// <summary>Checks that every configured bound is positive and finite.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A limit is not usable.</exception>
     public void Validate()
@@ -82,6 +95,7 @@ public sealed record MvvmLimits
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxPayloadBytes);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxJsonDepth);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxStringBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxPropertyNameBytes);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxObjectProperties);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxArrayItems);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxSnapshotMembers);
@@ -93,6 +107,7 @@ public sealed record MvvmLimits
         if (MaxPayloadBytes > MaximumPayloadBytes ||
             MaxJsonDepth > MaximumJsonDepth ||
             MaxStringBytes > MaximumStringBytes ||
+            MaxPropertyNameBytes > MaximumPropertyNameBytes ||
             MaxObjectProperties > MaximumObjectProperties ||
             MaxArrayItems > MaximumArrayItems ||
             MaxSnapshotMembers > MaximumSnapshotMembers ||
@@ -109,6 +124,13 @@ public sealed record MvvmLimits
             MaxCommandDuration > MaximumCommandDuration)
         {
             throw new ArgumentOutOfRangeException(nameof(MaxCommandDuration), "The command duration must be positive and no greater than the protocol ceiling.");
+        }
+
+        if (MaxShutdownDuration <= TimeSpan.Zero ||
+            MaxShutdownDuration == Timeout.InfiniteTimeSpan ||
+            MaxShutdownDuration > MaximumShutdownDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaxShutdownDuration), "The shutdown duration must be positive and no greater than the runtime ceiling.");
         }
     }
 }
