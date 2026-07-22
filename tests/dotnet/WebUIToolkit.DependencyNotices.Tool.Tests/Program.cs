@@ -127,11 +127,45 @@ internal static class Program
         Equal(ToolExitCodes.Success, nugetCode);
         Contains("component pkg:nuget/", nugetOutput);
 
-        string npm = Path.Combine(repository, "spec", "dependency-notices", "fixtures", "npm", "basic");
+        string npmTemplate = Path.Combine(repository, "spec", "dependency-notices", "fixtures", "npm", "basic");
+        using TemporaryDirectory npm = MaterializeNpmFixture(npmTemplate);
         (int npmCode, string npmOutput, _) = await RunAsync([
-            "scan", "npm", "--root", npm, "--lock", "package-lock.json"]).ConfigureAwait(false);
+            "scan", "npm", "--root", npm.Path, "--lock", "package-lock.json"]).ConfigureAwait(false);
         Equal(ToolExitCodes.Success, npmCode);
         Contains("component pkg:npm/", npmOutput);
+    }
+
+    private static TemporaryDirectory MaterializeNpmFixture(string source)
+    {
+        TemporaryDirectory fixture = new();
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            {
+                string relative = Path.GetRelativePath(source, file);
+                string[] segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (segments[0] == "installed")
+                {
+                    segments[0] = "node_modules";
+                }
+
+                for (int index = 1; index < segments.Length; index++)
+                {
+                    if (segments[index] == "_modules_") segments[index] = "node_modules";
+                }
+
+                string target = Path.Combine(fixture.Path, Path.Combine(segments));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target);
+            }
+
+            return fixture;
+        }
+        catch
+        {
+            fixture.Dispose();
+            throw;
+        }
     }
 
     private static async Task PolicyCommandEvaluates()
