@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.Collections.AotSmoke</AssemblyName>
+    <RootNamespace>WebUIToolkit.Collections.AotSmoke</RootNamespace>
+    <TrimMode>full</TrimMode>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="WebUIToolkit.Collections">
+      <HintPath>../../src/WebUIToolkit.Collections/bin/Release/net10.0/WebUIToolkit.Collections.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
