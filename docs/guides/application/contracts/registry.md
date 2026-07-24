@@ -7,6 +7,15 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | MVVM protocol | mvvm-protocol-core | `webuitoolkit.mvvm/1` | Reserved |
 | CLI protocol | command-line | `webuitoolkit.cli/1` | Reserved |
 | MVVM compiler diagnostics | mvvm-compiler-build | `WUTMVVM0001`–`WUTMVVM0003`, `WUTMVVM0901`–`WUTMVVM0903`, `WUTMVVM1001`–`WUTMVVM1006`, `WUTMVVM2001`–`WUTMVVM2013` | Allocated; remainder reserved |
+| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2014=AssemblyNotFound` | Reserved |
+| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2015=TypeNotFound` | Reserved |
+| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2016=MemberMissing` | Reserved |
+| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2017=MemberInaccessibleOrIncompatible` | Reserved |
+| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2018=MemberAmbiguousOrDuplicate` | Reserved |
+| Remediation fixture | communitytoolkit | `communitytoolkit.generated-member.title.v1` | Reserved |
+| Remediation fixture | communitytoolkit | `communitytoolkit.generated-member.submit-command.v1` | Reserved |
+| Remediation fixture | flow | `flow.projection.communitytoolkit.title.v1` | Reserved |
+| Remediation fixture | flow | `flow.projection.communitytoolkit.submit-command.v1` | Reserved |
 | Flow diagnostics | flow | `WUTFLOW0001`–`WUTFLOW0999` | ADR 0005 reserved |
 | Template diagnostics | template-engine | `WUTHTML0001`–`WUTHTML7999` | ADR 0005 reserved |
 | Text diagnostics | text-resources | `WUTTEXT0001`–`WUTTEXT0999` | ADR 0005 reserved |
