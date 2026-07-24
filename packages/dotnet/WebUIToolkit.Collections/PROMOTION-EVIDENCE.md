@@ -52,9 +52,10 @@ count, packed-consumer result, each native host/RID result, warnings, and any de
 platform. Evidence belongs to that exact commit; results from a dirty tree or another
 commit do not satisfy promotion.
 
-## Deferred Wave C edges
+## Deferred integration edges
 
-- MVVM binding/dispatcher integration and framework adapter behavior.
+- Wave C MVVM binding/dispatcher integration.
+- Framework adapter behavior in Waves E and F.
 - Cross-package compatibility with the later
   `WebUIToolkit.Collections.Observable` identity, if that reserved package is used.
 - Independent external-consumer evidence and ecosystem compatibility history.

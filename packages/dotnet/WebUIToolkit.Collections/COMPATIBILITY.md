@@ -61,6 +61,7 @@ local-only feed and cache, compiles the frozen API, exercises managed behavior, 
 can publish/run the same consumer with Native AOT. It is first-party compatibility
 evidence, not evidence of an independent external consumer or ecosystem adoption.
 
-The MVVM bridge, dispatcher ownership, and framework-specific collection adapters
-are Wave C integration edges. They must consume this frozen contract without adding
-an MVVM dependency to the Collections package.
+The MVVM bridge and dispatcher ownership are Wave C integration edges. Framework-
+specific collection adapters follow their owning UI integrations in Waves E and F.
+They must consume this frozen contract without adding an MVVM dependency to the
+Collections package.

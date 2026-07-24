@@ -1017,7 +1017,7 @@ html&gt;body{padding:0}&lt;/style&gt;
 
     #webuitoolkit-orchestration-019f8916 .phase-line {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 2px;
       margin: 1rem 0;
     }
@@ -1032,6 +1032,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     #webuitoolkit-orchestration-019f8916 .phase-segment[data-wave=&quot;B&quot;] { background: var(--viz-series-2); }
     #webuitoolkit-orchestration-019f8916 .phase-segment[data-wave=&quot;C&quot;] { background: var(--viz-series-3); }
     #webuitoolkit-orchestration-019f8916 .phase-segment[data-wave=&quot;D&quot;] { background: var(--viz-series-4); }
+    #webuitoolkit-orchestration-019f8916 .phase-segment[data-wave=&quot;E&quot;] { background: var(--viz-series-5); }
+    #webuitoolkit-orchestration-019f8916 .phase-segment[data-wave=&quot;F&quot;] { background: var(--viz-series-6); }
 
     #webuitoolkit-orchestration-019f8916 .phase-segment.is-muted,
     #webuitoolkit-orchestration-019f8916 tr.is-muted {
@@ -1057,6 +1059,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     #webuitoolkit-orchestration-019f8916 .phase-mark.active-b { background: color-mix(in srgb, var(--viz-series-2) 68%, var(--background)); }
     #webuitoolkit-orchestration-019f8916 .phase-mark.active-c { background: color-mix(in srgb, var(--viz-series-3) 68%, var(--background)); }
     #webuitoolkit-orchestration-019f8916 .phase-mark.active-d { background: color-mix(in srgb, var(--viz-series-4) 68%, var(--background)); }
+    #webuitoolkit-orchestration-019f8916 .phase-mark.active-e { background: color-mix(in srgb, var(--viz-series-5) 68%, var(--background)); }
+    #webuitoolkit-orchestration-019f8916 .phase-mark.active-f { background: color-mix(in srgb, var(--viz-series-6) 68%, var(--background)); }
     #webuitoolkit-orchestration-019f8916 .phase-mark.empty { opacity: .16; }
 
     #webuitoolkit-orchestration-019f8916 .selected-lane {
@@ -1086,6 +1090,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     #webuitoolkit-orchestration-019f8916 .legend-b { background: var(--viz-series-2); }
     #webuitoolkit-orchestration-019f8916 .legend-c { background: var(--viz-series-3); }
     #webuitoolkit-orchestration-019f8916 .legend-d { background: var(--viz-series-4); }
+    #webuitoolkit-orchestration-019f8916 .legend-e { background: var(--viz-series-5); }
+    #webuitoolkit-orchestration-019f8916 .legend-f { background: var(--viz-series-6); }
 
     #webuitoolkit-orchestration-019f8916 .namespace-table,
     #webuitoolkit-orchestration-019f8916 .handoff-table {
@@ -1111,21 +1117,26 @@ html&gt;body{padding:0}&lt;/style&gt;
     }
   &lt;/style&gt;
 
+  &lt;section class=&quot;card&quot; aria-label=&quot;Workflow operating model&quot;&gt;
+    &lt;h2&gt;Workflow-first execution&lt;/h2&gt;
+    &lt;p&gt;The lanes below are logical ownership boundaries, not permanent Codex tasks. For bounded parallel work, generate a small one-off TypeScript workflow; Bun runs deterministic checks while context-selected agents implement, diagnose, review, and synthesize. Planning remains user-owned, successful changes return uncommitted, and no workflow starts a delivery wave automatically. ADR 0010 and the workflow operating manifest are authoritative.&lt;/p&gt;
+  &lt;/section&gt;
+
   &lt;div class=&quot;viz-grid summary&quot; aria-label=&quot;Plan summary&quot;&gt;
     &lt;div class=&quot;card viz-stat&quot;&gt;
-      &lt;span class=&quot;text-muted&quot;&gt;Long-lived tasks&lt;/span&gt;
+      &lt;span class=&quot;text-muted&quot;&gt;Ownership lanes&lt;/span&gt;
       &lt;span class=&quot;viz-stat-value&quot;&gt;18&lt;/span&gt;
-      &lt;span class=&quot;text-small&quot;&gt;1 orchestrator + 17 owned domains&lt;/span&gt;
+      &lt;span class=&quot;text-small&quot;&gt;Logical scopes usable within workflows&lt;/span&gt;
     &lt;/div&gt;
     &lt;div class=&quot;card viz-stat&quot;&gt;
       &lt;span class=&quot;text-muted&quot;&gt;Execution waves&lt;/span&gt;
-      &lt;span class=&quot;viz-stat-value&quot;&gt;4&lt;/span&gt;
-      &lt;span class=&quot;text-small&quot;&gt;Contracts → kernels → adapters → release&lt;/span&gt;
+      &lt;span class=&quot;viz-stat-value&quot;&gt;6&lt;/span&gt;
+      &lt;span class=&quot;text-small&quot;&gt;Core through D; ecosystem adapters in E and F&lt;/span&gt;
     &lt;/div&gt;
     &lt;div class=&quot;card viz-stat&quot;&gt;
       &lt;span class=&quot;text-muted&quot;&gt;Active-agent ceiling&lt;/span&gt;
       &lt;span class=&quot;viz-stat-value&quot;&gt;13&lt;/span&gt;
-      &lt;span class=&quot;text-small&quot;&gt;Park and resume long-lived tasks by wave&lt;/span&gt;
+      &lt;span class=&quot;text-small&quot;&gt;Bun coordinates bounded parallel agents&lt;/span&gt;
     &lt;/div&gt;
   &lt;/div&gt;
 
@@ -1133,8 +1144,10 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn btn-primary&quot; data-wave-filter=&quot;all&quot; aria-pressed=&quot;true&quot;&gt;All waves&lt;/button&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;A&quot; aria-pressed=&quot;false&quot;&gt;A · Contracts&lt;/button&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;B&quot; aria-pressed=&quot;false&quot;&gt;B · Kernels&lt;/button&gt;
-    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;C&quot; aria-pressed=&quot;false&quot;&gt;C · Adapters&lt;/button&gt;
-    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;D&quot; aria-pressed=&quot;false&quot;&gt;D · Release&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;C&quot; aria-pressed=&quot;false&quot;&gt;C · First-party&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;D&quot; aria-pressed=&quot;false&quot;&gt;D · Core RC&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;E&quot; aria-pressed=&quot;false&quot;&gt;E · Web adapters&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-wave-filter=&quot;F&quot; aria-pressed=&quot;false&quot;&gt;F · Extended adapters&lt;/button&gt;
   &lt;/div&gt;
 
   &lt;div class=&quot;phase-line&quot; aria-hidden=&quot;true&quot;&gt;
@@ -1142,13 +1155,15 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;span class=&quot;phase-segment&quot; data-wave=&quot;B&quot;&gt;&lt;/span&gt;
     &lt;span class=&quot;phase-segment&quot; data-wave=&quot;C&quot;&gt;&lt;/span&gt;
     &lt;span class=&quot;phase-segment&quot; data-wave=&quot;D&quot;&gt;&lt;/span&gt;
+    &lt;span class=&quot;phase-segment&quot; data-wave=&quot;E&quot;&gt;&lt;/span&gt;
+    &lt;span class=&quot;phase-segment&quot; data-wave=&quot;F&quot;&gt;&lt;/span&gt;
   &lt;/div&gt;
-  &lt;p class=&quot;phase-copy&quot; id=&quot;wave-copy&quot;&gt;Bootstrap shared policy, freeze neutral contracts, build kernels, add adapters, then validate one packed Native-AOT vertical slice.&lt;/p&gt;
-  &lt;p&gt;&lt;strong&gt;Critical path:&lt;/strong&gt; &lt;code&gt;G0 → M0 → M1 → M2 → M3 → M6 → slowest framework adapter → M12&lt;/code&gt; &lt;span class=&quot;text-muted&quot;&gt;· planning range 19–29 calendar weeks with parallel teams&lt;/span&gt;&lt;/p&gt;
+  &lt;p class=&quot;phase-copy&quot; id=&quot;wave-copy&quot;&gt;Freeze contracts, build kernels, complete a first-party vertical slice and core release candidate, then add ecosystem adapters against frozen contracts.&lt;/p&gt;
+  &lt;p&gt;&lt;strong&gt;Core critical path:&lt;/strong&gt; &lt;code&gt;G0 → G1 → G2 → CommunityToolkit + HTMX integration → G3 → core vertical → G4&lt;/code&gt; &lt;span class=&quot;text-muted&quot;&gt;· React/Vue/Svelte branch into E; Angular/ReactiveUI remain parked until F&lt;/span&gt;&lt;/p&gt;
 
   &lt;h2&gt;Execution lanes&lt;/h2&gt;
   &lt;div class=&quot;table-responsive&quot;&gt;
-    &lt;table class=&quot;table table-sm&quot; aria-label=&quot;Thread execution plan by wave&quot;&gt;
+    &lt;table class=&quot;table table-sm&quot; aria-label=&quot;Ownership lanes by wave&quot;&gt;
       &lt;thead&gt;
         &lt;tr&gt;
           &lt;th scope=&quot;col&quot;&gt;Task&lt;/th&gt;
@@ -1157,6 +1172,8 @@ html&gt;body{padding:0}&lt;/style&gt;
           &lt;th scope=&quot;col&quot; class=&quot;text-center&quot;&gt;&lt;span class=&quot;legend-mark legend-b&quot;&gt;&lt;/span&gt;B&lt;/th&gt;
           &lt;th scope=&quot;col&quot; class=&quot;text-center&quot;&gt;&lt;span class=&quot;legend-mark legend-c&quot;&gt;&lt;/span&gt;C&lt;/th&gt;
           &lt;th scope=&quot;col&quot; class=&quot;text-center&quot;&gt;&lt;span class=&quot;legend-mark legend-d&quot;&gt;&lt;/span&gt;D&lt;/th&gt;
+          &lt;th scope=&quot;col&quot; class=&quot;text-center&quot;&gt;&lt;span class=&quot;legend-mark legend-e&quot;&gt;&lt;/span&gt;E&lt;/th&gt;
+          &lt;th scope=&quot;col&quot; class=&quot;text-center&quot;&gt;&lt;span class=&quot;legend-mark legend-f&quot;&gt;&lt;/span&gt;F&lt;/th&gt;
         &lt;/tr&gt;
       &lt;/thead&gt;
       &lt;tbody id=&quot;lane-rows&quot;&gt;&lt;/tbody&gt;
@@ -1166,7 +1183,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;section class=&quot;card selected-lane&quot; aria-live=&quot;polite&quot; aria-labelledby=&quot;selected-name&quot;&gt;
     &lt;div class=&quot;selected-grid&quot;&gt;
       &lt;div&gt;
-        &lt;span class=&quot;text-muted text-small&quot; id=&quot;selected-id&quot;&gt;Task 0&lt;/span&gt;
+        &lt;span class=&quot;text-muted text-small&quot; id=&quot;selected-id&quot;&gt;Lane 0&lt;/span&gt;
         &lt;h3 id=&quot;selected-name&quot;&gt;Orchestrator&lt;/h3&gt;
         &lt;p id=&quot;selected-owner&quot;&gt;&lt;/p&gt;
         &lt;p class=&quot;text-muted&quot; id=&quot;selected-scope&quot;&gt;&lt;/p&gt;
@@ -1203,11 +1220,13 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;table class=&quot;table table-sm&quot; aria-label=&quot;Cross-thread gates&quot;&gt;
       &lt;thead&gt;&lt;tr&gt;&lt;th scope=&quot;col&quot;&gt;Gate&lt;/th&gt;&lt;th scope=&quot;col&quot;&gt;Required evidence&lt;/th&gt;&lt;th scope=&quot;col&quot;&gt;Unlocks&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
       &lt;tbody&gt;
-        &lt;tr&gt;&lt;td&gt;G0 · Bootstrap&lt;/td&gt;&lt;td&gt;Naming ADR, solution policy, SDK/package locks, license decision&lt;/td&gt;&lt;td&gt;All domain worktrees&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;G0 · Bootstrap&lt;/td&gt;&lt;td&gt;Naming ADR, solution policy, SDK/package locks, license decision&lt;/td&gt;&lt;td&gt;All domain ownership lanes&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;G1 · Contracts&lt;/td&gt;&lt;td&gt;Approved APIs, schemas, diagnostic IDs, conformance corpus&lt;/td&gt;&lt;td&gt;Kernels and tooling&lt;/td&gt;&lt;/tr&gt;
-        &lt;tr&gt;&lt;td&gt;G2 · Kernels&lt;/td&gt;&lt;td&gt;Packed local artifacts, deterministic goldens, runtime/compiler tests&lt;/td&gt;&lt;td&gt;Framework and feature adapters&lt;/td&gt;&lt;/tr&gt;
-        &lt;tr&gt;&lt;td&gt;G3 · Adapters&lt;/td&gt;&lt;td&gt;Shared conformance suite, browser/security fixtures, package consumers&lt;/td&gt;&lt;td&gt;Vertical integration&lt;/td&gt;&lt;/tr&gt;
-        &lt;tr&gt;&lt;td&gt;G4 · Release&lt;/td&gt;&lt;td&gt;Trim/AOT publish, offline reproducibility, SBOM/notices, API approvals&lt;/td&gt;&lt;td&gt;1.0 release candidate&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;G2 · Kernels&lt;/td&gt;&lt;td&gt;Packed local artifacts, deterministic goldens, runtime/compiler tests&lt;/td&gt;&lt;td&gt;First-party integration&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;G3 · First-party integration&lt;/td&gt;&lt;td&gt;CommunityToolkit, HTMX, Hosting/Flow projections, security fixtures, package consumers&lt;/td&gt;&lt;td&gt;Core vertical integration&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;G4 · Core release candidate&lt;/td&gt;&lt;td&gt;Trim/AOT publish, offline reproducibility, SBOM/notices, API approvals&lt;/td&gt;&lt;td&gt;Core RC and deferred adapter waves&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;G5 · Web adapters&lt;/td&gt;&lt;td&gt;React/Vue/Svelte shared browser conformance, version matrices, package consumers&lt;/td&gt;&lt;td&gt;Wave F expansion&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;G6 · Extended adapters&lt;/td&gt;&lt;td&gt;Angular production matrix plus ReactiveUI lifecycle, trim/AOT, and compatibility evidence&lt;/td&gt;&lt;td&gt;Complete deferred adapter matrix&lt;/td&gt;&lt;/tr&gt;
       &lt;/tbody&gt;
     &lt;/table&gt;
   &lt;/div&gt;
@@ -1220,7 +1239,7 @@ html&gt;body{padding:0}&lt;/style&gt;
         &lt;tr&gt;&lt;td&gt;Source license, API ownership, package publication policy&lt;/td&gt;&lt;td&gt;Orchestrator&lt;/td&gt;&lt;td&gt;Blocks public preview and external reuse&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;Reserve NuGet IDs, npm scope, schema domain, protocol and diagnostic registries&lt;/td&gt;&lt;td&gt;Orchestrator&lt;/td&gt;&lt;td&gt;Blocks golden files and stable API baselines&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;Published upstream &lt;code&gt;cs-webui&lt;/code&gt; Native-AOT round trip&lt;/td&gt;&lt;td&gt;MVVM core + Hosting&lt;/td&gt;&lt;td&gt;Blocks generator and adapter breadth&lt;/td&gt;&lt;/tr&gt;
-        &lt;tr&gt;&lt;td&gt;Two-stage compiler sees Toolkit and ReactiveUI generated members&lt;/td&gt;&lt;td&gt;Compiler + integrations&lt;/td&gt;&lt;td&gt;Blocks first-party semantic adapters&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;Two-stage compiler sees Toolkit generated members; repeat the proof for ReactiveUI at Wave F entry&lt;/td&gt;&lt;td&gt;Compiler + integrations&lt;/td&gt;&lt;td&gt;Blocks the respective semantic adapter, not the core release&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;Use one HTMX runtime: &lt;code&gt;WebUIToolkit.MVVM.Html.Htmx&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Template + MVVM&lt;/td&gt;&lt;td&gt;Avoids two overlapping endpoint packages&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;Separate generic &lt;code&gt;CommandLine.Hosting&lt;/code&gt; from umbrella host composition&lt;/td&gt;&lt;td&gt;CLI + Hosting&lt;/td&gt;&lt;td&gt;Avoids duplicate classifiers and lifecycle engines&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;Central TFM policy with explicit Text Resources compatibility exception&lt;/td&gt;&lt;td&gt;Orchestrator&lt;/td&gt;&lt;td&gt;Blocks shared build settings without weakening package targets&lt;/td&gt;&lt;/tr&gt;
@@ -1229,26 +1248,29 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;/div&gt;
 
   &lt;ul class=&quot;rule-list&quot; aria-label=&quot;Operating rules&quot;&gt;
-    &lt;li&gt;One task, one branch, one worktree, one owned path set.&lt;/li&gt;
+    &lt;li&gt;One-off TypeScript workflows are the default coordination layer; planning is user-owned.&lt;/li&gt;
+    &lt;li&gt;Bun runs deterministic checks; model agents handle implementation and semantic judgment.&lt;/li&gt;
+    &lt;li&gt;Model and reasoning choices are contextual rather than permanently bound to roles.&lt;/li&gt;
+    &lt;li&gt;Ownership lanes remain disjoint even when one workflow coordinates several of them.&lt;/li&gt;
     &lt;li&gt;Only the orchestrator edits root solution, build, CI, version, and release files.&lt;/li&gt;
-    &lt;li&gt;Cross-task changes move through versioned packages, schemas, corpora, API approvals, or ADRs.&lt;/li&gt;
-    &lt;li&gt;Each handoff includes commit SHA, owned-path diff, package manifest, test evidence, AOT result, and open risks.&lt;/li&gt;
+    &lt;li&gt;Successful changes return uncommitted for ordinary review unless the user explicitly authorizes integration.&lt;/li&gt;
+    &lt;li&gt;Wave C remains inactive until the user explicitly starts it.&lt;/li&gt;
   &lt;/ul&gt;
 
   &lt;script&gt;
     (() =&gt; {
       const root = document.getElementById('webuitoolkit-orchestration-019f8916');
       const lanes = [
-        { id: 0, key: 'orchestrator', name: 'Orchestrator', owner: 'Root build, CI, ADRs, merge queue, local feed', waves: 'ABCD', deps: 'None', gate: 'G0 naming/build baseline; then serializes every shared-file merge', scope: 'Initializes the monorepo, freezes WebUIToolkit naming, publishes contract handoffs, and owns the final vertical consumer.' },
-        { id: 1, key: 'mvvm-protocol-core', name: 'MVVM protocol + core', owner: 'protocol/** · src/WebUIToolkit.MVVM/**', waves: 'ABCD', deps: 'G0 bootstrap and upstream cs-webui lifecycle spike', gate: 'Versioned protocol corpus, runtime API approval, packed AOT-smoke package', scope: 'Sessions, capabilities, revisions, dispatch, serialization metadata, cancellation, limits, and reconnect semantics.' },
-        { id: 2, key: 'mvvm-compiler-build', name: 'MVVM compiler + build', owner: 'Binding compiler · WebUIToolkit.MVVM.Build', waves: 'BCD', deps: 'G1 protocol and binding vocabulary', gate: 'Deterministic generated dispatcher/contracts with compiler diagnostics', scope: 'Binding parser, semantic model, source generation, MSBuild integration, incremental behavior, and IDE diagnostics.' },
-        { id: 3, key: 'web-sdk-conformance', name: 'Web SDK + conformance', owner: 'web/packages/mvvm · web/packages/conformance', waves: 'BCD', deps: 'G1 protocol schema and fixtures', gate: 'Versioned TypeScript SDK and cross-framework conformance bundle', scope: 'Framework-neutral transport, state projection, validation, commands, lifecycle, and shared browser fixtures.' },
-        { id: 4, key: 'angular', name: 'Angular adapter', owner: 'web/packages/mvvm-angular/**', waves: 'CD', deps: 'G2 compiler, runtime, and web conformance', gate: 'Angular sample passes shared conformance and package-consumer tests', scope: 'Signals and directives only; consumes shared contracts without editing another adapter.' },
-        { id: 5, key: 'react', name: 'React adapter', owner: 'web/packages/mvvm-react/**', waves: 'CD', deps: 'G2 compiler, runtime, and web conformance', gate: 'React sample passes shared conformance and package-consumer tests', scope: 'Hooks and subscriptions only; consumes shared contracts without editing another adapter.' },
-        { id: 6, key: 'vue', name: 'Vue adapter', owner: 'web/packages/mvvm-vue/**', waves: 'CD', deps: 'G2 compiler, runtime, and web conformance', gate: 'Vue sample passes shared conformance and package-consumer tests', scope: 'Composables only; consumes shared contracts without editing another adapter.' },
-        { id: 7, key: 'svelte', name: 'Svelte adapter', owner: 'web/packages/mvvm-svelte/**', waves: 'CD', deps: 'G2 compiler, runtime, and web conformance', gate: 'Svelte sample passes shared conformance and package-consumer tests', scope: 'Runes/store integration only; consumes shared contracts without editing another adapter.' },
+        { id: 0, key: 'orchestrator', name: 'Orchestrator', owner: 'Root build, CI, ADRs, merge queue, local feed', waves: 'ABCDEF', deps: 'None', gate: 'G0 naming/build baseline; then serializes every shared-file merge', scope: 'Initializes the monorepo, freezes WebUIToolkit naming, publishes contract handoffs, and owns the final vertical consumer.' },
+        { id: 1, key: 'mvvm-protocol-core', name: 'MVVM protocol + core', owner: 'protocol/** · src/WebUIToolkit.MVVM/**', waves: 'ABCDEF', deps: 'G0 bootstrap and upstream cs-webui lifecycle spike', gate: 'Versioned protocol corpus, runtime API approval, packed AOT-smoke package', scope: 'Sessions, capabilities, revisions, dispatch, serialization metadata, cancellation, limits, and reconnect semantics.' },
+        { id: 2, key: 'mvvm-compiler-build', name: 'MVVM compiler + build', owner: 'Binding compiler · WebUIToolkit.MVVM.Build', waves: 'BCDEF', deps: 'G1 protocol and binding vocabulary', gate: 'Deterministic generated dispatcher/contracts with compiler diagnostics', scope: 'Binding parser, semantic model, source generation, MSBuild integration, incremental behavior, and IDE diagnostics.' },
+        { id: 3, key: 'web-sdk-conformance', name: 'Web SDK + conformance', owner: 'web/packages/mvvm · web/packages/conformance', waves: 'BCDEF', deps: 'G1 protocol schema and fixtures', gate: 'Versioned TypeScript SDK and cross-framework conformance bundle', scope: 'Framework-neutral transport, state projection, validation, commands, lifecycle, and shared browser fixtures.' },
+        { id: 4, key: 'angular', name: 'Angular adapter', owner: 'web/packages/mvvm-angular/**', waves: 'F', deps: 'G5 web-adapter evidence and stable G4 core contracts', gate: 'Angular sample passes shared conformance and package-consumer tests', scope: 'Signals and directives only; consumes shared contracts without editing another adapter.' },
+        { id: 5, key: 'react', name: 'React adapter', owner: 'web/packages/mvvm-react/**', waves: 'E', deps: 'G4 core SDK and browser conformance freeze', gate: 'React sample passes shared conformance and package-consumer tests', scope: 'Hooks and subscriptions only; consumes shared contracts without editing another adapter.' },
+        { id: 6, key: 'vue', name: 'Vue adapter', owner: 'web/packages/mvvm-vue/**', waves: 'E', deps: 'G4 core SDK and browser conformance freeze', gate: 'Vue sample passes shared conformance and package-consumer tests', scope: 'Composables only; consumes shared contracts without editing another adapter.' },
+        { id: 7, key: 'svelte', name: 'Svelte adapter', owner: 'web/packages/mvvm-svelte/**', waves: 'E', deps: 'G4 core SDK and browser conformance freeze', gate: 'Svelte sample passes shared conformance and package-consumer tests', scope: 'Runes/store integration only; consumes shared contracts without editing another adapter.' },
         { id: 8, key: 'communitytoolkit', name: 'CommunityToolkit adapter', owner: 'WebUIToolkit.MVVM.CommunityToolkit/**', waves: 'CD', deps: 'G2 portable MVVM baseline and compiler semantic hooks', gate: 'Toolkit mapping matrix and generated-glue conformance pass', scope: 'First-party mapping for observable properties, commands, validation, and generated metadata.' },
-        { id: 9, key: 'reactiveui', name: 'ReactiveUI adapter', owner: 'WebUIToolkit.MVVM.ReactiveUI/**', waves: 'CD', deps: 'G2 portable MVVM baseline and compiler semantic hooks', gate: 'Reactive mapping matrix and AOT/conformance pass', scope: 'First-party reactive property, command, observable, and lifecycle integration.' },
+        { id: 9, key: 'reactiveui', name: 'ReactiveUI adapter', owner: 'WebUIToolkit.MVVM.ReactiveUI/**', waves: 'F', deps: 'G4 API freeze and dedicated generated-member/lifecycle spike', gate: 'Reactive mapping matrix and AOT/conformance pass', scope: 'Reactive property, command, observable, and lifecycle integration after the core release candidate.' },
         { id: 10, key: 'template-engine', name: 'Typed template engine', owner: 'WebUIToolkit.MVVM.Html*/** · .cwhtml corpus', waves: 'ABCD', deps: 'G0 for feasibility; G1 MVVM contracts for integration edge', gate: 'Context-safe compiler, deterministic build, formatter/tooling, AOT render smoke', scope: 'Grammar, parser, semantic binding, UTF-8 writer, contextual encoding, C# code-behind, testing tools, and editor loop.' },
         { id: 11, key: 'htmx', name: 'HTMX adapter', owner: 'WebUIToolkit.MVVM.Html.Htmx/**', waves: 'CD', deps: 'Template T3 runtime safety plus G2 MVVM contracts', gate: 'Action/session protocol, CSP fixtures, fragment swap and AOT tests', scope: 'Typed actions, session binding, validation, fragment rendering, companion module, and HTMX security boundary.' },
         { id: 12, key: 'hosting', name: 'Application host', owner: 'WebUIToolkit.Hosting.*/**', waves: 'ABCD', deps: 'G0 contracts; MVVM and CLI only through adapters', gate: 'Deterministic UI/CLI lifecycle from packed artifacts under Native AOT', scope: 'Generic Host composition, launch classification, teardown state machine, WebUi adapter, CLI adapter, assets, generators, and build package.' },
@@ -1260,11 +1282,13 @@ html&gt;body{padding:0}&lt;/style&gt;
       ];
 
       const waveCopy = {
-        all: 'Bootstrap shared policy, freeze neutral contracts, build kernels, add adapters, then validate one packed Native-AOT vertical slice.',
+        all: 'Freeze neutral contracts, build kernels, complete and harden the first-party vertical slice, then add ecosystem adapters in two deferred waves.',
         A: 'Wave A · Bootstrap and contracts: merge the orchestrator baseline first, then run feasibility spikes and freeze every neutral schema, API, diagnostic range, and package identity.',
         B: 'Wave B · Kernels: implement runtimes, compilers, generators, tools, and deterministic corpora against approved contracts. Consumers start only from packed upstream artifacts.',
-        C: 'Wave C · Adapters: fan out Angular, React, Vue, Svelte, toolkit, ReactiveUI, HTMX, Hosting, Flow, and projection edges without cross-editing owner paths.',
-        D: 'Wave D · Integration and release: rebase gated branches, run package consumers, security fixtures, trim/AOT publishes, SBOM/notices, and the neutral vertical reference application.'
+        C: 'Wave C · First-party integration: implement CommunityToolkit, HTMX, Hosting, Flow, and projection edges without starting deferred ecosystem adapters.',
+        D: 'Wave D · Core release candidate: integrate the vertical slice, package consumers, security fixtures, trim/AOT publishes, SBOM/notices, compatibility, and documentation.',
+        E: 'Wave E · Web adapters: implement React, Vue, and Svelte together against the frozen G4 SDK and shared browser conformance kit.',
+        F: 'Wave F · Extended adapters: implement Angular and ReactiveUI with dedicated production-build, generated-member, lifecycle, compatibility, trim, and AOT gates.'
       };
 
       const rows = root.querySelector('#lane-rows');
@@ -1278,7 +1302,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       };
 
       function selectLane(lane) {
-        selected.id.textContent = `Task ${lane.id} · ${lane.key}`;
+        selected.id.textContent = `Lane ${lane.id} · ${lane.key}`;
         selected.name.textContent = lane.name;
         selected.owner.textContent = lane.owner;
         selected.scope.textContent = lane.scope;
@@ -1292,7 +1316,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       lanes.forEach(lane =&gt; {
         const tr = document.createElement('tr');
         tr.dataset.waves = lane.waves;
-        const marks = ['A', 'B', 'C', 'D'].map(wave =&gt; {
+        const marks = ['A', 'B', 'C', 'D', 'E', 'F'].map(wave =&gt; {
           const active = lane.waves.includes(wave);
           return `&lt;td class=&quot;text-center&quot;&gt;&lt;span class=&quot;phase-mark ${active ? `active-${wave.toLowerCase()}` : 'empty'}&quot; aria-label=&quot;${active ? `Active in wave ${wave}` : `Inactive in wave ${wave}`}&quot;&gt;&lt;/span&gt;&lt;/td&gt;`;
         }).join('');

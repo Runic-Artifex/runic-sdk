@@ -1,7 +1,11 @@
 # ADR 0003: Parallel task and worktree ownership
 
-- Status: Accepted
+- Status: Superseded in execution topology by ADR 0010
 - Date: 2026-07-22
+
+ADR 0010 retains exclusive path ownership but replaces the requirement for one
+long-lived Codex task, branch, and worktree per implementation stream. This
+document records the original Wave A/B coordination model.
 
 ## Decision
 

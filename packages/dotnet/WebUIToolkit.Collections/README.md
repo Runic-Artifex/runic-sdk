@@ -22,8 +22,9 @@ dispatcher or synchronization context. Structural mutation attempted from input,
 The frozen behavior, compatibility guidance, dependency inventory, and Wave B
 evidence are maintained in `NOTIFICATION-CONTRACT.md`, `COMPATIBILITY.md`,
 `DEPENDENCIES.md`, and `PROMOTION-EVIDENCE.md` in the source repository. The MVVM
-bridge is intentionally deferred to Wave C; this library has no MVVM dependency or
-dispatcher integration.
+bridge is intentionally deferred to Wave C; framework-specific collection adapters
+follow their owning UI integrations in Waves E and F. This library has no MVVM
+dependency or dispatcher integration.
 
 Source and package publication remain on hold under repository ADR 0004. No license
 or permission to reuse or redistribute is granted by this build artifact.

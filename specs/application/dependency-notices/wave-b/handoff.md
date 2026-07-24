@@ -13,7 +13,7 @@ Wave B is ready for an owned-path handoff only when implementation and evidence 
 - Golden output hashes and repeated-root/culture/offline comparison result.
 - Native executable RID/path/result and owned trim/AOT warning count.
 - Security/adversarial fixture coverage and any residual risk.
-- Deferred Wave C edges listed below, with no implicit claim of implementation.
+- Deferred integration edges listed below, with no implicit claim of implementation.
 - Final `git status --short` result.
 
 ## G2 acceptance evidence
@@ -29,13 +29,14 @@ Wave B is ready for an owned-path handoff only when implementation and evidence 
 | Distribution | Local packs consumed from a clean feed; tool and runtime behavior executed from packages |
 | AOT/offline | Actual native binaries run; zero owned warnings; empty-cache/network-denied reproduction; portable locks revalidated afterward |
 
-## Deferred Wave C edges
+## Deferred integration edges
 
 These are integration or breadth edges and MUST NOT be smuggled into G2 by editing another task's paths:
 
 - root solution, shared `Directory.*`, root lockfile/package graph, repository CI, release automation, and shared governance changes;
 - root integration of the thin `buildTransitive` package into arbitrary consumer projects and cross-task build orchestration;
-- framework/UI adapters for displaying runtime notices;
+- generic and HTMX display integration in Waves C/D, framework UI adapters in
+  Waves E/F;
 - additional npm lock managers/legacy formats, NuGet central/transitive-lock breadth beyond the documented selected graph, and new package ecosystems;
 - authenticated/private registry acquisition, credential providers, proxy credentials, origin discovery/search, signatures, transparency logs, and archive/decompression pipelines;
 - complete CycloneDX/SPDX generation, validation of every external SBOM feature, SBOM signing, or notice annotation back into an SBOM;
@@ -44,7 +45,7 @@ These are integration or breadth edges and MUST NOT be smuggled into G2 by editi
 - multi-RID release matrix, signing, provenance publication, and stable public NuGet release;
 - performance baselines and cache persistence formats beyond correctness-neutral local acceleration.
 
-Any Wave C consumer must depend on packed Wave B artifacts and versioned contracts. It may not reach into internal models or require an edit that changes a frozen Wave A contract.
+Any later-wave consumer must depend on packed Wave B artifacts and versioned contracts. It may not reach into internal models or require an edit that changes a frozen Wave A contract.
 
 ## Known approval gates
 

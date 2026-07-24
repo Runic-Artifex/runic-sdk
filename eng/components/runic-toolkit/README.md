@@ -20,6 +20,14 @@ The repository now includes the Wave A contract/runtime baseline alongside the o
 
 Each detailed plan is a self-contained greenfield implementation specification. It defines its own contracts, project layout, dependency direction, diagnostics, tests, Native AOT gates, delivery phases, and acceptance criteria; implementation must not rely on an unpublished predecessor codebase or local machine context.
 
+Agentic implementation follows
+[ADR 0010](./docs/adr/0010-workflow-first-agent-orchestration.md) and the portable
+[workflow operating manifest](./eng/codex-workflows/workflow-operating-manifest.md):
+small one-off TypeScript workflows are preferred for bounded parallel work, Bun
+runs deterministic checks, and model agents handle implementation and semantic
+judgment. Planning remains user-owned, and workflows do not start delivery waves
+automatically.
+
 ## Scope
 
 This repository is intended to contain only reusable infrastructure:
@@ -39,7 +47,11 @@ This repository is intended to contain only reusable infrastructure:
 - Native AOT, package-consumer, and end-to-end validation;
 - a neutral reference application.
 
-Product-specific components, branding, workflow definitions, resource content, assets, operating-system capabilities, command implementations, and consumer applications remain outside this repository. Generic mechanics may incubate here while their plans and namespaces preserve a later split into independent repositories.
+Product-specific components, branding, application-flow definitions, resource
+content, assets, operating-system capabilities, command implementations, and
+consumer applications remain outside this repository. Generic mechanics may
+incubate here while their plans and namespaces preserve a later split into
+independent repositories.
 
 ## Build
 
@@ -58,6 +70,6 @@ When a project or dependency changes, refresh and commit lock files before verif
 
 ## Status
 
-Gate G2 is complete. All ten Wave B domains are integrated into a complete 63-project default solution, with 79-project architecture coverage, executable contract suites, deterministic package locks and corpora, package-consumer evidence, browser conformance, and Native-AOT validation. Wave C is ready but has not been started.
+Gate G2 is complete. All ten Wave B domains are integrated into a complete 63-project default solution, with 79-project architecture coverage, executable contract suites, deterministic package locks and corpora, package-consumer evidence, browser conformance, and Native-AOT validation. Wave C is eligible for orchestrator readiness review but has not been started. Its scope is intentionally limited to first-party CommunityToolkit, HTMX, Hosting, Flow, and projection integration; React/Vue/Svelte are deferred to Wave E, while Angular/ReactiveUI are deferred to Wave F.
 
 ADR 0004 records an explicit publication hold: no source license has been granted, and public visibility does not grant reuse or redistribution rights. API ownership, dependency licensing, package names, notices, SBOM linkage, and publication terms must be reviewed before reusable artifacts are published.

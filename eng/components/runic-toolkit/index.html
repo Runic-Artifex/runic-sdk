@@ -1040,11 +1040,11 @@ main #settings .settings-page {
           </article>
           <article class="card full">
             <h3>AOT acceptance smoke test</h3>
-            <p>On Windows x64: restore from packed artifacts, publish with <code>PublishAot=true</code>, launch the executable, load each View target through cs-webui, open a sample View, change a bound value, execute an async command, observe state and availability or the returned fragment, close the window, and verify deterministic disposal with exit code 0. The same host is exercised separately with Angular, React, Vue, Svelte, and HTMX assets.</p>
+            <p>On Windows x64: restore from packed artifacts, publish with <code>PublishAot=true</code>, launch the executable, load each View target scheduled for the current wave through cs-webui, open a sample View, change a bound value, execute an async command, observe state and availability or the returned fragment, close the window, and verify deterministic disposal with exit code 0. Wave D exercises the framework-neutral SDK and HTMX; Wave E adds React/Vue/Svelte; Wave F adds Angular and ReactiveUI-backed Views.</p>
           </article>
         </div>
         <div class="callout warning">
-          <strong>Gate mechanics:</strong> CI publishes a fresh package-consumer project with <code>PublishAot=true</code>, <code>PublishTrimmed=true</code>, <code>TrimMode=full</code>, <code>EnableTrimAnalyzer=true</code>, <code>EnableAotAnalyzer=true</code>, and all trim/AOT warnings treated as errors. The test runs the published binary—not <code>dotnet run</code>—and exercises the protocol corpus plus every adapter fixture. Suppressions, <code>DynamicDependency</code>, reflection roots, and serializer fallbacks require a public ADR naming the exact member and proving why generation cannot replace it; no blanket warning suppression is accepted.
+          <strong>Gate mechanics:</strong> CI publishes a fresh package-consumer project with <code>PublishAot=true</code>, <code>PublishTrimmed=true</code>, <code>TrimMode=full</code>, <code>EnableTrimAnalyzer=true</code>, <code>EnableAotAnalyzer=true</code>, and all trim/AOT warnings treated as errors. The test runs the published binary—not <code>dotnet run</code>—and exercises the protocol corpus plus every adapter fixture owned by the current wave. Suppressions, <code>DynamicDependency</code>, reflection roots, and serializer fallbacks require a public ADR naming the exact member and proving why generation cannot replace it; no blanket warning suppression is accepted.
         </div>
       </div>
     </section>
@@ -1144,11 +1144,15 @@ main #settings .settings-page {
         <div class="section-head">
           <div>
             <div class="section-kicker">12 · Roadmap</div>
-            <h2>Thirteen gated work packages</h2>
+            <h2>Thirteen gated work packages across Waves C–F</h2>
           </div>
           <p>
             Estimates are engineering ranges, not commitments. They include implementation and automated tests but exclude consumer-specific screens and design systems. The first compiler and AOT spikes should narrow the remaining ranges before broad work begins.
           </p>
+        </div>
+
+        <div class="callout warning">
+          <strong>Delivery override (ADR 0008):</strong> phase numbers remain stable design identifiers, not chronological authorization. Wave C includes CommunityToolkit and HTMX; Wave D hardens the core release candidate; Wave E implements React, Vue, and Svelte; Wave F implements Angular and ReactiveUI.
         </div>
 
         <div class="phase-list">
@@ -1205,7 +1209,7 @@ main #settings .settings-page {
           <article class="phase">
             <div class="phase-id">Phase 5</div>
             <div>
-              <h3>ReactiveUI integration</h3>
+              <h3>ReactiveUI integration · Wave F</h3>
               <p>Map reactive/source-generated properties, output properties, typed <code>ReactiveCommand</code> input/results, <code>CanExecute</code>, <code>IsExecuting</code>, fault routing, activation, schedulers, and deterministic Rx disposal.</p>
               <span class="gate">Gate: reactive sample subscriptions and activation are scoped exactly to the web View instance.</span>
             </div>
@@ -1225,7 +1229,7 @@ main #settings .settings-page {
           <article class="phase">
             <div class="phase-id">Phase 7</div>
             <div>
-              <h3>Angular View layer</h3>
+              <h3>Angular View layer · Wave F</h3>
               <p>Add generated typed contexts, signals, <code>webModel</code>/<code>webCommand</code>/validation directives, component mapping, DataContext replacement, lifecycle hooks, code-behind helpers, and test utilities.</p>
               <span class="gate">Gate: an Angular template binds like XAML without handwritten transport, DTO, or subscription code.</span>
             </div>
@@ -1235,7 +1239,7 @@ main #settings .settings-page {
           <article class="phase">
             <div class="phase-id">Phase 8</div>
             <div>
-              <h3>React View layer</h3>
+              <h3>React View layer · Wave E</h3>
               <p>Add providers, generated hooks, <code>useSyncExternalStore</code> snapshots, property/command hooks, error boundaries, lazy View mapping, Strict Mode tests, and unmount disposal.</p>
               <span class="gate">Gate: concurrent rendering and Strict Mode cannot duplicate a session, command execution, or subscription.</span>
             </div>
@@ -1245,7 +1249,7 @@ main #settings .settings-page {
           <article class="phase">
             <div class="phase-id">Phase 9</div>
             <div>
-              <h3>Vue and Svelte View layers</h3>
+              <h3>Vue and Svelte View layers · Wave E</h3>
               <p>Implement Vue refs/composables/effect scopes and Svelte rune/store facades/actions, including framework-native lifecycle, generated types, collection updates, validation, commands, and component mapping.</p>
               <span class="gate">Gate: both adapters pass the same conformance corpus as Angular and React with no semantic exclusions.</span>
             </div>
@@ -1275,19 +1279,19 @@ main #settings .settings-page {
           <article class="phase">
             <div class="phase-id">Phase 12</div>
             <div>
-              <h3>Hardening, documentation, and first adoption</h3>
-              <p>Add security/stress tests, framework version matrices, multi-session isolation, AOT/trimming CI, package restore tests, production builds for all targets, SBOM/license review, performance baselines, authoring guides, and one real consumer vertical slice.</p>
-              <span class="gate">Gate: every packed View target passes conformance, Native AOT, browser integration, documentation, and package-consumer suites.</span>
+              <h3>Core hardening, documentation, and first adoption · Wave D</h3>
+              <p>Add security/stress tests, multi-session isolation, AOT/trimming CI, package restore tests, production builds for the framework-neutral SDK and HTMX target, SBOM/license review, performance baselines, authoring guides, and one real consumer vertical slice. Waves E/F add their own framework version matrices and production builds.</p>
+              <span class="gate">Gate: every Wave D packed target passes conformance, Native AOT, browser integration, documentation, and package-consumer suites; deferred adapters do not block the core release candidate.</span>
             </div>
             <div class="effort"><strong>4–6 weeks</strong>Release confidence</div>
           </article>
         </div>
 
         <div class="callout warning">
-          <strong>Indicative total:</strong> 44–66 engineer-weeks for Core, both .NET MVVM integrations, four TypeScript framework adapters, the typed template engine, and HTMX. With three to four engineers and parallel adapter/compiler work after Phase 6, expect roughly 20–30 calendar weeks. The binding-compiler, template grammar, and AOT spikes—not optimism—should reset the estimate.
+          <strong>Indicative full-program total:</strong> 44–66 engineer-weeks for Core, both .NET MVVM integrations, four TypeScript framework adapters, the typed template engine, and HTMX. The Wave D core release candidate is intentionally narrower; Waves E/F consume the remaining adapter estimate later. The binding-compiler, template grammar, and AOT spikes—not optimism—should reset each tranche.
         </div>
         <div class="callout">
-          <strong>Dependency and parallelization rule:</strong> Phases 0→1→2→3→6 form the runtime critical path. Phases 4 and 5 may run in parallel after Phase 3. Angular and React may run in parallel after Phase 6; Vue and Svelte follow the same frozen conformance API. The template compiler may start after Phase 1's protocol and safety contracts stabilize, but HTMX waits for both the template renderer and Phase 3 bindings. Hardening begins continuously, while Phase 12 closes only after every preceding gate. A phase is not complete when code merely exists: its packed artifacts, public documentation, API approval, tests, and gate evidence must all be committed.
+          <strong>Dependency and parallelization rule:</strong> Phases 0→1→2→3→6 form the runtime critical path. Phase 4 and the template compiler/HTMX path feed Waves C/D. Phase 12 closes the core release candidate without waiting for deferred adapters. React, Vue, and Svelte branch from the frozen G4 SDK in Wave E; Angular and ReactiveUI begin only in Wave F. A phase is not complete when code merely exists: its packed artifacts, public documentation, API approval, tests, and gate evidence must all be committed.
         </div>
       </div>
     </section>
@@ -1318,7 +1322,7 @@ main #settings .settings-page {
           </article>
           <article class="card">
             <h3>Frontend conformance</h3>
-            <p>Run the same generated scenarios through Angular, React, Vue, Svelte, and HTMX: state, commands, validation, nested Views, replacement, reconnect, focus hints, and teardown.</p>
+            <p>Run the same generated scenarios in staged gates: HTMX in Wave C/D, React/Vue/Svelte in Wave E, and Angular in Wave F. Each stage covers state, commands, validation, nested Views, replacement, reconnect, focus hints, and teardown.</p>
           </article>
           <article class="card">
             <h3>End to end</h3>
@@ -1330,7 +1334,7 @@ main #settings .settings-page {
           </article>
           <article class="card full">
             <h3>MVVM framework compatibility matrix</h3>
-            <p>Compile and execute real BCL-only, CommunityToolkit.MVVM, and ReactiveUI ViewModels across every supported package version. Cover generated/manual properties, read-only output properties, two-way writes, collection changes, validation, sync/async/parameterized commands, command results/faults, cancellation, activation, and subscription disposal.</p>
+            <p>Wave C/D compiles and executes real BCL-only and CommunityToolkit.MVVM ViewModels. Wave F adds ReactiveUI across its supported package versions, including activation, schedulers, command results/faults, and subscription disposal, without reopening the frozen core contract.</p>
           </article>
           <article class="card full">
             <h3>Template compiler and HTMX security matrix</h3>
@@ -1449,21 +1453,21 @@ main #settings .settings-page {
           <li><label><input type="checkbox" data-key="binding-compiler"><span>Two-stage binding-compiler spike with another source generator</span></label></li>
           <li><label><input type="checkbox" data-key="bcl-bindings"><span>BCL MVVM property, collection, validation, and ICommand bindings</span></label></li>
           <li><label><input type="checkbox" data-key="toolkit"><span>CommunityToolkit.MVVM compiler/runtime integration and sample</span></label></li>
-          <li><label><input type="checkbox" data-key="reactiveui"><span>ReactiveUI compiler/runtime integration, activation, and disposal sample</span></label></li>
+          <li><label><input type="checkbox" data-key="reactiveui"><span>Wave F · ReactiveUI compiler/runtime integration, activation, and disposal sample</span></label></li>
           <li><label><input type="checkbox" data-key="ts-tool"><span>Deterministic TypeScript bindings and verification corpus</span></label></li>
           <li><label><input type="checkbox" data-key="conformance"><span>Framework-neutral adapter driver and mandatory fixture IDs</span></label></li>
-          <li><label><input type="checkbox" data-key="angular"><span>Angular DataContext, signals, directives, and neutral Counter Views</span></label></li>
-          <li><label><input type="checkbox" data-key="react"><span>React external-store hooks, Strict Mode tests, and Counter Views</span></label></li>
-          <li><label><input type="checkbox" data-key="vue-svelte"><span>Vue composables and Svelte runes/stores with shared conformance tests</span></label></li>
+          <li><label><input type="checkbox" data-key="angular"><span>Wave F · Angular DataContext, signals, directives, and neutral Counter Views</span></label></li>
+          <li><label><input type="checkbox" data-key="react"><span>Wave E · React external-store hooks, Strict Mode tests, and Counter Views</span></label></li>
+          <li><label><input type="checkbox" data-key="vue-svelte"><span>Wave E · Vue composables and Svelte runes/stores with shared conformance tests</span></label></li>
           <li><label><input type="checkbox" data-key="template-grammar"><span>Template grammar ADR, parser spike, escaping model, and AOT renderer</span></label></li>
           <li><label><input type="checkbox" data-key="htmx"><span>HTMX generated endpoints, forms, fragments, OOB swaps, and push refresh</span></label></li>
           <li><label><input type="checkbox" data-key="package-test"><span>NuGet/npm packed-consumer smoke tests</span></label></li>
-          <li><label><input type="checkbox" data-key="aot-gate"><span>Published-binary AOT gate for all adapters with zero analyzer warnings</span></label></li>
+          <li><label><input type="checkbox" data-key="aot-gate"><span>Published-binary AOT gate for every adapter delivered in the current wave, with zero analyzer warnings</span></label></li>
           <li><label><input type="checkbox" data-key="adoption-slice"><span>Consumer vertical-slice adoption outside this repository</span></label></li>
         </ul>
 
         <div class="callout" style="margin-top: 2rem">
-          <strong>Definition of done for 1.0:</strong> a consumer can reference packed artifacts, map an existing BCL, CommunityToolkit.MVVM, or ReactiveUI ViewModel to Angular, React, Vue, Svelte, or compiled HTMX Views, bind properties, collections, validation, and commands without handwritten bridge/DTO/subscription code, and publish through cs-webui as Native AOT without trim/AOT warnings. All five targets pass the same cancellation, activation, reconnect, DataContext replacement, validation, command, and disposal contract; HTMX additionally passes the template safety and fragment-swap contract.
+          <strong>Staged definition of done:</strong> Wave D proves packed BCL/CommunityToolkit ViewModels through the framework-neutral SDK and compiled HTMX under Native AOT. Wave E adds React, Vue, and Svelte to the same contract. Wave F adds Angular and ReactiveUI and closes the full adapter matrix. No deferred adapter is counted as implemented or allowed to block the earlier core release candidate.
         </div>
       </div>
     </section>
