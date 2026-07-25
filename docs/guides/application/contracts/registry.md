@@ -49,7 +49,7 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | dependency-notices | `WebUIToolkit.DependencyNotices.*` | NuGet pending |
 | web-sdk-conformance | `@webuitoolkit/mvvm`, `@webuitoolkit/conformance` | npm scope pending |
 | Wave E framework adapters | `@webuitoolkit/mvvm-react`, `@webuitoolkit/mvvm-vue`, `@webuitoolkit/mvvm-svelte` | G5 technically approved; npm publication blocked by ADR 0004 |
-| Wave F framework adapter | `@webuitoolkit/mvvm-angular` | npm scope pending |
+| Wave F framework adapters | `@webuitoolkit/mvvm-angular`, `WebUIToolkit.MVVM.ReactiveUI` | G6 technically approved; publication blocked by ADR 0004 |
 
 ## Runtime identity ranges
 

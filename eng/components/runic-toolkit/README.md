@@ -70,13 +70,13 @@ When a project or dependency changes, refresh and commit lock files before verif
 
 ## Status
 
-Wave E has reached the G5 technical gate. The cumulative
-[`eng/verify-wave-e.ps1`](./eng/verify-wave-e.ps1) entry point preserves the
-Wave D/G4 release candidate and adds independent React, Vue, and Svelte
-adapters. It runs shared framework conformance, generated declarations,
-lifecycle/leak checks, the common vertical, Chrome and Firefox fixtures, and
-isolated packed consumers across two versions of every framework. Generated,
-source-bound evidence is written under `artifacts/wave-e/`.
-Angular/ReactiveUI remain deferred to Wave F.
+Wave F has reached the G6 implementation gate. The cumulative
+[`eng/verify-wave-f.ps1`](./eng/verify-wave-f.ps1) entry point preserves the
+Wave E/G5 adapters and closes the deferred matrix with independent Angular and
+ReactiveUI packages. It runs the shared browser conformance, Angular production
+compilation and packed consumers, ReactiveUI generated-member, activation,
+scheduler, disposal, fault, trimming, and Native-AOT checks, and both ends of
+each supported framework range. Generated, source-bound evidence is written
+under `artifacts/wave-f/`.
 
 ADR 0004 records an explicit publication hold: no source license has been granted, and public visibility does not grant reuse or redistribution rights. API ownership, dependency licensing, package names, notices, SBOM linkage, and publication terms must be reviewed before reusable artifacts are published.

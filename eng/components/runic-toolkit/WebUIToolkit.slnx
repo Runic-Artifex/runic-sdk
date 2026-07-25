@@ -35,6 +35,7 @@
     <Project Path="src/WebUIToolkit.MVVM.Html.Htmx/WebUIToolkit.MVVM.Html.Htmx.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Testing/WebUIToolkit.MVVM.Html.Testing.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html/WebUIToolkit.MVVM.Html.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.ReactiveUI/WebUIToolkit.MVVM.ReactiveUI.csproj" />
     <Project Path="src/WebUIToolkit.TextResources.Build/WebUIToolkit.TextResources.Build.csproj" />
     <Project Path="src/WebUIToolkit.TextResources.Compiler/WebUIToolkit.TextResources.Compiler.csproj" />
     <Project Path="src/WebUIToolkit.TextResources.Generator/WebUIToolkit.TextResources.Generator.csproj" />
@@ -69,6 +70,8 @@
     <Project Path="tests/WebUIToolkit.MVVM.Html.Htmx.Tests/WebUIToolkit.MVVM.Html.Htmx.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Html.Tests/WebUIToolkit.MVVM.Html.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Protocol.Tests/WebUIToolkit.MVVM.Protocol.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.ReactiveUI.Tests/AotSmoke/WebUIToolkit.MVVM.ReactiveUI.AotSmoke.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.ReactiveUI.Tests/WebUIToolkit.MVVM.ReactiveUI.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Tests/WebUIToolkit.MVVM.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.TextResources.ApiTests/WebUIToolkit.TextResources.ApiTests.csproj" />
     <Project Path="tests/WebUIToolkit.TextResources.Build.Tests/WebUIToolkit.TextResources.Build.Tests.csproj" />

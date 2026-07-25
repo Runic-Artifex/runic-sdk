@@ -26,6 +26,10 @@ external transport dependency and is not renamed or specified here.
 - [`g5/framework-adapter-matrix.json`](g5/framework-adapter-matrix.json) maps
   the frozen SDK to mandatory React, Vue, and Svelte browser, lifecycle,
   package-consumer, type, and version evidence.
+- [`g6/extended-adapter-matrix.json`](g6/extended-adapter-matrix.json) closes
+  the adapter expansion with Angular browser/production-build coverage and
+  ReactiveUI generated-member, lifecycle, package-consumer, trim, and AOT
+  evidence.
 
 The schemas intentionally have no `$id`. An owned schema domain has not yet
 been approved. Relative references are resolved from the schema files on disk.

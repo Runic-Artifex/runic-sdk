@@ -84,6 +84,16 @@ ignored `artifacts/wave-e/` directory; durable review artifacts live in
 - ReactiveUI proves generated-member visibility, command/result/fault projection, activation, scheduler behavior, deterministic subscription disposal, trimming, and Native AOT.
 - The complete adapter matrix is documented and versioned independently from the already-approved core release candidate.
 
+Run `./eng/verify-wave-f.ps1` for the cumulative G6 acceptance surface. It
+executes G5 first, then runs the Angular signal/directive package and ReactiveUI
+runtime suites in parallel, produces deterministic npm and NuGet packages, runs
+Chrome and Firefox fixtures, builds isolated Angular production consumers at
+both supported endpoints, and runs isolated ReactiveUI consumers with the upper
+endpoint published and executed under full trimming and Native AOT. Source-bound
+logs, provenance, and `SHA256SUMS` are written to the ignored
+`artifacts/wave-f/` directory; durable review artifacts live in
+`docs/release/wave-f/`.
+
 ## Required early spikes
 
 1. Publish and run a real upstream `cs-webui` Native-AOT round trip before expanding generator breadth.

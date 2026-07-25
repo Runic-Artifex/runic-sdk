@@ -361,7 +361,8 @@ dotnet publish $consumerProject --configuration Release --runtime $RuntimeIdenti
     -p:TrimMode=full `
     -p:IlcTreatWarningsAsErrors=true `
     -p:NuGetLockFilePath=obj/aot.packages.lock.json `
-    -p:RestoreLockedMode=false
+    -p:RestoreLockedMode=false `
+    -p:RestoreForceEvaluate=true
 if ($LASTEXITCODE -ne 0) { throw 'Native-AOT package-consumer publish failed.' }
 
 $nativeExecutableName = if ($RuntimeIdentifier.StartsWith('win-', [System.StringComparison]::Ordinal)) {

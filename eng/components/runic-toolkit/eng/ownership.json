@@ -4,6 +4,8 @@
   "allowedProjectReferences": [
     { "from": "mvvm-compiler-build", "to": "mvvm-protocol-core", "reason": "Integrated source-build edge; packed artifacts remain the release boundary." },
     { "from": "communitytoolkit", "to": "mvvm-protocol-core", "reason": "First-party runtime adapter consumes only the frozen MVVM v1 runtime seam." },
+    { "from": "reactiveui", "to": "mvvm-protocol-core", "reason": "Wave F runtime adapter consumes only the frozen MVVM v1 runtime seam." },
+    { "from": "reactiveui", "to": "mvvm-compiler-build", "reason": "The owner-local G6 semantic test proves post-generator visibility through the shared compiler seam; the shipping runtime package retains its protocol-only dependency." },
     { "from": "htmx", "to": "mvvm-protocol-core", "reason": "Compiled HTMX runtime consumes the frozen MVVM v1 runtime seam." },
     { "from": "htmx", "to": "template-engine", "reason": "HTMX endpoint rendering composes the framework-neutral compiled HTML runtime." },
     { "from": "htmx", "to": "communitytoolkit", "reason": "The Wave C vertical sample composes the two independent first-party adapters from source; package consumers retain the release boundary." },

@@ -1,0 +1,54 @@
+{
+  "name": "@webuitoolkit/mvvm-angular",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Angular signals and directive bindings for @webuitoolkit/mvvm.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/esm/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "browser": "./dist/esm/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "default": "./dist/esm/index.js"
+    },
+    "./store": {
+      "types": "./dist/esm/store.d.ts",
+      "import": "./dist/esm/store.js",
+      "default": "./dist/esm/store.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "scripts": {
+    "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });\"",
+    "build": "npm run clean && ngc --project tsconfig.json",
+    "test:types": "tsc --project test/types/tsconfig.json",
+    "test": "npm run build && npm run test:types && node --test \"test/**/*.test.mjs\"",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@webuitoolkit/mvvm": "0.1.0"
+  },
+  "peerDependencies": {
+    "@angular/core": ">=20.3.26 <23",
+    "rxjs": ">=7.4.0 <8"
+  },
+  "devDependencies": {
+    "@angular/compiler": "22.0.8",
+    "@angular/compiler-cli": "22.0.8",
+    "@angular/core": "22.0.8",
+    "rxjs": "7.8.2",
+    "typescript": "6.0.3"
+  }
+}
