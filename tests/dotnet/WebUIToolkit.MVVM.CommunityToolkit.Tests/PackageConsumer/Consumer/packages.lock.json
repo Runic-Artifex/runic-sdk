@@ -6,7 +6,7 @@
         "type": "Direct",
         "requested": "[0.0.0-local, )",
         "resolved": "0.0.0-local",
-        "contentHash": "JLQ7nankzG2Jsk/Q1QhplV0xybi/WVaelJ6VnahjmpiQlm5IW4uBu1OnlVwHXhTdLw5UVLy0OG6Cj/xerGBoOg==",
+        "contentHash": "N97DFrNyMUhP7TP7rI3C5lF98QBwXGNxuBR2OXjrDrYuj4gLbkz0rVcQGmlzMqLFILErfBW7H9g6mezUmTHXnQ==",
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.2]",
           "WebUIToolkit.MVVM": "0.0.0-local"
@@ -20,7 +20,7 @@
       "WebUIToolkit.MVVM": {
         "type": "Transitive",
         "resolved": "0.0.0-local",
-        "contentHash": "xBkk1NjuC8Xj+yMybpKmYFRMybJzmhixv+KI8TZqk20Uwbku6OA+lmbYu7UaLbVqHuJsK6xL1sD311dX8jNORg=="
+        "contentHash": "wrRgn8lnRIKYqGAPQ0yWh6VulLceSbYCM/SUXLX0C1pdnyzUXgK7gUMkknw4ra/ExnlgfbtKArDxKs+0F+THPw=="
       }
     }
   }

@@ -5,6 +5,7 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | Family | Owner | Initial identity | Status |
 |---|---|---|---|
 | MVVM protocol | mvvm-protocol-core | `webuitoolkit.mvvm/1` | Reserved |
+| Release rehearsal | release-rehearsal | `webuitoolkit.release-rehearsal-matrix/1` | G7 allocated |
 | CLI protocol | command-line | `webuitoolkit.cli/1` | Reserved |
 | MVVM compiler diagnostics | mvvm-compiler-build | `WUTMVVM0001`–`WUTMVVM0003`, `WUTMVVM0901`–`WUTMVVM0903`, `WUTMVVM1001`–`WUTMVVM1006`, `WUTMVVM2001`–`WUTMVVM2013` | Allocated; remainder reserved |
 | MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2014=AssemblyNotFound` | Allocated |
@@ -50,6 +51,7 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | web-sdk-conformance | `@webuitoolkit/mvvm`, `@webuitoolkit/conformance` | npm scope pending |
 | Wave E framework adapters | `@webuitoolkit/mvvm-react`, `@webuitoolkit/mvvm-vue`, `@webuitoolkit/mvvm-svelte` | G5 technically approved; npm publication blocked by ADR 0004 |
 | Wave F framework adapters | `@webuitoolkit/mvvm-angular`, `WebUIToolkit.MVVM.ReactiveUI` | G6 technically approved; publication blocked by ADR 0004 |
+| Wave G release rehearsal | Ten NuGet packages plus `@webuitoolkit/mvvm` and `@webuitoolkit/mvvm-angular` | G7 technically approved as an isolated package set; publication blocked by ADR 0004 |
 
 ## Runtime identity ranges
 

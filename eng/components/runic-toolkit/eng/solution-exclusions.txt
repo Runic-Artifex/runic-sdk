@@ -1,4 +1,5 @@
 # Projects intentionally exercised by dedicated package-consumer or RID/AOT gates.
+samples/ReferenceApplication/ReferenceApplication.csproj
 src/WebUIToolkit.MVVM.Html.CommunityToolkit/WebUIToolkit.MVVM.Html.CommunityToolkit.csproj
 tests/WebUIToolkit.Collections.AotSmoke/WebUIToolkit.Collections.AotSmoke.csproj
 tests/WebUIToolkit.Collections.PackageConsumer/WebUIToolkit.Collections.PackageConsumer.csproj

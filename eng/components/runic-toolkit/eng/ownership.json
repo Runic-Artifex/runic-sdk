@@ -31,6 +31,7 @@
     { "name": "text-resources", "branch": "work/text-resources", "paths": ["src/WebUIToolkit.TextResources*/*", "tools/dotnet-textresources/*", "spec/text-resources/*", "tests/WebUIToolkit.TextResources.*/*", "samples/TextResources.*/*"] },
     { "name": "command-line", "branch": "work/command-line", "paths": ["src/WebUIToolkit.CommandLine*/*", "eng/cli-evaluation/*", "spec/command-line/*", "tests/WebUIToolkit.CommandLine.*/*", "samples/CommandLine.*/*"] },
     { "name": "collections", "branch": "work/collections", "paths": ["src/WebUIToolkit.Collections*/*", "tests/WebUIToolkit.Collections.*/*", "benchmarks/WebUIToolkit.Collections.*/*"] },
-    { "name": "dependency-notices", "branch": "work/dependency-notices", "paths": ["src/WebUIToolkit.DependencyNotices*/*", "spec/dependency-notices/*", "tests/WebUIToolkit.DependencyNotices.*/*", "samples/DependencyNotices.*/*"] }
+    { "name": "dependency-notices", "branch": "work/dependency-notices", "paths": ["src/WebUIToolkit.DependencyNotices*/*", "spec/dependency-notices/*", "tests/WebUIToolkit.DependencyNotices.*/*", "samples/DependencyNotices.*/*"] },
+    { "name": "release-rehearsal", "branch": "work/release-rehearsal", "paths": ["samples/ReferenceApplication/*", "docs/release/wave-g/*", "eng/verify-wave-g*"] }
   ]
 }

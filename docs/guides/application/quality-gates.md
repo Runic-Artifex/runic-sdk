@@ -94,6 +94,23 @@ logs, provenance, and `SHA256SUMS` are written to the ignored
 `artifacts/wave-f/` directory; durable review artifacts live in
 `docs/release/wave-f/`.
 
+## G7: Neutral reference application and release rehearsal
+
+- A neutral reference application restores only from packed artifacts and contains no project references.
+- Hosting, MVVM reconnect, Flow navigation, Text Resources, Command Line, Dependency Notices, and WebUi scenarios execute concurrently and without semantic exclusions.
+- Clean-cache, offline, coherent-upgrade, managed cross-publish, current-host full-trim Native-AOT, deterministic-package, provenance, and checksum lanes pass.
+- Cross-publish evidence is not treated as native execution; the same verifier records native execution only on a matching host RID.
+- Technical readiness does not override ADR 0004. Publication remains blocked until an owner accepts a replacement license ADR and verifies NuGet/npm identity ownership.
+
+Run `./eng/verify-wave-g.ps1` for the cumulative G7 acceptance surface. It executes
+G6 first, produces the approved NuGet/npm package set twice, validates byte-stable
+normalized artifacts, runs the package-only reference application from clean and
+offline caches, rehearses a coherent patch upgrade, cross-publishes the managed
+application for Linux, Windows, and macOS, and executes a fully trimmed Native-AOT
+binary on the current host. Source-bound logs, provenance, and `SHA256SUMS` are
+written to the ignored `artifacts/wave-g/` directory; durable review artifacts
+live in `docs/release/wave-g/`.
+
 ## Required early spikes
 
 1. Publish and run a real upstream `cs-webui` Native-AOT round trip before expanding generator breadth.

@@ -70,13 +70,14 @@ When a project or dependency changes, refresh and commit lock files before verif
 
 ## Status
 
-Wave F has reached the G6 implementation gate. The cumulative
-[`eng/verify-wave-f.ps1`](./eng/verify-wave-f.ps1) entry point preserves the
-Wave E/G5 adapters and closes the deferred matrix with independent Angular and
-ReactiveUI packages. It runs the shared browser conformance, Angular production
-compilation and packed consumers, ReactiveUI generated-member, activation,
-scheduler, disposal, fault, trimming, and Native-AOT checks, and both ends of
-each supported framework range. Generated, source-bound evidence is written
-under `artifacts/wave-f/`.
+Wave G implements the G7 neutral-reference and release-rehearsal gate. The
+cumulative [`eng/verify-wave-g.ps1`](./eng/verify-wave-g.ps1) entry point
+preserves the complete G6 adapter matrix, then restores a package-only reference
+application from isolated NuGet artifacts. It exercises Hosting, MVVM reconnect,
+Flow navigation, Text Resources, Command Line, Dependency Notices, and WebUi,
+rehearses clean/offline restore and coherent upgrades, cross-publishes the managed
+consumer for the supported operating-system matrix, and executes the current-host
+binary with full trimming and Native AOT. Generated, source-bound evidence is
+written under `artifacts/wave-g/`.
 
 ADR 0004 records an explicit publication hold: no source license has been granted, and public visibility does not grant reuse or redistribution rights. API ownership, dependency licensing, package names, notices, SBOM linkage, and publication terms must be reviewed before reusable artifacts are published.
