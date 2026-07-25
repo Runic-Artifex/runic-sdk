@@ -1,0 +1,13 @@
+@namespace WebUIToolkit.Htmx.Sample
+@view CounterView(WebUIToolkit.Htmx.Sample.SampleViewModel model)
+@fragment form {
+    label for="title" { "Title" }
+    input #title name="title" value=(model.Title) {}
+}
+@fragment status {
+    output #submission_count { (model.SubmissionCount) }
+}
+main {
+    @render(form());
+    @render(status());
+}
