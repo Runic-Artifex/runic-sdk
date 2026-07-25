@@ -14,7 +14,7 @@
       "webuitoolkit.mvvm.communitytoolkit": {
         "type": "Project",
         "dependencies": {
-          "CommunityToolkit.Mvvm": "[8.4.2, )",
+          "CommunityToolkit.Mvvm": "[8.4.2, 8.4.2]",
           "WebUIToolkit.MVVM": "[1.0.0, )"
         }
       },

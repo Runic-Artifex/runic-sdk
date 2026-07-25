@@ -14,5 +14,8 @@
     "build": "node eng/run-workspaces.mjs build",
     "test": "node eng/run-workspaces.mjs test",
     "verify": "npm run build && npm run test"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1"
   }
 }
