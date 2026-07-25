@@ -21,6 +21,11 @@ external transport dependency and is not renamed or specified here.
   maps existing corpus cases to the mandatory CommunityToolkit, compiled HTMX,
   Hosting, and Flow consumption evidence. It is not a fixture registry and does
   not change the frozen protocol surface.
+- [`g4/core-vertical-matrix.json`](g4/core-vertical-matrix.json) freezes the
+  shared framework-neutral SDK, CommunityToolkit, and compiled-HTMX vertical.
+- [`g5/framework-adapter-matrix.json`](g5/framework-adapter-matrix.json) maps
+  the frozen SDK to mandatory React, Vue, and Svelte browser, lifecycle,
+  package-consumer, type, and version evidence.
 
 The schemas intentionally have no `$id`. An owned schema domain has not yet
 been approved. Relative references are resolved from the schema files on disk.

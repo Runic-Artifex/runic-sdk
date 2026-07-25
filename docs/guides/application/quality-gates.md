@@ -69,6 +69,15 @@ React, Vue, Svelte, Angular, and ReactiveUI are explicitly outside the Wave D co
 - All three adapters pass the same browser conformance IDs, package-consumer checks, lifecycle/leak suites, generated-type checks, and supported-version matrices.
 - The vertical scenario runs through each adapter with no semantic exclusions; framework-specific skips require an explicit compatibility decision.
 
+Run `./eng/verify-wave-e.ps1` for the cumulative G5 acceptance surface. It
+executes G4 first, then runs the React, Vue, and Svelte package suites, Chrome
+and Firefox fixtures, and both ends of every supported framework-version range
+in isolated, bounded-parallel jobs. The gate rejects cross-adapter dependencies,
+missing fixture IDs, skipped verticals, package-layout drift, source mutation,
+and evidence-hash drift. Source-bound logs and provenance are written to the
+ignored `artifacts/wave-e/` directory; durable review artifacts live in
+`docs/release/wave-e/`.
+
 ## G6: Angular and ReactiveUI expansion
 
 - Angular passes the shared browser conformance, signals/directive lifecycle, package-consumer, production-build, and supported-version matrix.

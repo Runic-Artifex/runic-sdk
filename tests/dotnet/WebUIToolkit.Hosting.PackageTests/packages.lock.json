@@ -6,7 +6,7 @@
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "P++wtBzX0nXS0WftisVqbgZFsc32zPuL4/dxkz3RQFFyP3cNM+DszeYmde8GZhIDWdhHnL9Sqdj+dXHNvNVMlQ==",
+        "contentHash": "QvE6RlLlQUespG7KQ5Y9xgY4a73EyJ5xGS1excA/4K63qgEnVz+r4F6vwvsmxM+wm81KlW550aIuh+e/iR5SBg==",
         "dependencies": {
           "WebUIToolkit.Hosting.Abstractions": "1.0.0"
         }
@@ -15,13 +15,13 @@
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "gSVd8HT3TBkYKvDCd5wjBVYF/Lqb6HnqBLBr5N2Gzt7yrFnCI13t2dX4M8D4alCGyFaEfA0oJopqyfIavuNNHw=="
+        "contentHash": "vWML2HCppHwuF5GxPxtw+C5C+btXD1PtfXIAdOqBxiKVCiB5xDEHmvcLHt/VRkXmppiho/bGKNjeuwD6H+37GQ=="
       },
       "WebUIToolkit.Hosting.Build": {
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "sPvgUXRjVkuvrQlI3NSQfD/aJ3PqGiXYgpySFW7/x1mU1VjADkzwkQc1s5OpRFA8TP1MtsfBkFf7mvWoTkpAOA==",
+        "contentHash": "PAGpQtzDuh3Xyu397ieejs7q7GUQPOsbS27cvjs5oEslaoEC3l9wYehQJO4NcQ50HrKsK+8Vkx/9DOkfkS76aw==",
         "dependencies": {
           "WebUIToolkit.Hosting.Abstractions": "1.0.0"
         }
@@ -30,13 +30,13 @@
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "M49v9SHntyzBilkahsIcx/7q+3NbBFo9ykPUOh9jb1ApNiPpJ8guEn6nidkTBMmOoToUtVGeos+RqiesGwhCOA=="
+        "contentHash": "Wdryfr3HoIopCeSwMsZAFFETt1QYS1RNOhW6Kzb3Bc9SnSKJUBmhGs33AsvBpTMxd8fpIPoPdOgIyoM50d7YeQ=="
       },
       "WebUIToolkit.Hosting.GenericHost": {
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "VPxZGemwspqYUa4S2laPOD4H4lHlgxtV4cqpGTzqNs6wb1Rfby5XUzTzl83IDnY7/17wDuG25B/hOt4IQm3Tng==",
+        "contentHash": "KAxb31FdBsTk4h3cnrLfLF2meFLnO3ThNmKgb1lzeIyafDUCK/cpVYuzYIzUPwYOPgQ5XvPwar+se6y7WJlbDg==",
         "dependencies": {
           "WebUIToolkit.Hosting": "1.0.0"
         }
@@ -45,7 +45,7 @@
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "De+mUmztdWCiefjm9+onk7VEF44c5cb/OuGAnLD5gsXz/KtWgPU8wbteSoo4GiONowBkCYPKmaQudQDBKP81dQ==",
+        "contentHash": "Z9GHrARR7izysutMkPV7yVNr02HODmnbKjKjGkgBgSFxDUHoq6x9XlAablywnSMx76eq+URBaDLGWXvyJxiQxA==",
         "dependencies": {
           "WebUIToolkit.Hosting": "1.0.0",
           "WebUIToolkit.MVVM": "1.0.0"
@@ -55,7 +55,7 @@
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "Nu3TfVdtRfMG9F1Crx+P5x4l9q49vc1My7V7yB7mClNaRJ1LlX31JN8SmrBAROBQc18NKh5IYdXvkKBbfs7fsw=="
+        "contentHash": "aLiafaWhQ6CpWttF6izdR0YysfTWS5asFzHLYN/j6dFxX4+NqbQlXUQf1akpEWQtgALJoxOGzVC54c6kCbSx+w=="
       }
     }
   }
