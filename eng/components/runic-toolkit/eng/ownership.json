@@ -2,7 +2,15 @@
   "version": 1,
   "worktreeRoot": "../WebUIToolkit.worktrees",
   "allowedProjectReferences": [
-    { "from": "mvvm-compiler-build", "to": "mvvm-protocol-core", "reason": "Integrated source-build edge; packed artifacts remain the release boundary." }
+    { "from": "mvvm-compiler-build", "to": "mvvm-protocol-core", "reason": "Integrated source-build edge; packed artifacts remain the release boundary." },
+    { "from": "communitytoolkit", "to": "mvvm-protocol-core", "reason": "First-party runtime adapter consumes only the frozen MVVM v1 runtime seam." },
+    { "from": "htmx", "to": "mvvm-protocol-core", "reason": "Compiled HTMX runtime consumes the frozen MVVM v1 runtime seam." },
+    { "from": "htmx", "to": "template-engine", "reason": "HTMX endpoint rendering composes the framework-neutral compiled HTML runtime." },
+    { "from": "htmx", "to": "communitytoolkit", "reason": "The Wave C vertical sample composes the two independent first-party adapters from source; package consumers retain the release boundary." },
+    { "from": "flow", "to": "mvvm-protocol-core", "reason": "The owner-local G3 executable test decodes frozen raw protocol frames before invoking the declarative Flow projection; shipping Flow packages retain their independent handoff boundary." },
+    { "from": "hosting", "to": "mvvm-protocol-core", "reason": "Framework-neutral WebUi hosting composes the frozen root-session abstraction." },
+    { "from": "hosting", "to": "command-line", "reason": "The inward Hosting adapter translates the neutral command-line launch decision." },
+    { "from": "command-line", "to": "hosting", "reason": "The outward command-line bridge depends only on Hosting abstractions; the opposite adapter remains a separate package." }
   ],
   "tasks": [
     { "name": "mvvm-protocol-core", "branch": "work/mvvm-protocol-core", "paths": ["protocol/mvvm/*", "src/WebUIToolkit.MVVM/*", "tests/WebUIToolkit.MVVM.Tests/*", "tests/WebUIToolkit.MVVM.Protocol.Tests/*", "tests/WebUIToolkit.MVVM.AotSmoke/*"] },
@@ -16,7 +24,7 @@
     { "name": "reactiveui", "branch": "work/reactiveui", "paths": ["src/WebUIToolkit.MVVM.ReactiveUI/*", "tests/WebUIToolkit.MVVM.ReactiveUI.Tests/*"] },
     { "name": "template-engine", "branch": "work/template-engine", "paths": ["src/WebUIToolkit.MVVM.Html/*", "src/WebUIToolkit.MVVM.Html.Compiler/*", "src/WebUIToolkit.MVVM.Html.Build/*", "src/WebUIToolkit.MVVM.Html.Testing/*", "src/WebUIToolkit.MVVM.Html.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Html.ReactiveUI/*", "tools/dotnet-cwhtml/*", "spec/templates/*", "tests/WebUIToolkit.MVVM.Html.Tests/*"] },
     { "name": "htmx", "branch": "work/htmx", "paths": ["src/WebUIToolkit.MVVM.Html.Htmx/*", "src/WebUIToolkit.MVVM.Html.Htmx.Js/*", "tests/WebUIToolkit.MVVM.Html.Htmx.Tests/*", "samples/Htmx/*"] },
-    { "name": "hosting", "branch": "work/hosting", "paths": ["src/WebUIToolkit.Hosting/*", "src/WebUIToolkit.Hosting.Abstractions/*", "src/WebUIToolkit.Hosting.WebUi/*", "src/WebUIToolkit.Hosting.CommandLine/*", "src/WebUIToolkit.Hosting.Generators/*", "src/WebUIToolkit.Hosting.Build/*", "tests/WebUIToolkit.Hosting.*/*", "samples/Hosting.*/*"] },
+    { "name": "hosting", "branch": "work/hosting", "paths": ["src/WebUIToolkit.Hosting/*", "src/WebUIToolkit.Hosting.Abstractions/*", "src/WebUIToolkit.Hosting.WebUi/*", "src/WebUIToolkit.Hosting.CommandLine/*", "src/WebUIToolkit.Hosting.Generators/*", "src/WebUIToolkit.Hosting.GenericHost/*", "src/WebUIToolkit.Hosting.Build/*", "tests/WebUIToolkit.Hosting.*/*", "samples/Hosting.*/*"] },
     { "name": "flow", "branch": "work/flow", "paths": ["src/WebUIToolkit.MVVM.Flow/*", "src/WebUIToolkit.MVVM.Flow.Generators/*", "src/WebUIToolkit.MVVM.Flow.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Flow.ReactiveUI/*", "tests/WebUIToolkit.MVVM.Flow.*/*", "samples/Flow.*/*"] },
     { "name": "text-resources", "branch": "work/text-resources", "paths": ["src/WebUIToolkit.TextResources*/*", "tools/dotnet-textresources/*", "spec/text-resources/*", "tests/WebUIToolkit.TextResources.*/*", "samples/TextResources.*/*"] },
     { "name": "command-line", "branch": "work/command-line", "paths": ["src/WebUIToolkit.CommandLine*/*", "eng/cli-evaluation/*", "spec/command-line/*", "tests/WebUIToolkit.CommandLine.*/*", "samples/CommandLine.*/*"] },

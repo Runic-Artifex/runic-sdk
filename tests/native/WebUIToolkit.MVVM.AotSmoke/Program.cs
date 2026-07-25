@@ -23,10 +23,14 @@ internal static class Program
             return 1;
         }
 
+        var state = new CounterState();
+        int subscriptionCleanupCalls = 0;
         var registry = new MvvmSessionRegistry();
         registry.Map(
             new MvvmContract("aot-smoke"),
-            _ => ValueTask.FromResult(new MvvmSessionActivation(CreateAdapter())));
+            _ => ValueTask.FromResult(new MvvmSessionActivation(CreateAdapter(
+                state,
+                () => subscriptionCleanupCalls++))));
 
         await using IMvvmSessionFactory factory = registry.Build();
         await using IMvvmSession session = await factory.OpenAsync(new MvvmContract("aot-smoke"));
@@ -66,6 +70,12 @@ internal static class Program
             return Fail("Session, projection, binding, acknowledgement, or reconnect smoke failed.");
         }
 
+        await session.DisposeAsync();
+        if (subscriptionCleanupCalls != 1)
+        {
+            return Fail("Binding subscription cleanup did not run exactly once.");
+        }
+
         Console.WriteLine($"{MvvmProtocol.Identity} package/Native-AOT smoke passed at revision {session.Revision}.");
         return 0;
     }
@@ -92,9 +102,8 @@ internal static class Program
             encoded.AsSpan().SequenceEqual(encodedAgain) && rejectedInvalidUtf8;
     }
 
-    private static IMvvmBindingAdapter CreateAdapter()
+    private static IMvvmBindingAdapter CreateAdapter(CounterState state, Action subscriptionCleanup)
     {
-        var state = new CounterState();
         return new MvvmBindingAdapterBuilder(
             _ => ValueTask.FromResult(CreateSnapshot(state.Count)),
             Vocabulary)
@@ -110,6 +119,11 @@ internal static class Program
                             .Success(MvvmValue.From((long)state.Count)));
                 },
                 diagnosticName: "Increment")
+            .OnDispose(() =>
+            {
+                subscriptionCleanup();
+                return ValueTask.CompletedTask;
+            })
             .Build();
     }
 

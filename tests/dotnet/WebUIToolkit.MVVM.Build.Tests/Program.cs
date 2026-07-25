@@ -12,6 +12,8 @@ internal static class Program
         IncrementalContractTests.Register(runner);
         BuildIntegrationTests.Register(runner);
         HostileInputTests.Register(runner);
+        GeneratedMemberContractTests.Register(runner);
+        PostGeneratorSemanticTests.Register(runner);
         return runner.Run();
     }
 }

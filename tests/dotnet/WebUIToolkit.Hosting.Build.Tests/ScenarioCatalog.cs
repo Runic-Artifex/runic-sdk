@@ -37,7 +37,7 @@ internal static class ScenarioCatalog
         new("directory.rejects_reparse_points_when_supported", DirectoryRejectsReparsePoints),
         new("directory.rejects_unix_ambiguous_file_names", DirectoryRejectsUnixAmbiguousFileNames),
         new("validation.reports_stable_immutable_issues", ValidationIssuesAreStableAndImmutable),
-        new("architecture.has_no_hidden_framework_services", HasNoHiddenFrameworkServices),
+        new("architecture.has_only_explicit_msbuild_tooling", HasOnlyExplicitBuildTooling),
     ];
 
     private static ValueTask StableBytesAcrossOrderAndCulture()
@@ -374,7 +374,7 @@ internal static class ScenarioCatalog
         "Trimming",
         "IL2026",
         Justification = "This contract intentionally inspects the references retained in both managed and Native AOT outputs.")]
-    private static ValueTask HasNoHiddenFrameworkServices()
+    private static ValueTask HasOnlyExplicitBuildTooling()
     {
         if (!RuntimeFeature.IsDynamicCodeSupported)
         {
@@ -384,7 +384,7 @@ internal static class ScenarioCatalog
         Assembly buildAssembly = typeof(FrontendAssetManifestBuilder).Assembly;
         string[] forbiddenFragments =
         [
-            "Microsoft.Extensions", "Microsoft.Build", "Microsoft.CodeAnalysis",
+            "Microsoft.Extensions", "Microsoft.CodeAnalysis",
             "WebUIToolkit.MVVM", "WebUIToolkit.CommandLine", "cs-webui"
         ];
         string[] references = buildAssembly.GetReferencedAssemblies()
@@ -399,6 +399,8 @@ internal static class ScenarioCatalog
         }
 
         TestAssert.True(references.Contains("WebUIToolkit.Hosting.Abstractions", StringComparer.Ordinal));
+        TestAssert.True(references.Contains("Microsoft.Build.Framework", StringComparer.Ordinal));
+        TestAssert.True(references.Contains("Microsoft.Build.Utilities.Core", StringComparer.Ordinal));
         return ValueTask.CompletedTask;
     }
 

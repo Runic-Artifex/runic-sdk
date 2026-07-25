@@ -6,6 +6,7 @@ import {
   loadFixtureManifest,
   readFixtureText,
   splitTopLevelArray,
+  validateFixtureIntegrity,
   validateProtocolManifest,
   validateScenarioDocument,
 } from "./fixtures.js";
@@ -21,10 +22,12 @@ import {
   type RunConformanceOptions,
   type RuntimeCaseOutcome,
 } from "./types.js";
+import { createSdkConformanceRuntime } from "./sdk-runtime.js";
 
 interface MvvmSdkSurface {
   parseClientMessage(source: string | Uint8Array): unknown;
   parseHostMessage(source: string | Uint8Array): unknown;
+  validateJsonFrame(source: string | Uint8Array): void;
 }
 
 interface HostileDocument {
@@ -57,8 +60,10 @@ const unsupportedHostileGenerators = new Set([
 ]);
 
 export async function runConformance(options: RunConformanceOptions): Promise<ConformanceReport> {
+  const runtime = options.runtime ?? createSdkConformanceRuntime();
   const manifestPath = options.manifestPath ?? "manifest.json";
   const manifest = await loadFixtureManifest(options.source, manifestPath);
+  await validateFixtureIntegrity(options.source, manifest);
   const results: ConformanceCaseResult[] = [];
   let protocolManifest: ProtocolCorpusManifest | undefined;
 
@@ -73,11 +78,11 @@ export async function runConformance(options: RunConformanceOptions): Promise<Co
       results.push(...await runProtocolCorpus(options.source, suitePath, protocolManifest));
     } else if (suite.id === "protocol-semantic") {
       protocolManifest = protocolManifest ?? validateProtocolManifest(await loadFixtureJson(options.source, suitePath));
-      results.push(...await runSemanticCorpus(options.source, suitePath, protocolManifest, options.runtime));
+      results.push(...await runSemanticCorpus(options.source, suitePath, protocolManifest, runtime));
     } else if (suite.id === "hostile-input") {
-      results.push(...await runHostileInputCorpus(options.source, suitePath, options.runtime));
+      results.push(...await runHostileInputCorpus(options.source, suitePath, runtime));
     } else {
-      results.push(...await runScenarioCorpus(options.source, suitePath, options.runtime, suite.id));
+      results.push(...await runScenarioCorpus(options.source, suitePath, runtime, suite.id));
     }
     const actualCount = results.length - before;
     if (actualCount !== suite.caseCount) {
@@ -85,7 +90,7 @@ export async function runConformance(options: RunConformanceOptions): Promise<Co
     }
   }
 
-  return createReport(options.runtime?.name ?? "sdk", results);
+  return createReport(runtime.name, results);
 }
 
 export async function runProtocolCorpus(
@@ -195,14 +200,13 @@ export async function runHostileInputCorpus(
       continue;
     }
 
-    const schema = hostileParserSchema(item);
-    if (schema === undefined) {
-      results.push(skipped(item.id, "hostile-input", "sdk-json-parser-unavailable"));
-      continue;
-    }
-
     try {
-      const parsed = schema === "client" ? sdk.parseClientMessage(bytes) : sdk.parseHostMessage(bytes);
+      const schema = hostileParserSchema(item);
+      const parsed = schema === "client"
+        ? sdk.parseClientMessage(bytes)
+        : schema === "host"
+          ? sdk.parseHostMessage(bytes)
+          : sdk.validateJsonFrame(bytes);
       const actual = acceptanceObservation(parsed, item.id);
       const diagnostics = compareExpected(item.expect, actual);
       results.push(result(item.id, "hostile-input", diagnostics.length === 0 ? "passed" : "failed", diagnostics));
@@ -482,13 +486,13 @@ function rejectionObservation(error: unknown): Readonly<Record<string, unknown>>
   return { accepted: false, dispatchCount: 0, reason: code };
 }
 
-function hostileParserSchema(item: HostileCase): "client" | "host" | undefined {
+function hostileParserSchema(item: HostileCase): "client" | "host" | "generic" {
   const generator = item.input.generator;
   if (typeof generator === "string") {
     if (generator === "hostSnapshot" || generator === "hostPatch" || generator === "hostCollectionInsertPatch") {
       return "host";
     }
-    if (unsupportedHostileGenerators.has(generator) && item.expect.accepted === true) return undefined;
+    if (unsupportedHostileGenerators.has(generator)) return "generic";
   }
   return "client";
 }

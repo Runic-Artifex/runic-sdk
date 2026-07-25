@@ -8,6 +8,7 @@ export {
   readFixtureBytes,
   readFixtureText,
   splitTopLevelArray,
+  validateFixtureIntegrity,
   validateProtocolManifest,
   validateScenarioDocument,
 } from "./fixtures.js";
@@ -19,6 +20,7 @@ export {
   runScenarioCorpus,
   runSemanticCorpus,
 } from "./runner.js";
+export { createSdkConformanceRuntime } from "./sdk-runtime.js";
 export { CONFORMANCE_FORMAT } from "./types.js";
 export type {
   ConformanceCaseResult,
@@ -33,6 +35,7 @@ export type {
   CorpusManifestCase,
   CorpusSemanticCase,
   FixtureData,
+  FixtureIntegrityEntry,
   FixtureSource,
   HostileInputContext,
   ProtocolCorpusManifest,

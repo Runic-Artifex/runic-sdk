@@ -1,0 +1,441 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Globalization;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Text;
+
+namespace WebUIToolkit.Hosting.Generators;
+
+/// <summary>Emits deterministic closed factories from assembly-level registrations.</summary>
+[Generator(LanguageNames.CSharp)]
+public sealed class HostingRegistrationGenerator : IIncrementalGenerator
+{
+    private const string AttributeMetadataName =
+        "WebUIToolkit.Hosting.Generators.WebUIToolkitHostingRegistrationAttribute";
+    private static readonly SymbolDisplayFormat TypeFormat =
+        SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(
+            SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
+    private static readonly DiagnosticDescriptor[] Descriptors =
+    {
+        CreateDescriptor(HostingGeneratorDiagnostics.WUTHOST0001),
+        CreateDescriptor(HostingGeneratorDiagnostics.WUTHOST0002),
+        CreateDescriptor(HostingGeneratorDiagnostics.WUTHOST0003),
+        CreateDescriptor(HostingGeneratorDiagnostics.WUTHOST0004),
+        CreateDescriptor(HostingGeneratorDiagnostics.WUTHOST0005),
+        CreateDescriptor(HostingGeneratorDiagnostics.WUTHOST0006),
+        CreateDescriptor(HostingGeneratorDiagnostics.WUTHOST0007),
+    };
+
+    /// <inheritdoc />
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        IncrementalValueProvider<GenerationInput> input = context.CompilationProvider
+            .Combine(context.AnalyzerConfigOptionsProvider)
+            .Select(static (pair, cancellationToken) =>
+                CreateInput(pair.Left, pair.Right, cancellationToken));
+        context.RegisterSourceOutput(input, static (productionContext, generationInput) =>
+            Emit(productionContext, generationInput));
+    }
+
+    private static GenerationInput CreateInput(
+        Compilation compilation,
+        AnalyzerConfigOptionsProvider options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        bool publishAot = options.GlobalOptions.TryGetValue(
+            "build_property.PublishAot",
+            out string? publishAotValue)
+            && string.Equals(publishAotValue, "true", StringComparison.OrdinalIgnoreCase);
+        var registrations = ImmutableArray.CreateBuilder<Registration>();
+        foreach (AttributeData attribute in compilation.Assembly.GetAttributes())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!string.Equals(
+                attribute.AttributeClass?.ToDisplayString(),
+                AttributeMetadataName,
+                StringComparison.Ordinal)
+                || attribute.ConstructorArguments.Length != 3)
+            {
+                continue;
+            }
+
+            var kind = (HostingRegistrationKind)(int)attribute.ConstructorArguments[0].Value!;
+            var serviceType = attribute.ConstructorArguments[1].Value as INamedTypeSymbol;
+            var implementationType = attribute.ConstructorArguments[2].Value as INamedTypeSymbol;
+            string key = GetNamedString(attribute, "Key");
+            string factoryMethod = GetNamedString(attribute, "FactoryMethod");
+            bool usesReflection = GetNamedBoolean(attribute, "UsesReflection");
+            Location location = attribute.ApplicationSyntaxReference is null
+                ? Location.None
+                : attribute.ApplicationSyntaxReference
+                    .GetSyntax(cancellationToken)
+                    .GetLocation();
+            if (serviceType is not null && implementationType is not null)
+            {
+                registrations.Add(new Registration(
+                    kind,
+                    key,
+                    factoryMethod,
+                    usesReflection,
+                    serviceType,
+                    implementationType,
+                    CanEmitFactory(compilation, serviceType, implementationType, factoryMethod),
+                    location));
+            }
+        }
+
+        return new GenerationInput(registrations.ToImmutable(), publishAot);
+    }
+
+    private static void Emit(SourceProductionContext context, GenerationInput input)
+    {
+        ImmutableArray<Registration> registrations = input.Registrations
+            .OrderBy(static item => item.Kind)
+            .ThenBy(static item => item.Key, StringComparer.Ordinal)
+            .ThenBy(static item => item.ServiceType.ToDisplayString(TypeFormat), StringComparer.Ordinal)
+            .ThenBy(static item => item.ImplementationType.ToDisplayString(TypeFormat), StringComparer.Ordinal)
+            .ToImmutableArray();
+
+        Validate(context, registrations, input.PublishAot);
+        var source = new StringBuilder(
+            "// <auto-generated/>\n#nullable enable\nnamespace WebUIToolkit.Hosting.Generated\n{\n");
+        source.Append("    internal static class WebUIToolkitGeneratedHosting\n    {\n");
+        source.Append("        internal static global::System.Func<object>[] CreateFactories() => new global::System.Func<object>[]\n        {\n");
+        foreach (Registration registration in registrations)
+        {
+            if (registration.Kind == HostingRegistrationKind.SerializerContext
+                || !CanEmitFactory(registration))
+            {
+                continue;
+            }
+
+            string implementation = registration.ImplementationType.ToDisplayString(TypeFormat);
+            source.Append("            static () => ");
+            if (registration.FactoryMethod.Length == 0)
+            {
+                source.Append("new ").Append(implementation).Append("()");
+            }
+            else
+            {
+                source.Append(implementation)
+                    .Append('.')
+                    .Append(EscapeIdentifier(registration.FactoryMethod))
+                    .Append("()");
+            }
+
+            source.Append(",\n");
+        }
+
+        source.Append("        };\n\n");
+        source.Append("        internal static global::System.Type[] SerializerTypes { get; } = new global::System.Type[]\n        {\n");
+        foreach (Registration registration in registrations)
+        {
+            if (registration.Kind == HostingRegistrationKind.SerializerContext)
+            {
+                source.Append("            typeof(")
+                    .Append(registration.ImplementationType.ToDisplayString(TypeFormat))
+                    .Append("),\n");
+            }
+        }
+
+        source.Append("        };\n");
+        source.Append("    }\n}\n");
+        context.AddSource(
+            "WebUIToolkit.Hosting.GeneratedRegistrations.g.cs",
+            SourceText.From(source.ToString(), Encoding.UTF8));
+    }
+
+    private static void Validate(
+        SourceProductionContext context,
+        ImmutableArray<Registration> registrations,
+        bool publishAot)
+    {
+        ImmutableArray<Registration> uiRegistrations = registrations
+            .Where(static item => item.Kind is HostingRegistrationKind.WebUiRuntimeAdapter
+                or HostingRegistrationKind.RootView
+                or HostingRegistrationKind.Session
+                or HostingRegistrationKind.FrontendEntryPoint)
+            .ToImmutableArray();
+        if (uiRegistrations.Length != 0)
+        {
+            ReportCardinality(
+                context,
+                registrations,
+                HostingRegistrationKind.WebUiRuntimeAdapter,
+                0,
+                uiRegistrations[0].Location);
+            if (registrations.Count(static item => item.Kind == HostingRegistrationKind.RootView) != 1
+                || registrations.Count(static item => item.Kind == HostingRegistrationKind.Session) != 1)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Descriptors[1],
+                    uiRegistrations[0].Location));
+            }
+
+            ReportCardinality(
+                context,
+                registrations,
+                HostingRegistrationKind.FrontendEntryPoint,
+                5,
+                uiRegistrations[0].Location);
+        }
+
+        foreach (IGrouping<string, Registration> duplicate in registrations
+            .Where(static item => item.Kind is HostingRegistrationKind.Command
+                or HostingRegistrationKind.LaunchToken)
+            .GroupBy(static item => item.Key, StringComparer.Ordinal)
+            .Where(static group => group.Count() > 1))
+        {
+            foreach (Registration registration in duplicate)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Descriptors[2],
+                    registration.Location,
+                    SafeValue(registration.Key)));
+            }
+        }
+
+        foreach (Registration registration in registrations)
+        {
+            if (registration.Kind != HostingRegistrationKind.SerializerContext
+                && !CanEmitFactory(registration))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Descriptors[3],
+                    registration.Location,
+                    SafeValue(registration.ImplementationType.Name)));
+            }
+
+            if (publishAot && registration.UsesReflection)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Descriptors[4],
+                    registration.Location,
+                    SafeValue(registration.Key)));
+            }
+
+            if (registration.Kind == HostingRegistrationKind.LifecycleCallback
+                && HasAsyncCallbackWithoutCancellation(registration))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Descriptors[6],
+                    registration.Location,
+                    SafeValue(registration.FactoryMethod)));
+            }
+        }
+    }
+
+    private static void ReportCardinality(
+        SourceProductionContext context,
+        ImmutableArray<Registration> registrations,
+        HostingRegistrationKind kind,
+        int descriptorIndex,
+        Location fallback)
+    {
+        ImmutableArray<Registration> matches = registrations
+            .Where(item => item.Kind == kind)
+            .ToImmutableArray();
+        if (matches.Length == 1)
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(
+            Descriptors[descriptorIndex],
+            matches.Length == 0 ? fallback : matches[0].Location,
+            matches.Length.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private static bool CanEmitFactory(Registration registration) =>
+        registration.CanEmitFactory;
+
+    private static bool CanEmitFactory(
+        Compilation compilation,
+        INamedTypeSymbol serviceType,
+        INamedTypeSymbol implementationType,
+        string factoryMethod)
+    {
+        if (HasOpenTypeParameters(serviceType)
+            || HasOpenTypeParameters(implementationType)
+            || implementationType.IsAbstract
+            || implementationType.TypeKind == TypeKind.Error
+            || !compilation.IsSymbolAccessibleWithin(implementationType, compilation.Assembly))
+        {
+            return false;
+        }
+
+        if (factoryMethod.Length == 0)
+        {
+            return implementationType.InstanceConstructors.Any(
+                constructor =>
+                    constructor.Parameters.Length == 0
+                    && compilation.IsSymbolAccessibleWithin(constructor, compilation.Assembly))
+                && compilation.ClassifyCommonConversion(implementationType, serviceType).IsImplicit;
+        }
+
+        return implementationType
+            .GetMembers(factoryMethod)
+            .OfType<IMethodSymbol>()
+            .Any(method =>
+                method.IsStatic
+                && method.Arity == 0
+                && method.Parameters.Length == 0
+                && !method.ReturnsVoid
+                && !HasOpenTypeParameters(method.ReturnType)
+                && compilation.ClassifyCommonConversion(method.ReturnType, serviceType).IsImplicit
+                && compilation.IsSymbolAccessibleWithin(method, compilation.Assembly));
+    }
+
+    private static bool HasOpenTypeParameters(ITypeSymbol type) =>
+        type.TypeKind == TypeKind.TypeParameter
+        || type is INamedTypeSymbol named
+            && (named.IsUnboundGenericType
+                || named.TypeArguments.Any(HasOpenTypeParameters))
+        || type is IArrayTypeSymbol array
+            && HasOpenTypeParameters(array.ElementType);
+
+    private static bool HasAsyncCallbackWithoutCancellation(Registration registration)
+    {
+        if (registration.FactoryMethod.Length == 0)
+        {
+            return false;
+        }
+
+        foreach (IMethodSymbol method in registration.ImplementationType
+            .GetMembers(registration.FactoryMethod)
+            .OfType<IMethodSymbol>())
+        {
+            string returnType = method.ReturnType.ToDisplayString();
+            bool asynchronous = returnType == "System.Threading.Tasks.Task"
+                || returnType == "System.Threading.Tasks.ValueTask"
+                || returnType.StartsWith("System.Threading.Tasks.Task<", StringComparison.Ordinal)
+                || returnType.StartsWith("System.Threading.Tasks.ValueTask<", StringComparison.Ordinal);
+            if (asynchronous
+                && !method.Parameters.Any(static parameter =>
+                    parameter.Type.ToDisplayString() == "System.Threading.CancellationToken"))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string GetNamedString(AttributeData attribute, string name)
+    {
+        foreach (KeyValuePair<string, TypedConstant> argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name)
+            {
+                return argument.Value.Value as string ?? string.Empty;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool GetNamedBoolean(AttributeData attribute, string name)
+    {
+        foreach (KeyValuePair<string, TypedConstant> argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name)
+            {
+                return argument.Value.Value is bool value && value;
+            }
+        }
+
+        return false;
+    }
+
+    private static DiagnosticDescriptor CreateDescriptor(
+        HostingGeneratorDiagnosticDescriptor descriptor) =>
+        new(
+            descriptor.Id,
+            descriptor.Title,
+            descriptor.MessageFormat,
+            "WebUIToolkit.Hosting",
+            descriptor.Severity == HostingGeneratorDiagnosticSeverity.Error
+                ? DiagnosticSeverity.Error
+                : DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            description: descriptor.Remediation);
+
+    private static string SafeValue(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "unkeyed";
+        }
+
+        var result = new StringBuilder(Math.Min(value.Length, 64));
+        for (int index = 0; index < value.Length && result.Length < 64; index++)
+        {
+            char character = value[index];
+            result.Append(
+                char.IsLetterOrDigit(character) || character is '.' or '-' or '_'
+                    ? character
+                    : '_');
+        }
+
+        return result.ToString();
+    }
+
+    private static string EscapeIdentifier(string identifier) =>
+        SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None
+            ? identifier
+            : "@" + identifier;
+
+    private sealed class GenerationInput
+    {
+        internal GenerationInput(
+            ImmutableArray<Registration> registrations,
+            bool publishAot)
+        {
+            Registrations = registrations;
+            PublishAot = publishAot;
+        }
+
+        internal ImmutableArray<Registration> Registrations { get; }
+
+        internal bool PublishAot { get; }
+    }
+
+    private sealed class Registration
+    {
+        internal Registration(
+            HostingRegistrationKind kind,
+            string key,
+            string factoryMethod,
+            bool usesReflection,
+            INamedTypeSymbol serviceType,
+            INamedTypeSymbol implementationType,
+            bool canEmitFactory,
+            Location location)
+        {
+            Kind = kind;
+            Key = key;
+            FactoryMethod = factoryMethod;
+            UsesReflection = usesReflection;
+            ServiceType = serviceType;
+            ImplementationType = implementationType;
+            CanEmitFactory = canEmitFactory;
+            Location = location;
+        }
+
+        internal HostingRegistrationKind Kind { get; }
+        internal string Key { get; }
+        internal string FactoryMethod { get; }
+        internal bool UsesReflection { get; }
+        internal INamedTypeSymbol ServiceType { get; }
+        internal INamedTypeSymbol ImplementationType { get; }
+        internal bool CanEmitFactory { get; }
+        internal Location Location { get; }
+    }
+}

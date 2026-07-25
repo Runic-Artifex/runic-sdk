@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using WebUIToolkit.DependencyNotices.Diagnostics;
 using WebUIToolkit.DependencyNotices.Evidence;
 using WebUIToolkit.DependencyNotices.Tool;
 
@@ -20,12 +21,17 @@ internal static class Program
         ("exit codes are stable and bounded", StableExitCodes),
         ("parser recognizes manual scan aliases", ParserRecognizesManualScan),
         ("parser rejects unknown and duplicate options", ParserRejectsUnknownOptions),
+        ("consumer evidence inputs are all explicit", ConsumerEvidenceInputsAreExplicit),
         ("parser failures honor JSON diagnostics", ParserFailureUsesJson),
         ("network flag is acquire only", NetworkFlagIsAcquireOnly),
         ("commands require explicit inputs", CommandsRequireExplicitInputs),
         ("NuGet and npm scanners dispatch offline", EcosystemScannersDispatch),
         ("policy command evaluates explicit input", PolicyCommandEvaluates),
         ("generate and verify compose renderer", GenerateAndVerify),
+        ("generate and verify include an explicit locked NuGet consumer graph", GenerateAndVerifyLockedNuGetConsumer),
+        ("consumer evidence rejects missing pinned manual evidence", ConsumerEvidenceRejectsMissingManualEvidence),
+        ("consumer evidence rejects mismatched pinned manual evidence", ConsumerEvidenceRejectsMismatchedManualEvidence),
+        ("consumer evidence enforces NuGet local evidence size limits", ConsumerEvidenceRejectsOversizedNuGetEvidence),
         ("generate refuses input collisions", GenerateRefusesInputCollision),
         ("SBOM command reconciles identity", SbomCommandReconciles),
         ("acquire uses explicit policy and cached bytes", AcquireUsesExplicitPolicy),
@@ -85,6 +91,18 @@ internal static class Program
         False(CommandLineParser.Parse(["scan", "manual", "--wat"]).Succeeded);
         False(CommandLineParser.Parse(["scan", "manual", "--root", ".", "--root", "."]).Succeeded);
         False(CommandLineParser.Parse(["unknown"]).Succeeded);
+        return Task.CompletedTask;
+    }
+
+    private static Task ConsumerEvidenceInputsAreExplicit()
+    {
+        False(CommandLineParser.Parse(["generate", "--output", "out", "--artifact-name", "fixture", "--nuget-lock", "packages.lock.json"]).Succeeded);
+        True(CommandLineParser.Parse(
+        [
+            "generate", "--output", "out", "--artifact-name", "fixture",
+            "--nuget-lock", "packages.lock.json", "--nuget-assets", "project.assets.json",
+            "--nuget-framework", "net10.0", "--nuget-packages-root", "packages",
+        ]).Succeeded);
         return Task.CompletedTask;
     }
 
@@ -209,6 +227,94 @@ internal static class Program
         File.AppendAllText(Path.Combine(outputRoot, "dependency-notices.html"), "drift", Encoding.UTF8);
         (int drift, _, _) = await RunAsync(["verify", .. common]).ConfigureAwait(false);
         Equal(ToolExitCodes.OutputDrift, drift);
+    }
+
+    private static async Task GenerateAndVerifyLockedNuGetConsumer()
+    {
+        using TemporaryDirectory fixture = CreateManualFixture(validDigest: true);
+        string nuget = Path.Combine(FindRepositoryRoot(), "spec", "dependency-notices", "fixtures", "nuget", "valid");
+        string outputRoot = Path.Combine(fixture.Path, "out");
+        string[] common =
+        [
+            "--root", fixture.Path,
+            "--output", outputRoot,
+            "--artifact-name", "wave-c-consumer",
+            "--nuget-lock", Path.Combine(nuget, "packages.lock.json"),
+            "--nuget-assets", Path.Combine(nuget, "project.assets.json"),
+            "--nuget-framework", "net10.0",
+            "--nuget-packages-root", Path.Combine(nuget, "packages"),
+        ];
+
+        (int generated, string generatedOutput, string generatedError) =
+            await RunAsync(["generate", .. common]).ConfigureAwait(false);
+        if (generated != ToolExitCodes.Success)
+        {
+            throw new InvalidOperationException(
+                $"Expected generate success, actual '{generated}'. Output: {generatedOutput} Error: {generatedError}");
+        }
+        string json = File.ReadAllText(Path.Combine(outputRoot, "dependency-notices.json"), Encoding.UTF8);
+        Contains("pkg:generic/example@1.0.0", json);
+        Contains("pkg:nuget/Example.Direct@1.2.3", json);
+        Contains("pkg:nuget/Example.Transitive@2.0.0", json);
+
+        (int verified, string output, _) = await RunAsync(["verify", .. common]).ConfigureAwait(false);
+        Equal(ToolExitCodes.Success, verified);
+        Contains("verified", output);
+    }
+
+    private static async Task ConsumerEvidenceRejectsMismatchedManualEvidence()
+    {
+        using TemporaryDirectory fixture = CreateManualFixture(validDigest: false);
+        string nuget = Path.Combine(FindRepositoryRoot(), "spec", "dependency-notices", "fixtures", "nuget", "valid");
+        (int code, string output, _) = await RunAsync(
+        [
+            "generate", "--root", fixture.Path, "--output", Path.Combine(fixture.Path, "out"), "--artifact-name", "wave-c-consumer",
+            "--nuget-lock", Path.Combine(nuget, "packages.lock.json"),
+            "--nuget-assets", Path.Combine(nuget, "project.assets.json"),
+            "--nuget-framework", "net10.0",
+            "--nuget-packages-root", Path.Combine(nuget, "packages"),
+        ]).ConfigureAwait(false);
+        Equal(ToolExitCodes.InventoryOrEvidenceIncomplete, code);
+        Contains(NoticeDiagnosticCodes.EvidenceDigestMismatch, output);
+    }
+
+    private static async Task ConsumerEvidenceRejectsMissingManualEvidence()
+    {
+        using TemporaryDirectory fixture = CreateManualFixture(validDigest: true);
+        File.Delete(Path.Combine(fixture.Path, "LICENSE"));
+        string nuget = Path.Combine(FindRepositoryRoot(), "spec", "dependency-notices", "fixtures", "nuget", "valid");
+        (int code, string output, _) = await RunAsync(
+        [
+            "generate", "--root", fixture.Path, "--output", Path.Combine(fixture.Path, "out"), "--artifact-name", "wave-c-consumer",
+            "--nuget-lock", Path.Combine(nuget, "packages.lock.json"),
+            "--nuget-assets", Path.Combine(nuget, "project.assets.json"),
+            "--nuget-framework", "net10.0",
+            "--nuget-packages-root", Path.Combine(nuget, "packages"),
+        ]).ConfigureAwait(false);
+        Equal(ToolExitCodes.InventoryOrEvidenceIncomplete, code);
+        Contains(NoticeDiagnosticCodes.MissingEvidence, output);
+    }
+
+    private static async Task ConsumerEvidenceRejectsOversizedNuGetEvidence()
+    {
+        string source = Path.Combine(FindRepositoryRoot(), "spec", "dependency-notices", "fixtures", "nuget", "valid");
+        using TemporaryDirectory nuget = MaterializeDirectory(source);
+        using TemporaryDirectory fixture = CreateManualFixture(validDigest: true);
+        using (FileStream stream = File.Create(Path.Combine(nuget.Path, "packages", "example.direct", "1.2.3", "LICENSE.txt")))
+        {
+            stream.SetLength(4L * 1024 * 1024 + 1);
+        }
+
+        (int code, string output, _) = await RunAsync(
+        [
+            "generate", "--root", fixture.Path, "--output", Path.Combine(fixture.Path, "out"), "--artifact-name", "wave-c-consumer",
+            "--nuget-lock", Path.Combine(nuget.Path, "packages.lock.json"),
+            "--nuget-assets", Path.Combine(nuget.Path, "project.assets.json"),
+            "--nuget-framework", "net10.0",
+            "--nuget-packages-root", Path.Combine(nuget.Path, "packages"),
+        ]).ConfigureAwait(false);
+        Equal(ToolExitCodes.InventoryOrEvidenceIncomplete, code);
+        Contains(NoticeDiagnosticCodes.InvalidEvidenceEncoding, output);
     }
 
     private static async Task SbomCommandReconciles()
@@ -371,6 +477,20 @@ internal static class Program
             """;
         File.WriteAllText(Path.Combine(fixture.Path, "dependency-notices.json"), json, new UTF8Encoding(false));
         return fixture;
+    }
+
+    private static TemporaryDirectory MaterializeDirectory(string source)
+    {
+        TemporaryDirectory destination = new();
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(source, file);
+            string target = Path.Combine(destination.Path, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+
+        return destination;
     }
 
     private static Dictionary<string, string> Snapshot(string root) => Directory.GetFiles(root, "*", SearchOption.AllDirectories)

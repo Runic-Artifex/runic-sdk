@@ -67,10 +67,17 @@ export interface ConformanceSuiteManifestEntry {
   readonly caseCount: number;
 }
 
+export interface FixtureIntegrityEntry {
+  readonly path: string;
+  readonly sha256: string;
+  readonly bytes: number;
+}
+
 export interface ConformanceFixtureManifest {
   readonly formatVersion: number;
   readonly protocolIdentity: "webuitoolkit.mvvm/1";
   readonly suites: readonly ConformanceSuiteManifestEntry[];
+  readonly files?: readonly FixtureIntegrityEntry[];
 }
 
 export interface ScenarioStep {

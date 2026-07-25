@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
 
@@ -55,6 +56,40 @@ public static class FrontendAssetManifestJson
     public static string Serialize(IFrontendAssetManifest manifest)
         => Encoding.UTF8.GetString(SerializeToUtf8Bytes(manifest));
 
+    /// <summary>Reads and validates one canonical frontend asset manifest.</summary>
+    /// <param name="utf8Json">The complete UTF-8 manifest content.</param>
+    /// <returns>A validated immutable manifest.</returns>
+    public static FrontendAssetManifest Deserialize(ReadOnlySpan<byte> utf8Json)
+    {
+        using JsonDocument document = JsonDocument.Parse(utf8Json.ToArray());
+        JsonElement root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("manifestVersion", out JsonElement version)
+            || !StringComparer.Ordinal.Equals(
+                version.GetString(),
+                FrontendAssetManifest.CurrentVersion)
+            || !root.TryGetProperty("assets", out JsonElement assetsElement)
+            || assetsElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("The frontend asset manifest shape is invalid.");
+        }
+
+        var assets = new List<FrontendAsset>();
+        foreach (JsonElement item in assetsElement.EnumerateArray())
+        {
+            assets.Add(new FrontendAsset(
+                GetRequiredString(item, "relativePath"),
+                GetRequiredString(item, "mediaType"),
+                item.GetProperty("length").GetInt64(),
+                GetRequiredString(item, "sha256"),
+                item.GetProperty("isEntryPoint").GetBoolean(),
+                GetOptionalString(item, "brotliPath"),
+                GetOptionalString(item, "gzipPath")));
+        }
+
+        return new FrontendAssetManifest(assets);
+    }
+
     private static void ThrowIfInvalid(IFrontendAssetManifest manifest)
     {
         var issues = FrontendAssetManifestValidator.Validate(manifest);
@@ -63,4 +98,13 @@ public static class FrontendAssetManifestJson
             throw new ArgumentException(issues[0].Message, nameof(manifest));
         }
     }
+
+    private static string GetRequiredString(JsonElement item, string propertyName) =>
+        item.GetProperty(propertyName).GetString()
+        ?? throw new JsonException("A required frontend asset property is null.");
+
+    private static string? GetOptionalString(JsonElement item, string propertyName) =>
+        item.TryGetProperty(propertyName, out JsonElement property)
+            ? property.GetString()
+            : null;
 }

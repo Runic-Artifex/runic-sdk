@@ -42,6 +42,25 @@ internal static class Program
         "strict-codec",
         "successful-mutation",
     ];
+    private static readonly string[] ExpectedG3ConsumerIds =
+    [
+        "communitytoolkit",
+        "compiled-htmx",
+        "hosting",
+        "flow",
+    ];
+    private static readonly string[] ExpectedG3CorpusIds =
+    [
+        "host-binding-vocabulary",
+        "successful-mutation",
+        "projection-invariants",
+        "cancellation-and-timeout",
+        "limits",
+        "reconnect-snapshot",
+        "reconnect-ack-backpressure",
+        "strict-codec",
+        "observability-security",
+    ];
     private static readonly KeyValuePair<string, int>[] ExpectedHardCeilings =
     [
         KeyValuePair.Create("maxFrameBytes", 1048576),
@@ -74,6 +93,7 @@ internal static class Program
             RunTest("contract metadata", () => RunContractMetadataTests(schemaRoot, corpusRoot));
             RunTest("schema corpus", () => RunCorpusTests(schemaRoot, corpusRoot));
             RunTest("semantic corpus", () => RunSemanticTests(corpusRoot));
+            RunTest("G3 first-party consumer matrix", () => RunG3ConsumerMatrixTests(protocolRoot, corpusRoot));
             RunTest("schema adversarial matrix", () => RunSchemaAdversarialTests(schemaRoot));
             RunTest("runtime corpus conformance", () => RunRuntimeCorpusTests(corpusRoot));
             RunTest("runtime framing security", RunRuntimeFramingTests);
@@ -136,6 +156,50 @@ internal static class Program
             string id = RequiredString(entry, "id");
             Assert(ids.Add(id), $"Duplicate manifest ID '{id}'.");
             ResolveCorpusFile(corpusRoot, RequiredString(entry, "file"));
+        }
+    }
+
+    private static void RunG3ConsumerMatrixTests(string protocolRoot, string corpusRoot)
+    {
+        using JsonDocument matrix = LoadDocument(Path.Combine(protocolRoot, "g3", "first-party-consumer-matrix.json"));
+        JsonElement root = matrix.RootElement;
+        Assert(root.GetProperty("protocolIdentity").GetString() == ProtocolIdentity, "The G3 matrix must target the frozen v1 protocol identity.");
+        RequiredString(root, "purpose");
+
+        JsonElement[] consumers = root.GetProperty("consumers").EnumerateArray().ToArray();
+        string[] consumerIds = consumers.Select(item => RequiredString(item, "id")).ToArray();
+        Assert(consumerIds.SequenceEqual(ExpectedG3ConsumerIds, StringComparer.Ordinal), "The G3 matrix must retain the exact ordered first-party consumer set.");
+        foreach (JsonElement consumer in consumers)
+        {
+            RequiredString(consumer, "boundary");
+            RequiredString(consumer, "requiredEvidence");
+        }
+
+        using JsonDocument manifest = LoadDocument(Path.Combine(corpusRoot, "manifest.json"));
+        HashSet<string> registeredCorpusIds = manifest.RootElement
+            .GetProperty("cases")
+            .EnumerateArray()
+            .Concat(manifest.RootElement.GetProperty("semanticCases").EnumerateArray())
+            .Select(item => RequiredString(item, "id"))
+            .ToHashSet(StringComparer.Ordinal);
+
+        JsonElement[] fixtures = root.GetProperty("fixtures").EnumerateArray().ToArray();
+        string[] corpusIds = fixtures.Select(item => RequiredString(item, "corpusId")).ToArray();
+        Assert(corpusIds.SequenceEqual(ExpectedG3CorpusIds, StringComparer.Ordinal), "The G3 matrix must retain the exact required existing corpus cases in order.");
+        Assert(corpusIds.All(registeredCorpusIds.Contains), "The G3 matrix may reference only existing registered corpus cases.");
+
+        foreach (JsonElement fixture in fixtures)
+        {
+            RequiredString(fixture, "requirement");
+            JsonElement[] rows = fixture.GetProperty("rows").EnumerateArray().ToArray();
+            string[] rowConsumers = rows.Select(item => RequiredString(item, "consumer")).ToArray();
+            Assert(rowConsumers.SequenceEqual(ExpectedG3ConsumerIds, StringComparer.Ordinal), $"G3 case '{RequiredString(fixture, "corpusId")}' must contain one mandatory row for every first-party consumer.");
+            foreach (JsonElement row in rows)
+            {
+                Assert(row.GetProperty("required").ValueKind == JsonValueKind.True, $"G3 case '{RequiredString(fixture, "corpusId")}' cannot skip consumer '{RequiredString(row, "consumer")}'.");
+                Assert(!row.TryGetProperty("skipped", out _), $"G3 case '{RequiredString(fixture, "corpusId")}' must not encode a skipped consumer row.");
+                RequiredString(row, "evidence");
+            }
         }
     }
 

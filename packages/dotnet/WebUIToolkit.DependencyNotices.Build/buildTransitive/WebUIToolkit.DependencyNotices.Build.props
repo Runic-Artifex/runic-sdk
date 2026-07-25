@@ -8,5 +8,10 @@
     <DependencyNoticesOutputDirectory Condition="'$(DependencyNoticesOutputDirectory)' == ''">$(MSBuildProjectDirectory)/obj/dependency-notices/</DependencyNoticesOutputDirectory>
     <DependencyNoticesArtifactName Condition="'$(DependencyNoticesArtifactName)' == ''">$(MSBuildProjectName)</DependencyNoticesArtifactName>
     <DependencyNoticesArtifactVersion Condition="'$(DependencyNoticesArtifactVersion)' == ''">$(Version)</DependencyNoticesArtifactVersion>
+    <DependencyNoticesNuGetLock Condition="'$(DependencyNoticesNuGetLock)' == ''"></DependencyNoticesNuGetLock>
+    <DependencyNoticesNuGetAssets Condition="'$(DependencyNoticesNuGetAssets)' == ''"></DependencyNoticesNuGetAssets>
+    <DependencyNoticesNuGetFramework Condition="'$(DependencyNoticesNuGetFramework)' == ''"></DependencyNoticesNuGetFramework>
+    <DependencyNoticesNuGetPackagesRoot Condition="'$(DependencyNoticesNuGetPackagesRoot)' == ''"></DependencyNoticesNuGetPackagesRoot>
+    <DependencyNoticesNuGetRuntime Condition="'$(DependencyNoticesNuGetRuntime)' == ''"></DependencyNoticesNuGetRuntime>
   </PropertyGroup>
 </Project>

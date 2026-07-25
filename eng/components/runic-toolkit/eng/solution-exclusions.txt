@@ -1,4 +1,5 @@
 # Projects intentionally exercised by dedicated package-consumer or RID/AOT gates.
+src/WebUIToolkit.MVVM.Html.CommunityToolkit/WebUIToolkit.MVVM.Html.CommunityToolkit.csproj
 tests/WebUIToolkit.Collections.AotSmoke/WebUIToolkit.Collections.AotSmoke.csproj
 tests/WebUIToolkit.Collections.PackageConsumer/WebUIToolkit.Collections.PackageConsumer.csproj
 tests/WebUIToolkit.CommandLine.AotSmoke/WebUIToolkit.CommandLine.AotSmoke.csproj
@@ -6,8 +7,12 @@ tests/WebUIToolkit.DependencyNotices.Runtime.AotSmoke/WebUIToolkit.DependencyNot
 tests/WebUIToolkit.DependencyNotices.Packaging.Tests/WebUIToolkit.DependencyNotices.Packaging.Tests.csproj
 tests/WebUIToolkit.Hosting.PackageTests/WebUIToolkit.Hosting.PackageTests.csproj
 tests/WebUIToolkit.MVVM.AotSmoke/WebUIToolkit.MVVM.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.CommunityToolkit.Tests/AotSmoke/WebUIToolkit.MVVM.CommunityToolkit.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.CommunityToolkit.Tests/PackageConsumer/Consumer/PackageConsumer.csproj
 tests/WebUIToolkit.MVVM.Flow.AotSmoke/WebUIToolkit.MVVM.Flow.AotSmoke.csproj
+tests/WebUIToolkit.MVVM.Flow.CommunityToolkit.PackageConsumer/WebUIToolkit.MVVM.Flow.CommunityToolkit.PackageConsumer.csproj
 tests/WebUIToolkit.MVVM.Flow.PackageConsumer/WebUIToolkit.MVVM.Flow.PackageConsumer.csproj
+tests/WebUIToolkit.MVVM.Html.Htmx.Tests/PackageConsumer/Consumer/PackageConsumer.csproj
 tests/WebUIToolkit.MVVM.Html.Tests/AotSmoke/WebUIToolkit.MVVM.Html.AotSmoke.csproj
 tests/WebUIToolkit.MVVM.Html.Tests/PackageConsumer/Consumer/PackageConsumer.csproj
 tests/WebUIToolkit.TextResources.AotTests/WebUIToolkit.TextResources.AotTests.csproj

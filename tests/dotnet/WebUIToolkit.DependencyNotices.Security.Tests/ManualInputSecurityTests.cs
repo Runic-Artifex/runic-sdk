@@ -23,6 +23,7 @@ internal static class ManualInputSecurityTests
         tests.Add("manual config enforces token and property budget", RejectsExcessiveTokenBudget);
         tests.Add("manual evidence rejects oversized text with diagnostic", RejectsOversizedEvidence);
         tests.Add("manual evidence rejects invalid UTF-8", RejectsInvalidEvidenceUtf8);
+        tests.Add("manual evidence rejects unsafe local origins", RejectsUnsafeOrigin);
     }
 
     private static void RejectsOversizedConfig()
@@ -121,6 +122,38 @@ internal static class ManualInputSecurityTests
             File.WriteAllBytes(Path.Combine(root, "evidence.txt"), invalidUtf8);
             WriteManualConfig(root, "evidence.txt", Convert.ToHexStringLower(SHA256.HashData(invalidUtf8)));
             AssertDiagnostic(ManualComponentScanner.Scan(root, "dependency-notices.json"), InvalidEvidenceEncoding);
+        });
+    }
+
+    private static void RejectsUnsafeOrigin()
+    {
+        TestFiles.WithTemporaryDirectory(root =>
+        {
+            byte[] evidence = Encoding.UTF8.GetBytes("MIT License\n");
+            File.WriteAllBytes(Path.Combine(root, "evidence.txt"), evidence);
+            string json = $$"""
+            {
+              "schemaVersion": 1,
+              "manualComponents": [
+                {
+                  "purl": "pkg:generic/external-pack@1.0.0",
+                  "displayName": "External pack",
+                  "revision": "reviewed-v1",
+                  "licenseExpression": "MIT",
+                  "evidence": [
+                    {
+                      "kind": "attribution",
+                      "path": "evidence.txt",
+                      "origin": "file:///private/evidence.txt",
+                      "sha256": "{{Convert.ToHexStringLower(SHA256.HashData(evidence))}}"
+                    }
+                  ]
+                }
+              ]
+            }
+            """;
+            TestFiles.WriteUtf8(Path.Combine(root, "dependency-notices.json"), json);
+            AssertDiagnostic(ManualComponentScanner.Scan(root, "dependency-notices.json"), InvalidManual);
         });
     }
 

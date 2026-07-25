@@ -3,7 +3,7 @@
   <metadata>
     <id>Example.Build</id>
     <version>3.0.0</version>
-    <license type="file">LICENSE.md</license>
+    <license type="expression">MIT</license>
     <developmentDependency>true</developmentDependency>
   </metadata>
 </package>

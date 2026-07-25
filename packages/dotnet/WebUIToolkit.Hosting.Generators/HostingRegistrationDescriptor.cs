@@ -57,6 +57,11 @@ public enum HostingRegistrationKind
     /// An application mode runner registration.
     /// </summary>
     ModeRunner = 9,
+
+    /// <summary>
+    /// The sole frontend entry point consumed by UI mode.
+    /// </summary>
+    FrontendEntryPoint = 10,
 }
 
 /// <summary>
@@ -95,25 +100,10 @@ public sealed class HostingRegistrationDescriptor
             throw new ArgumentOutOfRangeException(nameof(kind), kind, "A supported registration kind is required.");
         }
 
-        if (registrationKey is null)
-        {
-            throw new ArgumentNullException(nameof(registrationKey));
-        }
-
-        if (serviceTypeMetadataName is null)
-        {
-            throw new ArgumentNullException(nameof(serviceTypeMetadataName));
-        }
-
-        if (implementationTypeMetadataName is null)
-        {
-            throw new ArgumentNullException(nameof(implementationTypeMetadataName));
-        }
-
-        if (factoryMethodMetadataName is null)
-        {
-            throw new ArgumentNullException(nameof(factoryMethodMetadataName));
-        }
+        ArgumentNullException.ThrowIfNull(registrationKey);
+        ArgumentNullException.ThrowIfNull(serviceTypeMetadataName);
+        ArgumentNullException.ThrowIfNull(implementationTypeMetadataName);
+        ArgumentNullException.ThrowIfNull(factoryMethodMetadataName);
 
         ValidateOptionalCanonicalText(registrationKey, nameof(registrationKey));
         ValidateRequiredCanonicalText(serviceTypeMetadataName, nameof(serviceTypeMetadataName));
@@ -153,7 +143,7 @@ public sealed class HostingRegistrationDescriptor
     public string FactoryMethodMetadataName { get; }
 
     private static bool IsSupportedKind(HostingRegistrationKind kind) =>
-        kind >= HostingRegistrationKind.WebUiRuntimeAdapter && kind <= HostingRegistrationKind.ModeRunner;
+        kind >= HostingRegistrationKind.WebUiRuntimeAdapter && kind <= HostingRegistrationKind.FrontendEntryPoint;
 
     private static void ValidateRequiredCanonicalText(string value, string parameterName)
     {

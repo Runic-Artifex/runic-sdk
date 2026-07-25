@@ -3,6 +3,6 @@
   <metadata>
     <id>Example.Transitive</id>
     <version>2.0.0</version>
-    <license type="file">LICENSE</license>
+    <license type="expression">MIT</license>
   </metadata>
 </package>

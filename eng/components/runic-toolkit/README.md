@@ -70,6 +70,13 @@ When a project or dependency changes, refresh and commit lock files before verif
 
 ## Status
 
-Gate G2 is complete. All ten Wave B domains are integrated into a complete 63-project default solution, with 79-project architecture coverage, executable contract suites, deterministic package locks and corpora, package-consumer evidence, browser conformance, and Native-AOT validation. Wave C is eligible for orchestrator readiness review but has not been started. Its scope is intentionally limited to first-party CommunityToolkit, HTMX, Hosting, Flow, and projection integration; React/Vue/Svelte are deferred to Wave E, while Angular/ReactiveUI are deferred to Wave F.
+Wave D has reached the G4 technical release-candidate gate with a 76-project
+default solution and 101-project architecture coverage. The cumulative
+[`eng/verify-wave-d.ps1`](./eng/verify-wave-d.ps1) entry point runs the Wave C
+surface, the shared SDK/CommunityToolkit/compiled-HTMX vertical, clean-root and
+empty-cache replay, repository and packed-consumer Native AOT, offline packaging,
+hardening, performance, and release-evidence checks. Generated, source-bound
+evidence is written under `artifacts/wave-d/`. React/Vue/Svelte remain deferred
+to Wave E, while Angular/ReactiveUI remain deferred to Wave F.
 
 ADR 0004 records an explicit publication hold: no source license has been granted, and public visibility does not grant reuse or redistribution rights. API ownership, dependency licensing, package names, notices, SBOM linkage, and publication terms must be reviewed before reusable artifacts are published.

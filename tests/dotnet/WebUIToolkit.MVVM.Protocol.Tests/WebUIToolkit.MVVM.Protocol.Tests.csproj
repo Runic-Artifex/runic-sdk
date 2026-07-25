@@ -15,5 +15,8 @@
     <Content Include="../../protocol/mvvm/corpus/v1/**/*.json"
              Link="Protocol/corpus/v1/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../protocol/mvvm/g3/*.json"
+             Link="Protocol/g3/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

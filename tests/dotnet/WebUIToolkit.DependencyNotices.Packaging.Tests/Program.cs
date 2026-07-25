@@ -163,6 +163,10 @@ internal static class Program
             "Packed Build target did not generate dependency notice outputs.");
         Assert(Directory.Exists(buildOutputDirectory) && Directory.EnumerateFiles(buildOutputDirectory).Count() == 4,
             "Packed Build target did not produce the complete four-file output set.");
+        string generatedNotice = File.ReadAllText(Path.Combine(buildOutputDirectory, "dependency-notices.json"));
+        Assert(generatedNotice.Contains("pkg:generic/webuitoolkit-text-resources-pack@1.0.0?format=json", StringComparison.Ordinal)
+               && generatedNotice.Contains("1368e999508621b0430f54a376bc9a19f9ff940591b60527c54786e94cd23f24", StringComparison.Ordinal),
+            "Packed Build target did not preserve the explicit external-pack attribution evidence.");
         string verifyTargetOutput = ProcessRunner.Run("dotnet",
             ["msbuild", project, "-target:VerifyDependencyNotices", "-property:DependencyNoticesMode=Verify", .. buildTargetProperties],
             workingRoot,
@@ -275,6 +279,15 @@ internal static class Program
         foreach (string file in files)
         {
             File.Copy(Path.Combine(source, file), Path.Combine(destination, file), overwrite: false);
+        }
+
+        string evidenceSource = Path.Combine(source, "dependency-notices.assets");
+        foreach (string evidence in Directory.EnumerateFiles(evidenceSource, "*", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(evidenceSource, evidence);
+            string target = Path.Combine(destination, "dependency-notices.assets", relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(evidence, target, overwrite: false);
         }
     }
 

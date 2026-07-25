@@ -104,10 +104,31 @@ public sealed class FrontendAssetManifestBuilder
     public FrontendAssetManifest BuildFromDirectory(
         string outputRoot,
         string entryPointRelativePath,
+        CancellationToken cancellationToken = default) =>
+        BuildFromDirectory(
+            outputRoot,
+            entryPointRelativePath,
+            Array.Empty<string>(),
+            cancellationToken);
+
+    /// <summary>
+    /// Builds a manifest while excluding explicit application-relative build artifacts
+    /// such as a manifest written below the frontend output root.
+    /// </summary>
+    /// <param name="outputRoot">The frontend output root.</param>
+    /// <param name="entryPointRelativePath">The sole application-relative entry point.</param>
+    /// <param name="excludedRelativePaths">Exact application-relative paths to exclude.</param>
+    /// <param name="cancellationToken">Stops enumeration and content reading.</param>
+    /// <returns>A deterministic manifest containing an immutable snapshot of the directory.</returns>
+    public FrontendAssetManifest BuildFromDirectory(
+        string outputRoot,
+        string entryPointRelativePath,
+        IEnumerable<string> excludedRelativePaths,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(entryPointRelativePath);
+        ArgumentNullException.ThrowIfNull(excludedRelativePaths);
 
         var root = Path.GetFullPath(outputRoot);
         if (!Directory.Exists(root))
@@ -117,6 +138,19 @@ public sealed class FrontendAssetManifestBuilder
 
         RejectReparsePoint(root);
         var normalizedEntryPoint = NormalizePathWithoutContent(entryPointRelativePath);
+        var exclusions = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string excludedRelativePath in excludedRelativePaths)
+        {
+            exclusions.Add(NormalizePathWithoutContent(excludedRelativePath));
+        }
+
+        if (exclusions.Contains(normalizedEntryPoint))
+        {
+            throw new ArgumentException(
+                "The frontend entry point cannot be excluded.",
+                nameof(excludedRelativePaths));
+        }
+
         var files = new List<(string FullPath, string RelativePath)>();
         var directories = new Stack<string>();
         directories.Push(root);
@@ -142,7 +176,10 @@ public sealed class FrontendAssetManifestBuilder
                     var filesystemRelativePath = Path.GetRelativePath(root, entry);
                     RejectNormalizationIdentityChange(filesystemRelativePath);
                     var relativePath = NormalizePathWithoutContent(filesystemRelativePath);
-                    files.Add((entry, relativePath));
+                    if (!exclusions.Contains(relativePath))
+                    {
+                        files.Add((entry, relativePath));
+                    }
                 }
             }
         }

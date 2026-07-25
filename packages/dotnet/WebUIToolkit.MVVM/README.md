@@ -115,6 +115,18 @@ property setters and commands registered on that builder. A custom
 remains an explicitly trusted compatibility seam: normal payload/count limits
 still apply, but the session cannot validate its principal member kinds.
 
+## First-party G3 consumption boundary
+
+The core-owned G3 matrix under `protocol/mvvm/g3/` references existing v1 corpus
+cases for CommunityToolkit, compiled HTMX, Hosting, and Flow. It adds no
+framework-specific protocol vocabulary. Binding-adapter owners must use the
+complete-vocabulary builder overload, explicit delegates, `OnDispose` for owned
+subscriptions, and a completed `MvvmBindingResult` that represents one atomic
+commit. Transport owners retain handshake, routing, capability, output-bound,
+tombstone, and reconnect-retention policy; those concerns do not move into this
+package. Flow consumes the handoff declaratively and remains independent of
+CommunityToolkit runtime code and Hosting.
+
 ## Diagnostics
 
 The runtime emits BCL `ActivitySource` and `Meter` instrumentation under the stable

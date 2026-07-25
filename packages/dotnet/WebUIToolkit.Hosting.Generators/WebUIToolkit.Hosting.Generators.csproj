@@ -1,9 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>$(WebUIToolkitGeneratorTargetFramework)</TargetFramework>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
     <AssemblyName>WebUIToolkit.Hosting.Generators</AssemblyName>
     <RootNamespace>WebUIToolkit.Hosting.Generators</RootNamespace>
-    <Description>Dependency-neutral contracts for deterministic WebUIToolkit hosting generation.</Description>
-    <IsPackable>false</IsPackable>
+    <PackageId>WebUIToolkit.Hosting.Generators</PackageId>
+    <Description>Incremental closed-registration generation for WebUIToolkit hosting.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CodeAnalysis">
+      <HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp">
+      <HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="$(TargetPath)"
+          Pack="true"
+          PackagePath="analyzers\dotnet\cs\$(TargetFileName)" />
+  </ItemGroup>
 </Project>

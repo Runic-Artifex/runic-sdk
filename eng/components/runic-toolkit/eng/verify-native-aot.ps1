@@ -11,7 +11,7 @@ $exclusionsPath = Join-Path $PSScriptRoot 'solution-exclusions.txt'
 
 $projects = Get-Content -LiteralPath $exclusionsPath |
     ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -and -not $_.StartsWith('#') -and $_ -match 'AotSmoke' } |
+    Where-Object { $_ -and -not $_.StartsWith('#') -and $_ -match 'Aot(?:Smoke|Tests)' } |
     ForEach-Object { Get-Item -LiteralPath (Join-Path $repositoryRoot $_) } |
     Sort-Object FullName
 
@@ -25,17 +25,51 @@ try {
         $relativePath = [System.IO.Path]::GetRelativePath($repositoryRoot, $project.FullName)
         Write-Host "Publishing Native-AOT smoke: $relativePath ($RuntimeIdentifier)"
 
-        dotnet restore $project.FullName --locked-mode -p:RuntimeIdentifier= -p:RuntimeIdentifiers=
+        $projectDirectory = $project.DirectoryName
+        $projectProperties = @()
+        if ($project.BaseName -ceq 'WebUIToolkit.TextResources.AotTests') {
+            $feed = Join-Path $projectDirectory 'obj/aot-feed'
+            if (Test-Path -LiteralPath $feed) {
+                Remove-Item -LiteralPath $feed -Recurse -Force
+            }
+            New-Item -ItemType Directory -Path $feed | Out-Null
+            $runtimeProject = Join-Path $repositoryRoot `
+                'src/WebUIToolkit.TextResources/WebUIToolkit.TextResources.csproj'
+            dotnet pack $runtimeProject --configuration $Configuration --no-restore `
+                -p:PackageVersion=1.0.0 `
+                -p:ContinuousIntegrationBuild=true `
+                "-p:PathMap=$repositoryRoot=/_/" `
+                -p:NuGetAudit=false `
+                --output $feed
+            if ($LASTEXITCODE -ne 0) { throw 'Packing Text Resources for Native-AOT verification failed.' }
+
+            & (Join-Path $PSScriptRoot 'normalize-nuget-package.ps1') `
+                (Join-Path $feed 'WebUIToolkit.TextResources.1.0.0.nupkg')
+            $projectProperties += "-p:TextResourcesPackageFeed=$feed"
+        }
+
+        $portableLock = Join-Path $projectDirectory 'packages.lock.json'
+        if (-not (Test-Path -LiteralPath $portableLock -PathType Leaf)) {
+            throw "Portable lock file is missing: $relativePath"
+        }
+
+        $portableLockHash = (Get-FileHash -LiteralPath $portableLock -Algorithm SHA256).Hash
+        dotnet restore $project.FullName --locked-mode -p:RuntimeIdentifier= -p:RuntimeIdentifiers= `
+            -p:NuGetAudit=false @projectProperties
         if ($LASTEXITCODE -ne 0) { throw "Portable locked restore failed: $relativePath" }
 
-        $projectDirectory = $project.DirectoryName
         $aotLock = Join-Path $projectDirectory 'obj/aot.packages.lock.json'
         $publishDirectory = Join-Path $projectDirectory "obj/aot-publish/$RuntimeIdentifier"
         dotnet publish $project.FullName --configuration $Configuration --runtime $RuntimeIdentifier --self-contained true `
             -p:PublishAot=true `
+            -p:PublishTrimmed=true `
+            -p:TrimMode=full `
+            -p:IlcTreatWarningsAsErrors=true `
             -p:NuGetLockFilePath=$aotLock `
+            -p:NuGetAudit=false `
             -p:RestoreLockedMode=false `
-            -p:PublishDir=$publishDirectory
+            -p:PublishDir=$publishDirectory `
+            @projectProperties
         if ($LASTEXITCODE -ne 0) { throw "Native-AOT publish failed: $relativePath" }
 
         $executableName = if ($RuntimeIdentifier.StartsWith('win-', [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -51,11 +85,11 @@ try {
 
         & $executable
         if ($LASTEXITCODE -ne 0) { throw "Native-AOT smoke failed: $relativePath" }
-    }
 
-    git diff --exit-code -- ':(glob)**/packages.lock.json'
-    if ($LASTEXITCODE -ne 0) {
-        throw 'A Native-AOT publish changed a committed portable lock file.'
+        $currentPortableLockHash = (Get-FileHash -LiteralPath $portableLock -Algorithm SHA256).Hash
+        if ($currentPortableLockHash -ne $portableLockHash) {
+            throw "Native-AOT verification changed the portable lock file: $relativePath"
+        }
     }
 }
 finally {

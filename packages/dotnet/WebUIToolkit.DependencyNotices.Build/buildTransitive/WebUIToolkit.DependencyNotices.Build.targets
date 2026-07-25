@@ -1,7 +1,9 @@
 <Project>
   <PropertyGroup>
     <_DependencyNoticesArtifactVersionArgument Condition="'$(DependencyNoticesArtifactVersion)' != ''"> --artifact-version &quot;$(DependencyNoticesArtifactVersion)&quot;</_DependencyNoticesArtifactVersionArgument>
-    <_DependencyNoticesCommonArguments>--root &quot;$(DependencyNoticesRoot)&quot; --config &quot;$(DependencyNoticesConfig)&quot; --output &quot;$(DependencyNoticesOutputDirectory)&quot; --artifact-name &quot;$(DependencyNoticesArtifactName)&quot;$(_DependencyNoticesArtifactVersionArgument)</_DependencyNoticesCommonArguments>
+    <_DependencyNoticesNuGetRuntimeArgument Condition="'$(DependencyNoticesNuGetRuntime)' != ''"> --nuget-runtime &quot;$(DependencyNoticesNuGetRuntime)&quot;</_DependencyNoticesNuGetRuntimeArgument>
+    <_DependencyNoticesNuGetArguments Condition="'$(DependencyNoticesNuGetLock)' != ''"> --nuget-lock &quot;$(DependencyNoticesNuGetLock)&quot; --nuget-assets &quot;$(DependencyNoticesNuGetAssets)&quot; --nuget-framework &quot;$(DependencyNoticesNuGetFramework)&quot; --nuget-packages-root &quot;$(DependencyNoticesNuGetPackagesRoot)&quot;$(_DependencyNoticesNuGetRuntimeArgument)</_DependencyNoticesNuGetArguments>
+    <_DependencyNoticesCommonArguments>--root &quot;$(DependencyNoticesRoot)&quot; --config &quot;$(DependencyNoticesConfig)&quot; --output &quot;$(DependencyNoticesOutputDirectory)&quot; --artifact-name &quot;$(DependencyNoticesArtifactName)&quot;$(_DependencyNoticesArtifactVersionArgument)$(_DependencyNoticesNuGetArguments)</_DependencyNoticesCommonArguments>
     <_DependencyNoticesToolArguments Condition="'$(DependencyNoticesMode)' == 'Generate'">generate $(_DependencyNoticesCommonArguments)</_DependencyNoticesToolArguments>
     <_DependencyNoticesToolArguments Condition="'$(DependencyNoticesMode)' == 'Verify'">verify $(_DependencyNoticesCommonArguments)</_DependencyNoticesToolArguments>
   </PropertyGroup>
@@ -20,6 +22,10 @@
            Text="DependencyNoticesOutputDirectory must identify the generated output directory." />
     <Error Condition="'$(DependencyNoticesArtifactName)' == ''"
            Text="DependencyNoticesArtifactName must be non-empty." />
+    <Error Condition="'$(DependencyNoticesNuGetLock)' != '' and ('$(DependencyNoticesNuGetAssets)' == '' or '$(DependencyNoticesNuGetFramework)' == '' or '$(DependencyNoticesNuGetPackagesRoot)' == '')"
+           Text="DependencyNoticesNuGetLock requires DependencyNoticesNuGetAssets, DependencyNoticesNuGetFramework, and DependencyNoticesNuGetPackagesRoot." />
+    <Error Condition="'$(DependencyNoticesNuGetLock)' == '' and ('$(DependencyNoticesNuGetAssets)' != '' or '$(DependencyNoticesNuGetFramework)' != '' or '$(DependencyNoticesNuGetPackagesRoot)' != '' or '$(DependencyNoticesNuGetRuntime)' != '')"
+           Text="DependencyNotices NuGet consumer evidence properties must be supplied together." />
     <Error Condition="'$(_DependencyNoticesToolArguments)' == ''"
            Text="DependencyNoticesMode must be Generate or Verify." />
   </Target>

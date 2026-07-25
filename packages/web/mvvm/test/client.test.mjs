@@ -6,6 +6,7 @@ import {
   ClientProtocolError,
   MvvmDisconnectedError,
   MvvmFaultError,
+  createMvvmProjection,
   ProtocolTransport,
   decodeUtf8,
   encodeUtf8,
@@ -106,6 +107,39 @@ test("opens with an authoritative snapshot of every projected state kind", async
   assert.deepEqual(snapshot.collections.get(2), [1, 2, 3]);
   assert.deepEqual(snapshot.commands.get(3), { canExecute: true, isExecuting: false });
   assert.deepEqual(snapshot.validation.get(1), []);
+});
+
+test("the framework-neutral projection exposes immutable member-ID state once per atomic patch", async () => {
+  const { channel, client } = await startClient();
+  const projection = createMvvmProjection(client);
+  const revisions = [];
+  projection.subscribe((event) => { if (event.type === "state") revisions.push(event.snapshot.revision); });
+  const before = projection.snapshot;
+  assert.equal(projection.property(1), "ready");
+  assert.deepEqual(projection.collection(2), [1, 2, 3]);
+  assert.deepEqual(projection.command(3), { canExecute: true, isExecuting: false });
+  assert.deepEqual(projection.validation(1), []);
+  assert.throws(() => before.properties.set(99, "mutate"), TypeError);
+  assert.throws(() => projection.collection(2).push(4), TypeError);
+
+  channel.host({
+    v: 1, kind: "patch", session, view,
+    payload: {
+      fromRevision: 0n, toRevision: 1n,
+      changes: [
+        { type: "property", member: 1, value: "saved" },
+        { type: "command", member: 3, canExecute: false, isExecuting: true },
+        { type: "validation", member: 1, errors: ["Required"] },
+      ],
+    },
+  });
+  await tick();
+  assert.equal(revisions.length, 1);
+  assert.equal(projection.snapshot.revision, 1n);
+  assert.equal(projection.property(1), "saved");
+  assert.deepEqual(projection.command(3), { canExecute: false, isExecuting: true });
+  assert.deepEqual(projection.validation(1), ["Required"]);
+  projection.dispose();
 });
 
 test("applies a consecutive patch atomically and ignores a byte-identical duplicate", async () => {

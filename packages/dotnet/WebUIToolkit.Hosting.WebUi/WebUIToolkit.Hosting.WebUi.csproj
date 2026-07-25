@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.Hosting.WebUi</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting.WebUi</RootNamespace>
+    <PackageId>WebUIToolkit.Hosting.WebUi</PackageId>
+    <Description>Framework-neutral browser, root-session, and static-asset composition for WebUIToolkit Hosting.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WebUIToolkit.Hosting\WebUIToolkit.Hosting.csproj" />
+    <ProjectReference Include="..\WebUIToolkit.MVVM\WebUIToolkit.MVVM.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

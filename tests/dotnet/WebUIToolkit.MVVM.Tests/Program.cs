@@ -772,7 +772,8 @@ internal static class Program
         int propertyCalls = 0;
         int commandCalls = 0;
         await using IMvvmBindingAdapter adapter = new MvvmBindingAdapterBuilder(
-            _ => ValueTask.FromResult(new MvvmSnapshot(Json("{}"))))
+            _ => ValueTask.FromResult(projected),
+            vocabulary)
             .BindProperty(1, (request, _) =>
             {
                 Interlocked.Increment(ref propertyCalls);
@@ -784,6 +785,10 @@ internal static class Program
                 return ValueTask.FromResult(MvvmBindingResult.Success());
             })
             .Build();
+        var provider = adapter as IMvvmBindingVocabularyProvider;
+        True(provider is not null);
+        True(ReferenceEquals(vocabulary, provider!.Vocabulary));
+        Equal(3, provider!.Vocabulary.Members.Count);
         True((await adapter.DispatchAsync(new MvvmMutationRequest(Id(), MvvmMutationKind.SetProperty, 0, 1, Json("7")), default)).Succeeded);
         True((await adapter.DispatchAsync(new MvvmMutationRequest(Id(), MvvmMutationKind.ExecuteCommand, 0, 2, Json("null")), default)).Succeeded);
         MvvmBindingResult unknown = await adapter.DispatchAsync(

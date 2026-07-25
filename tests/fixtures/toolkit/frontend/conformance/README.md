@@ -15,10 +15,13 @@ consume the same files without importing a particular SDK implementation.
 - `vectors/reconnect-lifecycle.json` contains five reconnect and snapshot
   recovery scenarios.
 - `vectors/hostile-input.json` contains 28 hostile framing and limit cases.
+- `vectors/flow-projection.json` contains the two reserved Flow projection
+  mappings. They are member-ID and observable-state fixtures, not a dependency
+  on CommunityToolkit or a UI adapter.
 - `manifest.json` is the machine-readable entry point. It records suite counts
   and a SHA-256 digest and byte length for every data file.
 
-The complete corpus has 92 cases: 45 upstream protocol cases and 47 web SDK
+The complete corpus has 94 cases: 45 upstream protocol cases and 49 web SDK
 cases. A lifecycle `scenario` may contain several ordered steps; the case total
 counts scenarios, not individual steps or assertions.
 
@@ -81,3 +84,12 @@ update the upstream manifest digest, recompute every file entry sorted by
 ordinal path, and update suite counts only when cases were added or removed.
 Do not normalize the mirrored JSON: byte identity is an intentional cross-
 runtime guarantee.
+
+## HTMX vertical slice
+
+The HTMX vertical-slice fixtures are intentionally not present yet. Their
+request/response/DOM observation contract is owned jointly by the HTMX and
+template/security lanes. This corpus will add their versioned IDs only after
+that contract defines the neutral response, OOB, focus, trigger, stale,
+expiry, CSRF/origin/capability, malformed-input, cancellation, and teardown
+observations. No HTMX-specific schema is inferred here.

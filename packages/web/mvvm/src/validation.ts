@@ -291,6 +291,17 @@ function parseJson(input: string | Uint8Array, options?: Partial<ProtocolParseLi
   return new JsonReader(decodeFrame(input, limits.maxFrameBytes), limits).read();
 }
 
+/**
+ * Validates one generic JSON frame against the protocol's hard parser ceilings
+ * without requiring it to have a client- or host-message shape.
+ */
+export function validateJsonFrame(
+  input: string | Uint8Array,
+  options?: Partial<ProtocolParseLimits>,
+): void {
+  parseJson(input, options);
+}
+
 function record(value: unknown, path: string): MutableRecord {
   if (value === null || typeof value !== "object" || Array.isArray(value)) fail("expected-object", path);
   const prototype = Object.getPrototypeOf(value);

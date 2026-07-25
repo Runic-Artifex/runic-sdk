@@ -38,6 +38,12 @@ transcripts, local journals, and successful intermediate logs remain transient.
 - Stable faults are sanitized; logs and telemetry use bounded tags and never include sensitive payload values.
 - Integration packages remain independent and share one protocol major and conformance kit.
 
+Run `./eng/verify-wave-c.ps1` for the durable Wave C acceptance surface. It
+validates the mandatory 4-by-9 first-party matrix, focused executable suites,
+isolated package consumers, samples, pinned browser assets, CSP configuration,
+and browser-fixture wiring. This is G3 evidence only: the script deliberately
+does not claim the Native-AOT package-consumer requirements of G4.
+
 ## G4: Native AOT and core release candidate
 
 - Packed consumers publish and run actual executables with full trimming and Native AOT, zero owned trim/AOT warnings, deterministic cleanup, and exit code zero.
@@ -45,6 +51,15 @@ transcripts, local journals, and successful intermediate logs remain transient.
 - The core vertical matrix runs the same scenario through the framework-neutral web SDK, CommunityToolkit, and compiled HTMX.
 - Clean-clone, empty-cache, offline, package-consumer, browser, security, fuzz, stress, leak, compatibility, and performance suites pass.
 - Release evidence includes API/package approvals, AOT logs, deterministic hashes, benchmark deltas, SBOM, dependency notices, provenance, migration notes, and compatibility matrices.
+
+Run `./eng/verify-wave-d.ps1` for the cumulative G4 acceptance surface. The
+verifier executes the G3 regression gate, replays the repository from a clean
+temporary root and empty caches, runs the shared three-consumer vertical,
+publishes repository and packed-consumer Native-AOT executables, exercises the
+offline package consumer and hardening suites in bounded parallel batches, and
+applies the performance gate. It writes source-bound logs, provenance, and
+`SHA256SUMS` to the ignored `artifacts/wave-d/` directory; durable review
+artifacts live in `docs/release/wave-d/`.
 
 React, Vue, Svelte, Angular, and ReactiveUI are explicitly outside the Wave D core release-candidate gate. Their later packages may not weaken or silently revise the frozen G4 contracts.
 

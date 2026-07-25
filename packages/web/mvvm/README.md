@@ -21,6 +21,14 @@ adapter packages.
 The package has no runtime dependencies. Its exact TypeScript compiler version
 makes emitted JavaScript and declarations repeatable.
 
+## Framework-neutral projection
+
+`createMvvmProjection(client)` exposes immutable property, collection, command,
+and validation reads keyed by protocol member ID. A projection emits one state
+notification for each accepted client snapshot or atomic patch, delegates
+property writes and command execution/cancellation to `MvvmClient`, and does
+not introduce React, Vue, Svelte, Angular, or HTMX APIs.
+
 ## Package formats and namespace
 
 The package exports browser- and Node-neutral ESM plus TypeScript declarations.
@@ -46,7 +54,9 @@ CommonJS tree, and the SDK does not otherwise need a bundler.
 every frame before dispatch. `MvvmClient` owns the handshake, snapshot and
 patch state, commands, cancellation, validation state, and reconnect recovery.
 The root entry point also exports the closed protocol unions, limits, codecs,
-validators, and bounded error types used by adapters.
+validators, and bounded error types used by adapters. `validateJsonFrame`
+exposes the same bounded UTF-8/JSON reader for conformance cases that exercise
+parser ceilings without requiring a client- or host-message envelope.
 
 ```ts
 import * as WebUIToolkit from "@webuitoolkit/mvvm";

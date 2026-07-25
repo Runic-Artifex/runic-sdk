@@ -8,10 +8,10 @@
     "byteIdentical": true
   },
   "totals": {
-    "cases": 92,
+    "cases": 94,
     "upstreamProtocolCases": 45,
-    "webSdkCases": 47,
-    "integrityFiles": 50
+    "webSdkCases": 49,
+    "integrityFiles": 51
   },
   "suites": [
     {
@@ -49,6 +49,12 @@
       "file": "vectors/hostile-input.json",
       "caseProperty": "cases",
       "caseCount": 28
+    },
+    {
+      "id": "flow-projection",
+      "file": "vectors/flow-projection.json",
+      "caseProperty": "scenarios",
+      "caseCount": 2
     }
   ],
   "files": [
@@ -286,6 +292,11 @@
       "path": "vectors/command-lifecycle.json",
       "sha256": "2737bb882d11804011aac4a039ee1abb897969c7231cbd3f16ce5f6af7ef996d",
       "bytes": 6395
+    },
+    {
+      "path": "vectors/flow-projection.json",
+      "sha256": "2fd8234cd8e85e372a382dc75aaf812e0db88b4143340fc447705b368adf034f",
+      "bytes": 3066
     },
     {
       "path": "vectors/hostile-input.json",

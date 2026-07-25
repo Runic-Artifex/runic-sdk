@@ -7,6 +7,7 @@
     <PackageId>WebUIToolkit.Hosting.Build</PackageId>
     <Description>Deterministic frontend asset manifest construction for WebUIToolkit hosting.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NoWarn>$(NoWarn);NU5100</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +15,29 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="Microsoft.Build.Framework">
+      <HintPath>$(MSBuildToolsPath)/Microsoft.Build.Framework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.Build.Utilities.Core">
+      <HintPath>$(MSBuildToolsPath)/Microsoft.Build.Utilities.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="buildTransitive\WebUIToolkit.Hosting.Build.props"
+          Pack="true"
+          PackagePath="buildTransitive\" />
+    <None Include="buildTransitive\WebUIToolkit.Hosting.Build.targets"
+          Pack="true"
+          PackagePath="buildTransitive\" />
+    <None Include="$(TargetPath)"
+          Pack="true"
+          PackagePath="tasks\net10.0\$(TargetFileName)" />
+    <None Include="$(TargetDir)WebUIToolkit.Hosting.Abstractions.dll"
+          Pack="true"
+          PackagePath="tasks\net10.0\WebUIToolkit.Hosting.Abstractions.dll" />
   </ItemGroup>
 </Project>

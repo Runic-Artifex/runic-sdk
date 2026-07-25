@@ -17,6 +17,10 @@ external transport dependency and is not renamed or specified here.
   the closed host-to-client message union.
 - [`corpus/v1/manifest.json`](corpus/v1/manifest.json) declares valid, invalid,
   and semantic conformance cases with expected outcomes and reasons.
+- [`g3/first-party-consumer-matrix.json`](g3/first-party-consumer-matrix.json)
+  maps existing corpus cases to the mandatory CommunityToolkit, compiled HTMX,
+  Hosting, and Flow consumption evidence. It is not a fixture registry and does
+  not change the frozen protocol surface.
 
 The schemas intentionally have no `$id`. An owned schema domain has not yet
 been approved. Relative references are resolved from the schema files on disk.

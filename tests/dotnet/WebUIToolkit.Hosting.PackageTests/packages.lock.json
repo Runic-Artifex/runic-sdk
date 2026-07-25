@@ -6,7 +6,7 @@
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "VE3vkhYfjG1R5YXvWdVtWvGE3X/l39rChxx2e8KCph8iVd2RseB+pBTYkAt76ow+y+qJIeKvejKdgyN0GGyu6Q==",
+        "contentHash": "P++wtBzX0nXS0WftisVqbgZFsc32zPuL4/dxkz3RQFFyP3cNM+DszeYmde8GZhIDWdhHnL9Sqdj+dXHNvNVMlQ==",
         "dependencies": {
           "WebUIToolkit.Hosting.Abstractions": "1.0.0"
         }
@@ -15,16 +15,47 @@
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "eJRx++q2yOEN636huaX1pe1mCpA+XvQy+Ytq5Ko0p+FyJmxnYFJRPMM8zNksm7uvOPFxZbos6Z/8aXDMp0fgWQ=="
+        "contentHash": "gSVd8HT3TBkYKvDCd5wjBVYF/Lqb6HnqBLBr5N2Gzt7yrFnCI13t2dX4M8D4alCGyFaEfA0oJopqyfIavuNNHw=="
       },
       "WebUIToolkit.Hosting.Build": {
         "type": "Direct",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
-        "contentHash": "xFADlfoWT1K0FGiN1m26ZXxFqwmqWMc+JadmrdZ/eDCKhDUZgK55CSf84rVi9lDSUEqzu8nivina20HlXEa6eA==",
+        "contentHash": "sPvgUXRjVkuvrQlI3NSQfD/aJ3PqGiXYgpySFW7/x1mU1VjADkzwkQc1s5OpRFA8TP1MtsfBkFf7mvWoTkpAOA==",
         "dependencies": {
           "WebUIToolkit.Hosting.Abstractions": "1.0.0"
         }
+      },
+      "WebUIToolkit.Hosting.Generators": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "M49v9SHntyzBilkahsIcx/7q+3NbBFo9ykPUOh9jb1ApNiPpJ8guEn6nidkTBMmOoToUtVGeos+RqiesGwhCOA=="
+      },
+      "WebUIToolkit.Hosting.GenericHost": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "VPxZGemwspqYUa4S2laPOD4H4lHlgxtV4cqpGTzqNs6wb1Rfby5XUzTzl83IDnY7/17wDuG25B/hOt4IQm3Tng==",
+        "dependencies": {
+          "WebUIToolkit.Hosting": "1.0.0"
+        }
+      },
+      "WebUIToolkit.Hosting.WebUi": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "De+mUmztdWCiefjm9+onk7VEF44c5cb/OuGAnLD5gsXz/KtWgPU8wbteSoo4GiONowBkCYPKmaQudQDBKP81dQ==",
+        "dependencies": {
+          "WebUIToolkit.Hosting": "1.0.0",
+          "WebUIToolkit.MVVM": "1.0.0"
+        }
+      },
+      "WebUIToolkit.MVVM": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "Nu3TfVdtRfMG9F1Crx+P5x4l9q49vc1My7V7yB7mClNaRJ1LlX31JN8SmrBAROBQc18NKh5IYdXvkKBbfs7fsw=="
       }
     }
   }

@@ -12,6 +12,7 @@ import {
   readFixtureText,
   splitTopLevelArray,
   validateProtocolManifest,
+  validateFixtureIntegrity,
   validateScenarioDocument,
 } from "../dist/esm/index.js";
 
@@ -27,10 +28,10 @@ test("the fixture entry point has stable complete totals", async () => {
   assert.equal(manifest.formatVersion, 1);
   assert.equal(manifest.protocolIdentity, "webuitoolkit.mvvm/1");
   assert.deepEqual(manifest.totals, {
-    cases: 92,
+    cases: 94,
     upstreamProtocolCases: 45,
-    webSdkCases: 47,
-    integrityFiles: 50,
+    webSdkCases: 49,
+    integrityFiles: 51,
   });
   assert.deepEqual(
     manifest.suites.map(({ id, caseCount }) => [id, caseCount]),
@@ -41,6 +42,7 @@ test("the fixture entry point has stable complete totals", async () => {
       ["command-lifecycle", 6],
       ["reconnect-lifecycle", 5],
       ["hostile-input", 28],
+      ["flow-projection", 2],
     ],
   );
   assert.equal(manifest.files.length, manifest.totals.integrityFiles);
@@ -56,6 +58,16 @@ test("every registered fixture has the committed byte length and SHA-256", async
       assert.equal(digest(bytes), entry.sha256);
     });
   }
+});
+
+test("the browser-neutral integrity validator accepts committed bytes and rejects drift", async () => {
+  const manifest = await loadFixtureManifest(fixtureSource);
+  await validateFixtureIntegrity(fixtureSource, manifest);
+  const drifted = createFixtureSource(async (path) => {
+    const bytes = await readFile(new URL(path, fixtureRoot));
+    return path === "vectors/flow-projection.json" ? new Uint8Array([...bytes, 0x0a]) : bytes;
+  });
+  await assert.rejects(validateFixtureIntegrity(drifted, manifest), /integrity mismatch/u);
 });
 
 test("the web protocol corpus is a byte-identical mirror", async (t) => {
@@ -214,7 +226,7 @@ test("fixture document validators enforce identity, uniqueness, and structure", 
   );
 });
 
-test("fixture manifests require the canonical six-suite 92-case inventory", async () => {
+test("fixture manifests require the canonical seven-suite 94-case inventory", async () => {
   const canonical = await readJson(new URL("manifest.json", fixtureRoot));
   const mutations = [
     { ...structuredClone(canonical), formatVersion: 2 },

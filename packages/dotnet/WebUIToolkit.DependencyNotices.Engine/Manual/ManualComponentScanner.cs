@@ -229,6 +229,12 @@ public static class ManualComponentScanner
             return;
         }
 
+        if (!IsSafeEvidenceOrigin(origin!))
+        {
+            diagnostics.Add(InvalidConfig(source, "Evidence origin must be an opaque review identifier or a safe non-file URI."));
+            return;
+        }
+
         if (Uri.TryCreate(relativePath, UriKind.Absolute, out Uri? evidenceUri) && evidenceUri.Scheme is "http" or "https")
         {
             diagnostics.Add(new NoticeDiagnostic(
@@ -391,6 +397,26 @@ public static class ManualComponentScanner
 
         return false;
     }
+
+    private static bool IsSafeEvidenceOrigin(string origin)
+    {
+        if (Path.IsPathRooted(origin) || origin.StartsWith("//", StringComparison.Ordinal) ||
+            origin.StartsWith("\\\\", StringComparison.Ordinal) || origin.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
+            (origin.Length >= 3 && IsAsciiLetter(origin[0]) && origin[1] == ':' && (origin[2] == '/' || origin[2] == '\\')))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri) && !string.IsNullOrEmpty(uri.UserInfo))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsAsciiLetter(char value) =>
+        (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z');
 
     private static byte[] ReadBounded(string path, int maximumBytes)
     {

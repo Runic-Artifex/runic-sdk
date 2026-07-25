@@ -82,6 +82,8 @@ public sealed class WebUIToolkitApplicationBuilder
     public WebUIToolkitApplicationBuilder UseTimeProvider(TimeProvider timeProvider);
     public WebUIToolkitApplicationBuilder UseLifecycleEventSink(
         IApplicationLifecycleEventSink lifecycleEventSink);
+    public bool TryUseLifecycleEventSink(
+        IApplicationLifecycleEventSink lifecycleEventSink);
     public WebUIToolkitApplication Build();
 }
 
@@ -155,4 +157,14 @@ public sealed class DefaultExitCodePolicy : IExitCodePolicy
     public DefaultExitCodePolicy();
     public int GetExitCode(ApplicationFailure failure);
 }
+
+public sealed class ApplicationStopControllerBinding : IApplicationStopController
+{
+    public ApplicationStopControllerBinding();
+    public CancellationToken Stopping { get; }
+    public Task Completion { get; }
+    public void Bind(IApplicationStopController controller);
+    public bool RequestStop(StopReason reason);
+}
+
 ```

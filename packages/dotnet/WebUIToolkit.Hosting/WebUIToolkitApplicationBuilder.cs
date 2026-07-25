@@ -151,6 +151,25 @@ public sealed class WebUIToolkitApplicationBuilder
         return this;
     }
 
+    /// <summary>
+    /// Registers a default structured lifecycle-event sink only when the caller has
+    /// not already selected one.
+    /// </summary>
+    public bool TryUseLifecycleEventSink(
+        IApplicationLifecycleEventSink lifecycleEventSink)
+    {
+        EnsureMutable();
+        ArgumentNullException.ThrowIfNull(lifecycleEventSink);
+        if (_lifecycleEventSinkConfigured)
+        {
+            return false;
+        }
+
+        _lifecycleEventSink = lifecycleEventSink;
+        _lifecycleEventSinkConfigured = true;
+        return true;
+    }
+
     /// <summary>Freezes registrations and creates a single-use application.</summary>
     /// <exception cref="InvalidOperationException">
     /// The builder has already built an application, or no neutral host was registered.

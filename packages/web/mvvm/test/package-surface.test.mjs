@@ -28,6 +28,7 @@ test("ESM publishes the complete runtime surface", async () => {
     "CAPABILITIES",
     "FAULT_CODES",
     "MvvmClient",
+    "createMvvmProjection",
     "PROTOCOL_IDENTITY",
     "PROTOCOL_LIMITS",
     "PROTOCOL_VERSION",
@@ -45,6 +46,7 @@ test("ESM publishes the complete runtime surface", async () => {
     "stringifyHostMessage",
     "validateClientMessage",
     "validateHostMessage",
+    "validateJsonFrame",
   ]) {
     assert.ok(Object.hasOwn(esm, name), `missing public export ${name}`);
   }
@@ -52,7 +54,7 @@ test("ESM publishes the complete runtime surface", async () => {
 
 test("published declarations describe the parent SDK surface", async () => {
   const declarations = await readFile(new URL("dist/esm/index.d.ts", packageRoot), "utf8");
-  for (const moduleName of ["./protocol.js", "./validation.js", "./transport.js", "./client.js"]) {
+  for (const moduleName of ["./protocol.js", "./validation.js", "./transport.js", "./client.js", "./projection.js"]) {
     assert.match(declarations, new RegExp(`export \\* from ["']${moduleName.replace(".", "\\.")}["']`));
   }
 });

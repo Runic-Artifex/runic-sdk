@@ -169,6 +169,11 @@ public static class CommandLineParser
                 case "--output":
                 case "--artifact-name":
                 case "--artifact-version":
+                case "--nuget-lock":
+                case "--nuget-assets":
+                case "--nuget-framework":
+                case "--nuget-runtime":
+                case "--nuget-packages-root":
                 case "--sbom":
                 case "--origin":
                 case "--sha256":
@@ -223,6 +228,23 @@ public static class CommandLineParser
         string? missing = MissingRequired(command, optionValues);
         if (missing is not null) return Failure($"The {command.ToString().ToLowerInvariant()} command requires '{missing}'.");
 
+        if (command is ToolCommand.Generate or ToolCommand.Verify)
+        {
+            string[] consumerInventoryOptions = ["--nuget-lock", "--nuget-assets", "--nuget-framework", "--nuget-packages-root"];
+            int supplied = 0;
+            foreach (string option in consumerInventoryOptions)
+            {
+                if (optionValues.ContainsKey(option))
+                {
+                    supplied++;
+                }
+            }
+            if (supplied != 0 && supplied != consumerInventoryOptions.Length)
+            {
+                return Failure("NuGet consumer evidence requires --nuget-lock, --nuget-assets, --nuget-framework, and --nuget-packages-root together.");
+            }
+        }
+
         Dictionary<string, IReadOnlyList<string>> frozen = new(StringComparer.Ordinal);
         foreach ((string option, List<string> values) in optionValues) frozen.Add(option, values.AsReadOnly());
         return new ToolParseResult(new ToolInvocation(command, format, root, config, value, allowNetwork, frozen), null);
@@ -274,7 +296,8 @@ public static class CommandLineParser
         ToolCommand.NuGetScan => option is "--lock" or "--assets" or "--framework" or "--runtime" or "--packages-root",
         ToolCommand.NpmScan => option is "--lock" or "--workspace" or "--profile",
         ToolCommand.Policy => option is "--policy" or "--purl" or "--license" or "--selected-license" or "--evaluation-date" or "--evidence-digest" or "--obligation",
-        ToolCommand.Generate or ToolCommand.Verify => option is "--output" or "--artifact-name" or "--artifact-version",
+        ToolCommand.Generate or ToolCommand.Verify => option is "--output" or "--artifact-name" or "--artifact-version"
+            or "--nuget-lock" or "--nuget-assets" or "--nuget-framework" or "--nuget-runtime" or "--nuget-packages-root",
         ToolCommand.Sbom => option is "--sbom" or "--component",
         ToolCommand.Acquire => option is "--origin" or "--sha256" or "--cache" or "--allow-host" or "--allow-http" or "--max-bytes" or "--timeout-seconds",
         _ => false,

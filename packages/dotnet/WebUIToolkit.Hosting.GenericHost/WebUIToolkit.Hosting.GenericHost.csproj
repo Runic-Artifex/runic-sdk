@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.Hosting.GenericHost</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting</RootNamespace>
+    <PackageId>WebUIToolkit.Hosting.GenericHost</PackageId>
+    <Description>Generic Host and structured logging adapters for WebUIToolkit Hosting.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WebUIToolkit.Hosting\WebUIToolkit.Hosting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

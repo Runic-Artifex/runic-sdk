@@ -17,6 +17,12 @@ internal static class CSharpTextEncoder
         "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
         "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual",
         "void", "volatile", "while",
+        // Contextual keywords are escaped as well: a metadata name may be placed in a
+        // context where the parser treats one of these spellings as a keyword.
+        "add", "alias", "and", "ascending", "async", "await", "by", "descending", "dynamic", "equals",
+        "file", "from", "get", "global", "group", "init", "into", "join", "let", "managed", "nameof",
+        "nint", "not", "notnull", "nuint", "on", "or", "orderby", "partial", "record", "remove",
+        "required", "scoped", "select", "set", "unmanaged", "value", "var", "when", "where", "with", "yield",
     };
 
     internal static string EscapeIdentifier(string identifier) =>

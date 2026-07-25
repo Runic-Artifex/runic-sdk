@@ -22,6 +22,7 @@ namespace WebUIToolkit.DependencyNotices.Tool;
 
 public static class ToolApplication
 {
+    private const int MaximumNuGetEvidenceBytes = 4 * 1024 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private static readonly string[] RenderedOutputNames =
         [NoticeOutputNames.Html, NoticeOutputNames.Json, NoticeOutputNames.Manifest, NoticeOutputNames.Text];
@@ -316,6 +317,7 @@ public static class ToolApplication
         }
 
         List<DependencyNotice> dependencies = [];
+        HashSet<string> identities = new(StringComparer.Ordinal);
         try
         {
             foreach (ManualDependencyComponent component in scan.Components)
@@ -350,6 +352,14 @@ public static class ToolApplication
                     null,
                     component.IsModified,
                     component.ModificationNotice));
+                identities.Add(component.PackageUrl.CanonicalValue);
+            }
+
+            List<NoticeDiagnostic> consumerDiagnostics = [];
+            AddNuGetConsumerDependencies(invocation, sourcePaths, identities, dependencies, consumerDiagnostics);
+            if (consumerDiagnostics.Count != 0)
+            {
+                return (new NoticeRenderResult(Array.Empty<WebUIToolkit.DependencyNotices.Rendering.RenderedNoticeOutput>(), consumerDiagnostics), InventoryExitCode(consumerDiagnostics));
             }
         }
         catch (DecoderFallbackException)
@@ -376,7 +386,15 @@ public static class ToolApplication
             }
         }
 
-        string configDigest = EvidenceDigest.ComputeSha256(ReadBounded(configPath, 1_048_576));
+        List<NoticeManifestInput> manifestInputs =
+        [
+            new NoticeManifestInput(invocation.ConfigPath.Replace('\\', '/'), EvidenceDigest.ComputeSha256(ReadBounded(configPath, 1_048_576))),
+        ];
+        if (HasNuGetConsumerEvidence(invocation))
+        {
+            manifestInputs.Add(new NoticeManifestInput("nuget/packages.lock.json", EvidenceDigest.ComputeSha256(ReadBounded(invocation.GetValue("--nuget-lock")!, 32 * 1024 * 1024))));
+            manifestInputs.Add(new NoticeManifestInput("nuget/project.assets.json", EvidenceDigest.ComputeSha256(ReadBounded(invocation.GetValue("--nuget-assets")!, 32 * 1024 * 1024))));
+        }
         DependencyNoticeDocument document = new(
             DependencyNoticeRenderer.SupportedDocumentSchemaVersion,
             invocation.GetValue("--artifact-name")!,
@@ -386,12 +404,137 @@ public static class ToolApplication
             scan.Diagnostics);
         NoticeRenderOptions options = new(
             "1.0.0",
-            [new NoticeManifestInput(invocation.ConfigPath.Replace('\\', '/'), configDigest)],
+            manifestInputs,
             null,
             [invocation.ConfigPath.Replace('\\', '/')],
-            ["manual"]);
+            HasNuGetConsumerEvidence(invocation) ? ["manual", "nuget-consumer"] : ["manual"]);
         NoticeRenderResult rendered = DependencyNoticeRenderer.Render(document, options);
         return (rendered, rendered.Succeeded ? ToolExitCodes.Success : ToolExitCodes.UnexpectedFailure);
+    }
+
+    private static bool HasNuGetConsumerEvidence(ToolInvocation invocation) =>
+        invocation.GetValue("--nuget-lock") is not null;
+
+    private static void AddNuGetConsumerDependencies(
+        ToolInvocation invocation,
+        HashSet<string> sourcePaths,
+        HashSet<string> identities,
+        List<DependencyNotice> dependencies,
+        List<NoticeDiagnostic> diagnostics)
+    {
+        if (!HasNuGetConsumerEvidence(invocation))
+        {
+            return;
+        }
+
+        string lockPath = invocation.GetValue("--nuget-lock")!;
+        string assetsPath = invocation.GetValue("--nuget-assets")!;
+        string packagesRoot = Path.GetFullPath(invocation.GetValue("--nuget-packages-root")!);
+        sourcePaths.Add(Path.GetFullPath(lockPath));
+        sourcePaths.Add(Path.GetFullPath(assetsPath));
+        InventoryResult inventory = NuGetInventoryAdapter.Scan(new NuGetInventoryOptions(
+            lockPath,
+            assetsPath,
+            invocation.GetValue("--nuget-framework")!,
+            invocation.GetValue("--nuget-runtime"),
+            packagesRoot));
+        if (!inventory.Succeeded)
+        {
+            diagnostics.AddRange(inventory.Diagnostics);
+            return;
+        }
+
+        foreach (InventoryComponent component in inventory.Components)
+        {
+            string identity = component.PackageUrl.CanonicalValue;
+            if (!identities.Add(identity))
+            {
+                diagnostics.Add(new NoticeDiagnostic(
+                    NoticeDiagnosticCodes.DuplicatePackageUrl,
+                    NoticeDiagnosticSeverity.Error,
+                    "A manual component duplicates a component from the explicit locked NuGet graph.",
+                    identity,
+                    "nuget-consumer"));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(component.ObservedLicenseExpression) || component.Evidence.Count == 0)
+            {
+                diagnostics.Add(new NoticeDiagnostic(
+                    NoticeDiagnosticCodes.MissingEvidence,
+                    NoticeDiagnosticSeverity.Error,
+                    "A locked NuGet component must provide a local license expression and local evidence.",
+                    identity,
+                    component.SourcePath));
+                continue;
+            }
+
+            List<NoticeAsset> assets = [];
+            foreach (NoticeEvidence evidence in component.Evidence)
+            {
+                try
+                {
+                    string evidencePath = SafePath.ResolveContainedPath(packagesRoot, evidence.Path);
+                    byte[] bytes = ReadBounded(evidencePath, MaximumNuGetEvidenceBytes);
+                    string digest = EvidenceDigest.ComputeSha256(bytes);
+                    if (!StringComparer.Ordinal.Equals(digest, evidence.Sha256))
+                    {
+                        diagnostics.Add(new NoticeDiagnostic(
+                            NoticeDiagnosticCodes.EvidenceDigestMismatch,
+                            NoticeDiagnosticSeverity.Error,
+                            "The local NuGet evidence no longer matches its discovered SHA-256 digest.",
+                            identity,
+                            component.SourcePath));
+                        continue;
+                    }
+
+                    sourcePaths.Add(evidencePath);
+                    assets.Add(new NoticeAsset(
+                        evidence.Kind,
+                        evidence.Sha256,
+                        evidence.MediaType ?? "text/plain; charset=utf-8",
+                        StrictUtf8.GetString(bytes),
+                        string.Concat("nuget:", identity),
+                        false));
+                }
+                catch (DecoderFallbackException)
+                {
+                    diagnostics.Add(new NoticeDiagnostic(NoticeDiagnosticCodes.InvalidEvidenceEncoding, NoticeDiagnosticSeverity.Error,
+                        "NuGet evidence is not valid UTF-8 text.", identity, component.SourcePath));
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or NoticeSecurityException)
+                {
+                    diagnostics.Add(new NoticeDiagnostic(NoticeDiagnosticCodes.MissingEvidence, NoticeDiagnosticSeverity.Error,
+                        "NuGet evidence is unavailable or exceeds its byte limit.", identity, component.SourcePath));
+                }
+            }
+
+            if (assets.Count != component.Evidence.Count)
+            {
+                continue;
+            }
+
+            dependencies.Add(new DependencyNotice(
+                identity,
+                component.Name,
+                component.Version,
+                component.SourceKind switch
+                {
+                    InventorySourceKind.NuGet => DependencyEcosystem.NuGet,
+                    InventorySourceKind.Npm => DependencyEcosystem.Npm,
+                    _ => DependencyEcosystem.Generic,
+                },
+                component.Scope,
+                component.IsDirect,
+                component.ObservedLicenseExpression,
+                component.ObservedLicenseExpression,
+                null,
+                assets.AsReadOnly(),
+                Array.Empty<NoticePolicyDecision>(),
+                null,
+                false,
+                null));
+        }
     }
 
     private static async Task WriteInventoryAsync(ToolOutputFormat format, TextWriter output, InventoryResult result)
@@ -693,7 +836,7 @@ public static class ToolApplication
         await output.WriteLineAsync("  dependency-notices scan nuget --lock PATH --assets PATH --framework TFM [--runtime RID] [--packages-root PATH]").ConfigureAwait(false);
         await output.WriteLineAsync("  dependency-notices scan npm --root PATH --lock PATH [--workspace PATH] [--profile runtime|development]").ConfigureAwait(false);
         await output.WriteLineAsync("  dependency-notices policy --policy PATH --purl PURL --license SPDX --evaluation-date YYYY-MM-DD").ConfigureAwait(false);
-        await output.WriteLineAsync("  dependency-notices generate|verify --root PATH --config PATH --output PATH --artifact-name NAME").ConfigureAwait(false);
+        await output.WriteLineAsync("  dependency-notices generate|verify --root PATH --config PATH --output PATH --artifact-name NAME [--nuget-lock PATH --nuget-assets PATH --nuget-framework TFM --nuget-packages-root PATH]").ConfigureAwait(false);
         await output.WriteLineAsync("  dependency-notices sbom --sbom PATH --component PURL|NAME|VERSION").ConfigureAwait(false);
         await output.WriteLineAsync("  dependency-notices acquire --allow-network --origin URL --sha256 HEX --cache PATH --allow-host HOST").ConfigureAwait(false);
         await output.WriteLineAsync("  dependency-notices contract purl|spdx --value VALUE [--diagnostics-format human|json]").ConfigureAwait(false);

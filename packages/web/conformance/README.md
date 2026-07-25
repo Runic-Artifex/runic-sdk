@@ -55,8 +55,8 @@ The repository-owned corpus lives at `web/fixtures/conformance`:
   protocol documents;
 - `protocol/v1/valid` and `protocol/v1/invalid` contain envelope cases;
 - `protocol/v1/semantic` freezes cross-runtime behavioral expectations; and
-- `vectors` contains executable state, command, reconnect, and hostile-input
-  traces.
+- `vectors` contains executable state, command, reconnect, hostile-input, and
+  reserved Flow projection traces.
 
 Read fixture files as UTF-8 bytes and preserve manifest order. Do not parse and
 re-serialize a frame before giving it to the SDK: duplicate keys, byte limits,
@@ -87,9 +87,10 @@ trees. The test command rebuilds first and then runs every
 For a real-browser smoke, build both workspaces, serve the repository root over
 HTTP, and open `web/packages/conformance/test/browser-smoke.html`. The harness
 loads both ESM packages through an import map, fetches the committed corpus, and
-marks `#result[data-status="passed"]` with deterministic JSON. Without an
-application-specific lifecycle adapter the expected aggregate is 92 total,
-55 parser-backed passes, 0 failures, and 37 explicit skips.
+marks `#result[data-status="passed"]` only when the SDK-backed report has 94
+passes, zero failures, and zero skipped mandatory cases. It uses the same
+in-memory framed SDK runtime as the Node suite; it is not an HTMX browser
+harness.
 
 `npm pack --dry-run` can inspect the package surface; only `dist`, this README,
 and npm package metadata are included. The repository root owns workspace

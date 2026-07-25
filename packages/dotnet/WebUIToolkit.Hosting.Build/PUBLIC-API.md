@@ -53,6 +53,11 @@ public sealed class FrontendAssetManifestBuilder
         string outputRoot,
         string entryPointRelativePath,
         CancellationToken cancellationToken = default);
+    public FrontendAssetManifest BuildFromDirectory(
+        string outputRoot,
+        string entryPointRelativePath,
+        IEnumerable<string> excludedRelativePaths,
+        CancellationToken cancellationToken = default);
 }
 
 public enum FrontendAssetManifestIssueKind
@@ -81,5 +86,16 @@ public static class FrontendAssetManifestJson
 {
     public static byte[] SerializeToUtf8Bytes(IFrontendAssetManifest manifest);
     public static string Serialize(IFrontendAssetManifest manifest);
+    public static FrontendAssetManifest Deserialize(ReadOnlySpan<byte> utf8Json);
+}
+
+public sealed class GenerateFrontendAssetManifestTask : Microsoft.Build.Utilities.Task
+{
+    public string OutputDirectory { get; set; }
+    public string EntryPoint { get; set; }
+    public string ManifestPath { get; set; }
+    public bool VerifyOnly { get; set; }
+    public Microsoft.Build.Framework.ITaskItem[] Assets { get; }
+    public override bool Execute();
 }
 ```

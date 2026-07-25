@@ -23,6 +23,7 @@ internal static class AcquisitionSecurityTests
         tests.Add("acquisition diagnostics redact credentials and query", RedactsCredentialBearingOrigin);
         tests.Add("cache collision never overwrites differing bytes", CacheCollisionDoesNotOverwrite);
         tests.Add("concurrent cache writers converge atomically", ConcurrentCacheWritersConverge);
+        tests.Add("cache rejects a linked ancestor", CacheRejectsLinkedAncestor);
         tests.Add("concurrent origin-index writers leave one complete document", ConcurrentIndexWritersRemainAtomic);
         tests.Add("origin index rejects one origin mapped to different digests", OriginIndexRejectsDigestCollision);
     }
@@ -133,19 +134,40 @@ internal static class AcquisitionSecurityTests
         {
             byte[] bytes = Encoding.UTF8.GetBytes(new string('x', 65_537));
             string digest = Convert.ToHexStringLower(SHA256.HashData(bytes));
-            ContentAddressedEvidenceStore store = new(root);
-            Task<CacheCommitResult>[] writers = Enumerable.Range(0, 16).Select(_ => Task.Run(async () =>
+            ContentAddressedEvidenceStore[] stores = Enumerable.Range(0, 16)
+                .Select(_ => new ContentAddressedEvidenceStore(root))
+                .ToArray();
+            Task<CacheCommitResult>[] writers = stores.Select(store => Task.Run(async () =>
             {
                 await using MemoryStream stream = new(bytes, writable: false);
                 return await store.CommitAsync(stream, digest, 1_000_000).ConfigureAwait(false);
             })).ToArray();
 
             CacheCommitResult[] results = await Task.WhenAll(writers).ConfigureAwait(false);
-            Assert.True(results.All(result => result.Path == store.GetPath(digest)));
+            Assert.True(results.All(result => result.Path == stores[0].GetPath(digest)));
             Assert.Equal(1, results.Count(result => !result.WasAlreadyCached));
-            Assert.True(File.ReadAllBytes(store.GetPath(digest)).SequenceEqual(bytes));
+            Assert.True(File.ReadAllBytes(stores[0].GetPath(digest)).SequenceEqual(bytes));
             Assert.False(Directory.EnumerateFiles(Path.Combine(root, "sha256"), ".tmp-*").Any(), "Temporary cache files must be cleaned up.");
         }).ConfigureAwait(false);
+    }
+
+    private static void CacheRejectsLinkedAncestor()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        TestFiles.WithTemporaryDirectory(root =>
+        {
+            string actual = Path.Combine(root, "actual");
+            string link = Path.Combine(root, "linked");
+            Directory.CreateDirectory(actual);
+            Directory.CreateSymbolicLink(link, actual);
+            AcquisitionException exception = Assert.Throws<AcquisitionException>(
+                () => _ = new ContentAddressedEvidenceStore(Path.Combine(link, "cache")));
+            Assert.Equal("WUTNOTICE7002", exception.Code);
+        });
     }
 
     private static async ValueTask ConcurrentIndexWritersRemainAtomic()

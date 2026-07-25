@@ -1,5 +1,15 @@
 # WebUIToolkit.Hosting.Build
 
+The package contains both the deterministic in-process manifest kernel and executable
+`buildTransitive` assets. Set `WebUIToolkitGenerateFrontendAssets=true`,
+`WebUIToolkitFrontendOutputDirectory`, and `WebUIToolkitFrontendEntryPoint` to run the
+task. `WebUIToolkitFrontendAssetMode` supports `Directory`, `Copy`, and `Embed`.
+
+An explicit local frontend command may be supplied through
+`WebUIToolkitFrontendBuildCommand`; the package never acquires tools or network content.
+Set `WebUIToolkitVerifyFrontendManifest=true` to fail with `WUTHOST0006` when committed
+manifest bytes are missing or stale.
+
 Wave B provides a dependency-neutral, deterministic frontend asset manifest kernel.
 The package targets .NET 10, references only `WebUIToolkit.Hosting.Abstractions`, and
 does not invoke a package manager, load a browser runtime, or depend on MSBuild or

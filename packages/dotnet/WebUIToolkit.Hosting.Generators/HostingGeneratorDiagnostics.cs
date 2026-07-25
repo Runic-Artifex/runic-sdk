@@ -184,10 +184,7 @@ public static class HostingGeneratorDiagnostics
     /// <exception cref="ArgumentNullException"><paramref name="id"/> is <see langword="null"/>.</exception>
     public static HostingGeneratorDiagnosticDescriptor? Find(string id)
     {
-        if (id is null)
-        {
-            throw new ArgumentNullException(nameof(id));
-        }
+        ArgumentNullException.ThrowIfNull(id);
 
         for (var index = 0; index < All.Count; index++)
         {

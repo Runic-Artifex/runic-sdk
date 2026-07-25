@@ -1,9 +1,13 @@
 # WebUIToolkit.Hosting.Generators
 
-Wave B freezes the dependency-neutral contract for later hosting registration
-generation. The project targets `$(WebUIToolkitGeneratorTargetFramework)`
-(`netstandard2.0`), uses only the BCL, and is intentionally not packable until a real
-incremental generator and its consumer tests exist.
+The package ships both the registration attribute/diagnostic vocabulary and a Roslyn
+incremental analyzer. Add assembly-level `WebUIToolkitHostingRegistration` attributes
+for closed service and implementation types. The generator emits ordinally sorted
+closed factories plus serializer type metadata without reflection or runtime discovery.
+
+Diagnostics `WUTHOST0001`–`WUTHOST0007` cover UI adapter/root/entry-point cardinality,
+duplicate command or launch tokens, inaccessible factories, AOT reflection fallback,
+and async lifecycle callbacks that cannot observe cancellation.
 
 `HostingGeneratorContract.Version` identifies the descriptor semantics.
 `HostingRegistrationDescriptor` represents validated registrations with canonical
@@ -13,16 +17,7 @@ method. Descriptors deliberately exclude absolute paths and discovery order so t
 same semantic input has the same order on every machine.
 
 `HostingGeneratorDiagnostics` reserves `WUTHOST0001`–`WUTHOST0007` with stable
-severity, message format, and remediation metadata. These descriptors do not expose
-Roslyn types; a later analyzer package can translate them to its native diagnostics.
-
-## Deferred implementation
-
-- No Roslyn package, incremental generator, analyzer, or generated source is present.
-- No reflection or assembly scanning discovers registrations.
-- No MSBuild integration or file-writing task is present. Frontend manifest creation
-  remains owned by `WebUIToolkit.Hosting.Build`.
-- Generator packaging under `analyzers/dotnet/cs`, snapshot tests, incremental-update
-  tests, consumer generation tests, and diagnostic locations remain a later tranche.
-- Concrete MVVM, WebUi, command-line, and external `cs-webui` adapter registrations
-  remain Wave C concerns and are represented only by dependency-neutral metadata.
+severity, message format, and remediation metadata. The package carries the generated
+attribute vocabulary as a normal compile asset and the same assembly under
+`analyzers/dotnet/cs`; no runtime scanning is used. It targets the repository's exact
+.NET 10 SDK/compiler contract.

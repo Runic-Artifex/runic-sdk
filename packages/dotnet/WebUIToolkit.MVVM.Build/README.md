@@ -80,6 +80,39 @@ delegates accepted operations to caller-supplied callbacks. It is not yet a gene
 and generated JSON metadata remain responsibilities of consumer glue or a future
 symbol-aware host.
 
+`WebUIToolkit.MVVM.Build.Symbols.GeneratedMemberContractCompiler` is the narrow
+symbol-aware hook used by the Wave C CommunityToolkit proof. It reads only compiled
+PE metadata through `PEReader`/`MetadataReader`; it does not load the producer
+assembly, inspect generated source, or probe `obj`. Given public generated property
+and command requirements, it emits a deterministic direct-access adapter source and
+manifest. Metadata-derived C# type/member spellings are accepted only when they can
+be emitted safely, and manifests use the platform JSON writer so control characters
+remain escaped.
+
+`PostGeneratorSemanticCompiler` is the versioned successor handoff for build-only
+framework adapters. Schema identity
+`webuitoolkit.mvvm.post-generator-semantics/1` accepts normalized capability flags,
+reference PEs, and member requirements after framework source generation has
+completed. It verifies the public compiled ViewModel surface and emits:
+
+- strongly typed property get/set accessors;
+- synchronous and task-returning command accessors with optional exact parameter
+  types, `CanExecute`, cancellation, `IsRunning`, and `CanBeCanceled`;
+- direct `HasErrors` and per-property `GetErrors` access through a declared
+  validation contract; and
+- a deterministic list of exact
+  `System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>` obligations for the
+  consuming adapter's source-generated serializer context.
+
+The adapter identity, version, capability set, reference enumeration, and member
+enumeration are normalized before fingerprinting. Paths, reference order, assembly
+MVIDs, culture, timestamps, and machine state are excluded from the artifacts.
+Generated accessors never use `object` or `dynamic` as a type fallback. Reference
+assemblies are opened only as bounded compiler inputs through `PEReader`; the hook
+does not perform runtime reflection discovery. A framework adapter can invoke this
+public API from its own post-compile build task, so no framework-specific dependency
+or command-line mode is needed in this package.
+
 ## Diagnostics
 
 All compiler diagnostics have stable `WUTMVVM` identifiers. Broad groups are:
@@ -87,6 +120,9 @@ All compiler diagnostics have stable `WUTMVVM` identifiers. Broad groups are:
 - `WUTMVVM0001`-`WUTMVVM0003`: source, token, or diagnostic-flood limits.
 - `WUTMVVM1001`-`WUTMVVM1006`: lexical and grammar errors.
 - `WUTMVVM2001`-`WUTMVVM2013`: protocol and semantic-model errors.
+- `WUTMVVM2014`-`WUTMVVM2018`: generated-member assembly, type, member,
+  accessibility/type-compatibility, and ambiguity diagnostics.
+- `WUTMVVM2019`: unsupported post-generator semantic contract version.
 - `WUTMVVM0901`: the configured build-time compiler host could not be found.
 
 Compiler spans use zero-based UTF-16 offsets and line/column positions with an

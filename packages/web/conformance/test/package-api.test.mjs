@@ -9,6 +9,7 @@ const expectedRuntimeExports = [
   "createFetchFixtureSource",
   "createFixtureSource",
   "createReport",
+  "createSdkConformanceRuntime",
   "joinFixturePath",
   "loadFixtureJson",
   "loadFixtureManifest",
@@ -20,6 +21,7 @@ const expectedRuntimeExports = [
   "runScenarioCorpus",
   "runSemanticCorpus",
   "splitTopLevelArray",
+  "validateFixtureIntegrity",
   "validateProtocolManifest",
   "validateScenarioDocument",
 ];
@@ -45,7 +47,7 @@ test("package metadata points exports and types at emitted public roots", async 
 });
 
 test("browser ESM artifacts contain no Node runtime dependencies or globals", async () => {
-  for (const file of ["index.js", "fixtures.js", "runner.js", "types.js"]) {
+  for (const file of ["index.js", "fixtures.js", "runner.js", "sdk-runtime.js", "types.js"]) {
     const source = await readFile(new URL(`dist/esm/${file}`, packageRoot), "utf8");
     assert.doesNotMatch(source, /(?:from|import\s*)[ (]*["']node:/u, file);
     assert.doesNotMatch(source, /\b(?:process|Buffer|__dirname|__filename)\b/u, file);

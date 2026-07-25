@@ -90,6 +90,18 @@ public static class BindingDiagnosticIds
     public const string InvalidMemberName = "WUTMVVM2012";
     /// <summary>A contract identity is duplicated.</summary>
     public const string DuplicateContract = "WUTMVVM2013";
+    /// <summary>The requested generated-member assembly was not found.</summary>
+    public const string GeneratedMemberAssemblyNotFound = "WUTMVVM2014";
+    /// <summary>The requested generated-member type was not found.</summary>
+    public const string GeneratedMemberTypeNotFound = "WUTMVVM2015";
+    /// <summary>A required generated member was not found.</summary>
+    public const string GeneratedMemberMissing = "WUTMVVM2016";
+    /// <summary>A generated member cannot be directly accessed with the requested type.</summary>
+    public const string GeneratedMemberInaccessibleOrIncompatible = "WUTMVVM2017";
+    /// <summary>A generated member is ambiguous or was requested more than once.</summary>
+    public const string GeneratedMemberAmbiguousOrDuplicate = "WUTMVVM2018";
+    /// <summary>The requested post-generator semantic contract version is unsupported.</summary>
+    public const string PostGeneratorSemanticContractUnsupported = "WUTMVVM2019";
 }
 
 internal sealed class BindingDiagnosticBag(BindingCompilerLimits limits)

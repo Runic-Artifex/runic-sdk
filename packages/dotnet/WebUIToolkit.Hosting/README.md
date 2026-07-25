@@ -128,22 +128,23 @@ contracts; runtime asset serving remains an adapter responsibility.
 |---|---|---|
 | `WebUIToolkit.Hosting.Abstractions` | .NET BCL only | Frozen contracts and immutable data |
 | `WebUIToolkit.Hosting` | `WebUIToolkit.Hosting.Abstractions` | Composition, routing, validation, lifecycle, events |
+| `WebUIToolkit.Hosting.GenericHost` | `WebUIToolkit.Hosting`, Microsoft.AspNetCore.App shared framework | Generic Host lifetime bridge and structured logging sink |
 | `WebUIToolkit.Hosting.Build` | `WebUIToolkit.Hosting.Abstractions` | Deterministic manifest construction; no runtime-project dependency |
 | `WebUIToolkit.Hosting.Generators` | .NET BCL only | Non-packable dependency-neutral generation contract/diagnostic model; no runtime-project dependency |
 
 All projects target a repository-selected framework. Shipping-project lockfiles also
 record the SDK-supplied ILLink build tooling; it is not a runtime package dependency.
-Normal lockfiles are portable and RID-free. No package in this Wave B kernel references MVVM,
+Normal lockfiles are portable and RID-free. The core kernel does not reference MVVM,
 CommandLine, Microsoft.Extensions Hosting, a native runtime, or external lowercase
-`cs-webui`.
+`cs-webui`; framework integrations remain in inward-depending adapter packages.
 
-## Wave C deferrals
+## Wave C adapters
 
-Wave C owns the Generic Host bridge, concrete MVVM/root-session integration, concrete
-WebUi/browser and external `cs-webui` adapters, concrete CommandLine parser/runner
-adapter, runtime asset provider/server, and structured logging adapter. Those packages
-must depend inward on these contracts and preserve the frozen classification,
-validation, event, failure-precedence, timeout, and teardown behavior.
+`WebUIToolkit.Hosting.GenericHost` owns the Generic Host lifetime bridge and structured
+logging sink. The other Wave C packages own the concrete MVVM/root-session, WebUi/browser,
+CommandLine parser/runner, and runtime asset integrations. Every adapter depends inward
+on this kernel and preserves its frozen classification, validation, event,
+failure-precedence, timeout, and teardown behavior.
 
 `SessionCloseTimeout` remains reserved for the root-session adapter. This kernel does
 not load native UI or frontend assets for command-only execution because it has no

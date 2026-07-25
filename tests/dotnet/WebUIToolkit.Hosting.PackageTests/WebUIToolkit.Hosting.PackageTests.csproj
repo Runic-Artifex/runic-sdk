@@ -4,13 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(MSBuildThisFileDirectory)..\..\.packages\hosting-wave-b</RestoreAdditionalProjectSources>
+    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(MSBuildThisFileDirectory)..\..\.packages\hosting-wave-c</RestoreAdditionalProjectSources>
     <NoWarn>$(NoWarn);CA1812;CA1861</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="WebUIToolkit.Hosting" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.Hosting.GenericHost" Version="1.0.0" />
     <PackageReference Include="WebUIToolkit.Hosting.Abstractions" Version="1.0.0" />
     <PackageReference Include="WebUIToolkit.Hosting.Build" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.Hosting.Generators" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.Hosting.WebUi" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.MVVM" Version="1.0.0" />
   </ItemGroup>
 </Project>

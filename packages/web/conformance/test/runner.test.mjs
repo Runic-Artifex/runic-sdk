@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   CONFORMANCE_FORMAT,
+  createSdkConformanceRuntime,
   createFixtureSource,
   createReport,
   runConformance,
@@ -15,10 +16,6 @@ import {
 
 const fixtureRoot = new URL("../../../fixtures/conformance/", import.meta.url);
 const source = createFixtureSource((path) => readFile(new URL(path, fixtureRoot)));
-
-function createBrowserRuntime() {
-  return Object.freeze({ name: "browser-like" });
-}
 
 function createSemanticRuntime(log = []) {
   return Object.freeze({
@@ -70,9 +67,9 @@ test("eachItem protocol cases validate every item and reject empty collections",
   ]);
 });
 
-test("SDK-backed facets execute and unavailable lifecycle facets are explicit skips", async () => {
+test("the SDK runtime executes every state, command, reconnect, semantic, and hostile facet", async () => {
   const log = [];
-  const runtime = createBrowserRuntime();
+  const runtime = createSdkConformanceRuntime();
   const [semantic, state, command, reconnect, hostile] = await Promise.all([
     runSemanticCorpus(source, undefined, undefined, createSemanticRuntime(log)),
     runScenarioCorpus(source, "vectors/state-lifecycle.json", runtime),
@@ -86,44 +83,35 @@ test("SDK-backed facets execute and unavailable lifecycle facets are explicit sk
     [12, 8, 6, 5, 28],
   );
   assert.ok(semantic.every(({ status }) => status === "passed"));
-  assert.ok([...state, ...command, ...reconnect].every(({ status }) => status === "skipped"));
-  assert.equal(hostile.filter(({ status }) => status === "passed").length, 22);
-  assert.equal(hostile.filter(({ status }) => status === "skipped").length, 6);
+  assert.ok([...state, ...command, ...reconnect].every(({ status }) => status === "passed"));
+  assert.equal(hostile.filter(({ status }) => status === "passed").length, 28);
+  assert.equal(hostile.filter(({ status }) => status === "skipped").length, 0);
   assert.equal(hostile.filter(({ status }) => status === "failed").length, 0);
   assert.equal(log.filter((entry) => entry.startsWith("semantic:")).length, 12);
-  assert.deepEqual(hostile.filter(({ status }) => status === "skipped").map(({ id }) => id), [
-    "depth-at-ceiling",
-    "frame-at-byte-ceiling",
-    "general-string-at-byte-ceiling",
-    "property-name-at-byte-ceiling",
-    "object-properties-at-ceiling",
-    "array-items-at-ceiling",
-  ]);
 });
 
-test("the aggregate browser-like report retains all 92 cases without claiming unavailable facets", async () => {
-  const report = await runConformance({ source, runtime: createBrowserRuntime() });
+test("the aggregate SDK report has no skipped mandatory cases", async () => {
+  const report = await runConformance({ source, runtime: createSdkConformanceRuntime() });
   assert.equal(report.format, CONFORMANCE_FORMAT);
   assert.equal(report.protocolIdentity, "webuitoolkit.mvvm/1");
-  assert.equal(report.runtime, "browser-like");
-  assert.equal(report.success, false);
-  assert.deepEqual(report.totals, { total: 92, passed: 55, failed: 0, skipped: 37 });
-  assert.equal(new Set(report.cases.map(({ id, suite }) => `${suite}:${id}`)).size, 92);
+  assert.equal(report.runtime, "webuitoolkit-mvvm-sdk");
+  assert.equal(report.success, true);
+  assert.deepEqual(report.totals, { total: 94, passed: 94, failed: 0, skipped: 0 });
+  assert.equal(new Set(report.cases.map(({ id, suite }) => `${suite}:${id}`)).size, 94);
   assert.equal(report.cases[0].id, "client-handshake");
-  assert.equal(report.cases.at(-1).id, "prototype-pollution-payload-key");
+  assert.equal(report.cases.at(-1).id, "flow.projection.communitytoolkit.submit-command.v1");
 });
 
 test("repeat runs produce byte-identical deterministic reports", async () => {
-  const first = await runConformance({ source, runtime: createBrowserRuntime() });
-  const second = await runConformance({ source, runtime: createBrowserRuntime() });
+  const first = await runConformance({ source, runtime: createSdkConformanceRuntime() });
+  const second = await runConformance({ source, runtime: createSdkConformanceRuntime() });
   assert.equal(JSON.stringify(first), JSON.stringify(second));
 });
 
-test("missing runtime facets are explicit skips, never silent passes", async () => {
+test("the aggregate runner defaults to the SDK runtime", async () => {
   const report = await runConformance({ source });
-  assert.deepEqual(report.totals, { total: 92, passed: 55, failed: 0, skipped: 37 });
-  assert.equal(report.success, false);
-  assert.ok(report.cases.filter(({ status }) => status === "skipped").every(({ diagnostics }) => diagnostics.length === 1));
+  assert.deepEqual(report.totals, { total: 94, passed: 94, failed: 0, skipped: 0 });
+  assert.equal(report.success, true);
 });
 
 test("hostile generators reject excessive allocation requests deterministically", async () => {

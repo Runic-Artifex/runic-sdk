@@ -1,0 +1,41 @@
+<Project>
+  <UsingTask TaskName="WebUIToolkit.Hosting.Build.GenerateFrontendAssetManifestTask"
+             AssemblyFile="$(MSBuildThisFileDirectory)..\tasks\net10.0\WebUIToolkit.Hosting.Build.dll" />
+
+  <Target Name="WebUIToolkitGenerateFrontendAssetManifest"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(WebUIToolkitGenerateFrontendAssets)' == 'true'">
+    <Error Condition="'$(WebUIToolkitFrontendOutputDirectory)' == ''"
+           Code="WUTHOST0006"
+           Text="WebUIToolkitFrontendOutputDirectory must be set when frontend asset generation is enabled." />
+    <Error Condition="'$(WebUIToolkitFrontendEntryPoint)' == ''"
+           Code="WUTHOST0006"
+           Text="WebUIToolkitFrontendEntryPoint must select exactly one entry point." />
+    <Error Condition="'$(WebUIToolkitFrontendAssetMode)' != 'Directory' and '$(WebUIToolkitFrontendAssetMode)' != 'Copy' and '$(WebUIToolkitFrontendAssetMode)' != 'Embed'"
+           Code="WUTHOST0006"
+           Text="WebUIToolkitFrontendAssetMode must be Directory, Copy, or Embed." />
+
+    <Exec Condition="'$(WebUIToolkitFrontendBuildCommand)' != ''"
+          Command="$(WebUIToolkitFrontendBuildCommand)"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+
+    <GenerateFrontendAssetManifestTask
+        OutputDirectory="$(WebUIToolkitFrontendOutputDirectory)"
+        EntryPoint="$(WebUIToolkitFrontendEntryPoint)"
+        ManifestPath="$(WebUIToolkitFrontendManifestPath)"
+        VerifyOnly="$(WebUIToolkitVerifyFrontendManifest)">
+      <Output TaskParameter="Assets" ItemName="_WebUIToolkitFrontendAsset" />
+    </GenerateFrontendAssetManifestTask>
+
+    <ItemGroup Condition="'$(WebUIToolkitFrontendAssetMode)' == 'Copy'">
+      <Content Include="@(_WebUIToolkitFrontendAsset)"
+               Link="wwwroot\%(_WebUIToolkitFrontendAsset.RelativePath)"
+               CopyToOutputDirectory="PreserveNewest"
+               CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(WebUIToolkitFrontendAssetMode)' == 'Embed'">
+      <EmbeddedResource Include="@(_WebUIToolkitFrontendAsset)"
+                        LogicalName="WebUIToolkit.Frontend.%(_WebUIToolkitFrontendAsset.RelativePath)" />
+    </ItemGroup>
+  </Target>
+</Project>

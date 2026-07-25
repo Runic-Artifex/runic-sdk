@@ -225,6 +225,12 @@ internal static class PackageInspection
             Assert(targetsText.Contains(argument, StringComparison.Ordinal),
                 $"Build package '{packageId}' does not pass required CLI argument '{argument}'.");
         }
+        string[] consumerEvidenceArguments = ["--nuget-lock", "--nuget-assets", "--nuget-framework", "--nuget-packages-root"];
+        foreach (string argument in consumerEvidenceArguments)
+        {
+            Assert(targetsText.Contains(argument, StringComparison.Ordinal),
+                $"Build package '{packageId}' does not preserve the explicit NuGet consumer-evidence argument '{argument}'.");
+        }
         Assert(!command.Contains("acquire", StringComparison.OrdinalIgnoreCase)
                && !targetsText.Contains("--allow-network", StringComparison.OrdinalIgnoreCase),
             $"Build package '{packageId}' must not expose acquisition through MSBuild.");

@@ -6,6 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using WebUIToolkit.Hosting;
 using WebUIToolkit.Hosting.Build;
+using WebUIToolkit.Hosting.Generators;
+using WebUIToolkit.Hosting.WebUi;
+
+[assembly: WebUIToolkitHostingRegistration(
+    HostingRegistrationKind.SerializerContext,
+    typeof(object),
+    typeof(PackageConsumerScenarios),
+    Key = "package-consumer")]
 
 return await PackageConsumerScenarios.RunAsync().ConfigureAwait(false);
 
@@ -16,10 +24,12 @@ internal static class PackageConsumerScenarios
         ("package classifier is deterministic", ClassifierIsDeterministicAsync),
         ("package routing selects one fake runner", RoutingSelectsOneRunnerAsync),
         ("package builder composes and runs fakes", BuilderComposesAndRunsAsync),
+        ("package Generic Host adapter composes", GenericHostAdapterComposesAsync),
         ("package lifecycle events remain sanitized", EventsRemainSanitizedAsync),
         ("package asset contracts work with a fake provider", AssetContractsWorkAsync),
         ("package build kernel emits a deterministic manifest", BuildKernelIsDeterministicAsync),
         ("package browser contracts work with a fake host", BrowserContractsWorkAsync),
+        ("package WebUi endpoint selects the manifest entry point", WebUiEndpointWorksAsync),
     ];
 
     internal static async Task<int> RunAsync()
@@ -133,6 +143,19 @@ internal static class PackageConsumerScenarios
             "builder event sink must receive completion");
     }
 
+    private static async Task GenericHostAdapterComposesAsync()
+    {
+        var builder = new GenericHostWebUIToolkitApplicationBuilder();
+        builder.DisableLifecycleLogging();
+        builder.Application.AddModeRunner(new FakeModeRunner(LaunchKind.UserInterface));
+
+        await using WebUIToolkitApplication application = builder.Build();
+        ApplicationRunResult result = await application.RunAsync(CancellationToken.None)
+            .ConfigureAwait(false);
+
+        Assert(result.IsSuccess, "Generic Host adapter application must succeed");
+    }
+
     private static async Task AssetContractsWorkAsync()
     {
         const string digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -184,6 +207,25 @@ internal static class PackageConsumerScenarios
         AssertEqual(first, second, "canonical manifest JSON");
         Assert(first.Contains("webuitoolkit.frontend-assets/1", StringComparison.Ordinal), "manifest version");
         return Task.CompletedTask;
+    }
+
+    private static async Task WebUiEndpointWorksAsync()
+    {
+        const string digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        var entryPoint = new FrontendAsset("index.html", "text/html", 5, digest, isEntryPoint: true);
+        var provider = new FakeAssetProvider(new FakeAssetManifest(
+            FrontendAssetManifest.CurrentVersion,
+            [entryPoint]));
+        var endpoint = new FrontendAssetEndpoint(provider, new Uri("app://package-consumer/"));
+
+        AssertEqual(
+            "app://package-consumer/index.html",
+            endpoint.EntryPoint.AbsoluteUri,
+            "WebUi entry point");
+        await using FrontendAssetResponse response = await endpoint
+            .OpenAsync(new FrontendAssetRequest("index.html"), CancellationToken.None)
+            .ConfigureAwait(false);
+        AssertEqual(FrontendContentEncoding.Identity, response.ContentEncoding, "content encoding");
     }
 
     private static void Assert(bool condition, string message)

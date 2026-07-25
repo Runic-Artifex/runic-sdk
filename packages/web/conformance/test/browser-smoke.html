@@ -11,7 +11,7 @@
   <pre id="result">running</pre>
   <script type="module">
     import * as WebUIToolkit from "../../mvvm/dist/esm/index.js";
-    import { createFetchFixtureSource, runConformance } from "../dist/esm/index.js";
+    import { createFetchFixtureSource, createSdkConformanceRuntime, loadFixtureManifest, runConformance } from "../dist/esm/index.js";
 
     const result = document.querySelector("#result");
     try {
@@ -19,7 +19,12 @@
         '{"v":1,"kind":"setProperty","session":"00000000-0000-4000-8000-000000000004","view":"00000000-0000-4000-8000-000000000002","request":"00000000-0000-4000-8000-000000000005","baseRevision":-0,"capability":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","payload":{"member":1,"value":null}}',
       );
       const source = createFetchFixtureSource("../../../fixtures/conformance/");
-      const report = await runConformance({ source });
+      const manifest = await loadFixtureManifest(source);
+      const expectedTotal = manifest.suites.reduce((total, suite) => total + suite.caseCount, 0);
+      const report = await runConformance({ source, runtime: createSdkConformanceRuntime() });
+      if (!report.success || report.totals.failed !== 0 || report.totals.skipped !== 0 || report.totals.total !== expectedTotal) {
+        throw new Error("The SDK conformance report did not pass every mandatory fixture.");
+      }
       result.textContent = JSON.stringify({
         protocolIdentity: WebUIToolkit.PROTOCOL_IDENTITY,
         normalizedRevision: parsed.baseRevision.toString(),
