@@ -1,0 +1,63 @@
+#nullable enable
+namespace WebUIToolkit.CommandLine.Hosting
+{
+    public enum EmptyInputFallback
+    {
+        Invalid = 0,
+        UserInterface = 1,
+    }
+    public enum HostedCommandLineDecisionKind
+    {
+        Invocation = 0,
+        Help = 1,
+        Version = 2,
+        Invalid = 3,
+        UserInterface = 4,
+    }
+    public sealed class HostedCommandLineLaunchInput
+    {
+        public HostedCommandLineLaunchInput(System.Collections.Generic.IReadOnlyList<string> arguments, string? outputEnvironmentValue = null, WebUIToolkit.CommandLine.Hosting.EmptyInputFallback emptyInputFallback = WebUIToolkit.CommandLine.Hosting.EmptyInputFallback.Invalid, WebUIToolkit.CommandLine.CommandOutputMode defaultOutputMode = WebUIToolkit.CommandLine.CommandOutputMode.Human);
+        public System.Collections.Generic.IReadOnlyList<string> Arguments { get; }
+        public WebUIToolkit.CommandLine.CommandOutputMode DefaultOutputMode { get; }
+        public WebUIToolkit.CommandLine.Hosting.EmptyInputFallback EmptyInputFallback { get; }
+        public string? OutputEnvironmentValue { get; }
+    }
+    public sealed class HostedCommandLineDecision
+    {
+        public HostedCommandLineDecision(WebUIToolkit.CommandLine.Hosting.HostedCommandLineDecisionKind kind, WebUIToolkit.CommandLine.Hosting.HostedCommandLineLaunchInput input, WebUIToolkit.CommandLine.CommandPath? path = null, System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic>? diagnostics = null, WebUIToolkit.CommandLine.CommandOutputClassification? outputClassification = null);
+        public System.Collections.Generic.IReadOnlyList<string> Arguments { get; }
+        public bool CanExecute { get; }
+        public string? CommandName { get; }
+        public System.Collections.Generic.IReadOnlyList<WebUIToolkit.CommandLine.CommandDiagnostic> Diagnostics { get; }
+        public WebUIToolkit.CommandLine.Hosting.HostedCommandLineDecisionKind Kind { get; }
+        public WebUIToolkit.CommandLine.CommandOutputClassification? OutputClassification { get; }
+        public WebUIToolkit.CommandLine.CommandPath? Path { get; }
+    }
+    public sealed class HostedCommandLineExecutionInput
+    {
+        public HostedCommandLineExecutionInput(WebUIToolkit.CommandLine.Hosting.HostedCommandLineDecision decision, WebUIToolkit.CommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, string correlationId, WebUIToolkit.CommandLine.ICommandOutcomeSink outcomeSink);
+        public System.Globalization.CultureInfo Culture { get; }
+        public WebUIToolkit.CommandLine.Hosting.HostedCommandLineDecision Decision { get; }
+        public WebUIToolkit.CommandLine.ICommandConsole Console { get; }
+        public string CorrelationId { get; }
+        public WebUIToolkit.CommandLine.ICommandOutcomeSink OutcomeSink { get; }
+    }
+    public sealed class HostedCommandLineExecutionResult
+    {
+        public WebUIToolkit.CommandLine.CommandExitCategory ExitCategory { get; }
+        public int ExitCode { get; }
+        public WebUIToolkit.CommandLine.CommandFault? Fault { get; }
+        public bool IsSuccess { get; }
+    }
+    public interface IHostedCommandLineAdapter
+    {
+        WebUIToolkit.CommandLine.Hosting.HostedCommandLineDecision Classify(WebUIToolkit.CommandLine.Hosting.HostedCommandLineLaunchInput input);
+        System.Threading.Tasks.ValueTask<WebUIToolkit.CommandLine.Hosting.HostedCommandLineExecutionResult> ExecuteAsync(WebUIToolkit.CommandLine.Hosting.HostedCommandLineExecutionInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public sealed class CommandLineHostingAdapter : WebUIToolkit.CommandLine.Hosting.IHostedCommandLineAdapter
+    {
+        public CommandLineHostingAdapter(WebUIToolkit.CommandLine.CommandCatalog catalog, WebUIToolkit.CommandLine.CommandExecutor executor, WebUIToolkit.CommandLine.ICommandSyntaxAdapter? syntaxAdapter = null);
+        public WebUIToolkit.CommandLine.Hosting.HostedCommandLineDecision Classify(WebUIToolkit.CommandLine.Hosting.HostedCommandLineLaunchInput input);
+        public System.Threading.Tasks.ValueTask<WebUIToolkit.CommandLine.Hosting.HostedCommandLineExecutionResult> ExecuteAsync(WebUIToolkit.CommandLine.Hosting.HostedCommandLineExecutionInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+}

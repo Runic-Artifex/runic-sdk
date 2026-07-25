@@ -17,6 +17,8 @@
   <ItemGroup>
     <PackageReference Include="WebUIToolkit.CommandLine.Abstractions" Version="@PACKAGE_VERSION@" />
     <PackageReference Include="WebUIToolkit.CommandLine" Version="@PACKAGE_VERSION@" />
+    <PackageReference Include="WebUIToolkit.CommandLine.Hosting" Version="@PACKAGE_VERSION@" />
     <PackageReference Include="WebUIToolkit.CommandLine.Processes" Version="@PACKAGE_VERSION@" />
+    <PackageReference Include="WebUIToolkit.Hosting.Abstractions" Version="@PACKAGE_VERSION@" />
   </ItemGroup>
 </Project>

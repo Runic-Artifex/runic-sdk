@@ -7,7 +7,9 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using WebUIToolkit.CommandLine;
+using WebUIToolkit.CommandLine.Hosting;
 using WebUIToolkit.CommandLine.Processes;
+using WebUIToolkit.Hosting;
 
 namespace WebUIToolkit.CommandLine.PackageConsumer;
 
@@ -24,33 +26,47 @@ internal static class Program
                     .Produces(SmokeResultCodec.Instance))
             .Build();
 
-        ParseOutcome parse = PortableCommandSyntaxAdapter.Instance.Parse(
-            catalog,
-            ["smoke"],
-            new ParseSettings(outputEnvironmentValue: "json"));
+        var executor = new CommandExecutor(EmptyScopeFactory.Instance);
+        var adapter = new CommandLineHostingAdapter(catalog, executor);
+        HostedCommandLineDecision command = adapter.Classify(
+            new HostedCommandLineLaunchInput(["smoke"], outputEnvironmentValue: "json"));
 
-        if (parse.Kind != ParseOutcomeKind.Invocation ||
-            parse.Invocation is null ||
-            parse.Invocation.OutputClassification.Mode != CommandOutputMode.Json ||
-            parse.Invocation.OutputClassification.Source != CommandOutputModeSource.Environment)
+        if (command.Kind != HostedCommandLineDecisionKind.Invocation ||
+            command.OutputClassification is not
+                { Mode: CommandOutputMode.Json, Source: CommandOutputModeSource.Environment } ||
+            MapToLaunchKind(command.Kind) != LaunchKind.Command)
         {
             return 10;
         }
 
+        if (adapter.Classify(new HostedCommandLineLaunchInput(["--help"])).Kind != HostedCommandLineDecisionKind.Help ||
+            adapter.Classify(new HostedCommandLineLaunchInput(["--version"])).Kind != HostedCommandLineDecisionKind.Version ||
+            adapter.Classify(new HostedCommandLineLaunchInput(["unknown"])).Kind != HostedCommandLineDecisionKind.Invalid ||
+            adapter.Classify(new HostedCommandLineLaunchInput(
+                Array.Empty<string>(),
+                emptyInputFallback: EmptyInputFallback.UserInterface)).Kind != HostedCommandLineDecisionKind.UserInterface)
+        {
+            return 11;
+        }
+
         var commandConsole = new BufferCommandConsole();
-        var request = new CommandExecutionRequest(
-            parse.Invocation,
-            commandConsole,
-            CultureInfo.InvariantCulture,
-            "aot-smoke-1");
-        var executor = new CommandExecutor(EmptyScopeFactory.Instance);
-        CommandExecutionResult execution = await executor.ExecuteAsync(
-            request,
-            new CommandOutputDispatcher()).ConfigureAwait(false);
+        HostedCommandLineExecutionResult execution = await adapter.ExecuteAsync(
+            new HostedCommandLineExecutionInput(
+                command,
+                commandConsole,
+                CultureInfo.InvariantCulture,
+                "aot-smoke-1",
+                new CommandOutputDispatcher())).ConfigureAwait(false);
 
         if (!execution.IsSuccess || execution.ExitCode != CommandExitCodes.Success)
         {
             return 20;
+        }
+
+        ApplicationRunResult applicationResult = ApplicationRunResult.FromExitCode(execution.ExitCode);
+        if (!applicationResult.IsSuccess || applicationResult.ExitCode != execution.ExitCode)
+        {
+            return 21;
         }
 
         string json = commandConsole.StandardOutput;
@@ -62,6 +78,16 @@ internal static class Program
         Console.Out.Write(json);
         return 0;
     }
+
+    private static LaunchKind MapToLaunchKind(HostedCommandLineDecisionKind kind) => kind switch
+    {
+        HostedCommandLineDecisionKind.Invocation => LaunchKind.Command,
+        HostedCommandLineDecisionKind.Help => LaunchKind.Help,
+        HostedCommandLineDecisionKind.Version => LaunchKind.Version,
+        HostedCommandLineDecisionKind.Invalid => LaunchKind.Invalid,
+        HostedCommandLineDecisionKind.UserInterface => LaunchKind.UserInterface,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 
     private static bool ValidateEnvelope(string json)
     {

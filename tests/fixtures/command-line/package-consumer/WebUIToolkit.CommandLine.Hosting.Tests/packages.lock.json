@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "webuitoolkit.commandline": {
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.CommandLine.Abstractions": "[1.0.0, )"
+        }
+      },
+      "webuitoolkit.commandline.abstractions": {
+        "type": "Project"
+      },
+      "webuitoolkit.commandline.hosting": {
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.CommandLine": "[1.0.0, )",
+          "WebUIToolkit.Hosting.Abstractions": "[1.0.0, )"
+        }
+      },
+      "webuitoolkit.hosting.abstractions": {
+        "type": "Project"
+      }
+    }
+  }
+}

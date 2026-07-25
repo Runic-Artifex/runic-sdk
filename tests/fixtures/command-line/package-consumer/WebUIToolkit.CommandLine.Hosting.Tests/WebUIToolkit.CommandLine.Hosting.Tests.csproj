@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.CommandLine.Hosting.Tests</AssemblyName>
+    <RootNamespace>WebUIToolkit.CommandLine.Hosting.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WebUIToolkit.CommandLine.Hosting\WebUIToolkit.CommandLine.Hosting.csproj" />
+  </ItemGroup>
+</Project>

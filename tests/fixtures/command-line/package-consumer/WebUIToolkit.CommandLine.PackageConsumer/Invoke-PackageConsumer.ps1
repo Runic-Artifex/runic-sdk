@@ -3,8 +3,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
 
-    [ValidateSet('win-x64')]
-    [string] $RuntimeIdentifier = 'win-x64',
+    [string] $RuntimeIdentifier = [System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier,
 
     [string] $PackageVersion = '1.0.0'
 )
@@ -25,6 +24,8 @@ $aotLock = Join-Path $consumerDirectory 'obj/aot.packages.lock.json'
 $ownedProjects = @(
     (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine.Abstractions/WebUIToolkit.CommandLine.Abstractions.csproj'),
     (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine/WebUIToolkit.CommandLine.csproj'),
+    (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine.Hosting/WebUIToolkit.CommandLine.Hosting.csproj'),
+    (Join-Path $repositoryRoot 'src/WebUIToolkit.Hosting.Abstractions/WebUIToolkit.Hosting.Abstractions.csproj'),
     (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine.Processes/WebUIToolkit.CommandLine.Processes.csproj')
 )
 
@@ -98,11 +99,19 @@ try {
         '--self-contained', 'true',
         '--output', $publishDirectory,
         '-p:PublishAot=true',
+        '-p:PublishTrimmed=true',
+        '-p:TrimMode=full',
+        '-p:IlcTreatWarningsAsErrors=true',
         "-p:NuGetLockFilePath=$aotLock",
         '-p:RestoreLockedMode=false'
     )
 
-    $nativeExecutable = Join-Path $publishDirectory 'WebUIToolkit.CommandLine.PackageConsumer.exe'
+    $nativeExecutableName = if ($RuntimeIdentifier.StartsWith('win-', [StringComparison]::OrdinalIgnoreCase)) {
+        'WebUIToolkit.CommandLine.PackageConsumer.exe'
+    } else {
+        'WebUIToolkit.CommandLine.PackageConsumer'
+    }
+    $nativeExecutable = Join-Path $publishDirectory $nativeExecutableName
     if (-not (Test-Path -LiteralPath $nativeExecutable -PathType Leaf)) {
         throw "Native AOT package consumer was not produced at $nativeExecutable."
     }
@@ -124,4 +133,7 @@ try {
 }
 finally {
     $env:NUGET_PACKAGES = $previousPackageCache
+    if (Test-Path -LiteralPath $runRoot) {
+        Remove-Item -LiteralPath $runRoot -Recurse -Force
+    }
 }
