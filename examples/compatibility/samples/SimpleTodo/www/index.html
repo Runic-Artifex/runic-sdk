@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simple Todo · WebUIToolkit</title>
+  <link rel="stylesheet" href="site.css">
+  <script src="webui.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main class="card">
+    <header>
+      <p class="eyebrow">WebUIToolkit · beginner sample</p>
+      <h1>Things worth doing</h1>
+      <p class="intro">A tiny desktop MVVM app hosted by CsWebUi.</p>
+    </header>
+
+    <form id="composer" class="composer">
+      <label for="new-title">What needs doing?</label>
+      <div class="composer-row">
+        <input
+          id="new-title"
+          name="title"
+          placeholder="e.g. Review the pull request"
+          maxlength="80"
+          autocomplete="off"
+          required>
+        <button type="submit">Add task</button>
+      </div>
+      <p id="validation" class="validation" role="alert" hidden></p>
+    </form>
+
+    <ul id="tasks" class="tasks" aria-live="polite"></ul>
+    <p id="empty-state" class="empty-state" hidden>
+      Nothing left to do. Add a task when inspiration strikes.
+    </p>
+    <p id="stats" class="stats" aria-live="polite"></p>
+  </main>
+
+  <footer>State and commands live in C#. The browser renders authoritative snapshots.</footer>
+</body>
+</html>

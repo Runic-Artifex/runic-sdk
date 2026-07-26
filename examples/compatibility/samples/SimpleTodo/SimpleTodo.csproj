@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>WebUIToolkit.Samples.SimpleTodo</AssemblyName>
+    <RootNamespace>WebUIToolkit.Samples.SimpleTodo</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsWebUi" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <ProjectReference Include="../../src/WebUIToolkit.Collections/WebUIToolkit.Collections.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi/WebUIToolkit.Hosting.CsWebUi.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.CommunityToolkit/WebUIToolkit.MVVM.CommunityToolkit.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="www/**/*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+</Project>
