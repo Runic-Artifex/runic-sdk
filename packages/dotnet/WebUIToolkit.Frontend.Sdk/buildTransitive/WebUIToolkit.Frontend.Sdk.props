@@ -1,6 +1,10 @@
 <Project>
   <PropertyGroup>
     <WebUIToolkitFrontendEnabled Condition="'$(WebUIToolkitFrontendEnabled)' == ''">true</WebUIToolkitFrontendEnabled>
+    <WebUIToolkitFrontendNodeEnabled
+      Condition="'$(WebUIToolkitFrontendNodeEnabled)' == ''">true</WebUIToolkitFrontendNodeEnabled>
+    <WebUIToolkitFrontendCwhtmlEnabled
+      Condition="'$(WebUIToolkitFrontendCwhtmlEnabled)' == ''">false</WebUIToolkitFrontendCwhtmlEnabled>
     <WebUIToolkitFrontendInstall Condition="'$(WebUIToolkitFrontendInstall)' == ''">true</WebUIToolkitFrontendInstall>
     <WebUIToolkitFrontendWorkspaceRoot Condition="'$(WebUIToolkitFrontendWorkspaceRoot)' == ''">$(MSBuildProjectDirectory)</WebUIToolkitFrontendWorkspaceRoot>
     <WebUIToolkitFrontendWebRoot Condition="'$(WebUIToolkitFrontendWebRoot)' == ''">www</WebUIToolkitFrontendWebRoot>
@@ -10,5 +14,9 @@
     <WebUIToolkitFrontendContractTool Condition="'$(WebUIToolkitFrontendContractTool)' == ''">$(MSBuildThisFileDirectory)../tools/generate-contracts.mjs</WebUIToolkitFrontendContractTool>
     <WebUIToolkitFrontendContractVerifyCommand
       Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' == '' and '$(WebUIToolkitFrontendContractSource)' != ''">node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot; --verify</WebUIToolkitFrontendContractVerifyCommand>
+    <WebUIToolkitDevProject Condition="'$(WebUIToolkitDevProject)' == ''">$(MSBuildProjectFullPath)</WebUIToolkitDevProject>
+    <WebUIToolkitDevRunArguments Condition="'$(WebUIToolkitDevRunArguments)' == ''"></WebUIToolkitDevRunArguments>
+    <WebUIToolkitFrontendDevWatchTarget
+      Condition="'$(WebUIToolkitFrontendDevWatchTarget)' == '' and '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">WebUIToolkitFrontendWatchAssets</WebUIToolkitFrontendDevWatchTarget>
   </PropertyGroup>
 </Project>

@@ -54,11 +54,12 @@ dotnet build -p:WebUIToolkitBuildMode=Verification
 Release verification remains strict without turning its package feeds, caches,
 or publication checks into prerequisites for running a sample.
 
-## Frontend framework loop and planned cwhtml loop
+## Frontend and cwhtml development loop
 
 `WebUIToolkit.Frontend.Sdk` now owns frontend workspace installation, generated
 contract verification, Vite builds, the native bridge asset, manifests, and
-build/publish copying for the React, Vue, Svelte, and Angular Todo projects.
+build/publish copying for the React, Vue, Svelte, Angular, and compiled
+cwhtml/HTMX Todo projects.
 For example:
 
 ```powershell
@@ -73,10 +74,19 @@ use Vite minification and content hashing and emit `vite.manifest.json` plus
 application host and does not carry native UI requests; CsWebUi serves the
 produced local files and owns the binary MVVM channel.
 
-Native cwhtml applications still carry custom build and transport setup. Phase
-3 extends the SDK with generated HTMX plumbing and adds a coordinated
-`dotnet webuitoolkit dev` command. Its reload tiers, editor tooling, delivery
-order, and acceptance criteria are specified in the
+The `dotnet-webuitoolkit` tool discovers SDK metadata and provides one
+coordinated command for contract generation, the initial Vite/.NET build,
+asset watching, `dotnet watch`, CsWebUi startup, diagnostics, and clean
+process-tree shutdown:
+
+```powershell
+dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
+```
+
+SimpleTodo and AdvancedTodo now import shared cwhtml and frontend SDK targets;
+their npm workspace owns HTMX, Bootstrap 5.3, Font Awesome, source maps,
+minification, content hashing, and the asset manifest. They retain the current
+hand-written HTMX descriptor/render-plan registration until the next Phase 3
+generator slice. Browser overlays, true Vite HMR into the native window, and
+state-preserving cwhtml replacement also remain milestones in the
 [cwhtml development-experience plan](./cwhtml-development-experience.md).
-Until that cwhtml slice is implemented, use `dotnet run` and the repository's
-existing project-specific cwhtml targets.

@@ -9,7 +9,8 @@
   },
   "workspaces": [
     "web/packages/*",
-    "samples/Todo.Frontends/*"
+    "samples/Todo.Frontends/*",
+    "samples/Todo.Cwhtml.Frontend"
   ],
   "scripts": {
     "build": "node eng/run-workspaces.mjs build",

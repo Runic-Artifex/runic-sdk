@@ -81,22 +81,26 @@ competitive with modern web tooling. The detailed design and acceptance
 criteria live in the
 [cwhtml development-experience plan](./cwhtml-development-experience.md).
 
-- The initial `WebUIToolkit.Frontend.Sdk` now owns Node workspace
-  install/build/watch, generated-contract verification, native bridge assets,
-  source maps, production minification/hashing, manifests, and build/publish
-  output for the four framework Todo projects. Extend it to discover `.cwhtml`
-  files, import the compiler targets, and own the corresponding compiled-HTML
-  development and publish integration.
+- `WebUIToolkit.Frontend.Sdk` now owns Node workspace install/build/watch,
+  generated-contract verification, native bridge assets, source maps,
+  production minification/hashing, manifests, and build/publish output for the
+  four framework Todo projects and both cwhtml Todo projects. The cwhtml
+  projects use shared compiler targets and the same optional Vite boundary,
+  with a Node-free configuration still supported.
 - Generate HTMX actions, fields, routes, member identifiers, conversions,
   validation projection, render plans, and revision handling from typed cwhtml
   declarations instead of requiring application registration code.
-- Provide a high-level application builder and a single
-  `dotnet webuitoolkit dev` command for starting CsWebUi, cwhtml watching, Vite,
-  diagnostics, and coordinated reload.
-- Make Vite the first-class optional pipeline for TypeScript, JavaScript, CSS,
+- Provide a high-level application builder. The first
+  `dotnet webuitoolkit dev` milestone is implemented: it discovers SDK
+  configuration, generates/verifies contracts, performs the initial Vite and
+  .NET build, supervises asset and `dotnet watch` processes, starts CsWebUi,
+  reports stable diagnostics, observes manifest changes, and shuts the process
+  tree down cleanly. Native-window HMR and state-preserving reload remain.
+- Vite is now the first-class optional pipeline for TypeScript, JavaScript, CSS,
   Sass/PostCSS, images, fonts, source maps, hashing, and minification. It is a
   development/build tool, not an ASP.NET Core dependency or a replacement for
-  the native HTMX transport.
+  the native HTMX transport. The cwhtml Todo workspace proves npm-managed
+  HTMX, Bootstrap 5.3, and Font Awesome with local production output.
 - Implement tiered feedback: ordinary Vite HMR for frontend assets,
   state-preserving fragment refresh for compatible cwhtml-only changes, and a
   coordinated application restart when a C# change cannot be replaced safely.

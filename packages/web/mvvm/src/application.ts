@@ -12,6 +12,11 @@ export interface MvvmApplicationOptions {
 /** One opened MVVM application and its exact owned lifetime. */
 export interface MvvmApplication {
   readonly projection: MvvmProjection;
+  /**
+   * Rebinds an already-open logical session to a replacement physical channel
+   * and recovers authoritative state before resolving.
+   */
+  reconnect(channel: FrameChannel): Promise<void>;
   dispose(reason?: string): Promise<void>;
 }
 
@@ -50,11 +55,40 @@ export async function startMvvmApplication(
   }
 
   let disposed = false;
+  let reconnecting = false;
+  let reconnectCompletion: Promise<void> | undefined;
   return {
     projection,
+    async reconnect(channel) {
+      if (disposed) throw new Error("A disposed MVVM application cannot reconnect.");
+      if (reconnecting) throw new Error("An MVVM application reconnect is already in progress.");
+      if (transport.state !== "disconnected") {
+        throw new Error("The current MVVM channel must disconnect before it can be replaced.");
+      }
+
+      reconnecting = true;
+      reconnectCompletion = (async () => {
+        try {
+          transport.replaceChannel(channel);
+          await client.reconnect();
+        } catch (error) {
+          transport.disconnect(error);
+          throw error;
+        } finally {
+          reconnecting = false;
+        }
+      })();
+      await reconnectCompletion;
+    },
     async dispose(reason = "MVVM application unloaded") {
       if (disposed) return;
       disposed = true;
+      try {
+        await reconnectCompletion;
+      } catch {
+        // Reconnect already reported its failure to its caller. Disposal still
+        // owns deterministic projection and channel cleanup.
+      }
       projection.dispose();
       await transport.close(reason);
     },

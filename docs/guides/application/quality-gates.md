@@ -26,10 +26,27 @@ through persistent headless Chromium against a real CsWebUi server:
 React, Vue, Svelte, and Angular using the production binary FrameChannel. Each
 of the eight serial pinned-Chromium cases changes framework-rendered input,
 executes the shared C# ViewModel, and verifies the resulting framework-rendered
-task. Advanced cases additionally observe the asynchronous import's pushed
-busy-state transition and imported tasks without a refresh command. These cases
-are managed browser gates; Native-AOT publication of the framework applications
-remains Phase 6 work.
+task. The common harness also:
+
+- rejects unlabeled controls/buttons, duplicate IDs, broken ARIA references,
+  and invalid heading structure before and after dynamic updates;
+- proves SimpleTodo command admission and AdvancedTodo validation projection;
+- starts and cancels AdvancedTodo's delayed import, checks that cancellation
+  did not partly persist, then separately observes a successful pushed import;
+- replaces the native channel three times, requiring an authoritative
+  reconnect snapshot each time and exactly one retained sentinel task; and
+- disposes each generated adapter/ViewModel graph, forces collection through a
+  weak reference, and treats browser/process/profile cleanup failures as gate
+  failures.
+
+Run `eng/verify-todo-frontends-native-aot.ps1` in the Nix/direnv shell for the
+release lane. It full-trim Native-AOT-publishes all four framework hosts with
+owned trim/AOT warnings promoted to errors, then runs both Todo levels from
+each native executable through the same eight browser gates. RID-specific
+restore state stays under ignored `obj/todo-native-aot/` paths and each
+portable lock-file hash is checked after publication. Both scripts print their
+wall-clock cost; no browser or AOT case is skipped after the two pinned
+prerequisites have been admitted.
 
 AdvancedTodo's compiled `.cwhtml`/native-HTMX source and managed self-test are
 implemented, but that application is not yet part of this Chromium/Native-AOT

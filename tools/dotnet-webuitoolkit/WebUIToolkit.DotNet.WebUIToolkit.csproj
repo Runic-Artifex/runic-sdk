@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.DotNet.WebUIToolkit</AssemblyName>
+    <RootNamespace>WebUIToolkit.DotNet.WebUIToolkit</RootNamespace>
+    <PackageId>WebUIToolkit.DotNet.WebUIToolkit</PackageId>
+    <Description>Coordinated development loop for native CsWebUi WebUIToolkit applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dotnet-webuitoolkit</ToolCommandName>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

@@ -38,6 +38,8 @@ internal static class Program
             ("verify rejects stale outputs", VerifyRejectsStaleOutputs),
             ("malformed contracts fail validation", MalformedContractsFailValidation),
             ("SDK validation accepts complete configuration", SdkValidationAcceptsCompleteConfiguration),
+            ("SDK validation accepts a Node-free cwhtml pipeline", SdkValidationAcceptsCwhtmlOnlyConfiguration),
+            ("SDK validation rejects a missing pipeline", SdkValidationRejectsMissingPipeline),
             ("SDK validation rejects incomplete contract outputs", SdkValidationRejectsIncompleteContractOutputs),
         ];
 
@@ -196,6 +198,46 @@ internal static class Program
             result.CombinedOutput,
             "Both frontend contract output paths are required",
             "SDK validation did not explain the incomplete contract configuration.");
+    }
+
+    private static void SdkValidationAcceptsCwhtmlOnlyConfiguration()
+    {
+        using TestWorkspace workspace = new();
+        string project = workspace.WriteText(
+            "cwhtml.proj",
+            CreateValidationProject(
+                """
+                <WebUIToolkitFrontendNodeEnabled>false</WebUIToolkitFrontendNodeEnabled>
+                <WebUIToolkitFrontendCwhtmlEnabled>true</WebUIToolkitFrontendCwhtmlEnabled>
+                """));
+
+        ProcessResult result = Run(
+            ResolveDotNetHost(),
+            workspace.Root,
+            ["msbuild", project, "-nologo", "-verbosity:minimal", "-target:WebUIToolkitFrontendValidate"]);
+        AssertSuccess(result, "cwhtml-only SDK target validation");
+    }
+
+    private static void SdkValidationRejectsMissingPipeline()
+    {
+        using TestWorkspace workspace = new();
+        string project = workspace.WriteText(
+            "missing-pipeline.proj",
+            CreateValidationProject(
+                """
+                <WebUIToolkitFrontendNodeEnabled>false</WebUIToolkitFrontendNodeEnabled>
+                <WebUIToolkitFrontendCwhtmlEnabled>false</WebUIToolkitFrontendCwhtmlEnabled>
+                """));
+
+        ProcessResult result = Run(
+            ResolveDotNetHost(),
+            workspace.Root,
+            ["msbuild", project, "-nologo", "-verbosity:minimal", "-target:WebUIToolkitFrontendValidate"]);
+        AssertFailure(result, "Missing SDK pipeline validation");
+        AssertContains(
+            result.CombinedOutput,
+            "Enable at least one WebUIToolkit frontend pipeline",
+            "SDK validation did not explain that no frontend pipeline was enabled.");
     }
 
     private static ProcessResult RunContractTool(

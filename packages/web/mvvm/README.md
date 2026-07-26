@@ -81,6 +81,12 @@ error notifications. Applications choose the physical connection and can
 rebind the transport before calling `client.reconnect()`. An in-flight mutation
 at disconnect has an unknown outcome and must not be replayed automatically.
 
+`startMvvmApplication` owns that sequence for framework applications. Once the
+current channel has reported a close, pass a replacement channel to
+`application.reconnect(channel)`. The promise resolves only after a new
+handshake and authoritative replacement snapshot; reconnects are serialized
+and are rejected before disconnection or after disposal.
+
 ## Protocol behavior
 
 The SDK follows the normative specification and deterministic corpus under

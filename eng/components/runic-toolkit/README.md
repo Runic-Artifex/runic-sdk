@@ -155,9 +155,10 @@ HTMX transport. Its persistence, filtering, workflow, cancellation, and
 diagnostic self-test remain useful migration coverage, but it is not yet part
 of the real-browser/Native-AOT acceptance gate.
 
-The next product work is the cwhtml developer-experience phase: extend the now
-implemented frontend SDK and Vite asset pipeline to generate the remaining
-native-HTMX plumbing and add a coordinated watch/HMR loop. Broader WPF
+The next product work is the remaining cwhtml developer-experience phase:
+generate the native-HTMX registration plumbing and evolve the implemented
+`dotnet webuitoolkit dev` watcher/restart loop into native-window HMR with a
+browser diagnostics overlay and state-preserving compatible updates. Broader WPF
 migration capability coverage, reusable sample components and styling
 alternatives, alignment of the TypeScript framework adapters with the proven
 native path, and the separately designed asset/VFS extraction follow. Those

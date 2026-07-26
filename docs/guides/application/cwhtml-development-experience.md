@@ -24,22 +24,29 @@ cwhtml compiler, Vite development server, diagnostics, and reload behavior.
 Publishing compiles the application and produces deterministic local assets
 for the CsWebUi virtual filesystem. Neither command introduces ASP.NET Core.
 
-## Current baseline
+## Implemented baseline
 
 The repository already has the difficult runtime foundations:
 
 - incremental cwhtml generation with source-mapped, stable diagnostics;
 - Native-AOT-safe document and fragment renderers;
 - typed ViewModel projection and one bounded native HTMX transport per window;
-- Bootstrap 5.3 and Font Awesome assets served locally; and
+- a shared optional Vite pipeline with npm-pinned HTMX, Bootstrap 5.3, and
+  Font Awesome assets served locally;
+- shared MSBuild targets for cwhtml discovery, compilation, asset
+  build/watch, and build/publish copying;
+- `dotnet webuitoolkit dev` discovery, contract generation/verification,
+  initial build, supervised Vite and .NET watchers, manifest diagnostics,
+  coordinated CsWebUi restart, and clean shutdown; and
 - real-browser and Native-AOT acceptance for SimpleTodo.
 
-The current sample applications still expose too much implementation detail.
-They duplicate cwhtml MSBuild targets and asset-copy logic, construct HTMX
-descriptors and render plans by hand, and assemble application startup around
-low-level services. There is no coordinated watch command, browser diagnostic
-overlay, asset HMR, or first-class minified production frontend build. Those
-are product gaps, not patterns that consumer documentation should teach.
+The sample applications no longer duplicate cwhtml compiler targets or static
+asset-copy logic, and their production frontend is minified and manifest
+bound. They still construct HTMX descriptors and render plans by hand and
+assemble application startup around low-level services. The development
+command currently coordinates reliable process restart; browser diagnostic
+overlays, native-window asset HMR, state-preserving cwhtml replacement, and
+generated HTMX registration remain product gaps.
 
 ## Architectural boundaries
 
@@ -124,14 +131,17 @@ application code.
 
 ## Development loop
 
-`dotnet webuitoolkit dev` should:
+`dotnet webuitoolkit dev` now:
 
 1. discover the project through `WebUIToolkit.Frontend.Sdk`;
-2. start Vite on a loopback-only ephemeral port when frontend entries exist;
+2. runs the configured Vite asset watcher when frontend entries exist;
 3. watch cwhtml and C# inputs using the same compiler configuration as build;
 4. launch and monitor the CsWebUi application;
-5. present consistent diagnostics in the terminal and browser; and
-6. select the least disruptive valid update strategy.
+5. presents bounded, prefixed diagnostics in the terminal; and
+6. performs a reliable coordinated application restart.
+
+The loopback Vite development server, browser diagnostic overlay, and
+least-disruptive update selection below are the next refinements.
 
 Reload operates in tiers:
 
@@ -191,14 +201,16 @@ diagnostic identifiers and source spans.
 
 ## Delivery order
 
-1. Package the existing cwhtml targets and runtime assets in
+1. **Implemented:** package shared cwhtml targets and integrate them with
    `WebUIToolkit.Frontend.Sdk`; remove duplicated sample MSBuild.
 2. Introduce the high-level application builder.
 3. Generate field, action, route, conversion, validation, and render-plan
    plumbing from cwhtml.
-4. Integrate Vite production builds and typed asset-manifest access.
-5. Add `dotnet webuitoolkit dev`, asset HMR, diagnostics overlay, and reliable
-   coordinated full reload.
+4. **Implemented:** integrate Vite production builds and asset-manifest
+   generation/copying.
+5. **Partially implemented:** add `dotnet webuitoolkit dev` and reliable
+   coordinated full reload. Asset HMR and the browser diagnostics overlay
+   remain.
 6. Add the cwhtml language server and editor integration.
 7. Add compatible renderer replacement and state-preserving fragment refresh.
 8. Build project templates, reusable cwhtml components, and scaffolding on the
