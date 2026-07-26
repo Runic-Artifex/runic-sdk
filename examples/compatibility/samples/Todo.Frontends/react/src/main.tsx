@@ -3,12 +3,15 @@ import { createRoot } from "react-dom/client";
 import {
   ReactMvvmProvider,
   createReactMvvmStore,
+  useMvvmCollection,
+  useMvvmCommand,
+  useMvvmProperty,
   useMvvmSnapshot,
+  useMvvmValidation,
 } from "@webuitoolkit/mvvm-react";
 
 import {
   AdvancedTodoContract,
-  commandEnabled,
   demoFromDocument,
   SimpleTodoContract,
   type AdvancedTodoItem,
@@ -63,7 +66,8 @@ function Header({ title, subtitle }: { title: string; subtitle: string }) {
 
 function SimpleTodo({ todo }: { todo: SimpleTodoContract }) {
   const snapshot = useMvvmSnapshot();
-  const items: readonly SimpleTodoItem[] = todo.items.from(snapshot);
+  const items: readonly SimpleTodoItem[] = useMvvmCollection(todo.items);
+  const addState = useMvvmCommand(todo.add);
   const [title, setTitle] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -101,7 +105,8 @@ function SimpleTodo({ todo }: { todo: SimpleTodoContract }) {
             />
             <button
               className="btn btn-primary"
-              disabled={pending || title.trim().length < 2 || !commandEnabled(snapshot, todo.add.member)}
+              disabled={pending || title.trim().length < 2 ||
+                !snapshot.synchronized || addState?.canExecute !== true || addState.isExecuting}
             >
               <i className="fa-solid fa-plus me-2" aria-hidden="true" />Add
             </button>
@@ -139,9 +144,9 @@ function SimpleTodo({ todo }: { todo: SimpleTodoContract }) {
 
 function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
   const snapshot = useMvvmSnapshot();
-  const items: readonly AdvancedTodoItem[] = todo.items.from(snapshot);
-  const diagnostics: readonly DiagnosticEntry[] = todo.diagnostics.from(snapshot);
-  const state: AdvancedTodoState = todo.state.from(snapshot) ?? {
+  const items: readonly AdvancedTodoItem[] = useMvvmCollection(todo.items);
+  const diagnostics: readonly DiagnosticEntry[] = useMvvmCollection(todo.diagnostics);
+  const state: AdvancedTodoState = useMvvmProperty(todo.state) ?? {
     totalCount: 0,
     remainingCount: 0,
     completedCount: 0,
@@ -149,7 +154,8 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
     wizardStep: null,
     wizardIssues: [],
   };
-  const validation = snapshot.validation.get(todo.newTitle.member) ?? [];
+  const validation = useMvvmValidation(todo.newTitle) ?? [];
+  const addState = useMvvmCommand(todo.add);
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [priority, setPriority] = useState("Normal");
@@ -212,7 +218,9 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
                     </select>
                   </div>
                   <div className="col-md-2 d-grid">
-                    <button className="btn btn-primary" disabled={!commandEnabled(snapshot, todo.add.member)}>Add</button>
+                    <button className="btn btn-primary" disabled={
+                      !snapshot.synchronized || addState?.canExecute !== true || addState.isExecuting
+                    }>Add</button>
                   </div>
                   <div className="col-12">
                     <textarea className="form-control" value={notes} rows={2} placeholder="Notes (optional)" onChange={(event) => setNotes(event.currentTarget.value)} />

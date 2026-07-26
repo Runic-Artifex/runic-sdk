@@ -11,13 +11,11 @@ using WebUIToolkit.Hosting.CsWebUi;
 using WebUIToolkit.Hosting.CsWebUi.Mvvm;
 using WebUIToolkit.Hosting.WebUi;
 using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.CommunityToolkit;
 using WebUIToolkit.Samples.AdvancedTodo;
 using WebUIToolkit.Samples.AdvancedTodo.Application;
 using WebUIToolkit.Samples.AdvancedTodo.Infrastructure;
 using AdvancedTodoViewModel = WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel;
 using SimpleTodoViewModel = WebUIToolkit.Samples.SimpleTodo.TodoViewModel;
-using SimpleTodoJsonContext = WebUIToolkit.Samples.SimpleTodo.TodoJsonContext;
 
 namespace WebUIToolkit.Samples.Todo.FrontendHost;
 
@@ -108,35 +106,8 @@ internal sealed class TodoFrontendRoot : IRootSessionFactory, IAsyncDisposable
             registry.Map(SimpleContract, static _ =>
             {
                 var model = new SimpleTodoViewModel();
-                CommunityToolkitMvvmBindingAdapter<SimpleTodoViewModel> adapter =
-                    new CommunityToolkitMvvmAdapterBuilder<SimpleTodoViewModel>(model)
-                        .BindProperty(
-                            TodoContracts.SimpleTodo.Members.NewTitle,
-                            nameof(SimpleTodoViewModel.NewTitle),
-                            static state => state.NewTitle,
-                            static (state, value) => state.NewTitle = value,
-                            SimpleTodoJsonContext.Default.String)
-                        .BindCollection(
-                            TodoContracts.SimpleTodo.Members.Items,
-                            nameof(SimpleTodoViewModel.Items),
-                            static state => state.Items,
-                            SimpleTodoJsonContext.Default.TodoItem)
-                        .BindCommand(
-                            TodoContracts.SimpleTodo.Members.Add,
-                            nameof(SimpleTodoViewModel.AddCommand),
-                            static state => state.AddCommand)
-                        .BindCommand(
-                            TodoContracts.SimpleTodo.Members.Toggle,
-                            nameof(SimpleTodoViewModel.ToggleByIdCommand),
-                            static state => state.ToggleByIdCommand,
-                            SimpleTodoJsonContext.Default.String)
-                        .BindCommand(
-                            TodoContracts.SimpleTodo.Members.Remove,
-                            nameof(SimpleTodoViewModel.RemoveByIdCommand),
-                            static state => state.RemoveByIdCommand,
-                            SimpleTodoJsonContext.Default.String)
-                        .Build();
-                return ValueTask.FromResult(new MvvmSessionActivation(adapter));
+                return ValueTask.FromResult(
+                    new MvvmSessionActivation(TodoContracts.SimpleTodo.CreateAdapter(model)));
             });
         }
         else
@@ -154,9 +125,9 @@ internal sealed class TodoFrontendRoot : IRootSessionFactory, IAsyncDisposable
                 try
                 {
                     await model.InitializeAsync(cancellationToken).ConfigureAwait(false);
-                    CommunityToolkitMvvmBindingAdapter<AdvancedTodoViewModel> adapter =
-                        BuildAdvancedAdapter(model);
-                    return new MvvmSessionActivation(adapter, model);
+                    return new MvvmSessionActivation(
+                        TodoContracts.AdvancedTodo.CreateAdapter(model),
+                        model);
                 }
                 catch
                 {
@@ -221,77 +192,6 @@ internal sealed class TodoFrontendRoot : IRootSessionFactory, IAsyncDisposable
         _demo == TodoDemo.Simple ? SimpleContract : AdvancedContract;
 
     private static MvvmRequestId NewRequest() => new(Guid.NewGuid());
-
-    private static CommunityToolkitMvvmBindingAdapter<AdvancedTodoViewModel> BuildAdvancedAdapter(
-        AdvancedTodoViewModel model) =>
-        new CommunityToolkitMvvmAdapterBuilder<AdvancedTodoViewModel>(model)
-            .BindProperty(
-                TodoContracts.AdvancedTodo.Members.NewTitle,
-                nameof(AdvancedTodoViewModel.NewTitle),
-                static state => state.NewTitle,
-                static (state, value) => state.NewTitle = value,
-                AdvancedTodoJsonContext.Default.String,
-                includeValidation: true)
-            .BindProperty(
-                TodoContracts.AdvancedTodo.Members.NewNotes,
-                nameof(AdvancedTodoViewModel.NewNotes),
-                static state => state.NewNotes,
-                static (state, value) => state.NewNotes = value,
-                AdvancedTodoJsonContext.Default.String)
-            .BindProperty(
-                TodoContracts.AdvancedTodo.Members.NewPriority,
-                nameof(AdvancedTodoViewModel.NewPriority),
-                static state => state.NewPriority,
-                static (state, value) => state.NewPriority = value,
-                AdvancedTodoJsonContext.Default.String)
-            .BindProperty(
-                TodoContracts.AdvancedTodo.Members.Query,
-                nameof(AdvancedTodoViewModel.Query),
-                static state => state.Query,
-                static (state, value) => state.Query = value,
-                AdvancedTodoJsonContext.Default.String)
-            .BindProperty(
-                TodoContracts.AdvancedTodo.Members.Filter,
-                nameof(AdvancedTodoViewModel.Filter),
-                static state => state.Filter,
-                static (state, value) => state.Filter = value,
-                AdvancedTodoJsonContext.Default.String)
-            .BindCollection(
-                TodoContracts.AdvancedTodo.Members.Items,
-                nameof(AdvancedTodoViewModel.VisibleItems),
-                static state => state.VisibleItems,
-                AdvancedTodoJsonContext.Default.TodoItem)
-            .BindCollection(
-                TodoContracts.AdvancedTodo.Members.Diagnostics,
-                nameof(AdvancedTodoViewModel.Diagnostics),
-                static state => state.Diagnostics,
-                AdvancedTodoJsonContext.Default.DiagnosticEntry)
-            .BindReadOnlyProperty(
-                TodoContracts.AdvancedTodo.Members.State,
-                nameof(AdvancedTodoViewModel.State),
-                static state => state.State,
-                AdvancedTodoJsonContext.Default.AdvancedTodoState)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.Add, nameof(AdvancedTodoViewModel.AddCommand), static state => state.AddCommand)
-            .BindCommand(TodoContracts.AdvancedTodo.Members.ApplyFilter, nameof(AdvancedTodoViewModel.ApplyFilterCommand), static state => state.ApplyFilterCommand)
-            .BindAsyncCommand(
-                TodoContracts.AdvancedTodo.Members.Toggle,
-                nameof(AdvancedTodoViewModel.ToggleByIdCommand),
-                static state => state.ToggleByIdCommand,
-                AdvancedTodoJsonContext.Default.String)
-            .BindAsyncCommand(
-                TodoContracts.AdvancedTodo.Members.Delete,
-                nameof(AdvancedTodoViewModel.DeleteByIdCommand),
-                static state => state.DeleteByIdCommand,
-                AdvancedTodoJsonContext.Default.String)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.ClearCompleted, nameof(AdvancedTodoViewModel.ClearCompletedCommand), static state => state.ClearCompletedCommand)
-            .BindCommand(TodoContracts.AdvancedTodo.Members.Import, nameof(AdvancedTodoViewModel.ImportCommand), static state => state.ImportCommand)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.CancelImport, nameof(AdvancedTodoViewModel.CancelImportCommand), static state => state.CancelImportCommand)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.WizardStart, nameof(AdvancedTodoViewModel.StartWizardCommand), static state => state.StartWizardCommand)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.WizardNext, nameof(AdvancedTodoViewModel.WizardNextCommand), static state => state.WizardNextCommand)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.WizardBack, nameof(AdvancedTodoViewModel.WizardBackCommand), static state => state.WizardBackCommand)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.WizardFinish, nameof(AdvancedTodoViewModel.WizardFinishCommand), static state => state.WizardFinishCommand)
-            .BindAsyncCommand(TodoContracts.AdvancedTodo.Members.WizardCancel, nameof(AdvancedTodoViewModel.WizardCancelCommand), static state => state.WizardCancelCommand)
-            .Build();
 
     private sealed class RootSession(CsWebUiMvvmBridge bridge) : IRootSession
     {

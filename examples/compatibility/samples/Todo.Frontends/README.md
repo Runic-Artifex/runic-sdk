@@ -27,14 +27,15 @@ add the locally pinned Bootstrap 5.3 and Font Awesome assets.
 validation, and workflow. The original cwhtml SimpleTodo and AdvancedTodo
 projects consume that same assembly. `Todo.FrontendHost` owns the one native
 CsWebUi binary channel. A single `todo.frontend.json` symbol model generates
-both its C# projection vocabulary and the typed TypeScript contract used by all
-four browser applications.
+its C# projection vocabulary and direct CommunityToolkit adapter factory, plus
+the typed TypeScript contract used by all four browser applications.
 
 The frontend source shares generated contracts, deterministic connection
-startup, and styling. View composition and lifecycle use each framework's
-first-party WebUIToolkit adapter so differences remain visible. Commands accept
-typed item IDs directly, derived properties are read-only, and background C#
-changes are pushed to the accepted projection without browser polling.
+startup, and styling. View composition and lifecycle use generated handles
+through React hooks, Vue computed refs, Svelte derived stores, and Angular
+signals so differences remain visible. Commands accept typed item IDs directly,
+derived properties are read-only, and background C# changes are pushed to the
+accepted projection without browser polling.
 
 Run deterministic checks without opening a window:
 

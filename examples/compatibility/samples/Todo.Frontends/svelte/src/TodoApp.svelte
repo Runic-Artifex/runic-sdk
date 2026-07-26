@@ -1,10 +1,20 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import type { SvelteMvvmStore } from "@webuitoolkit/mvvm-svelte";
+  import {
+    derivedMvvmCollection,
+    derivedMvvmCommand,
+    derivedMvvmProperty,
+    derivedMvvmValidation,
+    type SvelteMvvmStore,
+  } from "@webuitoolkit/mvvm-svelte";
+  import { readable } from "svelte/store";
   import {
     AdvancedTodoContract,
-    commandEnabled,
     SimpleTodoContract,
+    type AdvancedTodoItem,
+    type AdvancedTodoState,
+    type DiagnosticEntry,
+    type SimpleTodoItem,
     type TodoDemo,
   } from "../../shared/contracts";
 
@@ -18,14 +28,35 @@
   let query = "";
   let filter = "All";
   let pending = false;
-  $: simple = todo as SimpleTodoContract;
-  $: advanced = todo as AdvancedTodoContract;
+  const simple = todo as SimpleTodoContract;
+  const advanced = todo as AdvancedTodoContract;
+  const simpleItemsStore = demo === "simple"
+    ? derivedMvvmCollection(model, simple.items)
+    : readable<readonly SimpleTodoItem[]>([]);
+  const advancedItemsStore = demo === "advanced"
+    ? derivedMvvmCollection(model, advanced.items)
+    : readable<readonly AdvancedTodoItem[]>([]);
+  const diagnosticsStore = demo === "advanced"
+    ? derivedMvvmCollection(model, advanced.diagnostics)
+    : readable<readonly DiagnosticEntry[]>([]);
+  const stateStore = demo === "advanced"
+    ? derivedMvvmProperty(model, advanced.state)
+    : readable<AdvancedTodoState | undefined>(undefined);
+  const validationStore = demo === "advanced"
+    ? derivedMvvmValidation(model, advanced.newTitle)
+    : readable<readonly string[]>([]);
+  const simpleAddState = demo === "simple"
+    ? derivedMvvmCommand(model, simple.add)
+    : readable(undefined);
+  const advancedAddState = demo === "advanced"
+    ? derivedMvvmCommand(model, advanced.add)
+    : readable(undefined);
 
-  $: simpleItems = demo === "simple" ? simple.items.from($model) : [];
+  $: simpleItems = demo === "simple" ? $simpleItemsStore : [];
   $: completed = simpleItems.filter((item) => item.isCompleted).length;
-  $: advancedItems = demo === "advanced" ? advanced.items.from($model) : [];
-  $: diagnostics = demo === "advanced" ? advanced.diagnostics.from($model) : [];
-  $: state = (demo === "advanced" ? advanced.state.from($model) : undefined) ?? {
+  $: advancedItems = demo === "advanced" ? $advancedItemsStore : [];
+  $: diagnostics = demo === "advanced" ? $diagnosticsStore : [];
+  $: state = (demo === "advanced" ? $stateStore : undefined) ?? {
     totalCount: 0,
     remainingCount: 0,
     completedCount: 0,
@@ -33,9 +64,7 @@
     wizardStep: null,
     wizardIssues: [],
   };
-  $: validation = demo === "advanced"
-    ? $model.validation.get(advanced.newTitle.member) ?? []
-    : [];
+  $: validation = demo === "advanced" ? $validationStore : [];
   $: status = $model.synchronized ? `Connected · r${$model.revision}` : $model.phase;
   $: connected = $model.synchronized;
   $: wizardReview = state.wizardStep === "todo.create.review";
@@ -98,7 +127,7 @@
       <form class="input-group mb-4" on:submit|preventDefault={addSimple}>
         <label class="visually-hidden" for="new-title">New task</label>
         <input id="new-title" class="form-control" bind:value={title} maxlength="80" placeholder="What needs doing?">
-        <button class="btn btn-primary" disabled={pending || title.trim().length < 2 || !commandEnabled($model, simple.add.member)}><i class="fa-solid fa-plus me-2" aria-hidden="true"></i>Add</button>
+        <button class="btn btn-primary" disabled={pending || title.trim().length < 2 || !$model.synchronized || $simpleAddState?.canExecute !== true || $simpleAddState.isExecuting}><i class="fa-solid fa-plus me-2" aria-hidden="true"></i>Add</button>
       </form>
       <div class="d-flex justify-content-between text-secondary small mb-3"><span>{simpleItems.length - completed} remaining</span><span>{completed} completed</span></div>
       <ul class="list-group list-group-flush">
@@ -125,7 +154,7 @@
           <form on:submit|preventDefault={addAdvanced}><div class="row g-3">
             <div class="col-md-7"><input class:is-invalid={validation.length > 0} class="form-control" bind:value={title} maxlength="120" placeholder="Task title">{#if validation.length}<div class="invalid-feedback">{validation.join(" ")}</div>{/if}</div>
             <div class="col-md-3"><select class="form-select" bind:value={priority}><option>Low</option><option>Normal</option><option>High</option></select></div>
-            <div class="col-md-2 d-grid"><button class="btn btn-primary" disabled={!commandEnabled($model, advanced.add.member)}>Add</button></div>
+            <div class="col-md-2 d-grid"><button class="btn btn-primary" disabled={!$model.synchronized || $advancedAddState?.canExecute !== true || $advancedAddState.isExecuting}>Add</button></div>
             <div class="col-12"><textarea class="form-control" bind:value={notes} rows="2" placeholder="Notes (optional)"></textarea></div>
           </div></form>
         </div></section>

@@ -1,9 +1,14 @@
 import { computed, createApp, onUnmounted, ref } from "vue";
-import { createVueMvvmAdapter } from "@webuitoolkit/mvvm-vue";
+import {
+  createVueMvvmAdapter,
+  toVueMvvmCollection,
+  toVueMvvmCommand,
+  toVueMvvmProperty,
+  toVueMvvmValidation,
+} from "@webuitoolkit/mvvm-vue";
 
 import {
   AdvancedTodoContract,
-  commandEnabled,
   demoFromDocument,
   SimpleTodoContract,
   type AdvancedTodoState,
@@ -53,7 +58,8 @@ function simpleComponent(
       const title = ref("");
       const pending = ref(false);
       const snapshot = adapter.state;
-      const items = computed(() => todo.items.from(snapshot.value));
+      const items = toVueMvvmCollection(adapter, todo.items);
+      const addState = toVueMvvmCommand(adapter, todo.add);
       const completed = computed(() => items.value.filter((item) => item.isCompleted).length);
 
       async function add() {
@@ -78,7 +84,9 @@ function simpleComponent(
         canAdd: computed(() =>
           !pending.value &&
           title.value.trim().length >= 2 &&
-          commandEnabled(snapshot.value, todo.add.member)),
+          snapshot.value.synchronized &&
+          addState.value?.canExecute === true &&
+          !addState.value.isExecuting),
         add,
         todo,
       };
@@ -122,10 +130,12 @@ function advancedComponent(
       const priority = ref("Normal");
       const query = ref("");
       const filter = ref("All");
-      const items = computed(() => todo.items.from(snapshot.value));
-      const diagnostics = computed(() => todo.diagnostics.from(snapshot.value));
+      const items = toVueMvvmCollection(adapter, todo.items);
+      const diagnostics = toVueMvvmCollection(adapter, todo.diagnostics);
+      const projectedState = toVueMvvmProperty(adapter, todo.state);
+      const addState = toVueMvvmCommand(adapter, todo.add);
       const state = computed<AdvancedTodoState>(() =>
-        todo.state.from(snapshot.value) ?? {
+        projectedState.value ?? {
           totalCount: 0,
           remainingCount: 0,
           completedCount: 0,
@@ -133,8 +143,8 @@ function advancedComponent(
           wizardStep: null,
           wizardIssues: [],
         });
-      const validation = computed(() =>
-        snapshot.value.validation.get(todo.newTitle.member) ?? []);
+      const projectedValidation = toVueMvvmValidation(adapter, todo.newTitle);
+      const validation = computed(() => projectedValidation.value ?? []);
 
       async function setDraft() {
         await todo.newTitle.set(title.value);
@@ -180,7 +190,10 @@ function advancedComponent(
         add,
         applyFilter,
         wizard,
-        canAdd: computed(() => commandEnabled(snapshot.value, todo.add.member)),
+        canAdd: computed(() =>
+          snapshot.value.synchronized &&
+          addState.value?.canExecute === true &&
+          !addState.value.isExecuting),
         wizardOpen: computed(() => state.value.wizardStep !== null),
         wizardReview: computed(() => state.value.wizardStep === "todo.create.review"),
         formatTime: (value: string) => new Date(value).toLocaleTimeString(),

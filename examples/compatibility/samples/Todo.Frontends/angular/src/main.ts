@@ -10,7 +10,6 @@ import { AngularMvvmStore } from "@webuitoolkit/mvvm-angular";
 
 import {
   AdvancedTodoContract,
-  commandEnabled,
   demoFromDocument,
   SimpleTodoContract,
   type AdvancedTodoState,
@@ -119,16 +118,16 @@ class TodoApplicationComponent implements OnDestroy {
   protected readonly status = computed(() => this.snapshot().synchronized
     ? `Connected · r${this.snapshot().revision}`
     : this.snapshot().phase);
-  protected readonly simpleItems = computed(() =>
-    this.simpleTodo.items.from(this.snapshot()));
+  protected readonly simpleItems = sampleStore.collection(this.simpleTodo.items);
+  protected readonly simpleAddState = sampleStore.command(this.simpleTodo.add);
   protected readonly completed = computed(() =>
     this.simpleItems().filter((item) => item.isCompleted).length);
-  protected readonly advancedItems = computed(() =>
-    this.advancedTodo.items.from(this.snapshot()));
-  protected readonly diagnostics = computed(() =>
-    this.advancedTodo.diagnostics.from(this.snapshot()));
+  protected readonly advancedItems = sampleStore.collection(this.advancedTodo.items);
+  protected readonly diagnostics = sampleStore.collection(this.advancedTodo.diagnostics);
+  protected readonly projectedState = sampleStore.property(this.advancedTodo.state);
+  protected readonly advancedAddState = sampleStore.command(this.advancedTodo.add);
   protected readonly state = computed<AdvancedTodoState>(() =>
-    this.advancedTodo.state.from(this.snapshot()) ?? {
+    this.projectedState() ?? {
       totalCount: 0,
       remainingCount: 0,
       completedCount: 0,
@@ -136,8 +135,8 @@ class TodoApplicationComponent implements OnDestroy {
       wizardStep: null,
       wizardIssues: [],
     });
-  protected readonly validation = computed(() =>
-    this.snapshot().validation.get(this.advancedTodo.newTitle.member) ?? []);
+  protected readonly projectedValidation = sampleStore.validation(this.advancedTodo.newTitle);
+  protected readonly validation = computed(() => this.projectedValidation() ?? []);
   protected readonly wizardReview = computed(() =>
     this.state().wizardStep === "todo.create.review");
   protected title = "";
@@ -151,11 +150,17 @@ class TodoApplicationComponent implements OnDestroy {
   }
 
   protected canSimpleAdd(): boolean {
-    return commandEnabled(this.snapshot(), this.simpleTodo.add.member);
+    const command = this.simpleAddState();
+    return this.snapshot().synchronized &&
+      command?.canExecute === true &&
+      !command.isExecuting;
   }
 
   protected canAdvancedAdd(): boolean {
-    return commandEnabled(this.snapshot(), this.advancedTodo.add.member);
+    const command = this.advancedAddState();
+    return this.snapshot().synchronized &&
+      command?.canExecute === true &&
+      !command.isExecuting;
   }
 
   protected async addSimple(event: Event) {

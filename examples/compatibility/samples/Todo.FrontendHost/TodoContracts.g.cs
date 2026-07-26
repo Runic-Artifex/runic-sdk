@@ -17,6 +17,37 @@ internal static class TodoContracts
             internal const int Toggle = 11;
             internal const int Remove = 12;
         }
+
+        internal static global::WebUIToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<global::WebUIToolkit.Samples.SimpleTodo.TodoViewModel> CreateAdapter(
+            global::WebUIToolkit.Samples.SimpleTodo.TodoViewModel model) =>
+            new global::WebUIToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmAdapterBuilder<global::WebUIToolkit.Samples.SimpleTodo.TodoViewModel>(model)
+                .BindProperty(
+                    Members.NewTitle,
+                    "NewTitle",
+                    static state => state.NewTitle,
+                    static (state, value) => state.NewTitle = value,
+                    global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String,
+                    includeValidation: true)
+                .BindCollection(
+                    Members.Items,
+                    "Items",
+                    static state => state.Items,
+                    global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.TodoItem)
+                .BindCommand(
+                    Members.Add,
+                    "AddCommand",
+                    static state => state.AddCommand)
+                .BindCommand(
+                    Members.Toggle,
+                    "ToggleByIdCommand",
+                    static state => state.ToggleByIdCommand,
+                    global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String)
+                .BindCommand(
+                    Members.Remove,
+                    "RemoveByIdCommand",
+                    static state => state.RemoveByIdCommand,
+                    global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String)
+                .Build();
     }
 
     internal static class AdvancedTodo
@@ -46,6 +77,107 @@ internal static class TodoContracts
             internal const int WizardFinish = 51;
             internal const int WizardCancel = 52;
         }
+
+        internal static global::WebUIToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<global::WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel> CreateAdapter(
+            global::WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel model) =>
+            new global::WebUIToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmAdapterBuilder<global::WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel>(model)
+                .BindProperty(
+                    Members.NewTitle,
+                    "NewTitle",
+                    static state => state.NewTitle,
+                    static (state, value) => state.NewTitle = value,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String,
+                    includeValidation: true)
+                .BindProperty(
+                    Members.NewNotes,
+                    "NewNotes",
+                    static state => state.NewNotes,
+                    static (state, value) => state.NewNotes = value,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String)
+                .BindProperty(
+                    Members.NewPriority,
+                    "NewPriority",
+                    static state => state.NewPriority,
+                    static (state, value) => state.NewPriority = value,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String)
+                .BindProperty(
+                    Members.Query,
+                    "Query",
+                    static state => state.Query,
+                    static (state, value) => state.Query = value,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String)
+                .BindProperty(
+                    Members.Filter,
+                    "Filter",
+                    static state => state.Filter,
+                    static (state, value) => state.Filter = value,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String)
+                .BindCollection(
+                    Members.Items,
+                    "VisibleItems",
+                    static state => state.VisibleItems,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.TodoItem)
+                .BindCollection(
+                    Members.Diagnostics,
+                    "Diagnostics",
+                    static state => state.Diagnostics,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.DiagnosticEntry)
+                .BindReadOnlyProperty(
+                    Members.State,
+                    "State",
+                    static state => state.State,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.AdvancedTodoState)
+                .BindAsyncCommand(
+                    Members.Add,
+                    "AddCommand",
+                    static state => state.AddCommand)
+                .BindCommand(
+                    Members.ApplyFilter,
+                    "ApplyFilterCommand",
+                    static state => state.ApplyFilterCommand)
+                .BindAsyncCommand(
+                    Members.Toggle,
+                    "ToggleByIdCommand",
+                    static state => state.ToggleByIdCommand,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String)
+                .BindAsyncCommand(
+                    Members.Delete,
+                    "DeleteByIdCommand",
+                    static state => state.DeleteByIdCommand,
+                    global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String)
+                .BindAsyncCommand(
+                    Members.ClearCompleted,
+                    "ClearCompletedCommand",
+                    static state => state.ClearCompletedCommand)
+                .BindCommand(
+                    Members.Import,
+                    "ImportCommand",
+                    static state => state.ImportCommand)
+                .BindAsyncCommand(
+                    Members.CancelImport,
+                    "CancelImportCommand",
+                    static state => state.CancelImportCommand)
+                .BindAsyncCommand(
+                    Members.WizardStart,
+                    "StartWizardCommand",
+                    static state => state.StartWizardCommand)
+                .BindAsyncCommand(
+                    Members.WizardNext,
+                    "WizardNextCommand",
+                    static state => state.WizardNextCommand)
+                .BindAsyncCommand(
+                    Members.WizardBack,
+                    "WizardBackCommand",
+                    static state => state.WizardBackCommand)
+                .BindAsyncCommand(
+                    Members.WizardFinish,
+                    "WizardFinishCommand",
+                    static state => state.WizardFinishCommand)
+                .BindAsyncCommand(
+                    Members.WizardCancel,
+                    "WizardCancelCommand",
+                    static state => state.WizardCancelCommand)
+                .Build();
     }
 
 }
