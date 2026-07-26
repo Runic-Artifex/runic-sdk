@@ -12,6 +12,7 @@ html lang="en" {
         div #advanced_fragment {
             @render(model.Application);
         }
+        script src="webui.js" {}
         script src="cwhtml.js" {}
     }
 }

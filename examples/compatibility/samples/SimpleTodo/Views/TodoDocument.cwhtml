@@ -14,6 +14,7 @@ html lang="en" {
         footer {
             "State and commands stay in C#. Compiled HTML crosses one native HTMX binding."
         }
+        script src="webui.js" {}
         script src="cwhtml.js" {}
     }
 }

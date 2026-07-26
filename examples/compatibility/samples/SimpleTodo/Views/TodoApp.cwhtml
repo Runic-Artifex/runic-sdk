@@ -10,11 +10,19 @@ main #todo-app .card .shadow-lg data-webui-view="simple-todo" data-webui-revisio
         p .intro { "A tiny compiled-HTML desktop MVVM app transported by HTMX." }
     }
 
-    form #composer .composer data-hx-post=(model.AddRoute) data-hx-target="#todo_fragment" data-hx-swap="outerHTML" {
+    form #composer .composer
+        data-wut-action="add"
+        data-wut-command="3"
+        data-wut-success-event="todo:changed"
+        data-wut-invalid-focus="new-title"
+        data-hx-post=(model.AddRoute)
+        data-hx-target="#todo_fragment"
+        data-hx-swap="outerHTML" {
         label .form-label for="new-title" { "What needs doing?" }
         div .composer-row .input-group {
             input #new-title .form-control
                 name="title"
+                data-wut-member="1"
                 value=(model.Draft)
                 placeholder="e.g. Review the pull request"
                 maxlength="80"
@@ -37,20 +45,34 @@ main #todo-app .card .shadow-lg data-webui-view="simple-todo" data-webui-revisio
     ul #tasks .tasks .list-group .list-group-flush aria-live="polite" {
         @foreach (WebUIToolkit.Samples.SimpleTodo.TodoRenderItem item in model.Items) {
             li class=(item.CssClass) {
-                form data-hx-post=(model.ToggleRoute) data-hx-target="#todo_fragment" data-hx-swap="outerHTML" {
+                form
+                    data-wut-action="toggle"
+                    data-wut-command="4"
+                    data-wut-success-event="todo:changed"
+                    data-hx-post=(model.ToggleRoute)
+                    data-hx-target="#todo_fragment"
+                    data-hx-swap="outerHTML" {
                     button .toggle .btn .btn-sm .btn-outline-success
                         type="submit"
                         name="selectedId"
+                        data-wut-member="2"
                         value=(item.Id)
                         aria-label=(item.ToggleLabel) {
                         i class=(item.ToggleIconClass) aria-hidden="true" {}
                     }
                 }
                 span .task-title { (item.Title) }
-                form data-hx-post=(model.RemoveRoute) data-hx-target="#todo_fragment" data-hx-swap="outerHTML" {
+                form
+                    data-wut-action="remove"
+                    data-wut-command="5"
+                    data-wut-success-event="todo:changed"
+                    data-hx-post=(model.RemoveRoute)
+                    data-hx-target="#todo_fragment"
+                    data-hx-swap="outerHTML" {
                     button .remove .btn .btn-sm .btn-outline-danger
                         type="submit"
                         name="selectedId"
+                        data-wut-member="2"
                         value=(item.Id)
                         aria-label=(item.RemoveLabel) {
                         i .fa-solid .fa-trash aria-hidden="true" {}

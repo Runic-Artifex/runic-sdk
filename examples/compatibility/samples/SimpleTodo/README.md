@@ -15,7 +15,8 @@ It demonstrates:
   collection binding;
 - `.cwhtml` authoring for both the initial document and HTMX response
   fragment;
-- closed, per-view action routes assigned by `HtmxEndpointRuntime`;
+- compiler-generated action, field, command, fragment, focus, and event
+  registration, with closed per-view routes assigned by `HtmxEndpointRuntime`;
 - one bounded CsWebUi JSON binding shared by all HTMX requests;
 - npm-pinned HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome,
   bundled by Vite and served entirely from local assets; and
@@ -69,11 +70,12 @@ transport, and the browser process.
 ```text
 TodoApp.cwhtml + TodoDocument.cwhtml
   └─ generated IHtmlRenderable views
-       └─ HtmxEndpointRuntime (opaque action routes)
-            └─ one CsWebUi native transport binding
-                 └─ CommunityToolkit adapter
-                      ├─ validated properties and relay commands
-                      └─ observable collection projection
+       └─ generated ConfigureHtmx registration
+            └─ CsWebUiHtmxApplication (opaque action routes + lifetime)
+                 └─ one CsWebUi native transport binding
+                      └─ CommunityToolkit adapter
+                           ├─ validated properties and relay commands
+                           └─ observable collection projection
 ```
 
 The browser submits ordinary HTMX forms. It does not choose CLR members,
@@ -96,10 +98,11 @@ root is deleted during application teardown.
 ## Guided tour
 
 1. Start with `TodoViewModel.cs` and `TodoItem.cs` for ordinary MVVM state.
-2. Read `Views/TodoApp.cwhtml`; `data-hx-*` is HTMX's standards-compatible
-   attribute spelling and stays inside the compiled HTML attribute allowlist.
-3. Read `TodoApplicationRoot.cs` for the explicit adapter, endpoint descriptor,
-   generated document, native transport, smoke test, and ownership order.
+2. Read `Views/TodoApp.cwhtml`; `data-hx-*` is rendered HTMX configuration,
+   while build-time-only `data-wut-*` declarations generate closed registration
+   metadata and are stripped from the HTML.
+3. Read `TodoApplicationRoot.cs` for the remaining field conversion/validation,
+   high-level native application builder, generated document, and smoke test.
 4. Finish in `Program.cs`, where `WebUiModeRunner` receives the prepared
    manifest root and owns window/session startup and shutdown.
 

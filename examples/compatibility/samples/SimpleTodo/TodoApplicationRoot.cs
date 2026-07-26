@@ -5,7 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
@@ -34,13 +33,10 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
     ];
 
     private readonly TodoRouteTable routes = new();
-    private HtmxEndpointRuntime? runtime;
-    private HtmxOpenedView? opened;
-    private CsWebUiHtmxTransport? transport;
+    private CsWebUiHtmxApplication? htmxApplication;
     private TodoRuntimeAssets? assets;
     private TodoViewModel? model;
     private CommunityToolkitMvvmBindingAdapter<TodoViewModel>? adapter;
-    private HtmxViewDescriptor? descriptor;
     private string? initialDocument;
     private int windowConfigured;
     private int rootOpened;
@@ -60,64 +56,80 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (runtime is not null)
+        if (htmxApplication is not null)
         {
             throw new InvalidOperationException("The todo application is already prepared.");
         }
 
-        var registry = new MvvmSessionRegistry();
-        registry.Map(Contract, _ =>
-        {
-            model = new TodoViewModel();
-            CommunityToolkitMvvmBindingAdapter<TodoViewModel> adapter =
-                new CommunityToolkitMvvmAdapterBuilder<TodoViewModel>(model)
-                    .BindProperty(
-                        1,
-                        nameof(TodoViewModel.NewTitle),
-                        static state => state.NewTitle,
-                        static (state, value) => state.NewTitle = value,
-                        TodoJsonContext.Default.String)
-                    .BindProperty(
-                        2,
-                        nameof(TodoViewModel.SelectedId),
-                        static state => state.SelectedId,
-                        static (state, value) => state.SelectedId = value,
-                        TodoJsonContext.Default.String)
-                    .BindCommand(3, nameof(TodoViewModel.AddCommand), static state => state.AddCommand)
-                    .BindCommand(4, nameof(TodoViewModel.ToggleCommand), static state => state.ToggleCommand)
-                    .BindCommand(5, nameof(TodoViewModel.RemoveCommand), static state => state.RemoveCommand)
-                    .BindCollection(
-                        6,
-                        nameof(TodoViewModel.Items),
-                        static state => state.Items,
-                        TodoJsonContext.Default.TodoItem)
-                    .Build();
-            this.adapter = adapter;
-            return ValueTask.FromResult(new MvvmSessionActivation(adapter));
-        });
-
-        HtmxEndpointRuntime createdRuntime = new(
-            registry.Build(),
-            new HtmxEndpointOptions(
-                AllowedOrigin,
-                idleTimeout: TimeSpan.FromMinutes(15),
-                maximumBodyBytes: 32 * 1024,
-                maximumFields: 8,
-                maximumFieldBytes: 1024,
-                maximumResponseBytes: 256 * 1024));
-        runtime = createdRuntime;
         try
         {
-            descriptor = CreateDescriptor();
-            opened = await createdRuntime
-                .OpenAsync(descriptor, cancellationToken: cancellationToken)
+            HtmxViewDescriptor descriptor = CreateDescriptor();
+            CsWebUiHtmxApplication createdApplication =
+                await new CsWebUiHtmxApplicationBuilder(Contract, AllowedOrigin)
+                    .Activate(_ =>
+                    {
+                        model = new TodoViewModel();
+                        CommunityToolkitMvvmBindingAdapter<TodoViewModel> adapter =
+                            new CommunityToolkitMvvmAdapterBuilder<TodoViewModel>(model)
+                                .BindProperty(
+                                    1,
+                                    nameof(TodoViewModel.NewTitle),
+                                    static state => state.NewTitle,
+                                    static (state, value) => state.NewTitle = value,
+                                    TodoJsonContext.Default.String)
+                                .BindProperty(
+                                    2,
+                                    nameof(TodoViewModel.SelectedId),
+                                    static state => state.SelectedId,
+                                    static (state, value) => state.SelectedId = value,
+                                    TodoJsonContext.Default.String)
+                                .BindCommand(
+                                    3,
+                                    nameof(TodoViewModel.AddCommand),
+                                    static state => state.AddCommand)
+                                .BindCommand(
+                                    4,
+                                    nameof(TodoViewModel.ToggleCommand),
+                                    static state => state.ToggleCommand)
+                                .BindCommand(
+                                    5,
+                                    nameof(TodoViewModel.RemoveCommand),
+                                    static state => state.RemoveCommand)
+                                .BindCollection(
+                                    6,
+                                    nameof(TodoViewModel.Items),
+                                    static state => state.Items,
+                                    TodoJsonContext.Default.TodoItem)
+                                .Build();
+                        this.adapter = adapter;
+                        return ValueTask.FromResult(new MvvmSessionActivation(adapter));
+                    })
+                    .UseView(descriptor)
+                    .ConfigureEndpoint(new HtmxEndpointOptions(
+                        AllowedOrigin,
+                        idleTimeout: TimeSpan.FromMinutes(15),
+                        maximumBodyBytes: 32 * 1024,
+                        maximumFields: 8,
+                        maximumFieldBytes: 1024,
+                        maximumResponseBytes: 256 * 1024))
+                    .ConfigureTransport(new CsWebUiHtmxTransportOptions(
+                        AllowedOrigin,
+                        maximumRequestBytes: 32 * 1024,
+                        maximumResponseBytes: 256 * 1024,
+                        maximumFields: 8,
+                        maximumFieldBytes: 1024))
+                    .OpenAsync(cancellationToken)
                 .ConfigureAwait(false);
-            routes.Initialize(opened);
+            htmxApplication = createdApplication;
+            routes.Initialize(createdApplication.OpenedView);
 
             TodoViewModel activeModel = model ??
                 throw new InvalidOperationException("Opening the view did not activate its model.");
             var application = new TodoAppView(
-                TodoRenderModel.Initial(activeModel, routes, opened.Revision));
+                TodoRenderModel.Initial(
+                    activeModel,
+                    routes,
+                    createdApplication.OpenedView.Revision));
             initialDocument = "<!doctype html>" + Render(
                 new TodoDocumentView(new TodoDocumentModel(application)));
             assets = await TodoRuntimeAssets
@@ -141,22 +153,12 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             throw new InvalidOperationException("SimpleTodo supports exactly one native window.");
         }
 
-        HtmxEndpointRuntime selectedRuntime = runtime ??
-            throw new InvalidOperationException("Prepare the todo application before creating a window.");
-        HtmxOpenedView selectedView = opened ??
-            throw new InvalidOperationException("Prepare the todo application before creating a window.");
+        CsWebUiHtmxApplication application = htmxApplication ??
+            throw new InvalidOperationException(
+                "Prepare the todo application before creating a window.");
         try
         {
-            transport = new CsWebUiHtmxTransport(
-                window,
-                selectedRuntime,
-                selectedView,
-                new CsWebUiHtmxTransportOptions(
-                    AllowedOrigin,
-                    maximumRequestBytes: 32 * 1024,
-                    maximumResponseBytes: 256 * 1024,
-                    maximumFields: 8,
-                    maximumFieldBytes: 1024));
+            application.AttachWindow(window);
         }
         catch
         {
@@ -170,7 +172,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
     {
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (transport is null)
+        if (Volatile.Read(ref windowConfigured) == 0)
         {
             throw new InvalidOperationException(
                 "CsWebUi must attach the native HTMX transport before the root session opens.");
@@ -187,22 +189,21 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
     /// <summary>Exercises compiled rendering and the real endpoint without opening a window.</summary>
     internal async Task<int> RunSmokeTestAsync()
     {
-        HtmxEndpointRuntime selectedRuntime = runtime ??
+        CsWebUiHtmxApplication selectedApplication = htmxApplication ??
             throw new InvalidOperationException("Prepare the todo application before smoke testing.");
-        HtmxOpenedView selectedView = opened ??
-            throw new InvalidOperationException("Prepare the todo application before smoke testing.");
+        HtmxOpenedView selectedView = selectedApplication.OpenedView;
         TodoViewModel activeModel = model ??
             throw new InvalidOperationException("Prepare the todo application before smoke testing.");
 
         CaptureTransport invalid = await SendAsync(
-            selectedRuntime,
+            selectedApplication,
             Request(
                 selectedView,
                 routes.Add,
                 selectedView.Revision,
                 [new HtmxFormValue("title", "x")]));
         CaptureTransport added = await SendAsync(
-            selectedRuntime,
+            selectedApplication,
             Request(
                 selectedView,
                 routes.Add,
@@ -212,14 +213,14 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             static item => item.Title == "Run the compiled desktop sample");
         long addedRevision = Revision(added);
         CaptureTransport toggled = await SendAsync(
-            selectedRuntime,
+            selectedApplication,
             Request(
                 selectedView,
                 routes.Toggle,
                 addedRevision,
                 [new HtmxFormValue("selectedId", addedItem?.Id.ToString("D") ?? string.Empty)]));
         CaptureTransport removed = await SendAsync(
-            selectedRuntime,
+            selectedApplication,
             Request(
                 selectedView,
                 routes.Remove,
@@ -309,42 +310,21 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             return;
         }
 
-        CsWebUiHtmxTransport? ownedTransport = Interlocked.Exchange(ref transport, null);
-        HtmxOpenedView? ownedView = Interlocked.Exchange(ref opened, null);
-        HtmxEndpointRuntime? ownedRuntime = Interlocked.Exchange(ref runtime, null);
+        CsWebUiHtmxApplication? ownedApplication =
+            Interlocked.Exchange(ref htmxApplication, null);
         TodoRuntimeAssets? ownedAssets = Interlocked.Exchange(ref assets, null);
         try
         {
-            if (ownedTransport is not null)
+            if (ownedApplication is not null)
             {
-                await ownedTransport.DisposeAsync().ConfigureAwait(false);
+                await ownedApplication.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally
         {
-            try
+            if (ownedAssets is not null)
             {
-                if (ownedView is not null)
-                {
-                    await ownedView.DisposeAsync().ConfigureAwait(false);
-                }
-            }
-            finally
-            {
-                try
-                {
-                    if (ownedRuntime is not null)
-                    {
-                        await ownedRuntime.DisposeAsync().ConfigureAwait(false);
-                    }
-                }
-                finally
-                {
-                    if (ownedAssets is not null)
-                    {
-                        await ownedAssets.DisposeAsync().ConfigureAwait(false);
-                    }
-                }
+                await ownedAssets.DisposeAsync().ConfigureAwait(false);
             }
         }
     }
@@ -354,20 +334,14 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         TodoViewModel ActiveModel() =>
             model ?? throw new InvalidOperationException("The todo model is not active.");
 
-        HtmxFragmentDescriptor application = HtmxCompiledTemplateProjection.CreateFragment(
-            new HtmxFragmentHandle("todo_fragment"),
-            context => new TodoAppView(TodoRenderModel.Response(ActiveModel(), routes, context)));
-        var initial = new HtmxRenderPlan(application);
-        var changed = new HtmxRenderPlan(application, events: ["todo:changed"]);
-        var addInvalid = new HtmxRenderPlan(
-            application,
-            focus: new HtmxDomHandle("new-title"));
-
-        var title = new HtmxFieldDescriptor(
-            new HtmxFieldHandle("title"),
-            memberId: 1,
-            static (value, _) => HtmxConversionResult.Success(
-                JsonSerializer.SerializeToElement(value, TodoJsonContext.Default.String)),
+        return TodoAppView
+            .ConfigureHtmx(
+                Contract,
+                context => new TodoAppView(
+                    TodoRenderModel.Response(ActiveModel(), routes, context)))
+            .ConfigureStringField(
+                "title",
+                TodoJsonContext.Default.String,
             [
                 static (value, _) =>
                 {
@@ -377,12 +351,10 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                         : ["Give the task a name between 2 and 80 characters."];
                     return ValueTask.FromResult(messages);
                 },
-            ]);
-        var selected = new HtmxFieldDescriptor(
-            new HtmxFieldHandle("selectedId"),
-            memberId: 2,
-            static (value, _) => HtmxConversionResult.Success(
-                JsonSerializer.SerializeToElement(value, TodoJsonContext.Default.String)),
+            ])
+            .ConfigureStringField(
+                "selectedId",
+                TodoJsonContext.Default.String,
             [
                 (value, _) =>
                 {
@@ -394,38 +366,8 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                         : ["That task is no longer available."];
                     return ValueTask.FromResult(messages);
                 },
-            ]);
-
-        return new HtmxViewDescriptor(
-            new HtmxViewHandle("simple-todo"),
-            Contract,
-            [
-                new HtmxActionDescriptor(
-                    new HtmxActionHandle("add"),
-                    commandMemberId: 3,
-                    [title],
-                    static (_, _) => ValueTask.FromResult(true),
-                    changed,
-                    addInvalid,
-                    initial),
-                new HtmxActionDescriptor(
-                    new HtmxActionHandle("toggle"),
-                    commandMemberId: 4,
-                    [selected],
-                    static (_, _) => ValueTask.FromResult(true),
-                    changed,
-                    initial,
-                    initial),
-                new HtmxActionDescriptor(
-                    new HtmxActionHandle("remove"),
-                    commandMemberId: 5,
-                    [selected],
-                    static (_, _) => ValueTask.FromResult(true),
-                    changed,
-                    initial,
-                    initial),
-            ],
-            initial);
+            ])
+            .Build();
     }
 
     private static HtmxEndpointRequest Request(
@@ -451,11 +393,11 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             Guid.NewGuid());
 
     private static async Task<CaptureTransport> SendAsync(
-        HtmxEndpointRuntime runtime,
+        CsWebUiHtmxApplication application,
         HtmxEndpointRequest request)
     {
         var capture = new CaptureTransport();
-        await runtime.HandleAsync(request, capture).ConfigureAwait(false);
+        await application.HandleAsync(request, capture).ConfigureAwait(false);
         return capture;
     }
 
