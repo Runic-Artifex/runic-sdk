@@ -10,4 +10,4 @@ This executable is intentionally parameterized because the packaging projects ma
 - feed-only restore into an empty cache, package-reference build/run, actual dotnet-tool install/run, and operational imported Build `Generate` then `Verify` targets using that explicit local tool path;
 - optional Native-AOT publish/run with an isolated ignored `obj/aot.packages.lock.json`.
 
-The verifier does not publish packages. A caller first packs all six package IDs at one version into a local feed, then runs `samples/DependencyNotices.PackageConsumer/verify.ps1`.
+The verifier does not publish packages. A caller first packs all six package IDs at one version into a local feed, then runs `tests/Fixtures/DependencyNotices.PackageConsumer/verify.ps1`.

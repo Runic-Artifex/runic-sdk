@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <IsPackable>false</IsPackable>
+    <DependencyNoticesPackageVersion Condition="'$(DependencyNoticesPackageVersion)' == ''">0.0.0-local</DependencyNoticesPackageVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WebUIToolkit.DependencyNotices.Core" Version="$(DependencyNoticesPackageVersion)" />
+    <PackageReference Include="WebUIToolkit.DependencyNotices.Engine" Version="$(DependencyNoticesPackageVersion)" />
+    <PackageReference Include="WebUIToolkit.DependencyNotices.Rendering" Version="$(DependencyNoticesPackageVersion)" />
+    <PackageReference Include="WebUIToolkit.DependencyNotices.Runtime" Version="$(DependencyNoticesPackageVersion)" />
+    <PackageReference Include="WebUIToolkit.DependencyNotices.Build" Version="$(DependencyNoticesPackageVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="dependency-notices.json" LogicalName="DependencyNotices.PackageConsumer.dependency-notices.json" />
+  </ItemGroup>
+</Project>

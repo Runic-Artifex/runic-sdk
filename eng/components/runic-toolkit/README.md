@@ -18,6 +18,10 @@ The repository now includes the Wave A contract/runtime baseline alongside the o
 - [Observable range collection utility plan](./observable-range-collection.html)
 - [Dependency notices and SBOM-linked generator plan](./dependency-notices.html)
 
+The concrete desktop boundary is the `CsWebUi` NuGet package, not ASP.NET Core;
+[ADR 0011](./docs/adr/0011-cs-webui-host-boundary.md) records the package and
+runtime separation.
+
 Each detailed plan is a self-contained greenfield implementation specification. It defines its own contracts, project layout, dependency direction, diagnostics, tests, Native AOT gates, delivery phases, and acceptance criteria; implementation must not rely on an unpublished predecessor codebase or local machine context.
 
 Agentic implementation follows
@@ -57,16 +61,42 @@ independent repositories.
 
 The repository pins .NET SDK 10.0.302 and Node.js 24.18 or newer.
 
+For normal development, enter the Nix/direnv shell and use the lightweight
+managed inner loop:
+
 ```powershell
+direnv allow
 npm ci
+./eng/dev.ps1
+```
+
+Individual projects and samples also work with ordinary `dotnet build`,
+`dotnet test`, and `dotnet run` commands. Development restores may update lock
+files and do not run release-only auditing, trim analysis, Native AOT analysis,
+or package-feed rehearsals. See [development and verification
+modes](./docs/development.md).
+
+Run the strict release-facing checks explicitly:
+
+```powershell
 ./eng/verify.ps1
 ```
 
-When a project or dependency changes, refresh and commit lock files before verification:
+When a dependency changes, refresh and commit lock files before verification:
 
 ```powershell
 ./eng/update-locks.ps1
 ```
+
+## Samples
+
+The [`samples`](./samples) directory is an ordered learning path built with
+source project references. Every sample runs directly; start with the lifecycle
+hello world, continue through command-line and MVVM projection examples, then
+build the Simple and Advanced ToDo applications.
+
+Executable release and acceptance harnesses live separately under
+[`tests/Fixtures`](./tests/Fixtures).
 
 ## Status
 

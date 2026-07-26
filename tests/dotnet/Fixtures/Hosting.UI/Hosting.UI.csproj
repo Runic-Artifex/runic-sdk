@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1812</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
+    <ProjectReference Include="../../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
+    <ProjectReference Include="../../../src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />
+    <ProjectReference Include="../../../src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
+  </ItemGroup>
+</Project>

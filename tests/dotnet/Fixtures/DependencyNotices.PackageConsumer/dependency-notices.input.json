@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "manualComponents": [
+    {
+      "purl": "pkg:generic/webuitoolkit-text-resources-pack@1.0.0?format=json",
+      "displayName": "WebUIToolkit Text Resources external pack",
+      "revision": "text-resources-pack-v1",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "attribution",
+          "sha256": "1368e999508621b0430f54a376bc9a19f9ff940591b60527c54786e94cd23f24",
+          "path": "dependency-notices.assets/sha256/1368e999508621b0430f54a376bc9a19f9ff940591b60527c54786e94cd23f24",
+          "mediaType": "text/plain; charset=utf-8",
+          "origin": "review://webuitoolkit/text-resources-pack/1.0.0"
+        }
+      ]
+    }
+  ]
+}

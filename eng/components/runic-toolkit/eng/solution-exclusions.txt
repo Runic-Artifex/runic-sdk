@@ -1,5 +1,11 @@
 # Projects intentionally exercised by dedicated package-consumer or RID/AOT gates.
-samples/ReferenceApplication/ReferenceApplication.csproj
+tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj
+tests/Fixtures/DependencyNotices.PackageConsumer/PackageConsumer.csproj
+tests/Fixtures/Hosting.Combined/Hosting.Combined.csproj
+tests/Fixtures/Hosting.CustomComposition/Hosting.CustomComposition.csproj
+tests/Fixtures/Hosting.UI/Hosting.UI.csproj
+tests/Fixtures/Htmx/Htmx.Sample.csproj
+tests/Fixtures/ReferenceApplication/ReferenceApplication.csproj
 src/WebUIToolkit.MVVM.Html.CommunityToolkit/WebUIToolkit.MVVM.Html.CommunityToolkit.csproj
 tests/WebUIToolkit.Collections.AotSmoke/WebUIToolkit.Collections.AotSmoke.csproj
 tests/WebUIToolkit.Collections.PackageConsumer/WebUIToolkit.Collections.PackageConsumer.csproj

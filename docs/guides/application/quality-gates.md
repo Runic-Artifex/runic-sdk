@@ -13,7 +13,8 @@ transcripts, local journals, and successful intermediate logs remain transient.
 
 - A clean clone restores without private feeds or machine-local inputs.
 - SDK, package, frontend, and tool versions are centrally pinned with committed lock files.
-- Owned identifiers use `WebUIToolkit`; external lowercase `cs-webui` remains unchanged.
+- Owned root identifiers use `WebUIToolkit`; the external `cs-webui` project,
+  `CsWebUi` package/namespace, and explicitly named adapter remain unchanged.
 - Architecture checks enforce dependency direction and exclusive path ownership.
 - ADR 0004 records an explicit publication hold; reusable publication remains blocked until a later license ADR replaces it.
 

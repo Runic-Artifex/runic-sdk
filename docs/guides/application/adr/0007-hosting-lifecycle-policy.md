@@ -5,7 +5,7 @@
 
 ## Context
 
-Hosting adapters will eventually compose command-line, MVVM, browser, Generic Host,
+Hosting adapters compose command-line, MVVM, browser, Generic Host,
 and external `cs-webui` implementations. Their dependency-neutral lifecycle behavior
 must be fixed before those adapters introduce framework-specific assumptions.
 
@@ -29,3 +29,4 @@ must be fixed before those adapters introduce framework-specific assumptions.
 The deterministic BCL-only kernel can be tested without wall-clock sleeps or external
 frameworks. Later adapters must translate their native errors and cancellation signals
 into these frozen precedence and shutdown rules rather than redefining them.
+ADR 0011 records the concrete cs-webui desktop-host boundary.

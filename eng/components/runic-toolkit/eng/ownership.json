@@ -12,7 +12,14 @@
     { "from": "flow", "to": "mvvm-protocol-core", "reason": "The owner-local G3 executable test decodes frozen raw protocol frames before invoking the declarative Flow projection; shipping Flow packages retain their independent handoff boundary." },
     { "from": "hosting", "to": "mvvm-protocol-core", "reason": "Framework-neutral WebUi hosting composes the frozen root-session abstraction." },
     { "from": "hosting", "to": "command-line", "reason": "The inward Hosting adapter translates the neutral command-line launch decision." },
-    { "from": "command-line", "to": "hosting", "reason": "The outward command-line bridge depends only on Hosting abstractions; the opposite adapter remains a separate package." }
+    { "from": "command-line", "to": "hosting", "reason": "The outward command-line bridge depends only on Hosting abstractions; the opposite adapter remains a separate package." },
+    { "from": "demo-samples", "to": "hosting", "reason": "Runnable demonstrations compose the public Hosting and cs-webui adapters from source." },
+    { "from": "demo-samples", "to": "mvvm-protocol-core", "reason": "Runnable demonstrations exercise the public MVVM protocol from source." },
+    { "from": "demo-samples", "to": "communitytoolkit", "reason": "Runnable demonstrations show the first-party CommunityToolkit.MVVM adapter." },
+    { "from": "demo-samples", "to": "command-line", "reason": "The command-line demonstration exercises the typed command pipeline." },
+    { "from": "demo-samples", "to": "collections", "reason": "Todo demonstrations exercise the observable range collection." },
+    { "from": "demo-samples", "to": "flow", "reason": "Advanced demonstrations may compose application-flow mechanics." },
+    { "from": "demo-samples", "to": "text-resources", "reason": "Advanced demonstrations may compose generated text resources." }
   ],
   "tasks": [
     { "name": "mvvm-protocol-core", "branch": "work/mvvm-protocol-core", "paths": ["protocol/mvvm/*", "src/WebUIToolkit.MVVM/*", "tests/WebUIToolkit.MVVM.Tests/*", "tests/WebUIToolkit.MVVM.Protocol.Tests/*", "tests/WebUIToolkit.MVVM.AotSmoke/*"] },
@@ -25,13 +32,14 @@
     { "name": "communitytoolkit", "branch": "work/communitytoolkit", "paths": ["src/WebUIToolkit.MVVM.CommunityToolkit/*", "tests/WebUIToolkit.MVVM.CommunityToolkit.Tests/*"] },
     { "name": "reactiveui", "branch": "work/reactiveui", "paths": ["src/WebUIToolkit.MVVM.ReactiveUI/*", "tests/WebUIToolkit.MVVM.ReactiveUI.Tests/*"] },
     { "name": "template-engine", "branch": "work/template-engine", "paths": ["src/WebUIToolkit.MVVM.Html/*", "src/WebUIToolkit.MVVM.Html.Compiler/*", "src/WebUIToolkit.MVVM.Html.Build/*", "src/WebUIToolkit.MVVM.Html.Testing/*", "src/WebUIToolkit.MVVM.Html.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Html.ReactiveUI/*", "tools/dotnet-cwhtml/*", "spec/templates/*", "tests/WebUIToolkit.MVVM.Html.Tests/*"] },
-    { "name": "htmx", "branch": "work/htmx", "paths": ["src/WebUIToolkit.MVVM.Html.Htmx/*", "src/WebUIToolkit.MVVM.Html.Htmx.Js/*", "tests/WebUIToolkit.MVVM.Html.Htmx.Tests/*", "samples/Htmx/*"] },
-    { "name": "hosting", "branch": "work/hosting", "paths": ["src/WebUIToolkit.Hosting/*", "src/WebUIToolkit.Hosting.Abstractions/*", "src/WebUIToolkit.Hosting.WebUi/*", "src/WebUIToolkit.Hosting.CommandLine/*", "src/WebUIToolkit.Hosting.Generators/*", "src/WebUIToolkit.Hosting.GenericHost/*", "src/WebUIToolkit.Hosting.Build/*", "tests/WebUIToolkit.Hosting.*/*", "samples/Hosting.*/*"] },
+    { "name": "htmx", "branch": "work/htmx", "paths": ["src/WebUIToolkit.MVVM.Html.Htmx/*", "src/WebUIToolkit.MVVM.Html.Htmx.Js/*", "tests/WebUIToolkit.MVVM.Html.Htmx.Tests/*", "tests/Fixtures/Htmx/*"] },
+    { "name": "hosting", "branch": "work/hosting", "paths": ["src/WebUIToolkit.Hosting/*", "src/WebUIToolkit.Hosting.Abstractions/*", "src/WebUIToolkit.Hosting.WebUi/*", "src/WebUIToolkit.Hosting.CsWebUi/*", "src/WebUIToolkit.Hosting.CommandLine/*", "src/WebUIToolkit.Hosting.Generators/*", "src/WebUIToolkit.Hosting.GenericHost/*", "src/WebUIToolkit.Hosting.Build/*", "tests/WebUIToolkit.Hosting.*/*", "tests/Fixtures/Hosting.*/*"] },
+    { "name": "demo-samples", "branch": "work/demo-samples", "paths": ["samples/01-HelloLifecycle/*", "samples/02-GreetingCommandLine/*", "samples/03-MvvmCounterProjection/*", "samples/SimpleTodo/*", "samples/AdvancedTodo/*"] },
     { "name": "flow", "branch": "work/flow", "paths": ["src/WebUIToolkit.MVVM.Flow/*", "src/WebUIToolkit.MVVM.Flow.Generators/*", "src/WebUIToolkit.MVVM.Flow.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Flow.ReactiveUI/*", "tests/WebUIToolkit.MVVM.Flow.*/*", "samples/Flow.*/*"] },
     { "name": "text-resources", "branch": "work/text-resources", "paths": ["src/WebUIToolkit.TextResources*/*", "tools/dotnet-textresources/*", "spec/text-resources/*", "tests/WebUIToolkit.TextResources.*/*", "samples/TextResources.*/*"] },
-    { "name": "command-line", "branch": "work/command-line", "paths": ["src/WebUIToolkit.CommandLine*/*", "eng/cli-evaluation/*", "spec/command-line/*", "tests/WebUIToolkit.CommandLine.*/*", "samples/CommandLine.*/*"] },
+    { "name": "command-line", "branch": "work/command-line", "paths": ["src/WebUIToolkit.CommandLine*/*", "eng/cli-evaluation/*", "spec/command-line/*", "tests/WebUIToolkit.CommandLine.*/*", "tests/Fixtures/CommandLine.*/*"] },
     { "name": "collections", "branch": "work/collections", "paths": ["src/WebUIToolkit.Collections*/*", "tests/WebUIToolkit.Collections.*/*", "benchmarks/WebUIToolkit.Collections.*/*"] },
-    { "name": "dependency-notices", "branch": "work/dependency-notices", "paths": ["src/WebUIToolkit.DependencyNotices*/*", "spec/dependency-notices/*", "tests/WebUIToolkit.DependencyNotices.*/*", "samples/DependencyNotices.*/*"] },
-    { "name": "release-rehearsal", "branch": "work/release-rehearsal", "paths": ["samples/ReferenceApplication/*", "docs/release/wave-g/*", "eng/verify-wave-g*"] }
+    { "name": "dependency-notices", "branch": "work/dependency-notices", "paths": ["src/WebUIToolkit.DependencyNotices*/*", "spec/dependency-notices/*", "tests/WebUIToolkit.DependencyNotices.*/*", "tests/Fixtures/DependencyNotices.*/*"] },
+    { "name": "release-rehearsal", "branch": "work/release-rehearsal", "paths": ["tests/Fixtures/ReferenceApplication/*", "docs/release/wave-g/*", "eng/verify-wave-g*"] }
   ]
 }

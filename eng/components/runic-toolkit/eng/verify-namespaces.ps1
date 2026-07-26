@@ -9,7 +9,11 @@ $sourceExtensions = @(
     '.md', '.cwhtml', '.cshtml', '.razor', '.nuspec', '.xml', '.yaml', '.yml'
 )
 $retiredPatterns = @(
-    '\bCsWebUi',
+    # Reject the former owned root identity without rejecting the external
+    # CsWebUi package, namespace, types, or an explicitly named adapter.
+    '\bnamespace\s+CsWebUi(?:[.;])',
+    '<(?:AssemblyName|RootNamespace|PackageId)>CsWebUi(?:[.<])',
+    '\bCsWebUi\.(?:Collections|CommandLine|DependencyNotices|Hosting|MVVM|TextResources)\b',
     '\bCSWEBUI_',
     '\bcswebui\.(?:cli|mvvm)',
     '\bcs-webui-mvvm(?:-[a-z]+)?\b',

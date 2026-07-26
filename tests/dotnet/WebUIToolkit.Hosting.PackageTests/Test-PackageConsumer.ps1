@@ -32,6 +32,10 @@ if (Test-Path -LiteralPath $consumerCache) {
 }
 
 New-Item -ItemType Directory -Force -Path $feedDirectory | Out-Null
+$originalNuGetPackages = $env:NUGET_PACKAGES
+$env:NUGET_PACKAGES = $consumerCache
+
+try {
 
 function ConvertTo-DeterministicPackage {
     param([Parameter(Mandatory)] [string] $PackagePath)
@@ -280,8 +284,11 @@ if (Test-PackageFrameworkReference $hostingNuspec 'Microsoft.AspNetCore.App') {
 if (-not ($genericHostDependencies | Where-Object { $_.id -eq 'WebUIToolkit.Hosting' })) {
     throw 'WebUIToolkit.Hosting.GenericHost must depend inward on WebUIToolkit.Hosting.'
 }
-if (-not (Test-PackageFrameworkReference $genericHostNuspec 'Microsoft.AspNetCore.App')) {
-    throw 'WebUIToolkit.Hosting.GenericHost must declare Microsoft.AspNetCore.App.'
+if (-not ($genericHostDependencies | Where-Object { $_.id -eq 'Microsoft.Extensions.Hosting' })) {
+    throw 'WebUIToolkit.Hosting.GenericHost must declare Microsoft.Extensions.Hosting.'
+}
+if (Test-PackageFrameworkReference $genericHostNuspec 'Microsoft.AspNetCore.App') {
+    throw 'WebUIToolkit.Hosting.GenericHost must remain independent of Microsoft.AspNetCore.App.'
 }
 if ($abstractionsDependencies | Where-Object { $_.id -like 'WebUIToolkit.Hosting*' }) {
     throw 'WebUIToolkit.Hosting.Abstractions must not depend on another Hosting package.'
@@ -298,8 +305,11 @@ if (-not ($webUiDependencies | Where-Object { $_.id -eq 'WebUIToolkit.Hosting' }
 if (-not ($webUiDependencies | Where-Object { $_.id -eq 'WebUIToolkit.MVVM' })) {
     throw 'WebUIToolkit.Hosting.WebUi must depend on WebUIToolkit.MVVM.'
 }
-if (-not (Test-PackageFrameworkReference $webUiNuspec 'Microsoft.AspNetCore.App')) {
-    throw 'WebUIToolkit.Hosting.WebUi must declare its dependency-injection shared framework.'
+if (-not ($webUiDependencies | Where-Object { $_.id -eq 'Microsoft.Extensions.DependencyInjection.Abstractions' })) {
+    throw 'WebUIToolkit.Hosting.WebUi must declare Microsoft.Extensions.DependencyInjection.Abstractions.'
+}
+if (Test-PackageFrameworkReference $webUiNuspec 'Microsoft.AspNetCore.App') {
+    throw 'WebUIToolkit.Hosting.WebUi must remain independent of Microsoft.AspNetCore.App.'
 }
 if ($generatorDependencies | Where-Object { $_.id -like 'WebUIToolkit.Hosting*' }) {
     throw 'WebUIToolkit.Hosting.Generators must not acquire a Hosting runtime dependency.'
@@ -383,3 +393,7 @@ dotnet restore $consumerProject --locked-mode
 if ($LASTEXITCODE -ne 0) { throw 'Final portable locked restore failed.' }
 
 Write-Host 'Hosting package-consumer verification passed.'
+}
+finally {
+    $env:NUGET_PACKAGES = $originalNuGetPackages
+}

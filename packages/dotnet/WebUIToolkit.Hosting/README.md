@@ -128,7 +128,7 @@ contracts; runtime asset serving remains an adapter responsibility.
 |---|---|---|
 | `WebUIToolkit.Hosting.Abstractions` | .NET BCL only | Frozen contracts and immutable data |
 | `WebUIToolkit.Hosting` | `WebUIToolkit.Hosting.Abstractions` | Composition, routing, validation, lifecycle, events |
-| `WebUIToolkit.Hosting.GenericHost` | `WebUIToolkit.Hosting`, Microsoft.AspNetCore.App shared framework | Generic Host lifetime bridge and structured logging sink |
+| `WebUIToolkit.Hosting.GenericHost` | `WebUIToolkit.Hosting`, `Microsoft.Extensions.Hosting` | Generic Host lifetime bridge and structured logging sink |
 | `WebUIToolkit.Hosting.Build` | `WebUIToolkit.Hosting.Abstractions` | Deterministic manifest construction; no runtime-project dependency |
 | `WebUIToolkit.Hosting.Generators` | .NET BCL only | Non-packable dependency-neutral generation contract/diagnostic model; no runtime-project dependency |
 

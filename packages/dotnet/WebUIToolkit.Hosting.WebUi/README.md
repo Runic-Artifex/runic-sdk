@@ -2,17 +2,16 @@
 
 `WebUIToolkit.Hosting.WebUi` composes the dependency-neutral browser contracts with a
 scoped root MVVM session and a deterministic manifest-backed static-asset endpoint.
-It declares its own `Microsoft.AspNetCore.App` shared-framework dependency for the
-dependency-injection scope bridge; that dependency does not leak into the BCL-only
-Hosting kernel.
+It uses only `Microsoft.Extensions.DependencyInjection.Abstractions` for its optional
+scoped-session bridge. It is not an ASP.NET Core web application host.
 
-The package deliberately does not discover or load a native browser runtime. Register an
-explicit `IBrowserHostFactory` adapter, create a `WebUiModeRunner`, and add the matching
-`FrontendAssetValidator` for `LaunchKind.UserInterface`. This keeps command launches from
-resolving or initializing UI services.
+The package deliberately does not discover or load a native browser runtime. Use the
+first-party `WebUIToolkit.Hosting.CsWebUi` adapter, create a `WebUiModeRunner`, and add
+the matching `FrontendAssetValidator` for `LaunchKind.UserInterface`. This keeps command
+launches from resolving or initializing UI services.
 
-The Wave C HTMX and cs-webui bindings remain separate adapters: this package exposes the
-closed static-asset, root-session, and stop-notification seams they consume.
+HTMX and CsWebUi remain separate adapters around these closed static-asset,
+root-session, and stop-notification seams.
 
 ## MVVM browser transport
 

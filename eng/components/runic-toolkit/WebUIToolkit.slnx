@@ -19,6 +19,7 @@
     <Project Path="src/WebUIToolkit.Hosting.Abstractions/WebUIToolkit.Hosting.Abstractions.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.CommandLine/WebUIToolkit.Hosting.CommandLine.csproj" />
+    <Project Path="src/WebUIToolkit.Hosting.CsWebUi/WebUIToolkit.Hosting.CsWebUi.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.Generators/WebUIToolkit.Hosting.Generators.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />
@@ -61,6 +62,7 @@
     <Project Path="tests/WebUIToolkit.Hosting.Build.Tests/WebUIToolkit.Hosting.Build.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.CompositionTests/WebUIToolkit.Hosting.CompositionTests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.ContractTests/WebUIToolkit.Hosting.ContractTests.csproj" />
+    <Project Path="tests/WebUIToolkit.Hosting.CsWebUi.Tests/WebUIToolkit.Hosting.CsWebUi.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.WaveCTests/WebUIToolkit.Hosting.WaveCTests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.BindingCompiler.Tests/WebUIToolkit.MVVM.BindingCompiler.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Build.Tests/WebUIToolkit.MVVM.Build.Tests.csproj" />
@@ -83,5 +85,12 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/dotnet-cwhtml/WebUIToolkit.DotNet.Cwhtml.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/01-HelloLifecycle/HelloLifecycle.csproj" />
+    <Project Path="samples/02-GreetingCommandLine/GreetingCommandLine.csproj" />
+    <Project Path="samples/03-MvvmCounterProjection/MvvmCounterProjection.csproj" />
+    <Project Path="samples/AdvancedTodo/AdvancedTodo.csproj" />
+    <Project Path="samples/SimpleTodo/SimpleTodo.csproj" />
   </Folder>
 </Solution>
