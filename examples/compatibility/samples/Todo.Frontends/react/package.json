@@ -1,0 +1,24 @@
+{
+  "name": "@webuitoolkit/sample-todo-react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node --watch-path=src --watch-path=../shared build.mjs",
+    "typecheck": "tsc --project tsconfig.json",
+    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build && node ../verify-build.mjs React"
+  },
+  "dependencies": {
+    "@webuitoolkit/mvvm": "0.1.0",
+    "@webuitoolkit/mvvm-react": "0.1.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "esbuild": "0.28.1",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>WebUIToolkit.Samples.Todo.Angular</AssemblyName>
+    <RootNamespace>WebUIToolkit.Samples.Todo.Angular</RootNamespace>
+    <TodoFrontendWorkspace>@webuitoolkit/sample-todo-angular</TodoFrontendWorkspace>
+    <TodoFrontendDirectory>angular</TodoFrontendDirectory>
+  </PropertyGroup>
+  <Import Project="../Todo.Frontends/TodoFrontendSample.props" />
+</Project>

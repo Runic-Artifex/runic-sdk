@@ -90,6 +90,15 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
     internal IReadOnlyList<WorkflowValidationIssue> WizardIssues =>
         _creationFlow?.Snapshot.ValidationIssues ?? [];
 
+    internal AdvancedTodoState State =>
+        new(
+            TotalCount,
+            RemainingCount,
+            CompletedCount,
+            IsImporting,
+            WizardStep?.Value,
+            WizardIssues.Select(static issue => issue.Message).ToArray());
+
     internal async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
         await RefreshAsync(cancellationToken).ConfigureAwait(false);
@@ -140,6 +149,28 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
         if (Guid.TryParse(SelectedId, out Guid id))
         {
             await _service.DeleteAsync(id, cancellationToken).ConfigureAwait(false);
+            Observe("save", "Deleted a task.");
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    [RelayCommand(FlowExceptionsToTaskScheduler = true)]
+    private async Task ToggleByIdAsync(string id, CancellationToken cancellationToken)
+    {
+        if (Guid.TryParse(id, out Guid parsed))
+        {
+            await _service.ToggleAsync(parsed, cancellationToken).ConfigureAwait(false);
+            Observe("save", "Changed task completion.");
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    [RelayCommand(FlowExceptionsToTaskScheduler = true)]
+    private async Task DeleteByIdAsync(string id, CancellationToken cancellationToken)
+    {
+        if (Guid.TryParse(id, out Guid parsed))
+        {
+            await _service.DeleteAsync(parsed, cancellationToken).ConfigureAwait(false);
             Observe("save", "Deleted a task.");
             await RefreshAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -372,3 +403,11 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
 }
 
 internal sealed record DiagnosticEntry(DateTimeOffset At, string Category, string Message);
+
+internal sealed record AdvancedTodoState(
+    int TotalCount,
+    int RemainingCount,
+    int CompletedCount,
+    bool IsImporting,
+    string? WizardStep,
+    IReadOnlyList<string> WizardIssues);

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>WebUIToolkit.Samples.Todo.Vue</AssemblyName>
+    <RootNamespace>WebUIToolkit.Samples.Todo.Vue</RootNamespace>
+    <TodoFrontendWorkspace>@webuitoolkit/sample-todo-vue</TodoFrontendWorkspace>
+    <TodoFrontendDirectory>vue</TodoFrontendDirectory>
+  </PropertyGroup>
+  <Import Project="../Todo.Frontends/TodoFrontendSample.props" />
+</Project>

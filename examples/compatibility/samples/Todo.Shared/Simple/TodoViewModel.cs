@@ -77,4 +77,31 @@ internal sealed partial class TodoViewModel : ObservableObject
         Guid.TryParse(SelectedId, out Guid id)
             ? Items.FirstOrDefault(item => item.Id == id)
             : null;
+
+    /// <summary>Toggles one task from a typed frontend command argument.</summary>
+    [RelayCommand]
+    private void ToggleById(string id)
+    {
+        TodoItem? item = Find(id);
+        if (item is not null)
+        {
+            item.IsCompleted = !item.IsCompleted;
+        }
+    }
+
+    /// <summary>Removes one task from a typed frontend command argument.</summary>
+    [RelayCommand]
+    private void RemoveById(string id)
+    {
+        TodoItem? item = Find(id);
+        if (item is not null)
+        {
+            Items.Remove(item);
+        }
+    }
+
+    private TodoItem? Find(string id) =>
+        Guid.TryParse(id, out Guid parsed)
+            ? Items.FirstOrDefault(item => item.Id == parsed)
+            : null;
 }

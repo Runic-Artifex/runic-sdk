@@ -297,6 +297,15 @@
           "WebUIToolkit.Hosting.Abstractions": "[1.0.0, )"
         }
       },
+      "webuitoolkit.hosting.cswebui.mvvm": {
+        "type": "Project",
+        "dependencies": {
+          "CsWebUi": "[2.5.0-beta.4.3, )",
+          "WebUIToolkit.Hosting.CsWebUi": "[1.0.0-beta.1, )",
+          "WebUIToolkit.Hosting.WebUi": "[1.0.0, )",
+          "WebUIToolkit.MVVM": "[1.0.0, )"
+        }
+      },
       "webuitoolkit.hosting.generichost": {
         "type": "Project",
         "dependencies": {
@@ -324,23 +333,6 @@
       },
       "webuitoolkit.mvvm.flow": {
         "type": "Project"
-      },
-      "webuitoolkit.mvvm.html": {
-        "type": "Project"
-      },
-      "webuitoolkit.mvvm.html.htmx": {
-        "type": "Project",
-        "dependencies": {
-          "WebUIToolkit.MVVM": "[1.0.0, )",
-          "WebUIToolkit.MVVM.Html": "[1.0.0, )"
-        }
-      },
-      "webuitoolkit.mvvm.html.htmx.cswebui": {
-        "type": "Project",
-        "dependencies": {
-          "CsWebUi": "[2.5.0-beta.4.3, )",
-          "WebUIToolkit.MVVM.Html.Htmx": "[1.0.0, )"
-        }
       },
       "WebUIToolkit.Samples.Todo.Shared": {
         "type": "Project",

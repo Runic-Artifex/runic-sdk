@@ -1,0 +1,77 @@
+{
+  "$schema": "webuitoolkit.mvvm.frontend-contract/1",
+  "csharp": {
+    "namespace": "WebUIToolkit.Samples.Todo.FrontendHost",
+    "className": "TodoContracts"
+  },
+  "contracts": [
+    {
+      "name": "samples.todo.simple",
+      "client": "SimpleTodo",
+      "types": {
+        "SimpleTodoItem": {
+          "id": "string",
+          "title": "string",
+          "isCompleted": "boolean"
+        }
+      },
+      "members": [
+        { "id": 1, "name": "newTitle", "kind": "property", "type": "string", "access": "readwrite", "validation": true },
+        { "id": 3, "name": "items", "kind": "collection", "type": "SimpleTodoItem" },
+        { "id": 10, "name": "add", "kind": "command" },
+        { "id": 11, "name": "toggle", "kind": "command", "argument": "string" },
+        { "id": 12, "name": "remove", "kind": "command", "argument": "string" }
+      ]
+    },
+    {
+      "name": "samples.todo.advanced",
+      "client": "AdvancedTodo",
+      "types": {
+        "AdvancedTodoItem": {
+          "id": "string",
+          "title": "string",
+          "isCompleted": "boolean",
+          "notes": "string",
+          "priority": "\"Low\" | \"Normal\" | \"High\"",
+          "createdAt": "string",
+          "completedAt": "string | null"
+        },
+        "AdvancedTodoState": {
+          "totalCount": "number",
+          "remainingCount": "number",
+          "completedCount": "number",
+          "isImporting": "boolean",
+          "wizardStep": "string | null",
+          "wizardIssues": "readonly string[]"
+        },
+        "DiagnosticEntry": {
+          "at": "string",
+          "category": "string",
+          "message": "string"
+        }
+      },
+      "members": [
+        { "id": 1, "name": "newTitle", "kind": "property", "type": "string", "access": "readwrite", "validation": true },
+        { "id": 2, "name": "newNotes", "kind": "property", "type": "string", "access": "readwrite" },
+        { "id": 3, "name": "newPriority", "kind": "property", "type": "string", "access": "readwrite" },
+        { "id": 4, "name": "query", "kind": "property", "type": "string", "access": "readwrite" },
+        { "id": 5, "name": "filter", "kind": "property", "type": "string", "access": "readwrite" },
+        { "id": 20, "name": "items", "kind": "collection", "type": "AdvancedTodoItem" },
+        { "id": 21, "name": "diagnostics", "kind": "collection", "type": "DiagnosticEntry" },
+        { "id": 22, "name": "state", "kind": "property", "type": "AdvancedTodoState", "access": "readonly" },
+        { "id": 40, "name": "add", "kind": "command" },
+        { "id": 41, "name": "applyFilter", "kind": "command" },
+        { "id": 42, "name": "toggle", "kind": "command", "argument": "string" },
+        { "id": 43, "name": "delete", "kind": "command", "argument": "string" },
+        { "id": 44, "name": "clearCompleted", "kind": "command" },
+        { "id": 45, "name": "import", "kind": "command" },
+        { "id": 46, "name": "cancelImport", "kind": "command" },
+        { "id": 48, "name": "wizardStart", "kind": "command" },
+        { "id": 49, "name": "wizardNext", "kind": "command" },
+        { "id": 50, "name": "wizardBack", "kind": "command" },
+        { "id": 51, "name": "wizardFinish", "kind": "command" },
+        { "id": 52, "name": "wizardCancel", "kind": "command" }
+      ]
+    }
+  ]
+}

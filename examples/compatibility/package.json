@@ -8,7 +8,8 @@
     "npm": "11.16.x"
   },
   "workspaces": [
-    "web/packages/*"
+    "web/packages/*",
+    "samples/Todo.Frontends/*"
   ],
   "scripts": {
     "build": "node eng/run-workspaces.mjs build",
@@ -16,6 +17,8 @@
     "verify": "npm run build && npm run test"
   },
   "devDependencies": {
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3",
+    "vite": "8.1.5"
   }
 }

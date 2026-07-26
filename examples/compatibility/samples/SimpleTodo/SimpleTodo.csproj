@@ -24,6 +24,7 @@
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
+    <ProjectReference Include="../Todo.Shared/Todo.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

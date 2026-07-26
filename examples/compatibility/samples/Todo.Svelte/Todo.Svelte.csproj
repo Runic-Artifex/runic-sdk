@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>WebUIToolkit.Samples.Todo.Svelte</AssemblyName>
+    <RootNamespace>WebUIToolkit.Samples.Todo.Svelte</RootNamespace>
+    <TodoFrontendWorkspace>@webuitoolkit/sample-todo-svelte</TodoFrontendWorkspace>
+    <TodoFrontendDirectory>svelte</TodoFrontendDirectory>
+  </PropertyGroup>
+  <Import Project="../Todo.Frontends/TodoFrontendSample.props" />
+</Project>

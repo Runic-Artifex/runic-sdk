@@ -1,0 +1,26 @@
+<Project>
+  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.props" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <WebUIToolkitFrontendWorkspace>$(TodoFrontendWorkspace)</WebUIToolkitFrontendWorkspace>
+    <WebUIToolkitFrontendPackageDirectory>$(MSBuildThisFileDirectory)$(TodoFrontendDirectory)</WebUIToolkitFrontendPackageDirectory>
+    <WebUIToolkitFrontendOutputDirectory>$(MSBuildThisFileDirectory)$(TodoFrontendDirectory)/dist</WebUIToolkitFrontendOutputDirectory>
+    <WebUIToolkitFrontendWorkspaceRoot>$(MSBuildThisFileDirectory)../..</WebUIToolkitFrontendWorkspaceRoot>
+    <WebUIToolkitFrontendBridgeAsset>$(MSBuildThisFileDirectory)../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/assets/webuitoolkit-mvvm-cswebui.mjs</WebUIToolkitFrontendBridgeAsset>
+    <WebUIToolkitFrontendContractSource>$(MSBuildThisFileDirectory)todo.frontend.json</WebUIToolkitFrontendContractSource>
+    <WebUIToolkitFrontendContractCSharpOutput>$(MSBuildThisFileDirectory)../Todo.FrontendHost/TodoContracts.g.cs</WebUIToolkitFrontendContractCSharpOutput>
+    <WebUIToolkitFrontendContractTypeScriptOutput>$(MSBuildThisFileDirectory)shared/todo-contract.g.ts</WebUIToolkitFrontendContractTypeScriptOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../Todo.FrontendHost/Todo.FrontendHost.csproj" />
+    <Content Include="$(MSBuildThisFileDirectory)../SharedAssets/**/*"
+             Link="www/vendor/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.targets" />
+</Project>

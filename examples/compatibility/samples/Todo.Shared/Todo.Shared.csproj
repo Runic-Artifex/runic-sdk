@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.Samples.Todo.Shared</AssemblyName>
+    <RootNamespace>WebUIToolkit.Samples.Todo</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <ProjectReference Include="../../src/WebUIToolkit.Collections/WebUIToolkit.Collections.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Flow/WebUIToolkit.MVVM.Flow.csproj" />
+  </ItemGroup>
+</Project>
