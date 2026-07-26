@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MvvmCollection,
+  MvvmCommandWithArgument,
+  MvvmReadonlyProperty,
+} from "@webuitoolkit/mvvm";
+import {
   createSvelteMvvmStore,
+  derivedMvvmCollection,
+  derivedMvvmCommand,
+  derivedMvvmProperty,
+  derivedMvvmValidation,
   disposeSvelteMvvmStoreOnDestroy,
 } from "../dist/esm/index.js";
 
@@ -67,6 +76,30 @@ class FakeProjection {
     }
   }
 }
+
+test("generated handles produce lazy typed derived readables", () => {
+  const projection = new FakeProjection();
+  const store = createSvelteMvvmStore(projection);
+  const amount = derivedMvvmProperty(store, new MvvmReadonlyProperty(projection, 1));
+  const items = derivedMvvmCollection(store, new MvvmCollection(projection, 3));
+  const submit = derivedMvvmCommand(store, new MvvmCommandWithArgument(projection, 2));
+  const validation = derivedMvvmValidation(store, new MvvmReadonlyProperty(projection, 1));
+  const values = { amount: [], items: [], submit: [], validation: [] };
+  const unsubscribers = [
+    amount.subscribe((value) => values.amount.push(value)),
+    items.subscribe((value) => values.items.push(value)),
+    submit.subscribe((value) => values.submit.push(value)),
+    validation.subscribe((value) => values.validation.push(value)),
+  ];
+  assert.equal(projection.subscribeCount, 1);
+  projection.state(snapshot(1, 9));
+  assert.deepEqual(values.amount, [0, 9]);
+  assert.deepEqual(values.items.at(-1), ["first", "second"]);
+  assert.deepEqual(values.submit.at(-1), { canExecute: true, isExecuting: false });
+  assert.deepEqual(values.validation.at(-1), ["required"]);
+  for (const unsubscribe of unsubscribers) unsubscribe();
+  assert.equal(projection.unsubscribeCount, 1);
+});
 
 test("one atomic projection state produces one complete store update", () => {
   const projection = new FakeProjection();

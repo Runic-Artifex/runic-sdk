@@ -7,6 +7,19 @@ Angular signals and a standalone DataContext-style directive over the frozen
 caches computed member signals. `AngularMvvmStoreDirective` can own that store
 for exactly the host directive lifetime. Projection ownership is opt-in.
 
+Generated handles can be passed directly to the signal accessors:
+
+```ts
+readonly amount = this.mvvm.property(contract.amount);
+readonly items = this.mvvm.collection(contract.items);
+readonly submit = this.mvvm.command(contract.submit);
+readonly amountErrors = this.mvvm.validation(contract.amount);
+```
+
+The resulting signals preserve the generated property and collection types.
+Numeric member identifiers remain supported for dynamic scenarios, and
+commands retain their typed `execute` method on the generated handle.
+
 The supported peer range is Angular 20.3.26 through Angular 22.x. G6 verifies
 both endpoints with the Angular compiler in production mode and executes the
 shared browser fixtures in Chrome and Firefox.

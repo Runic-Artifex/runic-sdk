@@ -40,6 +40,7 @@
     <Project Path="tests/WebUIToolkit.CommandLine.Hosting.Tests/WebUIToolkit.CommandLine.Hosting.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Processes.Tests/WebUIToolkit.CommandLine.Processes.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Tests/WebUIToolkit.CommandLine.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.Frontend.Sdk.Tests/WebUIToolkit.Frontend.Sdk.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.Build.Tests/WebUIToolkit.Hosting.Build.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.CompositionTests/WebUIToolkit.Hosting.CompositionTests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.ContractTests/WebUIToolkit.Hosting.ContractTests.csproj" />

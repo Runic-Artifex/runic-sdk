@@ -1,14 +1,19 @@
 import type {
   JsonValue,
   MemberIdentifier,
+  MvvmCollection,
+  MvvmCommand,
+  MvvmCommandWithArgument,
+  MvvmProperty,
   MvvmProjectedCommandInvocation,
   MvvmProjectedCommandState,
   MvvmProjection,
   MvvmProjectionSnapshot,
+  MvvmReadonlyProperty,
   Revision,
 } from "@webuitoolkit/mvvm";
 import { onDestroy } from "svelte";
-import type { Readable, Subscriber, Unsubscriber } from "svelte/store";
+import { derived, type Readable, type Subscriber, type Unsubscriber } from "svelte/store";
 
 /** Controls whether disposing the store also disposes its input projection. */
 export interface SvelteMvvmStoreOptions {
@@ -64,6 +69,46 @@ export function disposeSvelteMvvmStoreOnDestroy(
   register: SvelteDestroyRegistrar = onDestroy,
 ): void {
   register(() => store.dispose());
+}
+
+/** Creates a typed derived readable from a generated property handle. */
+export function derivedMvvmProperty<T>(
+  store: SvelteMvvmStore,
+  property: MvvmReadonlyProperty<T> | MvvmProperty<T>,
+): Readable<T | undefined> {
+  return derived(store, (snapshot) => property.from(snapshot));
+}
+
+/** Creates a typed derived readable from a generated collection handle. */
+export function derivedMvvmCollection<T>(
+  store: SvelteMvvmStore,
+  collection: MvvmCollection<T>,
+): Readable<readonly T[]> {
+  return derived(store, (snapshot) => collection.from(snapshot));
+}
+
+/** Creates a derived readable for a generated command's reactive state. */
+export function derivedMvvmCommand<TResult>(
+  store: SvelteMvvmStore,
+  command: MvvmCommand<TResult>,
+): Readable<Readonly<MvvmProjectedCommandState> | undefined>;
+export function derivedMvvmCommand<TArgument, TResult>(
+  store: SvelteMvvmStore,
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+): Readable<Readonly<MvvmProjectedCommandState> | undefined>;
+export function derivedMvvmCommand(
+  store: SvelteMvvmStore,
+  command: MvvmCommand<unknown> | MvvmCommandWithArgument<unknown, unknown>,
+): Readable<Readonly<MvvmProjectedCommandState> | undefined> {
+  return derived(store, (snapshot) => snapshot.commands.get(command.member));
+}
+
+/** Creates a derived readable for validation associated with a generated handle. */
+export function derivedMvvmValidation<T>(
+  store: SvelteMvvmStore,
+  binding: MvvmReadonlyProperty<T> | MvvmProperty<T> | MvvmCollection<T>,
+): Readable<readonly string[]> {
+  return derived(store, (snapshot) => snapshot.validation.get(binding.member) ?? []);
 }
 
 interface StoreSubscriber {

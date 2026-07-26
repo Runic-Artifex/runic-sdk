@@ -7,23 +7,30 @@ each immutable projection snapshot through one shallow, read-only Vue ref.
 ```ts
 import { computed } from "vue";
 import { createMvvmProjection } from "@webuitoolkit/mvvm";
-import { provideVueMvvm, useVueMvvm } from "@webuitoolkit/mvvm-vue";
+import {
+  provideVueMvvm,
+  useVueMvvmCommand,
+  useVueMvvmProperty,
+} from "@webuitoolkit/mvvm-vue";
 
 // In a providing component's setup:
 provideVueMvvm(createMvvmProjection(client), { ownsProjection: true });
 
 // In a descendant's setup:
-const mvvm = useVueMvvm();
-const amount = mvvm.property(1);
-const submit = mvvm.command(2);
+const amount = useVueMvvmProperty(contract.amount);
+const submit = useVueMvvmCommand(contract.submit);
 const canSubmit = computed(() => submit.value?.canExecute === true);
-await mvvm.setProperty(1, 7);
-const result = await mvvm.execute(2).completion;
+await contract.amount.set(7);
+const result = await contract.submit.execute().completion;
 ```
 
 `property`, `collection`, `command`, and `validation` return cached computed
 refs. A projection state event replaces `state.value` before event subscribers
 run, so all accessors observe the same accepted snapshot.
+
+The corresponding `toVueMvvmProperty`, `toVueMvvmCollection`,
+`toVueMvvmCommand`, and `toVueMvvmValidation` helpers accept an explicit
+adapter when dependency injection is not appropriate.
 
 ## Ownership and cleanup
 

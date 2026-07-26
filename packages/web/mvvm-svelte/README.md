@@ -8,27 +8,32 @@ the client revision machine, or depend on another UI adapter.
 <script lang="ts">
   import {
     createSvelteMvvmStore,
+    derivedMvvmCommand,
+    derivedMvvmProperty,
     disposeSvelteMvvmStoreOnDestroy,
   } from "@webuitoolkit/mvvm-svelte";
 
   const model = createSvelteMvvmStore(projection);
   disposeSvelteMvvmStoreOnDestroy(model);
 
-  const amountMember = 1;
-  const submitMember = 2;
+  const amount = derivedMvvmProperty(model, contract.amount);
+  const submit = derivedMvvmCommand(model, contract.submit);
 </script>
 
 <input
-  value={$model.properties.get(amountMember) ?? 0}
-  on:change={(event) => model.setProperty(amountMember, Number(event.currentTarget.value))}
+  value={$amount ?? 0}
+  on:change={(event) => contract.amount.set(Number(event.currentTarget.value))}
 />
 <button
-  disabled={!model.command(submitMember)?.canExecute}
-  on:click={() => model.execute(submitMember)}
+  disabled={!$submit?.canExecute}
+  on:click={() => contract.submit.execute()}
 >
   Submit
 </button>
 ```
+
+`derivedMvvmCollection` and `derivedMvvmValidation` provide the corresponding
+typed readables for generated collection and validation handles.
 
 The store subscribes to its projection only while it has Svelte subscribers.
 Multiple components share that single upstream subscription. Unsubscribing the

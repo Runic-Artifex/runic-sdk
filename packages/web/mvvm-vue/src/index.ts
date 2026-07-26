@@ -13,11 +13,16 @@ import {
 import type {
   JsonValue,
   MemberIdentifier,
+  MvvmCollection,
+  MvvmCommand,
+  MvvmCommandWithArgument,
+  MvvmProperty,
   MvvmProjectedCommandInvocation,
   MvvmProjectedCommandState,
   MvvmProjection,
   MvvmProjectionEvent,
   MvvmProjectionSnapshot,
+  MvvmReadonlyProperty,
 } from "@webuitoolkit/mvvm";
 
 export interface VueMvvmAdapterOptions {
@@ -177,6 +182,81 @@ export function useVueMvvm(): VueMvvmAdapter {
     throw new Error("No Vue MVVM adapter was provided.");
   }
   return adapter;
+}
+
+/** Adapts a generated property handle to a typed Vue computed ref. */
+export function toVueMvvmProperty<T>(
+  adapter: VueMvvmAdapter,
+  property: MvvmReadonlyProperty<T> | MvvmProperty<T>,
+): ComputedRef<T | undefined> {
+  return adapter.property(property.member) as ComputedRef<T | undefined>;
+}
+
+/** Adapts a generated collection handle to a typed Vue computed ref. */
+export function toVueMvvmCollection<T>(
+  adapter: VueMvvmAdapter,
+  collection: MvvmCollection<T>,
+): ComputedRef<readonly T[]> {
+  if (adapter.disposed.value) throw new Error("The Vue MVVM adapter has been disposed.");
+  return computed(() => collection.from(adapter.state.value));
+}
+
+/** Adapts a generated command handle to its reactive command-state ref. */
+export function toVueMvvmCommand<TResult>(
+  adapter: VueMvvmAdapter,
+  command: MvvmCommand<TResult>,
+): ComputedRef<Readonly<MvvmProjectedCommandState> | undefined>;
+export function toVueMvvmCommand<TArgument, TResult>(
+  adapter: VueMvvmAdapter,
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+): ComputedRef<Readonly<MvvmProjectedCommandState> | undefined>;
+export function toVueMvvmCommand(
+  adapter: VueMvvmAdapter,
+  command: MvvmCommand<unknown> | MvvmCommandWithArgument<unknown, unknown>,
+): ComputedRef<Readonly<MvvmProjectedCommandState> | undefined> {
+  return adapter.command(command.member);
+}
+
+/** Adapts generated property/collection validation to a reactive ref. */
+export function toVueMvvmValidation<T>(
+  adapter: VueMvvmAdapter,
+  binding: MvvmReadonlyProperty<T> | MvvmProperty<T> | MvvmCollection<T>,
+): ComputedRef<readonly string[] | undefined> {
+  return adapter.validation(binding.member);
+}
+
+/** Injects the current adapter and returns a typed generated-property ref. */
+export function useVueMvvmProperty<T>(
+  property: MvvmReadonlyProperty<T> | MvvmProperty<T>,
+): ComputedRef<T | undefined> {
+  return toVueMvvmProperty(useVueMvvm(), property);
+}
+
+/** Injects the current adapter and returns a typed generated-collection ref. */
+export function useVueMvvmCollection<T>(
+  collection: MvvmCollection<T>,
+): ComputedRef<readonly T[]> {
+  return toVueMvvmCollection(useVueMvvm(), collection);
+}
+
+/** Injects the current adapter and returns a generated command-state ref. */
+export function useVueMvvmCommand<TResult>(
+  command: MvvmCommand<TResult>,
+): ComputedRef<Readonly<MvvmProjectedCommandState> | undefined>;
+export function useVueMvvmCommand<TArgument, TResult>(
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+): ComputedRef<Readonly<MvvmProjectedCommandState> | undefined>;
+export function useVueMvvmCommand(
+  command: MvvmCommand<unknown> | MvvmCommandWithArgument<unknown, unknown>,
+): ComputedRef<Readonly<MvvmProjectedCommandState> | undefined> {
+  return useVueMvvm().command(command.member);
+}
+
+/** Injects the current adapter and returns validation for a generated handle. */
+export function useVueMvvmValidation<T>(
+  binding: MvvmReadonlyProperty<T> | MvvmProperty<T> | MvvmCollection<T>,
+): ComputedRef<readonly string[] | undefined> {
+  return toVueMvvmValidation(useVueMvvm(), binding);
 }
 
 function cached<T>(

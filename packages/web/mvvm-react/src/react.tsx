@@ -1,8 +1,13 @@
 import type {
   JsonValue,
   MemberIdentifier,
+  MvvmCollection,
+  MvvmCommand,
+  MvvmCommandWithArgument,
+  MvvmProperty,
   MvvmProjectedCommandState,
   MvvmProjectionSnapshot,
+  MvvmReadonlyProperty,
 } from "@webuitoolkit/mvvm";
 import {
   createContext,
@@ -53,21 +58,65 @@ export function useMvvmSnapshot(): MvvmProjectionSnapshot {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
 }
 
-export function useMvvmProperty(member: MemberIdentifier): JsonValue | undefined {
-  return useMvvmSnapshot().properties.get(member);
+export function useMvvmProperty<T>(
+  property: MvvmReadonlyProperty<T> | MvvmProperty<T>,
+): T | undefined;
+export function useMvvmProperty(member: MemberIdentifier): JsonValue | undefined;
+export function useMvvmProperty<T>(
+  memberOrProperty: MemberIdentifier | MvvmReadonlyProperty<T> | MvvmProperty<T>,
+): JsonValue | T | undefined {
+  const snapshot = useMvvmSnapshot();
+  return typeof memberOrProperty === "number"
+    ? snapshot.properties.get(memberOrProperty)
+    : memberOrProperty.from(snapshot);
 }
 
-export function useMvvmCollection(member: MemberIdentifier): readonly JsonValue[] | undefined {
-  return useMvvmSnapshot().collections.get(member);
+export function useMvvmCollection<T>(collection: MvvmCollection<T>): readonly T[];
+export function useMvvmCollection(member: MemberIdentifier): readonly JsonValue[] | undefined;
+export function useMvvmCollection<T>(
+  memberOrCollection: MemberIdentifier | MvvmCollection<T>,
+): readonly JsonValue[] | readonly T[] | undefined {
+  const snapshot = useMvvmSnapshot();
+  return typeof memberOrCollection === "number"
+    ? snapshot.collections.get(memberOrCollection)
+    : memberOrCollection.from(snapshot);
 }
 
+export function useMvvmCommand<TResult>(
+  command: MvvmCommand<TResult>,
+): Readonly<MvvmProjectedCommandState> | undefined;
+export function useMvvmCommand<TArgument, TResult>(
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+): Readonly<MvvmProjectedCommandState> | undefined;
 export function useMvvmCommand(
   member: MemberIdentifier,
+): Readonly<MvvmProjectedCommandState> | undefined;
+export function useMvvmCommand(
+  memberOrCommand:
+    | MemberIdentifier
+    | MvvmCommand<unknown>
+    | MvvmCommandWithArgument<unknown, unknown>,
 ): Readonly<MvvmProjectedCommandState> | undefined {
+  const member = typeof memberOrCommand === "number"
+    ? memberOrCommand
+    : memberOrCommand.member;
   return useMvvmSnapshot().commands.get(member);
 }
 
-export function useMvvmValidation(member: MemberIdentifier): readonly string[] | undefined {
+export function useMvvmValidation<T>(
+  binding: MvvmReadonlyProperty<T> | MvvmProperty<T> | MvvmCollection<T>,
+): readonly string[] | undefined;
+export function useMvvmValidation(member: MemberIdentifier): readonly string[] | undefined;
+export function useMvvmValidation<T>(
+  memberOrBinding:
+    | MemberIdentifier
+    | MvvmReadonlyProperty<T>
+    | MvvmProperty<T>
+    | MvvmCollection<T>,
+): readonly string[] | undefined {
+  const member = typeof memberOrBinding === "number"
+    ? memberOrBinding
+    : memberOrBinding.member;
   return useMvvmSnapshot().validation.get(member);
 }
 

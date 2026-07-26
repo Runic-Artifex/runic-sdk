@@ -155,18 +155,23 @@ criteria in the detailed plan.
   that executable probe are implemented: one generated C#/TypeScript contract,
   read-only projections, typed command parameters, ordered host push, shared
   readiness/bootstrap, and SDK-owned Vite development and production builds.
-  The [framework findings](./frontend-todo-findings.md) record the resulting
-  design and remaining framework-specific convenience work.
+  The generated C# surface now includes the complete direct CommunityToolkit
+  adapter factory, eliminating duplicated host registration. Framework
+  packages accept generated handles as typed React hooks, Vue computed refs,
+  Svelte derived stores, and Angular signals. The
+  [framework findings](./frontend-todo-findings.md) record the resulting design
+  and remaining framework-specific convenience work.
 - All eight framework/Todo combinations now have persistent-browser acceptance
   coverage. Each gate edits framework-rendered state, executes the C# command
   over the production CsWebUi binary channel, and verifies the resulting DOM.
 - Extend those gates with full-trim Native-AOT publication, reconnect,
   validation, cancellation, accessibility, and leak coverage matching the
   counter and cwhtml tracks.
-- Generate idiomatic React hooks, Vue composables, Svelte stores/runes, and an
-  Angular injectable service from the now-shared contract without forking its
-  identifiers or JSON model. Move Vue to SFC authoring and Angular to its
-  supported application builder for release builds.
+- Generate aggregate, named React hooks, a Vue contract composable, Svelte
+  stores/runes, and an Angular injectable service from the shared contract
+  without forking its identifiers or JSON model. Add rich command lifecycle
+  façades, move Vue to SFC authoring, and move Angular to its supported
+  application builder for release builds.
 
 ## Phase 7: Asset package and organization work — future
 

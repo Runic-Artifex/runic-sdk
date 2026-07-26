@@ -9,11 +9,16 @@ import {
 import type {
   JsonValue,
   MemberIdentifier,
+  MvvmCollection,
+  MvvmCommand,
+  MvvmCommandWithArgument,
+  MvvmProperty,
   MvvmProjectedCommandInvocation,
   MvvmProjectedCommandState,
   MvvmProjection,
   MvvmProjectionEvent,
   MvvmProjectionSnapshot,
+  MvvmReadonlyProperty,
 } from "@webuitoolkit/mvvm";
 
 export interface AngularMvvmStoreOptions {
@@ -27,6 +32,8 @@ export class AngularMvvmStore {
   private readonly listeners = new Set<(event: MvvmProjectionEvent) => void>();
   private readonly propertySignals = new Map<MemberIdentifier, Signal<JsonValue | undefined>>();
   private readonly collectionSignals = new Map<MemberIdentifier, Signal<readonly JsonValue[] | undefined>>();
+  private readonly typedCollectionSignals =
+    new WeakMap<object, Signal<readonly unknown[]>>();
   private readonly commandSignals =
     new Map<MemberIdentifier, Signal<Readonly<MvvmProjectedCommandState> | undefined>>();
   private readonly validationSignals = new Map<MemberIdentifier, Signal<readonly string[] | undefined>>();
@@ -55,31 +62,73 @@ export class AngularMvvmStore {
     });
   }
 
-  public property(member: MemberIdentifier): Signal<JsonValue | undefined> {
+  public property<T>(
+    property: MvvmReadonlyProperty<T> | MvvmProperty<T>,
+  ): Signal<T | undefined>;
+  public property(member: MemberIdentifier): Signal<JsonValue | undefined>;
+  public property<T>(
+    memberOrProperty: MemberIdentifier | MvvmReadonlyProperty<T> | MvvmProperty<T>,
+  ): Signal<JsonValue | T | undefined> {
     this.assertActive();
+    const member = toMember(memberOrProperty);
     return cached(this.propertySignals, member, () => computed(
       () => this.stateSource().properties.get(member),
-    ));
+    )) as Signal<JsonValue | T | undefined>;
   }
 
-  public collection(member: MemberIdentifier): Signal<readonly JsonValue[] | undefined> {
+  public collection<T>(collection: MvvmCollection<T>): Signal<readonly T[]>;
+  public collection(member: MemberIdentifier): Signal<readonly JsonValue[] | undefined>;
+  public collection<T>(
+    memberOrCollection: MemberIdentifier | MvvmCollection<T>,
+  ): Signal<readonly JsonValue[] | readonly T[] | undefined> {
     this.assertActive();
-    return cached(this.collectionSignals, member, () => computed(
-      () => this.stateSource().collections.get(member),
+    if (typeof memberOrCollection !== "number") {
+      const existing = this.typedCollectionSignals.get(memberOrCollection);
+      if (existing !== undefined) return existing as Signal<readonly T[]>;
+      const created = computed(() => memberOrCollection.from(this.stateSource()));
+      this.typedCollectionSignals.set(memberOrCollection, created);
+      return created;
+    }
+    return cached(this.collectionSignals, memberOrCollection, () => computed(
+      () => this.stateSource().collections.get(memberOrCollection),
     ));
   }
 
+  public command<TResult>(
+    command: MvvmCommand<TResult>,
+  ): Signal<Readonly<MvvmProjectedCommandState> | undefined>;
+  public command<TArgument, TResult>(
+    command: MvvmCommandWithArgument<TArgument, TResult>,
+  ): Signal<Readonly<MvvmProjectedCommandState> | undefined>;
   public command(
     member: MemberIdentifier,
+  ): Signal<Readonly<MvvmProjectedCommandState> | undefined>;
+  public command(
+    memberOrCommand:
+      | MemberIdentifier
+      | MvvmCommand<unknown>
+      | MvvmCommandWithArgument<unknown, unknown>,
   ): Signal<Readonly<MvvmProjectedCommandState> | undefined> {
     this.assertActive();
+    const member = toMember(memberOrCommand);
     return cached(this.commandSignals, member, () => computed(
       () => this.stateSource().commands.get(member),
     ));
   }
 
-  public validation(member: MemberIdentifier): Signal<readonly string[] | undefined> {
+  public validation<T>(
+    binding: MvvmReadonlyProperty<T> | MvvmProperty<T> | MvvmCollection<T>,
+  ): Signal<readonly string[] | undefined>;
+  public validation(member: MemberIdentifier): Signal<readonly string[] | undefined>;
+  public validation<T>(
+    memberOrBinding:
+      | MemberIdentifier
+      | MvvmReadonlyProperty<T>
+      | MvvmProperty<T>
+      | MvvmCollection<T>,
+  ): Signal<readonly string[] | undefined> {
     this.assertActive();
+    const member = toMember(memberOrBinding);
     return cached(this.validationSignals, member, () => computed(
       () => this.stateSource().validation.get(member),
     ));
@@ -178,4 +227,8 @@ function cached<T>(
   const created = factory();
   cache.set(member, created);
   return created;
+}
+
+function toMember(value: MemberIdentifier | { readonly member: MemberIdentifier }): MemberIdentifier {
+  return typeof value === "number" ? value : value.member;
 }

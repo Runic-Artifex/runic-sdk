@@ -3,6 +3,11 @@ import test from "node:test";
 
 import "@angular/compiler";
 import {
+  MvvmCollection,
+  MvvmCommandWithArgument,
+  MvvmReadonlyProperty,
+} from "@webuitoolkit/mvvm";
+import {
   AngularMvvmStore,
   AngularMvvmStoreDirective,
 } from "../dist/esm/index.js";
@@ -50,6 +55,31 @@ class FakeProjection {
     for (const listener of [...this.listeners]) listener({ type: "state", snapshot: next });
   }
 }
+
+test("generated handles select strongly typed Angular signals", () => {
+  const projection = new FakeProjection();
+  const store = new AngularMvvmStore(projection);
+  const amountHandle = new MvvmReadonlyProperty(projection, 1);
+  const itemsHandle = new MvvmCollection(projection, 2);
+  const submitHandle = new MvvmCommandWithArgument(projection, 3);
+  const amount = store.property(amountHandle);
+  const items = store.collection(itemsHandle);
+  const submit = store.command(submitHandle);
+  const validation = store.validation(amountHandle);
+  assert.equal(amount(), 1);
+  assert.deepEqual(items(), ["a"]);
+  assert.deepEqual(submit(), { canExecute: true, isExecuting: false });
+  assert.deepEqual(validation(), []);
+  assert.equal(amount, store.property(amountHandle));
+  projection.emit(snapshot(1n, 8));
+  assert.equal(amount(), 8);
+  projection.emit(Object.freeze({
+    ...snapshot(2n, 9),
+    collections: new Map(),
+  }));
+  assert.deepEqual(items(), []);
+  store.destroy();
+});
 
 test("signals publish one immutable projection snapshot and stable member views", async () => {
   const projection = new FakeProjection();

@@ -19,7 +19,10 @@ Configure a project with:
 ```
 
 When the contract properties are present, the SDK verifies that its generated
-C# and TypeScript surfaces have not drifted. Regenerate them explicitly with:
+C# and TypeScript surfaces have not drifted. The C# output contains stable
+member IDs and a closed CommunityToolkit adapter factory; the TypeScript output
+contains matching typed property, collection, and command handles. Regenerate
+them explicitly with:
 
 ```console
 dotnet msbuild -t:WebUIToolkitFrontendGenerateContracts

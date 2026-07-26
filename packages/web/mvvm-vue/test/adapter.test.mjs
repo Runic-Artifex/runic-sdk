@@ -8,11 +8,24 @@ import {
   h,
 } from "vue";
 import {
+  MvvmCollection,
+  MvvmCommandWithArgument,
+  MvvmProperty,
+} from "@webuitoolkit/mvvm";
+import {
   createScopedVueMvvmAdapter,
   createVueMvvmAdapter,
   provideVueMvvm,
   provideVueMvvmAdapter,
+  toVueMvvmCollection,
+  toVueMvvmCommand,
+  toVueMvvmProperty,
+  toVueMvvmValidation,
   useVueMvvm,
+  useVueMvvmCollection,
+  useVueMvvmCommand,
+  useVueMvvmProperty,
+  useVueMvvmValidation,
 } from "../dist/esm/index.js";
 
 function snapshot(revision = 0n, amount = 1) {
@@ -67,6 +80,66 @@ class FakeProjection {
     for (const listener of [...this.listeners]) listener(event);
   }
 }
+
+test("generated handles adapt to typed computed refs without new subscriptions", () => {
+  const projection = new FakeProjection();
+  const adapter = createVueMvvmAdapter(projection);
+  const amount = toVueMvvmProperty(adapter, new MvvmProperty(projection, 1));
+  const items = toVueMvvmCollection(adapter, new MvvmCollection(projection, 2));
+  const submit = toVueMvvmCommand(adapter, new MvvmCommandWithArgument(projection, 3));
+  const validation = toVueMvvmValidation(adapter, new MvvmProperty(projection, 1));
+  assert.equal(amount.value, 1);
+  assert.deepEqual(items.value, ["a"]);
+  assert.deepEqual(submit.value, { canExecute: true, isExecuting: false });
+  assert.deepEqual(validation.value, []);
+  projection.emit({ type: "state", snapshot: snapshot(1n, 8) });
+  assert.equal(amount.value, 8);
+  assert.equal(projection.listeners.size, 1);
+  projection.emit({
+    type: "state",
+    snapshot: Object.freeze({
+      ...snapshot(2n, 9),
+      collections: new Map(),
+    }),
+  });
+  assert.deepEqual(items.value, []);
+  adapter.dispose();
+});
+
+test("typed composables resolve generated handles from the provided adapter", () => {
+  const projection = new FakeProjection();
+  const adapter = createVueMvvmAdapter(projection);
+  const amountHandle = new MvvmProperty(projection, 1);
+  const itemsHandle = new MvvmCollection(projection, 2);
+  const submitHandle = new MvvmCommandWithArgument(projection, 3);
+  let observed;
+  const Child = defineComponent({
+    setup() {
+      observed = {
+        amount: useVueMvvmProperty(amountHandle),
+        items: useVueMvvmCollection(itemsHandle),
+        submit: useVueMvvmCommand(submitHandle),
+        validation: useVueMvvmValidation(amountHandle),
+      };
+      return () => h("span");
+    },
+  });
+  const Parent = defineComponent({
+    setup() {
+      provideVueMvvmAdapter(adapter);
+      return () => h(Child);
+    },
+  });
+  const renderer = testRenderer();
+  const app = renderer.createApp(Parent);
+  app.mount({ children: [], parent: null });
+  assert.equal(observed.amount.value, 1);
+  assert.deepEqual(observed.items.value, ["a"]);
+  assert.deepEqual(observed.submit.value, { canExecute: true, isExecuting: false });
+  assert.deepEqual(observed.validation.value, []);
+  app.unmount();
+  adapter.dispose();
+});
 
 test("state changes are atomic and member accessors are stable computed refs", () => {
   const projection = new FakeProjection();

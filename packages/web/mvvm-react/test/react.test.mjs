@@ -3,6 +3,11 @@ import test from "node:test";
 
 import { createElement, StrictMode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
+import {
+  MvvmCollection,
+  MvvmCommandWithArgument,
+  MvvmProperty,
+} from "@webuitoolkit/mvvm";
 
 import {
   ReactMvvmProvider,
@@ -75,6 +80,41 @@ function Consumer({ renders }) {
   });
   return createElement("output", null, String(property));
 }
+
+function TypedConsumer({ projection, renders }) {
+  const amount = useMvvmProperty(new MvvmProperty(projection, 1));
+  const items = useMvvmCollection(new MvvmCollection(projection, 3));
+  const submit = useMvvmCommand(new MvvmCommandWithArgument(projection, 2));
+  const validation = useMvvmValidation(new MvvmProperty(projection, 1));
+  renders.push({ amount, items, submit, validation });
+  return null;
+}
+
+test("generated handles drive typed hooks from the provider snapshot", async () => {
+  const projection = new FakeProjection();
+  const store = createReactMvvmStore(projection);
+  const renders = [];
+  let root;
+  await act(async () => {
+    root = TestRenderer.create(
+      createElement(
+        ReactMvvmProvider,
+        { store },
+        createElement(TypedConsumer, { projection, renders }),
+      ),
+    );
+  });
+  assert.deepEqual(renders.at(-1), {
+    amount: 0,
+    items: ["a", "b"],
+    submit: { canExecute: true, isExecuting: false },
+    validation: [],
+  });
+  await act(async () => projection.emit(snapshot(1, 7)));
+  assert.equal(renders.at(-1).amount, 7);
+  await act(async () => root.unmount());
+  store.dispose();
+});
 
 test("provider hooks subscribe, render accepted state, and clean up owned lifetimes", async () => {
   const projection = new FakeProjection();

@@ -6,17 +6,26 @@ use the same C# model/ViewModel layer, native CsWebUi frame channel, protocol
 contract, Bootstrap 5.3 baseline, and Font Awesome assets.
 
 The initial probe found six cross-framework gaps. They are now implemented in
-the shared runtime and samples; the remaining work is framework-specific
-convenience and release hardening.
+the shared runtime and samples. A second DX pass also removed handwritten C#
+adapter registration and added typed framework-native reads; the remaining work
+is higher-level generated framework façades and release hardening.
 
 ## Implemented product changes
 
 ### One generated, typed contract
 
 `samples/Todo.Frontends/todo.frontend.json` is the single symbol model for the
-two demos. The frontend SDK's contract tool emits both the C# member vocabulary
-used by `Todo.FrontendHost` and the TypeScript contract used by every frontend.
-The workspace and MSBuild builds verify generated-file drift before compiling.
+two demos. The frontend SDK's contract tool emits the C# member vocabulary and
+closed CommunityToolkit adapter factory used by `Todo.FrontendHost`, plus the
+TypeScript contract used by every frontend. The workspace and MSBuild builds
+verify generated-file drift before compiling.
+
+The model records each ViewModel source member, synchronous or asynchronous
+command shape, validation participation, and source-generated `JsonTypeInfo`.
+Generated C# binds properties, read-only properties, collections, validation,
+and typed commands with direct lambdas. The native host now creates an adapter
+with one generated `CreateAdapter(model)` call rather than repeating the whole
+wire contract in registration code.
 
 Generated TypeScript exposes:
 
@@ -29,6 +38,20 @@ Generated TypeScript exposes:
 Frontend code no longer repeats numeric member identifiers or casts values out
 of untyped maps. The framework-neutral handles remain usable from React hooks,
 Vue computed refs, Svelte stores, Angular signals, or direct TypeScript.
+
+### Typed framework-native reads
+
+The framework packages accept generated handles directly while retaining their
+numeric-ID APIs for compatibility:
+
+- React hooks infer property, collection, command, and validation types;
+- Vue exposes typed computed-ref helpers and injected composables;
+- Svelte exposes lazy typed derived readables; and
+- Angular signal accessors infer their result from the generated handle.
+
+The Todo frontends exercise these APIs rather than reading raw projection maps.
+Writes and command execution remain on the generated handles, preserving typed
+arguments and results without framework-specific protocol code.
 
 ### Read-only and derived projections
 
@@ -103,19 +126,21 @@ helped expose the original startup problem.
 
 ## Remaining framework-specific improvements
 
-The generated contract is deliberately framework-neutral. Thin generated
-surfaces would make each adapter feel more native:
+Generated handles now compose with each framework's native reactive primitive.
+The next layer should generate an aggregate façade so application authors do
+not have to wire each handle individually:
 
-- React: named hooks plus command pending, result, error, and cancellation
-  state that composes with transitions.
-- Vue: a generated composable with effect-scope ownership, and ordinary `.vue`
-  single-file-component authoring through the official Vite plugin.
-- Svelte: named derived stores/runes and command-state helpers on top of the
-  now first-class Svelte/Vite pipeline.
-- Angular: a generated injectable service and standalone provider. Release
-  builds should move from the compact sample JIT entry to Angular's supported
-  application builder, which encapsulates its production compiler and
-  optimizer.
+- React: named contract hooks plus result, error, cancellation, and transition
+  composition around the existing typed command-state hook.
+- Vue: a generated contract composable with effect-scope ownership, and
+  ordinary `.vue` single-file-component authoring through the official Vite
+  plugin.
+- Svelte: named stores and Svelte 5 rune-friendly helpers around the existing
+  typed derived readables.
+- Angular: a generated injectable contract service and standalone provider.
+  Release builds should move from the compact sample JIT entry to Angular's
+  supported application builder, which encapsulates its production compiler
+  and optimizer.
 
 These are adapter ergonomics and compiler alignment, not protocol gaps. They
 must preserve the one generated symbol model and framework-neutral runtime.

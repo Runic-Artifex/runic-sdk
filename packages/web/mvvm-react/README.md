@@ -15,19 +15,21 @@ root.render(
 );
 
 function AmountEditor() {
-  const store = useReactMvvmStore();
-  const amount = useMvvmProperty(1);
-  const submit = useMvvmCommand(2);
+  // Generated handles preserve the C# member types through the hooks.
+  const amount = useMvvmProperty(contract.amount);
+  const submit = useMvvmCommand(contract.submit);
   return (
     <button
       disabled={!submit?.canExecute || submit.isExecuting}
-      onClick={() => void store.execute(2).completion}
+      onClick={() => void contract.submit.execute().completion}
     >
-      Submit {String(amount)}
+      Submit {amount}
     </button>
   );
 }
 ```
+
+Numeric member identifiers remain supported for dynamic scenarios.
 
 Ownership is explicit at both boundaries:
 
