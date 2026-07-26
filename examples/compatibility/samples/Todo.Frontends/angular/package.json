@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "build:production": "node build.mjs --production",
     "dev": "node --watch-path=src --watch-path=../shared build.mjs",
-    "typecheck": "tsc --project tsconfig.json",
-    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build && node ../verify-build.mjs Angular"
+    "typecheck": "ngc --project tsconfig.app.json --noEmit",
+    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build:production && node ../verify-build.mjs Angular && node verify-angular-build.mjs"
   },
   "dependencies": {
     "@angular/common": "22.0.8",
-    "@angular/compiler": "22.0.8",
     "@angular/core": "22.0.8",
     "@angular/platform-browser": "22.0.8",
     "@webuitoolkit/mvvm": "0.1.0",
@@ -19,7 +19,10 @@
     "rxjs": "7.8.2"
   },
   "devDependencies": {
-    "esbuild": "0.28.1",
+    "@angular/build": "22.0.8",
+    "@angular/cli": "22.0.8",
+    "@angular/compiler": "22.0.8",
+    "@angular/compiler-cli": "22.0.8",
     "typescript": "6.0.3"
   }
 }

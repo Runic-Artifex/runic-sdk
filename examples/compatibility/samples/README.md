@@ -41,9 +41,10 @@ Avalonia's [Simple ToDo](https://github.com/AvaloniaUI/Avalonia.Samples/tree/mai
 and [Advanced ToDo](https://github.com/AvaloniaUI/Avalonia.Samples/tree/main/src/Avalonia.Samples/CompleteApps/AdvancedToDoList)
 examples, but are original implementations of WebUIToolkit's own architecture.
 The original two now render compiled `.cwhtml` documents and fragments and submit through
-one bounded CsWebUi/HTMX binding. Their pinned HTML, CSS, and browser scripts
-are served by CsWebUi; neither application starts ASP.NET Core or exposes
-manually named browser callbacks.
+one bounded CsWebUi/HTMX binding. Their shared npm/Vite workspace pins HTMX,
+Bootstrap, and Font Awesome and emits the minified, hashed local asset graph
+served by CsWebUi; neither application starts ASP.NET Core or exposes manually
+named browser callbacks.
 
 SimpleTodo is the completed golden-path acceptance sample. In addition to its
 managed smoke test, `--browser-smoke-test` launches the real CsWebUi server and

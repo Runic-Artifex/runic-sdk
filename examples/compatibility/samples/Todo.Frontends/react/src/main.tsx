@@ -209,11 +209,13 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
               <form onSubmit={add}>
                 <div className="row g-3">
                   <div className="col-md-7">
-                    <input className={`form-control ${validation.length ? "is-invalid" : ""}`} value={title} maxLength={120} placeholder="Task title" onChange={(event) => setTitle(event.currentTarget.value)} />
+                    <label className="visually-hidden" htmlFor="advanced-title">Task title</label>
+                    <input id="advanced-title" className={`form-control ${validation.length ? "is-invalid" : ""}`} value={title} maxLength={120} placeholder="Task title" onChange={(event) => setTitle(event.currentTarget.value)} />
                     {validation.length > 0 && <div className="invalid-feedback">{validation.join(" ")}</div>}
                   </div>
                   <div className="col-md-3">
-                    <select className="form-select" value={priority} onChange={(event) => setPriority(event.currentTarget.value)}>
+                    <label className="visually-hidden" htmlFor="advanced-priority">Priority</label>
+                    <select id="advanced-priority" className="form-select" value={priority} onChange={(event) => setPriority(event.currentTarget.value)}>
                       <option>Low</option><option>Normal</option><option>High</option>
                     </select>
                   </div>
@@ -223,7 +225,8 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
                     }>Add</button>
                   </div>
                   <div className="col-12">
-                    <textarea className="form-control" value={notes} rows={2} placeholder="Notes (optional)" onChange={(event) => setNotes(event.currentTarget.value)} />
+                    <label className="visually-hidden" htmlFor="advanced-notes">Notes</label>
+                    <textarea id="advanced-notes" className="form-control" value={notes} rows={2} placeholder="Notes (optional)" onChange={(event) => setNotes(event.currentTarget.value)} />
                   </div>
                 </div>
               </form>
@@ -232,16 +235,16 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
           <section className="card workspace-card">
             <div className="card-body p-4">
               <form className="row g-2 mb-4" onSubmit={applyFilter}>
-                <div className="col-md-7"><input className="form-control" value={query} placeholder="Search title and notes" onChange={(event) => setQuery(event.currentTarget.value)} /></div>
-                <div className="col-md-3"><select className="form-select" value={filter} onChange={(event) => setFilter(event.currentTarget.value)}><option>All</option><option>Active</option><option>Completed</option></select></div>
+                <div className="col-md-7"><label className="visually-hidden" htmlFor="advanced-query">Search tasks</label><input id="advanced-query" className="form-control" value={query} placeholder="Search title and notes" onChange={(event) => setQuery(event.currentTarget.value)} /></div>
+                <div className="col-md-3"><label className="visually-hidden" htmlFor="advanced-filter">Task status</label><select id="advanced-filter" className="form-select" value={filter} onChange={(event) => setFilter(event.currentTarget.value)}><option>All</option><option>Active</option><option>Completed</option></select></div>
                 <div className="col-md-2 d-grid"><button className="btn btn-outline-primary">Apply</button></div>
               </form>
               <div className="list-group list-group-flush">
                 {items.map((item) => (
                   <article className={`list-group-item px-0 todo-row ${item.isCompleted ? "completed" : ""}`} key={item.id}>
-                    <button className="btn btn-sm btn-outline-primary rounded-circle" aria-label="Toggle task" onClick={() => void todo.toggle.execute(item.id).completion}><i className={`fa-${item.isCompleted ? "solid fa-check" : "regular fa-circle"}`} /></button>
+                    <button className="btn btn-sm btn-outline-primary rounded-circle" aria-label="Toggle task" onClick={() => void todo.toggle.execute(item.id).completion}><i className={`fa-${item.isCompleted ? "solid fa-check" : "regular fa-circle"}`} aria-hidden="true" /></button>
                     <div><div className="d-flex gap-2 align-items-center"><strong className="todo-title">{item.title}</strong><span className={`badge priority-${item.priority}`}>{item.priority}</span></div>{item.notes && <div className="small text-secondary todo-notes">{item.notes}</div>}</div>
-                    <button className="btn btn-sm btn-outline-danger todo-actions" aria-label={`Delete ${item.title}`} onClick={() => void todo.delete.execute(item.id).completion}><i className="fa-solid fa-trash" /></button>
+                    <button className="btn btn-sm btn-outline-danger todo-actions" aria-label={`Delete ${item.title}`} onClick={() => void todo.delete.execute(item.id).completion}><i className="fa-solid fa-trash" aria-hidden="true" /></button>
                   </article>
                 ))}
                 {items.length === 0 && <p className="text-secondary text-center my-4">No tasks match this view.</p>}
@@ -257,7 +260,7 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
               <div className="summary-tile"><span className="summary-value">{state.completedCount}</span><small>Done</small></div>
             </div>
             <div className="d-grid gap-2">
-              <button className="btn btn-outline-primary" onClick={() => void todo.import.execute().completion} disabled={state.isImporting}><i className="fa-solid fa-download me-2" />{state.isImporting ? "Importing…" : "Import starter tasks"}</button>
+              <button className="btn btn-outline-primary" onClick={() => void todo.import.execute().completion} disabled={state.isImporting}><i className="fa-solid fa-download me-2" aria-hidden="true" />{state.isImporting ? "Importing…" : "Import starter tasks"}</button>
               {state.isImporting && <button className="btn btn-outline-danger" onClick={() => void todo.cancelImport.execute().completion}>Cancel import</button>}
               <button className="btn btn-outline-secondary" onClick={() => void todo.clearCompleted.execute().completion}>Clear completed</button>
             </div>

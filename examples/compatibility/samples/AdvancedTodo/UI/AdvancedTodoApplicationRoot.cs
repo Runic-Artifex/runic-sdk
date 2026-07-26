@@ -28,12 +28,9 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
     internal static readonly MvvmContract Contract = new("samples.advanced-todo");
     private static readonly string[] RequiredAssetPaths =
     [
-        "vendor/bootstrap/bootstrap.min.css",
-        "vendor/fontawesome/css/fontawesome.min.css",
-        "_content/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/webuitoolkit-htmx-cswebui-1.0.0.js",
-        "_content/WebUIToolkit.MVVM.Html.Htmx.Js/htmx-2.0.10.min.js",
-        "_content/WebUIToolkit.MVVM.Html.Htmx.Js/htmx-csp-2.0.10.js",
-        "_content/WebUIToolkit.MVVM.Html.Htmx.Js/webuitoolkit-htmx-1.0.0.mjs",
+        "cwhtml.css",
+        "cwhtml.js",
+        "webuitoolkit.assets.json",
     ];
 
     private readonly TodoService service;
@@ -363,7 +360,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         bool generatedRootRemoved = !Directory.Exists(generatedRoot);
         bool passed =
             initialDocument?.StartsWith("<!doctype html><html", StringComparison.Ordinal) == true &&
-            initialDocument.Contains(CsWebUiHtmxTransport.BrowserBridgePath, StringComparison.Ordinal) &&
+            initialDocument.Contains("cwhtml.js", StringComparison.Ordinal) &&
             invalid.Body.Contains("between 2 and 120 characters", StringComparison.Ordinal) &&
             added.Body.Contains("Persisted through an opaque route", StringComparison.Ordinal) &&
             filtered.Body.Contains("Persisted through an opaque route", StringComparison.Ordinal) &&

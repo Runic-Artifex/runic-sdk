@@ -6,8 +6,8 @@
 
 This sample grows a task list into a small desktop application while keeping
 state, validation, commands, workflow navigation, persistence, and HTML
-rendering in C#. Bootstrap 5.3 and Font Awesome are copied into the application
-and served locally.
+rendering in C#. npm pins HTMX, Bootstrap 5.3, and Font Awesome; Vite produces
+the local development and minified production asset graph served by CsWebUi.
 
 ## What it demonstrates
 
@@ -37,6 +37,13 @@ From the repository root:
 ```bash
 direnv allow
 dotnet run --project samples/AdvancedTodo
+```
+
+Use the coordinated developer loop while editing `.cwhtml`, C#, JavaScript,
+or CSS:
+
+```bash
+dotnet webuitoolkit dev samples/AdvancedTodo/AdvancedTodo.csproj
 ```
 
 Tasks persist below the platform local application-data directory:

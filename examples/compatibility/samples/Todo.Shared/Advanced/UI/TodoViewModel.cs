@@ -1,6 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +14,10 @@ using WebUIToolkit.Samples.AdvancedTodo.Domain;
 
 namespace WebUIToolkit.Samples.AdvancedTodo.UI;
 
-internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposable
+internal sealed partial class TodoViewModel :
+    ObservableObject,
+    INotifyDataErrorInfo,
+    IAsyncDisposable
 {
     private readonly TodoService _service;
     private readonly List<DiagnosticEntry> _diagnostics = [];
@@ -21,11 +25,9 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
     private TodoCreationFlow? _creationFlow;
     private CancellationTokenSource? _importCancellation;
     private Task? _importTask;
+    private string[] _newTitleErrors = [];
 
     [ObservableProperty]
-    [NotifyDataErrorInfo]
-    [Required]
-    [StringLength(120, MinimumLength = 2)]
     private string newTitle = string.Empty;
 
     [ObservableProperty]
@@ -47,6 +49,18 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
     }
+
+    public bool HasErrors => _newTitleErrors.Length != 0;
+
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+
+    public IEnumerable GetErrors(string? propertyName) =>
+        string.IsNullOrEmpty(propertyName) ||
+        string.Equals(propertyName, nameof(NewTitle), StringComparison.Ordinal)
+            ? _newTitleErrors
+            : Array.Empty<string>();
+
+    partial void OnNewTitleChanged(string value) => ValidateNewTitle(value);
 
     internal IReadOnlyList<TodoItem> VisibleItems
     {
@@ -343,6 +357,41 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
         NewNotes = string.Empty;
         NewPriority = nameof(TodoPriority.Normal);
         ClearErrors();
+    }
+
+    private void ValidateAllProperties() => ValidateNewTitle(NewTitle);
+
+    private void ValidateNewTitle(string value)
+    {
+        string[] errors = string.IsNullOrWhiteSpace(value)
+            ? ["A task title is required."]
+            : value.Length is < 2 or > 120
+                ? ["Task titles must contain between 2 and 120 characters."]
+                : [];
+        if (_newTitleErrors.SequenceEqual(errors, StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        _newTitleErrors = errors;
+        ErrorsChanged?.Invoke(
+            this,
+            new DataErrorsChangedEventArgs(nameof(NewTitle)));
+        OnPropertyChanged(nameof(HasErrors));
+    }
+
+    private void ClearErrors()
+    {
+        if (_newTitleErrors.Length == 0)
+        {
+            return;
+        }
+
+        _newTitleErrors = [];
+        ErrorsChanged?.Invoke(
+            this,
+            new DataErrorsChangedEventArgs(nameof(NewTitle)));
+        OnPropertyChanged(nameof(HasErrors));
     }
 
     private void Observe(string category, string message)

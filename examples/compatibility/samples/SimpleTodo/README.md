@@ -4,8 +4,9 @@
 **Style:** Compiled HTML and HTMX in a native CsWebUi window
 
 Simple Todo is a small desktop application that demonstrates the intended
-compiled WebUIToolkit stack without ASP.NET, a loopback API, npm, or a
-frontend build.
+compiled WebUIToolkit stack without ASP.NET or a loopback API. Its browser
+dependencies and CSS/JavaScript production graph use the same npm/Vite
+pipeline as the framework samples.
 
 It demonstrates:
 
@@ -16,8 +17,8 @@ It demonstrates:
   fragment;
 - closed, per-view action routes assigned by `HtmxEndpointRuntime`;
 - one bounded CsWebUi JSON binding shared by all HTMX requests;
-- HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome loaded
-  entirely from local pinned assets; and
+- npm-pinned HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome,
+  bundled by Vite and served entirely from local assets; and
 - deterministic reverse-order teardown of transport, view, runtime, session,
   and the generated web root.
 
@@ -27,6 +28,12 @@ From the repository root:
 
 ```bash
 dotnet run --project samples/SimpleTodo
+```
+
+For the coordinated asset, cwhtml, C#, and CsWebUi development loop:
+
+```bash
+dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
 ```
 
 On NixOS, enter the repository's direnv shell first so the pinned native WebUI

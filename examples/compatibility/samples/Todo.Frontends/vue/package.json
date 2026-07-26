@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "build:production": "node build.mjs --production",
     "dev": "node --watch-path=src --watch-path=../shared build.mjs",
-    "typecheck": "tsc --project tsconfig.json",
-    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build && node ../verify-build.mjs Vue"
+    "typecheck": "vue-tsc --project tsconfig.json --noEmit",
+    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build:production && node ../verify-build.mjs Vue && node verify-sfc-build.mjs"
   },
   "dependencies": {
     "@webuitoolkit/mvvm": "0.1.0",
@@ -15,7 +16,8 @@
     "vue": "3.5.40"
   },
   "devDependencies": {
-    "esbuild": "0.28.1",
-    "typescript": "7.0.2"
+    "@vitejs/plugin-vue": "6.0.8",
+    "typescript": "7.0.2",
+    "vue-tsc": "3.3.8"
   }
 }

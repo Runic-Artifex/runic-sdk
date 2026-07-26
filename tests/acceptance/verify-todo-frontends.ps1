@@ -24,6 +24,8 @@ $projects = @(
     'Todo.Svelte',
     'Todo.Angular'
 )
+$gateCount = 0
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 Push-Location $repositoryRoot
 try {
@@ -48,6 +50,7 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "$name Simple browser round trip failed."
         }
+        $gateCount++
 
         dotnet run `
             --project $project `
@@ -59,7 +62,14 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "$name Advanced browser round trip failed."
         }
+        $gateCount++
     }
+
+    $stopwatch.Stop()
+    Write-Host ((
+        "PASS: {0} Todo browser variants passed managed leak/recovery plus native " +
+        "roundtrip, reconnect, validation, cancellation, accessibility, and cleanup " +
+        "gates in {1:n1}s.") -f $gateCount, $stopwatch.Elapsed.TotalSeconds)
 }
 finally {
     Pop-Location

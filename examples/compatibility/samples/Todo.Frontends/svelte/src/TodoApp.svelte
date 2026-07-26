@@ -152,24 +152,24 @@
         <section class="card workspace-card mb-4"><div class="card-body p-4">
           <h2 class="h5 mb-3">Quick add</h2>
           <form on:submit|preventDefault={addAdvanced}><div class="row g-3">
-            <div class="col-md-7"><input class:is-invalid={validation.length > 0} class="form-control" bind:value={title} maxlength="120" placeholder="Task title">{#if validation.length}<div class="invalid-feedback">{validation.join(" ")}</div>{/if}</div>
-            <div class="col-md-3"><select class="form-select" bind:value={priority}><option>Low</option><option>Normal</option><option>High</option></select></div>
+            <div class="col-md-7"><label class="visually-hidden" for="advanced-title">Task title</label><input id="advanced-title" class:is-invalid={validation.length > 0} class="form-control" bind:value={title} maxlength="120" placeholder="Task title">{#if validation.length}<div class="invalid-feedback">{validation.join(" ")}</div>{/if}</div>
+            <div class="col-md-3"><label class="visually-hidden" for="advanced-priority">Priority</label><select id="advanced-priority" class="form-select" bind:value={priority}><option>Low</option><option>Normal</option><option>High</option></select></div>
             <div class="col-md-2 d-grid"><button class="btn btn-primary" disabled={!$model.synchronized || $advancedAddState?.canExecute !== true || $advancedAddState.isExecuting}>Add</button></div>
-            <div class="col-12"><textarea class="form-control" bind:value={notes} rows="2" placeholder="Notes (optional)"></textarea></div>
+            <div class="col-12"><label class="visually-hidden" for="advanced-notes">Notes</label><textarea id="advanced-notes" class="form-control" bind:value={notes} rows="2" placeholder="Notes (optional)"></textarea></div>
           </div></form>
         </div></section>
         <section class="card workspace-card"><div class="card-body p-4">
           <form class="row g-2 mb-4" on:submit|preventDefault={applyFilter}>
-            <div class="col-md-7"><input class="form-control" bind:value={query} placeholder="Search title and notes"></div>
-            <div class="col-md-3"><select class="form-select" bind:value={filter}><option>All</option><option>Active</option><option>Completed</option></select></div>
+            <div class="col-md-7"><label class="visually-hidden" for="advanced-query">Search tasks</label><input id="advanced-query" class="form-control" bind:value={query} placeholder="Search title and notes"></div>
+            <div class="col-md-3"><label class="visually-hidden" for="advanced-filter">Task status</label><select id="advanced-filter" class="form-select" bind:value={filter}><option>All</option><option>Active</option><option>Completed</option></select></div>
             <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Apply</button></div>
           </form>
           <div class="list-group list-group-flush">
             {#each advancedItems as item (item.id)}
               <article class:completed={item.isCompleted} class="list-group-item px-0 todo-row">
-                <button class="btn btn-sm btn-outline-primary rounded-circle" aria-label="Toggle task" on:click={() => advanced.toggle.execute(item.id).completion}><i class={item.isCompleted ? "fa-solid fa-check" : "fa-regular fa-circle"}></i></button>
+                <button class="btn btn-sm btn-outline-primary rounded-circle" aria-label="Toggle task" on:click={() => advanced.toggle.execute(item.id).completion}><i class={item.isCompleted ? "fa-solid fa-check" : "fa-regular fa-circle"} aria-hidden="true"></i></button>
                 <div><div class="d-flex gap-2 align-items-center"><strong class="todo-title">{item.title}</strong><span class={`badge priority-${item.priority}`}>{item.priority}</span></div>{#if item.notes}<div class="small text-secondary todo-notes">{item.notes}</div>{/if}</div>
-                <button class="btn btn-sm btn-outline-danger todo-actions" aria-label={`Delete ${item.title}`} on:click={() => advanced.delete.execute(item.id).completion}><i class="fa-solid fa-trash"></i></button>
+                <button class="btn btn-sm btn-outline-danger todo-actions" aria-label={`Delete ${item.title}`} on:click={() => advanced.delete.execute(item.id).completion}><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
               </article>
             {/each}
             {#if advancedItems.length === 0}<p class="text-secondary text-center my-4">No tasks match this view.</p>{/if}
@@ -179,7 +179,7 @@
       <aside class="col-lg-4">
         <section class="card workspace-card mb-4"><div class="card-body">
           <div class="summary-grid mb-3"><div class="summary-tile"><span class="summary-value">{state.totalCount}</span><small>Total</small></div><div class="summary-tile"><span class="summary-value">{state.remainingCount}</span><small>Active</small></div><div class="summary-tile"><span class="summary-value">{state.completedCount}</span><small>Done</small></div></div>
-          <div class="d-grid gap-2"><button class="btn btn-outline-primary" disabled={state.isImporting} on:click={() => advanced.import.execute().completion}><i class="fa-solid fa-download me-2"></i>{state.isImporting ? "Importing…" : "Import starter tasks"}</button>{#if state.isImporting}<button class="btn btn-outline-danger" on:click={() => advanced.cancelImport.execute().completion}>Cancel import</button>{/if}<button class="btn btn-outline-secondary" on:click={() => advanced.clearCompleted.execute().completion}>Clear completed</button></div>
+          <div class="d-grid gap-2"><button class="btn btn-outline-primary" disabled={state.isImporting} on:click={() => advanced.import.execute().completion}><i class="fa-solid fa-download me-2" aria-hidden="true"></i>{state.isImporting ? "Importing…" : "Import starter tasks"}</button>{#if state.isImporting}<button class="btn btn-outline-danger" on:click={() => advanced.cancelImport.execute().completion}>Cancel import</button>{/if}<button class="btn btn-outline-secondary" on:click={() => advanced.clearCompleted.execute().completion}>Clear completed</button></div>
         </div></section>
         <section class="card workspace-card mb-4"><div class="card-body">
           <h2 class="h5">Guided creation</h2>

@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../src/WebUIToolkit.MVVM.Html.Build/buildTransitive/WebUIToolkit.MVVM.Html.Build.props" />
+  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.props" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
@@ -7,6 +10,16 @@
     <IsPackable>false</IsPackable>
     <DebugType>none</DebugType>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <WebUIToolkitFrontendNodeEnabled>true</WebUIToolkitFrontendNodeEnabled>
+    <WebUIToolkitFrontendCwhtmlEnabled>true</WebUIToolkitFrontendCwhtmlEnabled>
+    <WebUIToolkitFrontendWorkspace>@webuitoolkit/sample-todo-cwhtml</WebUIToolkitFrontendWorkspace>
+    <WebUIToolkitFrontendPackageDirectory>$(MSBuildProjectDirectory)/../Todo.Cwhtml.Frontend</WebUIToolkitFrontendPackageDirectory>
+    <WebUIToolkitFrontendOutputDirectory>$(MSBuildProjectDirectory)/../Todo.Cwhtml.Frontend/dist</WebUIToolkitFrontendOutputDirectory>
+    <WebUIToolkitFrontendWorkspaceRoot>$(MSBuildProjectDirectory)/../..</WebUIToolkitFrontendWorkspaceRoot>
+    <WebUIToolkitFrontendWebRoot>www</WebUIToolkitFrontendWebRoot>
+    <WebUIToolkitFrontendBridgeAsset></WebUIToolkitFrontendBridgeAsset>
+    <WebUIToolkitCwhtmlTaskAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Build/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Build.dll</WebUIToolkitCwhtmlTaskAssembly>
+    <WebUIToolkitCwhtmlCompilerAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Compiler/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Compiler.dll</WebUIToolkitCwhtmlCompilerAssembly>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +31,9 @@
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi/WebUIToolkit.Hosting.CsWebUi.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.Frontend.Sdk/WebUIToolkit.Frontend.Sdk.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.CommunityToolkit/WebUIToolkit.MVVM.CommunityToolkit.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx/WebUIToolkit.MVVM.Html.Htmx.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.csproj" />
@@ -28,69 +44,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="www/**/*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
-    <Content Include="../SharedAssets/**/*"
-             Link="www/vendor/%(RecursiveDir)%(Filename)%(Extension)">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/assets/**/*"
-             Link="www/_content/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/%(RecursiveDir)%(Filename)%(Extension)">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="../../src/WebUIToolkit.MVVM.Html.Htmx.Js/assets/**/*"
-             Link="www/_content/WebUIToolkit.MVVM.Html.Htmx.Js/%(RecursiveDir)%(Filename)%(Extension)">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+    <CwhtmlCodeBehind Include="TodoRenderModel.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Cwhtml Include="Views/*.cwhtml">
-      <LogicalPath>Views/%(Filename)%(Extension)</LogicalPath>
-    </Cwhtml>
-    <HtmxCwhtmlCodeBehind Include="TodoRenderModel.cs" />
-  </ItemGroup>
-
-  <PropertyGroup>
-    <HtmxCwhtmlTaskAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Build/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Build.dll</HtmxCwhtmlTaskAssembly>
-  </PropertyGroup>
-
-  <UsingTask TaskName="WebUIToolkit.MVVM.Html.Build.WriteCwhtmlInputCache"
-             AssemblyFile="$(HtmxCwhtmlTaskAssembly)" />
-  <UsingTask TaskName="WebUIToolkit.MVVM.Html.Build.CompileCwhtmlTemplates"
-             AssemblyFile="$(HtmxCwhtmlTaskAssembly)" />
-
-  <Target Name="CompileSimpleTodoCwhtml"
-          BeforeTargets="CoreCompile"
-          DependsOnTargets="ResolveProjectReferences">
-    <PropertyGroup>
-      <HtmxCwhtmlOutputPath>$(IntermediateOutputPath)compiled-simple-todo/</HtmxCwhtmlOutputPath>
-      <HtmxCwhtmlManifestPath>$(HtmxCwhtmlOutputPath)manifest.json</HtmxCwhtmlManifestPath>
-      <HtmxCwhtmlInputCachePath>$(HtmxCwhtmlOutputPath)inputs.cache</HtmxCwhtmlInputCachePath>
-      <HtmxCwhtmlStampPath>$(HtmxCwhtmlOutputPath)build.stamp</HtmxCwhtmlStampPath>
-    </PropertyGroup>
-    <WriteCwhtmlInputCache Templates="@(Cwhtml)"
-                           DependencyFiles="@(HtmxCwhtmlCodeBehind)"
-                           ProjectDirectory="$(MSBuildProjectDirectory)"
-                           CachePath="$(HtmxCwhtmlInputCachePath)">
-      <Output TaskParameter="PreparedTemplates" ItemName="_SimpleTodoPreparedCwhtml" />
-    </WriteCwhtmlInputCache>
-    <CompileCwhtmlTemplates Templates="@(_SimpleTodoPreparedCwhtml)"
-                            ProjectDirectory="$(MSBuildProjectDirectory)"
-                            OutputDirectory="$(HtmxCwhtmlOutputPath)"
-                            ManifestPath="$(HtmxCwhtmlManifestPath)"
-                            InputCachePath="$(HtmxCwhtmlInputCachePath)"
-                            StampPath="$(HtmxCwhtmlStampPath)">
-      <Output TaskParameter="GeneratedFiles" ItemName="_SimpleTodoGeneratedCwhtml" />
-    </CompileCwhtmlTemplates>
-    <ItemGroup>
-      <Compile Include="@(_SimpleTodoGeneratedCwhtml)" />
-      <FileWrites Include="@(_SimpleTodoGeneratedCwhtml);$(HtmxCwhtmlManifestPath);$(HtmxCwhtmlInputCachePath);$(HtmxCwhtmlStampPath)" />
-    </ItemGroup>
-  </Target>
+  <Import Project="../../src/WebUIToolkit.MVVM.Html.Build/buildTransitive/WebUIToolkit.MVVM.Html.Build.targets" />
+  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.targets" />
 </Project>
