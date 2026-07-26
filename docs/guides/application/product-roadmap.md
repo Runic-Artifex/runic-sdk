@@ -87,10 +87,13 @@ criteria live in the
   four framework Todo projects and both cwhtml Todo projects. The cwhtml
   projects use shared compiler targets and the same optional Vite boundary,
   with a Node-free configuration still supported.
-- Generate HTMX actions, fields, routes, member identifiers, conversions,
-  validation projection, render plans, and revision handling from typed cwhtml
-  declarations instead of requiring application registration code.
-- Provide a high-level application builder. The first
+- The first generated registration slice now emits action, field, command,
+  fragment, focus, and success-event metadata from compiler-only cwhtml
+  declarations. SimpleTodo uses it to build initial, success, invalid, and
+  recovery render plans; conversion and validation remain explicit,
+  reflection-free completion points.
+- A high-level CsWebUi HTMX application builder now owns registry, runtime,
+  opened-view, transport, and session lifetime for SimpleTodo. The first
   `dotnet webuitoolkit dev` milestone is implemented: it discovers SDK
   configuration, generates/verifies contracts, performs the initial Vite and
   .NET build, supervises asset and `dotnet watch` processes, starts CsWebUi,
@@ -111,10 +114,10 @@ criteria live in the
   minified and content-hashed local assets into the application VFS, and leave
   no development-server URL or Node.js runtime dependency in the result.
 
-Phase 3 is complete when SimpleTodo and AdvancedTodo contain no custom cwhtml
-build targets or hand-written native-HTMX descriptor plumbing, use the shared
-development command, and pass the production asset and reload acceptance
-criteria in the detailed plan.
+Phase 3 is complete when AdvancedTodo joins SimpleTodo in containing no custom
+cwhtml build targets or hand-written native-HTMX descriptor plumbing, both use
+the shared development command, and they pass the production asset and reload
+acceptance criteria in the detailed plan.
 
 ## Phase 4: WPF migration proof — in progress
 

@@ -42,11 +42,12 @@ The repository already has the difficult runtime foundations:
 
 The sample applications no longer duplicate cwhtml compiler targets or static
 asset-copy logic, and their production frontend is minified and manifest
-bound. They still construct HTMX descriptors and render plans by hand and
-assemble application startup around low-level services. The development
-command currently coordinates reliable process restart; browser diagnostic
-overlays, native-window asset HMR, state-preserving cwhtml replacement, and
-generated HTMX registration remain product gaps.
+bound. SimpleTodo now generates its HTMX descriptor/render-plan metadata and
+assembles startup through the high-level native application builder.
+AdvancedTodo still owns the older descriptor plumbing. The development command
+currently coordinates reliable process restart; browser diagnostic overlays,
+native-window asset HMR, state-preserving cwhtml replacement, richer typed
+declaration syntax, and the AdvancedTodo migration remain product gaps.
 
 ## Architectural boundaries
 
@@ -203,9 +204,11 @@ diagnostic identifiers and source spans.
 
 1. **Implemented:** package shared cwhtml targets and integrate them with
    `WebUIToolkit.Frontend.Sdk`; remove duplicated sample MSBuild.
-2. Introduce the high-level application builder.
-3. Generate field, action, route, conversion, validation, and render-plan
-   plumbing from cwhtml.
+2. **Implemented for SimpleTodo:** introduce the high-level application
+   builder; migrate AdvancedTodo next.
+3. **Partially implemented:** generate field, action, command, fragment,
+   focus, event, and render-plan plumbing from cwhtml. Conversion and
+   validation completion is explicit and AdvancedTodo remains to migrate.
 4. **Implemented:** integrate Vite production builds and asset-manifest
    generation/copying.
 5. **Partially implemented:** add `dotnet webuitoolkit dev` and reliable

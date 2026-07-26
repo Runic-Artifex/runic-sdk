@@ -85,8 +85,9 @@ dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
 
 SimpleTodo and AdvancedTodo now import shared cwhtml and frontend SDK targets;
 their npm workspace owns HTMX, Bootstrap 5.3, Font Awesome, source maps,
-minification, content hashing, and the asset manifest. They retain the current
-hand-written HTMX descriptor/render-plan registration until the next Phase 3
-generator slice. Browser overlays, true Vite HMR into the native window, and
-state-preserving cwhtml replacement also remain milestones in the
+minification, content hashing, and the asset manifest. SimpleTodo now generates
+its action/field/command/fragment registration from build-time cwhtml metadata
+and uses the high-level native application builder; AdvancedTodo remains the
+next migration target. Browser overlays, true Vite HMR into the native window,
+and state-preserving cwhtml replacement also remain milestones in the
 [cwhtml development-experience plan](./cwhtml-development-experience.md).
