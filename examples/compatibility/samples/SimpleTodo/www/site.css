@@ -124,6 +124,10 @@ button:focus-visible {
   border-radius: .9rem;
 }
 
+.task form {
+  margin: 0;
+}
+
 .task:hover {
   background: #f5f8f6;
 }
@@ -170,11 +174,11 @@ footer {
   text-align: center;
 }
 
-.busy {
+.htmx-request {
   cursor: progress;
 }
 
-.busy button {
+.htmx-request button {
   pointer-events: none;
   opacity: .6;
 }

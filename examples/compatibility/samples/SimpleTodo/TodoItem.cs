@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace WebUIToolkit.Samples.SimpleTodo;
 
 /// <summary>A single task displayed by the sample.</summary>
-internal sealed partial class TodoItem(string title) : ObservableObject
+public sealed partial class TodoItem(string title) : ObservableObject
 {
     /// <summary>Gets the stable identifier submitted by the item buttons.</summary>
     public Guid Id { get; } = Guid.NewGuid();

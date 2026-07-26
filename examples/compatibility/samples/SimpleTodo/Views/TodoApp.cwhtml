@@ -1,0 +1,76 @@
+@namespace WebUIToolkit.Samples.SimpleTodo
+@view TodoAppView(WebUIToolkit.Samples.SimpleTodo.TodoRenderModel model)
+main #todo-app .card .shadow-lg data-webui-view="simple-todo" data-webui-revision=(model.Revision) {
+    header {
+        p .eyebrow {
+            i .fa-solid .fa-laptop-code aria-hidden="true" {}
+            " WebUIToolkit · beginner sample"
+        }
+        h1 { "Things worth doing" }
+        p .intro { "A tiny compiled-HTML desktop MVVM app transported by HTMX." }
+    }
+
+    form #composer .composer data-hx-post=(model.AddRoute) data-hx-target="#todo_fragment" data-hx-swap="outerHTML" {
+        label .form-label for="new-title" { "What needs doing?" }
+        div .composer-row .input-group {
+            input #new-title .form-control
+                name="title"
+                value=(model.Draft)
+                placeholder="e.g. Review the pull request"
+                maxlength="80"
+                autocomplete="off"
+                aria-invalid=(model.HasValidationMessage ? "true" : null)
+                aria-describedby=(model.HasValidationMessage ? "webui-error-title" : null)
+                required[=true];
+            button .btn .btn-success type="submit" {
+                i .fa-solid .fa-plus aria-hidden="true" {}
+                " Add task"
+            }
+        }
+        @if (model.HasValidationMessage) {
+            p #webui-error-title .validation .invalid-feedback .d-block role="alert" {
+                (model.ValidationMessage)
+            }
+        }
+    }
+
+    ul #tasks .tasks .list-group .list-group-flush aria-live="polite" {
+        @foreach (WebUIToolkit.Samples.SimpleTodo.TodoRenderItem item in model.Items) {
+            li class=(item.CssClass) {
+                form data-hx-post=(model.ToggleRoute) data-hx-target="#todo_fragment" data-hx-swap="outerHTML" {
+                    button .toggle .btn .btn-sm .btn-outline-success
+                        type="submit"
+                        name="selectedId"
+                        value=(item.Id)
+                        aria-label=(item.ToggleLabel) {
+                        i class=(item.ToggleIconClass) aria-hidden="true" {}
+                    }
+                }
+                span .task-title { (item.Title) }
+                form data-hx-post=(model.RemoveRoute) data-hx-target="#todo_fragment" data-hx-swap="outerHTML" {
+                    button .remove .btn .btn-sm .btn-outline-danger
+                        type="submit"
+                        name="selectedId"
+                        value=(item.Id)
+                        aria-label=(item.RemoveLabel) {
+                        i .fa-solid .fa-trash aria-hidden="true" {}
+                        span .visually-hidden { "Remove" }
+                    }
+                }
+            }
+        }
+    }
+
+    @if (model.IsEmpty) {
+        p #empty-state .empty-state .alert .alert-success {
+            i .fa-solid .fa-circle-check aria-hidden="true" {}
+            " Nothing left to do. Add a task when inspiration strikes."
+        }
+    }
+    p #stats .stats aria-live="polite" {
+        (model.Remaining.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        " remaining · "
+        (model.Completed.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        " completed"
+    }
+}

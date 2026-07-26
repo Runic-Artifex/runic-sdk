@@ -1,18 +1,25 @@
 # Simple Todo
 
 **Difficulty:** Beginner  
-**Style:** Cross-platform desktop UI with CsWebUi  
-**Concept:** An original implementation of the familiar todo-list learning
-exercise, built on WebUIToolkit's intended application stack.
+**Style:** Compiled HTML and HTMX in a native CsWebUi window
 
-This is a real desktop application, not a test fixture. It demonstrates how to:
+Simple Todo is a small desktop application that demonstrates the intended
+compiled WebUIToolkit stack without ASP.NET, a loopback API, npm, or a
+frontend build.
 
-- host local HTML, CSS, and JavaScript in a native CsWebUi window;
-- keep state and commands in a UI-independent CommunityToolkit.Mvvm ViewModel;
-- add, toggle, and remove items from `ObservableRangeCollection<T>`;
-- map explicit properties and commands into an ordered WebUIToolkit MVVM session;
-- return an authoritative, source-generated JSON snapshot after every action; and
-- let `WebUiModeRunner` own validation, startup, window, root-session, and shutdown.
+It demonstrates:
+
+- a CommunityToolkit.Mvvm ViewModel with relay commands and closed form validation;
+- `ObservableRangeCollection<T>` projected through the CommunityToolkit
+  collection binding;
+- `.cwhtml` authoring for both the initial document and HTMX response
+  fragment;
+- closed, per-view action routes assigned by `HtmxEndpointRuntime`;
+- one bounded CsWebUi JSON binding shared by all HTMX requests;
+- HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome loaded
+  entirely from local pinned assets; and
+- deterministic reverse-order teardown of transport, view, runtime, session,
+  and the generated web root.
 
 ## Run it
 
@@ -22,60 +29,72 @@ From the repository root:
 dotnet run --project samples/SimpleTodo
 ```
 
-CsWebUi opens the installed browser or supported WebView as a desktop window.
-Close the window to stop the application.
+On NixOS, enter the repository's direnv shell first so the pinned native WebUI
+library and Chromium dependencies are available.
 
-No npm install, frontend build, database, external CDN, or separate web server
-is involved. On NixOS, enter the repository's direnv shell first so the pinned
-native WebUI library and browser dependencies are available.
-
-The non-visual state and command path has a smoke-test mode:
+The headless path compiles the views, generates the initial document, drives
+invalid/add/toggle/remove requests through the real HTMX endpoint, checks the
+collection-backed model, and verifies that generated browser assets contain no
+legacy per-operation callback contract:
 
 ```bash
 dotnet run --project samples/SimpleTodo -- --smoke-test
 ```
 
+The native browser path starts the real CsWebUi server and a persistent
+headless Chromium process. It loads the shipped browser bridge and HTMX,
+submits the visible composer form, executes the C# command, and verifies that
+the compiled fragment replaced the browser DOM with the new task and a newer
+revision:
+
+```bash
+WEBUI_BROWSER_PATH=/path/to/pinned/chromium \
+  dotnet run --project samples/SimpleTodo -- --browser-smoke-test
+```
+
+The repository's Nix/direnv development shell sets `WEBUI_BROWSER_PATH` to its
+pinned Chromium automatically. The browser test owns a unique temporary
+Chromium profile and deletes it after shutting down CsWebUi, the native
+transport, and the browser process.
+
 ## Architecture
 
 ```text
-Local HTML/CSS/JS
-  └─ four explicit CsWebUi bindings
-       └─ TodoBackend
-            └─ ordered WebUIToolkit MVVM session
-                 └─ CommunityToolkit property/command adapter
-                      └─ TodoViewModel
-
-WebUiModeRunner
-  ├─ validates the local asset manifest
-  ├─ creates the CsWebUi window
-  ├─ activates the root MVVM session
-  └─ reverses that ownership when the window closes
+TodoApp.cwhtml + TodoDocument.cwhtml
+  └─ generated IHtmlRenderable views
+       └─ HtmxEndpointRuntime (opaque action routes)
+            └─ one CsWebUi native transport binding
+                 └─ CommunityToolkit adapter
+                      ├─ validated properties and relay commands
+                      └─ observable collection projection
 ```
 
-CsWebUi and WebUIToolkit have distinct jobs here. CsWebUi owns the desktop
-window, local asset server, and JavaScript-to-.NET callback bridge.
-WebUIToolkit owns the application lifecycle and the revisioned MVVM dispatch
-boundary. The browser receives only the four capabilities registered by this
-application.
+The browser submits ordinary HTMX forms. It does not choose CLR members,
+receive a full-state JSON model, or handle application rendering. The compiled
+fragment reads an immutable `TodoRenderModel`; the runtime HTML writer encodes
+all task titles and validation text.
+
+## Initial document delivery
+
+Action routes are random and exist only after the HTMX view opens, so a checked
+in static page cannot safely contain them. `TodoApplicationRoot.PrepareAsync`
+opens the view, renders the compiled document with those routes, and combines
+it with the pinned static assets in a private per-run directory. The normal
+manifest validator verifies that finished root before CsWebUi starts.
+
+This provides a local static bootstrap document without introducing an HTTP
+framework, a catch-all file handler, or another browser callback. The temporary
+root is deleted during application teardown.
 
 ## Guided tour
 
-1. Start with `TodoViewModel.cs`. It is ordinary MVVM code with generated
-   observable properties, validation annotations, and relay commands with
-   `CanExecute` rules. There is no browser code in it.
-2. Read `TodoBackend.cs`. Stable member IDs map properties and commands to
-   direct delegates. Each browser action becomes a property mutation followed
-   by a command mutation against one ordered MVVM session.
-3. Open `www/app.js`. It knows only four backend capabilities:
-   `todoSnapshot`, `todoAdd`, `todoToggle`, and `todoRemove`. It renders the
-   complete state returned by the backend and uses `textContent`, not raw HTML,
-   for task titles.
-4. Finish in `Program.cs`. `CsWebUiBrowserHostFactory` adapts the native
-   CsWebUi window to WebUIToolkit's browser contracts, while
-   `WebUiModeRunner` composes it with the manifest validator and root session.
+1. Start with `TodoViewModel.cs` and `TodoItem.cs` for ordinary MVVM state.
+2. Read `Views/TodoApp.cwhtml`; `data-hx-*` is HTMX's standards-compatible
+   attribute spelling and stays inside the compiled HTML attribute allowlist.
+3. Read `TodoApplicationRoot.cs` for the explicit adapter, endpoint descriptor,
+   generated document, native transport, smoke test, and ownership order.
+4. Finish in `Program.cs`, where `WebUiModeRunner` receives the prepared
+   manifest root and owns window/session startup and shutdown.
 
-## Deliberate simplifications
-
-The tasks live in memory and one window owns one ViewModel session. Persistence,
-editing, filtering, multiple lists, navigation, and background work belong in
-the Advanced Todo sample.
+The tasks intentionally remain in memory. Persistence, editing, filtering,
+navigation, and background workflows belong in the Advanced Todo sample.

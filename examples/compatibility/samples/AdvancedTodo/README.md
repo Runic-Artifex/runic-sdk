@@ -1,35 +1,34 @@
 # Advanced ToDo
 
-**Difficulty:** Advanced  
-**Experience:** Native desktop window powered by local HTML, CSS, and JavaScript  
-**Host:** `CsWebUi` 2.5.0-beta.4.3 through `WebUIToolkit.Hosting.CsWebUi`
+**Difficulty:** Advanced
+**Experience:** Native desktop UI generated from compiled `.cwhtml`
+**Transport:** One `CsWebUiHtmxTransport` binding with opaque per-session routes
 
-This sample grows a task list into a small, understandable desktop application.
-It is independently inspired by the idea of an advanced ToDo sample—not by
-another sample's code or text. Its purpose is to show where concerns belong
-once an app needs persistence, multiple projections of its data, cancellable
-work, workflow navigation, and useful diagnostics.
+This sample grows a task list into a small desktop application while keeping
+state, validation, commands, workflow navigation, persistence, and HTML
+rendering in C#. Bootstrap 5.3 and Font Awesome are copied into the application
+and served locally.
 
 ## What it demonstrates
 
-- A responsive desktop UI rendered by an installed browser or native WebView,
-  with assets served locally by cs-webui.
-- The WebUIToolkit lifecycle:
-  `GenericHostWebUIToolkitApplicationBuilder` → `WebUiModeRunner` →
-  `CsWebUiBrowserHostFactory`.
-- Explicit, reflection-free `WebUIToolkit.MVVM` property and command bindings
-  backed by `CommunityToolkit.Mvvm` generated members.
-- Thin `WebUiWindow.BindAsync` callbacks that translate browser arguments into
-  revisioned MVVM session mutations.
-- Validation before mutation, with errors returned as application state.
-- Search plus All / Active / Completed projections.
+- Compiled `AdvancedTodoDocument.cwhtml` and `AdvancedTodoApp.cwhtml` views.
+- A private runtime web root containing the generated initial document.
+- One fixed native binding (`webuitoolkitHtmx`) instead of feature-specific
+  `WebUiWindow.BindAsync` callbacks.
+- Random closed HTMX routes for quick add, search/filter, toggle, delete, clear,
+  import, and each workflow transition.
+- Server-side quick-add validation with rejected values retained in the form.
 - JSON persistence with serialized mutations and atomic file replacement.
-- An async starter-task import that can be cancelled through an
-  `MvvmCancelRequest` before it persists.
-- A typed `WebUIToolkit.MVVM.Flow` Details → Review workflow, including
-  validation, retained Back navigation, cancellation, and a typed result.
-- A bounded in-app activity feed that explains outcomes without displaying
-  capabilities, request IDs, file paths, or arbitrary exception text.
+- A cancellable two-second starter import. The start command owns background
+  work, the cancel command awaits deterministic cancellation, and a declarative
+  HTMX status action refreshes successful completion.
+- A typed `WebUIToolkit.MVVM.Flow` Details → Review workflow with validation,
+  retained Back navigation, Finish, and Cancel.
+- A bounded in-app diagnostic feed containing safe application outcomes.
+- Deterministic disposal of the native transport, opened view, endpoint runtime,
+  generated web root, workflow, import task, and repository.
+
+There is no application-authored DOM renderer or `webui.call` integration.
 
 ## Run
 
@@ -40,115 +39,56 @@ direnv allow
 dotnet run --project samples/AdvancedTodo
 ```
 
-The Nix development shell supplies the cs-webui native library and browser
-dependencies. The native window closes the WebUIToolkit root session and host
-when the user closes it.
-
-Tasks persist in the platform's local application-data directory, under:
+Tasks persist below the platform local application-data directory:
 
 ```text
 WebUIToolkit/AdvancedTodo/todos.json
 ```
 
-Set `ADVANCED_TODO_DATA` to choose an explicit file:
+Choose an explicit file with:
 
 ```bash
 ADVANCED_TODO_DATA=/tmp/advanced-todo.json \
   dotnet run --project samples/AdvancedTodo
 ```
 
-Delete that JSON file to reset the demo.
-
-To exercise the non-GUI application paths:
+## Self-test
 
 ```bash
 dotnet run --project samples/AdvancedTodo -- --self-test
 ```
 
-The self-test uses its own temporary directory and covers JSON persistence,
-pre-mutation cancellation, workflow validation, navigation, and typed
-completion. It does not start cs-webui or open a window.
+The self-test creates isolated data and exercises the real compiled endpoint:
+invalid and valid quick add, search/filter, toggle, Flow validation,
+Details/Review/Back/Finish, cancellable import, persistence, opaque route
+emission, local asset validation, the sole native binding contract, and removal
+of the private generated web root.
 
 ## Architecture
 
 ```text
-Native cs-webui window
-        │ local index.html / CSS / JavaScript
-        │ WebUiWindow.BindAsync callbacks
-        ▼
-UI/NativeTodoController
-        │ revisioned property + command requests
-        ▼
-WebUIToolkit.MVVM session
-        │ explicit CommunityToolkit adapter
-        ▼
-UI/TodoViewModel
-      │             │
-      ▼             ▼
-TodoService    TodoCreationFlow
-      │             │
-      ▼             ▼
-JsonTodoRepository  WebUIToolkit.MVVM.Flow
-      │
-      ▼
-  todos.json
+Compiled .cwhtml document and fragments
+                 │ opaque hx-post routes
+                 ▼
+       CsWebUiHtmxTransport
+          (one native binding)
+                 │
+                 ▼
+       HtmxEndpointRuntime
+                 │ closed fields + commands
+                 ▼
+ CommunityToolkit MVVM adapter
+                 │
+                 ▼
+          TodoViewModel
+        ┌────────┴─────────┐
+        ▼                  ▼
+   TodoService      TodoCreationFlow
+        │                  │
+        ▼                  ▼
+ JsonTodoRepository  MVVM.Flow workflow
 ```
 
-The native host has a separate responsibility from the application:
-
-- `CsWebUiBrowserHostFactory` adapts cs-webui window ownership, dispatcher
-  access, navigation, close notification, and teardown to neutral Hosting
-  contracts.
-- `WebUiModeRunner` enforces the runtime → window → root session → navigation →
-  show sequence and reverses ownership on shutdown.
-- `NativeTodoController` binds this app's named UI operations. It does not own
-  native process/window lifetime.
-
-The remaining layers stay host-independent:
-
-- `Domain` contains immutable task data and its priority vocabulary.
-- `Application` owns use cases, filtering vocabulary, persistence contracts,
-  and the typed creation workflow.
-- `UI/TodoViewModel` owns observable state and generated commands.
-- `Infrastructure/JsonTodoRepository` owns the local persistence mechanism.
-- `wwwroot` owns presentation and calls only the controller's named boundary.
-
-`TodoService` serializes read-modify-write operations so later multi-window
-extensions do not lose updates. Search and filtering remain presentation-only.
-
-## Code tour
-
-Read these files in order:
-
-1. `Domain/TodoItem.cs` — the immutable domain model.
-2. `Application/TodoService.cs` — use cases and the safe cancellation boundary.
-3. `Infrastructure/JsonTodoRepository.cs` — async, atomic JSON persistence.
-4. `UI/TodoViewModel.cs` — observable state and commands; no browser types.
-5. `Application/TodoCreationFlow.cs` — the typed two-step Flow definition,
-   validation, and presentation leases.
-6. `UI/NativeTodoController.cs` — explicit CommunityToolkit bindings, retained
-   MVVM session, revisioned mutations, and cs-webui callbacks.
-7. `Program.cs` — host composition and lifecycle policy.
-8. `wwwroot/advanced-todo.js` — DOM projection; user text is assigned with
-   `textContent`, not interpolated into HTML.
-
-## Production boundary
-
-This is a real local desktop host, not an ASP.NET application and not a fake
-console UI. cs-webui owns its private local server and browser/WebView window.
-The sample keeps `SetPublic(false)` through the adapter default and serves only
-its local `wwwroot`.
-
-For a larger app, split `NativeTodoController` by feature, move snapshot DTOs
-into a dedicated presentation-contract assembly, and add structured telemetry.
-If windows need to share live changes, add an application event stream and
-refresh each retained MVVM session from repository notifications.
-
-## Things to try
-
-1. Submit a one-character title and inspect inline validation.
-2. Search for text that exists only in Notes.
-3. Start the two-second import and cancel it; no partial starter set is saved.
-4. Walk through the guided planner, go Back, and finish.
-5. Reload the app and confirm that tasks survived in JSON.
-6. Set `ADVANCED_TODO_DATA` to compare two independent data stores.
+Start with `Program.cs`, then read `UI/AdvancedTodoApplicationRoot.cs`,
+`UI/AdvancedTodoRenderModel.cs`, and the two files under `Views/`. The domain,
+service, repository, and Flow files remain independent of CsWebUi and HTMX.

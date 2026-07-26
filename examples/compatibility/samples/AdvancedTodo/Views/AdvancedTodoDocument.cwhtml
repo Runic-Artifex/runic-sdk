@@ -1,0 +1,25 @@
+@namespace WebUIToolkit.Samples.AdvancedTodo.UI
+@view AdvancedTodoDocumentView(WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoDocumentModel model)
+html lang="en" {
+    head {
+        meta charset="utf-8";
+        meta name="viewport" content="width=device-width, initial-scale=1";
+        meta name="color-scheme" content="dark";
+        title { "Advanced ToDo · WebUIToolkit" }
+        link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css";
+        link rel="stylesheet" href="vendor/fontawesome/css/fontawesome.min.css";
+        link rel="stylesheet" href="vendor/fontawesome/css/solid.min.css";
+        link rel="stylesheet" href="advanced-todo.css";
+    }
+    body {
+        div #advanced_fragment {
+            @render(model.Application);
+        }
+        script src="webui.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/webuitoolkit-htmx-cswebui-1.0.0.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.Js/htmx-2.0.10.min.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.Js/htmx-csp-2.0.10.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.Js/webuitoolkit-htmx-1.0.0.mjs" {}
+        script src="vendor/bootstrap/bootstrap.bundle.min.js" {}
+    }
+}

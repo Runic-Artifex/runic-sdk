@@ -1,5 +1,4 @@
 using System;
-using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,7 +9,7 @@ namespace WebUIToolkit.Samples.SimpleTodo;
 /// <summary>
 /// Owns the page state. It has no knowledge of HTML, JavaScript, or CsWebUi.
 /// </summary>
-internal sealed partial class TodoViewModel : ObservableValidator
+internal sealed partial class TodoViewModel : ObservableObject
 {
     /// <summary>Initializes the sample with a few tasks worth interacting with.</summary>
     public TodoViewModel()
@@ -19,7 +18,7 @@ internal sealed partial class TodoViewModel : ObservableValidator
         [
             new TodoItem("Read the SimpleTodo guided tour"),
             new TodoItem("Add a task of my own"),
-            new TodoItem("Inspect TodoBackend.cs"),
+            new TodoItem("Inspect the compiled cwhtml view"),
         ];
     }
 
@@ -28,9 +27,6 @@ internal sealed partial class TodoViewModel : ObservableValidator
 
     /// <summary>Gets or sets the text entered in the composer.</summary>
     [ObservableProperty]
-    [NotifyDataErrorInfo]
-    [Required(AllowEmptyStrings = false)]
-    [StringLength(80, MinimumLength = 2)]
     [NotifyCanExecuteChangedFor(nameof(AddCommand))]
     private string newTitle = string.Empty;
 

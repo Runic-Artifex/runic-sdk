@@ -425,18 +425,9 @@ button {
   font-size: .78rem;
 }
 
-#cancel-import {
-  display: none;
+#import-cancel button {
   width: 100%;
   margin-top: .5rem;
-}
-
-.importing #cancel-import {
-  display: block;
-}
-
-.importing #import-form button {
-  opacity: .55;
 }
 
 .loading {

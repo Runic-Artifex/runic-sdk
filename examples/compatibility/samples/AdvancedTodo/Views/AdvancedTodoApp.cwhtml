@@ -1,0 +1,325 @@
+@namespace WebUIToolkit.Samples.AdvancedTodo.UI
+@view AdvancedTodoAppView(WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel model)
+div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revision) {
+    header .hero {
+        div .eyebrow {
+            i .fa-solid .fa-diagram-project aria-hidden="true" {}
+            " ADVANCED SAMPLE · COMPILED HTML + NATIVE HTMX"
+        }
+        h1 { "Tasks with an architecture" }
+        p .lede {
+            "Persistent storage, typed commands, searchable projections, cancellable work, and a real Flow workflow in a lightweight native desktop window."
+        }
+    }
+
+    section .stats aria-label="Task overview" {
+        div .stat {
+            strong { (model.TotalCount.ToString(System.Globalization.CultureInfo.InvariantCulture)) }
+            span { "Total" }
+        }
+        div .stat {
+            strong { (model.RemainingCount.ToString(System.Globalization.CultureInfo.InvariantCulture)) }
+            span { "Remaining" }
+        }
+        div .stat {
+            strong { (model.CompletedCount.ToString(System.Globalization.CultureInfo.InvariantCulture)) }
+            span { "Completed" }
+        }
+    }
+
+    main .layout {
+        section .board {
+            form #filter-form .toolbar
+                data-hx-post=(model.FilterRoute)
+                data-hx-target="#advanced_fragment"
+                data-hx-swap="outerHTML" {
+                label for="query" { "Search tasks" }
+                input #query .form-control
+                    type="search"
+                    name="query"
+                    value=(model.Query)
+                    maxlength="120"
+                    placeholder="Search title or notes…"
+                    autocomplete="off";
+                label for="filter" { "Filter" }
+                select #filter .form-select name="filter" {
+                    option value="All" selected[=(model.FilterIsAll)] { "All" }
+                    option value="Active" selected[=(model.FilterIsActive)] { "Active" }
+                    option value="Completed" selected[=(model.FilterIsCompleted)] { "Completed" }
+                }
+                button .quiet .btn .btn-secondary type="submit" {
+                    i .fa-solid .fa-magnifying-glass aria-hidden="true" {}
+                    " Apply"
+                }
+            }
+
+            section .card .add-card {
+                div .section-heading {
+                    div {
+                        h2 { "Quick add" }
+                        p { "For routine tasks. Use the planner for the guided path." }
+                    }
+                }
+                form #add-form .add-form
+                    data-hx-post=(model.AddRoute)
+                    data-hx-target="#advanced_fragment"
+                    data-hx-swap="outerHTML" {
+                    div .field .field-wide {
+                        label for="new-title" { "Title" }
+                        input #new-title .form-control
+                            name="title"
+                            value=(model.Title)
+                            maxlength="120"
+                            placeholder="What needs doing?"
+                            autocomplete="off"
+                            aria-invalid=(model.HasValidationMessage ? "true" : null)
+                            aria-describedby=(model.HasValidationMessage ? "quick-title-errors" : null)
+                            required[=true];
+                        @if (model.HasValidationMessage) {
+                            p #quick-title-errors .validation role="alert" {
+                                (model.ValidationMessage)
+                            }
+                        }
+                    }
+                    div .field {
+                        label for="new-notes" { "Notes" }
+                        input #new-notes .form-control
+                            name="notes"
+                            value=(model.Notes)
+                            maxlength="2000"
+                            placeholder="Optional context";
+                    }
+                    div .field {
+                        label for="new-priority" { "Priority" }
+                        select #new-priority .form-select name="priority" {
+                            option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
+                            option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
+                            option value="High" selected[=(model.PriorityIsHigh)] { "High" }
+                        }
+                    }
+                    button .primary .btn .btn-success type="submit" {
+                        i .fa-solid .fa-plus aria-hidden="true" {}
+                        " Add task"
+                    }
+                }
+            }
+
+            section .task-list {
+                div .section-heading {
+                    div {
+                        h2 { "Your tasks" }
+                        p {
+                            (model.ShownCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                            " shown"
+                        }
+                    }
+                    form
+                        data-hx-post=(model.ClearCompletedRoute)
+                        data-hx-target="#advanced_fragment"
+                        data-hx-swap="outerHTML" {
+                        button .quiet .btn .btn-secondary type="submit" {
+                            i .fa-solid .fa-broom aria-hidden="true" {}
+                            " Clear completed"
+                        }
+                    }
+                }
+                div #tasks aria-live="polite" {
+                    @if (model.HasItems) {
+                        @foreach (WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderItem item in model.Items) {
+                            article class=(item.CssClass) {
+                                form
+                                    data-hx-post=(model.ToggleRoute)
+                                    data-hx-target="#advanced_fragment"
+                                    data-hx-swap="outerHTML" {
+                                    button .check
+                                        type="submit"
+                                        name="selectedId"
+                                        value=(item.Id)
+                                        aria-label=(item.ToggleLabel) {
+                                        i class=(item.ToggleIconClass) aria-hidden="true" {}
+                                    }
+                                }
+                                div .todo-copy {
+                                    div .todo-title { (item.Title) }
+                                    @if (item.HasNotes) {
+                                        p { (item.Notes) }
+                                    }
+                                    div .meta {
+                                        span class=(item.PriorityCssClass) { (item.Priority) }
+                                        time { (item.Created) }
+                                    }
+                                }
+                                form
+                                    data-hx-post=(model.DeleteRoute)
+                                    data-hx-target="#advanced_fragment"
+                                    data-hx-swap="outerHTML" {
+                                    button .danger
+                                        type="submit"
+                                        name="selectedId"
+                                        value=(item.Id)
+                                        aria-label=(item.DeleteLabel) {
+                                        i .fa-solid .fa-trash aria-hidden="true" {}
+                                        " Delete"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    @else {
+                        div .empty {
+                            span .empty-icon {
+                                i .fa-solid .fa-check aria-hidden="true" {}
+                            }
+                            h3 { "Nothing to show" }
+                            p { "Add a task, import the starter set, or try another search and filter." }
+                        }
+                    }
+                }
+            }
+        }
+
+        aside .side-panel {
+            section .card .planner {
+                div .section-heading {
+                    div {
+                        div .eyebrow { "WEBUITOOLKIT.MVVM.FLOW" }
+                        h2 { "Guided planner" }
+                    }
+                }
+                div #planner {
+                    @if (model.WizardIsClosed) {
+                        p {
+                            "Create a task through a typed Details → Review workflow with validation and retained Back navigation."
+                        }
+                        form
+                            data-hx-post=(model.WizardStartRoute)
+                            data-hx-target="#advanced_fragment"
+                            data-hx-swap="outerHTML" {
+                            button .primary type="submit" { "Open planner" }
+                        }
+                    }
+                    @else {
+                        div .steps {
+                            span class=(model.WizardIsDetails ? "active" : "done") { "1 Details" }
+                            span class=(model.WizardIsReview ? "active" : null) { "2 Review" }
+                        }
+                        @if (model.WizardIsDetails) {
+                            form .stack
+                                data-hx-post=(model.WizardNextRoute)
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML" {
+                                label for="wizard-title" { "Title" }
+                                input #wizard-title
+                                    name="title"
+                                    value=(model.Title)
+                                    maxlength="120"
+                                    autocomplete="off"
+                                    required[=true];
+                                label for="wizard-notes" { "Notes" }
+                                textarea #wizard-notes name="notes" maxlength="2000" {
+                                    (model.Notes)
+                                }
+                                label for="wizard-priority" { "Priority" }
+                                select #wizard-priority name="priority" {
+                                    option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
+                                    option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
+                                    option value="High" selected[=(model.PriorityIsHigh)] { "High" }
+                                }
+                                @foreach (string issue in model.WizardIssues) {
+                                    p .validation role="alert" { (issue) }
+                                }
+                                button .primary type="submit" { "Continue to review" }
+                            }
+                            form
+                                data-hx-post=(model.WizardCancelRoute)
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML" {
+                                button .quiet type="submit" { "Cancel" }
+                            }
+                        }
+                        @if (model.WizardIsReview) {
+                            div .review {
+                                strong { (model.Title) }
+                                p { (model.Notes) }
+                                span class=(model.PriorityIsHigh ? "priority high" : (model.PriorityIsLow ? "priority low" : "priority normal")) {
+                                    (model.Priority)
+                                }
+                            }
+                            div .button-row {
+                                form
+                                    data-hx-post=(model.WizardBackRoute)
+                                    data-hx-target="#advanced_fragment"
+                                    data-hx-swap="outerHTML" {
+                                    button .quiet type="submit" { "Back" }
+                                }
+                                form
+                                    data-hx-post=(model.WizardCancelRoute)
+                                    data-hx-target="#advanced_fragment"
+                                    data-hx-swap="outerHTML" {
+                                    button .quiet type="submit" { "Cancel" }
+                                }
+                                form
+                                    data-hx-post=(model.WizardFinishRoute)
+                                    data-hx-target="#advanced_fragment"
+                                    data-hx-swap="outerHTML" {
+                                    button .primary type="submit" { "Create task" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            section .card .diagnostics {
+                div .section-heading {
+                    div {
+                        div .eyebrow { "DIAGNOSTICS" }
+                        h2 { "Activity" }
+                    }
+                }
+                ol #activity .activity aria-live="polite" {
+                    @if (model.HasDiagnostics) {
+                        @foreach (WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoDiagnostic entry in model.Diagnostics) {
+                            li {
+                                time { (entry.Time) }
+                                span .diagnostic-kind { (entry.Category) }
+                                p { (entry.Message) }
+                            }
+                        }
+                    }
+                    @else {
+                        li { p { "Actions and workflow transitions appear here." } }
+                    }
+                }
+                @if (model.IsImporting) {
+                    form #import-status
+                        data-hx-post=(model.ImportStatusRoute)
+                        data-hx-trigger="load delay:2200ms"
+                        data-hx-target="#advanced_fragment"
+                        data-hx-swap="outerHTML" {
+                    }
+                    form #import-cancel
+                        data-hx-post=(model.CancelImportRoute)
+                        data-hx-target="#advanced_fragment"
+                        data-hx-swap="outerHTML" {
+                        button .quiet .btn .btn-secondary type="submit" {
+                            i .fa-solid .fa-ban aria-hidden="true" {}
+                            " Cancel running import"
+                        }
+                    }
+                }
+                @else {
+                    form #import-form
+                        data-hx-post=(model.ImportRoute)
+                        data-hx-target="#advanced_fragment"
+                        data-hx-swap="outerHTML" {
+                        button .secondary .btn .btn-info type="submit" {
+                            i .fa-solid .fa-file-import aria-hidden="true" {}
+                            " Import starter tasks (2s)"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

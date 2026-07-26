@@ -19,6 +19,8 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
     private readonly List<DiagnosticEntry> _diagnostics = [];
     private IReadOnlyList<TodoItem> _items = [];
     private TodoCreationFlow? _creationFlow;
+    private CancellationTokenSource? _importCancellation;
+    private Task? _importTask;
 
     [ObservableProperty]
     [NotifyDataErrorInfo]
@@ -81,31 +83,12 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
 
     internal IReadOnlyList<DiagnosticEntry> Diagnostics => _diagnostics;
 
+    internal bool IsImporting { get; private set; }
+
     internal StepKey? WizardStep => _creationFlow?.Snapshot.CurrentStep;
 
     internal IReadOnlyList<WorkflowValidationIssue> WizardIssues =>
         _creationFlow?.Snapshot.ValidationIssues ?? [];
-
-    internal TodoSnapshot Snapshot()
-    {
-        string[] validation = GetErrors(nameof(NewTitle))
-            .Select(static error => error.ErrorMessage ?? "The title is invalid.")
-            .ToArray();
-        return new TodoSnapshot(
-            [.. VisibleItems],
-            TotalCount,
-            RemainingCount,
-            CompletedCount,
-            Query,
-            Filter,
-            NewTitle,
-            NewNotes,
-            NewPriority,
-            WizardStep?.Value,
-            [.. WizardIssues.Select(static issue => issue.Message)],
-            validation,
-            [.. Diagnostics]);
-    }
 
     internal async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
@@ -170,21 +153,49 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
         await RefreshAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    [RelayCommand(IncludeCancelCommand = true, FlowExceptionsToTaskScheduler = true)]
-    private async Task ImportAsync(CancellationToken cancellationToken)
+    [RelayCommand]
+    private void Import()
     {
+        if (_importTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        _importCancellation?.Dispose();
+        _importCancellation = new CancellationTokenSource();
+        IsImporting = true;
         Observe("async", "Starter-task import began.");
+        OnPropertyChanged(nameof(IsImporting));
+        _importTask = RunImportAsync(_importCancellation.Token);
+    }
+
+    [RelayCommand(FlowExceptionsToTaskScheduler = true)]
+    private async Task CancelImportAsync()
+    {
+        CancellationTokenSource? cancellation = _importCancellation;
+        Task? import = _importTask;
+        if (cancellation is null || import is null || import.IsCompleted)
+        {
+            return;
+        }
+
+        cancellation.Cancel();
         try
         {
-            await _service.ImportStarterTasksAsync(cancellationToken).ConfigureAwait(false);
-            Observe("async", "Starter-task import completed.");
-            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+            await import.ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            Observe("async", "Starter-task import was cancelled before persistence.");
-            throw;
+            // RunImportAsync records the safe cancellation outcome.
         }
+    }
+
+    [RelayCommand]
+    private void RefreshImport()
+    {
+        // The delayed HTMX status action re-renders authoritative state after
+        // the background import has either persisted or been cancelled.
+        _ = IsImporting;
     }
 
     [RelayCommand(FlowExceptionsToTaskScheduler = true)]
@@ -275,6 +286,26 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
         OnPropertyChanged(nameof(CompletedCount));
     }
 
+    private async Task RunImportAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _service.ImportStarterTasksAsync(cancellationToken).ConfigureAwait(false);
+            Observe("async", "Starter-task import completed.");
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Observe("async", "Starter-task import was cancelled before persistence.");
+            throw;
+        }
+        finally
+        {
+            IsImporting = false;
+            OnPropertyChanged(nameof(IsImporting));
+        }
+    }
+
     private void ClearDraft()
     {
         NewTitle = string.Empty;
@@ -316,6 +347,25 @@ internal sealed partial class TodoViewModel : ObservableValidator, IAsyncDisposa
 
     public async ValueTask DisposeAsync()
     {
+        CancellationTokenSource? importCancellation = _importCancellation;
+        Task? importTask = _importTask;
+        if (importCancellation is not null)
+        {
+            importCancellation.Cancel();
+        }
+
+        if (importTask is not null)
+        {
+            try
+            {
+                await importTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        importCancellation?.Dispose();
         await CloseFlowAsync().ConfigureAwait(false);
         _service.Dispose();
     }

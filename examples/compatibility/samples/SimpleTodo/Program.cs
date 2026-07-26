@@ -9,46 +9,40 @@ using WebUIToolkit.Hosting.CsWebUi;
 using WebUIToolkit.Hosting.WebUi;
 using WebUIToolkit.Samples.SimpleTodo;
 
-string webRoot = Path.Combine(AppContext.BaseDirectory, "www");
-if (!Directory.Exists(webRoot))
+string staticWebRoot = Path.Combine(AppContext.BaseDirectory, "www");
+if (!Directory.Exists(staticWebRoot))
 {
-    throw new DirectoryNotFoundException($"The sample UI was not copied to '{webRoot}'.");
+    throw new DirectoryNotFoundException(
+        $"The sample's local assets were not copied to '{staticWebRoot}'.");
 }
 
-await using var backend = new TodoBackend();
+await using var root = new TodoApplicationRoot();
+await root.PrepareAsync(staticWebRoot);
 if (args.Contains("--smoke-test", StringComparer.Ordinal))
 {
-    return await backend.RunSmokeTestAsync();
+    return await root.RunSmokeTestAsync();
+}
+
+if (args.Contains("--browser-smoke-test", StringComparer.Ordinal))
+{
+    return await TodoBrowserSmoke.RunAsync(root);
 }
 
 FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
-    .BuildFromDirectory(webRoot, "index.html");
-var assets = new DirectoryFrontendAssetProvider(webRoot, manifest);
+    .BuildFromDirectory(root.WebRoot, "index.html");
+var assets = new DirectoryFrontendAssetProvider(root.WebRoot, manifest);
 var endpoint = new FrontendAssetEndpoint(assets, new Uri("app://simple-todo/"));
 var stop = new ApplicationStopControllerBinding();
 var host = new GenericHostWebUIToolkitApplicationBuilder(args);
 var browserFactory = new CsWebUiBrowserHostFactory(
     new CsWebUiAdapterOptions(
-        webRoot,
-        configureWindow: window =>
-        {
-            window.BindAsync("todoSnapshot", async (_, cancellationToken) =>
-                WebUiResult.FromString(await backend.SnapshotAsync(cancellationToken)));
-            window.BindAsync("todoAdd", async (webUiEvent, cancellationToken) =>
-                WebUiResult.FromString(
-                    await backend.AddAsync(webUiEvent.GetString(), cancellationToken)));
-            window.BindAsync("todoToggle", async (webUiEvent, cancellationToken) =>
-                WebUiResult.FromString(
-                    await backend.ToggleAsync(webUiEvent.GetString(), cancellationToken)));
-            window.BindAsync("todoRemove", async (webUiEvent, cancellationToken) =>
-                WebUiResult.FromString(
-                    await backend.RemoveAsync(webUiEvent.GetString(), cancellationToken)));
-        }));
+        root.WebRoot,
+        configureWindow: root.ConfigureWindow));
 
 host.Application.AddValidator(LaunchKind.UserInterface, new FrontendAssetValidator(assets));
 host.Application.AddModeRunner(new WebUiModeRunner(
     browserFactory,
-    new TodoRootSessionFactory(backend),
+    root,
     endpoint,
     stop,
     new WebUiModeOptions(

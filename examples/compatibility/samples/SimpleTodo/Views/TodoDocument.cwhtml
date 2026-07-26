@@ -1,0 +1,27 @@
+@namespace WebUIToolkit.Samples.SimpleTodo
+@view TodoDocumentView(WebUIToolkit.Samples.SimpleTodo.TodoDocumentModel model)
+html lang="en" {
+    head {
+        meta charset="utf-8";
+        meta name="viewport" content="width=device-width, initial-scale=1";
+        title { "Simple Todo · WebUIToolkit" }
+        link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css";
+        link rel="stylesheet" href="vendor/fontawesome/css/fontawesome.min.css";
+        link rel="stylesheet" href="vendor/fontawesome/css/solid.min.css";
+        link rel="stylesheet" href="site.css";
+    }
+    body {
+        div #todo_fragment {
+            @render(model.Application);
+        }
+        footer {
+            "State and commands stay in C#. Compiled HTML crosses one native HTMX binding."
+        }
+        script src="webui.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/webuitoolkit-htmx-cswebui-1.0.0.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.Js/htmx-2.0.10.min.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.Js/htmx-csp-2.0.10.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.Js/webuitoolkit-htmx-1.0.0.mjs" {}
+        script src="vendor/bootstrap/bootstrap.bundle.min.js" {}
+    }
+}
