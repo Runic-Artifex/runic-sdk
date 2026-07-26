@@ -28,6 +28,7 @@ internal static class Program
             await RunAsync(nameof(RevisionAndSnapshotSemantics), RevisionAndSnapshotSemantics);
             await RunAsync(nameof(AdapterRejectionAndExceptionDoNotAdvance), AdapterRejectionAndExceptionDoNotAdvance);
             await RunAsync(nameof(CommittedFailureAdvancesExactlyOnce), CommittedFailureAdvancesExactlyOnce);
+            await RunAsync(nameof(UnsolicitedChangesAdvanceAndPublish), UnsolicitedChangesAdvanceAndPublish);
             await RunAsync(nameof(AcknowledgementsAreMonotonic), AcknowledgementsAreMonotonic);
             await RunAsync(nameof(OneSessionSerializesMutations), OneSessionSerializesMutations);
             await RunAsync(nameof(CancellationBypassesTheDispatchGate), CancellationBypassesTheDispatchGate);
@@ -182,6 +183,27 @@ internal static class Program
         Equal(1, response.Patches.Count);
         Equal(MvvmFaultCodes.RequestInvalid, response.Fault!.Code);
         False(response.Fault.Message.Contains("secret", StringComparison.Ordinal));
+    }
+
+    private static async Task UnsolicitedChangesAdvanceAndPublish()
+    {
+        var adapter = new ChangeSourceAdapter();
+        await using IMvvmSessionFactory factory = Factory(adapter);
+        await using IMvvmSession session = await factory.OpenAsync(new MvvmContract("counter"));
+        var published = new TaskCompletionSource<MvvmProjectionChangedEventArgs>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        session.ProjectionChanged += (_, eventArgs) => published.TrySetResult(eventArgs);
+
+        adapter.Value = 17;
+        adapter.RaiseChanged();
+
+        MvvmProjectionChangedEventArgs change = await published.Task
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Equal(0L, change.FromRevision);
+        Equal(1L, change.Response.Revision);
+        Equal(1L, session.Revision);
+        MvvmPropertyPatch patch = (MvvmPropertyPatch)change.Response.Patches.Single();
+        Equal(17, patch.Value.GetInt32());
     }
 
     private static async Task AcknowledgementsAreMonotonic()
@@ -1127,7 +1149,7 @@ internal static class Program
         await factory.DisposeAsync();
     }
 
-    private static IMvvmSessionFactory Factory(DelegateAdapter adapter, MvvmLimits? limits = null)
+    private static IMvvmSessionFactory Factory(IMvvmBindingAdapter adapter, MvvmLimits? limits = null)
     {
         var registry = new MvvmSessionRegistry();
         registry.Map(
@@ -1303,6 +1325,36 @@ internal static class Program
         public ValueTask<MvvmBindingResult> DispatchAsync(
             MvvmMutationRequest request,
             CancellationToken cancellationToken) => Dispatch(request, cancellationToken);
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class ChangeSourceAdapter : IMvvmBindingAdapter, IMvvmBindingChangeSource
+    {
+        public event EventHandler? StateChanged;
+
+        internal int Value { get; set; }
+
+        internal void RaiseChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
+
+        public ValueTask<MvvmSnapshot> SnapshotAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new MvvmProjectionSnapshotBuilder()
+                .AddProperty(1, Json(Value.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+                .Build());
+
+        public ValueTask<MvvmBindingResult> DispatchAsync(
+            MvvmMutationRequest request,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(MvvmBindingResult.Success());
+
+        public ValueTask<IReadOnlyList<MvvmPatch>> ProjectChangesAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<IReadOnlyList<MvvmPatch>>(
+            [
+                new MvvmPropertyPatch(
+                    1,
+                    Json(Value.ToString(System.Globalization.CultureInfo.InvariantCulture))),
+            ]);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

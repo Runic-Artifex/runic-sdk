@@ -16,6 +16,9 @@ the future asset-package and cs-webui organization direction, the Bootstrap
 5.3 and Font Awesome sample baseline, and the initial repository scope
 reduction. The ordered work is maintained in the
 [product roadmap](./docs/product-roadmap.md). The
+[cwhtml development-experience plan](./docs/cwhtml-development-experience.md)
+defines the intended Vite-powered development loop, generated HTMX authoring
+surface, production asset pipeline, and editor experience. The
 [WPF migration guide](./docs/wpf-migration.md) maps familiar desktop concepts
 such as `DataContext`, bindings, commands, collections, validation, resources,
 navigation, dialogs, and window services onto the toolkit.
@@ -115,6 +118,15 @@ source project references. Every sample runs directly; start with the lifecycle
 hello world, continue through command-line and MVVM projection examples, then
 build the Simple and Advanced ToDo applications.
 
+SimpleTodo and AdvancedTodo share their C# model/ViewModel layer with React,
+Vue, Svelte, and Angular versions. Each framework project runs both teaching
+levels over the same native CsWebUi binary channel and generated typed
+contract, making adapter ergonomics directly comparable. Derived state and
+background changes are pushed without browser polling, while
+`WebUIToolkit.Frontend.Sdk` owns their Vite builds and manifests. The
+implementation notes and remaining gaps are captured in the
+[frontend Todo findings](./docs/frontend-todo-findings.md).
+
 Bootstrap 5.3 and Font Awesome are the default visual language for desktop
 samples because they match the WPF applications motivating this toolkit. They
 remain locally served sample dependencies rather than mandatory core
@@ -143,11 +155,13 @@ HTMX transport. Its persistence, filtering, workflow, cancellation, and
 diagnostic self-test remain useful migration coverage, but it is not yet part
 of the real-browser/Native-AOT acceptance gate.
 
-The next product work is broader WPF migration capability coverage, reusable
-sample components and styling alternatives, alignment of the TypeScript
-framework adapters with the proven native path, and the separately designed
-asset/VFS extraction. Those are roadmap items, not capabilities implied by the
-completed SimpleTodo gate.
+The next product work is the cwhtml developer-experience phase: extend the now
+implemented frontend SDK and Vite asset pipeline to generate the remaining
+native-HTMX plumbing and add a coordinated watch/HMR loop. Broader WPF
+migration capability coverage, reusable sample components and styling
+alternatives, alignment of the TypeScript framework adapters with the proven
+native path, and the separately designed asset/VFS extraction follow. Those
+are roadmap items, not capabilities implied by the completed SimpleTodo gate.
 
 The existing Wave G implementation records the earlier G7 neutral-reference
 and release-rehearsal gate. It remains historical verification evidence. The

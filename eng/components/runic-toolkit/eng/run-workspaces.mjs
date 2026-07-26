@@ -7,15 +7,19 @@ if (!command) {
   throw new Error('A workspace command is required.');
 }
 
-const packagesRoot = join(import.meta.dirname, '..', 'web', 'packages');
-if (!existsSync(packagesRoot)) {
+const packageRoots = [
+  join(import.meta.dirname, '..', 'web', 'packages'),
+  join(import.meta.dirname, '..', 'samples', 'Todo.Frontends'),
+].filter(existsSync);
+if (packageRoots.length === 0) {
   console.log(`No web workspaces yet; ${command} skipped.`);
   process.exit(0);
 }
 
-const packages = readdirSync(packagesRoot, { withFileTypes: true })
-  .filter(entry => entry.isDirectory())
-  .map(entry => join(packagesRoot, entry.name, 'package.json'))
+const packages = packageRoots
+  .flatMap(packagesRoot => readdirSync(packagesRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => join(packagesRoot, entry.name, 'package.json')))
   .filter(existsSync)
   .map(path => JSON.parse(readFileSync(path, 'utf8')));
 

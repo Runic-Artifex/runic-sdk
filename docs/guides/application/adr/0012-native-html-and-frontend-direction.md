@@ -78,6 +78,28 @@ preserves ordinary HTMX target, swap, settle, focus, and event semantics.
 HTTP-shaped request and response records remain useful internal contracts, but
 the native transport does not pretend to provide arbitrary HTTP hosting.
 
+### Development and asset pipeline
+
+Vite is the preferred optional development and production asset pipeline for
+the native compiled-C# track. It owns TypeScript, JavaScript, CSS, images,
+fonts, source maps, HMR, minification, content hashing, and its production
+manifest. WebUIToolkit integrates it rather than building another frontend
+bundler.
+
+During development, an ephemeral loopback-only Vite server may supply assets
+and HMR. It does not proxy native HTMX actions or become the application's
+endpoint host. During publication, WebUIToolkit consumes Vite's deterministic
+manifest and packages its output into the local static-asset/VFS boundary. The
+published application contains no development-server URL and does not require
+Node.js.
+
+The cwhtml compiler owns typed application semantics and may optimize generated
+HTML only where whitespace and raw-text behavior are preserved. Generated
+actions, fields, routes, conversions, validation projection, render plans, and
+revision handling should replace application-authored transport descriptors.
+The detailed target loop and staged delivery are recorded in the
+[cwhtml development-experience plan](../cwhtml-development-experience.md).
+
 ### Native security boundary
 
 The private CsWebUi window and its native connection are the normal trust
@@ -153,6 +175,10 @@ application and WPF migration path.
   than application-authored JavaScript callbacks.
 - The compiled HTML compiler has a concrete product role rather than being a
   detached templating experiment.
+- Vite supplies modern asset tooling without changing the native CsWebUi
+  application boundary or becoming a production runtime dependency.
+- Samples can converge on one generated application surface and shared
+  frontend SDK instead of duplicating build targets and transport descriptors.
 - The native HTMX and TypeScript MVVM transports become the two most important
   end-to-end integration milestones.
 - Framework-neutral kernels remain reusable, but adapters must expose enough

@@ -74,7 +74,45 @@ evidence. It Native-AOT-publishes and executes both the binary FrameChannel
 host and SimpleTodo against the pinned browser, while preserving portable lock
 files.
 
-## Phase 3: WPF migration proof — in progress
+## Phase 3: cwhtml developer experience and frontend pipeline — in progress
+
+Turn the proven native transport into an authoring experience that is
+competitive with modern web tooling. The detailed design and acceptance
+criteria live in the
+[cwhtml development-experience plan](./cwhtml-development-experience.md).
+
+- The initial `WebUIToolkit.Frontend.Sdk` now owns Node workspace
+  install/build/watch, generated-contract verification, native bridge assets,
+  source maps, production minification/hashing, manifests, and build/publish
+  output for the four framework Todo projects. Extend it to discover `.cwhtml`
+  files, import the compiler targets, and own the corresponding compiled-HTML
+  development and publish integration.
+- Generate HTMX actions, fields, routes, member identifiers, conversions,
+  validation projection, render plans, and revision handling from typed cwhtml
+  declarations instead of requiring application registration code.
+- Provide a high-level application builder and a single
+  `dotnet webuitoolkit dev` command for starting CsWebUi, cwhtml watching, Vite,
+  diagnostics, and coordinated reload.
+- Make Vite the first-class optional pipeline for TypeScript, JavaScript, CSS,
+  Sass/PostCSS, images, fonts, source maps, hashing, and minification. It is a
+  development/build tool, not an ASP.NET Core dependency or a replacement for
+  the native HTMX transport.
+- Implement tiered feedback: ordinary Vite HMR for frontend assets,
+  state-preserving fragment refresh for compatible cwhtml-only changes, and a
+  coordinated application restart when a C# change cannot be replaced safely.
+- Surface the same stable cwhtml diagnostics in the terminal, browser overlay,
+  and editor; then add language-server features for completion, navigation,
+  rename, formatting, and generated-source inspection.
+- Make `dotnet publish` consume Vite's production manifest, package only
+  minified and content-hashed local assets into the application VFS, and leave
+  no development-server URL or Node.js runtime dependency in the result.
+
+Phase 3 is complete when SimpleTodo and AdvancedTodo contain no custom cwhtml
+build targets or hand-written native-HTMX descriptor plumbing, use the shared
+development command, and pass the production asset and reload acceptance
+criteria in the detailed plan.
+
+## Phase 4: WPF migration proof — in progress
 
 - AdvancedTodo's source is converted to compiled views, the single native HTMX
   transport, and reusable Flow presenters. Its managed self-test covers
@@ -91,7 +129,7 @@ files.
   file dialogs, clipboard, drag/drop, and other migration-critical desktop
   behavior as demand establishes their contracts.
 
-## Phase 4: Customer-aligned sample design system — in progress
+## Phase 5: Customer-aligned sample design system — in progress
 
 - SimpleTodo and AdvancedTodo use locally pinned Bootstrap 5.3 and Font Awesome
   assets.
@@ -106,20 +144,31 @@ files.
   migration samples are complete, proving that the styling baseline is not a
   framework lock-in.
 
-## Phase 5: Binary transport complete; framework alignment future
+## Phase 6: Framework browser alignment — product gaps complete, release alignment future
 
 - The production CsWebUi `FrameChannel`, its C# counterpart, and the
   framework-neutral `04-NativeMvvmCounter` sample are implemented. The native
   E2E gate Native-AOT-publishes the binary host and verifies a C#-driven DOM
   update in real Chromium.
-- Convert a real application—not only the counter—to one selected framework
-  adapter and run it through the same native acceptance path.
-- Reuse the same ViewModels, Flow contracts, collections, validation, and
-  native host capabilities used by the compiled C# track.
-- Expand to the other framework packages only after the first complete native
-  application path is proven.
+- React, Vue, Svelte, and Angular now each render both Todo applications over
+  one shared C# model/ViewModel layer and native host. The product gaps found by
+  that executable probe are implemented: one generated C#/TypeScript contract,
+  read-only projections, typed command parameters, ordered host push, shared
+  readiness/bootstrap, and SDK-owned Vite development and production builds.
+  The [framework findings](./frontend-todo-findings.md) record the resulting
+  design and remaining framework-specific convenience work.
+- All eight framework/Todo combinations now have persistent-browser acceptance
+  coverage. Each gate edits framework-rendered state, executes the C# command
+  over the production CsWebUi binary channel, and verifies the resulting DOM.
+- Extend those gates with full-trim Native-AOT publication, reconnect,
+  validation, cancellation, accessibility, and leak coverage matching the
+  counter and cwhtml tracks.
+- Generate idiomatic React hooks, Vue composables, Svelte stores/runes, and an
+  Angular injectable service from the now-shared contract without forking its
+  identifiers or JSON model. Move Vue to SFC authoring and Angular to its
+  supported application builder for release builds.
 
-## Phase 6: Asset package and organization work — future
+## Phase 7: Asset package and organization work — future
 
 This phase includes coordinated work in the cs-webui repository:
 

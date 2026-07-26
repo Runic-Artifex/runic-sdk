@@ -21,6 +21,7 @@ internal static class Program
         (string Name, Func<Task> Run)[] tests =
         [
             ("one binding carries handshake, open, mutation, cancel, and close", ProtocolRoundTrip),
+            ("unsolicited session patches use the native window channel", HostPush),
             ("client identity is pinned while the same client may reconnect", ConnectionIdentity),
             ("invalid and oversized native calls are rejected before dispatch", InvalidFramesAreRejected),
             ("options require simple distinct JavaScript identifiers", OptionsValidate),
@@ -42,6 +43,31 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    private static async Task HostPush()
+    {
+        await using TestSession test = await TestSession.CreateAsync().ConfigureAwait(false);
+        var window = new FakeWindow();
+        await using var bridge = CsWebUiMvvmBridge.Attach(window, test.Session);
+
+        _ = await window.InvokeAsync(Bytes(Handshake)).ConfigureAwait(false);
+        _ = await window.InvokeAsync(Bytes($$$"""
+            {"v":1,"kind":"open","contract":"todo-test","view":"{{{View}}}","request":"00000000-0000-4000-8000-000000000002","payload":{}}
+            """)).ConfigureAwait(false);
+
+        test.ChangeFromHost("pushed");
+        byte[] frame = await window.WaitForSentAsync().ConfigureAwait(false);
+        JsonElement patch = Decode(frame);
+        Equal("patch", patch.GetProperty("kind").GetString());
+        JsonElement payload = patch.GetProperty("payload");
+        Equal(0L, payload.GetProperty("fromRevision").GetInt64());
+        Equal(1L, payload.GetProperty("toRevision").GetInt64());
+        Equal(
+            "pushed",
+            payload.GetProperty("changes")[0]
+                .GetProperty("value")
+                .GetString());
     }
 
     private static async Task ProtocolRoundTrip()
@@ -202,12 +228,15 @@ internal static class Program
 internal sealed class FakeWindow : ICsWebUiMvvmWindow
 {
     private Func<ICsWebUiMvvmEvent, CancellationToken, ValueTask>? _callback;
+    private readonly object _sendGate = new();
 
     internal int BindCount { get; private set; }
 
     internal string? BindingName { get; private set; }
 
     internal int BindingDisposeCount { get; private set; }
+
+    internal List<(string Function, byte[] Frame)> Sent { get; } = [];
 
     public IDisposable Bind(
         string name,
@@ -221,6 +250,33 @@ internal sealed class FakeWindow : ICsWebUiMvvmWindow
             BindingDisposeCount++;
             _callback = null;
         });
+    }
+
+    public void SendRaw(string functionName, ReadOnlySpan<byte> data)
+    {
+        lock (_sendGate)
+        {
+            Sent.Add((functionName, data.ToArray()));
+        }
+    }
+
+    internal async Task<byte[]> WaitForSentAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!timeout.IsCancellationRequested)
+        {
+            lock (_sendGate)
+            {
+                if (Sent.Count != 0)
+                {
+                    return Sent[0].Frame;
+                }
+            }
+
+            await Task.Delay(10, timeout.Token).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException("No native window frame was sent.");
     }
 
     internal async Task<FakeEvent> InvokeAsync(
@@ -277,12 +333,17 @@ internal sealed class CallbackDisposable(Action callback) : IDisposable
 internal sealed class TestSession : IAsyncDisposable
 {
     private readonly IMvvmSessionFactory _factory;
+    private readonly ChangeSourceAdapter _adapter;
     private int _disposeCount;
     private int _dispatchCount;
 
-    private TestSession(IMvvmSessionFactory factory, IMvvmSession session)
+    private TestSession(
+        IMvvmSessionFactory factory,
+        IMvvmSession session,
+        ChangeSourceAdapter adapter)
     {
         _factory = factory;
+        _adapter = adapter;
         Session = new TrackingSession(
             session,
             () => Interlocked.Increment(ref _disposeCount),
@@ -297,6 +358,12 @@ internal sealed class TestSession : IAsyncDisposable
 
     internal int DispatchCount => Volatile.Read(ref _dispatchCount);
 
+    internal void ChangeFromHost(string value)
+    {
+        Value = value;
+        _adapter.RaiseChanged();
+    }
+
     internal static async Task<TestSession> CreateAsync()
     {
         var vocabulary = new MvvmBindingVocabulary(
@@ -306,6 +373,7 @@ internal sealed class TestSession : IAsyncDisposable
         var registry = new MvvmSessionRegistry();
         var contract = new MvvmContract("todo-test");
         TestSession? owner = null;
+        ChangeSourceAdapter? changeSource = null;
         registry.Map(contract, _ =>
         {
             IMvvmBindingAdapter adapter = new MvvmBindingAdapterBuilder(
@@ -329,11 +397,14 @@ internal sealed class TestSession : IAsyncDisposable
                             patches: [new MvvmPropertyPatch(1, request.Payload)]));
                 })
                 .Build();
-            return ValueTask.FromResult(new MvvmSessionActivation(adapter));
+            changeSource = new ChangeSourceAdapter(
+                adapter,
+                () => JsonSerializer.SerializeToElement(owner?.Value ?? "initial"));
+            return ValueTask.FromResult<MvvmSessionActivation>(new(changeSource));
         });
         IMvvmSessionFactory factory = registry.Build();
         IMvvmSession session = await factory.OpenAsync(contract).ConfigureAwait(false);
-        owner = new TestSession(factory, session);
+        owner = new TestSession(factory, session, changeSource!);
         return owner;
     }
 
@@ -356,6 +427,12 @@ internal sealed class TrackingSession(
 
     public long? AcknowledgedRevision => inner.AcknowledgedRevision;
 
+    public event EventHandler<MvvmProjectionChangedEventArgs>? ProjectionChanged
+    {
+        add => inner.ProjectionChanged += value;
+        remove => inner.ProjectionChanged -= value;
+    }
+
     public bool Authorizes(string capabilityToken) => inner.Authorizes(capabilityToken);
 
     public async ValueTask<MvvmResponse> DispatchAsync(
@@ -371,6 +448,30 @@ internal sealed class TrackingSession(
         disposed();
         await inner.DisposeAsync().ConfigureAwait(false);
     }
+}
+
+internal sealed class ChangeSourceAdapter(
+    IMvvmBindingAdapter inner,
+    Func<JsonElement> value) : IMvvmBindingAdapter, IMvvmBindingChangeSource
+{
+    public event EventHandler? StateChanged;
+
+    internal void RaiseChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
+
+    public ValueTask<MvvmSnapshot> SnapshotAsync(CancellationToken cancellationToken) =>
+        inner.SnapshotAsync(cancellationToken);
+
+    public ValueTask<MvvmBindingResult> DispatchAsync(
+        MvvmMutationRequest request,
+        CancellationToken cancellationToken) =>
+        inner.DispatchAsync(request, cancellationToken);
+
+    public ValueTask<IReadOnlyList<MvvmPatch>> ProjectChangesAsync(
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<IReadOnlyList<MvvmPatch>>(
+            [new MvvmPropertyPatch(1, value())]);
+
+    public ValueTask DisposeAsync() => inner.DisposeAsync();
 }
 
 internal sealed class NeverUsedSession : IMvvmSession

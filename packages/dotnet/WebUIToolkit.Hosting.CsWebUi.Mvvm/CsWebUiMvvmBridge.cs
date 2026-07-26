@@ -47,6 +47,7 @@ public sealed class CsWebUiMvvmBridge : IAsyncDisposable
         _options = options;
         _limits = options.TransportOptions.CodecLimits;
         _binding = _window.Bind(options.BindingName, OnFrameAsync);
+        _session.ProjectionChanged += OnProjectionChanged;
     }
 
     /// <summary>Gets the pinned native identity after the first valid handshake.</summary>
@@ -91,6 +92,7 @@ public sealed class CsWebUiMvvmBridge : IAsyncDisposable
         }
 
         Interlocked.Exchange(ref _closed, 1);
+        _session.ProjectionChanged -= OnProjectionChanged;
         _binding?.Dispose();
         _binding = null;
         _shutdown.Cancel();
@@ -511,6 +513,49 @@ public sealed class CsWebUiMvvmBridge : IAsyncDisposable
         }
 
         webUiEvent.SendRaw(_options.ReceiveFunctionName, frame);
+    }
+
+    private void OnProjectionChanged(object? sender, MvvmProjectionChangedEventArgs eventArgs)
+    {
+        _ = PushProjectionChangedAsync(eventArgs);
+    }
+
+    private async Task PushProjectionChangedAsync(MvvmProjectionChangedEventArgs eventArgs)
+    {
+        try
+        {
+            await _dispatchGate.WaitAsync(_shutdown.Token).ConfigureAwait(false);
+            try
+            {
+                if (IsClosed || _transport is null || _viewId is not Guid view)
+                {
+                    return;
+                }
+
+                byte[] frame = MvvmHostFrameEncoder.Patch(
+                    _session,
+                    view,
+                    eventArgs.FromRevision,
+                    eventArgs.Response,
+                    _limits);
+                _window.SendRaw(_options.ReceiveFunctionName, frame);
+            }
+            finally
+            {
+                _dispatchGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException) when (IsClosed)
+        {
+        }
+        catch (Exception)
+        {
+            // Unsolicited delivery is best-effort. The next client request can recover
+            // through the normal revision/snapshot path.
+        }
     }
 
     private bool HasRoute(MvvmWireMessage message) =>

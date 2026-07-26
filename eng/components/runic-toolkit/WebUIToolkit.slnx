@@ -5,6 +5,7 @@
     <Project Path="src/WebUIToolkit.CommandLine.Hosting/WebUIToolkit.CommandLine.Hosting.csproj" />
     <Project Path="src/WebUIToolkit.CommandLine.Processes/WebUIToolkit.CommandLine.Processes.csproj" />
     <Project Path="src/WebUIToolkit.CommandLine/WebUIToolkit.CommandLine.csproj" />
+    <Project Path="src/WebUIToolkit.Frontend.Sdk/WebUIToolkit.Frontend.Sdk.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.Abstractions/WebUIToolkit.Hosting.Abstractions.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.CommandLine/WebUIToolkit.Hosting.CommandLine.csproj" />
@@ -76,5 +77,11 @@
     <Project Path="samples/04-NativeMvvmCounter/NativeMvvmCounter.csproj" />
     <Project Path="samples/AdvancedTodo/AdvancedTodo.csproj" />
     <Project Path="samples/SimpleTodo/SimpleTodo.csproj" />
+    <Project Path="samples/Todo.Angular/Todo.Angular.csproj" />
+    <Project Path="samples/Todo.FrontendHost/Todo.FrontendHost.csproj" />
+    <Project Path="samples/Todo.React/Todo.React.csproj" />
+    <Project Path="samples/Todo.Shared/Todo.Shared.csproj" />
+    <Project Path="samples/Todo.Svelte/Todo.Svelte.csproj" />
+    <Project Path="samples/Todo.Vue/Todo.Vue.csproj" />
   </Folder>
 </Solution>

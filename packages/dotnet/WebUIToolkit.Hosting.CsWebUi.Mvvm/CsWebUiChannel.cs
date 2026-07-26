@@ -10,6 +10,8 @@ internal interface ICsWebUiMvvmWindow
     IDisposable Bind(
         string name,
         Func<ICsWebUiMvvmEvent, CancellationToken, ValueTask> callback);
+
+    void SendRaw(string functionName, ReadOnlySpan<byte> data);
 }
 
 internal interface ICsWebUiMvvmEvent
@@ -41,6 +43,9 @@ internal sealed class CsWebUiMvvmWindow(WebUiWindow window) : ICsWebUiMvvmWindow
                 await callback(new CsWebUiMvvmEvent(webUiEvent), cancellationToken).ConfigureAwait(false);
                 return WebUiResult.None;
             });
+
+    public void SendRaw(string functionName, ReadOnlySpan<byte> data) =>
+        _window.SendRaw(functionName, data);
 }
 
 internal sealed class CsWebUiMvvmEvent(WebUiEvent webUiEvent) : ICsWebUiMvvmEvent

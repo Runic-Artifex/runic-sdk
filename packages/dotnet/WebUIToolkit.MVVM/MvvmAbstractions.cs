@@ -397,9 +397,44 @@ public interface IMvvmBindingAdapter : IAsyncDisposable
     ValueTask<MvvmBindingResult> DispatchAsync(MvvmMutationRequest request, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Optional adapter surface for ViewModel changes that occur outside a browser-originated mutation.
+/// </summary>
+public interface IMvvmBindingChangeSource
+{
+    /// <summary>Raised after authoritative projected state may have changed.</summary>
+    event EventHandler? StateChanged;
+
+    /// <summary>Projects the current authoritative state as one atomic patch transaction.</summary>
+    ValueTask<IReadOnlyList<MvvmPatch>> ProjectChangesAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Describes one session-owned unsolicited projection transaction.</summary>
+public sealed class MvvmProjectionChangedEventArgs : EventArgs
+{
+    internal MvvmProjectionChangedEventArgs(long fromRevision, MvvmResponse response)
+    {
+        FromRevision = fromRevision;
+        Response = response;
+    }
+
+    /// <summary>Gets the revision on which the transaction is based.</summary>
+    public long FromRevision { get; }
+
+    /// <summary>Gets the committed response containing the new revision and ordered patches.</summary>
+    public MvvmResponse Response { get; }
+}
+
 /// <summary>Owns one ViewModel, its adapter, ordered dispatch, revisions, and teardown.</summary>
 public interface IMvvmSession : IAsyncDisposable
 {
+    /// <summary>Raised when owned ViewModel notifications commit outside a client request.</summary>
+    event EventHandler<MvvmProjectionChangedEventArgs>? ProjectionChanged
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>Gets the runtime session identifier.</summary>
     MvvmSessionId Id { get; }
 

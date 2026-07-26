@@ -22,12 +22,43 @@ through persistent headless Chromium against a real CsWebUi server:
 - SimpleTodo submits its compiled form through the shipped native HTMX bridge,
   executes a C# command, and verifies the replaced compiled-fragment DOM.
 
+`eng/verify-todo-frontends.ps1` then runs SimpleTodo and AdvancedTodo through
+React, Vue, Svelte, and Angular using the production binary FrameChannel. Each
+of the eight serial pinned-Chromium cases changes framework-rendered input,
+executes the shared C# ViewModel, and verifies the resulting framework-rendered
+task. Advanced cases additionally observe the asynchronous import's pushed
+busy-state transition and imported tasks without a refresh command. These cases
+are managed browser gates; Native-AOT publication of the framework applications
+remains Phase 6 work.
+
 AdvancedTodo's compiled `.cwhtml`/native-HTMX source and managed self-test are
 implemented, but that application is not yet part of this Chromium/Native-AOT
-gate. WPF capability expansion, a framework-adapter application on the proven
-native path, and asset/VFS extraction remain future roadmap work. The older
-G0–G7 sections below preserve cumulative historical release evidence; their
-existence does not mark those re-centered product outcomes complete.
+gate. The cwhtml development experience, WPF capability expansion, a
+framework-adapter application on the proven native path, and asset/VFS
+extraction remain future roadmap work. The older G0–G7 sections below preserve
+cumulative historical release evidence; their existence does not mark those
+re-centered product outcomes complete.
+
+## Planned cwhtml developer-experience acceptance
+
+Phase 3 adds a consumer-facing gate around the
+[cwhtml development-experience plan](./cwhtml-development-experience.md). It
+must prove, on SimpleTodo and AdvancedTodo, that:
+
+- the shared frontend SDK removes application-authored cwhtml targets, toolkit
+  asset-copy targets, native-HTMX descriptors, and render-plan registration;
+- the development command coordinates CsWebUi, Vite, compilation, diagnostics,
+  asset HMR, cwhtml reload, and application restart without routing native HTMX
+  actions through HTTP;
+- production assets are minified, content-hashed, deterministic, entirely
+  local, and free of development-server references; and
+- the resulting full-trim Native-AOT applications pass real-browser round trips
+  while offline from external asset services.
+
+Exact latency budgets will be frozen only after repeatable measurements exist
+for the declared reference machine and application. Diagnostic identity and
+source locations must already agree across build, command line, browser
+overlay, and editor before the phase is accepted.
 
 ## G0: Repository and identity
 

@@ -83,6 +83,27 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
         return this;
     }
 
+    /// <summary>Adds a generated read-only or derived property with a closed JSON representation.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindReadOnlyProperty<TValue>(
+        int memberId,
+        string generatedPropertyName,
+        Func<TViewModel, TValue> get,
+        JsonTypeInfo<TValue> jsonTypeInfo,
+        bool includeValidation = false)
+    {
+        ThrowIfBuilt();
+        ArgumentException.ThrowIfNullOrEmpty(generatedPropertyName);
+        ArgumentNullException.ThrowIfNull(get);
+        ArgumentNullException.ThrowIfNull(jsonTypeInfo);
+        Add(new CommunityToolkitMvvmBindingAdapter<TViewModel>.PropertyBinding<TViewModel, TValue>(
+            new CommunityToolkitBindingMetadata(memberId, MvvmBindingMemberKind.Property, generatedPropertyName),
+            get,
+            set: null,
+            jsonTypeInfo,
+            includeValidation));
+        return this;
+    }
+
     /// <summary>Adds a generated observable collection with a closed item representation.</summary>
     /// <typeparam name="TItem">The collection item's closed declared type.</typeparam>
     public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCollection<TItem>(
@@ -207,7 +228,10 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
 
 /// <summary>A closed CommunityToolkit adapter with direct member access and deterministic subscription disposal.</summary>
 /// <typeparam name="TViewModel">The concrete attributed partial ViewModel type.</typeparam>
-public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindingAdapter, IMvvmBindingVocabularyProvider
+public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> :
+    IMvvmBindingAdapter,
+    IMvvmBindingVocabularyProvider,
+    IMvvmBindingChangeSource
     where TViewModel : class
 {
     private static readonly MvvmFault UnknownMember = new(MvvmFaultCodes.MemberUnknown, "The requested member is unknown.");
@@ -217,6 +241,7 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
     private readonly Dictionary<int, ICommunityToolkitBinding<TViewModel>> _byMemberId;
     private readonly List<Action> _unsubscribe = [];
     private readonly object _disposeGate = new();
+    private int _dispatchDepth;
     private bool _disposed;
 
     internal CommunityToolkitMvvmBindingAdapter(
@@ -239,6 +264,9 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
 
     /// <inheritdoc />
     public MvvmBindingVocabulary Vocabulary { get; }
+
+    /// <inheritdoc />
+    public event EventHandler? StateChanged;
 
     /// <inheritdoc />
     public ValueTask<MvvmSnapshot> SnapshotAsync(CancellationToken cancellationToken)
@@ -266,9 +294,18 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             return MvvmBindingResult.Rejected(UnknownMember);
         }
 
-        MvvmBindingResult result = await binding
-            .DispatchAsync(_viewModel, request.Payload, Vocabulary, cancellationToken)
-            .ConfigureAwait(false);
+        Interlocked.Increment(ref _dispatchDepth);
+        MvvmBindingResult result;
+        try
+        {
+            result = await binding
+                .DispatchAsync(_viewModel, request.Payload, Vocabulary, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _dispatchDepth);
+        }
         if (!result.Succeeded)
         {
             return result;
@@ -293,6 +330,20 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
         }
 
         return MvvmBindingResult.Success(result.Payload, patches.Build());
+    }
+
+    /// <inheritdoc />
+    public ValueTask<IReadOnlyList<MvvmPatch>> ProjectChangesAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+        var patches = new MvvmProjectionPatchBuilder(Vocabulary);
+        foreach (ICommunityToolkitBinding<TViewModel> binding in _bindings)
+        {
+            binding.AddPostDispatchPatches(_viewModel, patches, includePropertyState: true);
+        }
+
+        return ValueTask.FromResult(patches.Build());
     }
 
     /// <inheritdoc />
@@ -335,19 +386,35 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
 
         foreach (ICommunityToolkitBinding<TViewModel> binding in _bindings)
         {
-            binding.Subscribe(_viewModel, _unsubscribe);
+            binding.Subscribe(_viewModel, _unsubscribe, NotifyStateChanged);
         }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // The runtime obtains authoritative state at snapshot/dispatch boundaries. This subscription
-        // ensures generated CommunityToolkit notifications are owned and released with the adapter.
+        NotifyStateChanged();
     }
 
     private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e)
     {
-        // Validation is read synchronously into the same atomic property transaction and snapshot.
+        NotifyStateChanged();
+    }
+
+    private void NotifyStateChanged()
+    {
+        if (Volatile.Read(ref _dispatchDepth) != 0 || _disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Session observers cannot affect ViewModel notifications.
+        }
     }
 
     private void ThrowIfDisposed()
@@ -373,7 +440,7 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             MvvmBindingVocabulary vocabulary,
             CancellationToken cancellationToken);
 
-        void Subscribe(T viewModel, List<Action> unsubscribe);
+        void Subscribe(T viewModel, List<Action> unsubscribe, Action stateChanged);
 
         void AddPostDispatchPatches(
             T viewModel,
@@ -385,14 +452,14 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
         where T : class
     {
         private readonly Func<T, TValue> _get;
-        private readonly Action<T, TValue> _set;
+        private readonly Action<T, TValue>? _set;
         private readonly JsonTypeInfo<TValue> _jsonTypeInfo;
         private readonly bool _includeValidation;
 
         public PropertyBinding(
             CommunityToolkitBindingMetadata metadata,
             Func<T, TValue> get,
-            Action<T, TValue> set,
+            Action<T, TValue>? set,
             JsonTypeInfo<TValue> jsonTypeInfo,
             bool includeValidation)
         {
@@ -405,7 +472,8 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
 
         public CommunityToolkitBindingMetadata Metadata { get; }
 
-        public bool Accepts(MvvmMutationKind kind) => kind == MvvmMutationKind.SetProperty;
+        public bool Accepts(MvvmMutationKind kind) =>
+            kind == MvvmMutationKind.SetProperty && _set is not null;
 
         public void AddSnapshot(T viewModel, MvvmProjectionSnapshotBuilder snapshot)
         {
@@ -423,7 +491,7 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             {
                 TValue value = JsonSerializer.Deserialize<TValue>(payload, _jsonTypeInfo)!;
                 cancellationToken.ThrowIfCancellationRequested();
-                _set(viewModel, value);
+                _set!(viewModel, value);
                 cancellationToken.ThrowIfCancellationRequested();
                 var patches = new MvvmProjectionPatchBuilder(vocabulary)
                     .Property(Metadata.MemberId, MvvmValue.From(_get(viewModel), _jsonTypeInfo));
@@ -436,7 +504,7 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             }
         }
 
-        public void Subscribe(T viewModel, List<Action> unsubscribe)
+        public void Subscribe(T viewModel, List<Action> unsubscribe, Action stateChanged)
         {
         }
 
@@ -507,11 +575,11 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(MvvmBindingResult.Rejected(UnknownMember));
 
-        public void Subscribe(T viewModel, List<Action> unsubscribe)
+        public void Subscribe(T viewModel, List<Action> unsubscribe, Action stateChanged)
         {
             if (_get(viewModel) is INotifyCollectionChanged notifyingCollection)
             {
-                NotifyCollectionChangedEventHandler handler = OnCollectionChanged;
+                NotifyCollectionChangedEventHandler handler = (_, _) => stateChanged();
                 notifyingCollection.CollectionChanged += handler;
                 unsubscribe.Add(() => notifyingCollection.CollectionChanged -= handler);
             }
@@ -569,13 +637,6 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             }
         }
 
-        private static void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-        {
-            // Collection notifications are synchronous and owned by the adapter. The current
-            // protocol transaction emits an authoritative Reset after a successful command.
-            // A future host-push surface can translate these events into granular unsolicited
-            // patches without changing the binding declaration.
-        }
     }
 
     internal sealed class CommandBinding<T> : ICommunityToolkitBinding<T>
@@ -634,16 +695,12 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             }
         }
 
-        public void Subscribe(T viewModel, List<Action> unsubscribe)
+        public void Subscribe(T viewModel, List<Action> unsubscribe, Action stateChanged)
         {
             IRelayCommand command = _get(viewModel);
-            EventHandler handler = OnCanExecuteChanged;
+            EventHandler handler = (_, _) => stateChanged();
             command.CanExecuteChanged += handler;
             unsubscribe.Add(() => command.CanExecuteChanged -= handler);
-        }
-
-        private void OnCanExecuteChanged(object? sender, EventArgs e)
-        {
         }
 
         public void AddPostDispatchPatches(
@@ -725,26 +782,18 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
                 .Success();
         }
 
-        public void Subscribe(T viewModel, List<Action> unsubscribe)
+        public void Subscribe(T viewModel, List<Action> unsubscribe, Action stateChanged)
         {
             IAsyncRelayCommand command = _get(viewModel);
-            EventHandler canExecuteHandler = OnCanExecuteChanged;
+            EventHandler canExecuteHandler = (_, _) => stateChanged();
             command.CanExecuteChanged += canExecuteHandler;
             unsubscribe.Add(() => command.CanExecuteChanged -= canExecuteHandler);
             if (command is INotifyPropertyChanged notifyingCommand)
             {
-                PropertyChangedEventHandler propertyChangedHandler = OnCommandPropertyChanged;
+                PropertyChangedEventHandler propertyChangedHandler = (_, _) => stateChanged();
                 notifyingCommand.PropertyChanged += propertyChangedHandler;
                 unsubscribe.Add(() => notifyingCommand.PropertyChanged -= propertyChangedHandler);
             }
-        }
-
-        private void OnCanExecuteChanged(object? sender, EventArgs e)
-        {
-        }
-
-        private void OnCommandPropertyChanged(object? sender, PropertyChangedEventArgs e)
-        {
         }
 
         public void AddPostDispatchPatches(

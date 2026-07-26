@@ -101,6 +101,30 @@ export class CsWebUiFrameChannel {
   }
 }
 
+/**
+ * Resolves when CsWebUi installs its generated binary binding.
+ * Applications await this stable readiness contract instead of polling globals.
+ */
+export async function waitForCsWebUiBinding(options = {}) {
+  const bindingName = options.bindingName ?? "__webuitoolkit_mvvm_send";
+  const timeoutMilliseconds = options.timeoutMilliseconds ?? 5_000;
+  assertIdentifier(bindingName, "bindingName");
+  if (!Number.isSafeInteger(timeoutMilliseconds) || timeoutMilliseconds < 1) {
+    throw new RangeError("timeoutMilliseconds must be a positive integer.");
+  }
+
+  const deadline = performance.now() + timeoutMilliseconds;
+  while (typeof globalThis[bindingName] !== "function") {
+    if (performance.now() >= deadline) {
+      throw new Error(
+        `The CsWebUi MVVM binding '${bindingName}' was not installed within ` +
+        `${timeoutMilliseconds} milliseconds.`,
+      );
+    }
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 20));
+  }
+}
+
 function asFrame(value) {
   if (value instanceof Uint8Array) return value;
   if (value instanceof ArrayBuffer) return new Uint8Array(value);

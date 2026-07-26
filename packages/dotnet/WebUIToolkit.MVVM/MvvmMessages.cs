@@ -83,6 +83,15 @@ public sealed record MvvmSnapshotRequest : MvvmRequest
     }
 }
 
+/// <summary>Session-internal request that commits adapter-originated notifications.</summary>
+internal sealed record MvvmExternalChangeRequest : MvvmRequest
+{
+    internal MvvmExternalChangeRequest(MvvmRequestId requestId)
+        : base(requestId)
+    {
+    }
+}
+
 /// <summary>Acknowledges that a client has applied an authoritative revision.</summary>
 public sealed record MvvmAcknowledgeRequest : MvvmRequest
 {

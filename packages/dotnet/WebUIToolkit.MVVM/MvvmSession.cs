@@ -9,6 +9,7 @@ internal sealed class MvvmSession : IMvvmSession
 {
     private static readonly MvvmFault ClosedFault = new(MvvmFaultCodes.SessionClosed, "The session is closed.");
     private readonly IMvvmBindingAdapter _adapter;
+    private readonly IMvvmBindingChangeSource? _changeSource;
     private readonly MvvmBindingVocabulary? _vocabulary;
     private readonly object[] _ownedResources;
     private readonly MvvmLimits _limits;
@@ -32,6 +33,8 @@ internal sealed class MvvmSession : IMvvmSession
     private bool _queueCompleted;
     private int _poisoned;
     private int _disposeState;
+    private int _externalRefreshScheduled;
+    private int _externalRefreshPending;
 
     internal MvvmSession(
         MvvmSessionId id,
@@ -46,6 +49,7 @@ internal sealed class MvvmSession : IMvvmSession
         CapabilityToken = capabilityToken;
         _capabilityBytes = Encoding.ASCII.GetBytes(capabilityToken);
         _adapter = activation.Adapter;
+        _changeSource = activation.Adapter as IMvvmBindingChangeSource;
         if (activation.Adapter is IMvvmBindingVocabularyProvider provider)
         {
             _vocabulary = provider.Vocabulary ??
@@ -55,7 +59,13 @@ internal sealed class MvvmSession : IMvvmSession
         _limits = limits;
         _onClosed = onClosed;
         _dispatchLoop = RunDispatchLoopAsync();
+        if (_changeSource is not null)
+        {
+            _changeSource.StateChanged += OnAdapterStateChanged;
+        }
     }
+
+    public event EventHandler<MvvmProjectionChangedEventArgs>? ProjectionChanged;
 
     public MvvmSessionId Id { get; }
 
@@ -146,6 +156,7 @@ internal sealed class MvvmSession : IMvvmSession
             : Timeout.InfiniteTimeSpan;
         QueuedRequest queued;
         bool cancellationPending;
+        bool tracksRequestLedger = request is not MvvmExternalChangeRequest;
         lock (_admissionGate)
         {
             if (_disposeState != 0 || _poisoned != 0)
@@ -153,7 +164,7 @@ internal sealed class MvvmSession : IMvvmSession
                 return MvvmResponse.Rejected(request.RequestId, Revision, ClosedFault);
             }
 
-            if (_seenRequestIds.Contains(request.RequestId))
+            if (tracksRequestLedger && _seenRequestIds.Contains(request.RequestId))
             {
                 return MvvmResponse.Rejected(
                     request.RequestId,
@@ -162,7 +173,8 @@ internal sealed class MvvmSession : IMvvmSession
                     "The request identifier has already been processed.");
             }
 
-            if (_seenRequestIds.Count >= MvvmLimits.MaximumRequestLedgerEntries)
+            if (tracksRequestLedger &&
+                _seenRequestIds.Count >= MvvmLimits.MaximumRequestLedgerEntries)
             {
                 return MvvmResponse.Rejected(
                     request.RequestId,
@@ -171,10 +183,13 @@ internal sealed class MvvmSession : IMvvmSession
                     "The session request ledger limit was exceeded; open a new session.");
             }
 
-            _seenRequestIds.Add(request.RequestId);
-            if (_seenRequestIds.Count == MvvmLimits.MaximumRequestLedgerEntries)
+            if (tracksRequestLedger)
             {
-                _ledgerTerminalRequestId = request.RequestId;
+                _seenRequestIds.Add(request.RequestId);
+                if (_seenRequestIds.Count == MvvmLimits.MaximumRequestLedgerEntries)
+                {
+                    _ledgerTerminalRequestId = request.RequestId;
+                }
             }
 
             if (_pendingCount >= _limits.MaxPendingRequests)
@@ -225,6 +240,11 @@ internal sealed class MvvmSession : IMvvmSession
         long teardownStarted = Stopwatch.GetTimestamp();
         try
         {
+            if (_changeSource is not null)
+            {
+                _changeSource.StateChanged -= OnAdapterStateChanged;
+            }
+
             lock (_admissionGate)
             {
                 _queueCompleted = true;
@@ -480,6 +500,8 @@ internal sealed class MvvmSession : IMvvmSession
                         await MutateAsync(mutation, queued.Pending, queued.Pending.Token).ConfigureAwait(false),
                     MvvmSnapshotRequest snapshot =>
                         await SnapshotAsync(snapshot, queued.Pending, queued.Pending.Token).ConfigureAwait(false),
+                    MvvmExternalChangeRequest external =>
+                        await ProjectExternalChangesAsync(external, queued.Pending, queued.Pending.Token).ConfigureAwait(false),
                     MvvmAcknowledgeRequest acknowledgement => Acknowledge(acknowledgement, queued.Pending),
                     _ => MvvmResponse.Rejected(
                         queued.Request.RequestId,
@@ -829,6 +851,96 @@ internal sealed class MvvmSession : IMvvmSession
         return MvvmResponse.Success(request.RequestId, Revision, snapshot.State);
     }
 
+    private async ValueTask<MvvmResponse> ProjectExternalChangesAsync(
+        MvvmExternalChangeRequest request,
+        PendingRequest pending,
+        CancellationToken cancellationToken)
+    {
+        long revision = Revision;
+        if (_changeSource is null || revision == long.MaxValue)
+        {
+            pending.Complete();
+            return MvvmResponse.Rejected(request.RequestId, revision, ClosedFault);
+        }
+
+        IReadOnlyList<MvvmPatch>? patches = await InvokeConsumerAsync(
+            () => _changeSource.ProjectChangesAsync(cancellationToken),
+            pending).ConfigureAwait(false);
+        if (patches is null || pending.Cause != CancellationCause.Completed)
+        {
+            return CancellationResponse(request.RequestId, pending);
+        }
+
+        if (patches.Count == 0)
+        {
+            return MvvmResponse.Success(request.RequestId, revision);
+        }
+
+        if (!ValidatePatches(patches) ||
+            patches.Count > _limits.MaxPatchOperations ||
+            PayloadTooLarge(null, patches))
+        {
+            PoisonSession();
+            return MvvmResponse.Rejected(
+                request.RequestId,
+                revision,
+                MvvmFaultCodes.RequestInvalid,
+                "The adapter produced an invalid unsolicited projection.");
+        }
+
+        long nextRevision = checked(revision + 1);
+        Interlocked.Exchange(ref _revision, nextRevision);
+        MvvmResponse response = MvvmResponse.Success(request.RequestId, nextRevision, patches: patches);
+        PublishProjectionChanged(new MvvmProjectionChangedEventArgs(revision, response));
+        return response;
+    }
+
+    private void OnAdapterStateChanged(object? sender, EventArgs e)
+    {
+        Interlocked.Exchange(ref _externalRefreshPending, 1);
+        if (Interlocked.Exchange(ref _externalRefreshScheduled, 1) != 0 ||
+            Volatile.Read(ref _disposeState) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(ProcessExternalChangesAsync);
+    }
+
+    private async Task ProcessExternalChangesAsync()
+    {
+        try
+        {
+            while (Interlocked.Exchange(ref _externalRefreshPending, 0) != 0 &&
+                   Volatile.Read(ref _disposeState) == 0)
+            {
+                await DispatchAsync(new MvvmExternalChangeRequest(new MvvmRequestId(Guid.NewGuid())))
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _externalRefreshScheduled, 0);
+            if (Volatile.Read(ref _externalRefreshPending) != 0 &&
+                Volatile.Read(ref _disposeState) == 0)
+            {
+                OnAdapterStateChanged(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    private void PublishProjectionChanged(MvvmProjectionChangedEventArgs eventArgs)
+    {
+        try
+        {
+            ProjectionChanged?.Invoke(this, eventArgs);
+        }
+        catch
+        {
+            // Transport observers cannot affect session state.
+        }
+    }
+
     private bool ValidateSnapshot(MvvmSnapshot snapshot)
     {
         if (_vocabulary is null)
@@ -922,6 +1034,7 @@ internal sealed class MvvmSession : IMvvmSession
         MvvmSnapshotRequest => "requestSnapshot",
         MvvmAcknowledgeRequest => "ack",
         MvvmCancelRequest => "cancel",
+        MvvmExternalChangeRequest => "externalChange",
         _ => "invalid",
     };
 

@@ -53,3 +53,30 @@ dotnet build -p:WebUIToolkitBuildMode=Verification
 
 Release verification remains strict without turning its package feeds, caches,
 or publication checks into prerequisites for running a sample.
+
+## Frontend framework loop and planned cwhtml loop
+
+`WebUIToolkit.Frontend.Sdk` now owns frontend workspace installation, generated
+contract verification, Vite builds, the native bridge asset, manifests, and
+build/publish copying for the React, Vue, Svelte, and Angular Todo projects.
+For example:
+
+```powershell
+dotnet build samples/Todo.Svelte/Todo.Svelte.csproj
+dotnet msbuild samples/Todo.Svelte/Todo.Svelte.csproj -t:WebUIToolkitFrontendWatch
+dotnet run --project samples/Todo.Svelte -- --advanced
+```
+
+Debug builds retain readable frontend output and source maps. Release builds
+use Vite minification and content hashing and emit `vite.manifest.json` plus
+`webuitoolkit.assets.json` with byte sizes and SHA-256 hashes. Vite is never the
+application host and does not carry native UI requests; CsWebUi serves the
+produced local files and owns the binary MVVM channel.
+
+Native cwhtml applications still carry custom build and transport setup. Phase
+3 extends the SDK with generated HTMX plumbing and adds a coordinated
+`dotnet webuitoolkit dev` command. Its reload tiers, editor tooling, delivery
+order, and acceptance criteria are specified in the
+[cwhtml development-experience plan](./cwhtml-development-experience.md).
+Until that cwhtml slice is implemented, use `dotnet run` and the repository's
+existing project-specific cwhtml targets.

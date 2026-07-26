@@ -28,6 +28,7 @@ internal static partial class Program
             await RunAsync("communitytoolkit.validation-metadata.v1", MetadataAndValidationAreDeterministicAsync);
             await RunAsync("communitytoolkit.generated-metadata.v1", MetadataIsOrderedAsync);
             await RunAsync("communitytoolkit.observable-collection.v1", ObservableCollectionProjectionAsync);
+            await RunAsync("communitytoolkit.readonly-host-push.v1", ReadOnlyPropertyAndHostPushAsync);
             await RunAsync("communitytoolkit.generated-member.title.v1", ExistingTitleProofShapeAsync);
             await RunAsync("communitytoolkit.generated-member.submit-command.v1", ExistingCommandProofShapeAsync);
             await RunAsync("g4-core-vertical.amount-submit.v1", CoreVerticalScenarioAsync);
@@ -154,6 +155,35 @@ internal static partial class Program
         Equal("second", reset.Items[1].GetString()!);
     }
 
+    private static async Task ReadOnlyPropertyAndHostPushAsync()
+    {
+        var viewModel = new FixtureViewModel { Name = "before" };
+        await using CommunityToolkitMvvmBindingAdapter<FixtureViewModel> adapter =
+            new CommunityToolkitMvvmAdapterBuilder<FixtureViewModel>(viewModel)
+                .BindReadOnlyProperty(
+                    8,
+                    nameof(FixtureViewModel.UpperName),
+                    static model => model.UpperName,
+                    FixtureJsonContext.Default.String)
+                .Build();
+        int changes = 0;
+        adapter.StateChanged += (_, _) => changes++;
+
+        MvvmSnapshot snapshot = await adapter.SnapshotAsync(CancellationToken.None);
+        JsonElement property = snapshot.State.GetProperty("members").EnumerateArray().Single();
+        Equal("BEFORE", property.GetProperty("value").GetString()!);
+        MvvmBindingResult rejected = await adapter.DispatchAsync(
+            PropertyMutation(8, Json("\"write\"")),
+            CancellationToken.None);
+        False(rejected.Succeeded);
+
+        viewModel.Name = "after";
+        Equal(1, changes);
+        IReadOnlyList<MvvmPatch> patches =
+            await adapter.ProjectChangesAsync(CancellationToken.None);
+        Equal("AFTER", ((MvvmPropertyPatch)patches.Single()).Value.GetString()!);
+    }
+
     private static async Task ExistingTitleProofShapeAsync()
     {
         var viewModel = new FixtureViewModel { Name = "before" };
@@ -278,6 +308,8 @@ internal static partial class Program
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ObservableCollection<string> Items { get; } = [];
+
+        public string UpperName => Name?.ToUpperInvariant() ?? string.Empty;
 
         [RelayCommand(CanExecute = nameof(CanSubmit))]
         private void Submit()
