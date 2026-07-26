@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "defaultDecision": "review",
-  "licenses": { "allow": [], "deny": [], "review": [] },
-  "missingEvidence": "error",
-  "orExpressions": "require-explicit-selection",
-  "overrides": [],
-  "\uD800": "escaped lone surrogate property name"
-}

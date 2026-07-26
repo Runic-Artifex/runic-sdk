@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
@@ -26,6 +27,7 @@ internal static partial class Program
         {
             await RunAsync("reactiveui.generated-member.visibility.v1", GeneratedMemberVisibilityAsync);
             await RunAsync("reactiveui.property-command-result.v1", PropertyCommandAndResultAsync);
+            await RunAsync("reactiveui.observable-collection.v1", ObservableCollectionProjectionAsync);
             await RunAsync("reactiveui.activation-scheduler-disposal.v1", ActivationSchedulerAndDisposalAsync);
             await RunAsync("reactiveui.command-fault-routing.v1", CommandFaultRoutingAsync);
             await RunAsync("reactiveui.vertical.amount-submit.v1", VerticalAsync);
@@ -118,6 +120,31 @@ internal static partial class Program
             async () => await adapter.SnapshotAsync(CancellationToken.None));
     }
 
+    private static async Task ObservableCollectionProjectionAsync()
+    {
+        var model = new GeneratedReactiveViewModel();
+        model.Items.Add("first");
+        await using ReactiveUiMvvmBindingAdapter<GeneratedReactiveViewModel> adapter =
+            CreateAdapter(model, ImmediateScheduler.Instance, []);
+
+        MvvmSnapshot initial = await adapter.SnapshotAsync(CancellationToken.None);
+        JsonElement collection = initial.State.GetProperty("members").EnumerateArray()
+            .Single(element =>
+                element.GetProperty("type").GetString() == "collection" &&
+                element.GetProperty("member").GetInt32() == 4);
+        Equal("first", collection.GetProperty("items")[0].GetString()!);
+
+        MvvmBindingResult result = await adapter.DispatchAsync(
+            Mutation(MvvmMutationKind.ExecuteCommand, 5, "\"second\""),
+            CancellationToken.None);
+        True(result.Succeeded);
+        MvvmCollectionPatch reset = result.Patches
+            .OfType<MvvmCollectionPatch>()
+            .Single(static patch => patch.MemberId == 4);
+        Equal(MvvmCollectionOperation.Reset, reset.Operation);
+        Equal("second", reset.Items[1].GetString()!);
+    }
+
     private static async Task CommandFaultRoutingAsync()
     {
         var faults = new List<Exception>();
@@ -178,6 +205,17 @@ internal static partial class Program
                 nameof(GeneratedReactiveViewModel.FailCommand),
                 static viewModel => viewModel.FailCommand,
                 ReactiveJsonContext.Default.Int32,
+                ReactiveJsonContext.Default.Int32)
+            .BindCollection(
+                4,
+                nameof(GeneratedReactiveViewModel.Items),
+                static viewModel => viewModel.Items,
+                ReactiveJsonContext.Default.String)
+            .BindCommand(
+                5,
+                nameof(GeneratedReactiveViewModel.AddItemCommand),
+                static viewModel => viewModel.AddItemCommand,
+                ReactiveJsonContext.Default.String,
                 ReactiveJsonContext.Default.Int32)
             .Build();
 
@@ -266,6 +304,7 @@ internal static partial class Program
     }
 
     [JsonSerializable(typeof(int))]
+    [JsonSerializable(typeof(string))]
     private sealed partial class ReactiveJsonContext : JsonSerializerContext
     {
     }
@@ -286,6 +325,8 @@ public sealed partial class GeneratedReactiveViewModel :
 
     public ViewModelActivator Activator { get; } = new();
 
+    public ObservableCollection<string> Items { get; } = [];
+
     public GeneratedReactiveViewModel()
     {
         this.WhenActivated(disposables =>
@@ -305,4 +346,11 @@ public sealed partial class GeneratedReactiveViewModel :
     [ReactiveCommand]
     private int Fail(int value) =>
         throw new InvalidOperationException($"secret reactive failure {value}");
+
+    [ReactiveCommand]
+    private int AddItem(string value)
+    {
+        Items.Add(value);
+        return Items.Count;
+    }
 }

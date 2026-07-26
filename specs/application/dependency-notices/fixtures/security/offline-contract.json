@@ -1,5 +1,0 @@
-{
-  "offlineOperations": ["scan", "evaluate", "generate", "verify"],
-  "forbiddenEffects": ["dns", "socket", "http-handler"],
-  "environmentCannotEnableNetwork": true
-}

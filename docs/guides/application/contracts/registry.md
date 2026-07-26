@@ -31,7 +31,6 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | Template diagnostics | template-engine | `WUTHTML0001`–`WUTHTML7999` | ADR 0005 reserved |
 | Text diagnostics | text-resources | `WUTTEXT0001`–`WUTTEXT0999` | ADR 0005 reserved |
 | CLI diagnostics | command-line | `WUTCLI0001`–`WUTCLI9999` | ADR 0005 reserved |
-| Notice diagnostics | dependency-notices | `WUTNOTICE1000`–`WUTNOTICE7999` | ADR 0005 reserved |
 | Hosting diagnostics | hosting | `WUTHOST0001`–`WUTHOST0007`, `WUTHOST1001`, `WUTHOST1101`–`WUTHOST1103`, `WUTHOST1201`–`WUTHOST1202`, `WUTHOST1301`, `WUTHOST1401`–`WUTHOST1405` | Allocated; remainder reserved by ADR 0005 |
 
 ## Package identities
@@ -41,13 +40,12 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | mvvm-protocol-core | `WebUIToolkit.MVVM` | NuGet pending |
 | communitytoolkit | `WebUIToolkit.MVVM.CommunityToolkit` | NuGet pending |
 | template-engine | `WebUIToolkit.MVVM.Html`, `WebUIToolkit.MVVM.Html.Testing`, `WebUIToolkit.MVVM.Html.CommunityToolkit` | NuGet pending |
-| htmx | `WebUIToolkit.MVVM.Html.Htmx`, `WebUIToolkit.MVVM.Html.Htmx.Js` | NuGet pending |
-| hosting | `WebUIToolkit.Hosting.*` | NuGet pending |
+| htmx | `WebUIToolkit.MVVM.Html.Htmx`, `WebUIToolkit.MVVM.Html.Htmx.Js`, `WebUIToolkit.MVVM.Html.Htmx.CsWebUi` | NuGet pending |
+| hosting | `WebUIToolkit.Hosting.*`, including `WebUIToolkit.Hosting.CsWebUi.Mvvm` | NuGet pending |
 | flow | `WebUIToolkit.MVVM.Flow*` | NuGet pending |
 | text-resources | `WebUIToolkit.TextResources.*` | NuGet pending |
 | command-line | `WebUIToolkit.CommandLine.*` | NuGet pending |
 | collections | `WebUIToolkit.Collections`, `.Collections.Observable` | NuGet pending |
-| dependency-notices | `WebUIToolkit.DependencyNotices.*` | NuGet pending |
 | web-sdk-conformance | `@webuitoolkit/mvvm`, `@webuitoolkit/conformance` | npm scope pending |
 | Wave E framework adapters | `@webuitoolkit/mvvm-react`, `@webuitoolkit/mvvm-vue`, `@webuitoolkit/mvvm-svelte` | G5 technically approved; npm publication blocked by ADR 0004 |
 | Wave F framework adapters | `@webuitoolkit/mvvm-angular`, `WebUIToolkit.MVVM.ReactiveUI` | G6 technically approved; publication blocked by ADR 0004 |
@@ -62,6 +60,5 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | Flow | `WebUIToolkit.MVVM.Flow` | `12000`–`12999` |
 | CommandLine | `WebUIToolkit.CommandLine` | `13000`–`13999` |
 | TextResources | `WebUIToolkit.TextResources` | `14000`–`14999` |
-| DependencyNotices | `WebUIToolkit.DependencyNotices` | `15000`–`15999` |
 
 Schema `$id` values remain unset until an owned schema domain is available. File-format versions are independent from package versions.

@@ -21,6 +21,9 @@ public static class PostGeneratorSemanticContract
 
     /// <summary>The stable identity of the current semantic handoff.</summary>
     public const string Identity = "webuitoolkit.mvvm.post-generator-semantics/1";
+
+    /// <summary>The largest generated collection snapshot admitted by schema version 1.</summary>
+    public const int MaximumCollectionSnapshotItems = 10_000;
 }
 
 /// <summary>
@@ -44,7 +47,9 @@ public static class PostGeneratorSemanticCompiler
         PostGeneratorSemanticCapabilities.AsyncCommandIsRunning |
         PostGeneratorSemanticCapabilities.AsyncCommandCanBeCanceled |
         PostGeneratorSemanticCapabilities.ValidationErrors |
-        PostGeneratorSemanticCapabilities.SourceGeneratedSerializerMetadata;
+        PostGeneratorSemanticCapabilities.SourceGeneratedSerializerMetadata |
+        PostGeneratorSemanticCapabilities.CollectionGet |
+        PostGeneratorSemanticCapabilities.CollectionChangedSubscription;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     /// <summary>Compiles one normalized framework-adapter request against a post-generator PE.</summary>
@@ -163,7 +168,8 @@ public static class PostGeneratorSemanticCompiler
                     !HasRequiredAccessors(producer.Reader, property, requirement.Kind) ||
                     !HasRequiredCapabilities(request.Adapter.Capabilities, requirement) ||
                     IsObjectFallback(requirement, propertyType) ||
-                    !TryResolveParameterType(universe, requirement, out DecodedType? parameterType))
+                    !TryResolveParameterType(universe, requirement, out DecodedType? parameterType) ||
+                    !TryResolveCollectionItemType(requirement, propertyType, out DecodedType? collectionItemType))
                 {
                     diagnostics.Add(CreateDiagnostic(BindingDiagnosticIds.GeneratedMemberInaccessibleOrIncompatible));
                     continue;
@@ -177,7 +183,11 @@ public static class PostGeneratorSemanticCompiler
                     continue;
                 }
 
-                resolved.Add(new ResolvedSemanticMember(requirement, propertyType, parameterType));
+                resolved.Add(new ResolvedSemanticMember(
+                    requirement,
+                    propertyType,
+                    parameterType,
+                    collectionItemType));
             }
 
             if (diagnostics.Count != 0)
@@ -320,10 +330,27 @@ public static class PostGeneratorSemanticCompiler
             return false;
         }
 
+        bool hasCollectionItem = requirement.CollectionItemTypeMetadataName is not null;
+        if (hasCollectionItem && !IsSafeMetadataTypeName(requirement.CollectionItemTypeMetadataName))
+        {
+            return false;
+        }
+
         return requirement.Kind switch
         {
-            PostGeneratorMemberKind.Property => !hasParameter,
-            PostGeneratorMemberKind.Command or PostGeneratorMemberKind.AsyncCommand => true,
+            PostGeneratorMemberKind.Property =>
+                !hasParameter &&
+                !hasCollectionItem &&
+                requirement.MaximumSnapshotItems == 0,
+            PostGeneratorMemberKind.Collection =>
+                !hasParameter &&
+                hasCollectionItem &&
+                requirement.RequiresSerializerMetadata &&
+                requirement.MaximumSnapshotItems is > 0 and
+                    <= PostGeneratorSemanticContract.MaximumCollectionSnapshotItems,
+            PostGeneratorMemberKind.Command or PostGeneratorMemberKind.AsyncCommand =>
+                !hasCollectionItem &&
+                requirement.MaximumSnapshotItems == 0,
             _ => false,
         };
     }
@@ -367,6 +394,9 @@ public static class PostGeneratorSemanticCompiler
                 PostGeneratorSemanticCapabilities.AsyncCommandCancel |
                 PostGeneratorSemanticCapabilities.AsyncCommandIsRunning |
                 PostGeneratorSemanticCapabilities.AsyncCommandCanBeCanceled,
+            PostGeneratorMemberKind.Collection =>
+                PostGeneratorSemanticCapabilities.CollectionGet |
+                PostGeneratorSemanticCapabilities.CollectionChangedSubscription,
             _ => 0,
         };
         if (requirement.IncludesValidation)
@@ -384,9 +414,11 @@ public static class PostGeneratorSemanticCompiler
     }
 
     private static bool IsObjectFallback(PostGeneratorMemberRequirement requirement, DecodedType propertyType) =>
-        (requirement.Kind == PostGeneratorMemberKind.Property &&
+        ((requirement.Kind == PostGeneratorMemberKind.Property ||
+          requirement.Kind == PostGeneratorMemberKind.Collection) &&
          string.Equals(propertyType.MetadataName, "System.Object", StringComparison.Ordinal)) ||
-        string.Equals(requirement.ParameterTypeMetadataName, "System.Object", StringComparison.Ordinal);
+        string.Equals(requirement.ParameterTypeMetadataName, "System.Object", StringComparison.Ordinal) ||
+        string.Equals(requirement.CollectionItemTypeMetadataName, "System.Object", StringComparison.Ordinal);
 
     private static bool TryResolveParameterType(
         MetadataUniverse universe,
@@ -400,6 +432,53 @@ public static class PostGeneratorSemanticCompiler
         }
 
         return universe.TryResolveTypeSpelling(requirement.ParameterTypeMetadataName, out parameterType);
+    }
+
+    private static bool TryResolveCollectionItemType(
+        PostGeneratorMemberRequirement requirement,
+        DecodedType propertyType,
+        out DecodedType? collectionItemType)
+    {
+        if (requirement.Kind != PostGeneratorMemberKind.Collection)
+        {
+            collectionItemType = null;
+            return requirement.CollectionItemTypeMetadataName is null;
+        }
+
+        if (propertyType.IsNullable || propertyType.TypeArguments.Length != 1)
+        {
+            collectionItemType = null;
+            return false;
+        }
+
+        DecodedType itemType = propertyType.TypeArguments[0];
+        if (!itemType.IsSafeCSharpType ||
+            !string.Equals(
+                itemType.MetadataName,
+                requirement.CollectionItemTypeMetadataName,
+                StringComparison.Ordinal))
+        {
+            collectionItemType = null;
+            return false;
+        }
+
+        string expectedObservable =
+            "System.Collections.ObjectModel.ObservableCollection`1<" +
+            itemType.MetadataName +
+            ">";
+        string expectedReadOnly =
+            "System.Collections.ObjectModel.ReadOnlyObservableCollection`1<" +
+            itemType.MetadataName +
+            ">";
+        if (!string.Equals(propertyType.MetadataName, expectedObservable, StringComparison.Ordinal) &&
+            !string.Equals(propertyType.MetadataName, expectedReadOnly, StringComparison.Ordinal))
+        {
+            collectionItemType = null;
+            return false;
+        }
+
+        collectionItemType = itemType;
+        return true;
     }
 
     private static bool HasRequiredAccessors(
@@ -832,6 +911,14 @@ public static class PostGeneratorSemanticCompiler
             AppendEncoded(builder, prefix + "parameter", member.ParameterType?.MetadataName ?? string.Empty);
             AppendCanonical(builder, prefix + "serializer", member.Requirement.RequiresSerializerMetadata ? "1" : "0");
             AppendCanonical(builder, prefix + "validation", member.Requirement.IncludesValidation ? "1" : "0");
+            if (member.Requirement.Kind == PostGeneratorMemberKind.Collection)
+            {
+                AppendEncoded(builder, prefix + "collection.item", member.CollectionItemType!.MetadataName);
+                AppendCanonical(
+                    builder,
+                    prefix + "collection.maximum-snapshot-items",
+                    member.Requirement.MaximumSnapshotItems.ToString(CultureInfo.InvariantCulture));
+            }
         }
 
         return builder.ToString();
@@ -899,6 +986,14 @@ public static class PostGeneratorSemanticCompiler
                     writer.WriteString("parameterType", member.ParameterType.MetadataName);
                 }
 
+                if (member.CollectionItemType is not null)
+                {
+                    writer.WriteString("collectionItemType", member.CollectionItemType.MetadataName);
+                    writer.WriteNumber(
+                        "maximumSnapshotItems",
+                        member.Requirement.MaximumSnapshotItems);
+                }
+
                 writer.WriteBoolean("validation", member.Requirement.IncludesValidation);
                 writer.WriteStartArray("operations");
                 foreach (string operation in GetOperationNames(member.Requirement.Kind, member.Requirement.IncludesValidation))
@@ -918,6 +1013,15 @@ public static class PostGeneratorSemanticCompiler
                     member.Requirement.Kind == PostGeneratorMemberKind.Property)
                 {
                     WriteSerializerRequirement(writer, member.Requirement.BindingMemberId, "value", member.PropertyType.MetadataName);
+                }
+
+                if (member.CollectionItemType is not null)
+                {
+                    WriteSerializerRequirement(
+                        writer,
+                        member.Requirement.BindingMemberId,
+                        "collection-item",
+                        member.CollectionItemType.MetadataName);
                 }
 
                 if (member.ParameterType is not null)
@@ -1020,6 +1124,9 @@ public static class PostGeneratorSemanticCompiler
                 builder.Append(escapedName);
                 builder.Append(" = value;\n\n");
                 break;
+            case PostGeneratorMemberKind.Collection:
+                AppendCollectionSource(builder, viewModelType, escapedName, name, member);
+                break;
             case PostGeneratorMemberKind.Command:
                 AppendCanExecute(builder, viewModelType, escapedName, name, member.ParameterType);
                 builder.Append("        internal static void Execute_");
@@ -1082,6 +1189,54 @@ public static class PostGeneratorSemanticCompiler
         }
     }
 
+    private static void AppendCollectionSource(
+        StringBuilder builder,
+        string viewModelType,
+        string escapedName,
+        string name,
+        ResolvedSemanticMember member)
+    {
+        string itemType = GetCSharpUseTypeName(member.CollectionItemType!);
+        builder.Append("        internal const int MaximumSnapshotItems_");
+        builder.Append(name);
+        builder.Append(" = ");
+        builder.Append(member.Requirement.MaximumSnapshotItems.ToString(CultureInfo.InvariantCulture));
+        builder.Append(";\n\n        internal static ");
+        builder.Append(GetCSharpUseTypeName(member.PropertyType));
+        builder.Append(" Get_");
+        builder.Append(name);
+        builder.Append('(');
+        builder.Append(viewModelType);
+        builder.Append(" viewModel) => viewModel.");
+        builder.Append(escapedName);
+        builder.Append(";\n\n        internal static global::System.Collections.Generic.IReadOnlyList<");
+        builder.Append(itemType);
+        builder.Append("> Snapshot_");
+        builder.Append(name);
+        builder.Append('(');
+        builder.Append(viewModelType);
+        builder.Append(" viewModel)\n        {\n            ");
+        builder.Append(GetCSharpUseTypeName(member.PropertyType));
+        builder.Append(" collection = viewModel.");
+        builder.Append(escapedName);
+        builder.Append(";\n            if (collection.Count > MaximumSnapshotItems_");
+        builder.Append(name);
+        builder.Append(")\n            {\n                throw new global::System.InvalidOperationException(\"The projected collection exceeds its generated snapshot item ceiling.\");\n            }\n\n            return collection;\n        }\n\n");
+        builder.Append("        internal static void Subscribe_");
+        builder.Append(name);
+        builder.Append('(');
+        builder.Append(viewModelType);
+        builder.Append(" viewModel, global::System.Collections.Specialized.NotifyCollectionChangedEventHandler handler) => ((global::System.Collections.Specialized.INotifyCollectionChanged)viewModel.");
+        builder.Append(escapedName);
+        builder.Append(").CollectionChanged += handler;\n\n        internal static void Unsubscribe_");
+        builder.Append(name);
+        builder.Append('(');
+        builder.Append(viewModelType);
+        builder.Append(" viewModel, global::System.Collections.Specialized.NotifyCollectionChangedEventHandler handler) => ((global::System.Collections.Specialized.INotifyCollectionChanged)viewModel.");
+        builder.Append(escapedName);
+        builder.Append(").CollectionChanged -= handler;\n\n");
+    }
+
     private static void AppendCanExecute(
         StringBuilder builder,
         string viewModelType,
@@ -1135,6 +1290,12 @@ public static class PostGeneratorSemanticCompiler
         {
             yield return "set";
         }
+        else if (kind == PostGeneratorMemberKind.Collection)
+        {
+            yield return "snapshot";
+            yield return "subscribe-collection-changed";
+            yield return "unsubscribe-collection-changed";
+        }
         else
         {
             yield return "can-execute";
@@ -1157,6 +1318,7 @@ public static class PostGeneratorSemanticCompiler
     private static string GetKindName(PostGeneratorMemberKind kind) => kind switch
     {
         PostGeneratorMemberKind.Property => "property",
+        PostGeneratorMemberKind.Collection => "collection",
         PostGeneratorMemberKind.Command => "command",
         PostGeneratorMemberKind.AsyncCommand => "async-command",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
@@ -1194,6 +1356,8 @@ public static class PostGeneratorSemanticCompiler
         (PostGeneratorSemanticCapabilities.AsyncCommandCanBeCanceled, "async-command-can-be-canceled"),
         (PostGeneratorSemanticCapabilities.ValidationErrors, "validation-errors"),
         (PostGeneratorSemanticCapabilities.SourceGeneratedSerializerMetadata, "source-generated-serializer-metadata"),
+        (PostGeneratorSemanticCapabilities.CollectionGet, "collection-get"),
+        (PostGeneratorSemanticCapabilities.CollectionChangedSubscription, "collection-changed-subscription"),
     ];
 
     private static PostGeneratorSemanticResult Failure(string diagnosticId) =>
@@ -1315,7 +1479,8 @@ public static class PostGeneratorSemanticCompiler
     private sealed record ResolvedSemanticMember(
         PostGeneratorMemberRequirement Requirement,
         DecodedType PropertyType,
-        DecodedType? ParameterType);
+        DecodedType? ParameterType,
+        DecodedType? CollectionItemType);
 
     private sealed record DecodedType(
         string MetadataName,
@@ -1847,9 +2012,13 @@ public enum PostGeneratorSemanticCapabilities : ulong
     ValidationErrors = 1UL << 8,
     /// <summary>Closed source-generated serializer metadata is supplied by the consuming adapter.</summary>
     SourceGeneratedSerializerMetadata = 1UL << 9,
+    /// <summary>Strongly typed observable/read-only collection reads are supported.</summary>
+    CollectionGet = 1UL << 10,
+    /// <summary>Direct collection-changed subscription and unsubscription are supported.</summary>
+    CollectionChangedSubscription = 1UL << 11,
 }
 
-/// <summary>Describes one generated property or command required by a downstream build-only adapter.</summary>
+/// <summary>Describes one generated property, collection, or command required by a downstream build-only adapter.</summary>
 public sealed record PostGeneratorMemberRequirement(
     string BindingMemberId,
     string GeneratedMemberName,
@@ -1857,7 +2026,14 @@ public sealed record PostGeneratorMemberRequirement(
     string ExpectedTypeMetadataName,
     string? ParameterTypeMetadataName,
     bool RequiresSerializerMetadata,
-    bool IncludesValidation);
+    bool IncludesValidation)
+{
+    /// <summary>Gets the exact collection item metadata type, or <see langword="null"/> for non-collections.</summary>
+    public string? CollectionItemTypeMetadataName { get; init; }
+
+    /// <summary>Gets the positive collection snapshot ceiling, or zero for non-collections.</summary>
+    public int MaximumSnapshotItems { get; init; }
+}
 
 /// <summary>The normalized semantic kind of one post-generator member.</summary>
 public enum PostGeneratorMemberKind
@@ -1868,6 +2044,8 @@ public enum PostGeneratorMemberKind
     Command = 1,
     /// <summary>A generated asynchronous command with cancellation and running state.</summary>
     AsyncCommand = 2,
+    /// <summary>An observable or read-only observable collection with a closed item type.</summary>
+    Collection = 3,
 }
 
 /// <summary>The deterministic semantic artifacts and stable diagnostics produced by the compiler.</summary>

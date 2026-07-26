@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,13 @@ namespace WebUIToolkit.MVVM.Build.Tests.Fixtures;
 /// <summary>A real CommunityToolkit producer whose generated public members are inspected as compiled PE metadata.</summary>
 public partial class GeneratedMemberViewModel : ObservableValidator
 {
+    private readonly ObservableCollection<string> _readOnlyItems = ["read-only"];
+
+    public GeneratedMemberViewModel()
+    {
+        ReadOnlyItems = new ReadOnlyObservableCollection<string>(_readOnlyItems);
+    }
+
     [ObservableProperty]
     private string? title;
 
@@ -27,6 +35,12 @@ public partial class GeneratedMemberViewModel : ObservableValidator
     public string @class { get; set; } = string.Empty;
 
     public IReadOnlyList<string?> NullableItems { get; set; } = [];
+
+    public ObservableCollection<string> Items { get; } = ["first"];
+
+    public ReadOnlyObservableCollection<string> ReadOnlyItems { get; }
+
+    public void AddReadOnlyItem(string item) => _readOnlyItems.Add(item);
 
     public IRelayCommand? OptionalCommand { get; set; }
 

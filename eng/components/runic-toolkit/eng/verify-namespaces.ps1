@@ -13,9 +13,11 @@ $retiredPatterns = @(
     # CsWebUi package, namespace, types, or an explicitly named adapter.
     '\bnamespace\s+CsWebUi(?:[.;])',
     '<(?:AssemblyName|RootNamespace|PackageId)>CsWebUi(?:[.<])',
-    '\bCsWebUi\.(?:Collections|CommandLine|DependencyNotices|Hosting|MVVM|TextResources)\b',
+    '\bCsWebUi\.(?:Collections|CommandLine|Hosting|MVVM|TextResources)\b',
     '\bCSWEBUI_',
-    '\bcswebui\.(?:cli|mvvm)',
+    # Lower-cased NuGet lock identities retain the explicit
+    # WebUIToolkit.Hosting.CsWebUi.Mvvm adapter name.
+    '(?<!webuitoolkit\.hosting\.)\bcswebui\.(?:cli|mvvm)',
     '\bcs-webui-mvvm(?:-[a-z]+)?\b',
     '@cswebui/'
 )

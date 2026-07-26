@@ -1,8 +1,0 @@
-{
-  "bomFormat": "CycloneDX",
-  "specVersion": "1.6",
-  "components": [
-    { "bom-ref": "dup-ref", "type": "library", "name": "one", "version": "1", "purl": "pkg:generic/one@1" },
-    { "bom-ref": "dup-ref", "type": "library", "name": "two", "version": "2", "purl": "pkg:generic/two@2" }
-  ]
-}

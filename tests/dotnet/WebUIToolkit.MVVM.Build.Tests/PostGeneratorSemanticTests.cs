@@ -33,7 +33,9 @@ internal static class PostGeneratorSemanticTests
         PostGeneratorSemanticCapabilities.AsyncCommandIsRunning |
         PostGeneratorSemanticCapabilities.AsyncCommandCanBeCanceled |
         PostGeneratorSemanticCapabilities.ValidationErrors |
-        PostGeneratorSemanticCapabilities.SourceGeneratedSerializerMetadata;
+        PostGeneratorSemanticCapabilities.SourceGeneratedSerializerMetadata |
+        PostGeneratorSemanticCapabilities.CollectionGet |
+        PostGeneratorSemanticCapabilities.CollectionChangedSubscription;
 
     public static void Register(TestRunner runner)
     {
@@ -49,6 +51,9 @@ internal static class PostGeneratorSemanticTests
         runner.Add(
             "post-generator semantic artifact preserves nested and command nullability",
             PreservesNestedAndCommandNullability);
+        runner.Add(
+            "post-generator semantic artifact closes observable collection access subscriptions and item metadata",
+            ProjectsObservableCollections);
     }
 
     public static void AssertDeterministic(
@@ -218,6 +223,127 @@ internal static class PostGeneratorSemanticTests
         Assert.Contains(
             "global::CommunityToolkit.Mvvm.Input.IRelayCommand? Get_OptionalCommand",
             artifact.Source);
+    }
+
+    private static void ProjectsObservableCollections()
+    {
+        var request = new PostGeneratorSemanticRequest(
+            PostGeneratorSemanticContract.SchemaVersion,
+            ProducerAssemblyPath(),
+            FixtureTypeName,
+            new PostGeneratorAdapterCapabilities(
+                "test.collections/1",
+                1,
+                PostGeneratorSemanticCapabilities.CollectionGet |
+                    PostGeneratorSemanticCapabilities.CollectionChangedSubscription |
+                    PostGeneratorSemanticCapabilities.SourceGeneratedSerializerMetadata,
+                null),
+            [ToolkitAssemblyPath()],
+            [
+                new PostGeneratorMemberRequirement(
+                    "items",
+                    "Items",
+                    PostGeneratorMemberKind.Collection,
+                    "System.Collections.ObjectModel.ObservableCollection`1<System.String>",
+                    null,
+                    true,
+                    false)
+                {
+                    CollectionItemTypeMetadataName = "System.String",
+                    MaximumSnapshotItems = 2,
+                },
+                new PostGeneratorMemberRequirement(
+                    "read-only-items",
+                    "ReadOnlyItems",
+                    PostGeneratorMemberKind.Collection,
+                    "System.Collections.ObjectModel.ReadOnlyObservableCollection`1<System.String>",
+                    null,
+                    true,
+                    false)
+                {
+                    CollectionItemTypeMetadataName = "System.String",
+                    MaximumSnapshotItems = 2,
+                },
+            ]);
+        PostGeneratorSemanticResult result = PostGeneratorSemanticCompiler.Compile(request);
+        Assert.Equal(0, result.Diagnostics.Count);
+        GeneratedBindingArtifacts artifact = Assert.Single(result.Artifacts);
+        Assert.Contains(
+            "global::System.Collections.ObjectModel.ObservableCollection<global::System.String> Get_Items",
+            artifact.Source);
+        Assert.Contains(
+            "global::System.Collections.Generic.IReadOnlyList<global::System.String> Snapshot_Items",
+            artifact.Source);
+        Assert.Contains("Subscribe_Items", artifact.Source);
+        Assert.Contains("Unsubscribe_Items", artifact.Source);
+        Assert.Contains("MaximumSnapshotItems_Items = 2", artifact.Source);
+        Assert.False(
+            artifact.Source.Contains("dynamic", StringComparison.Ordinal),
+            "Collection projections must not emit dynamic access.");
+        Assert.False(
+            artifact.Source.Contains("System.Reflection", StringComparison.Ordinal),
+            "Collection projections must not emit reflection access.");
+
+        using JsonDocument manifest = JsonDocument.Parse(artifact.Manifest);
+        JsonElement members = manifest.RootElement.GetProperty("members");
+        Assert.Equal("collection", members[0].GetProperty("kind").GetString());
+        Assert.Equal(2, members[0].GetProperty("maximumSnapshotItems").GetInt32());
+        JsonElement metadata =
+            manifest.RootElement.GetProperty("serializerMetadataRequirements");
+        Assert.Equal(2, metadata.GetArrayLength());
+        Assert.Equal("collection-item", metadata[0].GetProperty("purpose").GetString());
+        Assert.Equal(
+            "System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>",
+            metadata[0].GetProperty("metadataKind").GetString());
+        Assert.Equal(0, RunCollectionConsumer(artifact));
+
+        AssertDiagnostic(
+            request with
+            {
+                Members =
+                [
+                    request.Members[0] with
+                    {
+                        CollectionItemTypeMetadataName = "System.Int32",
+                    },
+                ],
+            },
+            BindingDiagnosticIds.GeneratedMemberInaccessibleOrIncompatible);
+        AssertDiagnostic(
+            request with
+            {
+                Adapter = request.Adapter with
+                {
+                    Capabilities =
+                        PostGeneratorSemanticCapabilities.CollectionGet |
+                        PostGeneratorSemanticCapabilities.SourceGeneratedSerializerMetadata,
+                },
+            },
+            BindingDiagnosticIds.GeneratedMemberInaccessibleOrIncompatible);
+        AssertDiagnostic(
+            request with
+            {
+                Members =
+                [
+                    request.Members[0] with
+                    {
+                        MaximumSnapshotItems = 10_001,
+                    },
+                ],
+            },
+            BindingDiagnosticIds.GeneratedMemberInaccessibleOrIncompatible);
+        AssertDiagnostic(
+            request with
+            {
+                Members =
+                [
+                    request.Members[0] with
+                    {
+                        RequiresSerializerMetadata = false,
+                    },
+                ],
+            },
+            BindingDiagnosticIds.GeneratedMemberInaccessibleOrIncompatible);
     }
 
     private static void RejectsUnsupportedAndHostileRequests()
@@ -586,6 +712,128 @@ internal static class PostGeneratorSemanticTests
         }
     }
 
+    private static int RunCollectionConsumer(GeneratedBindingArtifacts artifact)
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "WebUIToolkit.MVVM.PostGeneratorCollectionConsumer",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            string producerAssembly = ProducerAssemblyPath();
+            string toolkitAssembly = ToolkitAssemblyPath();
+            string mvvmAssembly = MvvmAssemblyPath();
+            string runtimeAdapterAssembly = CommunityToolkitAdapterAssemblyPath();
+            string artifactTypeName = "PostGeneratorSemanticArtifact_" + artifact.Fingerprint[..16];
+            File.WriteAllText(Path.Combine(root, "Semantic.g.cs"), artifact.Source, new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(root, "Program.cs"), $$"""
+                using System.Collections.Specialized;
+                using System.Text.Json.Serialization;
+                using WebUIToolkit.MVVM.Build.Tests.Fixtures;
+                using WebUIToolkit.MVVM.CommunityToolkit;
+                using WebUIToolkit.MVVM.Generated;
+
+                GeneratedMemberViewModel viewModel = new();
+                int changes = 0;
+                NotifyCollectionChangedEventHandler itemsHandler = (_, _) => changes++;
+                NotifyCollectionChangedEventHandler readOnlyHandler = (_, _) => changes++;
+                {{artifactTypeName}}.Subscribe_Items(viewModel, itemsHandler);
+                {{artifactTypeName}}.Subscribe_ReadOnlyItems(viewModel, readOnlyHandler);
+                viewModel.Items.Add("second");
+                viewModel.AddReadOnlyItem("second");
+                if (changes != 2 ||
+                    {{artifactTypeName}}.Snapshot_Items(viewModel).Count != 2 ||
+                    {{artifactTypeName}}.Snapshot_ReadOnlyItems(viewModel).Count != 2)
+                {
+                    return 10;
+                }
+
+                {{artifactTypeName}}.Unsubscribe_Items(viewModel, itemsHandler);
+                {{artifactTypeName}}.Unsubscribe_ReadOnlyItems(viewModel, readOnlyHandler);
+                await using (var adapter =
+                    new CommunityToolkitMvvmAdapterBuilder<GeneratedMemberViewModel>(viewModel)
+                        .BindCollection(
+                            1,
+                            nameof(GeneratedMemberViewModel.Items),
+                            {{artifactTypeName}}.Snapshot_Items,
+                            CollectionJsonContext.Default.String)
+                        .BindCollection(
+                            2,
+                            nameof(GeneratedMemberViewModel.ReadOnlyItems),
+                            {{artifactTypeName}}.Snapshot_ReadOnlyItems,
+                            CollectionJsonContext.Default.String)
+                        .Build())
+                {
+                    global::WebUIToolkit.MVVM.MvvmSnapshot snapshot =
+                        await adapter.SnapshotAsync(global::System.Threading.CancellationToken.None);
+                    if (!snapshot.State.GetRawText().Contains("\"type\":\"collection\"", global::System.StringComparison.Ordinal))
+                    {
+                        return 11;
+                    }
+                }
+
+                viewModel.Items.Add("third");
+                viewModel.AddReadOnlyItem("third");
+                if (changes != 2)
+                {
+                    return 12;
+                }
+
+                try
+                {
+                    _ = {{artifactTypeName}}.Snapshot_Items(viewModel);
+                    return 13;
+                }
+                catch (global::System.InvalidOperationException)
+                {
+                }
+
+                return 0;
+
+                [JsonSerializable(typeof(string))]
+                internal sealed partial class CollectionJsonContext : global::System.Text.Json.Serialization.JsonSerializerContext;
+                """, new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(root, "Consumer.csproj"), string.Create(
+                CultureInfo.InvariantCulture,
+                $"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <OutputType>Exe</OutputType>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <RestoreIgnoreFailedSources>true</RestoreIgnoreFailedSources>
+                    <Nullable>enable</Nullable>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <Reference Include="WebUIToolkit.MVVM.Build.Tests">
+                      <HintPath>{SecurityElement.Escape(producerAssembly)}</HintPath>
+                    </Reference>
+                    <Reference Include="CommunityToolkit.Mvvm">
+                      <HintPath>{SecurityElement.Escape(toolkitAssembly)}</HintPath>
+                    </Reference>
+                    <Reference Include="WebUIToolkit.MVVM">
+                      <HintPath>{SecurityElement.Escape(mvvmAssembly)}</HintPath>
+                    </Reference>
+                    <Reference Include="WebUIToolkit.MVVM.CommunityToolkit">
+                      <HintPath>{SecurityElement.Escape(runtimeAdapterAssembly)}</HintPath>
+                    </Reference>
+                  </ItemGroup>
+                </Project>
+                """), new UTF8Encoding(false));
+
+            RunDotNet(root, "build", "Consumer.csproj", "--nologo", "--verbosity", "quiet");
+            return RunDotNet(
+                root,
+                "exec",
+                Path.Combine(root, "bin", "Debug", "net10.0", "Consumer.dll"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static void AssertDiagnostic(PostGeneratorSemanticRequest request, string expectedId)
     {
         PostGeneratorSemanticResult result = PostGeneratorSemanticCompiler.Compile(request);
@@ -606,6 +854,22 @@ internal static class PostGeneratorSemanticTests
     {
         string path = Path.Combine(AppContext.BaseDirectory, "CommunityToolkit.Mvvm.dll");
         Assert.True(File.Exists(path), "CommunityToolkit.Mvvm 8.4.2 is missing.");
+        return path;
+    }
+
+    private static string MvvmAssemblyPath()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "WebUIToolkit.MVVM.dll");
+        Assert.True(File.Exists(path), "The WebUIToolkit MVVM runtime is missing.");
+        return path;
+    }
+
+    private static string CommunityToolkitAdapterAssemblyPath()
+    {
+        string path = Path.Combine(
+            AppContext.BaseDirectory,
+            "WebUIToolkit.MVVM.CommunityToolkit.dll");
+        Assert.True(File.Exists(path), "The CommunityToolkit MVVM runtime adapter is missing.");
         return path;
     }
 

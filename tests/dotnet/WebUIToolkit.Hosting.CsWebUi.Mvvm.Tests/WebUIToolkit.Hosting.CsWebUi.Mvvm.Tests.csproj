@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>WebUIToolkit.Hosting.CsWebUi.Mvvm.Tests</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting.CsWebUi.Mvvm.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/WebUIToolkit.Hosting.CsWebUi.Mvvm.csproj" />
+  </ItemGroup>
+</Project>

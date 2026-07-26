@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -26,6 +27,7 @@ internal static partial class Program
             await RunAsync("communitytoolkit.async-command-cancellation.v1", AsyncCommandCancellationAsync);
             await RunAsync("communitytoolkit.validation-metadata.v1", MetadataAndValidationAreDeterministicAsync);
             await RunAsync("communitytoolkit.generated-metadata.v1", MetadataIsOrderedAsync);
+            await RunAsync("communitytoolkit.observable-collection.v1", ObservableCollectionProjectionAsync);
             await RunAsync("communitytoolkit.generated-member.title.v1", ExistingTitleProofShapeAsync);
             await RunAsync("communitytoolkit.generated-member.submit-command.v1", ExistingCommandProofShapeAsync);
             await RunAsync("g4-core-vertical.amount-submit.v1", CoreVerticalScenarioAsync);
@@ -60,7 +62,7 @@ internal static partial class Program
         True(result.Succeeded);
         True(viewModel.Name is null);
         Equal(1, nameChanges);
-        Equal(5, result.Patches.Count);
+        Equal(6, result.Patches.Count);
         Equal(MvvmPatchKind.Property, result.Patches[0].Kind);
         Equal(MvvmPatchKind.Validation, result.Patches[1].Kind);
         True(((MvvmValidationPatch)result.Patches[1]).Errors.Count != 0);
@@ -121,9 +123,35 @@ internal static partial class Program
     private static async Task MetadataIsOrderedAsync()
     {
         await using CommunityToolkitMvvmBindingAdapter<FixtureViewModel> adapter = CreateAdapter(new FixtureViewModel());
-        Equal("1,2,3,4,5", string.Join(',', adapter.Metadata.Select(static entry => entry.MemberId)));
+        Equal("1,2,3,4,5,6,7", string.Join(',', adapter.Metadata.Select(static entry => entry.MemberId)));
         Equal("Name", adapter.Metadata[0].GeneratedMemberName);
-        Equal(MvvmBindingMemberKind.Command, adapter.Metadata[4].Kind);
+        Equal(MvvmBindingMemberKind.Collection, adapter.Metadata[5].Kind);
+        Equal(MvvmBindingMemberKind.Command, adapter.Metadata[6].Kind);
+    }
+
+    private static async Task ObservableCollectionProjectionAsync()
+    {
+        var viewModel = new FixtureViewModel();
+        viewModel.Items.Add("first");
+        await using CommunityToolkitMvvmBindingAdapter<FixtureViewModel> adapter = CreateAdapter(viewModel);
+
+        MvvmSnapshot initial = await adapter.SnapshotAsync(CancellationToken.None);
+        JsonElement collection = initial.State.GetProperty("members").EnumerateArray()
+            .Single(element =>
+                element.GetProperty("type").GetString() == "collection" &&
+                element.GetProperty("member").GetInt32() == 6);
+        Equal("first", collection.GetProperty("items")[0].GetString()!);
+
+        MvvmBindingResult added = await adapter.DispatchAsync(
+            CommandMutation(7, Json("\"second\"")),
+            CancellationToken.None);
+        True(added.Succeeded);
+        MvvmCollectionPatch reset = added.Patches
+            .OfType<MvvmCollectionPatch>()
+            .Single(static patch => patch.MemberId == 6);
+        Equal(MvvmCollectionOperation.Reset, reset.Operation);
+        Equal(2, reset.Items.Count);
+        Equal("second", reset.Items[1].GetString()!);
     }
 
     private static async Task ExistingTitleProofShapeAsync()
@@ -151,6 +179,8 @@ internal static partial class Program
             .BindCommand(3, nameof(FixtureViewModel.MultiplyCommand), static model => model.MultiplyCommand, FixtureJsonContext.Default.Int32)
             .BindProperty(4, nameof(FixtureViewModel.CanSubmit), static model => model.CanSubmit, static (model, value) => model.CanSubmit = value, FixtureJsonContext.Default.Boolean)
             .BindAsyncCommand(5, nameof(FixtureViewModel.LoadCommand), static model => model.LoadCommand)
+            .BindCollection(6, nameof(FixtureViewModel.Items), static model => model.Items, FixtureJsonContext.Default.String)
+            .BindCommand(7, nameof(FixtureViewModel.AddItemCommand), static model => model.AddItemCommand, FixtureJsonContext.Default.String)
             .Build();
 
     private static MvvmMutationRequest PropertyMutation(int memberId, JsonElement payload) =>
@@ -247,6 +277,8 @@ internal static partial class Program
 
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public ObservableCollection<string> Items { get; } = [];
+
         [RelayCommand(CanExecute = nameof(CanSubmit))]
         private void Submit()
         {
@@ -256,6 +288,9 @@ internal static partial class Program
 
         [RelayCommand]
         private void Multiply(int factor) => MultipliedBy = factor;
+
+        [RelayCommand]
+        private void AddItem(string value) => Items.Add(value);
 
         [RelayCommand(FlowExceptionsToTaskScheduler = true)]
         private async Task LoadAsync(CancellationToken cancellationToken)

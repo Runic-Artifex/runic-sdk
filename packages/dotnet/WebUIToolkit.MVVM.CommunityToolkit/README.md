@@ -9,19 +9,28 @@ Use the generated ViewModel surface directly when declaring a binding. Every
 property and typed command parameter supplies an application-owned
 `JsonTypeInfo<T>`, normally from a `JsonSerializerContext`. The builder creates a
 closed `IMvvmBindingAdapter` with deterministic member metadata, snapshots,
-property and validation patches, command state, cancellation through
+property, collection, and validation patches, command state, cancellation through
 `IAsyncRelayCommand.Cancel()`, and exactly-once event unsubscription.
 
 ```csharp
 IMvvmBindingAdapter adapter = new CommunityToolkitMvvmAdapterBuilder<MyViewModel>(viewModel)
     .BindProperty(1, nameof(MyViewModel.Title), static vm => vm.Title,
         static (vm, value) => vm.Title = value, MyJsonContext.Default.String)
-    .BindCommand(2, static vm => vm.SaveCommand)
+    .BindCollection(2, nameof(MyViewModel.Items), static vm => vm.Items,
+        MyJsonContext.Default.Item)
+    .BindCommand(3, static vm => vm.SaveCommand)
     .Build();
 ```
 
-The shared binding compiler currently exposes only the pre-Wave-C PE proof API.
-It does not expose a post-generator semantic-plugin or MSBuild artifact hook, so
-automatic recognition and source emission are intentionally not claimed by this
-runtime package. Consumers must use generated direct-access declarations until
-that shared hook is registered.
+`BindCollection` accepts an `IReadOnlyList<T>` projection, includes it in
+authoritative snapshots, owns an `INotifyCollectionChanged` subscription when
+the collection supplies one, and emits an authoritative collection reset after
+successful commands. This is the stable WPF/`ObservableCollection<T>` bridge;
+granular unsolicited host-push patches can be added without changing binding
+declarations.
+
+The build-only `WebUIToolkit.MVVM.Html.CommunityToolkit` package can validate
+compiled observable and read-only observable collection properties and emit the
+closed getter, snapshot, and subscription declarations consumed by
+`BindCollection`. Application-owned source-generated `JsonTypeInfo<TItem>`
+metadata remains explicit.

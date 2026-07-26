@@ -1,5 +1,0 @@
-{
-  "version": 2,
-  "padding": "\uD800",
-  "dependencies": { "net10.0": {} }
-}

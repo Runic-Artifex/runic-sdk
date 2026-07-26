@@ -1208,7 +1208,6 @@ html&gt;body{padding:0}&lt;/style&gt;
         &lt;tr&gt;&lt;td&gt;&lt;code&gt;CsWebUi.TextResources.*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;WebUIToolkit.TextResources.*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Preserve independent runtime boundary&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;&lt;code&gt;CsWebUi.CommandLine.*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;WebUIToolkit.CommandLine.*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Parser remains replaceable and isolated&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;&lt;code&gt;CsWebUi.Collections.*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;WebUIToolkit.Collections.*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;BCL-only incubation package&lt;/td&gt;&lt;/tr&gt;
-        &lt;tr&gt;&lt;td&gt;Notice generator projects&lt;/td&gt;&lt;td&gt;&lt;code&gt;WebUIToolkit.DependencyNotices.*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Use the parent namespace consistently&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;&lt;code&gt;cs-webui&lt;/code&gt; host dependency&lt;/td&gt;&lt;td&gt;&lt;code&gt;cs-webui&lt;/code&gt;&lt;/td&gt;&lt;td&gt;External upstream identity stays unchanged&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;Frontend packages&lt;/td&gt;&lt;td&gt;&lt;code&gt;@webuitoolkit/mvvm-*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Freeze npm scope in the naming ADR&lt;/td&gt;&lt;/tr&gt;
       &lt;/tbody&gt;
@@ -1278,7 +1277,6 @@ html&gt;body{padding:0}&lt;/style&gt;
         { id: 14, key: 'text-resources', name: 'Text resources', owner: 'WebUIToolkit.TextResources.*/** · schemas/corpus', waves: 'ABCD', deps: 'G0 naming only; template/TS projections use versioned edge contracts', gate: 'Deterministic compiler/runtime, external packs, TS/template outputs, AOT', scope: 'Schemas, canonical IR, typed accessors, immutable locale snapshots, generator, build task, CLI, external packs, and shared conformance corpus.' },
         { id: 15, key: 'command-line', name: 'Command line', owner: 'WebUIToolkit.CommandLine.*/**', waves: 'ABCD', deps: 'C0 parser evaluation ADR before core implementation', gate: 'Portable grammar, machine protocol, process runner, Hosting adapter, AOT', scope: 'Neutral command catalog, replaceable parser adapter, typed handlers, JSON protocol, bounded process execution, and host integration.' },
         { id: 16, key: 'collections', name: 'Observable ranges', owner: 'WebUIToolkit.Collections*/**', waves: 'ABD', deps: 'G0 package policy; BCL only', gate: 'Trace oracle, property tests, MVVM bridge conformance, benchmarks, AOT', scope: 'Exact range mutation semantics, identity-preserving reconciliation, reentrancy guard, notification policy, and promotion evidence.' },
-        { id: 17, key: 'dependency-notices', name: 'Dependency notices', owner: 'WebUIToolkit.DependencyNotices.*/**', waves: 'ABCD', deps: 'G0 license/governance decision and locked ecosystem fixtures', gate: 'Offline deterministic outputs, evidence store, SBOM reconciliation, AOT tool/runtime', scope: 'NuGet/npm/manual inventory, SPDX policy, evidence pinning, renderers, CLI, thin MSBuild integration, and read-only runtime.' }
       ];
 
       const waveCopy = {

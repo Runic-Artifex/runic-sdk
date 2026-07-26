@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
-    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
-    <PackageId>WebUIToolkit.DependencyNotices.Core</PackageId>
-    <Description>BCL-only contracts and deterministic primitives for dependency notices.</Description>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
-  </PropertyGroup>
-</Project>

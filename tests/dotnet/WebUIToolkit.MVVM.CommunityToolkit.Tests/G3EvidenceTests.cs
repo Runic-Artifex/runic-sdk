@@ -43,11 +43,11 @@ internal static partial class Program
         MvvmSnapshot snapshot = await adapter.SnapshotAsync(CancellationToken.None);
         JsonElement[] members = SnapshotMembers(snapshot);
 
-        Equal("1:Property,2:Command,3:Command,4:Property,5:Command",
+        Equal("1:Property,2:Command,3:Command,4:Property,5:Command,6:Collection,7:Command",
             string.Join(',', adapter.Vocabulary.Members.Select(
                 static member => $"{member.MemberId}:{member.Kind}")));
         Equal(
-            "1:property,1:validation,2:command,3:command,4:property,5:command",
+            "1:property,1:validation,2:command,3:command,4:property,5:command,6:collection,7:command",
             string.Join(',', members.Select(MemberKey)));
         string wireProjection = snapshot.State.GetRawText();
         False(wireProjection.Contains(nameof(FixtureViewModel), StringComparison.Ordinal));
@@ -68,15 +68,15 @@ internal static partial class Program
         True(result.Succeeded);
         True(result.Committed);
         True(viewModel.Name is null);
-        Equal(5, result.Patches.Count);
+        Equal(6, result.Patches.Count);
         Equal(
-            "1:Property,1:Validation,2:Command,3:Command,5:Command",
+            "1:Property,1:Validation,2:Command,3:Command,5:Command,7:Command",
             string.Join(',', result.Patches.Select(
                 static patch => $"{patch.MemberId}:{patch.Kind}")));
         Equal(1, result.Patches.OfType<MvvmPropertyPatch>().Count());
         Equal(1, result.Patches.OfType<MvvmValidationPatch>().Count());
         True(result.Patches.OfType<MvvmValidationPatch>().Single().Errors.Count > 0);
-        Equal(3, result.Patches.OfType<MvvmCommandPatch>().Count());
+        Equal(4, result.Patches.OfType<MvvmCommandPatch>().Count());
     }
 
     private static async Task CommunityToolkitProjectionInvariantsAsync()
@@ -91,7 +91,7 @@ internal static partial class Program
         string[] keys = SnapshotMembers(first).Select(MemberKey).ToArray();
         Equal(keys.Length, keys.Distinct(StringComparer.Ordinal).Count());
         Equal(
-            "1:property,1:validation,2:command,3:command,4:property,5:command",
+            "1:property,1:validation,2:command,3:command,4:property,5:command,6:collection,7:command",
             string.Join(',', keys));
 
         MvvmBindingResult changed = await adapter.DispatchAsync(

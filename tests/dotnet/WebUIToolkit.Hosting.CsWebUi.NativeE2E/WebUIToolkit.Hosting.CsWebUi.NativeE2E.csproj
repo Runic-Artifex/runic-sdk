@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.Hosting.CsWebUi.NativeE2E</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting.CsWebUi.NativeE2E</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsWebUi" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/WebUIToolkit.Hosting.CsWebUi.Mvvm.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.CommunityToolkit/WebUIToolkit.MVVM.CommunityToolkit.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="www/**/*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/assets/webuitoolkit-mvvm-cswebui.mjs"
+             Link="www/webuitoolkit-mvvm-cswebui.mjs"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../web/packages/mvvm/dist/esm/**/*"
+             Link="www/mvvm/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

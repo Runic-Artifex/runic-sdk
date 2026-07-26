@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WebUIToolkit.MVVM.Build\WebUIToolkit.MVVM.Build.csproj" />
+    <ProjectReference Include="..\..\src\WebUIToolkit.MVVM.CommunityToolkit\WebUIToolkit.MVVM.CommunityToolkit.csproj" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
 </Project>

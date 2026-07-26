@@ -12,8 +12,6 @@ identifiers, or execution order:
 - `Hosting.*` validate lifecycle and composition contracts.
 - `Htmx` validates mutation, validation, cancellation, stale requests, and OOB
   rendering in one vertical slice.
-- `DependencyNotices.PackageConsumer` consumes packed artifacts from an isolated
-  feed.
 - `ReferenceApplication` is the Wave G package-only release consumer.
 
 Approachable, project-reference examples live under [`../../samples`](../../samples).

@@ -65,7 +65,6 @@ Wave C remains inactive until the user explicitly starts it.
 | text-resources | `src/WebUIToolkit.TextResources*/**`, `spec/text-resources/**`, schemas/corpus/tests | A | G0; edge projections use versioned contracts |
 | command-line | `src/WebUIToolkit.CommandLine*/**`, evaluation/tests | A | Parser evaluation ADR before kernel |
 | collections | `src/WebUIToolkit.Collections*/**`, tests/benchmarks | A | G0; BCL only |
-| dependency-notices | `src/WebUIToolkit.DependencyNotices*/**`, fixtures/tool/runtime/tests | A | G0 governance and locked fixtures |
 
 ## Merge order
 

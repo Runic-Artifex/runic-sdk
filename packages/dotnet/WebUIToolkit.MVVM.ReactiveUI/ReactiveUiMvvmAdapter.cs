@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Reactive;
@@ -96,6 +97,21 @@ public sealed class ReactiveUiMvvmAdapterBuilder<TViewModel>
             get ?? throw new ArgumentNullException(nameof(get)),
             set ?? throw new ArgumentNullException(nameof(set)),
             jsonTypeInfo ?? throw new ArgumentNullException(nameof(jsonTypeInfo))));
+        return this;
+    }
+
+    /// <summary>Adds an observable collection with closed item serializer metadata.</summary>
+    public ReactiveUiMvvmAdapterBuilder<TViewModel> BindCollection<TItem>(
+        int memberId,
+        string generatedPropertyName,
+        Func<TViewModel, IReadOnlyList<TItem>> get,
+        JsonTypeInfo<TItem> itemJsonTypeInfo)
+    {
+        ThrowIfBuilt();
+        Add(new ReactiveUiMvvmBindingAdapter<TViewModel>.CollectionBinding<TViewModel, TItem>(
+            new ReactiveUiBindingMetadata(memberId, MvvmBindingMemberKind.Collection, generatedPropertyName),
+            get ?? throw new ArgumentNullException(nameof(get)),
+            itemJsonTypeInfo ?? throw new ArgumentNullException(nameof(itemJsonTypeInfo))));
         return this;
     }
 
@@ -252,11 +268,31 @@ public sealed class ReactiveUiMvvmBindingAdapter<TViewModel> :
 
         try
         {
-            return await binding.DispatchAsync(
+            MvvmBindingResult result = await binding.DispatchAsync(
                 _viewModel,
                 request.Payload,
                 Vocabulary,
                 cancellationToken).ConfigureAwait(false);
+            if (!result.Succeeded || request.Kind != MvvmMutationKind.ExecuteCommand)
+            {
+                return result;
+            }
+
+            var patches = new MvvmProjectionPatchBuilder(Vocabulary);
+            foreach (MvvmPatch patch in result.Patches)
+            {
+                patches.Add(patch);
+            }
+
+            foreach (IReactiveBinding<TViewModel> candidate in _bindings)
+            {
+                if (candidate.Metadata.Kind == MvvmBindingMemberKind.Collection)
+                {
+                    candidate.AddPatch(_viewModel, patches);
+                }
+            }
+
+            return MvvmBindingResult.Success(result.Payload, patches.Build());
         }
         catch (JsonException)
         {
@@ -331,7 +367,7 @@ public sealed class ReactiveUiMvvmBindingAdapter<TViewModel> :
     internal interface IReactiveBinding<in TModel>
     {
         ReactiveUiBindingMetadata Metadata { get; }
-        MvvmMutationKind Operation { get; }
+        MvvmMutationKind? Operation { get; }
         void AddSnapshot(TModel viewModel, MvvmProjectionSnapshotBuilder builder);
         void AddPatch(TModel viewModel, MvvmProjectionPatchBuilder builder);
         IDisposable Subscribe(TModel viewModel, IScheduler scheduler, Action<Exception> faultHandler);
@@ -361,7 +397,7 @@ public sealed class ReactiveUiMvvmBindingAdapter<TViewModel> :
         }
 
         public ReactiveUiBindingMetadata Metadata { get; }
-        public MvvmMutationKind Operation => MvvmMutationKind.SetProperty;
+        public MvvmMutationKind? Operation => MvvmMutationKind.SetProperty;
 
         public void AddSnapshot(TModel viewModel, MvvmProjectionSnapshotBuilder builder) =>
             builder.AddProperty(Metadata.MemberId, JsonSerializer.SerializeToElement(_get(viewModel), _jsonTypeInfo));
@@ -387,6 +423,77 @@ public sealed class ReactiveUiMvvmBindingAdapter<TViewModel> :
         }
     }
 
+    internal sealed class CollectionBinding<TModel, TItem> : IReactiveBinding<TModel>
+    {
+        private readonly Func<TModel, IReadOnlyList<TItem>> _get;
+        private readonly JsonTypeInfo<TItem> _itemJsonTypeInfo;
+
+        internal CollectionBinding(
+            ReactiveUiBindingMetadata metadata,
+            Func<TModel, IReadOnlyList<TItem>> get,
+            JsonTypeInfo<TItem> itemJsonTypeInfo)
+        {
+            Metadata = metadata;
+            _get = get;
+            _itemJsonTypeInfo = itemJsonTypeInfo;
+        }
+
+        public ReactiveUiBindingMetadata Metadata { get; }
+        public MvvmMutationKind? Operation => null;
+
+        public void AddSnapshot(TModel viewModel, MvvmProjectionSnapshotBuilder builder) =>
+            builder.AddCollection(Metadata.MemberId, SerializeItems(_get(viewModel)));
+
+        public void AddPatch(TModel viewModel, MvvmProjectionPatchBuilder builder) =>
+            builder.Collection(
+                Metadata.MemberId,
+                MvvmCollectionOperation.Reset,
+                index: 0,
+                SerializeItems(_get(viewModel)));
+
+        public IDisposable Subscribe(
+            TModel viewModel,
+            IScheduler scheduler,
+            Action<Exception> faultHandler)
+        {
+            if (_get(viewModel) is not INotifyCollectionChanged notifyingCollection)
+            {
+                return Disposable.Empty;
+            }
+
+            NotifyCollectionChangedEventHandler handler = static (_, _) => { };
+            notifyingCollection.CollectionChanged += handler;
+            return Disposable.Create(() => notifyingCollection.CollectionChanged -= handler);
+        }
+
+        public ValueTask<MvvmBindingResult> DispatchAsync(
+            TModel viewModel,
+            JsonElement payload,
+            MvvmBindingVocabulary vocabulary,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(MvvmBindingResult.Rejected(UnknownMember));
+
+        private JsonElement[] SerializeItems(IReadOnlyList<TItem> items)
+        {
+            ArgumentNullException.ThrowIfNull(items);
+            if (items.Count > MvvmLimits.MaximumCollectionItems)
+            {
+                throw new InvalidOperationException(
+                    "The projected collection exceeds the protocol item ceiling.");
+            }
+
+            var serialized = new JsonElement[items.Count];
+            for (int index = 0; index < items.Count; index++)
+            {
+                serialized[index] = JsonSerializer.SerializeToElement(
+                    items[index],
+                    _itemJsonTypeInfo);
+            }
+
+            return serialized;
+        }
+    }
+
     internal abstract class CommandBindingBase<TModel> : IReactiveBinding<TModel>
     {
         private readonly object _stateGate = new();
@@ -396,7 +503,7 @@ public sealed class ReactiveUiMvvmBindingAdapter<TViewModel> :
         protected CommandBindingBase(ReactiveUiBindingMetadata metadata) => Metadata = metadata;
 
         public ReactiveUiBindingMetadata Metadata { get; }
-        public MvvmMutationKind Operation => MvvmMutationKind.ExecuteCommand;
+        public MvvmMutationKind? Operation => MvvmMutationKind.ExecuteCommand;
 
         protected bool CanExecute
         {

@@ -29,9 +29,11 @@ callbacks, navigation, and process-wide wait/cleanup lifecycle.
   `Microsoft.Extensions.Hosting`, and `WebUIToolkit.Hosting.WebUi` may use
   dependency-injection abstractions. They reference those NuGet packages
   directly and do not reference the `Microsoft.AspNetCore.App` shared framework.
-- Desktop samples use local HTML, CSS, and JavaScript served by CsWebUi and bind
-  browser events directly to C# application state. An HTTP or ASP.NET Core
-  adapter, if introduced later, is optional and separately named.
+- Desktop samples use local HTML, CSS, and JavaScript served by CsWebUi. Early
+  samples bind browser events directly to C# application state; ADR 0012
+  supersedes that transitional integration with native compiled-HTML and
+  TypeScript MVVM transports. An HTTP or ASP.NET Core adapter, if introduced
+  later, is optional and separately named.
 - The Nix development shell supplies the native WebUI library and Linux browser
   and webview runtime dependencies required by CsWebUi.
 
@@ -41,4 +43,6 @@ The normal application path is a native CsWebUi process rather than a localhost
 ASP.NET Core service. Hosting contracts remain unit-testable without launching a
 browser, while the concrete adapter owns the unavoidable native and
 process-global behavior. HTMX support remains a view/transport integration and
-does not redefine the desktop host.
+does not redefine the desktop host. The accepted frontend, asset, styling, and
+repository-scope direction is recorded in
+[ADR 0012](./0012-native-html-and-frontend-direction.md).

@@ -96,13 +96,17 @@ reference PEs, and member requirements after framework source generation has
 completed. It verifies the public compiled ViewModel surface and emits:
 
 - strongly typed property get/set accessors;
+- exact `ObservableCollection<T>` and `ReadOnlyObservableCollection<T>` access,
+  bounded `IReadOnlyList<T>` snapshots, and direct `INotifyCollectionChanged`
+  subscribe/unsubscribe operations;
 - synchronous and task-returning command accessors with optional exact parameter
   types, `CanExecute`, cancellation, `IsRunning`, and `CanBeCanceled`;
 - direct `HasErrors` and per-property `GetErrors` access through a declared
   validation contract; and
 - a deterministic list of exact
   `System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>` obligations for the
-  consuming adapter's source-generated serializer context.
+  consuming adapter's source-generated serializer context, including the item
+  type of every collection.
 
 The adapter identity, version, capability set, reference enumeration, and member
 enumeration are normalized before fingerprinting. Paths, reference order, assembly

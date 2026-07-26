@@ -43,8 +43,9 @@ the separate consumer loads it only to execute the emitted direct-access proof.
 The post-generator semantic tests use CommunityToolkit.Mvvm 8.4.2 only as a real
 source-generator producer. They cover generated validating observable properties,
 typed relay commands, parameterless and typed async relay commands, cancellation,
-running/cancellation state, and exact serializer-metadata requirements. The emitted
-artifact is compiled and executed in a separate consumer.
+running/cancellation state, observable/read-only observable collection access and
+subscription, bounded snapshots, and exact serializer-metadata requirements. The
+emitted artifact is compiled and executed in a separate consumer.
 
 Reproducibility coverage builds that producer in two clean roots with distinct
 MVIDs, invariant and Turkish cultures, and reversed requirement/reference

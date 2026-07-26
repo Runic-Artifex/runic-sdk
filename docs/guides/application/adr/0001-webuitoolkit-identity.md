@@ -15,8 +15,6 @@ Frontend packages use the reserved target scope `@webuitoolkit/*`; publication r
 
 Flow keeps deliberately flat public namespaces: `WebUIToolkit.MVVM.Navigation`, `WebUIToolkit.MVVM.Dialogs`, `WebUIToolkit.MVVM.Operations`, `WebUIToolkit.MVVM.Workflows`, and `WebUIToolkit.MVVM.Flow`.
 
-Dependency notices use `WebUIToolkit.DependencyNotices.*` even though their planning documents used neutral project names.
-
 Branded public identifiers are renamed before implementation:
 
 | Draft identifier | Implementation identifier |

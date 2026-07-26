@@ -1,9 +1,0 @@
-{
-  "bomFormat": "CycloneDX",
-  "specVersion": "1.6",
-  "serialNumber": "urn:uuid:1c05a080-bdc6-4cde-99ec-8d55e45d0e81",
-  "components": [
-    { "bom-ref": "version-one", "type": "library", "name": "left-pad", "version": "1.0.0", "purl": "pkg:npm/left-pad@1.0.0" },
-    { "bom-ref": "extra", "type": "library", "name": "extra", "version": "3.0.0", "purl": "pkg:generic/extra@3.0.0" }
-  ]
-}

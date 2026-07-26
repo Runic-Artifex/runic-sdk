@@ -1,1 +1,0 @@
-{ "name": "workspace-app", "version": "1.0.0", "dependencies": { "workspace-dependency": "6.0.0" } }

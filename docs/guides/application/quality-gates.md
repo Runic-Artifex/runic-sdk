@@ -9,6 +9,26 @@ activate a wave, publish, or deploy. The user makes those decisions explicitly.
 Only evidence with independent future value needs to be committed; raw agent
 transcripts, local journals, and successful intermediate logs remain transient.
 
+## Current native product acceptance
+
+The primary repository gate remains `eng/verify.ps1`. Inside the Nix/direnv
+environment it also runs `eng/verify-cswebui-native-e2e.ps1`, which requires
+the pinned `CSWEBUI_NATIVE_LIBRARY` and `WEBUI_BROWSER_PATH`.
+
+The native script full-trim Native-AOT-publishes two executables and drives both
+through persistent headless Chromium against a real CsWebUi server:
+
+- the binary MVVM host proves the production `CsWebUiFrameChannel` round trip;
+- SimpleTodo submits its compiled form through the shipped native HTMX bridge,
+  executes a C# command, and verifies the replaced compiled-fragment DOM.
+
+AdvancedTodo's compiled `.cwhtml`/native-HTMX source and managed self-test are
+implemented, but that application is not yet part of this Chromium/Native-AOT
+gate. WPF capability expansion, a framework-adapter application on the proven
+native path, and asset/VFS extraction remain future roadmap work. The older
+G0–G7 sections below preserve cumulative historical release evidence; their
+existence does not mark those re-centered product outcomes complete.
+
 ## G0: Repository and identity
 
 - A clean clone restores without private feeds or machine-local inputs.
@@ -49,9 +69,10 @@ does not claim the Native-AOT package-consumer requirements of G4.
 
 - Packed consumers publish and run actual executables with full trimming and Native AOT, zero owned trim/AOT warnings, deterministic cleanup, and exit code zero.
 - Repository smoke projects use `./eng/verify-native-aot.ps1`; RID-specific restore state is isolated under ignored `obj/aot.packages.lock.json` files so committed locks remain portable.
+- `./eng/verify-cswebui-native-e2e.ps1` Native-AOT-publishes both a binary-MVVM host and the compiled SimpleTodo HTMX application, drives them with the Nix-pinned Chromium, executes C# commands through their production native transports, and verifies the resulting DOM. `eng/verify.ps1` includes this gate when the direnv-provided native library and browser paths are available.
 - The core vertical matrix runs the same scenario through the framework-neutral web SDK, CommunityToolkit, and compiled HTMX.
 - Clean-clone, empty-cache, offline, package-consumer, browser, security, fuzz, stress, leak, compatibility, and performance suites pass.
-- Release evidence includes API/package approvals, AOT logs, deterministic hashes, benchmark deltas, SBOM, dependency notices, provenance, migration notes, and compatibility matrices.
+- Release evidence includes API/package approvals, AOT logs, deterministic hashes, benchmark deltas, SBOM, provenance, migration notes, and compatibility matrices.
 
 Run `./eng/verify-wave-d.ps1` for the cumulative G4 acceptance surface. The
 verifier executes the G3 regression gate, replays the repository from a clean
@@ -98,7 +119,7 @@ logs, provenance, and `SHA256SUMS` are written to the ignored
 ## G7: Neutral reference application and release rehearsal
 
 - A neutral reference application restores only from packed artifacts and contains no project references.
-- Hosting, MVVM reconnect, Flow navigation, Text Resources, Command Line, Dependency Notices, and WebUi scenarios execute concurrently and without semantic exclusions.
+- Hosting, MVVM reconnect, Flow navigation, Text Resources, Command Line, and WebUi scenarios execute concurrently and without semantic exclusions.
 - Clean-cache, offline, coherent-upgrade, managed cross-publish, current-host full-trim Native-AOT, deterministic-package, provenance, and checksum lanes pass.
 - Cross-publish evidence is not treated as native execution; the same verifier records native execution only on a matching host RID.
 - Technical readiness does not override ADR 0004. Publication remains blocked until an owner accepts a replacement license ADR and verifies NuGet/npm identity ownership.

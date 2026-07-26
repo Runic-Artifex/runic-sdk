@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -78,6 +79,27 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
             get,
             set,
             jsonTypeInfo,
+            includeValidation));
+        return this;
+    }
+
+    /// <summary>Adds a generated observable collection with a closed item representation.</summary>
+    /// <typeparam name="TItem">The collection item's closed declared type.</typeparam>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCollection<TItem>(
+        int memberId,
+        string generatedPropertyName,
+        Func<TViewModel, IReadOnlyList<TItem>> get,
+        JsonTypeInfo<TItem> itemJsonTypeInfo,
+        bool includeValidation = false)
+    {
+        ThrowIfBuilt();
+        ArgumentException.ThrowIfNullOrEmpty(generatedPropertyName);
+        ArgumentNullException.ThrowIfNull(get);
+        ArgumentNullException.ThrowIfNull(itemJsonTypeInfo);
+        Add(new CommunityToolkitMvvmBindingAdapter<TViewModel>.CollectionBinding<TViewModel, TItem>(
+            new CommunityToolkitBindingMetadata(memberId, MvvmBindingMemberKind.Collection, generatedPropertyName),
+            get,
+            itemJsonTypeInfo,
             includeValidation));
         return this;
     }
@@ -446,6 +468,113 @@ public sealed class CommunityToolkitMvvmBindingAdapter<TViewModel> : IMvvmBindin
             {
                 patches.Validation(Metadata.MemberId, ReadErrors(errors, Metadata.GeneratedMemberName));
             }
+        }
+    }
+
+    internal sealed class CollectionBinding<T, TItem> : ICommunityToolkitBinding<T>
+        where T : class
+    {
+        private readonly Func<T, IReadOnlyList<TItem>> _get;
+        private readonly JsonTypeInfo<TItem> _itemJsonTypeInfo;
+        private readonly bool _includeValidation;
+
+        public CollectionBinding(
+            CommunityToolkitBindingMetadata metadata,
+            Func<T, IReadOnlyList<TItem>> get,
+            JsonTypeInfo<TItem> itemJsonTypeInfo,
+            bool includeValidation)
+        {
+            Metadata = metadata;
+            _get = get;
+            _itemJsonTypeInfo = itemJsonTypeInfo;
+            _includeValidation = includeValidation;
+        }
+
+        public CommunityToolkitBindingMetadata Metadata { get; }
+
+        public bool Accepts(MvvmMutationKind kind) => false;
+
+        public void AddSnapshot(T viewModel, MvvmProjectionSnapshotBuilder snapshot)
+        {
+            snapshot.AddCollection(Metadata.MemberId, SerializeItems(_get(viewModel)));
+            AddValidation(viewModel, snapshot);
+        }
+
+        public ValueTask<MvvmBindingResult> DispatchAsync(
+            T viewModel,
+            JsonElement payload,
+            MvvmBindingVocabulary vocabulary,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(MvvmBindingResult.Rejected(UnknownMember));
+
+        public void Subscribe(T viewModel, List<Action> unsubscribe)
+        {
+            if (_get(viewModel) is INotifyCollectionChanged notifyingCollection)
+            {
+                NotifyCollectionChangedEventHandler handler = OnCollectionChanged;
+                notifyingCollection.CollectionChanged += handler;
+                unsubscribe.Add(() => notifyingCollection.CollectionChanged -= handler);
+            }
+        }
+
+        public void AddPostDispatchPatches(
+            T viewModel,
+            MvvmProjectionPatchBuilder patches,
+            bool includePropertyState)
+        {
+            if (!includePropertyState)
+            {
+                return;
+            }
+
+            patches.Collection(
+                Metadata.MemberId,
+                MvvmCollectionOperation.Reset,
+                index: 0,
+                SerializeItems(_get(viewModel)));
+            AddValidation(viewModel, patches);
+        }
+
+        private JsonElement[] SerializeItems(IReadOnlyList<TItem> items)
+        {
+            ArgumentNullException.ThrowIfNull(items);
+            if (items.Count > MvvmLimits.MaximumCollectionItems)
+            {
+                throw new InvalidOperationException(
+                    "The projected collection exceeds the protocol item ceiling.");
+            }
+
+            var serialized = new JsonElement[items.Count];
+            for (int index = 0; index < items.Count; index++)
+            {
+                serialized[index] = MvvmValue.From(items[index], _itemJsonTypeInfo);
+            }
+
+            return serialized;
+        }
+
+        private void AddValidation(T viewModel, MvvmProjectionSnapshotBuilder snapshot)
+        {
+            if (_includeValidation && viewModel is INotifyDataErrorInfo errors)
+            {
+                snapshot.AddValidation(Metadata.MemberId, ReadErrors(errors, Metadata.GeneratedMemberName));
+            }
+        }
+
+        private void AddValidation(T viewModel, MvvmProjectionPatchBuilder patches)
+        {
+            if (_includeValidation && viewModel is INotifyDataErrorInfo errors)
+            {
+                patches.Validation(Metadata.MemberId, ReadErrors(errors, Metadata.GeneratedMemberName));
+            }
+        }
+
+        private static void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            // Collection notifications are synchronous and owned by the adapter. The current
+            // protocol transaction emits an authoritative Reset after a successful command.
+            // A future host-push surface can translate these events into granular unsolicited
+            // patches without changing the binding declaration.
         }
     }
 
