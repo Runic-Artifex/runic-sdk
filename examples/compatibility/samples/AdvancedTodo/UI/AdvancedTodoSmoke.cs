@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using WebUIToolkit.MVVM;
 using WebUIToolkit.MVVM.Html.Htmx;
 using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
+using WebUIToolkit.Samples.AdvancedTodo.Application;
 using WebUIToolkit.Samples.AdvancedTodo.Domain;
 
 namespace WebUIToolkit.Samples.AdvancedTodo.UI;
@@ -23,12 +24,15 @@ internal static class AdvancedTodoSmoke
         "webuitoolkit.assets.json",
     ];
 
-    internal static async Task<int> RunAsync(AdvancedTodoApplicationRoot root)
+    internal static async Task<int> RunAsync(
+        AdvancedTodoApplication root,
+        TodoService service)
     {
         ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(service);
         CsWebUiHtmxApplication application = root.HtmxApplication;
         HtmxOpenedView view = application.OpenedView;
-        TodoViewModel model = root.Model;
+        TodoViewModel model = root.ViewModel;
         AdvancedTodoAppView.HtmxRoutes routes =
             AdvancedTodoAppView.CreateHtmxRoutes(view);
 
@@ -127,7 +131,7 @@ internal static class AdvancedTodoSmoke
             revision,
             []);
 
-        IReadOnlyList<TodoItem> persisted = await root.Service
+        IReadOnlyList<TodoItem> persisted = await service
             .GetAsync(CancellationToken.None)
             .ConfigureAwait(false);
         await root.PreparedAssets.Provider

@@ -53,14 +53,17 @@ else
             "todos.json");
 }
 
-await using var root = new AdvancedTodoApplicationRoot(
-    new TodoService(new JsonTodoRepository(dataPath)));
+var service = new TodoService(new JsonTodoRepository(dataPath));
+await using AdvancedTodoApplication root =
+    await AdvancedTodoApplicationRoot.CreateAsync(
+        service,
+        staticWebRoot,
+        frontend);
 try
 {
-    await root.PrepareAsync(staticWebRoot, frontend);
     if (selfTest)
     {
-        return await AdvancedTodoSmoke.RunAsync(root);
+        return await AdvancedTodoSmoke.RunAsync(root, service);
     }
 
     if (browserSmokeTest)
@@ -69,15 +72,13 @@ try
     }
 
     frontend.UseNativeWindow(
-        root.PreparedAssets,
         root,
         new BrowserHostOptions("advanced-todo"),
         new BrowserWindowOptions(
             "main",
             "Advanced ToDo · WebUIToolkit",
             width: 1180,
-            height: 820),
-        root.ConfigureWindow);
+            height: 820));
 
     return await builder.RunAsync();
 }

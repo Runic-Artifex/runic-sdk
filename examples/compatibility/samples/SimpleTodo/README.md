@@ -99,11 +99,11 @@ all task titles and validation text.
 ## Initial document delivery
 
 Action routes are random and exist only after the HTMX view opens, so a checked
-in static page cannot safely contain them. `TodoApplicationRoot.PrepareAsync`
-opens the view, asks the generated view to project its bounded route context,
-and combines the rendered document with the pinned static assets in a private
-per-run directory. The normal manifest validator verifies that finished root
-before CsWebUi starts.
+in static page cannot safely contain them. The shared
+`CreateApplicationAsync(...)` owner opens the view, asks the generated view to
+project its bounded route context, and combines the rendered document with the
+pinned static assets in a private per-run directory. The normal manifest
+validator verifies that finished root before CsWebUi starts.
 
 This provides a local static bootstrap document without introducing an HTTP
 framework, a catch-all file handler, or another browser callback. The temporary
@@ -116,11 +116,11 @@ root is deleted during application teardown.
    configuration, action URLs and revisions are generated, and build-time-only
    `data-wut-*` declarations generate closed registration metadata and are
    stripped from the HTML.
-3. Read `TodoApplicationRoot.cs` for domain validation, the one-call generated
-   adapter activation, high-level native application builder, generated
-   document, and smoke test.
-4. Finish in `Program.cs`, where `WebUiModeRunner` receives the prepared
-   manifest root and owns window/session startup and shutdown.
+3. Read `TodoApplicationRoot.cs` for the small domain-specific composition
+   factory: model creation, generated adapter creation, render-model
+   projection, document model, and genuine domain validation.
+4. Finish in `Program.cs`, where the shared aggregate application is registered
+   as the native window and owns endpoint, assets, session, and shutdown.
 
 The tasks intentionally remain in memory. Persistence, editing, filtering,
 navigation, and background workflows belong in the Advanced Todo sample.

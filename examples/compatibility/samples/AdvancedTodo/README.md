@@ -120,3 +120,6 @@ Compiled .cwhtml declarations
 Start with `Program.cs`, then read `UI/AdvancedTodoApplicationRoot.cs`,
 `UI/AdvancedTodoRenderModel.cs`, and the two files under `Views/`. The domain,
 service, repository, and Flow files remain independent of CsWebUi and HTMX.
+The application-root file is now only a domain composition factory; the shared
+aggregate owner supplies endpoint, generated assets, native-window/root-session
+lifetime, and deterministic teardown.

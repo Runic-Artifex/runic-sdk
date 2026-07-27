@@ -13,7 +13,7 @@ internal static class AdvancedTodoBrowserSmoke
 {
     private const string TaskTitle = "Verify the advanced native roundtrip";
 
-    internal static async Task<int> RunAsync(AdvancedTodoApplicationRoot root)
+    internal static async Task<int> RunAsync(AdvancedTodoApplication root)
     {
         ArgumentNullException.ThrowIfNull(root);
         string? chromium = Environment.GetEnvironmentVariable("WEBUI_BROWSER_PATH");

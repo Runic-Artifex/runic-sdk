@@ -30,8 +30,8 @@ CwhtmlHtmxAppBuilder frontend = builder.CwhtmlHtmx
         maximumResponseBytes: 256 * 1024,
         maximumFields: 8,
         maximumFieldBytes: 1024));
-await using var root = new TodoApplicationRoot();
-await root.PrepareAsync(staticWebRoot, frontend);
+await using TodoApplication root =
+    await TodoApplicationRoot.CreateAsync(staticWebRoot, frontend);
 if (args.Contains("--smoke-test", StringComparer.Ordinal))
 {
     return await TodoSmoke.RunAsync(root);
@@ -43,10 +43,8 @@ if (args.Contains("--browser-smoke-test", StringComparer.Ordinal))
 }
 
 frontend.UseNativeWindow(
-    root.PreparedAssets,
     root,
     new BrowserHostOptions("simple-todo"),
-    new BrowserWindowOptions("main", "Simple Todo", 760, 720),
-    root.ConfigureWindow);
+    new BrowserWindowOptions("main", "Simple Todo", 760, 720));
 
 return await builder.RunAsync();

@@ -22,12 +22,12 @@ internal static class TodoSmoke
         "webuitoolkit.assets.json",
     ];
 
-    internal static async Task<int> RunAsync(TodoApplicationRoot root)
+    internal static async Task<int> RunAsync(TodoApplication root)
     {
         ArgumentNullException.ThrowIfNull(root);
         CsWebUiHtmxApplication application = root.HtmxApplication;
         HtmxOpenedView view = application.OpenedView;
-        TodoViewModel model = root.Model;
+        TodoViewModel model = root.ViewModel;
         TodoAppView.HtmxRoutes routes = TodoAppView.CreateHtmxRoutes(view);
 
         CaptureTransport invalid = await SendAsync(

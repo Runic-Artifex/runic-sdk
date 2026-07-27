@@ -354,7 +354,9 @@
       "webuitoolkit.mvvm.html.htmx.cswebui.app": {
         "type": "Project",
         "dependencies": {
+          "WebUIToolkit.Hosting.Build": "[1.0.0, )",
           "WebUIToolkit.Hosting.CsWebUi.App": "[1.0.0-beta.1, )",
+          "WebUIToolkit.Hosting.WebUi": "[1.0.0, )",
           "WebUIToolkit.MVVM.Html.Htmx.CsWebUi": "[1.0.0-beta.1, )"
         }
       },
