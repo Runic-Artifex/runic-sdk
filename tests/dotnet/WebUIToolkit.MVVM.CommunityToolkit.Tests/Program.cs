@@ -1,6 +1,6 @@
 using System;
-using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text.Json;
@@ -31,6 +31,7 @@ internal static partial class Program
             await RunAsync("communitytoolkit.readonly-host-push.v1", ReadOnlyPropertyAndHostPushAsync);
             await RunAsync("communitytoolkit.generated-member.title.v1", ExistingTitleProofShapeAsync);
             await RunAsync("communitytoolkit.generated-member.submit-command.v1", ExistingCommandProofShapeAsync);
+            await RunAsync("communitytoolkit.typed-member-references.v1", TypedMemberReferencesAsync);
             await RunAsync("g4-core-vertical.amount-submit.v1", CoreVerticalScenarioAsync);
             await RunCommunityToolkitG3EvidenceAsync();
             Console.WriteLine($"PASS: {_passed} CommunityToolkit conformance fixtures");
@@ -199,6 +200,34 @@ internal static partial class Program
         await using CommunityToolkitMvvmBindingAdapter<FixtureViewModel> adapter = CreateAdapter(viewModel);
         MvvmBindingResult result = await adapter.DispatchAsync(CommandMutation(2, Json("null")), CancellationToken.None);
         True(result.Succeeded);
+        Equal(1, viewModel.SubmissionCount);
+    }
+
+    private static async Task TypedMemberReferencesAsync()
+    {
+        var viewModel = new FixtureViewModel { CanSubmit = true };
+        MvvmPropertyReference property = MvvmPropertyReference.Create(nameof(FixtureViewModel.Name));
+        MvvmCommandReference command = MvvmCommandReference.Create(nameof(FixtureViewModel.SubmitCommand));
+        await using CommunityToolkitMvvmBindingAdapter<FixtureViewModel> adapter =
+            new CommunityToolkitMvvmAdapterBuilder<FixtureViewModel>(viewModel)
+                .BindProperty(
+                    property,
+                    static model => model.Name,
+                    static (model, value) => model.Name = value,
+                    FixtureJsonContext.Default.String)
+                .BindCommand(command, static model => model.SubmitCommand)
+                .Build();
+
+        MvvmBindingResult propertyResult = await adapter.DispatchAsync(
+            PropertyMutation(property.MemberId, Json("\"typed\"")),
+            CancellationToken.None);
+        True(propertyResult.Succeeded);
+        Equal("typed", viewModel.Name!);
+
+        MvvmBindingResult commandResult = await adapter.DispatchAsync(
+            CommandMutation(command.MemberId, Json("null")),
+            CancellationToken.None);
+        True(commandResult.Succeeded);
         Equal(1, viewModel.SubmissionCount);
     }
 

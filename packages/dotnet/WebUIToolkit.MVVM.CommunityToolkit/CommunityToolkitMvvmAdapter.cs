@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Specialized;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
@@ -59,6 +59,21 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
     }
 
+    /// <summary>Adds a compiler-generated observable property reference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindProperty<TValue>(
+        MvvmPropertyReference property,
+        Func<TViewModel, TValue> get,
+        Action<TViewModel, TValue> set,
+        JsonTypeInfo<TValue> jsonTypeInfo,
+        bool includeValidation = false) =>
+        BindProperty(
+            property.MemberId,
+            property.GeneratedMemberName,
+            get,
+            set,
+            jsonTypeInfo,
+            includeValidation);
+
     /// <summary>Adds a generated observable property with a closed JSON representation.</summary>
     /// <typeparam name="TValue">The property's closed declared type.</typeparam>
     public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindProperty<TValue>(
@@ -104,6 +119,32 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
         return this;
     }
 
+    /// <summary>Adds a compiler-generated read-only property reference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindReadOnlyProperty<TValue>(
+        MvvmPropertyReference property,
+        Func<TViewModel, TValue> get,
+        JsonTypeInfo<TValue> jsonTypeInfo,
+        bool includeValidation = false) =>
+        BindReadOnlyProperty(
+            property.MemberId,
+            property.GeneratedMemberName,
+            get,
+            jsonTypeInfo,
+            includeValidation);
+
+    /// <summary>Adds a compiler-generated collection reference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCollection<TItem>(
+        MvvmCollectionReference collection,
+        Func<TViewModel, IReadOnlyList<TItem>> get,
+        JsonTypeInfo<TItem> itemJsonTypeInfo,
+        bool includeValidation = false) =>
+        BindCollection(
+            collection.MemberId,
+            collection.GeneratedMemberName,
+            get,
+            itemJsonTypeInfo,
+            includeValidation);
+
     /// <summary>Adds a generated observable collection with a closed item representation.</summary>
     /// <typeparam name="TItem">The collection item's closed declared type.</typeparam>
     public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCollection<TItem>(
@@ -142,6 +183,12 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
         return this;
     }
 
+    /// <summary>Adds a compiler-generated parameterless relay-command reference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCommand(
+        MvvmCommandReference command,
+        Func<TViewModel, IRelayCommand> get) =>
+        BindCommand(command.MemberId, command.GeneratedMemberName, get);
+
     /// <summary>Adds a generated relay command with a closed typed parameter.</summary>
     /// <typeparam name="TParameter">The command's declared parameter type.</typeparam>
     public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCommand<TParameter>(
@@ -162,6 +209,17 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
         return this;
     }
 
+    /// <summary>Adds a compiler-generated typed relay-command reference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCommand<TParameter>(
+        MvvmCommandReference command,
+        Func<TViewModel, IRelayCommand> get,
+        JsonTypeInfo<TParameter> parameterJsonTypeInfo) =>
+        BindCommand(
+            command.MemberId,
+            command.GeneratedMemberName,
+            get,
+            parameterJsonTypeInfo);
+
     /// <summary>Adds a parameterless generated asynchronous relay command.</summary>
     public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindAsyncCommand(
         int memberId,
@@ -178,6 +236,12 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
             null));
         return this;
     }
+
+    /// <summary>Adds a compiler-generated parameterless asynchronous-command reference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindAsyncCommand(
+        MvvmCommandReference command,
+        Func<TViewModel, IAsyncRelayCommand> get) =>
+        BindAsyncCommand(command.MemberId, command.GeneratedMemberName, get);
 
     /// <summary>Adds a generated asynchronous relay command with a closed typed parameter.</summary>
     /// <typeparam name="TParameter">The command's declared parameter type.</typeparam>
@@ -198,6 +262,17 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
             parameterJsonTypeInfo));
         return this;
     }
+
+    /// <summary>Adds a compiler-generated typed asynchronous-command reference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindAsyncCommand<TParameter>(
+        MvvmCommandReference command,
+        Func<TViewModel, IAsyncRelayCommand> get,
+        JsonTypeInfo<TParameter> parameterJsonTypeInfo) =>
+        BindAsyncCommand(
+            command.MemberId,
+            command.GeneratedMemberName,
+            get,
+            parameterJsonTypeInfo);
 
     /// <summary>Builds the immutable adapter and subscribes to the declared CommunityToolkit event surface.</summary>
     public CommunityToolkitMvvmBindingAdapter<TViewModel> Build()

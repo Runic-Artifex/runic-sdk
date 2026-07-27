@@ -13,14 +13,22 @@ property, collection, and validation patches, command state, cancellation throug
 `IAsyncRelayCommand.Cancel()`, and exactly-once event unsubscription.
 
 ```csharp
+MvvmPropertyReference title = TodoView.HtmxFields.Title;
+MvvmCommandReference save = TodoView.HtmxCommands.SaveCommand;
+
 IMvvmBindingAdapter adapter = new CommunityToolkitMvvmAdapterBuilder<MyViewModel>(viewModel)
-    .BindProperty(1, nameof(MyViewModel.Title), static vm => vm.Title,
+    .BindProperty(title, static vm => vm.Title,
         static (vm, value) => vm.Title = value, MyJsonContext.Default.String)
-    .BindCollection(2, nameof(MyViewModel.Items), static vm => vm.Items,
+    .BindCollection(MvvmCollectionReference.Create(nameof(MyViewModel.Items)),
+        static vm => vm.Items,
         MyJsonContext.Default.Item)
-    .BindCommand(3, static vm => vm.SaveCommand)
+    .BindCommand(save, static vm => vm.SaveCommand)
     .Build();
 ```
+
+Typed references derive deterministic, kind-separated protocol identifiers
+from compile-time-checked generated member names. The integer-and-name
+overloads remain available for generated contracts and compatibility code.
 
 `BindCollection` accepts an `IReadOnlyList<T>` projection, includes it in
 authoritative snapshots, owns an `INotifyCollectionChanged` subscription when

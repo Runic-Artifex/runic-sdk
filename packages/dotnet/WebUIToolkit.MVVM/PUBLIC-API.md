@@ -56,6 +56,10 @@ publication blocked.
 - `MvvmBindingMember`, `MvvmBindingVocabulary`, and `MvvmBindingMemberKind` define
   a closed generated property/collection/command vocabulary with one principal
   kind per positive numeric member ID.
+- `MvvmPropertyReference`, `MvvmCollectionReference`, and
+  `MvvmCommandReference` derive frozen, deterministic, kind-separated member
+  IDs from compile-time-checked generated names. Generated views and adapters
+  share these values so consumer code does not repeat protocol integers.
 - `IMvvmBindingVocabularyProvider` exposes the complete vocabulary used for
   session-level projection validation. Official builder adapters implement it.
 - `MvvmBindingAdapterBuilder` binds explicit snapshot, property, command, and

@@ -47,6 +47,7 @@ internal static class Program
             Run(nameof(ProjectionSnapshotIsCanonicalAndDetached), ProjectionSnapshotIsCanonicalAndDetached);
             Run(nameof(ProjectionPatchTransactionIsOrderedAndDetached), ProjectionPatchTransactionIsOrderedAndDetached);
             Run(nameof(MvvmValuesAreDetachedAndStrict), MvvmValuesAreDetachedAndStrict);
+            Run(nameof(GeneratedBindingReferencesAreStable), GeneratedBindingReferencesAreStable);
             await RunAsync(nameof(BindingVocabularyIsClosedAndDeterministic), BindingVocabularyIsClosedAndDeterministic);
             await RunAsync(nameof(BindingAdapterLifecycleIsDeterministic), BindingAdapterLifecycleIsDeterministic);
             await RunAsync(nameof(ProviderSnapshotViolationPoisonsWithoutRevision), ProviderSnapshotViolationPoisonsWithoutRevision);
@@ -109,6 +110,23 @@ internal static class Program
             _ = new MvvmCollectionPatch(1, MvvmCollectionOperation.Insert, 10_000, []));
         Throws<ArgumentOutOfRangeException>(() =>
             _ = new MvvmCollectionMovePatch(1, 0, 10_000, 1));
+    }
+
+    private static void GeneratedBindingReferencesAreStable()
+    {
+        MvvmPropertyReference property = MvvmPropertyReference.Create("NewTitle");
+        MvvmCollectionReference collection = MvvmCollectionReference.Create("Items");
+        MvvmCommandReference command = MvvmCommandReference.Create("AddCommand");
+
+        Equal(1_521_409_795, property.MemberId);
+        Equal(404_215_890, collection.MemberId);
+        Equal(1_234_597_803, command.MemberId);
+        Equal("NewTitle", property.GeneratedMemberName);
+        Equal("Items", collection.GeneratedMemberName);
+        Equal("AddCommand", command.GeneratedMemberName);
+        Equal(property, MvvmPropertyReference.Create("NewTitle"));
+        Throws<ArgumentException>(() => MvvmCommandReference.Create(""));
+        Throws<ArgumentException>(() => MvvmCommandReference.Create(" "));
     }
 
     private static async Task RevisionAndSnapshotSemantics()

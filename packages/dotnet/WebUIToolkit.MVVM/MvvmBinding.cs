@@ -15,6 +15,102 @@ public enum MvvmBindingMemberKind
     Command,
 }
 
+/// <summary>A compiler-generated reference to one projected property.</summary>
+public readonly record struct MvvmPropertyReference
+{
+    private MvvmPropertyReference(int memberId, string generatedMemberName)
+    {
+        MemberId = memberId;
+        GeneratedMemberName = generatedMemberName;
+    }
+
+    /// <summary>Gets the stable protocol member identifier.</summary>
+    public int MemberId { get; }
+
+    /// <summary>Gets the compile-time-checked generated property name.</summary>
+    public string GeneratedMemberName { get; }
+
+    /// <summary>Creates a deterministic property reference from a compile-time-checked name.</summary>
+    public static MvvmPropertyReference Create(string generatedMemberName)
+    {
+        string name = MvvmBindingReferenceId.ValidateName(generatedMemberName);
+        return new(MvvmBindingReferenceId.Create(MvvmBindingMemberKind.Property, name), name);
+    }
+}
+
+/// <summary>A compiler-generated reference to one projected collection.</summary>
+public readonly record struct MvvmCollectionReference
+{
+    private MvvmCollectionReference(int memberId, string generatedMemberName)
+    {
+        MemberId = memberId;
+        GeneratedMemberName = generatedMemberName;
+    }
+
+    /// <summary>Gets the stable protocol member identifier.</summary>
+    public int MemberId { get; }
+
+    /// <summary>Gets the compile-time-checked generated collection name.</summary>
+    public string GeneratedMemberName { get; }
+
+    /// <summary>Creates a deterministic collection reference from a compile-time-checked name.</summary>
+    public static MvvmCollectionReference Create(string generatedMemberName)
+    {
+        string name = MvvmBindingReferenceId.ValidateName(generatedMemberName);
+        return new(MvvmBindingReferenceId.Create(MvvmBindingMemberKind.Collection, name), name);
+    }
+}
+
+/// <summary>A compiler-generated reference to one projected command.</summary>
+public readonly record struct MvvmCommandReference
+{
+    private MvvmCommandReference(int memberId, string generatedMemberName)
+    {
+        MemberId = memberId;
+        GeneratedMemberName = generatedMemberName;
+    }
+
+    /// <summary>Gets the stable protocol member identifier.</summary>
+    public int MemberId { get; }
+
+    /// <summary>Gets the compile-time-checked generated command name.</summary>
+    public string GeneratedMemberName { get; }
+
+    /// <summary>Creates a deterministic command reference from a compile-time-checked name.</summary>
+    public static MvvmCommandReference Create(string generatedMemberName)
+    {
+        string name = MvvmBindingReferenceId.ValidateName(generatedMemberName);
+        return new(MvvmBindingReferenceId.Create(MvvmBindingMemberKind.Command, name), name);
+    }
+}
+
+internal static class MvvmBindingReferenceId
+{
+    private const uint OffsetBasis = 2_166_136_261;
+    private const uint Prime = 16_777_619;
+
+    internal static int Create(MvvmBindingMemberKind kind, string generatedMemberName)
+    {
+        uint hash = Add(OffsetBasis, (byte)kind);
+        foreach (char character in generatedMemberName)
+        {
+            hash = Add(hash, (byte)character);
+            hash = Add(hash, (byte)(character >> 8));
+        }
+
+        int memberId = (int)(hash & int.MaxValue);
+        return memberId == 0 ? 1 : memberId;
+    }
+
+    internal static string ValidateName(string generatedMemberName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(generatedMemberName);
+        return generatedMemberName;
+    }
+
+    private static uint Add(uint hash, byte value) => unchecked((hash ^ value) * Prime);
+}
+
 /// <summary>Describes one generated mutation binding.</summary>
 public sealed record MvvmBindingMember
 {
@@ -162,12 +258,24 @@ public sealed class MvvmBindingAdapterBuilder
         string? diagnosticName = null) =>
         Bind(new MvvmBindingMember(memberId, MvvmBindingMemberKind.Property, diagnosticName), handler);
 
+    /// <summary>Registers one compiler-generated property setter.</summary>
+    public MvvmBindingAdapterBuilder BindProperty(
+        MvvmPropertyReference property,
+        MvvmBindingHandler handler) =>
+        BindProperty(property.MemberId, handler, property.GeneratedMemberName);
+
     /// <summary>Registers one generated command.</summary>
     public MvvmBindingAdapterBuilder BindCommand(
         int memberId,
         MvvmBindingHandler handler,
         string? diagnosticName = null) =>
         Bind(new MvvmBindingMember(memberId, MvvmBindingMemberKind.Command, diagnosticName), handler);
+
+    /// <summary>Registers one compiler-generated command.</summary>
+    public MvvmBindingAdapterBuilder BindCommand(
+        MvvmCommandReference command,
+        MvvmBindingHandler handler) =>
+        BindCommand(command.MemberId, handler, command.GeneratedMemberName);
 
     /// <summary>Registers asynchronous cleanup for subscriptions owned by the adapter.</summary>
     public MvvmBindingAdapterBuilder OnDispose(Func<ValueTask> dispose)
