@@ -5,7 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
@@ -35,9 +34,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
 
     private readonly TodoService service;
     private readonly AdvancedTodoRouteTable routes = new();
-    private HtmxEndpointRuntime? runtime;
-    private HtmxOpenedView? opened;
-    private CsWebUiHtmxTransport? transport;
+    private CsWebUiHtmxApplication? htmxApplication;
     private AdvancedTodoRuntimeAssets? assets;
     private TodoViewModel? model;
     private CommunityToolkitMvvmBindingAdapter<TodoViewModel>? adapter;
@@ -60,93 +57,41 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (runtime is not null)
+        if (htmxApplication is not null)
         {
             throw new InvalidOperationException("AdvancedTodo is already prepared.");
         }
 
         model = new TodoViewModel(service);
         await model.InitializeAsync(cancellationToken).ConfigureAwait(false);
-        var registry = new MvvmSessionRegistry();
-        registry.Map(Contract, _ =>
-        {
-            TodoViewModel activeModel = model ??
-                throw new InvalidOperationException("The advanced model is unavailable.");
-            CommunityToolkitMvvmBindingAdapter<TodoViewModel> createdAdapter =
-                new CommunityToolkitMvvmAdapterBuilder<TodoViewModel>(activeModel)
-                    .BindProperty(
-                        1,
-                        nameof(TodoViewModel.NewTitle),
-                        static state => state.NewTitle,
-                        static (state, value) => state.NewTitle = value,
-                        AdvancedTodoJsonContext.Default.String,
-                        includeValidation: true)
-                    .BindProperty(
-                        2,
-                        nameof(TodoViewModel.NewNotes),
-                        static state => state.NewNotes,
-                        static (state, value) => state.NewNotes = value,
-                        AdvancedTodoJsonContext.Default.String)
-                    .BindProperty(
-                        3,
-                        nameof(TodoViewModel.NewPriority),
-                        static state => state.NewPriority,
-                        static (state, value) => state.NewPriority = value,
-                        AdvancedTodoJsonContext.Default.String)
-                    .BindProperty(
-                        4,
-                        nameof(TodoViewModel.Query),
-                        static state => state.Query,
-                        static (state, value) => state.Query = value,
-                        AdvancedTodoJsonContext.Default.String)
-                    .BindProperty(
-                        5,
-                        nameof(TodoViewModel.Filter),
-                        static state => state.Filter,
-                        static (state, value) => state.Filter = value,
-                        AdvancedTodoJsonContext.Default.String)
-                    .BindProperty(
-                        6,
-                        nameof(TodoViewModel.SelectedId),
-                        static state => state.SelectedId,
-                        static (state, value) => state.SelectedId = value,
-                        AdvancedTodoJsonContext.Default.String)
-                    .BindAsyncCommand(101, nameof(TodoViewModel.AddCommand), static state => state.AddCommand)
-                    .BindCommand(102, nameof(TodoViewModel.ApplyFilterCommand), static state => state.ApplyFilterCommand)
-                    .BindAsyncCommand(103, nameof(TodoViewModel.ToggleCommand), static state => state.ToggleCommand)
-                    .BindAsyncCommand(104, nameof(TodoViewModel.DeleteCommand), static state => state.DeleteCommand)
-                    .BindAsyncCommand(105, nameof(TodoViewModel.ClearCompletedCommand), static state => state.ClearCompletedCommand)
-                    .BindCommand(106, nameof(TodoViewModel.ImportCommand), static state => state.ImportCommand)
-                    .BindAsyncCommand(107, nameof(TodoViewModel.StartWizardCommand), static state => state.StartWizardCommand)
-                    .BindAsyncCommand(108, nameof(TodoViewModel.WizardNextCommand), static state => state.WizardNextCommand)
-                    .BindAsyncCommand(109, nameof(TodoViewModel.WizardBackCommand), static state => state.WizardBackCommand)
-                    .BindAsyncCommand(110, nameof(TodoViewModel.WizardFinishCommand), static state => state.WizardFinishCommand)
-                    .BindAsyncCommand(111, nameof(TodoViewModel.WizardCancelCommand), static state => state.WizardCancelCommand)
-                    .BindAsyncCommand(112, nameof(TodoViewModel.CancelImportCommand), static state => state.CancelImportCommand)
-                    .BindCommand(113, nameof(TodoViewModel.RefreshImportCommand), static state => state.RefreshImportCommand)
-                    .Build();
-            adapter = createdAdapter;
-            return ValueTask.FromResult(new MvvmSessionActivation(createdAdapter));
-        });
-
-        HtmxEndpointRuntime createdRuntime = new(
-            registry.Build(),
-            new HtmxEndpointOptions(
-                AllowedOrigin,
-                idleTimeout: TimeSpan.FromMinutes(15),
-                maximumBodyBytes: 16 * 1024,
-                maximumFields: 8,
-                maximumFieldBytes: 4 * 1024,
-                maximumResponseBytes: 512 * 1024));
-        runtime = createdRuntime;
         try
         {
-            opened = await createdRuntime
-                .OpenAsync(CreateDescriptor(), cancellationToken: cancellationToken)
+            CsWebUiHtmxApplication createdApplication =
+                await new CsWebUiHtmxApplicationBuilder(Contract, AllowedOrigin)
+                    .Activate(_ => ActivateModel())
+                    .UseView(CreateDescriptor())
+                    .ConfigureEndpoint(new HtmxEndpointOptions(
+                        AllowedOrigin,
+                        idleTimeout: TimeSpan.FromMinutes(15),
+                        maximumBodyBytes: 16 * 1024,
+                        maximumFields: 8,
+                        maximumFieldBytes: 4 * 1024,
+                        maximumResponseBytes: 512 * 1024))
+                    .ConfigureTransport(new CsWebUiHtmxTransportOptions(
+                        AllowedOrigin,
+                        maximumRequestBytes: 16 * 1024,
+                        maximumResponseBytes: 512 * 1024,
+                        maximumFields: 8,
+                        maximumFieldBytes: 4 * 1024))
+                    .OpenAsync(cancellationToken)
                 .ConfigureAwait(false);
-            routes.Initialize(opened);
+            htmxApplication = createdApplication;
+            routes.Initialize(createdApplication.OpenedView);
             AdvancedTodoAppView application = new(
-                AdvancedTodoRenderModel.Initial(model, routes, opened.Revision));
+                AdvancedTodoRenderModel.Initial(
+                    model,
+                    routes,
+                    createdApplication.OpenedView.Revision));
             initialDocument = "<!doctype html>" + Render(
                 new AdvancedTodoDocumentView(new AdvancedTodoDocumentModel(application)));
             assets = await AdvancedTodoRuntimeAssets
@@ -169,18 +114,11 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             throw new InvalidOperationException("AdvancedTodo supports exactly one native window.");
         }
 
+        CsWebUiHtmxApplication application = htmxApplication ??
+            throw new InvalidOperationException("Prepare AdvancedTodo first.");
         try
         {
-            transport = new CsWebUiHtmxTransport(
-                window,
-                runtime ?? throw new InvalidOperationException("Prepare AdvancedTodo first."),
-                opened ?? throw new InvalidOperationException("Prepare AdvancedTodo first."),
-                new CsWebUiHtmxTransportOptions(
-                    AllowedOrigin,
-                    maximumRequestBytes: 16 * 1024,
-                    maximumResponseBytes: 512 * 1024,
-                    maximumFields: 8,
-                    maximumFieldBytes: 4 * 1024));
+            application.AttachWindow(window);
         }
         catch
         {
@@ -193,7 +131,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
     {
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (transport is null)
+        if (Volatile.Read(ref windowConfigured) == 0)
         {
             throw new InvalidOperationException(
                 "CsWebUi must attach the native HTMX transport before the root opens.");
@@ -209,23 +147,22 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
 
     internal async Task<int> RunSelfTestAsync()
     {
-        HtmxEndpointRuntime selectedRuntime = runtime ??
+        CsWebUiHtmxApplication selectedApplication = htmxApplication ??
             throw new InvalidOperationException("Prepare AdvancedTodo before self-testing.");
-        HtmxOpenedView selectedView = opened ??
-            throw new InvalidOperationException("Prepare AdvancedTodo before self-testing.");
+        HtmxOpenedView selectedView = selectedApplication.OpenedView;
         TodoViewModel activeModel = model ??
             throw new InvalidOperationException("Prepare AdvancedTodo before self-testing.");
 
         long revision = selectedView.Revision;
         CaptureTransport invalid = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.Add,
             revision,
             [new("title", "x"), new("notes", ""), new("priority", "Normal")]);
         revision = Revision(invalid);
         CaptureTransport added = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.Add,
             revision,
@@ -238,38 +175,38 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         TodoItem? addedItem = activeModel.VisibleItems.FirstOrDefault(
             static item => item.Title == "Persisted through an opaque route");
         CaptureTransport filtered = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.Filter,
             revision,
             [new("query", "opaque"), new("filter", "Active")]);
         revision = Revision(filtered);
         CaptureTransport toggled = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.Toggle,
             revision,
             [new("selectedId", addedItem?.Id.ToString("D") ?? "")]);
         revision = Revision(toggled);
         CaptureTransport clearFilter = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.Filter,
             revision,
             [new("query", ""), new("filter", "All")]);
         revision = Revision(clearFilter);
         CaptureTransport wizardStart = await PostAsync(
-            selectedRuntime, selectedView, routes.WizardStart, revision, []);
+            selectedApplication, selectedView, routes.WizardStart, revision, []);
         revision = Revision(wizardStart);
         CaptureTransport wizardInvalid = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.WizardNext,
             revision,
             [new("title", ""), new("notes", ""), new("priority", "Normal")]);
         revision = Revision(wizardInvalid);
         CaptureTransport wizardReview = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.WizardNext,
             revision,
@@ -280,10 +217,10 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             ]);
         revision = Revision(wizardReview);
         CaptureTransport wizardBack = await PostAsync(
-            selectedRuntime, selectedView, routes.WizardBack, revision, []);
+            selectedApplication, selectedView, routes.WizardBack, revision, []);
         revision = Revision(wizardBack);
         CaptureTransport wizardReviewAgain = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.WizardNext,
             revision,
@@ -294,11 +231,11 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             ]);
         revision = Revision(wizardReviewAgain);
         CaptureTransport wizardFinish = await PostAsync(
-            selectedRuntime, selectedView, routes.WizardFinish, revision, []);
+            selectedApplication, selectedView, routes.WizardFinish, revision, []);
         revision = Revision(wizardFinish);
 
         CaptureTransport importStarted = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.Import,
             revision,
@@ -306,7 +243,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         revision = Revision(importStarted);
         await Task.Delay(150).ConfigureAwait(false);
         CaptureTransport cancelled = await PostAsync(
-            selectedRuntime,
+            selectedApplication,
             selectedView,
             routes.CancelImport,
             revision,
@@ -349,7 +286,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             cancelled.Body);
         bool routesAreOpaque = AdvancedTodoRouteTable.Handles.All(handle =>
             renderedRouteSurface.Contains(
-                opened.ActionRoutes[new HtmxActionHandle(handle)],
+                selectedView.ActionRoutes[new HtmxActionHandle(handle)],
                 StringComparison.Ordinal));
         bool localAssetsPresent = RequiredAssetPaths.All(
             path => File.Exists(Path.Combine(WebRoot, path)));
@@ -405,80 +342,150 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             return;
         }
 
-        CsWebUiHtmxTransport? ownedTransport = Interlocked.Exchange(ref transport, null);
-        HtmxOpenedView? ownedView = Interlocked.Exchange(ref opened, null);
-        HtmxEndpointRuntime? ownedRuntime = Interlocked.Exchange(ref runtime, null);
+        CsWebUiHtmxApplication? ownedApplication =
+            Interlocked.Exchange(ref htmxApplication, null);
         AdvancedTodoRuntimeAssets? ownedAssets = Interlocked.Exchange(ref assets, null);
         try
         {
-            if (ownedTransport is not null)
+            if (ownedApplication is not null)
             {
-                await ownedTransport.DisposeAsync().ConfigureAwait(false);
+                await ownedApplication.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally
         {
             try
             {
-                if (ownedView is not null)
+                if (ownedAssets is not null)
                 {
-                    await ownedView.DisposeAsync().ConfigureAwait(false);
+                    await ownedAssets.DisposeAsync().ConfigureAwait(false);
                 }
             }
             finally
             {
-                try
+                TodoViewModel? ownedModel = Interlocked.Exchange(ref model, null);
+                if (ownedModel is not null)
                 {
-                    if (ownedRuntime is not null)
-                    {
-                        await ownedRuntime.DisposeAsync().ConfigureAwait(false);
-                    }
-                }
-                finally
-                {
-                    if (ownedAssets is not null)
-                    {
-                        await ownedAssets.DisposeAsync().ConfigureAwait(false);
-                    }
-
-                    TodoViewModel? ownedModel = Interlocked.Exchange(ref model, null);
-                    if (ownedModel is not null)
-                    {
-                        await ownedModel.DisposeAsync().ConfigureAwait(false);
-                    }
+                    await ownedModel.DisposeAsync().ConfigureAwait(false);
                 }
             }
         }
+    }
+
+    private ValueTask<MvvmSessionActivation> ActivateModel()
+    {
+        TodoViewModel activeModel = model ??
+            throw new InvalidOperationException("The advanced model is unavailable.");
+        CommunityToolkitMvvmBindingAdapter<TodoViewModel> createdAdapter =
+            new CommunityToolkitMvvmAdapterBuilder<TodoViewModel>(activeModel)
+                .BindProperty(
+                    1,
+                    nameof(TodoViewModel.NewTitle),
+                    static state => state.NewTitle,
+                    static (state, value) => state.NewTitle = value,
+                    AdvancedTodoJsonContext.Default.String,
+                    includeValidation: true)
+                .BindProperty(
+                    2,
+                    nameof(TodoViewModel.NewNotes),
+                    static state => state.NewNotes,
+                    static (state, value) => state.NewNotes = value,
+                    AdvancedTodoJsonContext.Default.String)
+                .BindProperty(
+                    3,
+                    nameof(TodoViewModel.NewPriority),
+                    static state => state.NewPriority,
+                    static (state, value) => state.NewPriority = value,
+                    AdvancedTodoJsonContext.Default.String)
+                .BindProperty(
+                    4,
+                    nameof(TodoViewModel.Query),
+                    static state => state.Query,
+                    static (state, value) => state.Query = value,
+                    AdvancedTodoJsonContext.Default.String)
+                .BindProperty(
+                    5,
+                    nameof(TodoViewModel.Filter),
+                    static state => state.Filter,
+                    static (state, value) => state.Filter = value,
+                    AdvancedTodoJsonContext.Default.String)
+                .BindProperty(
+                    6,
+                    nameof(TodoViewModel.SelectedId),
+                    static state => state.SelectedId,
+                    static (state, value) => state.SelectedId = value,
+                    AdvancedTodoJsonContext.Default.String)
+                .BindAsyncCommand(
+                    101,
+                    nameof(TodoViewModel.AddCommand),
+                    static state => state.AddCommand)
+                .BindCommand(
+                    102,
+                    nameof(TodoViewModel.ApplyFilterCommand),
+                    static state => state.ApplyFilterCommand)
+                .BindAsyncCommand(
+                    103,
+                    nameof(TodoViewModel.ToggleCommand),
+                    static state => state.ToggleCommand)
+                .BindAsyncCommand(
+                    104,
+                    nameof(TodoViewModel.DeleteCommand),
+                    static state => state.DeleteCommand)
+                .BindAsyncCommand(
+                    105,
+                    nameof(TodoViewModel.ClearCompletedCommand),
+                    static state => state.ClearCompletedCommand)
+                .BindCommand(
+                    106,
+                    nameof(TodoViewModel.ImportCommand),
+                    static state => state.ImportCommand)
+                .BindAsyncCommand(
+                    107,
+                    nameof(TodoViewModel.StartWizardCommand),
+                    static state => state.StartWizardCommand)
+                .BindAsyncCommand(
+                    108,
+                    nameof(TodoViewModel.WizardNextCommand),
+                    static state => state.WizardNextCommand)
+                .BindAsyncCommand(
+                    109,
+                    nameof(TodoViewModel.WizardBackCommand),
+                    static state => state.WizardBackCommand)
+                .BindAsyncCommand(
+                    110,
+                    nameof(TodoViewModel.WizardFinishCommand),
+                    static state => state.WizardFinishCommand)
+                .BindAsyncCommand(
+                    111,
+                    nameof(TodoViewModel.WizardCancelCommand),
+                    static state => state.WizardCancelCommand)
+                .BindAsyncCommand(
+                    112,
+                    nameof(TodoViewModel.CancelImportCommand),
+                    static state => state.CancelImportCommand)
+                .BindCommand(
+                    113,
+                    nameof(TodoViewModel.RefreshImportCommand),
+                    static state => state.RefreshImportCommand)
+                .Build();
+        adapter = createdAdapter;
+        return ValueTask.FromResult(new MvvmSessionActivation(createdAdapter));
     }
 
     private HtmxViewDescriptor CreateDescriptor()
     {
         TodoViewModel ActiveModel() =>
             model ?? throw new InvalidOperationException("The advanced model is not active.");
-        HtmxFragmentDescriptor application = HtmxCompiledTemplateProjection.CreateFragment(
-            new HtmxFragmentHandle("advanced_fragment"),
-            context => new AdvancedTodoAppView(
-                AdvancedTodoRenderModel.Response(ActiveModel(), routes, context)));
-        var complete = new HtmxRenderPlan(application, events: ["todo:changed"]);
-        var initial = new HtmxRenderPlan(application);
-        var addInvalid = new HtmxRenderPlan(
-            application,
-            focus: new HtmxDomHandle("new-title"));
-        var wizardInvalid = new HtmxRenderPlan(
-            application,
-            focus: new HtmxDomHandle("wizard-title"));
 
-        HtmxFieldDescriptor StringField(string handle, int memberId) =>
-            new(
-                new HtmxFieldHandle(handle),
-                memberId,
-                static (value, _) => HtmxConversionResult.Success(
-                    JsonSerializer.SerializeToElement(value, AdvancedTodoJsonContext.Default.String)));
-        HtmxFieldDescriptor title = new(
-            new HtmxFieldHandle("title"),
-            1,
-            static (value, _) => HtmxConversionResult.Success(
-                JsonSerializer.SerializeToElement(value, AdvancedTodoJsonContext.Default.String)),
+        return AdvancedTodoAppView
+            .ConfigureHtmx(
+                Contract,
+                context => new AdvancedTodoAppView(
+                    AdvancedTodoRenderModel.Response(ActiveModel(), routes, context)))
+            .ConfigureStringField(
+                "add",
+                "title",
+                AdvancedTodoJsonContext.Default.String,
             [
                 static (value, _) =>
                 {
@@ -488,14 +495,15 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
                         : ["Give the task a title between 2 and 120 characters."];
                     return ValueTask.FromResult(messages);
                 },
-            ]);
-        HtmxFieldDescriptor wizardTitle = StringField("title", 1);
-        HtmxFieldDescriptor notes = StringField("notes", 2);
-        HtmxFieldDescriptor priority = new(
-            new HtmxFieldHandle("priority"),
-            3,
-            static (value, _) => HtmxConversionResult.Success(
-                JsonSerializer.SerializeToElement(value, AdvancedTodoJsonContext.Default.String)),
+            ])
+            .ConfigureStringField(
+                "wizard-next",
+                "title",
+                AdvancedTodoJsonContext.Default.String)
+            .ConfigureStringField("notes", AdvancedTodoJsonContext.Default.String)
+            .ConfigureStringField(
+                "priority",
+                AdvancedTodoJsonContext.Default.String,
             [
                 static (value, _) =>
                 {
@@ -506,13 +514,11 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
                     return ValueTask.FromResult<IReadOnlyList<string>>(
                         valid ? [] : ["Choose Low, Normal, or High priority."]);
                 },
-            ]);
-        HtmxFieldDescriptor query = StringField("query", 4);
-        HtmxFieldDescriptor filter = new(
-            new HtmxFieldHandle("filter"),
-            5,
-            static (value, _) => HtmxConversionResult.Success(
-                JsonSerializer.SerializeToElement(value, AdvancedTodoJsonContext.Default.String)),
+            ])
+            .ConfigureStringField("query", AdvancedTodoJsonContext.Default.String)
+            .ConfigureStringField(
+                "filter",
+                AdvancedTodoJsonContext.Default.String,
             [
                 static (value, _) =>
                 {
@@ -523,12 +529,10 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
                     return ValueTask.FromResult<IReadOnlyList<string>>(
                         valid ? [] : ["Choose All, Active, or Completed."]);
                 },
-            ]);
-        HtmxFieldDescriptor selected = new(
-            new HtmxFieldHandle("selectedId"),
-            6,
-            static (value, _) => HtmxConversionResult.Success(
-                JsonSerializer.SerializeToElement(value, AdvancedTodoJsonContext.Default.String)),
+            ])
+            .ConfigureStringField(
+                "selectedId",
+                AdvancedTodoJsonContext.Default.String,
             [
                 (value, _) =>
                 {
@@ -537,37 +541,8 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
                     return ValueTask.FromResult<IReadOnlyList<string>>(
                         exists ? [] : ["That task is no longer available."]);
                 },
-            ]);
-        static ValueTask<bool> Enabled(
-            IReadOnlyDictionary<HtmxFieldHandle, JsonElement> _,
-            CancellationToken __) => ValueTask.FromResult(true);
-
-        HtmxActionDescriptor Action(
-            string handle,
-            int command,
-            IReadOnlyList<HtmxFieldDescriptor> fields,
-            HtmxRenderPlan success,
-            HtmxRenderPlan invalid) =>
-            new(new HtmxActionHandle(handle), command, fields, Enabled, success, invalid, initial);
-        return new HtmxViewDescriptor(
-            new HtmxViewHandle("advanced-todo"),
-            Contract,
-            [
-                Action("add", 101, [title, notes, priority], complete, addInvalid),
-                Action("filter", 102, [query, filter], initial, initial),
-                Action("toggle", 103, [selected], complete, initial),
-                Action("delete", 104, [selected], complete, initial),
-                Action("clear-completed", 105, [], complete, initial),
-                Action("import", 106, [], complete, initial),
-                Action("wizard-start", 107, [], initial, initial),
-                Action("wizard-next", 108, [wizardTitle, notes, priority], initial, wizardInvalid),
-                Action("wizard-back", 109, [], initial, initial),
-                Action("wizard-finish", 110, [], complete, initial),
-                Action("wizard-cancel", 111, [], initial, initial),
-                Action("cancel-import", 112, [], initial, initial),
-                Action("import-status", 113, [], initial, initial),
-            ],
-            initial);
+            ])
+            .Build();
     }
 
     private static HtmxEndpointRequest Request(
@@ -597,20 +572,20 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             targetRequestId);
 
     private static Task<CaptureTransport> PostAsync(
-        HtmxEndpointRuntime runtime,
+        CsWebUiHtmxApplication application,
         HtmxOpenedView view,
         string route,
         long revision,
         IReadOnlyList<HtmxFormValue> form,
         Guid? requestId = null) =>
-        SendAsync(runtime, Request(view, "POST", route, revision, form, requestId));
+        SendAsync(application, Request(view, "POST", route, revision, form, requestId));
 
     private static async Task<CaptureTransport> SendAsync(
-        HtmxEndpointRuntime runtime,
+        CsWebUiHtmxApplication application,
         HtmxEndpointRequest request)
     {
         var capture = new CaptureTransport();
-        await runtime.HandleAsync(request, capture).ConfigureAwait(false);
+        await application.HandleAsync(request, capture).ConfigureAwait(false);
         return capture;
     }
 

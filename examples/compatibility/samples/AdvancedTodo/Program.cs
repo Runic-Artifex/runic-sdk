@@ -17,14 +17,16 @@ if (!Directory.Exists(staticWebRoot))
         $"The sample's local assets were not copied to '{staticWebRoot}'.");
 }
 
-string? selfTestDirectory = null;
+bool selfTest = args.Contains("--self-test", StringComparer.Ordinal);
+bool browserSmokeTest = args.Contains("--browser-smoke-test", StringComparer.Ordinal);
+string? testDirectory = null;
 string dataPath;
-if (args.Contains("--self-test", StringComparer.Ordinal))
+if (selfTest || browserSmokeTest)
 {
-    selfTestDirectory = Path.Combine(
+    testDirectory = Path.Combine(
         Path.GetTempPath(),
-        "webuitoolkit-advanced-todo-self-test-" + Guid.NewGuid().ToString("N"));
-    dataPath = Path.Combine(selfTestDirectory, "todos.json");
+        "webuitoolkit-advanced-todo-test-" + Guid.NewGuid().ToString("N"));
+    dataPath = Path.Combine(testDirectory, "todos.json");
 }
 else
 {
@@ -41,9 +43,14 @@ await using var root = new AdvancedTodoApplicationRoot(
 try
 {
     await root.PrepareAsync(staticWebRoot);
-    if (selfTestDirectory is not null)
+    if (selfTest)
     {
         return await root.RunSelfTestAsync();
+    }
+
+    if (browserSmokeTest)
+    {
+        return await AdvancedTodoBrowserSmoke.RunAsync(root);
     }
 
     FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
@@ -83,8 +90,8 @@ try
 }
 finally
 {
-    if (selfTestDirectory is not null && Directory.Exists(selfTestDirectory))
+    if (testDirectory is not null && Directory.Exists(testDirectory))
     {
-        Directory.Delete(selfTestDirectory, recursive: true);
+        Directory.Delete(testDirectory, recursive: true);
     }
 }

@@ -2,7 +2,7 @@
 
 **Difficulty:** Advanced
 **Experience:** Native desktop UI generated from compiled `.cwhtml`
-**Transport:** One `CsWebUiHtmxTransport` binding with opaque per-session routes
+**Transport:** Generated registration over one native binding with opaque routes
 
 This sample grows a task list into a small desktop application while keeping
 state, validation, commands, workflow navigation, persistence, and HTML
@@ -12,6 +12,8 @@ the local development and minified production asset graph served by CsWebUi.
 ## What it demonstrates
 
 - Compiled `AdvancedTodoDocument.cwhtml` and `AdvancedTodoApp.cwhtml` views.
+- Compiler-generated action, field, command, focus, event, and render-plan
+  registration for all 13 application actions.
 - A private runtime web root containing the generated initial document.
 - One fixed native binding (`webuitoolkitHtmx`) instead of feature-specific
   `WebUiWindow.BindAsync` callbacks.
@@ -25,8 +27,10 @@ the local development and minified production asset graph served by CsWebUi.
 - A typed `WebUIToolkit.MVVM.Flow` Details → Review workflow with validation,
   retained Back navigation, Finish, and Cancel.
 - A bounded in-app diagnostic feed containing safe application outcomes.
-- Deterministic disposal of the native transport, opened view, endpoint runtime,
-  generated web root, workflow, import task, and repository.
+- A high-level `CsWebUiHtmxApplication` owning transport, view, endpoint,
+  session, and adapter lifetime.
+- Deterministic disposal of the generated web root, workflow, import task, and
+  repository around that application lifetime.
 
 There is no application-authored DOM renderer or `webui.call` integration.
 
@@ -71,18 +75,22 @@ Details/Review/Back/Finish, cancellable import, persistence, opaque route
 emission, local asset validation, the sole native binding contract, and removal
 of the private generated web root.
 
+The real-browser path uses isolated data and a private Chromium profile, then
+submits Quick Add through the production native bridge:
+
+```bash
+dotnet run --project samples/AdvancedTodo -- --browser-smoke-test
+```
+
 ## Architecture
 
 ```text
-Compiled .cwhtml document and fragments
-                 │ opaque hx-post routes
+Compiled .cwhtml declarations
+                 │ generated ConfigureHtmx
                  ▼
-       CsWebUiHtmxTransport
-          (one native binding)
-                 │
-                 ▼
-       HtmxEndpointRuntime
-                 │ closed fields + commands
+       CsWebUiHtmxApplication
+        (routes + owned lifetime)
+                 │ one native binding
                  ▼
  CommunityToolkit MVVM adapter
                  │

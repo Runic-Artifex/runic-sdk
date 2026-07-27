@@ -119,6 +119,10 @@ try {
         'samples/SimpleTodo/SimpleTodo.csproj' `
         'WebUIToolkit.Samples.SimpleTodo' `
         @('--browser-smoke-test')
+    Invoke-NativeBrowserGate `
+        'samples/AdvancedTodo/AdvancedTodo.csproj' `
+        'WebUIToolkit.Samples.AdvancedTodo' `
+        @('--browser-smoke-test')
 }
 finally {
     Pop-Location
