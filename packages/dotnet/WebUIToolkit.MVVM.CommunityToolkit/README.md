@@ -29,6 +29,10 @@ IMvvmBindingAdapter adapter = new CommunityToolkitMvvmAdapterBuilder<MyViewModel
 Typed references derive deterministic, kind-separated protocol identifiers
 from compile-time-checked generated member names. The integer-and-name
 overloads remain available for generated contracts and compatibility code.
+Generated cwhtml adapter factories may pass a source-generated
+`JsonSerializerContext` directly. The builder resolves the exact closed
+`JsonTypeInfo<T>` and fails during adapter creation when the context does not
+contain a declared projected type; no reflection fallback is used.
 
 `BindCollection` accepts an `IReadOnlyList<T>` projection, includes it in
 authoritative snapshots, owns an `INotifyCollectionChanged` subscription when

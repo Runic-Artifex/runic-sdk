@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,6 +75,20 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
             jsonTypeInfo,
             includeValidation);
 
+    /// <summary>Adds a compiler-generated observable property using a source-generated JSON context.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindProperty<TValue>(
+        MvvmPropertyReference property,
+        Func<TViewModel, TValue> get,
+        Action<TViewModel, TValue> set,
+        JsonSerializerContext jsonContext,
+        bool includeValidation = false) =>
+        BindProperty(
+            property,
+            get,
+            set,
+            RequireJsonTypeInfo<TValue>(jsonContext),
+            includeValidation);
+
     /// <summary>Adds a generated observable property with a closed JSON representation.</summary>
     /// <typeparam name="TValue">The property's closed declared type.</typeparam>
     public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindProperty<TValue>(
@@ -132,6 +147,18 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
             jsonTypeInfo,
             includeValidation);
 
+    /// <summary>Adds a compiler-generated read-only property using a source-generated JSON context.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindReadOnlyProperty<TValue>(
+        MvvmPropertyReference property,
+        Func<TViewModel, TValue> get,
+        JsonSerializerContext jsonContext,
+        bool includeValidation = false) =>
+        BindReadOnlyProperty(
+            property,
+            get,
+            RequireJsonTypeInfo<TValue>(jsonContext),
+            includeValidation);
+
     /// <summary>Adds a compiler-generated collection reference.</summary>
     public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCollection<TItem>(
         MvvmCollectionReference collection,
@@ -143,6 +170,18 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
             collection.GeneratedMemberName,
             get,
             itemJsonTypeInfo,
+            includeValidation);
+
+    /// <summary>Adds a compiler-generated collection using a source-generated JSON context.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCollection<TItem>(
+        MvvmCollectionReference collection,
+        Func<TViewModel, IReadOnlyList<TItem>> get,
+        JsonSerializerContext jsonContext,
+        bool includeValidation = false) =>
+        BindCollection(
+            collection,
+            get,
+            RequireJsonTypeInfo<TItem>(jsonContext),
             includeValidation);
 
     /// <summary>Adds a generated observable collection with a closed item representation.</summary>
@@ -188,6 +227,12 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
         MvvmCommandReference command,
         Func<TViewModel, IRelayCommand> get) =>
         BindCommand(command.MemberId, command.GeneratedMemberName, get);
+
+    /// <summary>Adds a compiler-generated parameterless asynchronous command through command inference.</summary>
+    public CommunityToolkitMvvmAdapterBuilder<TViewModel> BindCommand(
+        MvvmCommandReference command,
+        Func<TViewModel, IAsyncRelayCommand> get) =>
+        BindAsyncCommand(command.MemberId, command.GeneratedMemberName, get);
 
     /// <summary>Adds a generated relay command with a closed typed parameter.</summary>
     /// <typeparam name="TParameter">The command's declared parameter type.</typeparam>
@@ -298,6 +343,15 @@ public sealed class CommunityToolkitMvvmAdapterBuilder<TViewModel>
         {
             throw new InvalidOperationException("The binding adapter builder has already been built.");
         }
+    }
+
+    private static JsonTypeInfo<TValue> RequireJsonTypeInfo<TValue>(
+        JsonSerializerContext jsonContext)
+    {
+        ArgumentNullException.ThrowIfNull(jsonContext);
+        return jsonContext.GetTypeInfo(typeof(TValue)) as JsonTypeInfo<TValue> ??
+            throw new InvalidOperationException(
+                $"The source-generated JSON context does not contain '{typeof(TValue)}'.");
     }
 }
 

@@ -214,7 +214,7 @@ internal static partial class Program
                     property,
                     static model => model.Name,
                     static (model, value) => model.Name = value,
-                    FixtureJsonContext.Default.String)
+                    FixtureJsonContext.Default)
                 .BindCommand(command, static model => model.SubmitCommand)
                 .Build();
 
@@ -229,6 +229,14 @@ internal static partial class Program
             CancellationToken.None);
         True(commandResult.Succeeded);
         Equal(1, viewModel.SubmissionCount);
+
+        Throws<InvalidOperationException>(() =>
+            new CommunityToolkitMvvmAdapterBuilder<FixtureViewModel>(viewModel)
+                .BindProperty(
+                    MvvmPropertyReference.Create("MissingGuid"),
+                    static _ => Guid.Empty,
+                    static (_, _) => { },
+                    FixtureJsonContext.Default));
     }
 
     private static CommunityToolkitMvvmBindingAdapter<FixtureViewModel> CreateAdapter(FixtureViewModel viewModel) =>
