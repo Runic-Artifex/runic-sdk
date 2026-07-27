@@ -15,6 +15,11 @@ the local development and minified production asset graph served by CsWebUi.
 - Compiler-generated action, field, command, focus, event, and render-plan
   registration for all 13 application actions, with typed
   `HtmxFields`/`HtmxCommands` handles instead of consumer-authored protocol IDs.
+- One generated CommunityToolkit adapter factory owning all six writable
+  properties, thirteen sync/async commands, validation projection, and
+  source-generated JSON metadata.
+- Generated typed action handles and an immutable thirteen-route projection;
+  no application-authored route table remains.
 - A private runtime web root containing the generated initial document.
 - One fixed native binding (`webuitoolkitHtmx`) instead of feature-specific
   `WebUiWindow.BindAsync` callbacks.

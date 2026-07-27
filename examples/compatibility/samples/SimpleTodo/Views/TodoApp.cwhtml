@@ -1,6 +1,10 @@
 @namespace WebUIToolkit.Samples.SimpleTodo
 @view TodoAppView(WebUIToolkit.Samples.SimpleTodo.TodoRenderModel model)
-main #todo-app .card .shadow-lg data-webui-view="simple-todo" data-webui-revision=(model.Revision) {
+main #todo-app .card .shadow-lg
+    data-webui-view="simple-todo"
+    data-webui-revision=(model.Revision)
+    data-wut-adapter="community-toolkit"
+    data-wut-collection=(nameof(TodoViewModel.Items)) {
     header {
         p .eyebrow {
             i .fa-solid .fa-laptop-code aria-hidden="true" {}

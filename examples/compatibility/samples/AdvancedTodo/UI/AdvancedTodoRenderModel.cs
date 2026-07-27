@@ -31,7 +31,7 @@ public sealed class AdvancedTodoRenderModel
         string? validationMessage,
         string? wizardStep,
         bool isImporting,
-        AdvancedTodoRouteTable routes,
+        AdvancedTodoAppView.HtmxRoutes routes,
         long revision)
     {
         Items = items;
@@ -110,13 +110,13 @@ public sealed class AdvancedTodoRenderModel
 
     internal static AdvancedTodoRenderModel Initial(
         TodoViewModel model,
-        AdvancedTodoRouteTable routes,
+        AdvancedTodoAppView.HtmxRoutes routes,
         long revision) =>
         Create(model, routes, revision, [], null);
 
     internal static AdvancedTodoRenderModel Response(
         TodoViewModel model,
-        AdvancedTodoRouteTable routes,
+        AdvancedTodoAppView.HtmxRoutes routes,
         HtmxRenderContext context) =>
         Create(
             model,
@@ -127,7 +127,7 @@ public sealed class AdvancedTodoRenderModel
 
     private static AdvancedTodoRenderModel Create(
         TodoViewModel model,
-        AdvancedTodoRouteTable routes,
+        AdvancedTodoAppView.HtmxRoutes routes,
         long revision,
         IReadOnlyList<HtmxValidationError> validationErrors,
         IReadOnlyDictionary<HtmxFieldHandle, string>? submittedValues)
@@ -234,60 +234,4 @@ public sealed class AdvancedTodoDocumentModel
     public IHtmlRenderable Application { get; }
 
     public FrontendDevelopmentAssets Assets { get; }
-}
-
-internal sealed class AdvancedTodoRouteTable
-{
-    private readonly Dictionary<string, string> routes = new(StringComparer.Ordinal);
-
-    internal string Add => Get("add");
-    internal string Filter => Get("filter");
-    internal string Toggle => Get("toggle");
-    internal string Delete => Get("delete");
-    internal string ClearCompleted => Get("clear-completed");
-    internal string Import => Get("import");
-    internal string CancelImport => Get("cancel-import");
-    internal string ImportStatus => Get("import-status");
-    internal string WizardStart => Get("wizard-start");
-    internal string WizardNext => Get("wizard-next");
-    internal string WizardBack => Get("wizard-back");
-    internal string WizardFinish => Get("wizard-finish");
-    internal string WizardCancel => Get("wizard-cancel");
-
-    internal void Initialize(HtmxOpenedView opened)
-    {
-        ArgumentNullException.ThrowIfNull(opened);
-        if (routes.Count != 0)
-        {
-            throw new InvalidOperationException("Advanced ToDo routes can be initialized only once.");
-        }
-
-        foreach (string handle in Handles)
-        {
-            routes.Add(handle, opened.ActionRoutes[new HtmxActionHandle(handle)]);
-        }
-    }
-
-    internal static IReadOnlyList<string> Handles { get; } =
-    [
-        "add",
-        "filter",
-        "toggle",
-        "delete",
-        "clear-completed",
-        "import",
-        "cancel-import",
-        "import-status",
-        "wizard-start",
-        "wizard-next",
-        "wizard-back",
-        "wizard-finish",
-        "wizard-cancel",
-    ];
-
-    private string Get(string handle) =>
-        routes.TryGetValue(handle, out string? route)
-            ? route
-            : throw new InvalidOperationException(
-                "The endpoint must assign closed routes before the advanced view renders.");
 }

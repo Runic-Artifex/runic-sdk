@@ -1,6 +1,9 @@
 @namespace WebUIToolkit.Samples.AdvancedTodo.UI
 @view AdvancedTodoAppView(WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel model)
-div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revision) {
+div .app-shell
+    data-webui-view="advanced-todo"
+    data-webui-revision=(model.Revision)
+    data-wut-adapter="community-toolkit" {
     header .hero {
         div .eyebrow {
             i .fa-solid .fa-diagram-project aria-hidden="true" {}
@@ -79,6 +82,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                         input #new-title .form-control
                             name="title"
                             data-wut-member=(nameof(TodoViewModel.NewTitle))
+                            data-wut-include-validation="true"
                             data-wut-validation-message="Give the task a title between 2 and 120 characters."
                             value=(model.Title)
                             minlength="2"

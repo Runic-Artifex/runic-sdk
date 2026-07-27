@@ -25,8 +25,6 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 {
     internal const string AllowedOrigin = "https://simple-todo.native";
     internal static readonly MvvmContract Contract = new("samples.simple-todo");
-    private static readonly MvvmCollectionReference ItemsBinding =
-        MvvmCollectionReference.Create(nameof(TodoViewModel.Items));
     private static readonly string[] RequiredAssetPaths =
     [
         "cwhtml.css",
@@ -34,7 +32,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         "webuitoolkit.assets.json",
     ];
 
-    private readonly TodoRouteTable routes = new();
+    private TodoAppView.HtmxRoutes? routes;
     private CsWebUiHtmxApplication? htmxApplication;
     private TodoRuntimeAssets? assets;
     private TodoViewModel? model;
@@ -72,31 +70,9 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                     {
                         model = new TodoViewModel();
                         CommunityToolkitMvvmBindingAdapter<TodoViewModel> adapter =
-                            new CommunityToolkitMvvmAdapterBuilder<TodoViewModel>(model)
-                                .BindProperty(
-                                    TodoAppView.HtmxFields.NewTitle,
-                                    static state => state.NewTitle,
-                                    static (state, value) => state.NewTitle = value,
-                                    TodoJsonContext.Default.String)
-                                .BindProperty(
-                                    TodoAppView.HtmxFields.SelectedId,
-                                    static state => state.SelectedId,
-                                    static (state, value) => state.SelectedId = value,
-                                    TodoJsonContext.Default.String)
-                                .BindCommand(
-                                    TodoAppView.HtmxCommands.AddCommand,
-                                    static state => state.AddCommand)
-                                .BindCommand(
-                                    TodoAppView.HtmxCommands.ToggleCommand,
-                                    static state => state.ToggleCommand)
-                                .BindCommand(
-                                    TodoAppView.HtmxCommands.RemoveCommand,
-                                    static state => state.RemoveCommand)
-                                .BindCollection(
-                                    ItemsBinding,
-                                    static state => state.Items,
-                                    TodoJsonContext.Default.TodoItem)
-                                .Build();
+                            TodoAppView.CreateHtmxAdapter(
+                                model,
+                                TodoJsonContext.Default);
                         this.adapter = adapter;
                         return ValueTask.FromResult(new MvvmSessionActivation(adapter));
                     })
@@ -117,14 +93,16 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                     .OpenAsync(cancellationToken)
                 .ConfigureAwait(false);
             htmxApplication = createdApplication;
-            routes.Initialize(createdApplication.OpenedView);
+            TodoAppView.HtmxRoutes createdRoutes =
+                TodoAppView.CreateHtmxRoutes(createdApplication.OpenedView);
+            routes = createdRoutes;
 
             TodoViewModel activeModel = model ??
                 throw new InvalidOperationException("Opening the view did not activate its model.");
             var application = new TodoAppView(
                 TodoRenderModel.Initial(
                     activeModel,
-                    routes,
+                    createdRoutes,
                     createdApplication.OpenedView.Revision));
             initialDocument = "<!doctype html>" + Render(
                 new TodoDocumentView(new TodoDocumentModel(
@@ -192,19 +170,20 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         HtmxOpenedView selectedView = selectedApplication.OpenedView;
         TodoViewModel activeModel = model ??
             throw new InvalidOperationException("Prepare the todo application before smoke testing.");
+        TodoAppView.HtmxRoutes activeRoutes = ActiveRoutes();
 
         CaptureTransport invalid = await SendAsync(
             selectedApplication,
             Request(
                 selectedView,
-                routes.Add,
+                activeRoutes.Add,
                 selectedView.Revision,
                 [new HtmxFormValue("title", "x")]));
         CaptureTransport added = await SendAsync(
             selectedApplication,
             Request(
                 selectedView,
-                routes.Add,
+                activeRoutes.Add,
                 selectedView.Revision,
                 [new HtmxFormValue("title", "Run the compiled desktop sample")]));
         TodoItem? addedItem = activeModel.Items.FirstOrDefault(
@@ -214,14 +193,14 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             selectedApplication,
             Request(
                 selectedView,
-                routes.Toggle,
+                activeRoutes.Toggle,
                 addedRevision,
                 [new HtmxFormValue("selectedId", addedItem?.Id.ToString("D") ?? string.Empty)]));
         CaptureTransport removed = await SendAsync(
             selectedApplication,
             Request(
                 selectedView,
-                routes.Remove,
+                activeRoutes.Remove,
                 Revision(toggled),
                 [new HtmxFormValue("selectedId", addedItem?.Id.ToString("D") ?? string.Empty)]));
 
@@ -258,7 +237,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         bool localAssetsPresent = RequiredAssetPaths.All(
             relativePath => File.Exists(Path.Combine(WebRoot, relativePath)));
         bool collectionBindingPresent = adapter?.Metadata.Any(static metadata =>
-            metadata.MemberId == ItemsBinding.MemberId &&
+            metadata.MemberId == TodoAppView.HtmxCollections.Items.MemberId &&
             metadata.Kind == MvvmBindingMemberKind.Collection) == true;
         string generatedRoot = WebRoot;
         await DisposeAsync().ConfigureAwait(false);
@@ -267,9 +246,9 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             initialDocument?.StartsWith("<!doctype html><html", StringComparison.Ordinal) == true &&
             (initialDocument.Contains("cwhtml.js", StringComparison.Ordinal) ||
                 initialDocument.Contains("/@vite/client", StringComparison.Ordinal)) &&
-            initialDocument.Contains(routes.Add, StringComparison.Ordinal) &&
-            initialDocument.Contains(routes.Toggle, StringComparison.Ordinal) &&
-            initialDocument.Contains(routes.Remove, StringComparison.Ordinal) &&
+            initialDocument.Contains(activeRoutes.Add, StringComparison.Ordinal) &&
+            initialDocument.Contains(activeRoutes.Toggle, StringComparison.Ordinal) &&
+            initialDocument.Contains(activeRoutes.Remove, StringComparison.Ordinal) &&
             invalid.StatusCode == 200 &&
             invalid.Body.Contains("between 2 and 80 characters", StringComparison.Ordinal) &&
             added.StatusCode == 200 &&
@@ -337,7 +316,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             .ConfigureHtmx(
                 Contract,
                 context => new TodoAppView(
-                    TodoRenderModel.Response(ActiveModel(), routes, context)))
+                    TodoRenderModel.Response(ActiveModel(), this.ActiveRoutes(), context)))
             .ConfigureValidators(
                 "selectedId",
             [
@@ -354,6 +333,10 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             ])
             .Build();
     }
+
+    private TodoAppView.HtmxRoutes ActiveRoutes() =>
+        routes ?? throw new InvalidOperationException(
+            "The endpoint must assign closed routes before the todo view renders.");
 
     private static HtmxEndpointRequest Request(
         HtmxOpenedView view,

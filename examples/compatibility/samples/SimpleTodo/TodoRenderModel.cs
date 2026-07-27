@@ -69,14 +69,14 @@ public sealed class TodoRenderModel
     /// <summary>Creates initial render state after the endpoint has assigned closed routes.</summary>
     internal static TodoRenderModel Initial(
         TodoViewModel model,
-        TodoRouteTable routes,
+        TodoAppView.HtmxRoutes routes,
         long revision) =>
         Create(model, routes, revision, validationErrors: [], submittedValues: null);
 
     /// <summary>Creates response render state from the bounded endpoint context.</summary>
     internal static TodoRenderModel Response(
         TodoViewModel model,
-        TodoRouteTable routes,
+        TodoAppView.HtmxRoutes routes,
         HtmxRenderContext context) =>
         Create(
             model,
@@ -87,7 +87,7 @@ public sealed class TodoRenderModel
 
     private static TodoRenderModel Create(
         TodoViewModel model,
-        TodoRouteTable routes,
+        TodoAppView.HtmxRoutes routes,
         long revision,
         IReadOnlyList<HtmxValidationError> validationErrors,
         IReadOnlyDictionary<HtmxFieldHandle, string>? submittedValues)
@@ -168,31 +168,4 @@ public sealed class TodoDocumentModel
 
     /// <summary>Gets production or development-only Vite asset references.</summary>
     public FrontendDevelopmentAssets Assets { get; }
-}
-
-internal sealed class TodoRouteTable
-{
-    private string? add;
-    private string? toggle;
-    private string? remove;
-
-    internal string Add => add ?? throw NotInitialized();
-    internal string Toggle => toggle ?? throw NotInitialized();
-    internal string Remove => remove ?? throw NotInitialized();
-
-    internal void Initialize(HtmxOpenedView opened)
-    {
-        ArgumentNullException.ThrowIfNull(opened);
-        if (add is not null || toggle is not null || remove is not null)
-        {
-            throw new InvalidOperationException("Todo routes can be initialized only once.");
-        }
-
-        add = opened.ActionRoutes[new HtmxActionHandle("add")];
-        toggle = opened.ActionRoutes[new HtmxActionHandle("toggle")];
-        remove = opened.ActionRoutes[new HtmxActionHandle("remove")];
-    }
-
-    private static InvalidOperationException NotInitialized() =>
-        new("The endpoint must assign closed routes before the todo view renders.");
 }

@@ -19,6 +19,10 @@ It demonstrates:
   registration, with `nameof(...)` declarations shared through typed
   `HtmxFields`/`HtmxCommands` handles and closed per-view routes assigned by
   `HtmxEndpointRuntime`;
+- one generated CommunityToolkit adapter factory owning property, collection,
+  command, and source-generated JSON registration;
+- generated typed action handles and an immutable route projection instead of
+  an application-authored route table;
 - one bounded CsWebUi JSON binding shared by all HTMX requests;
 - npm-pinned HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome,
   bundled by Vite and served entirely from local assets; and
@@ -106,8 +110,9 @@ root is deleted during application teardown.
 2. Read `Views/TodoApp.cwhtml`; `data-hx-*` is rendered HTMX configuration,
    while build-time-only `data-wut-*` declarations generate closed registration
    metadata and are stripped from the HTML.
-3. Read `TodoApplicationRoot.cs` for the remaining field conversion/validation,
-   high-level native application builder, generated document, and smoke test.
+3. Read `TodoApplicationRoot.cs` for domain validation, the one-call generated
+   adapter activation, high-level native application builder, generated
+   document, and smoke test.
 4. Finish in `Program.cs`, where `WebUiModeRunner` receives the prepared
    manifest root and owns window/session startup and shutdown.
 
