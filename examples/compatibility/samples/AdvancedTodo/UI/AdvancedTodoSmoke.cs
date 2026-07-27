@@ -151,7 +151,7 @@ internal static class AdvancedTodoSmoke
             .All(content => forbidden.All(value =>
                 !content.Contains(value, StringComparison.Ordinal)));
         string renderedRouteSurface = string.Concat(
-            root.InitialDocument,
+            await File.ReadAllTextAsync(Path.Combine(root.WebRoot, "index.html")),
             added.Body,
             filtered.Body,
             wizardStart.Body,
@@ -169,7 +169,8 @@ internal static class AdvancedTodoSmoke
             path => File.Exists(Path.Combine(root.WebRoot, path)));
         bool commandBindingsPresent = root.Adapter.Metadata.Count(static metadata =>
             metadata.Kind == MvvmBindingMemberKind.Command) == 13;
-        string initialDocument = root.InitialDocument;
+        string initialDocument = await File.ReadAllTextAsync(
+            Path.Combine(root.WebRoot, "index.html"));
         string generatedRoot = root.WebRoot;
         await root.DisposeAsync().ConfigureAwait(false);
         bool generatedRootRemoved = !Directory.Exists(generatedRoot);

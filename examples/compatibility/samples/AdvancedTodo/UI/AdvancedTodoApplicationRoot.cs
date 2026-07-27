@@ -1,10 +1,6 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
@@ -25,11 +21,11 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
     internal const string AllowedOrigin = "https://advanced-todo.native";
     internal static readonly MvvmContract Contract = new("samples.advanced-todo");
     private readonly TodoService service;
-    private CsWebUiHtmxApplication? htmxApplication;
+    private CwhtmlHtmxOpenedApplication<AdvancedTodoAppView, AdvancedTodoRenderModel>?
+        htmxApplication;
     private CwhtmlHtmxPreparedAssets? assets;
     private TodoViewModel? model;
     private CommunityToolkitMvvmBindingAdapter<TodoViewModel>? adapter;
-    private string? initialDocument;
     private int windowConfigured;
     private int rootOpened;
     private int disposed;
@@ -46,7 +42,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
     internal string WebRoot => PreparedAssets.RootDirectory;
 
     internal CsWebUiHtmxApplication HtmxApplication =>
-        htmxApplication ??
+        htmxApplication?.Application ??
         throw new InvalidOperationException("Prepare AdvancedTodo before using it.");
 
     internal TodoViewModel Model =>
@@ -55,10 +51,6 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
 
     internal CommunityToolkitMvvmBindingAdapter<TodoViewModel> Adapter =>
         adapter ??
-        throw new InvalidOperationException("Prepare AdvancedTodo before using it.");
-
-    internal string InitialDocument =>
-        initialDocument ??
         throw new InvalidOperationException("Prepare AdvancedTodo before using it.");
 
     internal TodoService Service => service;
@@ -79,25 +71,38 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         await model.InitializeAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            CsWebUiHtmxApplication createdApplication =
+            CwhtmlHtmxOpenedApplication<AdvancedTodoAppView, AdvancedTodoRenderModel>
+                createdApplication =
                 await frontend
-                    .OpenAsync(
+                    .UseHtmxAsync(
+                        AdvancedTodoAppView.HtmxView,
                         Contract,
                         AllowedOrigin,
                         _ => ActivateModel(),
-                        CreateDescriptor(),
+                        context => AdvancedTodoRenderModel.Response(Model, context),
+                        view => view.ConfigureValidators(
+                            "selectedId",
+                        [
+                            (value, _) =>
+                            {
+                                bool exists = Guid.TryParse(value.GetString(), out Guid id) &&
+                                    Model.VisibleItems.Any(item => item.Id == id);
+                                return ValueTask.FromResult<IReadOnlyList<string>>(
+                                    exists ? [] : ["That task is no longer available."]);
+                            },
+                        ]),
                         cancellationToken)
                 .ConfigureAwait(false);
             htmxApplication = createdApplication;
-            AdvancedTodoAppView application = AdvancedTodoAppView.CreateHtmxView(
-                AdvancedTodoRenderModel.Initial(model),
-                createdApplication.OpenedView);
-            initialDocument = "<!doctype html>" + Render(
-                new AdvancedTodoDocumentView(new AdvancedTodoDocumentModel(
+            AdvancedTodoAppView application = createdApplication.CreateInitialView(
+                AdvancedTodoRenderModel.Initial(model));
+            frontend.UseCwhtml(
+                AdvancedTodoDocumentView.CwhtmlView,
+                new AdvancedTodoDocumentModel(
                     application,
-                    FrontendDevelopmentAssets.Resolve())));
+                    FrontendDevelopmentAssets.Resolve()));
             assets = await frontend
-                .PrepareAssetsAsync(staticWebRoot, initialDocument, cancellationToken)
+                .PrepareAssetsAsync(staticWebRoot, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -116,7 +121,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             throw new InvalidOperationException("AdvancedTodo supports exactly one native window.");
         }
 
-        CsWebUiHtmxApplication application = htmxApplication ??
+        CsWebUiHtmxApplication application = htmxApplication?.Application ??
             throw new InvalidOperationException("Prepare AdvancedTodo first.");
         try
         {
@@ -154,7 +159,8 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             return;
         }
 
-        CsWebUiHtmxApplication? ownedApplication =
+        CwhtmlHtmxOpenedApplication<AdvancedTodoAppView, AdvancedTodoRenderModel>?
+            ownedApplication =
             Interlocked.Exchange(ref htmxApplication, null);
         CwhtmlHtmxPreparedAssets? ownedAssets = Interlocked.Exchange(ref assets, null);
         try
@@ -194,38 +200,6 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
                 AdvancedTodoJsonContext.Default);
         adapter = createdAdapter;
         return ValueTask.FromResult(new MvvmSessionActivation(createdAdapter));
-    }
-
-    private HtmxViewDescriptor CreateDescriptor()
-    {
-        TodoViewModel ActiveModel() =>
-            model ?? throw new InvalidOperationException("The advanced model is not active.");
-
-        return AdvancedTodoAppView
-            .ConfigureHtmx(
-                Contract,
-                context => AdvancedTodoRenderModel.Response(ActiveModel(), context))
-            .ConfigureValidators(
-                "selectedId",
-            [
-                (value, _) =>
-                {
-                    bool exists = Guid.TryParse(value.GetString(), out Guid id) &&
-                        ActiveModel().VisibleItems.Any(item => item.Id == id);
-                    return ValueTask.FromResult<IReadOnlyList<string>>(
-                        exists ? [] : ["That task is no longer available."]);
-                },
-            ])
-            .Build();
-    }
-
-    private static string Render(AdvancedTodoDocumentView view)
-    {
-        var output = new ArrayBufferWriter<byte>();
-        var writer = new Utf8HtmlWriter(output);
-        view.Render(ref writer, new TemplateContext(CultureInfo.InvariantCulture));
-        writer.Complete();
-        return Encoding.UTF8.GetString(output.WrittenSpan);
     }
 
     private sealed class RootSession(AdvancedTodoApplicationRoot owner) : IRootSession

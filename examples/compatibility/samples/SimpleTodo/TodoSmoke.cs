@@ -96,7 +96,8 @@ internal static class TodoSmoke
         bool collectionBindingPresent = root.Adapter.Metadata.Any(static metadata =>
             metadata.MemberId == TodoAppView.HtmxCollections.Items.MemberId &&
             metadata.Kind == MvvmBindingMemberKind.Collection);
-        string initialDocument = root.InitialDocument;
+        string initialDocument = await File.ReadAllTextAsync(
+            Path.Combine(root.WebRoot, "index.html"));
         string generatedRoot = root.WebRoot;
         await root.DisposeAsync().ConfigureAwait(false);
         bool generatedRootRemoved = !Directory.Exists(generatedRoot);

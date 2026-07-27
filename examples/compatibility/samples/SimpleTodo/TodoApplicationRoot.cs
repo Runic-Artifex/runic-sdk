@@ -1,10 +1,6 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
@@ -24,11 +20,10 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 {
     internal const string AllowedOrigin = "https://simple-todo.native";
     internal static readonly MvvmContract Contract = new("samples.simple-todo");
-    private CsWebUiHtmxApplication? htmxApplication;
+    private CwhtmlHtmxOpenedApplication<TodoAppView, TodoRenderModel>? htmxApplication;
     private CwhtmlHtmxPreparedAssets? assets;
     private TodoViewModel? model;
     private CommunityToolkitMvvmBindingAdapter<TodoViewModel>? adapter;
-    private string? initialDocument;
     private int windowConfigured;
     private int rootOpened;
     private int disposed;
@@ -42,7 +37,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
     internal string WebRoot => PreparedAssets.RootDirectory;
 
     internal CsWebUiHtmxApplication HtmxApplication =>
-        htmxApplication ??
+        htmxApplication?.Application ??
         throw new InvalidOperationException("Prepare the todo application before using it.");
 
     internal TodoViewModel Model =>
@@ -51,10 +46,6 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 
     internal CommunityToolkitMvvmBindingAdapter<TodoViewModel> Adapter =>
         adapter ??
-        throw new InvalidOperationException("Prepare the todo application before using it.");
-
-    internal string InitialDocument =>
-        initialDocument ??
         throw new InvalidOperationException("Prepare the todo application before using it.");
 
     /// <summary>
@@ -75,9 +66,10 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 
         try
         {
-            CsWebUiHtmxApplication createdApplication =
+            CwhtmlHtmxOpenedApplication<TodoAppView, TodoRenderModel> createdApplication =
                 await frontend
-                    .OpenAsync(
+                    .UseHtmxAsync(
+                        TodoAppView.HtmxView,
                         Contract,
                         AllowedOrigin,
                         _ =>
@@ -90,21 +82,35 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                             this.adapter = adapter;
                             return ValueTask.FromResult(new MvvmSessionActivation(adapter));
                         },
-                        CreateDescriptor(),
+                        context => TodoRenderModel.Response(Model, context),
+                        view => view.ConfigureValidators(
+                            "selectedId",
+                        [
+                            (value, _) =>
+                            {
+                                string? selectedId = value.GetString();
+                                bool exists = Guid.TryParse(selectedId, out Guid id) &&
+                                    Model.Items.Any(item => item.Id == id);
+                                IReadOnlyList<string> messages = exists
+                                    ? []
+                                    : ["That task is no longer available."];
+                                return ValueTask.FromResult(messages);
+                            },
+                        ]),
                         cancellationToken)
                 .ConfigureAwait(false);
             htmxApplication = createdApplication;
             TodoViewModel activeModel = model ??
                 throw new InvalidOperationException("Opening the view did not activate its model.");
-            TodoAppView application = TodoAppView.CreateHtmxView(
-                TodoRenderModel.Initial(activeModel),
-                createdApplication.OpenedView);
-            initialDocument = "<!doctype html>" + Render(
-                new TodoDocumentView(new TodoDocumentModel(
+            TodoAppView application = createdApplication.CreateInitialView(
+                TodoRenderModel.Initial(activeModel));
+            frontend.UseCwhtml(
+                TodoDocumentView.CwhtmlView,
+                new TodoDocumentModel(
                     application,
-                    FrontendDevelopmentAssets.Resolve())));
+                    FrontendDevelopmentAssets.Resolve()));
             assets = await frontend
-                .PrepareAssetsAsync(staticWebRoot, initialDocument, cancellationToken)
+                .PrepareAssetsAsync(staticWebRoot, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -124,7 +130,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             throw new InvalidOperationException("SimpleTodo supports exactly one native window.");
         }
 
-        CsWebUiHtmxApplication application = htmxApplication ??
+        CsWebUiHtmxApplication application = htmxApplication?.Application ??
             throw new InvalidOperationException(
                 "Prepare the todo application before creating a window.");
         try
@@ -165,7 +171,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             return;
         }
 
-        CsWebUiHtmxApplication? ownedApplication =
+        CwhtmlHtmxOpenedApplication<TodoAppView, TodoRenderModel>? ownedApplication =
             Interlocked.Exchange(ref htmxApplication, null);
         CwhtmlHtmxPreparedAssets? ownedAssets = Interlocked.Exchange(ref assets, null);
         try
@@ -182,41 +188,6 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                 await ownedAssets.DisposeAsync().ConfigureAwait(false);
             }
         }
-    }
-
-    private HtmxViewDescriptor CreateDescriptor()
-    {
-        TodoViewModel ActiveModel() =>
-            model ?? throw new InvalidOperationException("The todo model is not active.");
-
-        return TodoAppView
-            .ConfigureHtmx(
-                Contract,
-                context => TodoRenderModel.Response(ActiveModel(), context))
-            .ConfigureValidators(
-                "selectedId",
-            [
-                (value, _) =>
-                {
-                    string? selectedId = value.GetString();
-                    bool exists = Guid.TryParse(selectedId, out Guid id) &&
-                        ActiveModel().Items.Any(item => item.Id == id);
-                    IReadOnlyList<string> messages = exists
-                        ? []
-                        : ["That task is no longer available."];
-                    return ValueTask.FromResult(messages);
-                },
-            ])
-            .Build();
-    }
-
-    private static string Render(TodoDocumentView view)
-    {
-        var output = new ArrayBufferWriter<byte>();
-        var writer = new Utf8HtmlWriter(output);
-        view.Render(ref writer, new TemplateContext(CultureInfo.InvariantCulture));
-        writer.Complete();
-        return Encoding.UTF8.GetString(output.WrittenSpan);
     }
 
     private sealed class RootSession(TodoApplicationRoot owner) : IRootSession
