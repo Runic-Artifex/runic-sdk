@@ -25,6 +25,8 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 {
     internal const string AllowedOrigin = "https://simple-todo.native";
     internal static readonly MvvmContract Contract = new("samples.simple-todo");
+    private static readonly MvvmCollectionReference ItemsBinding =
+        MvvmCollectionReference.Create(nameof(TodoViewModel.Items));
     private static readonly string[] RequiredAssetPaths =
     [
         "cwhtml.css",
@@ -72,32 +74,26 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                         CommunityToolkitMvvmBindingAdapter<TodoViewModel> adapter =
                             new CommunityToolkitMvvmAdapterBuilder<TodoViewModel>(model)
                                 .BindProperty(
-                                    1,
-                                    nameof(TodoViewModel.NewTitle),
+                                    TodoAppView.HtmxFields.NewTitle,
                                     static state => state.NewTitle,
                                     static (state, value) => state.NewTitle = value,
                                     TodoJsonContext.Default.String)
                                 .BindProperty(
-                                    2,
-                                    nameof(TodoViewModel.SelectedId),
+                                    TodoAppView.HtmxFields.SelectedId,
                                     static state => state.SelectedId,
                                     static (state, value) => state.SelectedId = value,
                                     TodoJsonContext.Default.String)
                                 .BindCommand(
-                                    3,
-                                    nameof(TodoViewModel.AddCommand),
+                                    TodoAppView.HtmxCommands.AddCommand,
                                     static state => state.AddCommand)
                                 .BindCommand(
-                                    4,
-                                    nameof(TodoViewModel.ToggleCommand),
+                                    TodoAppView.HtmxCommands.ToggleCommand,
                                     static state => state.ToggleCommand)
                                 .BindCommand(
-                                    5,
-                                    nameof(TodoViewModel.RemoveCommand),
+                                    TodoAppView.HtmxCommands.RemoveCommand,
                                     static state => state.RemoveCommand)
                                 .BindCollection(
-                                    6,
-                                    nameof(TodoViewModel.Items),
+                                    ItemsBinding,
                                     static state => state.Items,
                                     TodoJsonContext.Default.TodoItem)
                                 .Build();
@@ -262,7 +258,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         bool localAssetsPresent = RequiredAssetPaths.All(
             relativePath => File.Exists(Path.Combine(WebRoot, relativePath)));
         bool collectionBindingPresent = adapter?.Metadata.Any(static metadata =>
-            metadata.MemberId == 6 &&
+            metadata.MemberId == ItemsBinding.MemberId &&
             metadata.Kind == MvvmBindingMemberKind.Collection) == true;
         string generatedRoot = WebRoot;
         await DisposeAsync().ConfigureAwait(false);

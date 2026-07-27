@@ -382,93 +382,74 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         CommunityToolkitMvvmBindingAdapter<TodoViewModel> createdAdapter =
             new CommunityToolkitMvvmAdapterBuilder<TodoViewModel>(activeModel)
                 .BindProperty(
-                    1,
-                    nameof(TodoViewModel.NewTitle),
+                    AdvancedTodoAppView.HtmxFields.NewTitle,
                     static state => state.NewTitle,
                     static (state, value) => state.NewTitle = value,
                     AdvancedTodoJsonContext.Default.String,
                     includeValidation: true)
                 .BindProperty(
-                    2,
-                    nameof(TodoViewModel.NewNotes),
+                    AdvancedTodoAppView.HtmxFields.NewNotes,
                     static state => state.NewNotes,
                     static (state, value) => state.NewNotes = value,
                     AdvancedTodoJsonContext.Default.String)
                 .BindProperty(
-                    3,
-                    nameof(TodoViewModel.NewPriority),
+                    AdvancedTodoAppView.HtmxFields.NewPriority,
                     static state => state.NewPriority,
                     static (state, value) => state.NewPriority = value,
                     AdvancedTodoJsonContext.Default.String)
                 .BindProperty(
-                    4,
-                    nameof(TodoViewModel.Query),
+                    AdvancedTodoAppView.HtmxFields.Query,
                     static state => state.Query,
                     static (state, value) => state.Query = value,
                     AdvancedTodoJsonContext.Default.String)
                 .BindProperty(
-                    5,
-                    nameof(TodoViewModel.Filter),
+                    AdvancedTodoAppView.HtmxFields.Filter,
                     static state => state.Filter,
                     static (state, value) => state.Filter = value,
                     AdvancedTodoJsonContext.Default.String)
                 .BindProperty(
-                    6,
-                    nameof(TodoViewModel.SelectedId),
+                    AdvancedTodoAppView.HtmxFields.SelectedId,
                     static state => state.SelectedId,
                     static (state, value) => state.SelectedId = value,
                     AdvancedTodoJsonContext.Default.String)
                 .BindAsyncCommand(
-                    101,
-                    nameof(TodoViewModel.AddCommand),
+                    AdvancedTodoAppView.HtmxCommands.AddCommand,
                     static state => state.AddCommand)
                 .BindCommand(
-                    102,
-                    nameof(TodoViewModel.ApplyFilterCommand),
+                    AdvancedTodoAppView.HtmxCommands.ApplyFilterCommand,
                     static state => state.ApplyFilterCommand)
                 .BindAsyncCommand(
-                    103,
-                    nameof(TodoViewModel.ToggleCommand),
+                    AdvancedTodoAppView.HtmxCommands.ToggleCommand,
                     static state => state.ToggleCommand)
                 .BindAsyncCommand(
-                    104,
-                    nameof(TodoViewModel.DeleteCommand),
+                    AdvancedTodoAppView.HtmxCommands.DeleteCommand,
                     static state => state.DeleteCommand)
                 .BindAsyncCommand(
-                    105,
-                    nameof(TodoViewModel.ClearCompletedCommand),
+                    AdvancedTodoAppView.HtmxCommands.ClearCompletedCommand,
                     static state => state.ClearCompletedCommand)
                 .BindCommand(
-                    106,
-                    nameof(TodoViewModel.ImportCommand),
+                    AdvancedTodoAppView.HtmxCommands.ImportCommand,
                     static state => state.ImportCommand)
                 .BindAsyncCommand(
-                    107,
-                    nameof(TodoViewModel.StartWizardCommand),
+                    AdvancedTodoAppView.HtmxCommands.StartWizardCommand,
                     static state => state.StartWizardCommand)
                 .BindAsyncCommand(
-                    108,
-                    nameof(TodoViewModel.WizardNextCommand),
+                    AdvancedTodoAppView.HtmxCommands.WizardNextCommand,
                     static state => state.WizardNextCommand)
                 .BindAsyncCommand(
-                    109,
-                    nameof(TodoViewModel.WizardBackCommand),
+                    AdvancedTodoAppView.HtmxCommands.WizardBackCommand,
                     static state => state.WizardBackCommand)
                 .BindAsyncCommand(
-                    110,
-                    nameof(TodoViewModel.WizardFinishCommand),
+                    AdvancedTodoAppView.HtmxCommands.WizardFinishCommand,
                     static state => state.WizardFinishCommand)
                 .BindAsyncCommand(
-                    111,
-                    nameof(TodoViewModel.WizardCancelCommand),
+                    AdvancedTodoAppView.HtmxCommands.WizardCancelCommand,
                     static state => state.WizardCancelCommand)
                 .BindAsyncCommand(
-                    112,
-                    nameof(TodoViewModel.CancelImportCommand),
+                    AdvancedTodoAppView.HtmxCommands.CancelImportCommand,
                     static state => state.CancelImportCommand)
                 .BindCommand(
-                    113,
-                    nameof(TodoViewModel.RefreshImportCommand),
+                    AdvancedTodoAppView.HtmxCommands.RefreshImportCommand,
                     static state => state.RefreshImportCommand)
                 .Build();
         adapter = createdAdapter;

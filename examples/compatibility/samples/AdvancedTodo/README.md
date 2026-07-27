@@ -13,7 +13,8 @@ the local development and minified production asset graph served by CsWebUi.
 
 - Compiled `AdvancedTodoDocument.cwhtml` and `AdvancedTodoApp.cwhtml` views.
 - Compiler-generated action, field, command, focus, event, and render-plan
-  registration for all 13 application actions.
+  registration for all 13 application actions, with typed
+  `HtmxFields`/`HtmxCommands` handles instead of consumer-authored protocol IDs.
 - A private runtime web root containing the generated initial document.
 - One fixed native binding (`webuitoolkitHtmx`) instead of feature-specific
   `WebUiWindow.BindAsync` callbacks.

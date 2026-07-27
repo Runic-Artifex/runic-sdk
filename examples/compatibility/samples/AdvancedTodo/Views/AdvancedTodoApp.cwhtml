@@ -31,7 +31,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
         section .board {
             form #filter-form .toolbar
                 data-wut-action="filter"
-                data-wut-command="102"
+                data-wut-command=(nameof(TodoViewModel.ApplyFilterCommand))
                 data-hx-post=(model.FilterRoute)
                 data-hx-target="#advanced_fragment"
                 data-hx-swap="outerHTML" {
@@ -39,7 +39,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                 input #query .form-control
                     type="search"
                     name="query"
-                    data-wut-member="4"
+                    data-wut-member=(nameof(TodoViewModel.Query))
                     value=(model.Query)
                     maxlength="120"
                     placeholder="Search title or notes…"
@@ -47,7 +47,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                 label for="filter" { "Filter" }
                 select #filter .form-select
                     name="filter"
-                    data-wut-member="5"
+                    data-wut-member=(nameof(TodoViewModel.Filter))
                     data-wut-validation-message="Choose All, Active, or Completed." {
                     option value="All" selected[=(model.FilterIsAll)] { "All" }
                     option value="Active" selected[=(model.FilterIsActive)] { "Active" }
@@ -68,7 +68,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                 }
                 form #add-form .add-form
                     data-wut-action="add"
-                    data-wut-command="101"
+                    data-wut-command=(nameof(TodoViewModel.AddCommand))
                     data-wut-success-event="todo:changed"
                     data-wut-invalid-focus="new-title"
                     data-hx-post=(model.AddRoute)
@@ -78,7 +78,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                         label for="new-title" { "Title" }
                         input #new-title .form-control
                             name="title"
-                            data-wut-member="1"
+                            data-wut-member=(nameof(TodoViewModel.NewTitle))
                             data-wut-validation-message="Give the task a title between 2 and 120 characters."
                             value=(model.Title)
                             minlength="2"
@@ -98,7 +98,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                         label for="new-notes" { "Notes" }
                         input #new-notes .form-control
                             name="notes"
-                            data-wut-member="2"
+                            data-wut-member=(nameof(TodoViewModel.NewNotes))
                             value=(model.Notes)
                             maxlength="2000"
                             placeholder="Optional context";
@@ -107,7 +107,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                         label for="new-priority" { "Priority" }
                         select #new-priority .form-select
                             name="priority"
-                            data-wut-member="3"
+                            data-wut-member=(nameof(TodoViewModel.NewPriority))
                             data-wut-validation-message="Choose Low, Normal, or High priority." {
                             option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
                             option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
@@ -132,7 +132,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                     }
                     form
                         data-wut-action="clear-completed"
-                        data-wut-command="105"
+                        data-wut-command=(nameof(TodoViewModel.ClearCompletedCommand))
                         data-wut-success-event="todo:changed"
                         data-hx-post=(model.ClearCompletedRoute)
                         data-hx-target="#advanced_fragment"
@@ -149,7 +149,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                             article class=(item.CssClass) {
                                 form
                                     data-wut-action="toggle"
-                                    data-wut-command="103"
+                                    data-wut-command=(nameof(TodoViewModel.ToggleCommand))
                                     data-wut-success-event="todo:changed"
                                     data-hx-post=(model.ToggleRoute)
                                     data-hx-target="#advanced_fragment"
@@ -157,7 +157,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                     button .check
                                         type="submit"
                                         name="selectedId"
-                                        data-wut-member="6"
+                                        data-wut-member=(nameof(TodoViewModel.SelectedId))
                                         data-wut-format="guid"
                                         data-wut-validation-message="That task is no longer available."
                                         value=(item.Id)
@@ -177,7 +177,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                 }
                                 form
                                     data-wut-action="delete"
-                                    data-wut-command="104"
+                                    data-wut-command=(nameof(TodoViewModel.DeleteCommand))
                                     data-wut-success-event="todo:changed"
                                     data-hx-post=(model.DeleteRoute)
                                     data-hx-target="#advanced_fragment"
@@ -185,7 +185,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                     button .danger
                                         type="submit"
                                         name="selectedId"
-                                        data-wut-member="6"
+                                        data-wut-member=(nameof(TodoViewModel.SelectedId))
                                         data-wut-format="guid"
                                         data-wut-validation-message="That task is no longer available."
                                         value=(item.Id)
@@ -225,7 +225,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                         }
                         form
                             data-wut-action="wizard-start"
-                            data-wut-command="107"
+                            data-wut-command=(nameof(TodoViewModel.StartWizardCommand))
                             data-hx-post=(model.WizardStartRoute)
                             data-hx-target="#advanced_fragment"
                             data-hx-swap="outerHTML" {
@@ -240,7 +240,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                         @if (model.WizardIsDetails) {
                             form .stack
                                 data-wut-action="wizard-next"
-                                data-wut-command="108"
+                                data-wut-command=(nameof(TodoViewModel.WizardNextCommand))
                                 data-wut-invalid-focus="wizard-title"
                                 data-hx-post=(model.WizardNextRoute)
                                 data-hx-target="#advanced_fragment"
@@ -248,7 +248,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                 label for="wizard-title" { "Title" }
                                 input #wizard-title
                                     name="wizardTitle"
-                                    data-wut-member="1"
+                                    data-wut-member=(nameof(TodoViewModel.NewTitle))
                                     data-wut-validation-message="Give the task a title before continuing."
                                     value=(model.Title)
                                     minlength="2"
@@ -256,13 +256,13 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                     autocomplete="off"
                                     required[=true];
                                 label for="wizard-notes" { "Notes" }
-                                textarea #wizard-notes name="notes" data-wut-member="2" maxlength="2000" {
+                                textarea #wizard-notes name="notes" data-wut-member=(nameof(TodoViewModel.NewNotes)) maxlength="2000" {
                                     (model.Notes)
                                 }
                                 label for="wizard-priority" { "Priority" }
                                 select #wizard-priority
                                     name="priority"
-                                    data-wut-member="3"
+                                    data-wut-member=(nameof(TodoViewModel.NewPriority))
                                     data-wut-validation-message="Choose Low, Normal, or High priority." {
                                     option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
                                     option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
@@ -275,7 +275,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                             }
                             form
                                 data-wut-action="wizard-cancel"
-                                data-wut-command="111"
+                                data-wut-command=(nameof(TodoViewModel.WizardCancelCommand))
                                 data-hx-post=(model.WizardCancelRoute)
                                 data-hx-target="#advanced_fragment"
                                 data-hx-swap="outerHTML" {
@@ -293,7 +293,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                             div .button-row {
                                 form
                                     data-wut-action="wizard-back"
-                                    data-wut-command="109"
+                                    data-wut-command=(nameof(TodoViewModel.WizardBackCommand))
                                     data-hx-post=(model.WizardBackRoute)
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
@@ -307,7 +307,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                 }
                                 form
                                     data-wut-action="wizard-finish"
-                                    data-wut-command="110"
+                                    data-wut-command=(nameof(TodoViewModel.WizardFinishCommand))
                                     data-wut-success-event="todo:changed"
                                     data-hx-post=(model.WizardFinishRoute)
                                     data-hx-target="#advanced_fragment"
@@ -344,7 +344,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                 @if (model.IsImporting) {
                     form #import-status
                         data-wut-action="import-status"
-                        data-wut-command="113"
+                        data-wut-command=(nameof(TodoViewModel.RefreshImportCommand))
                         data-hx-post=(model.ImportStatusRoute)
                         data-hx-trigger="load delay:2200ms"
                         data-hx-target="#advanced_fragment"
@@ -352,7 +352,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                     }
                     form #import-cancel
                         data-wut-action="cancel-import"
-                        data-wut-command="112"
+                        data-wut-command=(nameof(TodoViewModel.CancelImportCommand))
                         data-hx-post=(model.CancelImportRoute)
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
@@ -365,7 +365,7 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                 @else {
                     form #import-form
                         data-wut-action="import"
-                        data-wut-command="106"
+                        data-wut-command=(nameof(TodoViewModel.ImportCommand))
                         data-wut-success-event="todo:changed"
                         data-hx-post=(model.ImportRoute)
                         data-hx-target="#advanced_fragment"

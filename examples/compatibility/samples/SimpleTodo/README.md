@@ -16,7 +16,9 @@ It demonstrates:
 - `.cwhtml` authoring for both the initial document and HTMX response
   fragment;
 - compiler-generated action, field, command, fragment, focus, and event
-  registration, with closed per-view routes assigned by `HtmxEndpointRuntime`;
+  registration, with `nameof(...)` declarations shared through typed
+  `HtmxFields`/`HtmxCommands` handles and closed per-view routes assigned by
+  `HtmxEndpointRuntime`;
 - one bounded CsWebUi JSON binding shared by all HTMX requests;
 - npm-pinned HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome,
   bundled by Vite and served entirely from local assets; and
