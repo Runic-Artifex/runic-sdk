@@ -37,6 +37,7 @@ The repository already has the difficult runtime foundations:
   build/watch, and build/publish copying;
 - `dotnet webuitoolkit dev` discovery, contract generation/verification,
   initial build, supervised Vite and .NET watchers, manifest diagnostics,
+  native-window asset HMR, compiler overlays, compatible renderer replacement,
   coordinated CsWebUi restart, and clean shutdown; and
 - real-browser and Native-AOT acceptance for SimpleTodo.
 
@@ -44,10 +45,10 @@ The sample applications no longer duplicate cwhtml compiler targets, static
 asset-copy logic, HTMX descriptor/render-plan registration, or low-level
 runtime startup. Their production frontend is minified and manifest bound, and
 both Todo levels use generated registration plus the high-level native
-application builder. The development command currently coordinates reliable
-process restart; browser diagnostic overlays, native-window asset HMR,
-state-preserving cwhtml replacement, and richer typed declaration syntax remain
-product gaps.
+application builder. The development command now supplies browser diagnostic
+overlays, native-window asset HMR, and state-preserving fragment refresh for
+compatible cwhtml renderer edits. Richer typed declaration syntax and editor
+tooling remain product gaps.
 
 ## Architectural boundaries
 
@@ -162,7 +163,15 @@ diagnostic overlay is also implemented: the compiler publishes a versioned,
 atomic snapshot and the supervised Vite server presents the same stable IDs,
 messages, files, and source spans in its native overlay. A successful
 recompilation clears the overlay without reloading the document or losing
-ViewModel state. Least-disruptive cwhtml update selection is next.
+ViewModel state.
+
+Compatible cwhtml renderer replacement is also implemented. Each successful
+compilation publishes a versioned snapshot containing a renderer-body hash,
+affected fragment handles, and a compatibility fingerprint for the generated
+CLR and HTMX surface. The coordinator publishes a refresh to Vite only after
+`dotnet watch` acknowledges that managed Hot Reload applied the new renderer.
+The browser then requests only the affected fragments through the existing
+private CsWebUi HTMX binding, retaining the document and ViewModel instance.
 
 Reload operates in tiers:
 
@@ -173,10 +182,16 @@ Reload operates in tiers:
 3. An incompatible generated shape or ordinary C# edit triggers a coordinated
    application restart and browser reconnection.
 
-Because cwhtml permits typed C# expressions, the development renderer should
-use Roslyn compilation rather than a separate template interpreter whose
-semantics could diverge from publish output. State-preserving replacement is a
-later optimization; reliable full reload is the first delivery milestone.
+Because cwhtml permits typed C# expressions, renderer replacement uses the
+normal Roslyn-generated C# and .NET Hot Reload rather than a separate template
+interpreter whose semantics could diverge from publish output. A change is
+compatible only when its generated namespace, view/model shape, injections,
+local fragment signatures, and HTMX action/field/conversion/validation
+metadata retain the same fingerprint. Template-set, route, generated-shape, or
+non-refreshable template changes take the safe coordinated-restart path. An
+HTMX-enabled compiled view is itself the content rendered inside its generated
+fragment wrapper; the surrounding application document is not part of that
+cwhtml renderer.
 
 The development command currently supplies a temporary Vite configuration
 wrapper that connects the two toolchains without requiring application-owned
@@ -185,7 +200,8 @@ make the same bridge independently reusable:
 
 - translate cwhtml diagnostics into Vite's browser overlay (implemented by the
   coordinator wrapper);
-- issue custom HMR events for affected documents and fragments;
+- issue custom HMR events for affected documents and fragments (implemented by
+  the coordinator wrapper);
 - invalidate asset and content scans when cwhtml references change; and
 - expose the current generated asset manifest to the .NET development host.
 
@@ -240,7 +256,9 @@ diagnostic identifiers and source spans.
    ViewModel state, and stable cwhtml diagnostics appear and clear through
    Vite's browser overlay.
 6. Add the cwhtml language server and editor integration.
-7. Add compatible renderer replacement and state-preserving fragment refresh.
+7. **Implemented:** add compatible renderer replacement and state-preserving
+   affected-fragment refresh through .NET Hot Reload, Vite, and the private
+   CsWebUi binding.
 8. Build project templates, reusable cwhtml components, and scaffolding on the
    stable authoring surface.
 

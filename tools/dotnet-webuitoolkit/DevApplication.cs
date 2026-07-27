@@ -85,6 +85,13 @@ internal static class DevApplication
             options,
             vite?.HostEnvironment);
         await host.StartAsync(cancellationToken).ConfigureAwait(false);
+        CwhtmlHotReloadCoordinator? cwhtmlReload =
+            useViteServer &&
+            options.WatchHost &&
+            !string.IsNullOrWhiteSpace(configuration.CwhtmlHotReloadPath) &&
+            File.Exists(configuration.CwhtmlHotReloadPath)
+                ? CwhtmlHotReloadCoordinator.Create(configuration.CwhtmlHotReloadPath, host)
+                : null;
         await using RunningProcess? frontend =
             options.WatchFrontend && !useViteServer
                 ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
@@ -99,9 +106,30 @@ internal static class DevApplication
                 token => GenerateAndVerifyContractsAsync(configuration, token),
                 cancellationToken)
             : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        Task cwhtmlMonitor = cwhtmlReload?.WatchAsync(cancellationToken)
+            ?? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        Task cwhtmlCompilerMonitor = cwhtmlReload is null
+            ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+            : FilePoller.WatchTreeAsync(
+                configuration.ProjectDirectory,
+                "*.cwhtml",
+                token => CompileCwhtmlAsync(
+                    dotnetHost,
+                    configuration,
+                    options.Configuration,
+                    token),
+                cancellationToken);
         Task cancellation = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
 
-        var observed = new List<Task> { host.Completion, assetMonitor, contractMonitor, cancellation };
+        var observed = new List<Task>
+        {
+            host.Completion,
+            assetMonitor,
+            contractMonitor,
+            cwhtmlMonitor,
+            cwhtmlCompilerMonitor,
+            cancellation,
+        };
         if (frontend is not null)
         {
             observed.Add(frontend.Completion);
@@ -118,14 +146,18 @@ internal static class DevApplication
             return Program.Success;
         }
 
-        if (completed == assetMonitor || completed == contractMonitor)
+        if (completed == assetMonitor ||
+            completed == contractMonitor ||
+            completed == cwhtmlMonitor ||
+            completed == cwhtmlCompilerMonitor)
         {
             await completed.ConfigureAwait(false);
             return Program.DevelopmentFailure;
         }
 
         int exitCode = await ((Task<int>)completed).ConfigureAwait(false);
-        if (completed == host.Completion && !options.WatchHost)
+        if (completed == host.Completion &&
+            (!options.WatchHost || exitCode == Program.Success))
         {
             return exitCode;
         }
@@ -138,6 +170,31 @@ internal static class DevApplication
                     ? $"The Vite development server exited unexpectedly with code {exitCode}."
                     : $"The frontend watcher exited unexpectedly with code {exitCode}.");
         return Program.DevelopmentFailure;
+    }
+
+    private static async Task CompileCwhtmlAsync(
+        string dotnetHost,
+        DevProjectConfiguration configuration,
+        string buildConfiguration,
+        CancellationToken cancellationToken)
+    {
+        Console.WriteLine("[cwhtml] Compiling changed templates for managed Hot Reload.");
+        await RequireSuccessAsync(
+            dotnetHost,
+            configuration.ProjectDirectory,
+            [
+                "msbuild",
+                configuration.ProjectPath,
+                "-nologo",
+                "-target:CompileCwhtmlTemplates",
+                $"-property:Configuration={buildConfiguration}",
+                "-property:WebUIToolkitCwhtmlDevelopmentHotReload=true",
+                "-property:WebUIToolkitFrontendEnabled=false",
+                "-property:WebUIToolkitFrontendInstall=false",
+            ],
+            "WUTDEV1006",
+            "cwhtml compilation failed.",
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static Task StartAssetMonitor(
@@ -216,6 +273,10 @@ internal static class DevApplication
             "--configuration",
             options.Configuration,
             "--nologo",
+            "-property:DebugType=portable",
+            "-property:DebugSymbols=true",
+            "-property:Optimize=false",
+            "-property:WebUIToolkitCwhtmlDevelopmentHotReload=true",
             "-property:WebUIToolkitFrontendInstall=" + (options.Restore ? "true" : "false"),
         };
         if (!options.Restore)

@@ -77,7 +77,8 @@ produced local files and owns the binary MVVM channel.
 The `dotnet-webuitoolkit` tool discovers SDK metadata and provides one
 coordinated command for contract generation, the initial Vite/.NET build,
 loopback Vite HMR, `dotnet watch`, CsWebUi startup, source-mapped cwhtml
-diagnostics in Vite's browser overlay, and clean process-tree shutdown:
+diagnostics in Vite's browser overlay, compatible renderer replacement with
+affected-fragment refresh, and clean process-tree shutdown:
 
 ```powershell
 dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
@@ -89,6 +90,7 @@ minification, content hashing, and the asset manifest. Both now generate their
 action/field/command/fragment registration from build-time cwhtml metadata and
 use the high-level native application builder. Their development documents
 load Vite's client and source entry directly from the supervised loopback
-server, while HTMX stays on the private CsWebUi binding. Browser overlays,
-richer typed declarations, and state-preserving cwhtml replacement remain in the
+server, while HTMX requests, including development fragment refreshes, stay on
+the private CsWebUi binding. Richer typed declarations and editor tooling
+remain in the
 [cwhtml development-experience plan](./cwhtml-development-experience.md).

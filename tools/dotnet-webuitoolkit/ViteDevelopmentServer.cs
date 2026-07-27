@@ -16,6 +16,8 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         "WEBUITOOLKIT_VITE_PACKAGE_DIRECTORY";
     internal const string DiagnosticsEnvironmentVariable =
         "WEBUITOOLKIT_CWHTML_DIAGNOSTICS";
+    internal const string HotReloadEnvironmentVariable =
+        "WEBUITOOLKIT_CWHTML_HOT_RELOAD";
     internal const string ProjectEnvironmentVariable =
         "WEBUITOOLKIT_DEV_PROJECT";
 
@@ -29,6 +31,7 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         string entry,
         string packageDirectory,
         string diagnosticsPath,
+        string hotReloadPath,
         string projectPath)
     {
         _process = process;
@@ -40,6 +43,7 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
             [EntryEnvironmentVariable] = entry,
             [PackageDirectoryEnvironmentVariable] = packageDirectory,
             [DiagnosticsEnvironmentVariable] = diagnosticsPath,
+            [HotReloadEnvironmentVariable] = hotReloadPath,
             [ProjectEnvironmentVariable] = projectPath,
         };
     }
@@ -88,6 +92,7 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
             configuration.ViteDevServerEntry,
             configuration.FrontendPackageDirectory,
             configuration.CwhtmlDiagnosticsPath,
+            configuration.CwhtmlHotReloadPath + ".ready",
             configuration.ProjectPath);
         try
         {

@@ -101,16 +101,19 @@ criteria live in the
   tree down cleanly. Native-window CSS/JavaScript HMR is now implemented
   through a supervised loopback Vite server. The compiler's versioned,
   source-mapped diagnostics now flow into Vite's browser overlay and clear
-  after recovery without losing ViewModel state; state-preserving cwhtml
-  renderer replacement remains.
+  after recovery without losing ViewModel state. Compatible cwhtml renderer
+  edits now use acknowledged .NET Hot Reload followed by an affected-fragment
+  refresh over the private CsWebUi HTMX binding; incompatible generated shapes
+  take the coordinated-restart path.
 - Vite is now the first-class optional pipeline for TypeScript, JavaScript, CSS,
   Sass/PostCSS, images, fonts, source maps, hashing, and minification. It is a
   development/build tool, not an ASP.NET Core dependency or a replacement for
   the native HTMX transport. The cwhtml Todo workspace proves npm-managed
   HTMX, Bootstrap 5.3, and Font Awesome with local production output.
-- Continue tiered feedback beyond the implemented Vite asset HMR:
+- The tiered feedback loop now covers Vite asset HMR, compiler overlays,
   state-preserving fragment refresh for compatible cwhtml-only changes, and a
-  coordinated application restart when a C# change cannot be replaced safely.
+  coordinated application restart when a generated change cannot be replaced
+  safely.
 - **Implemented for build, terminal, and browser:** surface the same stable
   cwhtml diagnostics through MSBuild and Vite's overlay. Next, reuse that
   contract in language-server features for completion, navigation, rename,

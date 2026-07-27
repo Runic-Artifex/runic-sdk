@@ -15,6 +15,7 @@ internal sealed class HostProcessController : IAsyncDisposable
     private readonly TaskCompletionSource<int> _unexpectedExit =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private RunningProcess? _host;
+    private int _hotReloadGeneration;
 
     internal HostProcessController(
         string dotnetHost,
@@ -30,6 +31,28 @@ internal sealed class HostProcessController : IAsyncDisposable
     }
 
     internal Task<int> Completion => _unexpectedExit.Task;
+
+    internal int HotReloadGeneration => Volatile.Read(ref _hotReloadGeneration);
+
+    internal async Task<int> WaitForHotReloadAsync(
+        int afterGeneration,
+        CancellationToken cancellationToken)
+    {
+        if (HotReloadGeneration > afterGeneration)
+        {
+            return HotReloadGeneration;
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        while (HotReloadGeneration <= afterGeneration)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token)
+                .ConfigureAwait(false);
+        }
+
+        return HotReloadGeneration;
+    }
 
     internal async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -78,6 +101,10 @@ internal sealed class HostProcessController : IAsyncDisposable
                 _configuration.ProjectPath,
                 "--configuration",
                 _options.Configuration,
+                "--property:DebugType=portable",
+                "--property:DebugSymbols=true",
+                "--property:Optimize=false",
+                "--property:WebUIToolkitCwhtmlDevelopmentHotReload=true",
                 "--no-restore",
                 "--non-interactive",
                 "run",
@@ -109,6 +136,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             [ViteDevelopmentServer.EntryEnvironmentVariable] = null,
             [ViteDevelopmentServer.PackageDirectoryEnvironmentVariable] = null,
             [ViteDevelopmentServer.DiagnosticsEnvironmentVariable] = null,
+            [ViteDevelopmentServer.HotReloadEnvironmentVariable] = null,
             [ViteDevelopmentServer.ProjectEnvironmentVariable] = null,
         };
         foreach ((string key, string? value) in _developmentEnvironment)
@@ -116,12 +144,34 @@ internal sealed class HostProcessController : IAsyncDisposable
             environment[key] = value;
         }
 
-        return RunningProcess.Start(
+        RunningProcess process = RunningProcess.Start(
             _options.WatchHost ? "host" : "app",
             _dotnetHost,
             _configuration.ProjectDirectory,
             arguments,
             environment);
+        if (_options.WatchHost)
+        {
+            process.OutputReceived += ObserveOutput;
+        }
+
+        return process;
+    }
+
+    private void ObserveOutput(string line)
+    {
+        if (line.Contains("Hot reload of changes succeeded", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("Hot reload succeeded", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("C# and Razor changes applied", StringComparison.OrdinalIgnoreCase))
+        {
+            Interlocked.Increment(ref _hotReloadGeneration);
+        }
+
+        if (line.Contains(")] Exited", StringComparison.Ordinal) &&
+            !line.Contains("error code", StringComparison.OrdinalIgnoreCase))
+        {
+            _unexpectedExit.TrySetResult(0);
+        }
     }
 
     private async void ObserveExit(RunningProcess process)

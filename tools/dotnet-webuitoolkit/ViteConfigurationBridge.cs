@@ -52,6 +52,7 @@ internal sealed class ViteConfigurationBridge : IDisposable
             ? "const userConfigExport = {};"
             : $"import userConfigExport from {Json(new Uri(configuration.ViteConfigurationPath).AbsoluteUri)};";
         string diagnosticsPath = Json(configuration.CwhtmlDiagnosticsPath);
+        string hotReloadPath = Json(configuration.CwhtmlHotReloadPath + ".ready");
         string normalizedEntry = Json(NormalizePath(entryPath));
 
         return $$"""
@@ -59,8 +60,10 @@ internal sealed class ViteConfigurationBridge : IDisposable
             {{userConfigurationImport}}
 
             const diagnosticsPath = {{diagnosticsPath}};
+            const hotReloadPath = {{hotReloadPath}};
             const entryPath = {{normalizedEntry}};
             const diagnosticsContract = "webuitoolkit.cwhtml.diagnostics/1.0";
+            const hotReloadContract = "webuitoolkit.cwhtml.hot-reload/1.0";
             const virtualClientId = "\0virtual:webuitoolkit-cwhtml-diagnostics";
 
             const normalizePath = value => value.replaceAll("\\", "/");
@@ -71,6 +74,7 @@ internal sealed class ViteConfigurationBridge : IDisposable
               let lastSnapshot;
               let publishTimer;
               let publishInterval;
+              let lastHotReloadSnapshot;
 
               async function readSnapshot() {
                 if (!diagnosticsPath) {
@@ -133,6 +137,26 @@ internal sealed class ViteConfigurationBridge : IDisposable
                 }
               }
 
+              async function readHotReloadSnapshot() {
+                if (!hotReloadPath) {
+                  return undefined;
+                }
+                try {
+                  const raw = await readFile(hotReloadPath, "utf8");
+                  const snapshot = JSON.parse(raw);
+                  if (snapshot?.contract !== hotReloadContract ||
+                      !Array.isArray(snapshot?.templates)) {
+                    throw new Error(`Expected ${hotReloadContract}.`);
+                  }
+                  return snapshot;
+                } catch (error) {
+                  if (error?.code === "ENOENT") {
+                    return undefined;
+                  }
+                  throw error;
+                }
+              }
+
               async function errorPayload(errors) {
                 const first = errors[0];
                 const location = first.range
@@ -187,13 +211,46 @@ internal sealed class ViteConfigurationBridge : IDisposable
                 server.ws.send({ type: "error", err: await errorPayload(errors) });
               }
 
-              function schedulePublish(changedPath) {
-                if (!diagnosticsPath ||
-                    cleanModuleId(changedPath) !== normalizePath(diagnosticsPath)) {
+              async function publishHotReload() {
+                const snapshot = await readHotReloadSnapshot();
+                if (!snapshot) {
                   return;
                 }
-                clearTimeout(publishTimer);
-                publishTimer = setTimeout(() => void publish(), 25);
+                if (!lastHotReloadSnapshot) {
+                  lastHotReloadSnapshot = snapshot;
+                  return;
+                }
+                const previous = new Map(
+                  lastHotReloadSnapshot.templates.map(template =>
+                    [template.logicalPath, template]));
+                const fragments = new Set();
+                for (const template of snapshot.templates) {
+                  const prior = previous.get(template.logicalPath);
+                  if (prior?.rendererSha256 !== template.rendererSha256) {
+                    for (const fragment of template.affectedFragments ?? []) {
+                      fragments.add(fragment);
+                    }
+                  }
+                }
+                lastHotReloadSnapshot = snapshot;
+                if (fragments.size !== 0) {
+                  server.ws.send({
+                    type: "custom",
+                    event: "webuitoolkit:cwhtml-fragments",
+                    data: { fragments: Array.from(fragments).sort() },
+                  });
+                }
+              }
+
+              function schedulePublish(changedPath) {
+                const path = cleanModuleId(changedPath);
+                if (diagnosticsPath && path === normalizePath(diagnosticsPath)) {
+                  clearTimeout(publishTimer);
+                  publishTimer = setTimeout(() => void publish(), 25);
+                }
+                if (hotReloadPath && path === normalizePath(hotReloadPath)) {
+                  setTimeout(() => void publishHotReload(), 25);
+                }
               }
 
               return {
@@ -207,6 +264,10 @@ internal sealed class ViteConfigurationBridge : IDisposable
                     server.watcher.on("change", schedulePublish);
                     server.watcher.on("unlink", schedulePublish);
                     publishInterval = setInterval(() => void publish(), 250);
+                  }
+                  if (hotReloadPath) {
+                    server.watcher.add(hotReloadPath);
+                    void publishHotReload();
                   }
                   server.ws.on(
                     "webuitoolkit:cwhtml-diagnostics-ready",
@@ -235,6 +296,27 @@ internal sealed class ViteConfigurationBridge : IDisposable
                       import.meta.hot.on(
                         "webuitoolkit:cwhtml-diagnostics-clear",
                         () => document.querySelector("vite-error-overlay")?.remove());
+                      import.meta.hot.on(
+                        "webuitoolkit:cwhtml-fragments",
+                        async update => {
+                          const fragments = Array.isArray(update?.fragments)
+                            ? update.fragments
+                            : [];
+                          for (const fragment of fragments) {
+                            if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(fragment) ||
+                                !document.getElementById(fragment)) {
+                              continue;
+                            }
+                            await globalThis.htmx.ajax(
+                              "GET",
+                              "/_webui/htmx/dev-refresh/" + fragment,
+                              { target: "#" + fragment, swap: "outerHTML" });
+                          }
+                          globalThis.__webuitoolkitCwhtmlHotReload = {
+                            state: "refreshed",
+                            fragments,
+                          };
+                        });
                       import.meta.hot.send("webuitoolkit:cwhtml-diagnostics-ready");
                     }
                   `;

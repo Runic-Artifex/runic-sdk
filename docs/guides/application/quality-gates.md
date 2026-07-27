@@ -78,12 +78,13 @@ for the declared reference machine and application. Diagnostic identity and
 source locations must already agree across build, command line, browser
 overlay, and editor before the phase is accepted.
 
-The SimpleTodo native Chromium gate now covers the first two live-feedback
-tiers already delivered: CSS/JavaScript HMR and the versioned cwhtml
-diagnostics overlay. It proves that an error appears with its stable compiler
-ID, clears after recovery, and does neither a document reload nor ViewModel
-state loss. Compatible renderer replacement, AdvancedTodo parity, and editor
-diagnostic parity remain acceptance work.
+The SimpleTodo native Chromium gate now covers all three delivered
+live-feedback paths: CSS/JavaScript HMR, the versioned cwhtml diagnostics
+overlay, and compatible renderer replacement with affected-fragment refresh.
+It proves that the replacement renders new output only after .NET Hot Reload
+acknowledges it, uses the private CsWebUi binding, and retains the browser
+document and ViewModel state. AdvancedTodo parity and editor diagnostic parity
+remain acceptance work.
 
 ## G0: Repository and identity
 

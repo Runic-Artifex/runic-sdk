@@ -20,6 +20,7 @@ internal static class Program
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
             ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
             ("Vite bridge forwards cwhtml diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
+            ("cwhtml reload comparison separates renderer edits from shape edits", CwhtmlReloadComparisonIsSafe),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
         ];
 
@@ -122,6 +123,7 @@ internal static class Program
             ViteDevServerEntry: "/src/main.js",
             ViteConfigurationPath: "/repo/frontend/vite.config.mjs",
             CwhtmlDiagnosticsPath: "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json",
+            CwhtmlHotReloadPath: "/repo/obj/Debug/net10.0/cwhtml/hot-reload.json",
             TargetDirectory: "/repo/bin/Debug/net10.0");
         IReadOnlyList<string> arguments = ViteDevelopmentServer.CreateArguments(
             configuration,
@@ -164,6 +166,7 @@ internal static class Program
             ViteDevServerEntry: "/src/main.js",
             ViteConfigurationPath: "/repo/frontend/vite.config.mjs",
             CwhtmlDiagnosticsPath: "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json",
+            CwhtmlHotReloadPath: "/repo/obj/Debug/net10.0/cwhtml/hot-reload.json",
             TargetDirectory: "/repo/bin/Debug/net10.0");
         string source = ViteConfigurationBridge.CreateSource(configuration);
         Contains(source, "webuitoolkit.cwhtml.diagnostics/1.0");
@@ -171,8 +174,42 @@ internal static class Program
         Contains(source, "server.ws.send({ type: \"error\"");
         Contains(source, "document.querySelector(\"vite-error-overlay\")?.remove()");
         Contains(source, "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json");
+        Contains(source, "webuitoolkit.cwhtml.hot-reload/1.0");
+        Contains(source, "webuitoolkit:cwhtml-fragments");
+        Contains(source, "/_webui/htmx/dev-refresh/");
         Contains(source, "/repo/frontend/src/main.js");
     }
+
+    private static void CwhtmlReloadComparisonIsSafe()
+    {
+        byte[] baseline = ReloadSnapshot("renderer-one", "shape-one", canRefresh: true);
+        byte[] rendererEdit = ReloadSnapshot("renderer-two", "shape-one", canRefresh: true);
+        byte[] shapeEdit = ReloadSnapshot("renderer-three", "shape-two", canRefresh: true);
+        byte[] nonRefreshableEdit =
+            ReloadSnapshot("renderer-two", "shape-one", canRefresh: false);
+
+        ReloadDecision compatible = CwhtmlHotReloadCoordinator.Compare(baseline, rendererEdit);
+        Equal(ReloadKind.Refresh, compatible.Kind);
+        SequenceEqual(["todo_fragment"], compatible.AffectedFragments);
+        Equal(
+            ReloadKind.Restart,
+            CwhtmlHotReloadCoordinator.Compare(rendererEdit, shapeEdit).Kind);
+        Equal(
+            ReloadKind.Restart,
+            CwhtmlHotReloadCoordinator.Compare(rendererEdit, nonRefreshableEdit).Kind);
+        Equal(
+            ReloadKind.None,
+            CwhtmlHotReloadCoordinator.Compare(rendererEdit, rendererEdit).Kind);
+    }
+
+    private static byte[] ReloadSnapshot(
+        string renderer,
+        string shape,
+        bool canRefresh) =>
+        System.Text.Encoding.UTF8.GetBytes(
+            $$"""
+            {"contract":"webuitoolkit.cwhtml.hot-reload/1.0","templates":[{"logicalPath":"Views/TodoApp.cwhtml","rendererSha256":"{{renderer}}","compatibilitySha256":"{{shape}}","canRefreshFragments":{{canRefresh.ToString().ToLowerInvariant()}},"affectedFragments":["todo_fragment"]}]}
+            """);
 
     private static void AssetMirroringUpdatesOwnedGraph()
     {

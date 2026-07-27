@@ -23,6 +23,8 @@ internal sealed class RunningProcess : IAsyncDisposable
 
     internal Task<int> Completion => _completion.Task;
 
+    internal event Action<string>? OutputReceived;
+
     internal static RunningProcess Start(
         string label,
         string executable,
@@ -56,6 +58,7 @@ internal sealed class RunningProcess : IAsyncDisposable
         {
             if (eventArgs.Data is not null)
             {
+                running.OutputReceived?.Invoke(eventArgs.Data);
                 Console.Out.WriteLine($"[{label}] {eventArgs.Data}");
             }
         };
@@ -63,6 +66,7 @@ internal sealed class RunningProcess : IAsyncDisposable
         {
             if (eventArgs.Data is not null)
             {
+                running.OutputReceived?.Invoke(eventArgs.Data);
                 Console.Error.WriteLine($"[{label}] {eventArgs.Data}");
             }
         };

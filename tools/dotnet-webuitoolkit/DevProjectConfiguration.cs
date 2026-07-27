@@ -24,6 +24,7 @@ internal sealed record DevProjectConfiguration(
     string ViteDevServerEntry,
     string ViteConfigurationPath,
     string CwhtmlDiagnosticsPath,
+    string CwhtmlHotReloadPath,
     string TargetDirectory)
 {
     private static readonly string[] PropertyNames =
@@ -44,6 +45,7 @@ internal sealed record DevProjectConfiguration(
         "WebUIToolkitFrontendViteDevServerEntry",
         "WebUIToolkitFrontendViteConfiguration",
         "WebUIToolkitCwhtmlDiagnosticsPath",
+        "WebUIToolkitCwhtmlHotReloadPath",
         "TargetDir",
     ];
 
@@ -139,6 +141,7 @@ internal sealed record DevProjectConfiguration(
                 Value("WebUIToolkitFrontendViteConfiguration"),
                 packageDirectory.Length == 0 ? workspaceRoot : packageDirectory),
             NormalizeOptional(Value("WebUIToolkitCwhtmlDiagnosticsPath"), evaluatedProjectDirectory),
+            NormalizeOptional(Value("WebUIToolkitCwhtmlHotReloadPath"), evaluatedProjectDirectory),
             targetDirectory);
         configurationResult.Validate();
         return configurationResult;
