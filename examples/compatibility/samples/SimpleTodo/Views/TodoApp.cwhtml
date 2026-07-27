@@ -2,7 +2,6 @@
 @view TodoAppView(WebUIToolkit.Samples.SimpleTodo.TodoRenderModel model)
 main #todo-app .card .shadow-lg
     data-webui-view="simple-todo"
-    data-webui-revision=(model.Revision)
     data-wut-adapter="community-toolkit"
     data-wut-collection=(nameof(TodoViewModel.Items)) {
     header {
@@ -19,7 +18,6 @@ main #todo-app .card .shadow-lg
         data-wut-command=(nameof(TodoViewModel.AddCommand))
         data-wut-success-event="todo:changed"
         data-wut-invalid-focus="new-title"
-        data-hx-post=(model.AddRoute)
         data-hx-target="#todo_fragment"
         data-hx-swap="outerHTML" {
         label .form-label for="new-title" { "What needs doing?" }
@@ -55,7 +53,6 @@ main #todo-app .card .shadow-lg
                     data-wut-action="toggle"
                     data-wut-command=(nameof(TodoViewModel.ToggleCommand))
                     data-wut-success-event="todo:changed"
-                    data-hx-post=(model.ToggleRoute)
                     data-hx-target="#todo_fragment"
                     data-hx-swap="outerHTML" {
                     button .toggle .btn .btn-sm .btn-outline-success
@@ -74,7 +71,6 @@ main #todo-app .card .shadow-lg
                     data-wut-action="remove"
                     data-wut-command=(nameof(TodoViewModel.RemoveCommand))
                     data-wut-success-event="todo:changed"
-                    data-hx-post=(model.RemoveRoute)
                     data-hx-target="#todo_fragment"
                     data-hx-swap="outerHTML" {
                     button .remove .btn .btn-sm .btn-outline-danger

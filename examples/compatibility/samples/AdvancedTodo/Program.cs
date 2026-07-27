@@ -6,6 +6,7 @@ using WebUIToolkit.Hosting;
 using WebUIToolkit.Hosting.Build;
 using WebUIToolkit.Hosting.CsWebUi;
 using WebUIToolkit.Hosting.WebUi;
+using WebUIToolkit.MVVM.Html.Htmx;
 using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 using WebUIToolkit.Samples.AdvancedTodo.Application;
 using WebUIToolkit.Samples.AdvancedTodo.Infrastructure;
@@ -20,6 +21,21 @@ if (!Directory.Exists(staticWebRoot))
 
 bool selfTest = args.Contains("--self-test", StringComparer.Ordinal);
 bool browserSmokeTest = args.Contains("--browser-smoke-test", StringComparer.Ordinal);
+var builder = WebUiApp.CreateBuilder(args);
+CwhtmlHtmxAppBuilder frontend = builder.CwhtmlHtmx
+    .ConfigureEndpoint(new HtmxEndpointOptions(
+        AdvancedTodoApplicationRoot.AllowedOrigin,
+        idleTimeout: TimeSpan.FromMinutes(15),
+        maximumBodyBytes: 16 * 1024,
+        maximumFields: 8,
+        maximumFieldBytes: 4 * 1024,
+        maximumResponseBytes: 512 * 1024))
+    .ConfigureTransport(new CsWebUiHtmxTransportOptions(
+        AdvancedTodoApplicationRoot.AllowedOrigin,
+        maximumRequestBytes: 16 * 1024,
+        maximumResponseBytes: 512 * 1024,
+        maximumFields: 8,
+        maximumFieldBytes: 4 * 1024));
 string? testDirectory = null;
 string dataPath;
 if (selfTest || browserSmokeTest)
@@ -43,7 +59,7 @@ await using var root = new AdvancedTodoApplicationRoot(
     new TodoService(new JsonTodoRepository(dataPath)));
 try
 {
-    await root.PrepareAsync(staticWebRoot);
+    await root.PrepareAsync(staticWebRoot, frontend);
     if (selfTest)
     {
         return await root.RunSelfTestAsync();
@@ -57,7 +73,6 @@ try
     FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
         .BuildFromDirectory(root.WebRoot, "index.html");
     var assets = new DirectoryFrontendAssetProvider(root.WebRoot, manifest);
-    var builder = WebUiApp.CreateBuilder(args);
     builder.UseCwhtmlHtmx(new CsWebUiAppOptions(
         assets,
         root,

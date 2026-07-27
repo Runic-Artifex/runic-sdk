@@ -20,6 +20,8 @@ the local development and minified production asset graph served by CsWebUi.
   source-generated JSON metadata.
 - Generated typed action handles and an immutable thirteen-route projection;
   no application-authored route table remains.
+- Generated action URLs and authoritative revision markup; the presentation
+  model contains no endpoint routes or transport revision.
 - A private runtime web root containing the generated initial document.
 - One fixed native binding (`webuitoolkitHtmx`) instead of feature-specific
   `WebUiWindow.BindAsync` callbacks.
@@ -35,6 +37,8 @@ the local development and minified production asset graph served by CsWebUi.
 - A bounded in-app diagnostic feed containing safe application outcomes.
 - A high-level `CsWebUiHtmxApplication` owning transport, view, endpoint,
   session, and adapter lifetime.
+- Endpoint and native-transport policies assembled through the cwhtml extension
+  surface of the shared `WebUiAppBuilder`, outside the application root.
 - Deterministic disposal of the generated web root, workflow, import task, and
   repository around that application lifetime.
 

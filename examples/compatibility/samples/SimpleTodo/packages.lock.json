@@ -351,6 +351,13 @@
           "WebUIToolkit.MVVM.Html.Htmx": "[1.0.0, )"
         }
       },
+      "webuitoolkit.mvvm.html.htmx.cswebui.app": {
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.Hosting.CsWebUi.App": "[1.0.0-beta.1, )",
+          "WebUIToolkit.MVVM.Html.Htmx.CsWebUi": "[1.0.0-beta.1, )"
+        }
+      },
       "WebUIToolkit.Samples.Todo.Shared": {
         "type": "Project",
         "dependencies": {

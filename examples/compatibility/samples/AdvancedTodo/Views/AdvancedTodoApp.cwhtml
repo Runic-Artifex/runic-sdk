@@ -2,7 +2,6 @@
 @view AdvancedTodoAppView(WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel model)
 div .app-shell
     data-webui-view="advanced-todo"
-    data-webui-revision=(model.Revision)
     data-wut-adapter="community-toolkit" {
     header .hero {
         div .eyebrow {
@@ -35,7 +34,6 @@ div .app-shell
             form #filter-form .toolbar
                 data-wut-action="filter"
                 data-wut-command=(nameof(TodoViewModel.ApplyFilterCommand))
-                data-hx-post=(model.FilterRoute)
                 data-hx-target="#advanced_fragment"
                 data-hx-swap="outerHTML" {
                 label for="query" { "Search tasks" }
@@ -74,7 +72,6 @@ div .app-shell
                     data-wut-command=(nameof(TodoViewModel.AddCommand))
                     data-wut-success-event="todo:changed"
                     data-wut-invalid-focus="new-title"
-                    data-hx-post=(model.AddRoute)
                     data-hx-target="#advanced_fragment"
                     data-hx-swap="outerHTML" {
                     div .field .field-wide {
@@ -138,7 +135,6 @@ div .app-shell
                         data-wut-action="clear-completed"
                         data-wut-command=(nameof(TodoViewModel.ClearCompletedCommand))
                         data-wut-success-event="todo:changed"
-                        data-hx-post=(model.ClearCompletedRoute)
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
                         button .quiet .btn .btn-secondary type="submit" {
@@ -155,7 +151,6 @@ div .app-shell
                                     data-wut-action="toggle"
                                     data-wut-command=(nameof(TodoViewModel.ToggleCommand))
                                     data-wut-success-event="todo:changed"
-                                    data-hx-post=(model.ToggleRoute)
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .check
@@ -183,7 +178,6 @@ div .app-shell
                                     data-wut-action="delete"
                                     data-wut-command=(nameof(TodoViewModel.DeleteCommand))
                                     data-wut-success-event="todo:changed"
-                                    data-hx-post=(model.DeleteRoute)
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .danger
@@ -230,7 +224,6 @@ div .app-shell
                         form
                             data-wut-action="wizard-start"
                             data-wut-command=(nameof(TodoViewModel.StartWizardCommand))
-                            data-hx-post=(model.WizardStartRoute)
                             data-hx-target="#advanced_fragment"
                             data-hx-swap="outerHTML" {
                             button .primary type="submit" { "Open planner" }
@@ -246,7 +239,6 @@ div .app-shell
                                 data-wut-action="wizard-next"
                                 data-wut-command=(nameof(TodoViewModel.WizardNextCommand))
                                 data-wut-invalid-focus="wizard-title"
-                                data-hx-post=(model.WizardNextRoute)
                                 data-hx-target="#advanced_fragment"
                                 data-hx-swap="outerHTML" {
                                 label for="wizard-title" { "Title" }
@@ -280,7 +272,6 @@ div .app-shell
                             form
                                 data-wut-action="wizard-cancel"
                                 data-wut-command=(nameof(TodoViewModel.WizardCancelCommand))
-                                data-hx-post=(model.WizardCancelRoute)
                                 data-hx-target="#advanced_fragment"
                                 data-hx-swap="outerHTML" {
                                 button .quiet type="submit" { "Cancel" }
@@ -298,22 +289,14 @@ div .app-shell
                                 form
                                     data-wut-action="wizard-back"
                                     data-wut-command=(nameof(TodoViewModel.WizardBackCommand))
-                                    data-hx-post=(model.WizardBackRoute)
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .quiet type="submit" { "Back" }
                                 }
                                 form
-                                    data-hx-post=(model.WizardCancelRoute)
-                                    data-hx-target="#advanced_fragment"
-                                    data-hx-swap="outerHTML" {
-                                    button .quiet type="submit" { "Cancel" }
-                                }
-                                form
                                     data-wut-action="wizard-finish"
                                     data-wut-command=(nameof(TodoViewModel.WizardFinishCommand))
                                     data-wut-success-event="todo:changed"
-                                    data-hx-post=(model.WizardFinishRoute)
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .primary type="submit" { "Create task" }
@@ -349,7 +332,6 @@ div .app-shell
                     form #import-status
                         data-wut-action="import-status"
                         data-wut-command=(nameof(TodoViewModel.RefreshImportCommand))
-                        data-hx-post=(model.ImportStatusRoute)
                         data-hx-trigger="load delay:2200ms"
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
@@ -357,7 +339,6 @@ div .app-shell
                     form #import-cancel
                         data-wut-action="cancel-import"
                         data-wut-command=(nameof(TodoViewModel.CancelImportCommand))
-                        data-hx-post=(model.CancelImportRoute)
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
                         button .quiet .btn .btn-secondary type="submit" {
@@ -371,7 +352,6 @@ div .app-shell
                         data-wut-action="import"
                         data-wut-command=(nameof(TodoViewModel.ImportCommand))
                         data-wut-success-event="todo:changed"
-                        data-hx-post=(model.ImportRoute)
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
                         button .secondary .btn .btn-info type="submit" {

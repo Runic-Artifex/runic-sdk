@@ -41,6 +41,7 @@
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Flow/WebUIToolkit.MVVM.Flow.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx/WebUIToolkit.MVVM.Html.Htmx.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />

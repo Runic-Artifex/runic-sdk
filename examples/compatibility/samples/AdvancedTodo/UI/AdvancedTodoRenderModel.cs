@@ -30,9 +30,7 @@ public sealed class AdvancedTodoRenderModel
         string priority,
         string? validationMessage,
         string? wizardStep,
-        bool isImporting,
-        AdvancedTodoAppView.HtmxRoutes routes,
-        long revision)
+        bool isImporting)
     {
         Items = items;
         Diagnostics = diagnostics;
@@ -48,20 +46,6 @@ public sealed class AdvancedTodoRenderModel
         ValidationMessage = validationMessage;
         WizardStep = wizardStep;
         IsImporting = isImporting;
-        AddRoute = routes.Add;
-        FilterRoute = routes.Filter;
-        ToggleRoute = routes.Toggle;
-        DeleteRoute = routes.Delete;
-        ClearCompletedRoute = routes.ClearCompleted;
-        ImportRoute = routes.Import;
-        CancelImportRoute = routes.CancelImport;
-        ImportStatusRoute = routes.ImportStatus;
-        WizardStartRoute = routes.WizardStart;
-        WizardNextRoute = routes.WizardNext;
-        WizardBackRoute = routes.WizardBack;
-        WizardFinishRoute = routes.WizardFinish;
-        WizardCancelRoute = routes.WizardCancel;
-        Revision = revision.ToString(CultureInfo.InvariantCulture);
     }
 
     public IReadOnlyList<AdvancedTodoRenderItem> Items { get; }
@@ -93,42 +77,19 @@ public sealed class AdvancedTodoRenderModel
     public bool PriorityIsLow => StringComparer.Ordinal.Equals(Priority, nameof(TodoPriority.Low));
     public bool PriorityIsNormal => StringComparer.Ordinal.Equals(Priority, nameof(TodoPriority.Normal));
     public bool PriorityIsHigh => StringComparer.Ordinal.Equals(Priority, nameof(TodoPriority.High));
-    public string AddRoute { get; }
-    public string FilterRoute { get; }
-    public string ToggleRoute { get; }
-    public string DeleteRoute { get; }
-    public string ClearCompletedRoute { get; }
-    public string ImportRoute { get; }
-    public string CancelImportRoute { get; }
-    public string ImportStatusRoute { get; }
-    public string WizardStartRoute { get; }
-    public string WizardNextRoute { get; }
-    public string WizardBackRoute { get; }
-    public string WizardFinishRoute { get; }
-    public string WizardCancelRoute { get; }
-    public string Revision { get; }
-
-    internal static AdvancedTodoRenderModel Initial(
-        TodoViewModel model,
-        AdvancedTodoAppView.HtmxRoutes routes,
-        long revision) =>
-        Create(model, routes, revision, [], null);
+    internal static AdvancedTodoRenderModel Initial(TodoViewModel model) =>
+        Create(model, [], null);
 
     internal static AdvancedTodoRenderModel Response(
         TodoViewModel model,
-        AdvancedTodoAppView.HtmxRoutes routes,
         HtmxRenderContext context) =>
         Create(
             model,
-            routes,
-            context.Revision,
             context.ValidationErrors,
             context.SubmittedValues);
 
     private static AdvancedTodoRenderModel Create(
         TodoViewModel model,
-        AdvancedTodoAppView.HtmxRoutes routes,
-        long revision,
         IReadOnlyList<HtmxValidationError> validationErrors,
         IReadOnlyDictionary<HtmxFieldHandle, string>? submittedValues)
     {
@@ -170,9 +131,7 @@ public sealed class AdvancedTodoRenderModel
             Submitted(submittedValues, "priority", model.NewPriority),
             validationMessage,
             model.WizardStep?.Value,
-            model.IsImporting,
-            routes,
-            revision);
+            model.IsImporting);
     }
 }
 

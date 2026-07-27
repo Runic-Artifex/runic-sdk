@@ -33,7 +33,6 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
     ];
 
     private readonly TodoService service;
-    private AdvancedTodoAppView.HtmxRoutes? routes;
     private CsWebUiHtmxApplication? htmxApplication;
     private AdvancedTodoRuntimeAssets? assets;
     private TodoViewModel? model;
@@ -54,8 +53,10 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
 
     internal async ValueTask PrepareAsync(
         string staticWebRoot,
+        CwhtmlHtmxAppBuilder frontend,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(frontend);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         if (htmxApplication is not null)
         {
@@ -67,33 +68,18 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         try
         {
             CsWebUiHtmxApplication createdApplication =
-                await new CsWebUiHtmxApplicationBuilder(Contract, AllowedOrigin)
-                    .Activate(_ => ActivateModel())
-                    .UseView(CreateDescriptor())
-                    .ConfigureEndpoint(new HtmxEndpointOptions(
+                await frontend
+                    .OpenAsync(
+                        Contract,
                         AllowedOrigin,
-                        idleTimeout: TimeSpan.FromMinutes(15),
-                        maximumBodyBytes: 16 * 1024,
-                        maximumFields: 8,
-                        maximumFieldBytes: 4 * 1024,
-                        maximumResponseBytes: 512 * 1024))
-                    .ConfigureTransport(new CsWebUiHtmxTransportOptions(
-                        AllowedOrigin,
-                        maximumRequestBytes: 16 * 1024,
-                        maximumResponseBytes: 512 * 1024,
-                        maximumFields: 8,
-                        maximumFieldBytes: 4 * 1024))
-                    .OpenAsync(cancellationToken)
+                        _ => ActivateModel(),
+                        CreateDescriptor(),
+                        cancellationToken)
                 .ConfigureAwait(false);
             htmxApplication = createdApplication;
-            AdvancedTodoAppView.HtmxRoutes createdRoutes =
-                AdvancedTodoAppView.CreateHtmxRoutes(createdApplication.OpenedView);
-            routes = createdRoutes;
-            AdvancedTodoAppView application = new(
-                AdvancedTodoRenderModel.Initial(
-                    model,
-                    createdRoutes,
-                    createdApplication.OpenedView.Revision));
+            AdvancedTodoAppView application = AdvancedTodoAppView.CreateHtmxView(
+                AdvancedTodoRenderModel.Initial(model),
+                createdApplication.OpenedView);
             initialDocument = "<!doctype html>" + Render(
                 new AdvancedTodoDocumentView(new AdvancedTodoDocumentModel(
                     application,
@@ -156,7 +142,8 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         HtmxOpenedView selectedView = selectedApplication.OpenedView;
         TodoViewModel activeModel = model ??
             throw new InvalidOperationException("Prepare AdvancedTodo before self-testing.");
-        AdvancedTodoAppView.HtmxRoutes activeRoutes = ActiveRoutes();
+        AdvancedTodoAppView.HtmxRoutes activeRoutes =
+            AdvancedTodoAppView.CreateHtmxRoutes(selectedView);
 
         long revision = selectedView.Revision;
         CaptureTransport invalid = await PostAsync(
@@ -398,11 +385,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         return AdvancedTodoAppView
             .ConfigureHtmx(
                 Contract,
-                context => new AdvancedTodoAppView(
-                    AdvancedTodoRenderModel.Response(
-                        ActiveModel(),
-                        ActiveRoutes(),
-                        context)))
+                context => AdvancedTodoRenderModel.Response(ActiveModel(), context))
             .ConfigureValidators(
                 "selectedId",
             [
@@ -416,10 +399,6 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             ])
             .Build();
     }
-
-    private AdvancedTodoAppView.HtmxRoutes ActiveRoutes() =>
-        routes ?? throw new InvalidOperationException(
-            "The endpoint must assign closed routes before the advanced view renders.");
 
     private static HtmxEndpointRequest Request(
         HtmxOpenedView view,

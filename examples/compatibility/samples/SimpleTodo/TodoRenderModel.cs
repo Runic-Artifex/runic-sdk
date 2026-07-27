@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using WebUIToolkit.MVVM.Html;
 using WebUIToolkit.MVVM.Html.Htmx;
@@ -16,19 +15,11 @@ public sealed class TodoRenderModel
     private TodoRenderModel(
         IReadOnlyList<TodoRenderItem> items,
         string draft,
-        string? validationMessage,
-        string addRoute,
-        string toggleRoute,
-        string removeRoute,
-        long revision)
+        string? validationMessage)
     {
         Items = items;
         Draft = draft;
         ValidationMessage = validationMessage;
-        AddRoute = addRoute;
-        ToggleRoute = toggleRoute;
-        RemoveRoute = removeRoute;
-        Revision = revision.ToString(CultureInfo.InvariantCulture);
         Remaining = items.Count(static item => !item.IsCompleted);
         Completed = items.Count - Remaining;
     }
@@ -48,47 +39,27 @@ public sealed class TodoRenderModel
     /// <summary>Gets whether the list is empty.</summary>
     public bool IsEmpty => Items.Count == 0;
 
-    /// <summary>Gets the opaque add action route.</summary>
-    public string AddRoute { get; }
-
-    /// <summary>Gets the opaque toggle action route.</summary>
-    public string ToggleRoute { get; }
-
-    /// <summary>Gets the opaque remove action route.</summary>
-    public string RemoveRoute { get; }
-
-    /// <summary>Gets the authoritative revision without losing JavaScript precision.</summary>
-    public string Revision { get; }
-
     /// <summary>Gets the number of active tasks.</summary>
     public int Remaining { get; }
 
     /// <summary>Gets the number of completed tasks.</summary>
     public int Completed { get; }
 
-    /// <summary>Creates initial render state after the endpoint has assigned closed routes.</summary>
-    internal static TodoRenderModel Initial(
-        TodoViewModel model,
-        TodoAppView.HtmxRoutes routes,
-        long revision) =>
-        Create(model, routes, revision, validationErrors: [], submittedValues: null);
+    /// <summary>Creates initial presentation state.</summary>
+    internal static TodoRenderModel Initial(TodoViewModel model) =>
+        Create(model, validationErrors: [], submittedValues: null);
 
     /// <summary>Creates response render state from the bounded endpoint context.</summary>
     internal static TodoRenderModel Response(
         TodoViewModel model,
-        TodoAppView.HtmxRoutes routes,
         HtmxRenderContext context) =>
         Create(
             model,
-            routes,
-            context.Revision,
             context.ValidationErrors,
             context.SubmittedValues);
 
     private static TodoRenderModel Create(
         TodoViewModel model,
-        TodoAppView.HtmxRoutes routes,
-        long revision,
         IReadOnlyList<HtmxValidationError> validationErrors,
         IReadOnlyDictionary<HtmxFieldHandle, string>? submittedValues)
     {
@@ -107,11 +78,7 @@ public sealed class TodoRenderModel
                     item.IsCompleted))
                 .ToArray(),
             draft,
-            validationMessage,
-            routes.Add,
-            routes.Toggle,
-            routes.Remove,
-            revision);
+            validationMessage);
     }
 }
 

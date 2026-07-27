@@ -23,7 +23,11 @@ It demonstrates:
   command, and source-generated JSON registration;
 - generated typed action handles and an immutable route projection instead of
   an application-authored route table;
+- generated action URLs and revision attributes, keeping routes and revisions
+  out of `TodoRenderModel` and the `.cwhtml` expressions;
 - one bounded CsWebUi JSON binding shared by all HTMX requests;
+- endpoint and native-transport limits configured through the cwhtml extension
+  surface of the shared `WebUiAppBuilder`;
 - npm-pinned HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome,
   bundled by Vite and served entirely from local assets; and
 - deterministic reverse-order teardown of transport, view, runtime, session,
@@ -96,9 +100,10 @@ all task titles and validation text.
 
 Action routes are random and exist only after the HTMX view opens, so a checked
 in static page cannot safely contain them. `TodoApplicationRoot.PrepareAsync`
-opens the view, renders the compiled document with those routes, and combines
-it with the pinned static assets in a private per-run directory. The normal
-manifest validator verifies that finished root before CsWebUi starts.
+opens the view, asks the generated view to project its bounded route context,
+and combines the rendered document with the pinned static assets in a private
+per-run directory. The normal manifest validator verifies that finished root
+before CsWebUi starts.
 
 This provides a local static bootstrap document without introducing an HTTP
 framework, a catch-all file handler, or another browser callback. The temporary
@@ -107,9 +112,10 @@ root is deleted during application teardown.
 ## Guided tour
 
 1. Start with `TodoViewModel.cs` and `TodoItem.cs` for ordinary MVVM state.
-2. Read `Views/TodoApp.cwhtml`; `data-hx-*` is rendered HTMX configuration,
-   while build-time-only `data-wut-*` declarations generate closed registration
-   metadata and are stripped from the HTML.
+2. Read `Views/TodoApp.cwhtml`; static `data-hx-*` is rendered HTMX
+   configuration, action URLs and revisions are generated, and build-time-only
+   `data-wut-*` declarations generate closed registration metadata and are
+   stripped from the HTML.
 3. Read `TodoApplicationRoot.cs` for domain validation, the one-call generated
    adapter activation, high-level native application builder, generated
    document, and smoke test.

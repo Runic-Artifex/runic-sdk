@@ -32,7 +32,6 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         "webuitoolkit.assets.json",
     ];
 
-    private TodoAppView.HtmxRoutes? routes;
     private CsWebUiHtmxApplication? htmxApplication;
     private TodoRuntimeAssets? assets;
     private TodoViewModel? model;
@@ -53,8 +52,10 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
     /// </summary>
     internal async ValueTask PrepareAsync(
         string staticWebRoot,
+        CwhtmlHtmxAppBuilder frontend,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(frontend);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         if (htmxApplication is not null)
         {
@@ -63,47 +64,30 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 
         try
         {
-            HtmxViewDescriptor descriptor = CreateDescriptor();
             CsWebUiHtmxApplication createdApplication =
-                await new CsWebUiHtmxApplicationBuilder(Contract, AllowedOrigin)
-                    .Activate(_ =>
-                    {
-                        model = new TodoViewModel();
-                        CommunityToolkitMvvmBindingAdapter<TodoViewModel> adapter =
-                            TodoAppView.CreateHtmxAdapter(
-                                model,
-                                TodoJsonContext.Default);
-                        this.adapter = adapter;
-                        return ValueTask.FromResult(new MvvmSessionActivation(adapter));
-                    })
-                    .UseView(descriptor)
-                    .ConfigureEndpoint(new HtmxEndpointOptions(
+                await frontend
+                    .OpenAsync(
+                        Contract,
                         AllowedOrigin,
-                        idleTimeout: TimeSpan.FromMinutes(15),
-                        maximumBodyBytes: 32 * 1024,
-                        maximumFields: 8,
-                        maximumFieldBytes: 1024,
-                        maximumResponseBytes: 256 * 1024))
-                    .ConfigureTransport(new CsWebUiHtmxTransportOptions(
-                        AllowedOrigin,
-                        maximumRequestBytes: 32 * 1024,
-                        maximumResponseBytes: 256 * 1024,
-                        maximumFields: 8,
-                        maximumFieldBytes: 1024))
-                    .OpenAsync(cancellationToken)
+                        _ =>
+                        {
+                            model = new TodoViewModel();
+                            CommunityToolkitMvvmBindingAdapter<TodoViewModel> adapter =
+                                TodoAppView.CreateHtmxAdapter(
+                                    model,
+                                    TodoJsonContext.Default);
+                            this.adapter = adapter;
+                            return ValueTask.FromResult(new MvvmSessionActivation(adapter));
+                        },
+                        CreateDescriptor(),
+                        cancellationToken)
                 .ConfigureAwait(false);
             htmxApplication = createdApplication;
-            TodoAppView.HtmxRoutes createdRoutes =
-                TodoAppView.CreateHtmxRoutes(createdApplication.OpenedView);
-            routes = createdRoutes;
-
             TodoViewModel activeModel = model ??
                 throw new InvalidOperationException("Opening the view did not activate its model.");
-            var application = new TodoAppView(
-                TodoRenderModel.Initial(
-                    activeModel,
-                    createdRoutes,
-                    createdApplication.OpenedView.Revision));
+            TodoAppView application = TodoAppView.CreateHtmxView(
+                TodoRenderModel.Initial(activeModel),
+                createdApplication.OpenedView);
             initialDocument = "<!doctype html>" + Render(
                 new TodoDocumentView(new TodoDocumentModel(
                     application,
@@ -170,7 +154,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         HtmxOpenedView selectedView = selectedApplication.OpenedView;
         TodoViewModel activeModel = model ??
             throw new InvalidOperationException("Prepare the todo application before smoke testing.");
-        TodoAppView.HtmxRoutes activeRoutes = ActiveRoutes();
+        TodoAppView.HtmxRoutes activeRoutes = TodoAppView.CreateHtmxRoutes(selectedView);
 
         CaptureTransport invalid = await SendAsync(
             selectedApplication,
@@ -315,8 +299,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         return TodoAppView
             .ConfigureHtmx(
                 Contract,
-                context => new TodoAppView(
-                    TodoRenderModel.Response(ActiveModel(), this.ActiveRoutes(), context)))
+                context => TodoRenderModel.Response(ActiveModel(), context))
             .ConfigureValidators(
                 "selectedId",
             [
@@ -333,10 +316,6 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             ])
             .Build();
     }
-
-    private TodoAppView.HtmxRoutes ActiveRoutes() =>
-        routes ?? throw new InvalidOperationException(
-            "The endpoint must assign closed routes before the todo view renders.");
 
     private static HtmxEndpointRequest Request(
         HtmxOpenedView view,
