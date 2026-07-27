@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "vite --config vite.config.mjs",
+    "dev": "vite",
     "test": "node build.mjs --production && node verify-build.mjs"
   },
   "dependencies": {

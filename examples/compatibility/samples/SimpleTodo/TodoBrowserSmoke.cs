@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
@@ -124,6 +125,11 @@ internal static class TodoBrowserSmoke
                 FrontendDevelopmentAssets.ViteServerEnvironmentVariable)))
             {
                 passed = await VerifyViteHmrAsync(window, browser).ConfigureAwait(false);
+                if (passed)
+                {
+                    passed = await VerifyCwhtmlDiagnosticsOverlayAsync(window, browser)
+                        .ConfigureAwait(false);
+                }
             }
 
             exitCode = passed ? 0 : 1;
@@ -335,6 +341,172 @@ internal static class TodoBrowserSmoke
             await File.WriteAllTextAsync(scriptPath, originalScript).ConfigureAwait(false);
             await File.WriteAllTextAsync(stylesheetPath, originalStylesheet).ConfigureAwait(false);
         }
+    }
+
+    private static async Task<bool> VerifyCwhtmlDiagnosticsOverlayAsync(
+        WebUiWindow window,
+        Process browser)
+    {
+        string diagnosticsPath = Environment.GetEnvironmentVariable(
+            FrontendDevelopmentAssets.CwhtmlDiagnosticsEnvironmentVariable)
+            ?? throw new InvalidOperationException(
+                "The supervised cwhtml diagnostics path was not supplied.");
+        string projectPath = Environment.GetEnvironmentVariable(
+            FrontendDevelopmentAssets.DevelopmentProjectEnvironmentVariable)
+            ?? throw new InvalidOperationException(
+                "The supervised development project was not supplied.");
+        string projectDirectory = Path.GetDirectoryName(Path.GetFullPath(projectPath))
+            ?? throw new InvalidOperationException("The development project has no parent directory.");
+        string viewPath = Path.Combine(projectDirectory, "Views", "TodoDocument.cwhtml");
+        byte[] original = await File.ReadAllBytesAsync(diagnosticsPath).ConfigureAwait(false);
+        string token = "diagnostics-" + Guid.NewGuid().ToString("N");
+        byte[] snapshot = CreateDiagnosticsSnapshot(viewPath);
+
+        try
+        {
+            window.ExecuteJavaScript(
+                $$"""
+                document.body.dataset.webuitoolkitDiagnosticsDocument = "{{token}}";
+                return "";
+                """,
+                TimeSpan.FromSeconds(2),
+                responseBufferSize: 128);
+            await WriteAtomicallyAsync(diagnosticsPath, snapshot).ConfigureAwait(false);
+
+            string shown = await WaitForBrowserResultAsync(
+                window,
+                browser,
+                $$"""
+                return (() => {
+                  const overlay = document.querySelector("vite-error-overlay");
+                  const text = overlay?.shadowRoot?.textContent ?? "";
+                  const sameDocument =
+                    document.body.dataset.webuitoolkitDiagnosticsDocument === "{{token}}";
+                  const state = globalThis.__webuitoolkitCwhtmlDiagnostics?.state;
+                  return overlay && text.includes("WUTHTML1001") &&
+                      sameDocument && state === "error"
+                    ? "pass|shown"
+                    : "waiting|" + [Boolean(overlay), text.includes("WUTHTML1001"),
+                        sameDocument, state].join("|");
+                })();
+                """).ConfigureAwait(false);
+            if (!StringComparer.Ordinal.Equals(shown, "pass|shown"))
+            {
+                Console.Error.WriteLine(
+                    "FAIL: Vite did not show the cwhtml compiler diagnostic overlay.");
+                Console.Error.WriteLine(shown);
+                return false;
+            }
+
+            await WriteAtomicallyAsync(diagnosticsPath, original).ConfigureAwait(false);
+            string cleared = await WaitForBrowserResultAsync(
+                window,
+                browser,
+                $$"""
+                return (() => {
+                  const overlay = document.querySelector("vite-error-overlay");
+                  const sameDocument =
+                    document.body.dataset.webuitoolkitDiagnosticsDocument === "{{token}}";
+                  const title = Array.from(document.querySelectorAll("#tasks .task-title"))
+                    .some(element => element.textContent?.trim() === "{{TaskTitle}}");
+                  const state = globalThis.__webuitoolkitCwhtmlDiagnostics?.state;
+                  return !overlay && sameDocument && title && state === "clear"
+                    ? "pass|cleared"
+                    : "waiting|" + [Boolean(overlay), sameDocument, title, state].join("|");
+                })();
+                """).ConfigureAwait(false);
+            bool passed = StringComparer.Ordinal.Equals(cleared, "pass|cleared");
+            Console.WriteLine(passed
+                ? "PASS: stable cwhtml diagnostics appeared in Vite's native overlay and " +
+                    "cleared after recovery without reloading the document or losing ViewModel state."
+                : "FAIL: the cwhtml diagnostics overlay did not clear after recovery.");
+            if (!passed)
+            {
+                Console.Error.WriteLine(cleared);
+            }
+
+            return passed;
+        }
+        finally
+        {
+            await WriteAtomicallyAsync(diagnosticsPath, original).ConfigureAwait(false);
+        }
+    }
+
+    private static byte[] CreateDiagnosticsSnapshot(string viewPath)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(
+            stream,
+            new JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("contract", "webuitoolkit.cwhtml.diagnostics/1.0");
+            writer.WriteStartArray("diagnostics");
+            writer.WriteStartObject();
+            writer.WriteString("id", "WUTHTML1001");
+            writer.WriteString("severity", "error");
+            writer.WriteString("message", "Browser overlay integration probe.");
+            writer.WriteString("logicalPath", "Views/TodoDocument.cwhtml");
+            writer.WriteString("filePath", viewPath);
+            writer.WriteStartObject("range");
+            writer.WriteStartObject("start");
+            writer.WriteNumber("line", 1);
+            writer.WriteNumber("column", 0);
+            writer.WriteEndObject();
+            writer.WriteStartObject("end");
+            writer.WriteNumber("line", 1);
+            writer.WriteNumber("column", 5);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        return stream.ToArray();
+    }
+
+    private static async Task WriteAtomicallyAsync(string path, byte[] content)
+    {
+        string temporaryPath = path + ".browser-smoke";
+        await File.WriteAllBytesAsync(temporaryPath, content).ConfigureAwait(false);
+        File.Move(temporaryPath, path, overwrite: true);
+    }
+
+    private static async Task<string> WaitForBrowserResultAsync(
+        WebUiWindow window,
+        Process browser,
+        string script)
+    {
+        string result = string.Empty;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            while (!timeout.IsCancellationRequested)
+            {
+                result = window.ExecuteJavaScript(
+                    script,
+                    TimeSpan.FromSeconds(1),
+                    responseBufferSize: 2048);
+                if (result.StartsWith("pass|", StringComparison.Ordinal))
+                {
+                    return result;
+                }
+
+                if (browser.HasExited)
+                {
+                    return "error|Chromium exited during the diagnostics overlay gate.";
+                }
+
+                await Task.Delay(100, timeout.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        return result;
     }
 
     private static void CaptureCleanupError(
