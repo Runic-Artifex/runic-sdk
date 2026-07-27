@@ -20,6 +20,8 @@ internal sealed record DevProjectConfiguration(
     string ContractTypeScriptOutput,
     string ContractTool,
     string FrontendWatchTarget,
+    bool ViteDevServerEnabled,
+    string ViteDevServerEntry,
     string TargetDirectory)
 {
     private static readonly string[] PropertyNames =
@@ -36,6 +38,8 @@ internal sealed record DevProjectConfiguration(
         "WebUIToolkitFrontendContractTypeScriptOutput",
         "WebUIToolkitFrontendContractTool",
         "WebUIToolkitFrontendDevWatchTarget",
+        "WebUIToolkitFrontendViteDevServerEnabled",
+        "WebUIToolkitFrontendViteDevServerEntry",
         "TargetDir",
     ];
 
@@ -123,6 +127,10 @@ internal sealed record DevProjectConfiguration(
             NormalizeOptional(Value("WebUIToolkitFrontendContractTypeScriptOutput"), evaluatedProjectDirectory),
             NormalizeOptional(Value("WebUIToolkitFrontendContractTool"), evaluatedProjectDirectory),
             Value("WebUIToolkitFrontendDevWatchTarget"),
+            bool.TryParse(
+                Value("WebUIToolkitFrontendViteDevServerEnabled"),
+                out bool viteDevServerEnabled) && viteDevServerEnabled,
+            Value("WebUIToolkitFrontendViteDevServerEntry"),
             targetDirectory);
         configurationResult.Validate();
         return configurationResult;
@@ -135,6 +143,26 @@ internal sealed record DevProjectConfiguration(
             throw new DevUsageException(
                 "WUTDEV1005",
                 "Configure WebUIToolkitFrontendWorkspace or WebUIToolkitFrontendDevWatchTarget.");
+        }
+
+        if (ViteDevServerEnabled
+            && (!HasNodeWorkspace || string.IsNullOrWhiteSpace(ViteDevServerEntry)))
+        {
+            throw new DevUsageException(
+                "WUTDEV1005",
+                "Vite development-server mode requires a frontend workspace and " +
+                "WebUIToolkitFrontendViteDevServerEntry.");
+        }
+
+        if (ViteDevServerEnabled
+            && (ViteDevServerEntry[0] != '/'
+                || ViteDevServerEntry.StartsWith("//", StringComparison.Ordinal)
+                || ViteDevServerEntry.Contains('\\')
+                || ViteDevServerEntry.Contains('#')))
+        {
+            throw new DevUsageException(
+                "WUTDEV1005",
+                "WebUIToolkitFrontendViteDevServerEntry must be a root-relative Vite module path.");
         }
 
         if (string.IsNullOrWhiteSpace(FrontendOutputDirectory))

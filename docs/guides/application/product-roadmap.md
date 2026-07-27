@@ -98,13 +98,15 @@ criteria live in the
   configuration, generates/verifies contracts, performs the initial Vite and
   .NET build, supervises asset and `dotnet watch` processes, starts CsWebUi,
   reports stable diagnostics, observes manifest changes, and shuts the process
-  tree down cleanly. Native-window HMR and state-preserving reload remain.
+  tree down cleanly. Native-window CSS/JavaScript HMR is now implemented
+  through a supervised loopback Vite server; state-preserving cwhtml reload
+  remains.
 - Vite is now the first-class optional pipeline for TypeScript, JavaScript, CSS,
   Sass/PostCSS, images, fonts, source maps, hashing, and minification. It is a
   development/build tool, not an ASP.NET Core dependency or a replacement for
   the native HTMX transport. The cwhtml Todo workspace proves npm-managed
   HTMX, Bootstrap 5.3, and Font Awesome with local production output.
-- Implement tiered feedback: ordinary Vite HMR for frontend assets,
+- Continue tiered feedback beyond the implemented Vite asset HMR:
   state-preserving fragment refresh for compatible cwhtml-only changes, and a
   coordinated application restart when a C# change cannot be replaced safely.
 - Surface the same stable cwhtml diagnostics in the terminal, browser overlay,

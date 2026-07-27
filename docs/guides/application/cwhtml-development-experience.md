@@ -146,14 +146,19 @@ application code.
 `dotnet webuitoolkit dev` now:
 
 1. discover the project through `WebUIToolkit.Frontend.Sdk`;
-2. runs the configured Vite asset watcher when frontend entries exist;
+2. starts and waits for a real loopback-only Vite development server when
+   frontend entries exist;
 3. watch cwhtml and C# inputs using the same compiler configuration as build;
 4. launch and monitor the CsWebUi application;
 5. presents bounded, prefixed diagnostics in the terminal; and
-6. performs a reliable coordinated application restart.
+6. injects `/@vite/client` and the source entry only in development, while
+   retaining coordinated restart for managed-code changes.
 
-The loopback Vite development server, browser diagnostic overlay, and
-least-disruptive update selection below are the next refinements.
+Native-window CSS and JavaScript HMR is now implemented and covered by a real
+CsWebUi/Chromium gate. The gate mutates the ViewModel through the private HTMX
+binding, applies both CSS and JavaScript updates, and proves that the .NET
+process, browser document, and ViewModel state are retained. The browser
+diagnostic overlay and least-disruptive cwhtml update selection are next.
 
 Reload operates in tiers:
 
@@ -222,9 +227,10 @@ diagnostic identifiers and source spans.
    validation completion remains explicit and supports per-action overrides.
 4. **Implemented:** integrate Vite production builds and asset-manifest
    generation/copying.
-5. **Partially implemented:** add `dotnet webuitoolkit dev` and reliable
-   coordinated full reload. Asset HMR and the browser diagnostics overlay
-   remain.
+5. **Partially implemented:** `dotnet webuitoolkit dev` now supervises a real
+   Vite server and provides native-window CSS/JavaScript HMR without losing
+   ViewModel state. The browser diagnostics overlay and compatible cwhtml
+   renderer replacement remain.
 6. Add the cwhtml language server and editor integration.
 7. Add compatible renderer replacement and state-preserving fragment refresh.
 8. Build project templates, reusable cwhtml components, and scaffolding on the

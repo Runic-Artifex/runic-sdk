@@ -19,11 +19,13 @@ The `dev` command:
 2. generates and verifies configured C# and TypeScript contracts;
 3. performs one normal .NET/frontend build, restoring dependencies unless
    `--no-restore` is supplied;
-4. starts the project-provided frontend watch target (or an npm workspace
-   watcher for older projects);
+4. starts a loopback-only Vite development server for opted-in projects, or
+   the project-provided build watcher for legacy projects;
 5. starts the native application under `dotnet watch`;
-6. detects a completed frontend asset graph through
-   `webuitoolkit.assets.json`, mirrors only that graph into the runtime web
+6. injects Vite's client and source entry into the native document only for
+   development-server sessions, so CSS and JavaScript update without a .NET
+   restart, document reload, or ViewModel loss; legacy build-watch mode still
+   detects `webuitoolkit.assets.json`, mirrors that graph into the runtime web
    root, and restarts the native host; and
 7. forwards Ctrl+C to both process trees and waits for their termination.
 
@@ -43,12 +45,21 @@ The command consumes these evaluated MSBuild properties:
 - `WebUIToolkitFrontendOutputDirectory`
 - `WebUIToolkitFrontendWebRoot`
 - `WebUIToolkitFrontendDevWatchTarget`
+- `WebUIToolkitFrontendViteDevServerEnabled`
+- `WebUIToolkitFrontendViteDevServerEntry`
 - `WebUIToolkitFrontendContractSource`
 - `WebUIToolkitFrontendContractCSharpOutput`
 - `WebUIToolkitFrontendContractTypeScriptOutput`
 - `WebUIToolkitFrontendContractTool`
 
-`WebUIToolkitFrontendDevWatchTarget` is preferred when present. This allows one
+`WebUIToolkitFrontendViteDevServerEnabled=true` selects the native-window HMR
+path. The tool assigns a free loopback port, passes `--host 127.0.0.1`,
+`--strictPort`, and the selected port to the workspace's `dev` script, waits
+for `/@vite/client`, then supplies the origin and configured entry module to
+the managed application. Vite serves assets only; HTMX requests continue to
+use the private CsWebUi binding.
+
+`WebUIToolkitFrontendDevWatchTarget` is preferred in legacy mode. This allows one
 MSBuild target to coordinate Vite and another asset compiler such as cwhtml.
 For compatibility, a configured npm workspace is used directly when no target
 is declared.
@@ -61,6 +72,8 @@ vendor files.
 
 Use `--dry-run` to inspect the evaluated project, frontend, asset, runtime, and
 contract paths without generating files or starting child processes.
+Use `--no-dotnet-watch` to run the already-built managed host once while still
+supervising Vite; this is primarily useful for deterministic browser gates.
 
 ## Diagnostics
 

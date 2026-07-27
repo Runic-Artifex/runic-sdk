@@ -73,34 +73,26 @@ internal static class DevApplication
         DevOptions options,
         CancellationToken cancellationToken)
     {
-        string reloadManifest = Path.Combine(
-            configuration.FrontendOutputDirectory,
-            "webuitoolkit.assets.json");
-        if (!File.Exists(reloadManifest))
-        {
-            throw new DevDevelopmentException(
-                "WUTDEV1006",
-                $"The frontend build did not emit reload manifest '{reloadManifest}'.");
-        }
-
-        var mirror = new AssetMirror(
-            configuration.FrontendOutputDirectory,
-            configuration.RuntimeWebRoot);
-        await using var host = new HostProcessController(dotnetHost, configuration, options);
-        await host.StartAsync(cancellationToken).ConfigureAwait(false);
-        await using RunningProcess? frontend = options.WatchFrontend
-            ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
+        bool useViteServer = options.WatchFrontend && configuration.ViteDevServerEnabled;
+        await using ViteDevelopmentServer? vite = useViteServer
+            ? await ViteDevelopmentServer
+                .StartAsync(configuration, cancellationToken)
+                .ConfigureAwait(false)
             : null;
+        await using var host = new HostProcessController(
+            dotnetHost,
+            configuration,
+            options,
+            vite?.HostEnvironment);
+        await host.StartAsync(cancellationToken).ConfigureAwait(false);
+        await using RunningProcess? frontend =
+            options.WatchFrontend && !useViteServer
+                ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
+                : null;
 
-        Task assetMonitor = FilePoller.WatchAsync(
-            reloadManifest,
-            async token =>
-            {
-                int changed = mirror.Synchronize();
-                Console.WriteLine($"[dev] Frontend build completed; synchronized {changed} asset(s).");
-                await host.RestartAsync(token).ConfigureAwait(false);
-            },
-            cancellationToken);
+        Task assetMonitor = useViteServer || !options.WatchFrontend
+            ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+            : StartAssetMonitor(configuration, host, cancellationToken);
         Task contractMonitor = options.GenerateContracts && configuration.HasContracts
             ? FilePoller.WatchAsync(
                 configuration.ContractSource,
@@ -113,6 +105,10 @@ internal static class DevApplication
         if (frontend is not null)
         {
             observed.Add(frontend.Completion);
+        }
+        if (vite is not null)
+        {
+            observed.Add(vite.Completion);
         }
 
         Task completed = await Task.WhenAny(observed).ConfigureAwait(false);
@@ -129,12 +125,49 @@ internal static class DevApplication
         }
 
         int exitCode = await ((Task<int>)completed).ConfigureAwait(false);
+        if (completed == host.Completion && !options.WatchHost)
+        {
+            return exitCode;
+        }
+
         Program.WriteError(
             "WUTDEV1007",
             completed == host.Completion
                 ? $"The CsWebUi host watcher exited unexpectedly with code {exitCode}."
-                : $"The frontend watcher exited unexpectedly with code {exitCode}.");
+                : completed == vite?.Completion
+                    ? $"The Vite development server exited unexpectedly with code {exitCode}."
+                    : $"The frontend watcher exited unexpectedly with code {exitCode}.");
         return Program.DevelopmentFailure;
+    }
+
+    private static Task StartAssetMonitor(
+        DevProjectConfiguration configuration,
+        HostProcessController host,
+        CancellationToken cancellationToken)
+    {
+        string reloadManifest = Path.Combine(
+            configuration.FrontendOutputDirectory,
+            "webuitoolkit.assets.json");
+        if (!File.Exists(reloadManifest))
+        {
+            throw new DevDevelopmentException(
+                "WUTDEV1006",
+                $"The frontend build did not emit reload manifest '{reloadManifest}'.");
+        }
+
+        var mirror = new AssetMirror(
+            configuration.FrontendOutputDirectory,
+            configuration.RuntimeWebRoot);
+        return FilePoller.WatchAsync(
+            reloadManifest,
+            async token =>
+            {
+                int changed = mirror.Synchronize();
+                Console.WriteLine(
+                    $"[dev] Frontend build completed; synchronized {changed} asset(s).");
+                await host.RestartAsync(token).ConfigureAwait(false);
+            },
+            cancellationToken);
     }
 
     private static RunningProcess StartFrontendWatcher(
@@ -273,7 +306,9 @@ internal static class DevApplication
     {
         Console.WriteLine($"[dev] Project: {configuration.ProjectPath}");
         Console.WriteLine(
-            configuration.HasFrontendWatchTarget
+            configuration.ViteDevServerEnabled
+                ? $"[dev] Frontend: Vite dev server for {configuration.Workspace}"
+                : configuration.HasFrontendWatchTarget
                 ? $"[dev] Frontend: MSBuild target {configuration.FrontendWatchTarget}"
                 : $"[dev] Frontend: npm workspace {configuration.Workspace}");
         Console.WriteLine($"[dev] Assets: {configuration.FrontendOutputDirectory}");
@@ -302,14 +337,16 @@ internal static class DevApplication
               --no-restore            Do not restore NuGet or npm dependencies.
               --no-contracts          Do not generate or watch the configured contract.
               --no-frontend-watch     Build once without starting the frontend watcher.
+              --no-dotnet-watch       Run the managed application once (useful for gates).
               --dry-run               Evaluate and print the development configuration.
               -h, --help              Show this help.
 
             The selected project supplies frontend paths through
             WebUIToolkit.Frontend.Sdk MSBuild properties. The command generates and
             verifies contracts, performs the initial build, starts the native CsWebUi
-            host and frontend watcher, mirrors completed frontend builds into the
-            runtime web root, and restarts the host for a coordinated reload.
+            host and frontend tooling. Projects that opt into Vite development-server
+            mode receive native-window CSS/JavaScript HMR without restarting .NET;
+            their private CsWebUi bindings remain the application transport.
             """);
     }
 }

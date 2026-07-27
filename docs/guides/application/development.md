@@ -76,7 +76,7 @@ produced local files and owns the binary MVVM channel.
 
 The `dotnet-webuitoolkit` tool discovers SDK metadata and provides one
 coordinated command for contract generation, the initial Vite/.NET build,
-asset watching, `dotnet watch`, CsWebUi startup, diagnostics, and clean
+loopback Vite HMR, `dotnet watch`, CsWebUi startup, diagnostics, and clean
 process-tree shutdown:
 
 ```powershell
@@ -87,7 +87,8 @@ SimpleTodo and AdvancedTodo now import shared cwhtml and frontend SDK targets;
 their npm workspace owns HTMX, Bootstrap 5.3, Font Awesome, source maps,
 minification, content hashing, and the asset manifest. Both now generate their
 action/field/command/fragment registration from build-time cwhtml metadata and
-use the high-level native application builder. Browser overlays, true Vite HMR
-into the native window, richer typed declarations, and state-preserving cwhtml
-replacement remain milestones in the
+use the high-level native application builder. Their development documents
+load Vite's client and source entry directly from the supervised loopback
+server, while HTMX stays on the private CsWebUi binding. Browser overlays,
+richer typed declarations, and state-preserving cwhtml replacement remain in the
 [cwhtml development-experience plan](./cwhtml-development-experience.md).

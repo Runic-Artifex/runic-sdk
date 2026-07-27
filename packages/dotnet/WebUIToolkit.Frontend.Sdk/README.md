@@ -27,6 +27,8 @@ For a compiled C#/HTMX application that also uses Vite:
   <WebUIToolkitFrontendCwhtmlEnabled>true</WebUIToolkitFrontendCwhtmlEnabled>
   <WebUIToolkitFrontendWorkspace>@example/cwhtml-assets</WebUIToolkitFrontendWorkspace>
   <WebUIToolkitFrontendPackageDirectory>$(MSBuildProjectDirectory)/../frontend</WebUIToolkitFrontendPackageDirectory>
+  <WebUIToolkitFrontendViteDevServerEnabled>true</WebUIToolkitFrontendViteDevServerEnabled>
+  <WebUIToolkitFrontendViteDevServerEntry>/src/main.js</WebUIToolkitFrontendViteDevServerEntry>
 </PropertyGroup>
 ```
 
@@ -54,10 +56,15 @@ obsolete content hashes from accumulating in build or publish output.
 
 Install the `dotnet-webuitoolkit` tool and use
 `dotnet webuitoolkit dev <project>` for the coordinated Vite, build, CsWebUi,
-diagnostic, and restart loop. `WebUIToolkitFrontendWatchAssets` is the
-lower-level asset watcher used by that command.
+diagnostic, and restart loop. With development-server mode enabled, the command
+supervises Vite on an assigned loopback port and passes its client/entry
+metadata to the native application. Vite never proxies CsWebUi or HTMX
+application requests. `WebUIToolkitFrontendWatchAssets` remains the lower-level
+legacy build watcher.
 
 Set `WebUIToolkitFrontendInstall=false` when dependency restoration is managed
 outside MSBuild. `WebUIToolkitFrontendDevWatchTarget`,
+`WebUIToolkitFrontendViteDevServerEnabled`,
+`WebUIToolkitFrontendViteDevServerEntry`,
 `WebUIToolkitDevProject`, and `WebUIToolkitDevRunArguments` are explicit
 override points for non-standard projects.

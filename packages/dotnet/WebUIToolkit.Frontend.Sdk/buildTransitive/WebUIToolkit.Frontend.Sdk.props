@@ -18,5 +18,9 @@
     <WebUIToolkitDevRunArguments Condition="'$(WebUIToolkitDevRunArguments)' == ''"></WebUIToolkitDevRunArguments>
     <WebUIToolkitFrontendDevWatchTarget
       Condition="'$(WebUIToolkitFrontendDevWatchTarget)' == '' and '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">WebUIToolkitFrontendWatchAssets</WebUIToolkitFrontendDevWatchTarget>
+    <WebUIToolkitFrontendViteDevServerEnabled
+      Condition="'$(WebUIToolkitFrontendViteDevServerEnabled)' == ''">false</WebUIToolkitFrontendViteDevServerEnabled>
+    <WebUIToolkitFrontendViteDevServerEntry
+      Condition="'$(WebUIToolkitFrontendViteDevServerEntry)' == ''">/src/main.js</WebUIToolkitFrontendViteDevServerEntry>
   </PropertyGroup>
 </Project>

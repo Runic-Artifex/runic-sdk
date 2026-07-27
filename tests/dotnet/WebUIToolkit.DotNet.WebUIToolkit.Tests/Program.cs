@@ -18,6 +18,7 @@ internal static class Program
             ("project discovery accepts a directory", ProjectDiscoveryAcceptsDirectory),
             ("project discovery rejects ambiguity", ProjectDiscoveryRejectsAmbiguity),
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
+            ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
         ];
 
@@ -47,7 +48,17 @@ internal static class Program
             ["dev", "--project", "App.csproj", "--no-restore", "--", "--advanced", "two words"]);
         Equal("App.csproj", options.Project);
         False(options.Restore, "The no-restore option was ignored.");
+        if (!options.WatchHost)
+        {
+            throw new InvalidOperationException("The managed host watcher was disabled by default.");
+        }
         SequenceEqual(["--advanced", "two words"], options.ApplicationArguments);
+
+        DevOptions once = DevOptions.Parse(["dev", "--no-dotnet-watch"]);
+        if (once.WatchHost)
+        {
+            throw new InvalidOperationException("--no-dotnet-watch was ignored.");
+        }
     }
 
     private static void DevOptionsRejectUnknownSwitches()
@@ -89,6 +100,43 @@ internal static class Program
         Equal("a project.csproj", startInfo.ArgumentList[1]);
         Equal("-p:Value=$(not-a-shell)", startInfo.ArgumentList[2]);
         False(startInfo.UseShellExecute, "Commands unexpectedly use a shell.");
+    }
+
+    private static void ViteArgumentsAreExplicit()
+    {
+        var configuration = new DevProjectConfiguration(
+            ProjectPath: "/repo/App.csproj",
+            ProjectDirectory: "/repo",
+            WorkspaceRoot: "/repo",
+            Workspace: "@example/app",
+            FrontendPackageDirectory: "/repo/frontend",
+            FrontendOutputDirectory: "/repo/frontend/dist",
+            FrontendWebRoot: "www",
+            ContractSource: "",
+            ContractCSharpOutput: "",
+            ContractTypeScriptOutput: "",
+            ContractTool: "",
+            FrontendWatchTarget: "WebUIToolkitFrontendWatchAssets",
+            ViteDevServerEnabled: true,
+            ViteDevServerEntry: "/src/main.js",
+            TargetDirectory: "/repo/bin/Debug/net10.0");
+        IReadOnlyList<string> arguments = ViteDevelopmentServer.CreateArguments(
+            configuration,
+            43123);
+        SequenceEqual(
+            [
+                "run",
+                "dev",
+                "--workspace",
+                "@example/app",
+                "--",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "43123",
+                "--strictPort",
+            ],
+            arguments);
     }
 
     private static void AssetMirroringUpdatesOwnedGraph()

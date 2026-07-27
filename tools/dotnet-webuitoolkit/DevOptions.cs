@@ -10,6 +10,7 @@ internal sealed record DevOptions(
     bool Restore,
     bool GenerateContracts,
     bool WatchFrontend,
+    bool WatchHost,
     bool DryRun,
     IReadOnlyList<string> ApplicationArguments)
 {
@@ -18,7 +19,7 @@ internal sealed record DevOptions(
         ArgumentNullException.ThrowIfNull(arguments);
         if (arguments.Length == 0 || IsHelp(arguments[0]))
         {
-            return new(null, "Debug", true, true, true, false, Array.Empty<string>());
+            return new(null, "Debug", true, true, true, true, false, Array.Empty<string>());
         }
 
         if (!StringComparer.Ordinal.Equals(arguments[0], "dev"))
@@ -33,6 +34,7 @@ internal sealed record DevOptions(
         bool restore = true;
         bool contracts = true;
         bool watchFrontend = true;
+        bool watchHost = true;
         bool dryRun = false;
         var applicationArguments = new List<string>();
         for (int index = 1; index < arguments.Length; index++)
@@ -64,6 +66,9 @@ internal sealed record DevOptions(
                     break;
                 case "--no-frontend-watch":
                     watchFrontend = false;
+                    break;
+                case "--no-dotnet-watch":
+                    watchHost = false;
                     break;
                 case "--dry-run":
                     dryRun = true;
@@ -102,6 +107,7 @@ internal sealed record DevOptions(
             restore,
             contracts,
             watchFrontend,
+            watchHost,
             dryRun,
             new ReadOnlyCollection<string>(applicationArguments));
     }

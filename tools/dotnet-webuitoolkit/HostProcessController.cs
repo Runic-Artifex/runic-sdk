@@ -10,6 +10,7 @@ internal sealed class HostProcessController : IAsyncDisposable
     private readonly string _dotnetHost;
     private readonly DevProjectConfiguration _configuration;
     private readonly DevOptions _options;
+    private readonly IReadOnlyDictionary<string, string?> _developmentEnvironment;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TaskCompletionSource<int> _unexpectedExit =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -18,11 +19,14 @@ internal sealed class HostProcessController : IAsyncDisposable
     internal HostProcessController(
         string dotnetHost,
         DevProjectConfiguration configuration,
-        DevOptions options)
+        DevOptions options,
+        IReadOnlyDictionary<string, string?>? developmentEnvironment = null)
     {
         _dotnetHost = dotnetHost;
         _configuration = configuration;
         _options = options;
+        _developmentEnvironment = developmentEnvironment
+            ?? new Dictionary<string, string?>(StringComparer.Ordinal);
     }
 
     internal Task<int> Completion => _unexpectedExit.Task;
@@ -66,18 +70,30 @@ internal sealed class HostProcessController : IAsyncDisposable
 
     private RunningProcess Start()
     {
-        var arguments = new List<string>
-        {
-            "watch",
-            "--project",
-            _configuration.ProjectPath,
-            "--configuration",
-            _options.Configuration,
-            "--no-restore",
-            "--non-interactive",
-            "run",
-            "--no-launch-profile",
-        };
+        var arguments = _options.WatchHost
+            ? new List<string>
+            {
+                "watch",
+                "--project",
+                _configuration.ProjectPath,
+                "--configuration",
+                _options.Configuration,
+                "--no-restore",
+                "--non-interactive",
+                "run",
+                "--no-launch-profile",
+            }
+            : new List<string>
+            {
+                "run",
+                "--project",
+                _configuration.ProjectPath,
+                "--configuration",
+                _options.Configuration,
+                "--no-restore",
+                "--no-build",
+                "--no-launch-profile",
+            };
         if (_options.ApplicationArguments.Count != 0)
         {
             arguments.Add("--");
@@ -89,9 +105,17 @@ internal sealed class HostProcessController : IAsyncDisposable
             ["WebUIToolkitFrontendEnabled"] = "false",
             ["WebUIToolkitFrontendInstall"] = "false",
             ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "1",
+            [ViteDevelopmentServer.ServerEnvironmentVariable] = null,
+            [ViteDevelopmentServer.EntryEnvironmentVariable] = null,
+            [ViteDevelopmentServer.PackageDirectoryEnvironmentVariable] = null,
         };
+        foreach ((string key, string? value) in _developmentEnvironment)
+        {
+            environment[key] = value;
+        }
+
         return RunningProcess.Start(
-            "host",
+            _options.WatchHost ? "host" : "app",
             _dotnetHost,
             _configuration.ProjectDirectory,
             arguments,
