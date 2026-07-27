@@ -158,8 +158,9 @@ of the real-browser/Native-AOT acceptance gate.
 The next product work is the remaining cwhtml developer-experience phase:
 generate the native-HTMX registration plumbing and evolve the implemented
 `dotnet webuitoolkit dev` watcher/restart loop into native-window HMR with a
-browser diagnostics overlay and state-preserving compatible updates. Broader WPF
-migration capability coverage, reusable sample components and styling
+browser diagnostics overlay. Native-window asset HMR and the overlay are now
+implemented; state-preserving compatible cwhtml renderer updates are next.
+Broader WPF migration capability coverage, reusable sample components and styling
 alternatives, alignment of the TypeScript framework adapters with the proven
 native path, and the separately designed asset/VFS extraction follow. Those
 are roadmap items, not capabilities implied by the completed SimpleTodo gate.

@@ -14,22 +14,33 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
     internal const string EntryEnvironmentVariable = "WEBUITOOLKIT_VITE_ENTRY";
     internal const string PackageDirectoryEnvironmentVariable =
         "WEBUITOOLKIT_VITE_PACKAGE_DIRECTORY";
+    internal const string DiagnosticsEnvironmentVariable =
+        "WEBUITOOLKIT_CWHTML_DIAGNOSTICS";
+    internal const string ProjectEnvironmentVariable =
+        "WEBUITOOLKIT_DEV_PROJECT";
 
     private readonly RunningProcess _process;
+    private readonly ViteConfigurationBridge _configurationBridge;
 
     private ViteDevelopmentServer(
         RunningProcess process,
+        ViteConfigurationBridge configurationBridge,
         Uri origin,
         string entry,
-        string packageDirectory)
+        string packageDirectory,
+        string diagnosticsPath,
+        string projectPath)
     {
         _process = process;
+        _configurationBridge = configurationBridge;
         Origin = origin;
         HostEnvironment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             [ServerEnvironmentVariable] = origin.AbsoluteUri,
             [EntryEnvironmentVariable] = entry,
             [PackageDirectoryEnvironmentVariable] = packageDirectory,
+            [DiagnosticsEnvironmentVariable] = diagnosticsPath,
+            [ProjectEnvironmentVariable] = projectPath,
         };
     }
 
@@ -46,21 +57,38 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(configuration);
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
-        IReadOnlyList<string> arguments = CreateArguments(configuration, port);
-        RunningProcess process = RunningProcess.Start(
-            "vite",
-            "npm",
-            configuration.WorkspaceRoot,
-            arguments,
-            new Dictionary<string, string?>(StringComparer.Ordinal)
-            {
-                ["BROWSER"] = "none",
-            });
+        ViteConfigurationBridge configurationBridge =
+            ViteConfigurationBridge.Create(configuration);
+        RunningProcess process;
+        try
+        {
+            IReadOnlyList<string> arguments = CreateArguments(
+                configuration,
+                port,
+                configurationBridge.ConfigurationPath);
+            process = RunningProcess.Start(
+                "vite",
+                "npm",
+                configuration.WorkspaceRoot,
+                arguments,
+                new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["BROWSER"] = "none",
+                });
+        }
+        catch
+        {
+            configurationBridge.Dispose();
+            throw;
+        }
         var server = new ViteDevelopmentServer(
             process,
+            configurationBridge,
             origin,
             configuration.ViteDevServerEntry,
-            configuration.FrontendPackageDirectory);
+            configuration.FrontendPackageDirectory,
+            configuration.CwhtmlDiagnosticsPath,
+            configuration.ProjectPath);
         try
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
@@ -76,13 +104,16 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
 
     internal static IReadOnlyList<string> CreateArguments(
         DevProjectConfiguration configuration,
-        int port) =>
+        int port,
+        string configurationPath) =>
         [
             "run",
             "dev",
             "--workspace",
             configuration.Workspace,
             "--",
+            "--config",
+            configurationPath,
             "--host",
             "127.0.0.1",
             "--port",
@@ -162,5 +193,15 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         }
     }
 
-    public ValueTask DisposeAsync() => _process.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _process.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _configurationBridge.Dispose();
+        }
+    }
 }

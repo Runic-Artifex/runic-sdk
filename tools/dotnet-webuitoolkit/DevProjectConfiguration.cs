@@ -22,6 +22,8 @@ internal sealed record DevProjectConfiguration(
     string FrontendWatchTarget,
     bool ViteDevServerEnabled,
     string ViteDevServerEntry,
+    string ViteConfigurationPath,
+    string CwhtmlDiagnosticsPath,
     string TargetDirectory)
 {
     private static readonly string[] PropertyNames =
@@ -40,6 +42,8 @@ internal sealed record DevProjectConfiguration(
         "WebUIToolkitFrontendDevWatchTarget",
         "WebUIToolkitFrontendViteDevServerEnabled",
         "WebUIToolkitFrontendViteDevServerEntry",
+        "WebUIToolkitFrontendViteConfiguration",
+        "WebUIToolkitCwhtmlDiagnosticsPath",
         "TargetDir",
     ];
 
@@ -131,6 +135,10 @@ internal sealed record DevProjectConfiguration(
                 Value("WebUIToolkitFrontendViteDevServerEnabled"),
                 out bool viteDevServerEnabled) && viteDevServerEnabled,
             Value("WebUIToolkitFrontendViteDevServerEntry"),
+            NormalizeOptional(
+                Value("WebUIToolkitFrontendViteConfiguration"),
+                packageDirectory.Length == 0 ? workspaceRoot : packageDirectory),
+            NormalizeOptional(Value("WebUIToolkitCwhtmlDiagnosticsPath"), evaluatedProjectDirectory),
             targetDirectory);
         configurationResult.Validate();
         return configurationResult;
@@ -152,6 +160,15 @@ internal sealed record DevProjectConfiguration(
                 "WUTDEV1005",
                 "Vite development-server mode requires a frontend workspace and " +
                 "WebUIToolkitFrontendViteDevServerEntry.");
+        }
+
+        if (ViteDevServerEnabled
+            && !string.IsNullOrWhiteSpace(ViteConfigurationPath)
+            && !File.Exists(ViteConfigurationPath))
+        {
+            throw new DevUsageException(
+                "WUTDEV1005",
+                $"The configured Vite file '{ViteConfigurationPath}' does not exist.");
         }
 
         if (ViteDevServerEnabled

@@ -1,0 +1,294 @@
+using System;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+
+namespace WebUIToolkit.DotNet.WebUIToolkit;
+
+internal sealed class ViteConfigurationBridge : IDisposable
+{
+    private readonly string _directory;
+
+    private ViteConfigurationBridge(string directory, string configurationPath)
+    {
+        _directory = directory;
+        ConfigurationPath = configurationPath;
+    }
+
+    internal string ConfigurationPath { get; }
+
+    internal static ViteConfigurationBridge Create(DevProjectConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "webuitoolkit-vite",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "vite.config.mjs");
+        try
+        {
+            File.WriteAllText(
+                path,
+                CreateSource(configuration),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true));
+            return new ViteConfigurationBridge(directory, path);
+        }
+        catch
+        {
+            Directory.Delete(directory, recursive: true);
+            throw;
+        }
+    }
+
+    internal static string CreateSource(DevProjectConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        string entryPath = Path.GetFullPath(
+            configuration.ViteDevServerEntry.TrimStart('/'),
+            configuration.FrontendPackageDirectory);
+        string userConfigurationImport = string.IsNullOrWhiteSpace(
+            configuration.ViteConfigurationPath)
+            ? "const userConfigExport = {};"
+            : $"import userConfigExport from {Json(new Uri(configuration.ViteConfigurationPath).AbsoluteUri)};";
+        string diagnosticsPath = Json(configuration.CwhtmlDiagnosticsPath);
+        string normalizedEntry = Json(NormalizePath(entryPath));
+
+        return $$"""
+            import { readFile } from "node:fs/promises";
+            {{userConfigurationImport}}
+
+            const diagnosticsPath = {{diagnosticsPath}};
+            const entryPath = {{normalizedEntry}};
+            const diagnosticsContract = "webuitoolkit.cwhtml.diagnostics/1.0";
+            const virtualClientId = "\0virtual:webuitoolkit-cwhtml-diagnostics";
+
+            const normalizePath = value => value.replaceAll("\\", "/");
+            const cleanModuleId = value => normalizePath(value.split("?", 1)[0]);
+
+            function webuitoolkitDiagnosticsPlugin() {
+              let server;
+              let lastSnapshot;
+              let publishTimer;
+              let publishInterval;
+
+              async function readSnapshot() {
+                if (!diagnosticsPath) {
+                  return { raw: "", diagnostics: [] };
+                }
+
+                try {
+                  const raw = await readFile(diagnosticsPath, "utf8");
+                  const snapshot = JSON.parse(raw);
+                  if (snapshot?.contract !== diagnosticsContract ||
+                      !Array.isArray(snapshot?.diagnostics)) {
+                    throw new Error(`Expected ${diagnosticsContract}.`);
+                  }
+                  return { raw, diagnostics: snapshot.diagnostics };
+                } catch (error) {
+                  if (error?.code === "ENOENT") {
+                    return { raw: "", diagnostics: [] };
+                  }
+                  return {
+                    raw: `invalid:${error?.message ?? error}`,
+                    diagnostics: [{
+                      id: "WUTDEV1008",
+                      severity: "error",
+                      message: `Could not read the cwhtml diagnostics snapshot: ${error?.message ?? error}`,
+                      logicalPath: diagnosticsPath,
+                      filePath: diagnosticsPath,
+                      range: null,
+                    }],
+                  };
+                }
+              }
+
+              async function sourceFrame(diagnostic) {
+                if (!diagnostic.range || !diagnostic.filePath) {
+                  return undefined;
+                }
+
+                try {
+                  const lines = (await readFile(diagnostic.filePath, "utf8")).split(/\r?\n/u);
+                  const line = diagnostic.range.start.line;
+                  const first = Math.max(0, line - 2);
+                  const last = Math.min(lines.length - 1, line + 2);
+                  const width = String(last + 1).length;
+                  const output = [];
+                  for (let index = first; index <= last; index += 1) {
+                    const marker = index === line ? ">" : " ";
+                    output.push(`${marker} ${String(index + 1).padStart(width)} | ${lines[index]}`);
+                    if (index === line) {
+                      const start = Math.max(0, diagnostic.range.start.column);
+                      const end = diagnostic.range.end.line === line
+                        ? Math.max(start + 1, diagnostic.range.end.column)
+                        : start + 1;
+                      output.push(
+                        `  ${" ".repeat(width)} | ${" ".repeat(start)}${"^".repeat(end - start)}`);
+                    }
+                  }
+                  return output.join("\n");
+                } catch {
+                  return undefined;
+                }
+              }
+
+              async function errorPayload(errors) {
+                const first = errors[0];
+                const location = first.range
+                  ? {
+                      file: first.filePath,
+                      line: first.range.start.line + 1,
+                      column: first.range.start.column,
+                    }
+                  : undefined;
+                const stack = errors.map(diagnostic => {
+                  const position = diagnostic.range
+                    ? `(${diagnostic.range.start.line + 1},${diagnostic.range.start.column + 1})`
+                    : "";
+                  return `${diagnostic.logicalPath}${position}: ${diagnostic.severity} ` +
+                    `${diagnostic.id}: ${diagnostic.message}`;
+                }).join("\n");
+                return {
+                  name: "CwhtmlCompilerError",
+                  message: `[${first.id}] ${first.message}`,
+                  stack,
+                  id: first.filePath,
+                  frame: await sourceFrame(first),
+                  plugin: "webuitoolkit:cwhtml",
+                  loc: location,
+                };
+              }
+
+              async function publish(force = false) {
+                const snapshot = await readSnapshot();
+                if (!force && snapshot.raw === lastSnapshot) {
+                  return;
+                }
+                lastSnapshot = snapshot.raw;
+                const errors = snapshot.diagnostics.filter(
+                  diagnostic => diagnostic.severity === "error");
+                server.ws.send({
+                  type: "custom",
+                  event: "webuitoolkit:cwhtml-diagnostics-state",
+                  data: {
+                    state: errors.length === 0 ? "clear" : "error",
+                    diagnostics: errors,
+                  },
+                });
+                if (errors.length === 0) {
+                  server.ws.send({
+                    type: "custom",
+                    event: "webuitoolkit:cwhtml-diagnostics-clear",
+                    data: {},
+                  });
+                  return;
+                }
+                server.ws.send({ type: "error", err: await errorPayload(errors) });
+              }
+
+              function schedulePublish(changedPath) {
+                if (!diagnosticsPath ||
+                    cleanModuleId(changedPath) !== normalizePath(diagnosticsPath)) {
+                  return;
+                }
+                clearTimeout(publishTimer);
+                publishTimer = setTimeout(() => void publish(), 25);
+              }
+
+              return {
+                name: "webuitoolkit:cwhtml-diagnostics",
+                enforce: "pre",
+                configureServer(viteServer) {
+                  server = viteServer;
+                  if (diagnosticsPath) {
+                    server.watcher.add(diagnosticsPath);
+                    server.watcher.on("add", schedulePublish);
+                    server.watcher.on("change", schedulePublish);
+                    server.watcher.on("unlink", schedulePublish);
+                    publishInterval = setInterval(() => void publish(), 250);
+                  }
+                  server.ws.on(
+                    "webuitoolkit:cwhtml-diagnostics-ready",
+                    () => void publish(true));
+                  server.httpServer?.once("close", () => {
+                    clearTimeout(publishTimer);
+                    clearInterval(publishInterval);
+                  });
+                },
+                resolveId(id) {
+                  return id === "virtual:webuitoolkit-cwhtml-diagnostics"
+                    ? virtualClientId
+                    : undefined;
+                },
+                load(id) {
+                  if (id !== virtualClientId) {
+                    return undefined;
+                  }
+                  return `
+                    if (import.meta.hot) {
+                      import.meta.hot.on(
+                        "webuitoolkit:cwhtml-diagnostics-state",
+                        state => {
+                          globalThis.__webuitoolkitCwhtmlDiagnostics = state;
+                        });
+                      import.meta.hot.on(
+                        "webuitoolkit:cwhtml-diagnostics-clear",
+                        () => document.querySelector("vite-error-overlay")?.remove());
+                      import.meta.hot.send("webuitoolkit:cwhtml-diagnostics-ready");
+                    }
+                  `;
+                },
+                transform(code, id) {
+                  if (cleanModuleId(id) !== entryPath) {
+                    return undefined;
+                  }
+                  return {
+                    code: `import "virtual:webuitoolkit-cwhtml-diagnostics";\n${code}`,
+                    map: null,
+                  };
+                },
+              };
+            }
+
+            async function resolveUserConfig(environment) {
+              const candidate = typeof userConfigExport === "function"
+                ? await userConfigExport(environment)
+                : await userConfigExport;
+              return candidate ?? {};
+            }
+
+            export default async environment => {
+              const userConfig = await resolveUserConfig(environment);
+              return {
+                ...userConfig,
+                plugins: [
+                  ...(Array.isArray(userConfig.plugins) ? userConfig.plugins : []),
+                  webuitoolkitDiagnosticsPlugin(),
+                ],
+              };
+            };
+            """;
+    }
+
+    private static string Json(string value) => JsonSerializer.Serialize(value);
+
+    private static string NormalizePath(string path) => path.Replace('\\', '/');
+
+    public void Dispose()
+    {
+        try
+        {
+            if (Directory.Exists(_directory))
+            {
+                Directory.Delete(_directory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+}

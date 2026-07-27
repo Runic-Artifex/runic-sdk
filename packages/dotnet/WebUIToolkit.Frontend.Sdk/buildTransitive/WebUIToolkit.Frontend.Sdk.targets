@@ -2,6 +2,16 @@
   <PropertyGroup>
     <WebUIToolkitFrontendOutputDirectory
       Condition="'$(WebUIToolkitFrontendOutputDirectory)' == '' and '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">$(WebUIToolkitFrontendPackageDirectory)/dist</WebUIToolkitFrontendOutputDirectory>
+    <WebUIToolkitFrontendViteConfiguration
+      Condition="'$(WebUIToolkitFrontendViteConfiguration)' == '' and Exists('$(WebUIToolkitFrontendPackageDirectory)/vite.config.mjs')">$(WebUIToolkitFrontendPackageDirectory)/vite.config.mjs</WebUIToolkitFrontendViteConfiguration>
+    <WebUIToolkitFrontendViteConfiguration
+      Condition="'$(WebUIToolkitFrontendViteConfiguration)' == '' and Exists('$(WebUIToolkitFrontendPackageDirectory)/vite.config.js')">$(WebUIToolkitFrontendPackageDirectory)/vite.config.js</WebUIToolkitFrontendViteConfiguration>
+    <WebUIToolkitFrontendViteConfiguration
+      Condition="'$(WebUIToolkitFrontendViteConfiguration)' == '' and Exists('$(WebUIToolkitFrontendPackageDirectory)/vite.config.ts')">$(WebUIToolkitFrontendPackageDirectory)/vite.config.ts</WebUIToolkitFrontendViteConfiguration>
+    <WebUIToolkitFrontendViteConfiguration
+      Condition="'$(WebUIToolkitFrontendViteConfiguration)' == '' and Exists('$(WebUIToolkitFrontendPackageDirectory)/vite.config.mts')">$(WebUIToolkitFrontendPackageDirectory)/vite.config.mts</WebUIToolkitFrontendViteConfiguration>
+    <WebUIToolkitFrontendViteConfiguration
+      Condition="'$(WebUIToolkitFrontendViteConfiguration)' == '' and Exists('$(WebUIToolkitFrontendPackageDirectory)/vite.config.cjs')">$(WebUIToolkitFrontendPackageDirectory)/vite.config.cjs</WebUIToolkitFrontendViteConfiguration>
   </PropertyGroup>
 
   <Target Name="WebUIToolkitFrontendValidate"

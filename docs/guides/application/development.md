@@ -76,8 +76,8 @@ produced local files and owns the binary MVVM channel.
 
 The `dotnet-webuitoolkit` tool discovers SDK metadata and provides one
 coordinated command for contract generation, the initial Vite/.NET build,
-loopback Vite HMR, `dotnet watch`, CsWebUi startup, diagnostics, and clean
-process-tree shutdown:
+loopback Vite HMR, `dotnet watch`, CsWebUi startup, source-mapped cwhtml
+diagnostics in Vite's browser overlay, and clean process-tree shutdown:
 
 ```powershell
 dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj

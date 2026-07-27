@@ -19,6 +19,7 @@ internal static class Program
             ("project discovery rejects ambiguity", ProjectDiscoveryRejectsAmbiguity),
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
             ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
+            ("Vite bridge forwards cwhtml diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
         ];
 
@@ -119,10 +120,13 @@ internal static class Program
             FrontendWatchTarget: "WebUIToolkitFrontendWatchAssets",
             ViteDevServerEnabled: true,
             ViteDevServerEntry: "/src/main.js",
+            ViteConfigurationPath: "/repo/frontend/vite.config.mjs",
+            CwhtmlDiagnosticsPath: "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json",
             TargetDirectory: "/repo/bin/Debug/net10.0");
         IReadOnlyList<string> arguments = ViteDevelopmentServer.CreateArguments(
             configuration,
-            43123);
+            43123,
+            "/tmp/webuitoolkit/vite.config.mjs");
         SequenceEqual(
             [
                 "run",
@@ -130,6 +134,8 @@ internal static class Program
                 "--workspace",
                 "@example/app",
                 "--",
+                "--config",
+                "/tmp/webuitoolkit/vite.config.mjs",
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -137,6 +143,35 @@ internal static class Program
                 "--strictPort",
             ],
             arguments);
+    }
+
+    private static void ViteBridgeForwardsDiagnostics()
+    {
+        var configuration = new DevProjectConfiguration(
+            ProjectPath: "/repo/App.csproj",
+            ProjectDirectory: "/repo",
+            WorkspaceRoot: "/repo",
+            Workspace: "@example/app",
+            FrontendPackageDirectory: "/repo/frontend",
+            FrontendOutputDirectory: "/repo/frontend/dist",
+            FrontendWebRoot: "www",
+            ContractSource: "",
+            ContractCSharpOutput: "",
+            ContractTypeScriptOutput: "",
+            ContractTool: "",
+            FrontendWatchTarget: "WebUIToolkitFrontendWatchAssets",
+            ViteDevServerEnabled: true,
+            ViteDevServerEntry: "/src/main.js",
+            ViteConfigurationPath: "/repo/frontend/vite.config.mjs",
+            CwhtmlDiagnosticsPath: "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json",
+            TargetDirectory: "/repo/bin/Debug/net10.0");
+        string source = ViteConfigurationBridge.CreateSource(configuration);
+        Contains(source, "webuitoolkit.cwhtml.diagnostics/1.0");
+        Contains(source, "webuitoolkit:cwhtml-diagnostics");
+        Contains(source, "server.ws.send({ type: \"error\"");
+        Contains(source, "document.querySelector(\"vite-error-overlay\")?.remove()");
+        Contains(source, "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json");
+        Contains(source, "/repo/frontend/src/main.js");
     }
 
     private static void AssetMirroringUpdatesOwnedGraph()
@@ -191,6 +226,14 @@ internal static class Program
         if (value)
         {
             throw new InvalidOperationException(message);
+        }
+    }
+
+    private static void Contains(string value, string expected)
+    {
+        if (!value.Contains(expected, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected text containing '{expected}'.");
         }
     }
 

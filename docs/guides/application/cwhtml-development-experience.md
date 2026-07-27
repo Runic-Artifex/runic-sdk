@@ -158,7 +158,11 @@ Native-window CSS and JavaScript HMR is now implemented and covered by a real
 CsWebUi/Chromium gate. The gate mutates the ViewModel through the private HTMX
 binding, applies both CSS and JavaScript updates, and proves that the .NET
 process, browser document, and ViewModel state are retained. The browser
-diagnostic overlay and least-disruptive cwhtml update selection are next.
+diagnostic overlay is also implemented: the compiler publishes a versioned,
+atomic snapshot and the supervised Vite server presents the same stable IDs,
+messages, files, and source spans in its native overlay. A successful
+recompilation clears the overlay without reloading the document or losing
+ViewModel state. Least-disruptive cwhtml update selection is next.
 
 Reload operates in tiers:
 
@@ -174,9 +178,13 @@ use Roslyn compilation rather than a separate template interpreter whose
 semantics could diverge from publish output. State-preserving replacement is a
 later optimization; reliable full reload is the first delivery milestone.
 
-An `@webuitoolkit/vite-plugin-cwhtml` package should connect the two toolchains:
+The development command currently supplies a temporary Vite configuration
+wrapper that connects the two toolchains without requiring application-owned
+plugin boilerplate. A future `@webuitoolkit/vite-plugin-cwhtml` package can
+make the same bridge independently reusable:
 
-- translate cwhtml diagnostics into Vite's browser overlay;
+- translate cwhtml diagnostics into Vite's browser overlay (implemented by the
+  coordinator wrapper);
 - issue custom HMR events for affected documents and fragments;
 - invalidate asset and content scans when cwhtml references change; and
 - expose the current generated asset manifest to the .NET development host.
@@ -227,10 +235,10 @@ diagnostic identifiers and source spans.
    validation completion remains explicit and supports per-action overrides.
 4. **Implemented:** integrate Vite production builds and asset-manifest
    generation/copying.
-5. **Partially implemented:** `dotnet webuitoolkit dev` now supervises a real
+5. **Implemented:** `dotnet webuitoolkit dev` now supervises a real
    Vite server and provides native-window CSS/JavaScript HMR without losing
-   ViewModel state. The browser diagnostics overlay and compatible cwhtml
-   renderer replacement remain.
+   ViewModel state, and stable cwhtml diagnostics appear and clear through
+   Vite's browser overlay.
 6. Add the cwhtml language server and editor integration.
 7. Add compatible renderer replacement and state-preserving fragment refresh.
 8. Build project templates, reusable cwhtml components, and scaffolding on the

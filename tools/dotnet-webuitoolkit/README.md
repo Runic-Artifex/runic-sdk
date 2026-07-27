@@ -24,10 +24,13 @@ The `dev` command:
 5. starts the native application under `dotnet watch`;
 6. injects Vite's client and source entry into the native document only for
    development-server sessions, so CSS and JavaScript update without a .NET
-   restart, document reload, or ViewModel loss; legacy build-watch mode still
+   restart, document reload, or ViewModel loss;
+7. forwards versioned cwhtml compiler diagnostics, including stable IDs and
+   exact source spans, into Vite's standard browser overlay and clears it after
+   a successful compilation; legacy build-watch mode still
    detects `webuitoolkit.assets.json`, mirrors that graph into the runtime web
    root, and restarts the native host; and
-7. forwards Ctrl+C to both process trees and waits for their termination.
+8. forwards Ctrl+C to both process trees and waits for their termination.
 
 Host rebuilds set `WebUIToolkitFrontendEnabled=false`, because the independently
 running frontend watcher owns that part of the loop. This prevents duplicate
@@ -47,6 +50,8 @@ The command consumes these evaluated MSBuild properties:
 - `WebUIToolkitFrontendDevWatchTarget`
 - `WebUIToolkitFrontendViteDevServerEnabled`
 - `WebUIToolkitFrontendViteDevServerEntry`
+- `WebUIToolkitFrontendViteConfiguration`
+- `WebUIToolkitCwhtmlDiagnosticsPath`
 - `WebUIToolkitFrontendContractSource`
 - `WebUIToolkitFrontendContractCSharpOutput`
 - `WebUIToolkitFrontendContractTypeScriptOutput`
@@ -58,6 +63,12 @@ path. The tool assigns a free loopback port, passes `--host 127.0.0.1`,
 for `/@vite/client`, then supplies the origin and configured entry module to
 the managed application. Vite serves assets only; HTMX requests continue to
 use the private CsWebUi binding.
+
+The coordinator wraps the application's normal Vite configuration with a
+development-only diagnostics plugin. It watches the atomic
+`webuitoolkit.cwhtml.diagnostics/1.0` snapshot, sends errors through Vite's
+standard overlay protocol, and removes the overlay when the snapshot recovers.
+The wrapper is temporary and does not modify the application's Vite config.
 
 `WebUIToolkitFrontendDevWatchTarget` is preferred in legacy mode. This allows one
 MSBuild target to coordinate Vite and another asset compiler such as cwhtml.

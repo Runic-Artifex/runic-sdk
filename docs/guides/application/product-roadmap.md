@@ -99,8 +99,10 @@ criteria live in the
   .NET build, supervises asset and `dotnet watch` processes, starts CsWebUi,
   reports stable diagnostics, observes manifest changes, and shuts the process
   tree down cleanly. Native-window CSS/JavaScript HMR is now implemented
-  through a supervised loopback Vite server; state-preserving cwhtml reload
-  remains.
+  through a supervised loopback Vite server. The compiler's versioned,
+  source-mapped diagnostics now flow into Vite's browser overlay and clear
+  after recovery without losing ViewModel state; state-preserving cwhtml
+  renderer replacement remains.
 - Vite is now the first-class optional pipeline for TypeScript, JavaScript, CSS,
   Sass/PostCSS, images, fonts, source maps, hashing, and minification. It is a
   development/build tool, not an ASP.NET Core dependency or a replacement for
@@ -109,9 +111,10 @@ criteria live in the
 - Continue tiered feedback beyond the implemented Vite asset HMR:
   state-preserving fragment refresh for compatible cwhtml-only changes, and a
   coordinated application restart when a C# change cannot be replaced safely.
-- Surface the same stable cwhtml diagnostics in the terminal, browser overlay,
-  and editor; then add language-server features for completion, navigation,
-  rename, formatting, and generated-source inspection.
+- **Implemented for build, terminal, and browser:** surface the same stable
+  cwhtml diagnostics through MSBuild and Vite's overlay. Next, reuse that
+  contract in language-server features for completion, navigation, rename,
+  formatting, and generated-source inspection.
 - Make `dotnet publish` consume Vite's production manifest, package only
   minified and content-hashed local assets into the application VFS, and leave
   no development-server URL or Node.js runtime dependency in the result.

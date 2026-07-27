@@ -66,5 +66,12 @@ Set `WebUIToolkitFrontendInstall=false` when dependency restoration is managed
 outside MSBuild. `WebUIToolkitFrontendDevWatchTarget`,
 `WebUIToolkitFrontendViteDevServerEnabled`,
 `WebUIToolkitFrontendViteDevServerEntry`,
-`WebUIToolkitDevProject`, and `WebUIToolkitDevRunArguments` are explicit
-override points for non-standard projects.
+`WebUIToolkitFrontendViteConfiguration`, `WebUIToolkitDevProject`, and
+`WebUIToolkitDevRunArguments` are explicit override points for non-standard
+projects.
+
+When cwhtml build integration is present, `dotnet webuitoolkit dev` also
+discovers `WebUIToolkitCwhtmlDiagnosticsPath`. It wraps the selected Vite
+configuration for the development session and presents the compiler's stable
+diagnostics through Vite's standard browser overlay. Production builds and the
+application's checked-in Vite configuration remain unchanged.
