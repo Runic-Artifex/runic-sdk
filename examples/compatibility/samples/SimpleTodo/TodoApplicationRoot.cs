@@ -8,7 +8,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
-using WebUIToolkit.Hosting.Build;
 using WebUIToolkit.Hosting.WebUi;
 using WebUIToolkit.MVVM;
 using WebUIToolkit.MVVM.CommunityToolkit;
@@ -25,15 +24,8 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 {
     internal const string AllowedOrigin = "https://simple-todo.native";
     internal static readonly MvvmContract Contract = new("samples.simple-todo");
-    private static readonly string[] RequiredAssetPaths =
-    [
-        "cwhtml.css",
-        "cwhtml.js",
-        "webuitoolkit.assets.json",
-    ];
-
     private CsWebUiHtmxApplication? htmxApplication;
-    private TodoRuntimeAssets? assets;
+    private CwhtmlHtmxPreparedAssets? assets;
     private TodoViewModel? model;
     private CommunityToolkitMvvmBindingAdapter<TodoViewModel>? adapter;
     private string? initialDocument;
@@ -42,9 +34,28 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
     private int disposed;
 
     /// <summary>Gets the private generated root after preparation.</summary>
-    internal string WebRoot =>
-        assets?.Root ??
+    internal CwhtmlHtmxPreparedAssets PreparedAssets =>
+        assets ??
         throw new InvalidOperationException("Prepare the todo application before creating its host.");
+
+    /// <summary>Gets the private generated root after preparation.</summary>
+    internal string WebRoot => PreparedAssets.RootDirectory;
+
+    internal CsWebUiHtmxApplication HtmxApplication =>
+        htmxApplication ??
+        throw new InvalidOperationException("Prepare the todo application before using it.");
+
+    internal TodoViewModel Model =>
+        model ??
+        throw new InvalidOperationException("Prepare the todo application before using it.");
+
+    internal CommunityToolkitMvvmBindingAdapter<TodoViewModel> Adapter =>
+        adapter ??
+        throw new InvalidOperationException("Prepare the todo application before using it.");
+
+    internal string InitialDocument =>
+        initialDocument ??
+        throw new InvalidOperationException("Prepare the todo application before using it.");
 
     /// <summary>
     /// Opens the MVVM/HTMX view, assigns opaque routes, and compiles the initial document
@@ -92,8 +103,8 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                 new TodoDocumentView(new TodoDocumentModel(
                     application,
                     FrontendDevelopmentAssets.Resolve())));
-            assets = await TodoRuntimeAssets
-                .CreateAsync(staticWebRoot, initialDocument, cancellationToken)
+            assets = await frontend
+                .PrepareAssetsAsync(staticWebRoot, initialDocument, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -146,124 +157,6 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         return ValueTask.FromResult<IRootSession>(new RootSession(this));
     }
 
-    /// <summary>Exercises compiled rendering and the real endpoint without opening a window.</summary>
-    internal async Task<int> RunSmokeTestAsync()
-    {
-        CsWebUiHtmxApplication selectedApplication = htmxApplication ??
-            throw new InvalidOperationException("Prepare the todo application before smoke testing.");
-        HtmxOpenedView selectedView = selectedApplication.OpenedView;
-        TodoViewModel activeModel = model ??
-            throw new InvalidOperationException("Prepare the todo application before smoke testing.");
-        TodoAppView.HtmxRoutes activeRoutes = TodoAppView.CreateHtmxRoutes(selectedView);
-
-        CaptureTransport invalid = await SendAsync(
-            selectedApplication,
-            Request(
-                selectedView,
-                activeRoutes.Add,
-                selectedView.Revision,
-                [new HtmxFormValue("title", "x")]));
-        CaptureTransport added = await SendAsync(
-            selectedApplication,
-            Request(
-                selectedView,
-                activeRoutes.Add,
-                selectedView.Revision,
-                [new HtmxFormValue("title", "Run the compiled desktop sample")]));
-        TodoItem? addedItem = activeModel.Items.FirstOrDefault(
-            static item => item.Title == "Run the compiled desktop sample");
-        long addedRevision = Revision(added);
-        CaptureTransport toggled = await SendAsync(
-            selectedApplication,
-            Request(
-                selectedView,
-                activeRoutes.Toggle,
-                addedRevision,
-                [new HtmxFormValue("selectedId", addedItem?.Id.ToString("D") ?? string.Empty)]));
-        CaptureTransport removed = await SendAsync(
-            selectedApplication,
-            Request(
-                selectedView,
-                activeRoutes.Remove,
-                Revision(toggled),
-                [new HtmxFormValue("selectedId", addedItem?.Id.ToString("D") ?? string.Empty)]));
-
-        FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
-            .BuildFromDirectory(WebRoot, "index.html");
-        var provider = new DirectoryFrontendAssetProvider(WebRoot, manifest);
-        await provider.ValidateAsync(CancellationToken.None).ConfigureAwait(false);
-
-        string[] forbiddenBindings =
-        [
-            string.Concat("todo", "Snapshot"),
-            string.Concat("todo", "Add"),
-            string.Concat("todo", "Toggle"),
-            string.Concat("todo", "Remove"),
-        ];
-        bool generatedAssetsAreClean = Directory
-            .EnumerateFiles(WebRoot, "*", SearchOption.AllDirectories)
-            .Where(static path =>
-                Path.GetExtension(path) is ".html" or ".js" or ".mjs")
-            .Select(File.ReadAllText)
-            .All(content => forbiddenBindings.All(
-                binding => !content.Contains(binding, StringComparison.Ordinal)));
-        string assemblyPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "WebUIToolkit.Samples.SimpleTodo.dll");
-        bool applicationAssemblyIsClean = !File.Exists(assemblyPath);
-        if (!applicationAssemblyIsClean)
-        {
-            byte[] applicationAssembly = await File.ReadAllBytesAsync(assemblyPath)
-                .ConfigureAwait(false);
-            applicationAssemblyIsClean = forbiddenBindings.All(binding =>
-                applicationAssembly.AsSpan().IndexOf(Encoding.UTF8.GetBytes(binding)) < 0);
-        }
-        bool localAssetsPresent = RequiredAssetPaths.All(
-            relativePath => File.Exists(Path.Combine(WebRoot, relativePath)));
-        bool collectionBindingPresent = adapter?.Metadata.Any(static metadata =>
-            metadata.MemberId == TodoAppView.HtmxCollections.Items.MemberId &&
-            metadata.Kind == MvvmBindingMemberKind.Collection) == true;
-        string generatedRoot = WebRoot;
-        await DisposeAsync().ConfigureAwait(false);
-        bool generatedRootRemoved = !Directory.Exists(generatedRoot);
-        bool passed =
-            initialDocument?.StartsWith("<!doctype html><html", StringComparison.Ordinal) == true &&
-            (initialDocument.Contains("cwhtml.js", StringComparison.Ordinal) ||
-                initialDocument.Contains("/@vite/client", StringComparison.Ordinal)) &&
-            initialDocument.Contains(activeRoutes.Add, StringComparison.Ordinal) &&
-            initialDocument.Contains(activeRoutes.Toggle, StringComparison.Ordinal) &&
-            initialDocument.Contains(activeRoutes.Remove, StringComparison.Ordinal) &&
-            invalid.StatusCode == 200 &&
-            invalid.Body.Contains("between 2 and 80 characters", StringComparison.Ordinal) &&
-            added.StatusCode == 200 &&
-            added.Body.Contains("Run the compiled desktop sample", StringComparison.Ordinal) &&
-            toggled.StatusCode == 200 &&
-            toggled.Body.Contains("task completed", StringComparison.Ordinal) &&
-            removed.StatusCode == 200 &&
-            !removed.Body.Contains("Run the compiled desktop sample", StringComparison.Ordinal) &&
-            generatedAssetsAreClean &&
-            applicationAssemblyIsClean &&
-            localAssetsPresent &&
-            collectionBindingPresent &&
-            generatedRootRemoved &&
-            StringComparer.Ordinal.Equals(
-                CsWebUiHtmxTransport.BindingName,
-                "webuitoolkitHtmx");
-        Console.WriteLine(passed
-            ? "SimpleTodo compiled native HTMX smoke test passed."
-            : "SimpleTodo compiled native HTMX smoke test failed.");
-        if (!passed)
-        {
-            Console.Error.WriteLine(
-                $"invalid={invalid.StatusCode}:{invalid.Body}{Environment.NewLine}" +
-                $"added={added.StatusCode}:{added.Body}{Environment.NewLine}" +
-                $"toggled={toggled.StatusCode}:{toggled.Body}{Environment.NewLine}" +
-                $"removed={removed.StatusCode}:{removed.Body}");
-        }
-
-        return passed ? 0 : 1;
-    }
-
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
@@ -274,7 +167,7 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
 
         CsWebUiHtmxApplication? ownedApplication =
             Interlocked.Exchange(ref htmxApplication, null);
-        TodoRuntimeAssets? ownedAssets = Interlocked.Exchange(ref assets, null);
+        CwhtmlHtmxPreparedAssets? ownedAssets = Interlocked.Exchange(ref assets, null);
         try
         {
             if (ownedApplication is not null)
@@ -317,43 +210,6 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
             .Build();
     }
 
-    private static HtmxEndpointRequest Request(
-        HtmxOpenedView view,
-        string route,
-        long revision,
-        IReadOnlyList<HtmxFormValue> form) =>
-        new(
-            "POST",
-            route,
-            isHtmx: true,
-            AllowedOrigin,
-            view.SessionCookie,
-            view.AntiForgeryToken,
-            view.AntiForgeryToken,
-            view.Capability,
-            revision,
-            form,
-            bodyByteCount: form.Sum(static value =>
-                Encoding.UTF8.GetByteCount(value.Name) +
-                Encoding.UTF8.GetByteCount(value.Value)),
-            CultureInfo.InvariantCulture,
-            Guid.NewGuid());
-
-    private static async Task<CaptureTransport> SendAsync(
-        CsWebUiHtmxApplication application,
-        HtmxEndpointRequest request)
-    {
-        var capture = new CaptureTransport();
-        await application.HandleAsync(request, capture).ConfigureAwait(false);
-        return capture;
-    }
-
-    private static long Revision(CaptureTransport response) =>
-        long.Parse(
-            response.Headers["X-WebUI-Revision"],
-            NumberStyles.None,
-            CultureInfo.InvariantCulture);
-
     private static string Render(TodoDocumentView view)
     {
         var output = new ArrayBufferWriter<byte>();
@@ -385,116 +241,4 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         }
     }
 
-    private sealed class CaptureTransport : IHtmxEndpointTransport
-    {
-        private HtmxEndpointResponse? response;
-
-        internal int StatusCode => response?.StatusCode ?? 0;
-        internal string Body => response is null
-            ? string.Empty
-            : Encoding.UTF8.GetString(response.Body.Span);
-        internal IReadOnlyDictionary<string, string> Headers =>
-            response?.Headers ?? new Dictionary<string, string>();
-
-        public ValueTask WriteAsync(
-            HtmxEndpointResponse value,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            response = value;
-            return ValueTask.CompletedTask;
-        }
-    }
-}
-
-internal sealed class TodoRuntimeAssets : IAsyncDisposable
-{
-    private int disposed;
-
-    private TodoRuntimeAssets(string root)
-    {
-        Root = root;
-    }
-
-    internal string Root { get; }
-
-    internal static async ValueTask<TodoRuntimeAssets> CreateAsync(
-        string staticRoot,
-        string initialDocument,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(staticRoot);
-        ArgumentNullException.ThrowIfNull(initialDocument);
-        if (!Directory.Exists(staticRoot))
-        {
-            throw new DirectoryNotFoundException(
-                $"The sample UI was not copied to '{staticRoot}'.");
-        }
-
-        string root = Path.Combine(
-            Path.GetTempPath(),
-            "webuitoolkit-simple-todo-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var result = new TodoRuntimeAssets(root);
-        try
-        {
-            CopyDirectory(staticRoot, root, cancellationToken);
-            await File.WriteAllTextAsync(
-                    Path.Combine(root, "index.html"),
-                    initialDocument,
-                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return result;
-        }
-        catch
-        {
-            await result.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        if (Interlocked.Exchange(ref disposed, 1) == 0 && Directory.Exists(Root))
-        {
-            Directory.Delete(Root, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
-    private static void CopyDirectory(
-        string sourceRoot,
-        string destinationRoot,
-        CancellationToken cancellationToken)
-    {
-        foreach (string directory in Directory.EnumerateDirectories(
-            sourceRoot,
-            "*",
-            SearchOption.AllDirectories))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            string relative = Path.GetRelativePath(sourceRoot, directory);
-            Directory.CreateDirectory(Path.Combine(destinationRoot, relative));
-        }
-
-        foreach (string file in Directory.EnumerateFiles(
-            sourceRoot,
-            "*",
-            SearchOption.AllDirectories))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            string relative = Path.GetRelativePath(sourceRoot, file);
-            if (StringComparer.OrdinalIgnoreCase.Equals(relative, "index.html") ||
-                StringComparer.OrdinalIgnoreCase.Equals(relative, "app.js"))
-            {
-                continue;
-            }
-
-            string destination = Path.Combine(destinationRoot, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(file, destination, overwrite: false);
-        }
-    }
 }

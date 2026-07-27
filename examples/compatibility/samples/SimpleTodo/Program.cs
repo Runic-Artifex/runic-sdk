@@ -2,11 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using CsWebUi;
 using WebUIToolkit.Hosting;
-using WebUIToolkit.Hosting.Build;
 using WebUIToolkit.Hosting.CsWebUi;
-using WebUIToolkit.Hosting.WebUi;
 using WebUIToolkit.MVVM.Html.Htmx;
 using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 using WebUIToolkit.Samples.SimpleTodo;
@@ -37,7 +34,7 @@ await using var root = new TodoApplicationRoot();
 await root.PrepareAsync(staticWebRoot, frontend);
 if (args.Contains("--smoke-test", StringComparer.Ordinal))
 {
-    return await root.RunSmokeTestAsync();
+    return await TodoSmoke.RunAsync(root);
 }
 
 if (args.Contains("--browser-smoke-test", StringComparer.Ordinal))
@@ -45,14 +42,11 @@ if (args.Contains("--browser-smoke-test", StringComparer.Ordinal))
     return await TodoBrowserSmoke.RunAsync(root);
 }
 
-FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
-    .BuildFromDirectory(root.WebRoot, "index.html");
-var assets = new DirectoryFrontendAssetProvider(root.WebRoot, manifest);
-builder.UseCwhtmlHtmx(new CsWebUiAppOptions(
-    assets,
+frontend.UseNativeWindow(
+    root.PreparedAssets,
     root,
-    new CsWebUiAdapterOptions(root.WebRoot, configureWindow: root.ConfigureWindow),
     new BrowserHostOptions("simple-todo"),
-    new BrowserWindowOptions("main", "Simple Todo", 760, 720)));
+    new BrowserWindowOptions("main", "Simple Todo", 760, 720),
+    root.ConfigureWindow);
 
 return await builder.RunAsync();

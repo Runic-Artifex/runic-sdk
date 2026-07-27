@@ -3,9 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using WebUIToolkit.Hosting;
-using WebUIToolkit.Hosting.Build;
 using WebUIToolkit.Hosting.CsWebUi;
-using WebUIToolkit.Hosting.WebUi;
 using WebUIToolkit.MVVM.Html.Htmx;
 using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 using WebUIToolkit.Samples.AdvancedTodo.Application;
@@ -62,7 +60,7 @@ try
     await root.PrepareAsync(staticWebRoot, frontend);
     if (selfTest)
     {
-        return await root.RunSelfTestAsync();
+        return await AdvancedTodoSmoke.RunAsync(root);
     }
 
     if (browserSmokeTest)
@@ -70,19 +68,16 @@ try
         return await AdvancedTodoBrowserSmoke.RunAsync(root);
     }
 
-    FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
-        .BuildFromDirectory(root.WebRoot, "index.html");
-    var assets = new DirectoryFrontendAssetProvider(root.WebRoot, manifest);
-    builder.UseCwhtmlHtmx(new CsWebUiAppOptions(
-        assets,
+    frontend.UseNativeWindow(
+        root.PreparedAssets,
         root,
-        new CsWebUiAdapterOptions(root.WebRoot, configureWindow: root.ConfigureWindow),
         new BrowserHostOptions("advanced-todo"),
         new BrowserWindowOptions(
             "main",
             "Advanced ToDo · WebUIToolkit",
             width: 1180,
-            height: 820)));
+            height: 820),
+        root.ConfigureWindow);
 
     return await builder.RunAsync();
 }
