@@ -203,7 +203,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             selectedView,
             routes.WizardNext,
             revision,
-            [new("title", ""), new("notes", ""), new("priority", "Normal")]);
+            [new("wizardTitle", ""), new("notes", ""), new("priority", "Normal")]);
         revision = Revision(wizardInvalid);
         CaptureTransport wizardReview = await PostAsync(
             selectedApplication,
@@ -211,7 +211,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             routes.WizardNext,
             revision,
             [
-                new("title", "Planned through Flow"),
+                new("wizardTitle", "Planned through Flow"),
                 new("notes", "Review and retain this draft"),
                 new("priority", "Low"),
             ]);
@@ -225,7 +225,7 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
             routes.WizardNext,
             revision,
             [
-                new("title", "Planned through Flow"),
+                new("wizardTitle", "Planned through Flow"),
                 new("notes", "Review and retain this draft"),
                 new("priority", "Low"),
             ]);
@@ -482,57 +482,8 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
                 Contract,
                 context => new AdvancedTodoAppView(
                     AdvancedTodoRenderModel.Response(ActiveModel(), routes, context)))
-            .ConfigureStringField(
-                "add",
-                "title",
-                AdvancedTodoJsonContext.Default.String,
-            [
-                static (value, _) =>
-                {
-                    int length = value.GetString()?.Trim().Length ?? 0;
-                    IReadOnlyList<string> messages = length is >= 2 and <= 120
-                        ? []
-                        : ["Give the task a title between 2 and 120 characters."];
-                    return ValueTask.FromResult(messages);
-                },
-            ])
-            .ConfigureStringField(
-                "wizard-next",
-                "title",
-                AdvancedTodoJsonContext.Default.String)
-            .ConfigureStringField("notes", AdvancedTodoJsonContext.Default.String)
-            .ConfigureStringField(
-                "priority",
-                AdvancedTodoJsonContext.Default.String,
-            [
-                static (value, _) =>
-                {
-                    bool valid = Enum.TryParse(
-                        value.GetString(),
-                        ignoreCase: true,
-                        out TodoPriority _);
-                    return ValueTask.FromResult<IReadOnlyList<string>>(
-                        valid ? [] : ["Choose Low, Normal, or High priority."]);
-                },
-            ])
-            .ConfigureStringField("query", AdvancedTodoJsonContext.Default.String)
-            .ConfigureStringField(
-                "filter",
-                AdvancedTodoJsonContext.Default.String,
-            [
-                static (value, _) =>
-                {
-                    bool valid = Enum.TryParse(
-                        value.GetString(),
-                        ignoreCase: true,
-                        out TodoFilter _);
-                    return ValueTask.FromResult<IReadOnlyList<string>>(
-                        valid ? [] : ["Choose All, Active, or Completed."]);
-                },
-            ])
-            .ConfigureStringField(
+            .ConfigureValidators(
                 "selectedId",
-                AdvancedTodoJsonContext.Default.String,
             [
                 (value, _) =>
                 {

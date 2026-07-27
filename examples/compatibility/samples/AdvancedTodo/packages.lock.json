@@ -297,6 +297,15 @@
           "WebUIToolkit.Hosting.Abstractions": "[1.0.0, )"
         }
       },
+      "webuitoolkit.hosting.cswebui.app": {
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.Hosting": "[1.0.0, )",
+          "WebUIToolkit.Hosting.CsWebUi": "[1.0.0-beta.1, )",
+          "WebUIToolkit.Hosting.GenericHost": "[1.0.0, )",
+          "WebUIToolkit.Hosting.WebUi": "[1.0.0, )"
+        }
+      },
       "webuitoolkit.hosting.generichost": {
         "type": "Project",
         "dependencies": {

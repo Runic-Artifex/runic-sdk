@@ -13,6 +13,7 @@
     <ProjectReference Include="../../src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi/WebUIToolkit.Hosting.CsWebUi.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi.App/WebUIToolkit.Hosting.CsWebUi.App.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/WebUIToolkit.Hosting.CsWebUi.Mvvm.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />

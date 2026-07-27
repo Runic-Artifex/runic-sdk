@@ -339,22 +339,8 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                 Contract,
                 context => new TodoAppView(
                     TodoRenderModel.Response(ActiveModel(), routes, context)))
-            .ConfigureStringField(
-                "title",
-                TodoJsonContext.Default.String,
-            [
-                static (value, _) =>
-                {
-                    string title = value.GetString()?.Trim() ?? string.Empty;
-                    IReadOnlyList<string> messages = title.Length is >= 2 and <= 80
-                        ? []
-                        : ["Give the task a name between 2 and 80 characters."];
-                    return ValueTask.FromResult(messages);
-                },
-            ])
-            .ConfigureStringField(
+            .ConfigureValidators(
                 "selectedId",
-                TodoJsonContext.Default.String,
             [
                 (value, _) =>
                 {

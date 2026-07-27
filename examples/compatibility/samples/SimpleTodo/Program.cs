@@ -7,6 +7,7 @@ using WebUIToolkit.Hosting;
 using WebUIToolkit.Hosting.Build;
 using WebUIToolkit.Hosting.CsWebUi;
 using WebUIToolkit.Hosting.WebUi;
+using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 using WebUIToolkit.Samples.SimpleTodo;
 
 string staticWebRoot = Path.Combine(AppContext.BaseDirectory, "www");
@@ -31,27 +32,12 @@ if (args.Contains("--browser-smoke-test", StringComparer.Ordinal))
 FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
     .BuildFromDirectory(root.WebRoot, "index.html");
 var assets = new DirectoryFrontendAssetProvider(root.WebRoot, manifest);
-var endpoint = new FrontendAssetEndpoint(assets, new Uri("app://simple-todo/"));
-var stop = new ApplicationStopControllerBinding();
-var host = new GenericHostWebUIToolkitApplicationBuilder(args);
-var browserFactory = new CsWebUiBrowserHostFactory(
-    new CsWebUiAdapterOptions(
-        root.WebRoot,
-        configureWindow: root.ConfigureWindow));
-
-host.Application.AddValidator(LaunchKind.UserInterface, new FrontendAssetValidator(assets));
-host.Application.AddModeRunner(new WebUiModeRunner(
-    browserFactory,
+var builder = WebUiApp.CreateBuilder(args);
+builder.UseCwhtmlHtmx(new CsWebUiAppOptions(
+    assets,
     root,
-    endpoint,
-    stop,
-    new WebUiModeOptions(
-        new BrowserHostOptions("simple-todo"),
-        new BrowserWindowOptions("main", "Simple Todo", 760, 720),
-        TimeSpan.FromSeconds(5),
-        TimeSpan.FromSeconds(5))));
+    new CsWebUiAdapterOptions(root.WebRoot, configureWindow: root.ConfigureWindow),
+    new BrowserHostOptions("simple-todo"),
+    new BrowserWindowOptions("main", "Simple Todo", 760, 720)));
 
-await using WebUIToolkitApplication application = host.Build();
-stop.Bind(application.StopController);
-ApplicationRunResult result = await application.RunAsync();
-return result.ExitCode ?? 1;
+return await builder.RunAsync();

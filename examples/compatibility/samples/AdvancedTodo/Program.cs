@@ -6,6 +6,7 @@ using WebUIToolkit.Hosting;
 using WebUIToolkit.Hosting.Build;
 using WebUIToolkit.Hosting.CsWebUi;
 using WebUIToolkit.Hosting.WebUi;
+using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 using WebUIToolkit.Samples.AdvancedTodo.Application;
 using WebUIToolkit.Samples.AdvancedTodo.Infrastructure;
 using WebUIToolkit.Samples.AdvancedTodo.UI;
@@ -56,37 +57,19 @@ try
     FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
         .BuildFromDirectory(root.WebRoot, "index.html");
     var assets = new DirectoryFrontendAssetProvider(root.WebRoot, manifest);
-    var endpoint = new FrontendAssetEndpoint(assets, new Uri("app://advanced-todo/"));
-    var stop = new ApplicationStopControllerBinding();
-    var builder = new GenericHostWebUIToolkitApplicationBuilder(args);
-    var browserFactory = new CsWebUiBrowserHostFactory(
-        new CsWebUiAdapterOptions(
-            root.WebRoot,
-            configureWindow: root.ConfigureWindow));
+    var builder = WebUiApp.CreateBuilder(args);
+    builder.UseCwhtmlHtmx(new CsWebUiAppOptions(
+        assets,
+        root,
+        new CsWebUiAdapterOptions(root.WebRoot, configureWindow: root.ConfigureWindow),
+        new BrowserHostOptions("advanced-todo"),
+        new BrowserWindowOptions(
+            "main",
+            "Advanced ToDo · WebUIToolkit",
+            width: 1180,
+            height: 820)));
 
-    builder.Application.AddValidator(
-        LaunchKind.UserInterface,
-        new FrontendAssetValidator(assets));
-    builder.Application.AddModeRunner(
-        new WebUiModeRunner(
-            browserFactory,
-            root,
-            endpoint,
-            stop,
-            new WebUiModeOptions(
-                new BrowserHostOptions("advanced-todo"),
-                new BrowserWindowOptions(
-                    "main",
-                    "Advanced ToDo · WebUIToolkit",
-                    width: 1180,
-                    height: 820),
-                sessionCloseTimeout: TimeSpan.FromSeconds(5),
-                windowCloseTimeout: TimeSpan.FromSeconds(5))));
-
-    await using WebUIToolkitApplication application = builder.Build();
-    stop.Bind(application.StopController);
-    ApplicationRunResult result = await application.RunAsync();
-    return result.ExitCode ?? 1;
+    return await builder.RunAsync();
 }
 finally
 {

@@ -54,32 +54,30 @@ public static class TodoFrontendApplication
         FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
             .BuildFromDirectory(webRoot, entryPoint);
         var assets = new DirectoryFrontendAssetProvider(webRoot, manifest);
-        var stop = new ApplicationStopControllerBinding();
-        var builder = new GenericHostWebUIToolkitApplicationBuilder(args);
         string id = $"todo-{frontend.ToLowerInvariant()}-{demo.ToString().ToLowerInvariant()}";
-
-        builder.Application.AddValidator(LaunchKind.UserInterface, new FrontendAssetValidator(assets));
-        builder.Application.AddModeRunner(new WebUiModeRunner(
-            new CsWebUiBrowserHostFactory(new CsWebUiAdapterOptions(
-                webRoot,
-                configureWindow: root.ConfigureWindow)),
+        var builder = WebUiApp.CreateBuilder(args);
+        var options = new CsWebUiAppOptions(
+            assets,
             root,
-            new FrontendAssetEndpoint(assets, new Uri($"app://{id}/")),
-            stop,
-            new WebUiModeOptions(
-                new BrowserHostOptions(id),
-                new BrowserWindowOptions(
-                    "main",
-                    $"{demo} ToDo · {frontend}",
-                    demo == TodoDemo.Advanced ? 1180 : 760,
-                    demo == TodoDemo.Advanced ? 820 : 720),
-                TimeSpan.FromSeconds(5),
-                TimeSpan.FromSeconds(5))));
+            new CsWebUiAdapterOptions(webRoot, configureWindow: root.ConfigureWindow),
+            new BrowserHostOptions(id),
+            new BrowserWindowOptions(
+                "main",
+                $"{demo} ToDo · {frontend}",
+                demo == TodoDemo.Advanced ? 1180 : 760,
+                demo == TodoDemo.Advanced ? 820 : 720));
+        _ = frontend switch
+        {
+            "React" => builder.UseReact(options),
+            "Vue" => builder.UseVue(options),
+            "Svelte" => builder.UseSvelte(options),
+            "Angular" => builder.UseAngular(options),
+            _ => throw new ArgumentException(
+                $"Unsupported Todo frontend '{frontend}'.",
+                nameof(frontend)),
+        };
 
-        await using WebUIToolkitApplication application = builder.Build();
-        stop.Bind(application.StopController);
-        ApplicationRunResult result = await application.RunAsync().ConfigureAwait(false);
-        return result.ExitCode ?? 1;
+        return await builder.RunAsync().ConfigureAwait(false);
     }
 }
 

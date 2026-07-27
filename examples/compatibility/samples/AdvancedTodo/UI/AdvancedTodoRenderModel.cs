@@ -13,6 +13,7 @@ namespace WebUIToolkit.Samples.AdvancedTodo.UI;
 public sealed class AdvancedTodoRenderModel
 {
     private static readonly HtmxFieldHandle TitleField = new("title");
+    private static readonly HtmxFieldHandle WizardTitleField = new("wizardTitle");
 
     private AdvancedTodoRenderModel(
         IReadOnlyList<AdvancedTodoRenderItem> items,
@@ -142,16 +143,28 @@ public sealed class AdvancedTodoRenderModel
         string? validationMessage = validationErrors
             .FirstOrDefault(static error => error.Field == TitleField)
             ?.Message;
+        string title = Submitted(submittedValues, "title", model.NewTitle);
+        if (submittedValues is not null &&
+            submittedValues.TryGetValue(WizardTitleField, out string? wizardTitle))
+        {
+            title = wizardTitle;
+        }
+
+        string[] wizardIssues = validationErrors
+            .Where(static error => error.Field == WizardTitleField)
+            .Select(static error => error.Message)
+            .Concat(model.WizardIssues.Select(static issue => issue.Message))
+            .ToArray();
         return new AdvancedTodoRenderModel(
             model.VisibleItems.Select(static item => new AdvancedTodoRenderItem(item)).ToArray(),
             model.Diagnostics.Take(5).Select(static entry => new AdvancedTodoDiagnostic(entry)).ToArray(),
-            model.WizardIssues.Select(static issue => issue.Message).ToArray(),
+            wizardIssues,
             model.TotalCount,
             model.RemainingCount,
             model.CompletedCount,
             Submitted(submittedValues, "query", model.Query),
             Submitted(submittedValues, "filter", model.Filter),
-            Submitted(submittedValues, "title", model.NewTitle),
+            title,
             Submitted(submittedValues, "notes", model.NewNotes),
             Submitted(submittedValues, "priority", model.NewPriority),
             validationMessage,

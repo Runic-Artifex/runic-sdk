@@ -45,7 +45,10 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                     placeholder="Search title or notes…"
                     autocomplete="off";
                 label for="filter" { "Filter" }
-                select #filter .form-select name="filter" data-wut-member="5" {
+                select #filter .form-select
+                    name="filter"
+                    data-wut-member="5"
+                    data-wut-validation-message="Choose All, Active, or Completed." {
                     option value="All" selected[=(model.FilterIsAll)] { "All" }
                     option value="Active" selected[=(model.FilterIsActive)] { "Active" }
                     option value="Completed" selected[=(model.FilterIsCompleted)] { "Completed" }
@@ -76,7 +79,9 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                         input #new-title .form-control
                             name="title"
                             data-wut-member="1"
+                            data-wut-validation-message="Give the task a title between 2 and 120 characters."
                             value=(model.Title)
+                            minlength="2"
                             maxlength="120"
                             placeholder="What needs doing?"
                             autocomplete="off"
@@ -100,7 +105,10 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                     }
                     div .field {
                         label for="new-priority" { "Priority" }
-                        select #new-priority .form-select name="priority" data-wut-member="3" {
+                        select #new-priority .form-select
+                            name="priority"
+                            data-wut-member="3"
+                            data-wut-validation-message="Choose Low, Normal, or High priority." {
                             option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
                             option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
                             option value="High" selected[=(model.PriorityIsHigh)] { "High" }
@@ -150,6 +158,8 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                         type="submit"
                                         name="selectedId"
                                         data-wut-member="6"
+                                        data-wut-format="guid"
+                                        data-wut-validation-message="That task is no longer available."
                                         value=(item.Id)
                                         aria-label=(item.ToggleLabel) {
                                         i class=(item.ToggleIconClass) aria-hidden="true" {}
@@ -176,6 +186,8 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                         type="submit"
                                         name="selectedId"
                                         data-wut-member="6"
+                                        data-wut-format="guid"
+                                        data-wut-validation-message="That task is no longer available."
                                         value=(item.Id)
                                         aria-label=(item.DeleteLabel) {
                                         i .fa-solid .fa-trash aria-hidden="true" {}
@@ -235,9 +247,11 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                 data-hx-swap="outerHTML" {
                                 label for="wizard-title" { "Title" }
                                 input #wizard-title
-                                    name="title"
+                                    name="wizardTitle"
                                     data-wut-member="1"
+                                    data-wut-validation-message="Give the task a title before continuing."
                                     value=(model.Title)
+                                    minlength="2"
                                     maxlength="120"
                                     autocomplete="off"
                                     required[=true];
@@ -246,7 +260,10 @@ div .app-shell data-webui-view="advanced-todo" data-webui-revision=(model.Revisi
                                     (model.Notes)
                                 }
                                 label for="wizard-priority" { "Priority" }
-                                select #wizard-priority name="priority" data-wut-member="3" {
+                                select #wizard-priority
+                                    name="priority"
+                                    data-wut-member="3"
+                                    data-wut-validation-message="Choose Low, Normal, or High priority." {
                                     option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
                                     option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
                                     option value="High" selected[=(model.PriorityIsHigh)] { "High" }
