@@ -40,7 +40,7 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | mvvm-protocol-core | `WebUIToolkit.MVVM` | NuGet pending |
 | communitytoolkit | `WebUIToolkit.MVVM.CommunityToolkit` | NuGet pending |
 | template-engine | `WebUIToolkit.MVVM.Html`, `WebUIToolkit.MVVM.Html.Testing`, `WebUIToolkit.MVVM.Html.CommunityToolkit` | NuGet pending |
-| htmx | `WebUIToolkit.MVVM.Html.Htmx`, `WebUIToolkit.MVVM.Html.Htmx.Js`, `WebUIToolkit.MVVM.Html.Htmx.CsWebUi` | NuGet pending |
+| htmx | `WebUIToolkit.MVVM.Html.Htmx`, `WebUIToolkit.MVVM.Html.Htmx.Js`, `WebUIToolkit.MVVM.Html.Htmx.CsWebUi`, `WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App` | NuGet pending |
 | hosting | `WebUIToolkit.Hosting.*`, including `WebUIToolkit.Hosting.CsWebUi.Mvvm` | NuGet pending |
 | flow | `WebUIToolkit.MVVM.Flow*` | NuGet pending |
 | text-resources | `WebUIToolkit.TextResources.*` | NuGet pending |

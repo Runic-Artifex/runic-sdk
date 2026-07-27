@@ -27,14 +27,4 @@ public sealed class CsWebUiAppFrontendBuilder
 // CsWebUiAppFrontendBuilder CsWebUi { get; }
 // WebUiAppBuilder UseCsWebUi(string frontendName, CsWebUiAppOptions options);
 
-// CwhtmlHtmxAppBuilder is declared in the
-// WebUIToolkit.MVVM.Html.Htmx.CsWebUi namespace:
-public readonly struct CwhtmlHtmxAppBuilder
-{
-    public WebUIToolkit.Hosting.WebUiAppBuilder Use(CsWebUiAppOptions options);
-}
-
-// C# 14 extension members on WebUiAppBuilder:
-// CwhtmlHtmxAppBuilder CwhtmlHtmx { get; }
-// WebUiAppBuilder UseCwhtmlHtmx(CsWebUiAppOptions options);
 ```

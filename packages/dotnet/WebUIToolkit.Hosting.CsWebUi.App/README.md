@@ -19,6 +19,6 @@ return await builder.RunAsync();
 ```
 
 Framework integrations normally wrap `UseCsWebUi` with their own extension
-members, such as `UseReact`. The package directly supplies
-`CwhtmlHtmx`/`UseCwhtmlHtmx` because that composition requires no dependency
-on the host-neutral HTMX runtime.
+members, such as `UseReact`. Compiled cwhtml/HTMX composition lives in the
+separate `WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App` package so other frontends
+do not acquire cwhtml runtime dependencies.

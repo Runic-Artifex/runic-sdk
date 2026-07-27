@@ -25,6 +25,7 @@
     <Project Path="src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Compiler/WebUIToolkit.MVVM.Html.Compiler.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Htmx.Js/WebUIToolkit.MVVM.Html.Htmx.Js.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Htmx/WebUIToolkit.MVVM.Html.Htmx.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Testing/WebUIToolkit.MVVM.Html.Testing.csproj" />

@@ -17,6 +17,7 @@ Reference documentation lives beside the code that owns each contract:
 - [Native CsWebUi MVVM hosting](../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/README.md)
 - [cwhtml and HTMX runtime](../../src/WebUIToolkit.MVVM.Html.Htmx/README.md)
 - [CsWebUi HTMX transport](../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/README.md)
+- [High-level cwhtml/CsWebUi application builder](../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/README.md)
 - [Application Flow](../../src/WebUIToolkit.MVVM.Flow/README.md)
 - [Hosting](../../src/WebUIToolkit.Hosting/README.md)
 
@@ -25,4 +26,3 @@ Reference documentation lives beside the code that owns each contract:
 The [contract and identifier registry](../contracts/registry.md) owns protocol
 names, diagnostic ranges, schema identifiers, and package ownership. Public API
 baselines remain beside their packages.
-
