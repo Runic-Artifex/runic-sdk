@@ -27,10 +27,14 @@ The `dev` command:
    restart, document reload, or ViewModel loss;
 7. forwards versioned cwhtml compiler diagnostics, including stable IDs and
    exact source spans, into Vite's standard browser overlay and clears it after
-   a successful compilation; legacy build-watch mode still
+   a successful compilation;
+8. recompiles changed cwhtml, waits for .NET Hot Reload to acknowledge a
+   compatible renderer replacement, then refreshes only affected fragments
+   through the private CsWebUi HTMX binding; incompatible changes take the safe
+   restart path; legacy build-watch mode still
    detects `webuitoolkit.assets.json`, mirrors that graph into the runtime web
    root, and restarts the native host; and
-8. forwards Ctrl+C to both process trees and waits for their termination.
+9. forwards Ctrl+C to both process trees and waits for their termination.
 
 Host rebuilds set `WebUIToolkitFrontendEnabled=false`, because the independently
 running frontend watcher owns that part of the loop. This prevents duplicate
@@ -52,6 +56,7 @@ The command consumes these evaluated MSBuild properties:
 - `WebUIToolkitFrontendViteDevServerEntry`
 - `WebUIToolkitFrontendViteConfiguration`
 - `WebUIToolkitCwhtmlDiagnosticsPath`
+- `WebUIToolkitCwhtmlHotReloadPath`
 - `WebUIToolkitFrontendContractSource`
 - `WebUIToolkitFrontendContractCSharpOutput`
 - `WebUIToolkitFrontendContractTypeScriptOutput`
@@ -65,9 +70,11 @@ the managed application. Vite serves assets only; HTMX requests continue to
 use the private CsWebUi binding.
 
 The coordinator wraps the application's normal Vite configuration with a
-development-only diagnostics plugin. It watches the atomic
+development-only plugin. It watches the atomic
 `webuitoolkit.cwhtml.diagnostics/1.0` snapshot, sends errors through Vite's
 standard overlay protocol, and removes the overlay when the snapshot recovers.
+It also watches the acknowledged `webuitoolkit.cwhtml.hot-reload/1.0` snapshot
+and sends affected-fragment events only after the managed renderer is active.
 The wrapper is temporary and does not modify the application's Vite config.
 
 `WebUIToolkitFrontendDevWatchTarget` is preferred in legacy mode. This allows one

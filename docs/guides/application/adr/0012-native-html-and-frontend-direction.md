@@ -98,7 +98,7 @@ HTML only where whitespace and raw-text behavior are preserved. Generated
 actions, fields, routes, conversions, validation projection, render plans, and
 revision handling should replace application-authored transport descriptors.
 The detailed target loop and staged delivery are recorded in the
-[cwhtml development-experience plan](../cwhtml-development-experience.md).
+[cwhtml development guide](../guides/cwhtml.md).
 
 ### Native security boundary
 

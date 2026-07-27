@@ -51,16 +51,16 @@ wall-clock cost; no browser or AOT case is skipped after the two pinned
 prerequisites have been admitted.
 
 Both compiled `.cwhtml` Todo levels now have managed and Chromium/Native-AOT
-gates. The remaining cwhtml development experience, WPF capability expansion,
-a framework-adapter application on the proven native path, and asset/VFS
-extraction remain future roadmap work. The older G0–G7 sections below preserve
-cumulative historical release evidence; their existence does not mark those
-re-centered product outcomes complete.
+gates, and the framework adapters use the proven native path. The remaining
+consumer authoring surface, editor tooling, WPF capability expansion, and
+asset/VFS extraction remain roadmap work. The older G0–G7 sections below
+preserve cumulative historical release evidence; their existence does not mark
+those re-centered product outcomes complete.
 
 ## Planned cwhtml developer-experience acceptance
 
-Phase 3 adds a consumer-facing gate around the
-[cwhtml development-experience plan](./cwhtml-development-experience.md). It
+The cwhtml DX track adds a consumer-facing gate around the
+[cwhtml development guide](../guides/cwhtml.md). It
 must prove, on SimpleTodo and AdvancedTodo, that:
 
 - the shared frontend SDK removes application-authored cwhtml targets, toolkit

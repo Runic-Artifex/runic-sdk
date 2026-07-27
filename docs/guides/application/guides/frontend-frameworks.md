@@ -1,4 +1,4 @@
-# Frontend Todo findings
+# Frontend framework integration
 
 The React, Vue, Svelte, and Angular versions of SimpleTodo and AdvancedTodo are
 an executable design probe for the browser-framework track. All eight variants
@@ -7,8 +7,10 @@ contract, Bootstrap 5.3 baseline, and Font Awesome assets.
 
 The initial probe found six cross-framework gaps. They are now implemented in
 the shared runtime and samples. A second DX pass also removed handwritten C#
-adapter registration and added typed framework-native reads; the remaining work
-is higher-level generated framework façades and release hardening.
+adapter registration and added typed framework-native reads. Native-AOT,
+reconnect, validation, cancellation, accessibility, and leak gates now cover
+all eight variants. The remaining work is aggregate generated framework
+façades and package-release alignment.
 
 ## Implemented product changes
 
@@ -108,6 +110,11 @@ Svelte uses the official Vite plugin, a Svelte config with Vite preprocessing,
 and `svelte-check`. This replaces the minimal custom compiler transform that
 helped expose the original startup problem.
 
+Vue uses ordinary `.vue` single-file components through the official Vite
+plugin. Angular production output uses the supported application builder and
+its AOT compiler/optimizer rather than the earlier compact sample-only JIT
+entry.
+
 ## What the implementation confirmed
 
 - `MvvmProjection` is a credible common boundary. Framework adapters do not
@@ -132,20 +139,15 @@ not have to wire each handle individually:
 
 - React: named contract hooks plus result, error, cancellation, and transition
   composition around the existing typed command-state hook.
-- Vue: a generated contract composable with effect-scope ownership, and
-  ordinary `.vue` single-file-component authoring through the official Vite
-  plugin.
+- Vue: a generated contract composable with effect-scope ownership.
 - Svelte: named stores and Svelte 5 rune-friendly helpers around the existing
   typed derived readables.
 - Angular: a generated injectable contract service and standalone provider.
-  Release builds should move from the compact sample JIT entry to Angular's
-  supported application builder, which encapsulates its production compiler
-  and optimizer.
 
-These are adapter ergonomics and compiler alignment, not protocol gaps. They
-must preserve the one generated symbol model and framework-neutral runtime.
+These are adapter ergonomics, not protocol gaps. They must preserve the one
+generated symbol model and framework-neutral runtime.
 
-## Verification and remaining release gates
+## Verification and remaining release alignment
 
 Each project provides managed smoke modes and real pinned-Chromium modes for
 both Todo levels. `eng/verify-todo-frontends.ps1` runs the eight browser cases
@@ -158,8 +160,12 @@ binary channel, and verifies the framework-rendered result. Advanced cases
 also start the asynchronous import, observe its pushed busy-state transition,
 and verify the host-pushed imported tasks without polling.
 
-Before the framework-alignment phase is release-complete, add full-trim
-Native-AOT publication, reconnect, validation, cancellation, accessibility,
-and leak coverage matching the native cwhtml track. Add deterministic
-production-output checks from clean roots and freeze compressed-size budgets
-only after a reference machine and measurement method are declared.
+`eng/verify-todo-frontends-native-aot.ps1` full-trim Native-AOT-publishes all
+four native hosts and runs both Todo levels. The shared gates cover
+authoritative reconnect snapshots, validation, asynchronous cancellation,
+accessibility structure, and managed/browser/process leak behavior.
+
+Remaining release work is package-only consumer and supported-version
+alignment plus deterministic production-output checks from clean roots.
+Compressed-size budgets should be frozen only after a reference machine and
+measurement method are declared.

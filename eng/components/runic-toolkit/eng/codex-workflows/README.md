@@ -41,7 +41,7 @@ eng/codex-workflows/
 
 The toolkit and replacement one-off remediation script have not yet been
 implemented. The current acceptance criteria are in the
-[pre-Wave-C remediation brief](../../docs/plans/pre-wave-c-remediation.md).
+[pre-Wave-C remediation brief](../../docs/roadmap/archive/pre-wave-c-remediation.md).
 
 ## Historical experiment
 

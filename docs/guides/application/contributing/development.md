@@ -84,6 +84,13 @@ affected-fragment refresh, and clean process-tree shutdown:
 dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
 ```
 
+The repository does not currently install that tool into its local manifest.
+Run the project directly when the packaged tool is not installed:
+
+```powershell
+dotnet run --project tools/dotnet-webuitoolkit -- dev samples/SimpleTodo/SimpleTodo.csproj
+```
+
 SimpleTodo and AdvancedTodo now import shared cwhtml and frontend SDK targets;
 their npm workspace owns HTMX, Bootstrap 5.3, Font Awesome, source maps,
 minification, content hashing, and the asset manifest. Both now generate their
@@ -93,4 +100,4 @@ load Vite's client and source entry directly from the supervised loopback
 server, while HTMX requests, including development fragment refreshes, stay on
 the private CsWebUi binding. Richer typed declarations and editor tooling
 remain in the
-[cwhtml development-experience plan](./cwhtml-development-experience.md).
+[cwhtml development guide](../guides/cwhtml.md).
