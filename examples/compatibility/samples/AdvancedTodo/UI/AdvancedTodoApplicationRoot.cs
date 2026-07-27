@@ -93,7 +93,9 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
                     routes,
                     createdApplication.OpenedView.Revision));
             initialDocument = "<!doctype html>" + Render(
-                new AdvancedTodoDocumentView(new AdvancedTodoDocumentModel(application)));
+                new AdvancedTodoDocumentView(new AdvancedTodoDocumentModel(
+                    application,
+                    FrontendDevelopmentAssets.Resolve())));
             assets = await AdvancedTodoRuntimeAssets
                 .CreateAsync(staticWebRoot, initialDocument, cancellationToken)
                 .ConfigureAwait(false);
@@ -297,7 +299,8 @@ internal sealed class AdvancedTodoApplicationRoot : IRootSessionFactory, IAsyncD
         bool generatedRootRemoved = !Directory.Exists(generatedRoot);
         bool passed =
             initialDocument?.StartsWith("<!doctype html><html", StringComparison.Ordinal) == true &&
-            initialDocument.Contains("cwhtml.js", StringComparison.Ordinal) &&
+            (initialDocument.Contains("cwhtml.js", StringComparison.Ordinal) ||
+                initialDocument.Contains("/@vite/client", StringComparison.Ordinal)) &&
             invalid.Body.Contains("between 2 and 120 characters", StringComparison.Ordinal) &&
             added.Body.Contains("Persisted through an opaque route", StringComparison.Ordinal) &&
             filtered.Body.Contains("Persisted through an opaque route", StringComparison.Ordinal) &&

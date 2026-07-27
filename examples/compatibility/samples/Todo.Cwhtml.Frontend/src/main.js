@@ -17,3 +17,10 @@ await import(
   "../../../src/WebUIToolkit.MVVM.Html.Htmx.Js/assets/webuitoolkit-htmx-1.0.0.mjs"
 );
 await import("bootstrap/dist/js/bootstrap.bundle.min.js");
+
+globalThis.__webuitoolkitViteModuleRevision =
+  (globalThis.__webuitoolkitViteModuleRevision ?? 0) + 1;
+if (import.meta.hot) {
+  await import("./hmr-probe.js");
+  import.meta.hot.accept();
+}

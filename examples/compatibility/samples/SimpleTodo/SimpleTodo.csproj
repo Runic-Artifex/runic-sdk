@@ -18,6 +18,8 @@
     <WebUIToolkitFrontendWorkspaceRoot>$(MSBuildProjectDirectory)/../..</WebUIToolkitFrontendWorkspaceRoot>
     <WebUIToolkitFrontendWebRoot>www</WebUIToolkitFrontendWebRoot>
     <WebUIToolkitFrontendBridgeAsset></WebUIToolkitFrontendBridgeAsset>
+    <WebUIToolkitFrontendViteDevServerEnabled>true</WebUIToolkitFrontendViteDevServerEnabled>
+    <WebUIToolkitFrontendViteDevServerEntry>/src/main.js</WebUIToolkitFrontendViteDevServerEntry>
     <WebUIToolkitCwhtmlTaskAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Build/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Build.dll</WebUIToolkitCwhtmlTaskAssembly>
     <WebUIToolkitCwhtmlCompilerAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Compiler/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Compiler.dll</WebUIToolkitCwhtmlCompilerAssembly>
   </PropertyGroup>

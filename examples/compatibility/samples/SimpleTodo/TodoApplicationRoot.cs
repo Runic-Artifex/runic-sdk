@@ -131,7 +131,9 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
                     routes,
                     createdApplication.OpenedView.Revision));
             initialDocument = "<!doctype html>" + Render(
-                new TodoDocumentView(new TodoDocumentModel(application)));
+                new TodoDocumentView(new TodoDocumentModel(
+                    application,
+                    FrontendDevelopmentAssets.Resolve())));
             assets = await TodoRuntimeAssets
                 .CreateAsync(staticWebRoot, initialDocument, cancellationToken)
                 .ConfigureAwait(false);
@@ -267,7 +269,8 @@ internal sealed class TodoApplicationRoot : IRootSessionFactory, IAsyncDisposabl
         bool generatedRootRemoved = !Directory.Exists(generatedRoot);
         bool passed =
             initialDocument?.StartsWith("<!doctype html><html", StringComparison.Ordinal) == true &&
-            initialDocument.Contains("cwhtml.js", StringComparison.Ordinal) &&
+            (initialDocument.Contains("cwhtml.js", StringComparison.Ordinal) ||
+                initialDocument.Contains("/@vite/client", StringComparison.Ordinal)) &&
             initialDocument.Contains(routes.Add, StringComparison.Ordinal) &&
             initialDocument.Contains(routes.Toggle, StringComparison.Ordinal) &&
             initialDocument.Contains(routes.Remove, StringComparison.Ordinal) &&

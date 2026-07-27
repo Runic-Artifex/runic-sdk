@@ -5,7 +5,9 @@ html lang="en" {
         meta charset="utf-8";
         meta name="viewport" content="width=device-width, initial-scale=1";
         title { "Simple Todo · WebUIToolkit" }
-        link rel="stylesheet" href="cwhtml.css";
+        @if (!model.Assets.IsViteDevelopment) {
+            link rel="stylesheet" href="cwhtml.css";
+        }
     }
     body {
         div #todo_fragment {
@@ -15,6 +17,10 @@ html lang="en" {
             "State and commands stay in C#. Compiled HTML crosses one native HTMX binding."
         }
         script src="webui.js" {}
-        script src="cwhtml.js" {}
+        @if (model.Assets.IsViteDevelopment) {
+            @render(model.Assets);
+        } @else {
+            script src="cwhtml.js" {}
+        }
     }
 }

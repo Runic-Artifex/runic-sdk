@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
+using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 
 namespace WebUIToolkit.Samples.SimpleTodo;
 
@@ -119,6 +120,11 @@ internal static class TodoBrowserSmoke
             {
                 Console.Error.WriteLine(result.Length == 0 ? "(no DOM result)" : result);
             }
+            else if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                FrontendDevelopmentAssets.ViteServerEnvironmentVariable)))
+            {
+                passed = await VerifyViteHmrAsync(window, browser).ConfigureAwait(false);
+            }
 
             exitCode = passed ? 0 : 1;
         }
@@ -201,6 +207,134 @@ internal static class TodoBrowserSmoke
         }
 
         return exitCode;
+    }
+
+    private static async Task<bool> VerifyViteHmrAsync(
+        WebUiWindow window,
+        Process browser)
+    {
+        string packageDirectory = Environment.GetEnvironmentVariable(
+            FrontendDevelopmentAssets.VitePackageDirectoryEnvironmentVariable)
+            ?? throw new InvalidOperationException(
+                "The supervised Vite package directory was not supplied.");
+        string packageRoot = Path.GetFullPath(packageDirectory);
+        string sourceRoot = Path.Combine(packageRoot, "src");
+        string scriptPath = Path.GetFullPath(Path.Combine(sourceRoot, "hmr-probe.js"));
+        string stylesheetPath = Path.GetFullPath(Path.Combine(sourceRoot, "hmr-probe.css"));
+        string requiredPrefix = packageRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? packageRoot
+            : packageRoot + Path.DirectorySeparatorChar;
+        if (!scriptPath.StartsWith(requiredPrefix, StringComparison.Ordinal)
+            || !stylesheetPath.StartsWith(requiredPrefix, StringComparison.Ordinal)
+            || !File.Exists(scriptPath)
+            || !File.Exists(stylesheetPath))
+        {
+            throw new InvalidOperationException(
+                "The Vite HMR probe files are not anchored below the configured package.");
+        }
+
+        string originalScript = await File.ReadAllTextAsync(scriptPath).ConfigureAwait(false);
+        string originalStylesheet = await File
+            .ReadAllTextAsync(stylesheetPath)
+            .ConfigureAwait(false);
+        string token = "updated-" + Guid.NewGuid().ToString("N");
+        string updatedScript = originalScript.Replace(
+            "\"baseline\"",
+            $"\"{token}\"",
+            StringComparison.Ordinal);
+        string updatedStylesheet = originalStylesheet.Replace(
+            "\"baseline\"",
+            $"\"{token}\"",
+            StringComparison.Ordinal);
+        if (StringComparer.Ordinal.Equals(originalScript, updatedScript)
+            || StringComparer.Ordinal.Equals(originalStylesheet, updatedStylesheet))
+        {
+            throw new InvalidOperationException("The Vite HMR probe baseline is invalid.");
+        }
+
+        try
+        {
+            string prepared = window.ExecuteJavaScript(
+                $$"""
+                document.body.dataset.webuitoolkitHmrDocument = "{{token}}";
+                return document.documentElement.dataset.webuitoolkitHmrProbe ?? "";
+                """,
+                TimeSpan.FromSeconds(2),
+                responseBufferSize: 512);
+            if (!StringComparer.Ordinal.Equals(prepared, "baseline"))
+            {
+                Console.Error.WriteLine(
+                    $"FAIL: the Vite HMR probe did not initialize: '{prepared}'.");
+                return false;
+            }
+
+            await File.WriteAllTextAsync(stylesheetPath, updatedStylesheet)
+                .ConfigureAwait(false);
+            await File.WriteAllTextAsync(scriptPath, updatedScript)
+                .ConfigureAwait(false);
+
+            string result = string.Empty;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                while (!timeout.IsCancellationRequested)
+                {
+                    result = window.ExecuteJavaScript(
+                        $$"""
+                        return (() => {
+                          const title = Array.from(document.querySelectorAll("#tasks .task-title"))
+                            .some(element =>
+                              element.textContent?.trim() === "{{TaskTitle}}");
+                          const sameDocument =
+                            document.body.dataset.webuitoolkitHmrDocument === "{{token}}";
+                          const javascript =
+                            document.documentElement.dataset.webuitoolkitHmrProbe === "{{token}}";
+                          const css = getComputedStyle(document.documentElement)
+                            .getPropertyValue("--webuitoolkit-hmr-probe")
+                            .includes("{{token}}");
+                          return title && sameDocument && javascript && css
+                            ? "pass|{{token}}"
+                            : "waiting|" + [title, sameDocument, javascript, css].join("|");
+                        })();
+                        """,
+                        TimeSpan.FromSeconds(1),
+                        responseBufferSize: 512);
+                    if (result.StartsWith("pass|", StringComparison.Ordinal))
+                    {
+                        break;
+                    }
+
+                    if (browser.HasExited)
+                    {
+                        result = "error|Chromium exited during Vite HMR.";
+                        break;
+                    }
+
+                    await Task.Delay(100, timeout.Token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            bool passed = StringComparer.Ordinal.Equals(result, $"pass|{token}");
+            Console.WriteLine(passed
+                ? "PASS: Vite applied CSS and JavaScript HMR in the native window without " +
+                    "restarting .NET, reloading the document, losing ViewModel state, or " +
+                    "rerouting the private HTMX binding."
+                : "FAIL: native-window Vite CSS/JavaScript HMR.");
+            if (!passed)
+            {
+                Console.Error.WriteLine(result.Length == 0 ? "(no HMR result)" : result);
+            }
+
+            return passed;
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(scriptPath, originalScript).ConfigureAwait(false);
+            await File.WriteAllTextAsync(stylesheetPath, originalStylesheet).ConfigureAwait(false);
+        }
     }
 
     private static void CaptureCleanupError(

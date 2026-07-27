@@ -6,13 +6,19 @@ html lang="en" {
         meta name="viewport" content="width=device-width, initial-scale=1";
         meta name="color-scheme" content="dark";
         title { "Advanced ToDo · WebUIToolkit" }
-        link rel="stylesheet" href="cwhtml.css";
+        @if (!model.Assets.IsViteDevelopment) {
+            link rel="stylesheet" href="cwhtml.css";
+        }
     }
     body {
         div #advanced_fragment {
             @render(model.Application);
         }
         script src="webui.js" {}
-        script src="cwhtml.js" {}
+        @if (model.Assets.IsViteDevelopment) {
+            @render(model.Assets);
+        } @else {
+            script src="cwhtml.js" {}
+        }
     }
 }

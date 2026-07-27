@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using WebUIToolkit.MVVM.Html;
 using WebUIToolkit.MVVM.Html.Htmx;
+using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 using WebUIToolkit.Samples.AdvancedTodo.Application;
 using WebUIToolkit.Samples.AdvancedTodo.Domain;
 
@@ -222,12 +223,17 @@ public sealed class AdvancedTodoDiagnostic
 /// <summary>Initial-document state around the same compiled application fragment.</summary>
 public sealed class AdvancedTodoDocumentModel
 {
-    public AdvancedTodoDocumentModel(IHtmlRenderable application)
+    public AdvancedTodoDocumentModel(
+        IHtmlRenderable application,
+        FrontendDevelopmentAssets assets)
     {
         Application = application ?? throw new ArgumentNullException(nameof(application));
+        Assets = assets ?? throw new ArgumentNullException(nameof(assets));
     }
 
     public IHtmlRenderable Application { get; }
+
+    public FrontendDevelopmentAssets Assets { get; }
 }
 
 internal sealed class AdvancedTodoRouteTable

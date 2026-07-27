@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using WebUIToolkit.MVVM.Html;
 using WebUIToolkit.MVVM.Html.Htmx;
+using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 
 namespace WebUIToolkit.Samples.SimpleTodo;
 
@@ -154,13 +155,19 @@ public sealed class TodoRenderItem
 public sealed class TodoDocumentModel
 {
     /// <summary>Creates a document around the same compiled fragment used by responses.</summary>
-    public TodoDocumentModel(IHtmlRenderable application)
+    public TodoDocumentModel(
+        IHtmlRenderable application,
+        FrontendDevelopmentAssets assets)
     {
         Application = application ?? throw new ArgumentNullException(nameof(application));
+        Assets = assets ?? throw new ArgumentNullException(nameof(assets));
     }
 
     /// <summary>Gets the compiled application fragment.</summary>
     public IHtmlRenderable Application { get; }
+
+    /// <summary>Gets production or development-only Vite asset references.</summary>
+    public FrontendDevelopmentAssets Assets { get; }
 }
 
 internal sealed class TodoRouteTable
