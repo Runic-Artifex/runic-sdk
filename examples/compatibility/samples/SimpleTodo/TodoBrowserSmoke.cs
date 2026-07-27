@@ -130,6 +130,11 @@ internal static class TodoBrowserSmoke
                     passed = await VerifyCwhtmlDiagnosticsOverlayAsync(window, browser)
                         .ConfigureAwait(false);
                 }
+                if (passed)
+                {
+                    passed = await VerifyCwhtmlRendererHotReloadAsync(window, browser)
+                        .ConfigureAwait(false);
+                }
             }
 
             exitCode = passed ? 0 : 1;
@@ -465,6 +470,84 @@ internal static class TodoBrowserSmoke
         }
 
         return stream.ToArray();
+    }
+
+    private static async Task<bool> VerifyCwhtmlRendererHotReloadAsync(
+        WebUiWindow window,
+        Process browser)
+    {
+        string projectPath = Environment.GetEnvironmentVariable(
+            FrontendDevelopmentAssets.DevelopmentProjectEnvironmentVariable)
+            ?? throw new InvalidOperationException(
+                "The supervised development project was not supplied.");
+        string projectDirectory = Path.GetDirectoryName(Path.GetFullPath(projectPath))
+            ?? throw new InvalidOperationException("The development project has no parent directory.");
+        string viewPath = Path.Combine(projectDirectory, "Views", "TodoApp.cwhtml");
+        string original = await File.ReadAllTextAsync(viewPath).ConfigureAwait(false);
+        string token = "Renderer " + Guid.NewGuid().ToString("N");
+        string updated = original.Replace(
+            "\"Things worth doing\"",
+            $"\"{token}\"",
+            StringComparison.Ordinal);
+        if (StringComparer.Ordinal.Equals(original, updated))
+        {
+            throw new InvalidOperationException("The cwhtml renderer probe baseline is invalid.");
+        }
+
+        try
+        {
+            window.ExecuteJavaScript(
+                """
+                document.body.dataset.webuitoolkitRendererDocument = "retained";
+                document.querySelector("footer").dataset.webuitoolkitRendererOutside = "retained";
+                document.querySelector("#todo_fragment").dataset.webuitoolkitRendererOld = "true";
+                return "";
+                """,
+                TimeSpan.FromSeconds(2),
+                responseBufferSize: 128);
+            await File.WriteAllTextAsync(viewPath, updated).ConfigureAwait(false);
+
+            string result = await WaitForBrowserResultAsync(
+                window,
+                browser,
+                $$"""
+                return (() => {
+                  const heading = document.querySelector("#todo-app h1")?.textContent?.trim() ?? "";
+                  const title = Array.from(document.querySelectorAll("#tasks .task-title"))
+                    .some(element => element.textContent?.trim() === "{{TaskTitle}}");
+                  const sameDocument =
+                    document.body.dataset.webuitoolkitRendererDocument === "retained";
+                  const outside =
+                    document.querySelector("footer")
+                      ?.dataset.webuitoolkitRendererOutside === "retained";
+                  const affectedWasReplaced =
+                    document.querySelector("#todo_fragment")
+                      ?.dataset.webuitoolkitRendererOld !== "true";
+                  const refresh = globalThis.__webuitoolkitCwhtmlHotReload?.state;
+                  return heading === "{{token}}" && title && sameDocument && outside &&
+                      affectedWasReplaced && refresh === "refreshed"
+                    ? "pass|renderer"
+                    : "waiting|" + [heading, title, sameDocument, outside,
+                        affectedWasReplaced, refresh].join("|");
+                })();
+                """).ConfigureAwait(false);
+            bool passed = StringComparer.Ordinal.Equals(result, "pass|renderer");
+            Console.WriteLine(passed
+                ? "PASS: dotnet Hot Reload replaced the compatible cwhtml renderer before " +
+                    "Vite refreshed only its affected fragment through the private CsWebUi " +
+                    "binding; document and ViewModel state were retained."
+                : "FAIL: compatible cwhtml renderer replacement and fragment refresh.");
+            if (!passed)
+            {
+                Console.Error.WriteLine(result);
+            }
+
+            return passed;
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(viewPath, original).ConfigureAwait(false);
+        }
     }
 
     private static async Task WriteAtomicallyAsync(string path, byte[] content)

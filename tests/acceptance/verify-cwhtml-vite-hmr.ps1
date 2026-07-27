@@ -27,7 +27,6 @@ try {
         dev samples/SimpleTodo/SimpleTodo.csproj `
         --configuration $Configuration `
         --no-restore `
-        --no-dotnet-watch `
         -- `
         --browser-smoke-test
     if ($LASTEXITCODE -ne 0) {
