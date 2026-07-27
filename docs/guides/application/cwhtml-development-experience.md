@@ -40,14 +40,14 @@ The repository already has the difficult runtime foundations:
   coordinated CsWebUi restart, and clean shutdown; and
 - real-browser and Native-AOT acceptance for SimpleTodo.
 
-The sample applications no longer duplicate cwhtml compiler targets or static
-asset-copy logic, and their production frontend is minified and manifest
-bound. SimpleTodo now generates its HTMX descriptor/render-plan metadata and
-assembles startup through the high-level native application builder.
-AdvancedTodo still owns the older descriptor plumbing. The development command
-currently coordinates reliable process restart; browser diagnostic overlays,
-native-window asset HMR, state-preserving cwhtml replacement, richer typed
-declaration syntax, and the AdvancedTodo migration remain product gaps.
+The sample applications no longer duplicate cwhtml compiler targets, static
+asset-copy logic, HTMX descriptor/render-plan registration, or low-level
+runtime startup. Their production frontend is minified and manifest bound, and
+both Todo levels use generated registration plus the high-level native
+application builder. The development command currently coordinates reliable
+process restart; browser diagnostic overlays, native-window asset HMR,
+state-preserving cwhtml replacement, and richer typed declaration syntax remain
+product gaps.
 
 ## Architectural boundaries
 
@@ -204,11 +204,11 @@ diagnostic identifiers and source spans.
 
 1. **Implemented:** package shared cwhtml targets and integrate them with
    `WebUIToolkit.Frontend.Sdk`; remove duplicated sample MSBuild.
-2. **Implemented for SimpleTodo:** introduce the high-level application
-   builder; migrate AdvancedTodo next.
-3. **Partially implemented:** generate field, action, command, fragment,
+2. **Implemented:** introduce the high-level application builder and migrate
+   both Todo levels.
+3. **Implemented first slice:** generate field, action, command, fragment,
    focus, event, and render-plan plumbing from cwhtml. Conversion and
-   validation completion is explicit and AdvancedTodo remains to migrate.
+   validation completion remains explicit and supports per-action overrides.
 4. **Implemented:** integrate Vite production builds and asset-manifest
    generation/copying.
 5. **Partially implemented:** add `dotnet webuitoolkit dev` and reliable

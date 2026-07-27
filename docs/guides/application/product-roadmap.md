@@ -89,11 +89,11 @@ criteria live in the
   with a Node-free configuration still supported.
 - The first generated registration slice now emits action, field, command,
   fragment, focus, and success-event metadata from compiler-only cwhtml
-  declarations. SimpleTodo uses it to build initial, success, invalid, and
+  declarations. Both Todo levels use it to build initial, success, invalid, and
   recovery render plans; conversion and validation remain explicit,
-  reflection-free completion points.
+  reflection-free completion points with per-action overrides.
 - A high-level CsWebUi HTMX application builder now owns registry, runtime,
-  opened-view, transport, and session lifetime for SimpleTodo. The first
+  opened-view, transport, and session lifetime for both Todo levels. The first
   `dotnet webuitoolkit dev` milestone is implemented: it discovers SDK
   configuration, generates/verifies contracts, performs the initial Vite and
   .NET build, supervises asset and `dotnet watch` processes, starts CsWebUi,
@@ -114,17 +114,18 @@ criteria live in the
   minified and content-hashed local assets into the application VFS, and leave
   no development-server URL or Node.js runtime dependency in the result.
 
-Phase 3 is complete when AdvancedTodo joins SimpleTodo in containing no custom
-cwhtml build targets or hand-written native-HTMX descriptor plumbing, both use
-the shared development command, and they pass the production asset and reload
-acceptance criteria in the detailed plan.
+Both applications now contain no custom cwhtml build targets or hand-written
+native-HTMX descriptor plumbing and use the shared development command. Phase 3
+still requires the production asset and reload acceptance criteria in the
+detailed plan.
 
 ## Phase 4: WPF migration proof — in progress
 
 - AdvancedTodo's source is converted to compiled views, the single native HTMX
-  transport, and reusable Flow presenters. Its managed self-test covers
-  persistence, workflow navigation, validation, and cancellation; a real
-  Chromium/Native-AOT gate for this larger sample remains future work.
+  transport, generated registration, the high-level application lifetime, and
+  reusable Flow presenters. Its managed self-test covers persistence, workflow
+  navigation, validation, and cancellation; its real Chromium gate also runs
+  from a full-trim Native-AOT executable.
 - Demonstrate ViewModel-first navigation, typed dialogs, guarded close,
   validation summaries, collection updates, asynchronous cancellation,
   persistence, localization, and host push.

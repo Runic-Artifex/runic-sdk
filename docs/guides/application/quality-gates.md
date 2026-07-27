@@ -15,12 +15,14 @@ The primary repository gate remains `eng/verify.ps1`. Inside the Nix/direnv
 environment it also runs `eng/verify-cswebui-native-e2e.ps1`, which requires
 the pinned `CSWEBUI_NATIVE_LIBRARY` and `WEBUI_BROWSER_PATH`.
 
-The native script full-trim Native-AOT-publishes two executables and drives both
+The native script full-trim Native-AOT-publishes three executables and drives all
 through persistent headless Chromium against a real CsWebUi server:
 
 - the binary MVVM host proves the production `CsWebUiFrameChannel` round trip;
 - SimpleTodo submits its compiled form through the shipped native HTMX bridge,
-  executes a C# command, and verifies the replaced compiled-fragment DOM.
+  executes a C# command, and verifies the replaced compiled-fragment DOM; and
+- AdvancedTodo exercises its generated registration and high-level application
+  lifetime through the same native bridge and compiled-fragment replacement.
 
 `eng/verify-todo-frontends.ps1` then runs SimpleTodo and AdvancedTodo through
 React, Vue, Svelte, and Angular using the production binary FrameChannel. Each
@@ -48,10 +50,9 @@ portable lock-file hash is checked after publication. Both scripts print their
 wall-clock cost; no browser or AOT case is skipped after the two pinned
 prerequisites have been admitted.
 
-AdvancedTodo's compiled `.cwhtml`/native-HTMX source and managed self-test are
-implemented, but that application is not yet part of this Chromium/Native-AOT
-gate. The cwhtml development experience, WPF capability expansion, a
-framework-adapter application on the proven native path, and asset/VFS
+Both compiled `.cwhtml` Todo levels now have managed and Chromium/Native-AOT
+gates. The remaining cwhtml development experience, WPF capability expansion,
+a framework-adapter application on the proven native path, and asset/VFS
 extraction remain future roadmap work. The older G0–G7 sections below preserve
 cumulative historical release evidence; their existence does not mark those
 re-centered product outcomes complete.
@@ -117,7 +118,7 @@ does not claim the Native-AOT package-consumer requirements of G4.
 
 - Packed consumers publish and run actual executables with full trimming and Native AOT, zero owned trim/AOT warnings, deterministic cleanup, and exit code zero.
 - Repository smoke projects use `./eng/verify-native-aot.ps1`; RID-specific restore state is isolated under ignored `obj/aot.packages.lock.json` files so committed locks remain portable.
-- `./eng/verify-cswebui-native-e2e.ps1` Native-AOT-publishes both a binary-MVVM host and the compiled SimpleTodo HTMX application, drives them with the Nix-pinned Chromium, executes C# commands through their production native transports, and verifies the resulting DOM. `eng/verify.ps1` includes this gate when the direnv-provided native library and browser paths are available.
+- `./eng/verify-cswebui-native-e2e.ps1` Native-AOT-publishes a binary-MVVM host plus both compiled Todo HTMX applications, drives them with the Nix-pinned Chromium, executes C# commands through their production native transports, and verifies the resulting DOM. `eng/verify.ps1` includes this gate when the direnv-provided native library and browser paths are available.
 - The core vertical matrix runs the same scenario through the framework-neutral web SDK, CommunityToolkit, and compiled HTMX.
 - Clean-clone, empty-cache, offline, package-consumer, browser, security, fuzz, stress, leak, compatibility, and performance suites pass.
 - Release evidence includes API/package approvals, AOT logs, deterministic hashes, benchmark deltas, SBOM, provenance, migration notes, and compatibility matrices.
