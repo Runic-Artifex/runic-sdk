@@ -80,3 +80,19 @@ Cancellation is the normal MVVM `cancel` frame and never creates another
 native binding. Calling `MvvmClient.close()` sends the authenticated protocol
 close; call `ProtocolTransport.close()` afterward when the application also
 wants to detach the local JavaScript channel.
+
+## Shared application builder
+
+React, Vue, Svelte, and Angular contribute C# 14 extension properties and
+methods to the same frontend-neutral `WebUiAppBuilder`:
+
+```csharp
+var builder = WebUiApp.CreateBuilder(args);
+builder.UseReact(options);
+// Equivalent framework surface: builder.React.Use(options)
+return await builder.RunAsync();
+```
+
+The corresponding members are `React`/`UseReact`, `Vue`/`UseVue`,
+`Svelte`/`UseSvelte`, and `Angular`/`UseAngular`. Framework packages can add
+future configuration members without changing or downcasting the shared base.

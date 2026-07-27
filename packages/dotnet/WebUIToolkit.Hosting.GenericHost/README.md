@@ -23,6 +23,22 @@ await using WebUIToolkitApplication application = builder.Build();
 return (await application.RunAsync()).ExitCode ?? 0;
 ```
 
+Frontend applications normally start from the shared high-level builder:
+
+```csharp
+var builder = WebUiApp.CreateBuilder(args);
+builder.Services.AddSingleton<MyApplicationService>();
+
+// A frontend package contributes its own extension members here.
+builder.UseMyFrontend(...);
+
+return await builder.RunAsync();
+```
+
+`WebUiAppBuilder` contains only common Generic Host and lifecycle concerns.
+Frontend packages use its public feature bag to add strongly typed methods and
+properties without adding framework dependencies to the shared package.
+
 The complete declared surface is recorded in [PUBLIC-API.md](PUBLIC-API.md).
 
 Publication remains blocked by the repository's pending license decision.

@@ -10,6 +10,7 @@
     <Project Path="src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.CommandLine/WebUIToolkit.Hosting.CommandLine.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.CsWebUi/WebUIToolkit.Hosting.CsWebUi.csproj" />
+    <Project Path="src/WebUIToolkit.Hosting.CsWebUi.App/WebUIToolkit.Hosting.CsWebUi.App.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.CsWebUi.Mvvm/WebUIToolkit.Hosting.CsWebUi.Mvvm.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.Generators/WebUIToolkit.Hosting.Generators.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />

@@ -2,20 +2,11 @@
   "version": 2,
   "dependencies": {
     "net10.0": {
-      "CommunityToolkit.Mvvm": {
+      "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[8.4.2, )",
-        "resolved": "8.4.2",
-        "contentHash": "WadCzGEc2U+3e20avRLng4qNtt4zoOGWrdUISqJWrHe3/FSnrYjuM5Sb4yQb09LhkBXrrI4Zt3dLKgRMbItsrg=="
-      },
-      "CsWebUi": {
-        "type": "Direct",
-        "requested": "[2.5.0-beta.4.3, )",
-        "resolved": "2.5.0-beta.4.3",
-        "contentHash": "MUErvHlHse7m8l6I8GIxDrrMzo+gHvPuqLE2/VoR2QcCY9G9fGLhV4TKNU/mwEvx/7y6kKfeCr3wzvnxHIGgYA==",
-        "dependencies": {
-          "CsWebUi.Native": "2.5.0-beta.4.3"
-        }
+        "requested": "[10.0.10, )",
+        "resolved": "10.0.10",
+        "contentHash": "f5VCIE7AJpd5YvzNTeMGVzQIgyE9tX+AreTYwQF+REbu+DZo/2Ae+jNSwhPEYrVz6RRkd7y8ubXjk6Nn6Ka+Cg=="
       },
       "CsWebUi.Native": {
         "type": "Transitive",
@@ -288,25 +279,6 @@
           "WebUIToolkit.Hosting.Abstractions": "[1.0.0, )"
         }
       },
-      "webuitoolkit.hosting.cswebui.app": {
-        "type": "Project",
-        "dependencies": {
-          "WebUIToolkit.Hosting": "[1.0.0, )",
-          "WebUIToolkit.Hosting.CsWebUi": "[1.0.0-beta.1, )",
-          "WebUIToolkit.Hosting.GenericHost": "[1.0.0, )",
-          "WebUIToolkit.Hosting.WebUi": "[1.0.0, )"
-        }
-      },
-      "webuitoolkit.hosting.cswebui.mvvm": {
-        "type": "Project",
-        "dependencies": {
-          "CsWebUi": "[2.5.0-beta.4.3, )",
-          "WebUIToolkit.Hosting.CsWebUi": "[1.0.0-beta.1, )",
-          "WebUIToolkit.Hosting.CsWebUi.App": "[1.0.0-beta.1, )",
-          "WebUIToolkit.Hosting.WebUi": "[1.0.0, )",
-          "WebUIToolkit.MVVM": "[1.0.0, )"
-        }
-      },
       "webuitoolkit.hosting.generichost": {
         "type": "Project",
         "dependencies": {
@@ -325,11 +297,13 @@
       "webuitoolkit.mvvm": {
         "type": "Project"
       },
-      "webuitoolkit.mvvm.communitytoolkit": {
-        "type": "Project",
+      "CsWebUi": {
+        "type": "CentralTransitive",
+        "requested": "[2.5.0-beta.4.3, )",
+        "resolved": "2.5.0-beta.4.3",
+        "contentHash": "MUErvHlHse7m8l6I8GIxDrrMzo+gHvPuqLE2/VoR2QcCY9G9fGLhV4TKNU/mwEvx/7y6kKfeCr3wzvnxHIGgYA==",
         "dependencies": {
-          "CommunityToolkit.Mvvm": "[8.4.2, 8.4.2]",
-          "WebUIToolkit.MVVM": "[1.0.0, )"
+          "CsWebUi.Native": "2.5.0-beta.4.3"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {

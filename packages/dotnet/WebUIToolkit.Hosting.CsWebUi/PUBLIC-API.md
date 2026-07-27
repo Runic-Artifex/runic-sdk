@@ -32,4 +32,5 @@ public sealed class CsWebUiBrowserHostFactory : WebUIToolkit.Hosting.IBrowserHos
         WebUIToolkit.Hosting.BrowserHostOptions options,
         CancellationToken cancellationToken);
 }
+
 ```

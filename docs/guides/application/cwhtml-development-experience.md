@@ -123,6 +123,17 @@ From those declarations, generation should supply:
 - stable routes and member identifiers;
 - form conversion and source-generated JSON obligations;
 - validation association and error projection;
+
+The first implemented slice now emits reflection-free conversion metadata from
+`data-wut-convert` and server-side rules from `required`, `minlength`,
+`maxlength`, literal `select` options, and `data-wut-format`. Applications use
+`ConfigureValidators(...)` only for live domain rules that cannot be expressed
+by the document, such as checking that an opaque task ID still exists.
+
+The common `WebUiAppBuilder` is also implemented. React, Vue, Svelte, Angular,
+and cwhtml/HTMX project their own C# 14 extension properties and methods onto
+that shared host/lifecycle base. The fluent `UseCwhtml<T>()`, `UseHtmx<T>()`,
+and Vite entry-point shortcuts above remain the next consolidation step.
 - affected fragments and render plans;
 - revision and stale-update behavior; and
 - registrations needed by the native adapter.

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using WebUIToolkit.Hosting;
 using WebUIToolkit.Hosting.CsWebUi.Mvvm;
 using WebUIToolkit.MVVM;
 
@@ -25,6 +26,7 @@ internal static class Program
             ("client identity is pinned while the same client may reconnect", ConnectionIdentity),
             ("invalid and oversized native calls are rejected before dispatch", InvalidFramesAreRejected),
             ("options require simple distinct JavaScript identifiers", OptionsValidate),
+            ("frameworks extend the shared high-level builder", SharedBuilderExtensions),
         ];
 
         foreach ((string name, Func<Task> run) in tests)
@@ -43,6 +45,16 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    private static Task SharedBuilderExtensions()
+    {
+        var builder = WebUiApp.CreateBuilder();
+        Equal("React", builder.React.Name);
+        Equal("Vue", builder.Vue.Name);
+        Equal("Svelte", builder.Svelte.Name);
+        Equal("Angular", builder.Angular.Name);
+        return Task.CompletedTask;
     }
 
     private static async Task HostPush()

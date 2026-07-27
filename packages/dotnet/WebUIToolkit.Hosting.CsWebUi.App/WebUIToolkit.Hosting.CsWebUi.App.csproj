@@ -2,30 +2,23 @@
   <PropertyGroup>
     <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
     <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
-    <AssemblyName>WebUIToolkit.Hosting.CsWebUi.Mvvm</AssemblyName>
-    <RootNamespace>WebUIToolkit.Hosting.CsWebUi.Mvvm</RootNamespace>
-    <PackageId>WebUIToolkit.Hosting.CsWebUi.Mvvm</PackageId>
+    <AssemblyName>WebUIToolkit.Hosting.CsWebUi.App</AssemblyName>
+    <RootNamespace>WebUIToolkit.Hosting.CsWebUi</RootNamespace>
+    <PackageId>WebUIToolkit.Hosting.CsWebUi.App</PackageId>
     <Version>1.0.0-beta.1</Version>
-    <Description>Binary CsWebUi transport bridge for the WebUIToolkit MVVM protocol.</Description>
+    <Description>High-level WebUiApp composition for native CsWebUi frontends.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\WebUIToolkit.Hosting\WebUIToolkit.Hosting.csproj" />
     <ProjectReference Include="..\WebUIToolkit.Hosting.CsWebUi\WebUIToolkit.Hosting.CsWebUi.csproj" />
-    <ProjectReference Include="..\WebUIToolkit.Hosting.CsWebUi.App\WebUIToolkit.Hosting.CsWebUi.App.csproj" />
+    <ProjectReference Include="..\WebUIToolkit.Hosting.GenericHost\WebUIToolkit.Hosting.GenericHost.csproj" />
     <ProjectReference Include="..\WebUIToolkit.Hosting.WebUi\WebUIToolkit.Hosting.WebUi.csproj" />
-    <ProjectReference Include="..\WebUIToolkit.MVVM\WebUIToolkit.MVVM.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="CsWebUi" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="PUBLIC-API.md" Pack="true" PackagePath="\" />
-    <None Include="assets\webuitoolkit-mvvm-cswebui.mjs"
-          Pack="true"
-          PackagePath="contentFiles\any\any\wwwroot" />
   </ItemGroup>
 </Project>

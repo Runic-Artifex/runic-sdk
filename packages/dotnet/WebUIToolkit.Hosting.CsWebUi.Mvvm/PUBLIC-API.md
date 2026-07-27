@@ -17,3 +17,10 @@ Namespace: `WebUIToolkit.Hosting.CsWebUi.Mvvm`
 
 The package also ships the ESM `CsWebUiFrameChannel` browser adapter as a
 NuGet content file.
+
+- `MvvmFrontendAppBuilder` is the framework-specific facade over the shared
+  `WebUiAppBuilder`.
+- C# 14 extension properties `React`, `Vue`, `Svelte`, and `Angular` expose
+  that facade.
+- C# 14 extension methods `UseReact`, `UseVue`, `UseSvelte`, and `UseAngular`
+  register the corresponding frontend with `CsWebUiAppOptions`.

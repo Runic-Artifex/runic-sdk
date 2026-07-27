@@ -41,3 +41,7 @@ registration; do not show or dispose the window from that callback.
 CsWebUi owns process-wide native state, so adapter dispatchers serialize native
 work across hosts. Disposing a host closes only its owned windows; it does not
 call the process-wide `WebUiApplication.Exit` or `Clean` methods.
+
+Applications that want the shared high-level builder add the separate
+`WebUIToolkit.Hosting.CsWebUi.App` composition package. Keeping that dependency
+out of this adapter allows custom hosts to use CsWebUi without Generic Host.
