@@ -34,7 +34,7 @@ framework adapters. The framework projects share
 [`Todo.Shared`](./Todo.Shared) with the cwhtml demos and share one native host
 and projection map in [`Todo.FrontendHost`](./Todo.FrontendHost). See the
 [framework sample guide](./Todo.Frontends/README.md) and recorded
-[DX findings](../docs/frontend-todo-findings.md).
+[frontend integration findings](../docs/guides/frontend-frameworks.md).
 
 The two desktop applications follow the same progressive-teaching idea as
 Avalonia's [Simple ToDo](https://github.com/AvaloniaUI/Avalonia.Samples/tree/main/src/Avalonia.Samples/CompleteApps/SimpleToDoList)
@@ -46,13 +46,12 @@ Bootstrap, and Font Awesome and emits the minified, hashed local asset graph
 served by CsWebUi; neither application starts ASP.NET Core or exposes manually
 named browser callbacks.
 
-SimpleTodo is the completed golden-path acceptance sample. In addition to its
-managed smoke test, `--browser-smoke-test` launches the real CsWebUi server and
-Nix-pinned Chromium, submits the visible form through the shipped HTMX bridge,
-executes C#, and verifies that the compiled fragment replaced the DOM.
-AdvancedTodo's compiled conversion is implemented and its `--self-test`
-exercises application behavior, but it is not yet included in the native
-Chromium/Native-AOT acceptance gate.
+Both Todo levels have managed and real-browser acceptance. Their native gate
+full-trim Native-AOT-publishes each application, launches the real CsWebUi
+server and Nix-pinned Chromium, submits through the shipped HTMX bridge,
+executes C#, and verifies compiled-fragment replacement. The SimpleTodo
+development gate additionally proves CSS/JavaScript HMR, compiler overlays,
+and state-preserving compatible cwhtml renderer replacement.
 
 Bootstrap 5.3 and Font Awesome are the default visual baseline for desktop
 samples. Assets must be pinned and served locally. Samples should prefer

@@ -50,6 +50,9 @@ or CSS:
 dotnet webuitoolkit dev samples/AdvancedTodo/AdvancedTodo.csproj
 ```
 
+If the packaged tool is not installed, use the repository-local command shown
+in [Getting started](../../docs/getting-started/README.md).
+
 Tasks persist below the platform local application-data directory:
 
 ```text

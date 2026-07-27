@@ -37,6 +37,9 @@ For the coordinated asset, cwhtml, C#, and CsWebUi development loop:
 dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
 ```
 
+If the packaged tool is not installed, use the repository-local command shown
+in [Getting started](../../docs/getting-started/README.md).
+
 On NixOS, enter the repository's direnv shell first so the pinned native WebUI
 library and Chromium dependencies are available.
 
