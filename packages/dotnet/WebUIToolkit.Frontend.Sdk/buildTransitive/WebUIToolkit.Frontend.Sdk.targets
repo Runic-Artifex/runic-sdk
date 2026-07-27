@@ -1,5 +1,13 @@
 <Project>
   <PropertyGroup>
+    <!-- Package buildTransitive props are imported before consumer project properties.
+         Compose commands here so project-declared workspace and contract paths are visible. -->
+    <WebUIToolkitFrontendBuildCommand
+      Condition="'$(WebUIToolkitFrontendBuildCommand)' == ''">npm run build --workspace $(WebUIToolkitFrontendWorkspace) $(WebUIToolkitFrontendBuildArguments)</WebUIToolkitFrontendBuildCommand>
+    <WebUIToolkitFrontendContractVerifyCommand
+      Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' == '' and '$(WebUIToolkitFrontendContractSource)' != ''">node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot; --verify</WebUIToolkitFrontendContractVerifyCommand>
+    <WebUIToolkitFrontendInstallCacheDirectory
+      Condition="'$(WebUIToolkitFrontendInstallCacheDirectory)' == ''">$(WebUIToolkitFrontendWorkspaceRoot)/obj/WebUIToolkit.Frontend.Sdk/install</WebUIToolkitFrontendInstallCacheDirectory>
     <WebUIToolkitFrontendOutputDirectory
       Condition="'$(WebUIToolkitFrontendOutputDirectory)' == '' and '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">$(WebUIToolkitFrontendPackageDirectory)/dist</WebUIToolkitFrontendOutputDirectory>
     <WebUIToolkitFrontendViteConfiguration
@@ -12,6 +20,13 @@
       Condition="'$(WebUIToolkitFrontendViteConfiguration)' == '' and Exists('$(WebUIToolkitFrontendPackageDirectory)/vite.config.mts')">$(WebUIToolkitFrontendPackageDirectory)/vite.config.mts</WebUIToolkitFrontendViteConfiguration>
     <WebUIToolkitFrontendViteConfiguration
       Condition="'$(WebUIToolkitFrontendViteConfiguration)' == '' and Exists('$(WebUIToolkitFrontendPackageDirectory)/vite.config.cjs')">$(WebUIToolkitFrontendPackageDirectory)/vite.config.cjs</WebUIToolkitFrontendViteConfiguration>
+    <WebUIToolkitFrontendLockFile
+      Condition="'$(WebUIToolkitFrontendLockFile)' == '' and
+                 '$(WebUIToolkitFrontendPackageManager)' == 'npm' and
+                 Exists('$(WebUIToolkitFrontendWorkspaceRoot)/npm-shrinkwrap.json')">$(WebUIToolkitFrontendWorkspaceRoot)/npm-shrinkwrap.json</WebUIToolkitFrontendLockFile>
+    <WebUIToolkitFrontendLockFile
+      Condition="'$(WebUIToolkitFrontendLockFile)' == '' and
+                 '$(WebUIToolkitFrontendPackageManager)' == 'npm'">$(WebUIToolkitFrontendWorkspaceRoot)/package-lock.json</WebUIToolkitFrontendLockFile>
   </PropertyGroup>
 
   <Target Name="WebUIToolkitFrontendValidate"
@@ -41,13 +56,24 @@
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
   </Target>
 
-  <Target Name="WebUIToolkitFrontendInstall"
+  <Target Name="WebUIToolkitFrontendResolveInstall"
           DependsOnTargets="WebUIToolkitFrontendValidate"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
-                     '$(WebUIToolkitFrontendInstall)' == 'true' and
-                     !Exists('$(WebUIToolkitFrontendWorkspaceRoot)/node_modules/.package-lock.json')">
-    <Exec Command="npm ci"
+                     '$(WebUIToolkitFrontendInstall)' == 'true'">
+    <Error Condition="'$(WebUIToolkitFrontendLockFile)' == ''"
+           Text="WebUIToolkitFrontendLockFile is required for package manager '$(WebUIToolkitFrontendPackageManager)'." />
+    <Error Condition="!Exists('$(WebUIToolkitFrontendLockFile)')"
+           Text="The frontend lock file '$(WebUIToolkitFrontendLockFile)' does not exist. Restore or generate it, or set WebUIToolkitFrontendLockFile explicitly." />
+  </Target>
+
+  <Target Name="WebUIToolkitFrontendInstall"
+          BeforeTargets="PrepareForBuild"
+          DependsOnTargets="WebUIToolkitFrontendResolveInstall"
+          Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
+                     '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
+                     '$(WebUIToolkitFrontendInstall)' == 'true'">
+    <Exec Command="node &quot;$(WebUIToolkitFrontendInstallCoordinator)&quot; &quot;$(WebUIToolkitFrontendWorkspaceRoot)&quot; &quot;$(WebUIToolkitFrontendInstallCacheDirectory)&quot; &quot;$(WebUIToolkitFrontendPackageManager)&quot; &quot;$(WebUIToolkitFrontendLockFile)&quot; &quot;$(WebUIToolkitFrontendInstallCommand)&quot;"
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
   </Target>
 
@@ -55,11 +81,12 @@
           BeforeTargets="PrepareForBuild"
           DependsOnTargets="WebUIToolkitFrontendInstall"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
-                     '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">
+                     '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
+                     '$(WebUIToolkitFrontendBuild)' == 'true'">
     <Exec Command="$(WebUIToolkitFrontendContractVerifyCommand)"
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)"
           Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' != ''" />
-    <Exec Command="npm run build --workspace $(WebUIToolkitFrontendWorkspace) $(WebUIToolkitFrontendBuildArguments)"
+    <Exec Command="$(WebUIToolkitFrontendBuildCommand)"
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
     <ItemGroup>
       <Content Include="$(WebUIToolkitFrontendBridgeAsset)"
@@ -75,15 +102,20 @@
           DependsOnTargets="WebUIToolkitFrontendBuild"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">
-    <RemoveDir Directories="$(TargetDir)$(WebUIToolkitFrontendWebRoot)/assets;
+    <MakeDir Directories="$(TargetDir)$(WebUIToolkitFrontendWebRoot)" />
+    <RemoveDir Condition="'$(WebUIToolkitFrontendBuild)' == 'true'"
+               Directories="$(TargetDir)$(WebUIToolkitFrontendWebRoot)/assets;
                             $(TargetDir)$(WebUIToolkitFrontendWebRoot)/simple;
                             $(TargetDir)$(WebUIToolkitFrontendWebRoot)/advanced" />
     <ItemGroup>
-      <_WebUIToolkitFrontendOutput Include="$(WebUIToolkitFrontendOutputDirectory)/**/*" />
+      <_WebUIToolkitFrontendOutput
+        Include="$(WebUIToolkitFrontendOutputDirectory)/**/*"
+        Condition="'$(WebUIToolkitFrontendBuild)' == 'true'" />
     </ItemGroup>
     <Copy SourceFiles="@(_WebUIToolkitFrontendOutput)"
           DestinationFiles="@(_WebUIToolkitFrontendOutput->'$(TargetDir)$(WebUIToolkitFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+          SkipUnchangedFiles="true"
+          Condition="'$(WebUIToolkitFrontendBuild)' == 'true'" />
   </Target>
 
   <Target Name="WebUIToolkitFrontendCopyToPublish"
@@ -91,15 +123,20 @@
           DependsOnTargets="WebUIToolkitFrontendBuild"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">
-    <RemoveDir Directories="$(PublishDir)$(WebUIToolkitFrontendWebRoot)/assets;
+    <MakeDir Directories="$(PublishDir)$(WebUIToolkitFrontendWebRoot)" />
+    <RemoveDir Condition="'$(WebUIToolkitFrontendBuild)' == 'true'"
+               Directories="$(PublishDir)$(WebUIToolkitFrontendWebRoot)/assets;
                             $(PublishDir)$(WebUIToolkitFrontendWebRoot)/simple;
                             $(PublishDir)$(WebUIToolkitFrontendWebRoot)/advanced" />
     <ItemGroup>
-      <_WebUIToolkitFrontendPublish Include="$(WebUIToolkitFrontendOutputDirectory)/**/*" />
+      <_WebUIToolkitFrontendPublish
+        Include="$(WebUIToolkitFrontendOutputDirectory)/**/*"
+        Condition="'$(WebUIToolkitFrontendBuild)' == 'true'" />
     </ItemGroup>
     <Copy SourceFiles="@(_WebUIToolkitFrontendPublish)"
           DestinationFiles="@(_WebUIToolkitFrontendPublish->'$(PublishDir)$(WebUIToolkitFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+          SkipUnchangedFiles="true"
+          Condition="'$(WebUIToolkitFrontendBuild)' == 'true'" />
   </Target>
 
   <Target Name="WebUIToolkitFrontendCompileCwhtml"

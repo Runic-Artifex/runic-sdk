@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "WebUIToolkit",
+  "classifications": ["Desktop", "CsWebUi", "Svelte"],
+  "identity": "WebUIToolkit.Templates.Svelte",
+  "name": "WebUIToolkit Svelte application",
+  "shortName": "webuitoolkit-svelte",
+  "sourceName": "WebUIToolkitStarter",
+  "preferNameDirectory": true,
+  "tags": { "language": "C#", "type": "project" },
+  "primaryOutputs": [{ "path": "WebUIToolkitStarter.csproj" }]
+}

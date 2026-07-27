@@ -30,7 +30,7 @@ On NixOS, use the checked-in flake and direnv environment:
 
 ```bash
 direnv allow
-npm ci
+pwsh ./eng/setup-development.ps1
 dotnet build WebUIToolkit.slnx
 dotnet run --project samples/SimpleTodo
 ```
@@ -38,11 +38,10 @@ dotnet run --project samples/SimpleTodo
 Run the repository-local coordinated development tool with:
 
 ```bash
-dotnet run --project tools/dotnet-webuitoolkit -- \
-  dev samples/SimpleTodo/SimpleTodo.csproj
+dotnet webuitoolkit doctor samples/SimpleTodo/SimpleTodo.csproj
+dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
 ```
 
-An installed tool provides the shorter `dotnet webuitoolkit dev ...` command.
 The development loop coordinates .NET, CsWebUi, Vite, generated contracts,
 browser diagnostics, CSS/JavaScript HMR, state-preserving compatible cwhtml
 renderer replacement, and safe restart fallback.
@@ -115,14 +114,9 @@ The [development modes](./docs/contributing/development.md) and
 ## Current direction
 
 The native transports, shared ViewModels, frontend integrations, Vite pipeline,
-browser diagnostics, and three live-feedback tiers are implemented. The next
-priority is the consumer-facing golden path:
-
-- typed cwhtml declarations instead of numeric protocol IDs;
-- generated route, adapter, validation, and fragment-plan composition;
-- small application roots built through the shared high-level builder;
-- project templates and `dotnet webuitoolkit doctor`; and
-- a cwhtml language server and editor extension.
+browser diagnostics, three live-feedback tiers, high-level application
+composition, project templates, and environment doctor are implemented. The
+next priority is the cwhtml language server and editor extension.
 
 WPF desktop capability services, generated aggregate framework façades, reusable
 sample components, and the separate VFS/assets package follow in the

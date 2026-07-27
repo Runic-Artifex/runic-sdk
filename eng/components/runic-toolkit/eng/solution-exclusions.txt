@@ -21,3 +21,9 @@ tests/WebUIToolkit.MVVM.Html.Tests/AotSmoke/WebUIToolkit.MVVM.Html.AotSmoke.cspr
 tests/WebUIToolkit.MVVM.Html.Tests/PackageConsumer/Consumer/PackageConsumer.csproj
 tests/WebUIToolkit.TextResources.AotTests/WebUIToolkit.TextResources.AotTests.csproj
 tests/WebUIToolkit.TextResources.PackageTests/WebUIToolkit.TextResources.PackageTests.csproj
+# Source projects embedded in the template package and instantiated by its acceptance test.
+templates/WebUIToolkit.Templates/content/angular/WebUIToolkitStarter.csproj
+templates/WebUIToolkit.Templates/content/cwhtml/WebUIToolkitStarter.csproj
+templates/WebUIToolkit.Templates/content/react/WebUIToolkitStarter.csproj
+templates/WebUIToolkit.Templates/content/svelte/WebUIToolkitStarter.csproj
+templates/WebUIToolkit.Templates/content/vue/WebUIToolkitStarter.csproj

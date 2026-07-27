@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "webuitoolkit.dotnet.webuitoolkit": {
+      "version": "1.0.0",
+      "commands": ["dotnet-webuitoolkit"]
+    }
+  }
+}

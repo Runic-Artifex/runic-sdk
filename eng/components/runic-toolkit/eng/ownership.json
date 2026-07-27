@@ -44,6 +44,7 @@
     { "name": "text-resources", "branch": "work/text-resources", "paths": ["src/WebUIToolkit.TextResources*/*", "tools/dotnet-textresources/*", "spec/text-resources/*", "tests/WebUIToolkit.TextResources.*/*", "samples/TextResources.*/*"] },
     { "name": "command-line", "branch": "work/command-line", "paths": ["src/WebUIToolkit.CommandLine*/*", "eng/cli-evaluation/*", "spec/command-line/*", "tests/WebUIToolkit.CommandLine.*/*", "tests/Fixtures/CommandLine.*/*"] },
     { "name": "collections", "branch": "work/collections", "paths": ["src/WebUIToolkit.Collections*/*", "tests/WebUIToolkit.Collections.*/*", "benchmarks/WebUIToolkit.Collections.*/*"] },
-    { "name": "release-rehearsal", "branch": "work/release-rehearsal", "paths": ["tests/Fixtures/ReferenceApplication/*", "docs/release/wave-g/*", "eng/verify-wave-g*"] }
+    { "name": "release-rehearsal", "branch": "work/release-rehearsal", "paths": ["tests/Fixtures/ReferenceApplication/*", "docs/release/wave-g/*", "eng/verify-wave-g*"] },
+    { "name": "templates", "branch": "work/templates", "paths": ["templates/WebUIToolkit.Templates/*", "tests/WebUIToolkit.Templates.Tests/*"] }
   ]
 }

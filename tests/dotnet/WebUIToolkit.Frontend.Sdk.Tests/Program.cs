@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Security;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace WebUIToolkit.Frontend.Sdk.Tests;
 
@@ -29,8 +31,32 @@ internal static class Program
         "buildTransitive",
         "WebUIToolkit.Frontend.Sdk.targets");
 
-    public static int Main()
+    public static int Main(string[] args)
     {
+        if (args is ["--fake-install", string workspace, string counter])
+        {
+            Directory.CreateDirectory(Path.Combine(workspace, "node_modules"));
+            File.AppendAllText(counter, "install\n", new UTF8Encoding(false));
+            return 0;
+        }
+
+        if (args is ["--fake-build", string buildCounter])
+        {
+            File.AppendAllText(buildCounter, "build\n", new UTF8Encoding(false));
+            return 0;
+        }
+
+        if (args is [
+                "--fake-install-delayed",
+                string delayedWorkspace,
+                string delayedCounter])
+        {
+            Thread.Sleep(500);
+            Directory.CreateDirectory(Path.Combine(delayedWorkspace, "node_modules"));
+            File.AppendAllText(delayedCounter, "install\n", new UTF8Encoding(false));
+            return 0;
+        }
+
         (string Name, Action Body)[] tests =
         [
             ("generation is deterministic", GenerationIsDeterministic),
@@ -41,6 +67,10 @@ internal static class Program
             ("SDK validation accepts a Node-free cwhtml pipeline", SdkValidationAcceptsCwhtmlOnlyConfiguration),
             ("SDK validation rejects a missing pipeline", SdkValidationRejectsMissingPipeline),
             ("SDK validation rejects incomplete contract outputs", SdkValidationRejectsIncompleteContractOutputs),
+            ("SDK frontend install cache follows lock-file identity", SdkInstallCacheFollowsLockFileIdentity),
+            ("SDK serializes concurrent installs for one workspace", SdkSerializesConcurrentInstalls),
+            ("SDK frontend install is inert for no-restore and Node-free builds", SdkInstallIsInertWhenDisabled),
+            ("SDK build opt-out skips production assets and creates the runtime web root", SdkBuildOptOutSkipsProductionAssets),
         ];
 
         int failures = 0;
@@ -240,6 +270,171 @@ internal static class Program
             "SDK validation did not explain that no frontend pipeline was enabled.");
     }
 
+    private static void SdkInstallCacheFollowsLockFileIdentity()
+    {
+        using TestWorkspace workspace = new();
+        string lockFile = workspace.WriteText(
+            "package-lock.json",
+            """
+            {
+              "name": "fixture",
+              "lockfileVersion": 3,
+              "packages": {}
+            }
+            """);
+        string counter = Path.Combine(workspace.Root, "install-count.txt");
+        string installCommand = CreateSelfCommand(
+            "--fake-install",
+            workspace.Root,
+            counter);
+        string project = workspace.WriteText(
+            "install.proj",
+            CreateValidationProject(
+                $"""
+                <WebUIToolkitFrontendWorkspace>fixture</WebUIToolkitFrontendWorkspace>
+                <WebUIToolkitFrontendPackageDirectory>frontend</WebUIToolkitFrontendPackageDirectory>
+                <WebUIToolkitFrontendInstallCommand>{SecurityElement.Escape(installCommand)}</WebUIToolkitFrontendInstallCommand>
+                """));
+
+        AssertSuccess(RunSdkTarget(workspace.Root, project, "WebUIToolkitFrontendInstall"), "Initial SDK frontend install");
+        AssertLineCount(counter, 1, "The initial frontend install did not execute exactly once.");
+
+        AssertSuccess(RunSdkTarget(workspace.Root, project, "WebUIToolkitFrontendInstall"), "Cached SDK frontend install");
+        AssertLineCount(counter, 1, "An unchanged lock file caused a redundant frontend install.");
+
+        File.AppendAllText(lockFile, "\n", new UTF8Encoding(false));
+        AssertSuccess(RunSdkTarget(workspace.Root, project, "WebUIToolkitFrontendInstall"), "Invalidated SDK frontend install");
+        AssertLineCount(counter, 2, "Changing the lock-file contents did not invalidate the frontend install cache.");
+
+        AssertSuccess(
+            RunSdkTarget(
+                workspace.Root,
+                project,
+                "WebUIToolkitFrontendInstall",
+                "-property:WebUIToolkitFrontendPackageManager=custom",
+                $"-property:WebUIToolkitFrontendLockFile={lockFile}"),
+            "Package-manager-invalidated SDK frontend install");
+        AssertLineCount(counter, 3, "Changing the package-manager identity did not invalidate the frontend install cache.");
+    }
+
+    private static void SdkInstallIsInertWhenDisabled()
+    {
+        using TestWorkspace workspace = new();
+        string noRestoreProject = workspace.WriteText(
+            "no-restore.proj",
+            CreateValidationProject(
+                """
+                <WebUIToolkitFrontendWorkspace>fixture</WebUIToolkitFrontendWorkspace>
+                <WebUIToolkitFrontendPackageDirectory>frontend</WebUIToolkitFrontendPackageDirectory>
+                <WebUIToolkitFrontendInstall>false</WebUIToolkitFrontendInstall>
+                """));
+        AssertSuccess(
+            RunSdkTarget(workspace.Root, noRestoreProject, "WebUIToolkitFrontendInstall"),
+            "No-restore SDK frontend install");
+
+        string nodeFreeProject = workspace.WriteText(
+            "node-free-install.proj",
+            CreateValidationProject(
+                """
+                <WebUIToolkitFrontendNodeEnabled>false</WebUIToolkitFrontendNodeEnabled>
+                <WebUIToolkitFrontendCwhtmlEnabled>true</WebUIToolkitFrontendCwhtmlEnabled>
+                """));
+        AssertSuccess(
+            RunSdkTarget(workspace.Root, nodeFreeProject, "WebUIToolkitFrontendInstall"),
+            "Node-free SDK frontend install");
+    }
+
+    private static void SdkSerializesConcurrentInstalls()
+    {
+        using TestWorkspace workspace = new();
+        workspace.WriteText(
+            "package-lock.json",
+            """{"name":"fixture","lockfileVersion":3,"packages":{}}""");
+        string counter = Path.Combine(workspace.Root, "install-count.txt");
+        string installCommand = CreateSelfCommand(
+            "--fake-install-delayed",
+            workspace.Root,
+            counter);
+        string properties =
+            $"""
+            <WebUIToolkitFrontendWorkspace>fixture</WebUIToolkitFrontendWorkspace>
+            <WebUIToolkitFrontendPackageDirectory>frontend</WebUIToolkitFrontendPackageDirectory>
+            <WebUIToolkitFrontendInstallCommand>{SecurityElement.Escape(installCommand)}</WebUIToolkitFrontendInstallCommand>
+            """;
+        string first = workspace.WriteText(
+            "first.proj",
+            CreateValidationProject(properties));
+        string second = workspace.WriteText(
+            "second.proj",
+            CreateValidationProject(properties));
+
+        Task<ProcessResult> firstInstall = Task.Run(
+            () => RunSdkTarget(workspace.Root, first, "WebUIToolkitFrontendInstall"));
+        Task<ProcessResult> secondInstall = Task.Run(
+            () => RunSdkTarget(workspace.Root, second, "WebUIToolkitFrontendInstall"));
+        Task.WaitAll(firstInstall, secondInstall);
+
+        AssertSuccess(firstInstall.Result, "First concurrent SDK frontend install");
+        AssertSuccess(secondInstall.Result, "Second concurrent SDK frontend install");
+        AssertLineCount(
+            counter,
+            1,
+            "Concurrent projects performed more than one install for the shared workspace.");
+    }
+
+    private static void SdkBuildOptOutSkipsProductionAssets()
+    {
+        using TestWorkspace workspace = new();
+        string buildCounter = Path.Combine(workspace.Root, "build-count.txt");
+        string outputAsset = workspace.WriteText("frontend/dist/assets/app.js", "production");
+        string targetDirectory = Path.Combine(workspace.Root, "bin") + Path.DirectorySeparatorChar;
+        string buildCommand = CreateSelfCommand("--fake-build", buildCounter);
+        string project = workspace.WriteText(
+            "vite-dev.proj",
+            CreateValidationProject(
+                $"""
+                <WebUIToolkitFrontendWorkspace>fixture</WebUIToolkitFrontendWorkspace>
+                <WebUIToolkitFrontendPackageDirectory>frontend</WebUIToolkitFrontendPackageDirectory>
+                <WebUIToolkitFrontendInstall>false</WebUIToolkitFrontendInstall>
+                <WebUIToolkitFrontendBuild>false</WebUIToolkitFrontendBuild>
+                <WebUIToolkitFrontendBuildCommand>{SecurityElement.Escape(buildCommand)}</WebUIToolkitFrontendBuildCommand>
+                <WebUIToolkitFrontendViteDevServerEnabled>true</WebUIToolkitFrontendViteDevServerEnabled>
+                <TargetDir>{SecurityElement.Escape(targetDirectory)}</TargetDir>
+                """));
+
+        AssertSuccess(
+            RunSdkTarget(workspace.Root, project, "WebUIToolkitFrontendCopyToOutput"),
+            "Vite development-assets SDK build");
+
+        string runtimeWebRoot = Path.Combine(targetDirectory, "www");
+        AssertFalse(
+            File.Exists(buildCounter),
+            "The production frontend build executed even though WebUIToolkitFrontendBuild was false.");
+        if (!Directory.Exists(runtimeWebRoot))
+        {
+            throw new InvalidOperationException(
+                "The runtime web root was not created while Vite supplied development assets.");
+        }
+
+        AssertFalse(
+            File.Exists(Path.Combine(runtimeWebRoot, "assets", Path.GetFileName(outputAsset))),
+            "A stale production asset was copied into the Vite development web root.");
+
+        AssertSuccess(
+            RunSdkTarget(
+                workspace.Root,
+                project,
+                "WebUIToolkitFrontendCopyToOutput",
+                "-property:WebUIToolkitFrontendBuild=true"),
+            "Production-assets SDK build");
+        AssertLineCount(buildCounter, 1, "The production frontend build opt-in did not execute.");
+        if (!File.Exists(Path.Combine(runtimeWebRoot, "assets", Path.GetFileName(outputAsset))))
+        {
+            throw new InvalidOperationException(
+                "The production frontend asset was not copied when WebUIToolkitFrontendBuild was true.");
+        }
+    }
+
     private static ProcessResult RunContractTool(
         string workingDirectory,
         ContractFixture fixture,
@@ -280,6 +475,49 @@ internal static class Program
               <Import Project="{escapedTargets}" />
             </Project>
             """;
+    }
+
+    private static ProcessResult RunSdkTarget(
+        string workingDirectory,
+        string project,
+        string target,
+        params string[] additionalArguments)
+    {
+        List<string> arguments =
+        [
+            "msbuild",
+            project,
+            "-nologo",
+            "-verbosity:minimal",
+            $"-target:{target}",
+        ];
+        arguments.AddRange(additionalArguments);
+        return Run(ResolveDotNetHost(), workingDirectory, arguments);
+    }
+
+    private static string CreateSelfCommand(params string[] arguments)
+    {
+        var command = new StringBuilder();
+        AppendQuoted(command, ResolveDotNetHost());
+        AppendQuoted(command, typeof(Program).Assembly.Location);
+        foreach (string argument in arguments)
+        {
+            AppendQuoted(command, argument);
+        }
+
+        return command.ToString();
+    }
+
+    private static void AppendQuoted(StringBuilder command, string argument)
+    {
+        if (command.Length != 0)
+        {
+            command.Append(' ');
+        }
+
+        command.Append('"');
+        command.Append(argument.Replace("\"", "\\\"", StringComparison.Ordinal));
+        command.Append('"');
     }
 
     private static ProcessResult Run(
@@ -358,6 +596,16 @@ internal static class Program
         if (condition)
         {
             throw new InvalidOperationException(message);
+        }
+    }
+
+    private static void AssertLineCount(string path, int expected, string message)
+    {
+        int actual = File.Exists(path) ? File.ReadAllLines(path).Length : 0;
+        if (actual != expected)
+        {
+            throw new InvalidOperationException(
+                $"{message} Expected {expected} invocation(s), found {actual}.");
         }
     }
 

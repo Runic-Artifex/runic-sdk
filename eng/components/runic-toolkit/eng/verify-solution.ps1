@@ -21,7 +21,7 @@ foreach ($line in Get-Content -LiteralPath $exclusionsPath) {
 
 $expected = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
-foreach ($rootName in @('src', 'tests', 'samples', 'tools')) {
+foreach ($rootName in @('src', 'tests', 'samples', 'tools', 'templates')) {
     $root = Join-Path $repositoryRoot $rootName
     if (-not (Test-Path -LiteralPath $root)) { continue }
 

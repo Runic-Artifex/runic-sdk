@@ -59,6 +59,7 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        using PhaseTimer phase = PhaseTimer.Start("Starting Vite development server");
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
         ViteConfigurationBridge configurationBridge =
@@ -98,6 +99,7 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
             Console.WriteLine($"[dev] Vite development server ready at {origin}");
+            phase.Complete();
             return server;
         }
         catch
@@ -180,7 +182,9 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         {
             throw new DevDevelopmentException(
                 "WUTDEV1007",
-                $"Timed out waiting for the Vite development server at {Origin}.");
+                $"Timed out waiting for the Vite development server at {Origin}. " +
+                "Run 'dotnet webuitoolkit doctor' and verify the configured dev script " +
+                "and Vite entry module.");
         }
     }
 

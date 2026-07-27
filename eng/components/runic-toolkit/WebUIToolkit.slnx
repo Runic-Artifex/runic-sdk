@@ -68,12 +68,16 @@
     <Project Path="tests/WebUIToolkit.TextResources.Compiler.Tests/WebUIToolkit.TextResources.Compiler.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.TextResources.Generator.Tests/WebUIToolkit.TextResources.Generator.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.TextResources.Runtime.Tests/WebUIToolkit.TextResources.Runtime.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.Templates.Tests/WebUIToolkit.Templates.Tests.csproj" />
     <Project Path="tools/dotnet-textresources/WebUIToolkit.DotNet.TextResources.csproj" />
     <Project Path="tools/WebUIToolkit.MVVM.BindingCompiler/WebUIToolkit.MVVM.BindingCompiler.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/dotnet-cwhtml/WebUIToolkit.DotNet.Cwhtml.csproj" />
     <Project Path="tools/dotnet-webuitoolkit/WebUIToolkit.DotNet.WebUIToolkit.csproj" />
+  </Folder>
+  <Folder Name="/templates/">
+    <Project Path="templates/WebUIToolkit.Templates/WebUIToolkit.Templates.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/01-HelloLifecycle/HelloLifecycle.csproj" />

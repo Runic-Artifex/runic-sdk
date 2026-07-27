@@ -1,0 +1,24 @@
+@namespace WebUIToolkitStarter
+@view CounterView(WebUIToolkitStarter.CounterRenderModel model)
+main #counter .container .py-5 data-webui-view="counter"
+    data-wut-adapter="community-toolkit" {
+    section .card .border-0 .shadow {
+        div .card-body .p-5 {
+            span .badge .text-bg-primary .mb-3 { "cwhtml + HTMX + CsWebUi" }
+            h1 .display-5 { "WebUIToolkitStarter" }
+            p .lead { "This fragment is compiled C# HTML and retains its ViewModel in the native process." }
+            p .display-1 .fw-bold aria-live="polite" {
+                (model.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            }
+            form data-wut-action="increment"
+                data-wut-command=(nameof(CounterViewModel.IncrementCommand))
+                data-hx-target="#counter"
+                data-hx-swap="outerHTML" {
+                button .btn .btn-primary .btn-lg type="submit" {
+                    i .fa-solid .fa-plus aria-hidden="true" {}
+                    " Increment in C#"
+                }
+            }
+        }
+    }
+}

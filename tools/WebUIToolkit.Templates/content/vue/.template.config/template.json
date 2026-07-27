@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "WebUIToolkit",
+  "classifications": ["Desktop", "CsWebUi", "Vue"],
+  "identity": "WebUIToolkit.Templates.Vue",
+  "name": "WebUIToolkit Vue application",
+  "shortName": "webuitoolkit-vue",
+  "sourceName": "WebUIToolkitStarter",
+  "preferNameDirectory": true,
+  "tags": { "language": "C#", "type": "project" },
+  "primaryOutputs": [{ "path": "WebUIToolkitStarter.csproj" }]
+}

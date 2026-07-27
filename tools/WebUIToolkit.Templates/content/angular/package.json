@@ -1,0 +1,6 @@
+{
+  "name": "@webuitoolkit/webuitoolkitstarter-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["Frontend"]
+}

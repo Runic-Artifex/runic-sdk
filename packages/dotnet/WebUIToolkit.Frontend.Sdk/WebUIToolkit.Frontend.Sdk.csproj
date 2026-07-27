@@ -20,6 +20,9 @@
     <None Update="tools/generate-contracts.mjs"
           Pack="true"
           PackagePath="tools/generate-contracts.mjs" />
+    <None Update="tools/install-frontend.mjs"
+          Pack="true"
+          PackagePath="tools/install-frontend.mjs" />
     <None Include="../WebUIToolkit.Hosting.CsWebUi.Mvvm/assets/webuitoolkit-mvvm-cswebui.mjs"
           Pack="true"
           PackagePath="assets/webuitoolkit-mvvm-cswebui.mjs" />

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "WebUIToolkit",
+  "classifications": ["Desktop", "CsWebUi", "Angular"],
+  "identity": "WebUIToolkit.Templates.Angular",
+  "name": "WebUIToolkit Angular application",
+  "shortName": "webuitoolkit-angular",
+  "sourceName": "WebUIToolkitStarter",
+  "preferNameDirectory": true,
+  "tags": { "language": "C#", "type": "project" },
+  "primaryOutputs": [{ "path": "WebUIToolkitStarter.csproj" }]
+}

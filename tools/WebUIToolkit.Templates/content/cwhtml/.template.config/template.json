@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "WebUIToolkit",
+  "classifications": ["Desktop", "CsWebUi", "cwhtml", "HTMX"],
+  "identity": "WebUIToolkit.Templates.Cwhtml",
+  "name": "WebUIToolkit cwhtml + HTMX application",
+  "shortName": "webuitoolkit-cwhtml",
+  "sourceName": "WebUIToolkitStarter",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "primaryOutputs": [
+    { "path": "WebUIToolkitStarter.csproj" }
+  ]
+}

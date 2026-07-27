@@ -98,7 +98,25 @@ contract verification, bridge publication, and copying the produced asset
 graph into build and publish output. Sample `.csproj` files select a workspace;
 they do not contain custom npm or asset-copy targets.
 
-All four samples use the same Vite build helper:
+Installs are cached by package manager and lock-file SHA-256 identity. The
+coordinated development command restores a changed workspace automatically and
+does not run a production asset build before starting Vite.
+
+Start a new application through the local template pack:
+
+```console
+dotnet new webuitoolkit-react -n MyReactApp
+cd MyReactApp
+dotnet tool restore
+dotnet webuitoolkit dev
+```
+
+The equivalent short names are `webuitoolkit-vue`, `webuitoolkit-svelte`, and
+`webuitoolkit-angular`. Each generated project uses published package
+references and carries its own local tool manifest and reproducible frontend
+lock file.
+
+The framework samples use the shared production build conventions:
 
 - development builds are readable and include source maps;
 - production builds use minification and content-hashed filenames;

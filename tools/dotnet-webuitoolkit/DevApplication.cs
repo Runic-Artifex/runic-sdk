@@ -21,13 +21,18 @@ internal static class DevApplication
         DevOptions options = DevOptions.Parse(arguments);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnetHost = ResolveDotNetHost();
-        DevProjectConfiguration configuration = await DevProjectConfiguration
-            .EvaluateAsync(
-                dotnetHost,
-                project,
-                options.Configuration,
-                cancellationToken)
-            .ConfigureAwait(false);
+        DevProjectConfiguration configuration;
+        using (PhaseTimer phase = PhaseTimer.Start("Evaluating project"))
+        {
+            configuration = await DevProjectConfiguration
+                .EvaluateAsync(
+                    dotnetHost,
+                    project,
+                    options.Configuration,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            phase.Complete();
+        }
         WriteConfiguration(configuration, options);
         if (options.DryRun)
         {
@@ -84,7 +89,11 @@ internal static class DevApplication
             configuration,
             options,
             vite?.HostEnvironment);
-        await host.StartAsync(cancellationToken).ConfigureAwait(false);
+        using (PhaseTimer phase = PhaseTimer.Start("Starting native application host"))
+        {
+            await host.StartAsync(cancellationToken).ConfigureAwait(false);
+            phase.Complete();
+        }
         CwhtmlHotReloadCoordinator? cwhtmlReload =
             useViteServer &&
             options.WatchHost &&
@@ -93,11 +102,14 @@ internal static class DevApplication
                 ? CwhtmlHotReloadCoordinator.Create(configuration.CwhtmlHotReloadPath, host)
                 : null;
         await using RunningProcess? frontend =
-            options.WatchFrontend && !useViteServer
+            options.WatchFrontend && !useViteServer && configuration.HasFrontendWatcher
                 ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
                 : null;
 
-        Task assetMonitor = useViteServer || !options.WatchFrontend
+        Task assetMonitor =
+            useViteServer
+            || !options.WatchFrontend
+            || !configuration.HasFrontendWatcher
             ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
             : StartAssetMonitor(configuration, host, cancellationToken);
         Task contractMonitor = options.GenerateContracts && configuration.HasContracts
@@ -108,17 +120,27 @@ internal static class DevApplication
             : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         Task cwhtmlMonitor = cwhtmlReload?.WatchAsync(cancellationToken)
             ?? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        Task cwhtmlCompilerMonitor = cwhtmlReload is null
-            ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
-            : FilePoller.WatchTreeAsync(
+        Task cwhtmlCompilerMonitor = options.WatchHost && configuration.CwhtmlEnabled
+            ? FilePoller.WatchTreeAsync(
                 configuration.ProjectDirectory,
                 "*.cwhtml",
-                token => CompileCwhtmlAsync(
-                    dotnetHost,
-                    configuration,
-                    options.Configuration,
-                    token),
-                cancellationToken);
+                cwhtmlReload is null
+                    ? async token =>
+                    {
+                        await CompileCwhtmlAsync(
+                            dotnetHost,
+                            configuration,
+                            options.Configuration,
+                            token).ConfigureAwait(false);
+                        await host.RestartAsync(token).ConfigureAwait(false);
+                    }
+                    : token => CompileCwhtmlAsync(
+                        dotnetHost,
+                        configuration,
+                        options.Configuration,
+                        token),
+                cancellationToken)
+            : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         Task cancellation = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
 
         var observed = new List<Task>
@@ -266,6 +288,29 @@ internal static class DevApplication
         DevOptions options,
         CancellationToken cancellationToken)
     {
+        IReadOnlyList<string> arguments = CreateBuildArguments(configuration, options);
+
+        using PhaseTimer phase = PhaseTimer.Start(
+            configuration.ViteDevServerEnabled && options.WatchFrontend
+                ? "Building managed host and cwhtml"
+                : "Building managed host and frontend assets");
+        await RequireSuccessAsync(
+            dotnetHost,
+            configuration.ProjectDirectory,
+            arguments,
+            "WUTDEV1006",
+            $"Initial build failed. Run 'dotnet webuitoolkit doctor \"{configuration.ProjectPath}\"' to inspect prerequisites.",
+            cancellationToken).ConfigureAwait(false);
+        phase.Complete();
+    }
+
+    internal static IReadOnlyList<string> CreateBuildArguments(
+        DevProjectConfiguration configuration,
+        DevOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(options);
+
         var arguments = new List<string>
         {
             "build",
@@ -278,20 +323,17 @@ internal static class DevApplication
             "-property:Optimize=false",
             "-property:WebUIToolkitCwhtmlDevelopmentHotReload=true",
             "-property:WebUIToolkitFrontendInstall=" + (options.Restore ? "true" : "false"),
+            "-property:WebUIToolkitFrontendBuild="
+                + (options.WatchFrontend && configuration.ViteDevServerEnabled
+                    ? "false"
+                    : "true"),
         };
         if (!options.Restore)
         {
             arguments.Add("--no-restore");
         }
 
-        Console.WriteLine("[dev] Building the managed host and initial frontend assets.");
-        await RequireSuccessAsync(
-            dotnetHost,
-            configuration.ProjectDirectory,
-            arguments,
-            "WUTDEV1006",
-            "Initial build failed.",
-            cancellationToken).ConfigureAwait(false);
+        return arguments;
     }
 
     private static async Task GenerateAndVerifyContractsAsync(
@@ -308,13 +350,13 @@ internal static class DevApplication
             "--typescript",
             configuration.ContractTypeScriptOutput,
         ];
-        Console.WriteLine("[contracts] Generating C# and TypeScript contracts.");
+        using PhaseTimer phase = PhaseTimer.Start("Generating and verifying contracts");
         await RequireSuccessAsync(
             "node",
             configuration.WorkspaceRoot,
             commonArguments,
             "WUTDEV1006",
-            "Contract generation failed.",
+            $"Contract generation failed. Run 'dotnet webuitoolkit doctor \"{configuration.ProjectPath}\"' to inspect the configured toolchain.",
             cancellationToken).ConfigureAwait(false);
 
         var verifyArguments = new List<string>(commonArguments) { "--verify" };
@@ -323,8 +365,9 @@ internal static class DevApplication
             configuration.WorkspaceRoot,
             verifyArguments,
             "WUTDEV1006",
-            "Generated contract verification failed.",
+            $"Generated contract verification failed. Run 'dotnet webuitoolkit doctor \"{configuration.ProjectPath}\"' to inspect stale outputs.",
             cancellationToken).ConfigureAwait(false);
+        phase.Complete();
     }
 
     private static async Task RequireSuccessAsync(
@@ -371,8 +414,13 @@ internal static class DevApplication
                 ? $"[dev] Frontend: Vite dev server for {configuration.Workspace}"
                 : configuration.HasFrontendWatchTarget
                 ? $"[dev] Frontend: MSBuild target {configuration.FrontendWatchTarget}"
-                : $"[dev] Frontend: npm workspace {configuration.Workspace}");
-        Console.WriteLine($"[dev] Assets: {configuration.FrontendOutputDirectory}");
+                : configuration.HasNodeWorkspace
+                ? $"[dev] Frontend: npm workspace {configuration.Workspace}"
+                : "[dev] Frontend: Node-free cwhtml/static assets");
+        if (!string.IsNullOrWhiteSpace(configuration.FrontendOutputDirectory))
+        {
+            Console.WriteLine($"[dev] Assets: {configuration.FrontendOutputDirectory}");
+        }
         Console.WriteLine($"[dev] CsWebUi root: {configuration.RuntimeWebRoot}");
         if (configuration.HasContracts)
         {
@@ -391,6 +439,7 @@ internal static class DevApplication
             """
             Usage:
               dotnet webuitoolkit dev [PROJECT] [options] [-- APPLICATION_ARGUMENTS]
+              dotnet webuitoolkit doctor [PROJECT]
 
             Options:
               --project PATH          Select a .csproj or a directory containing one.

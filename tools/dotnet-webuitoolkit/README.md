@@ -4,21 +4,43 @@
 native CsWebUi applications. It deliberately does not start an ASP.NET Core
 server.
 
-Install a packed build as a local or global .NET tool, then run it from a
-directory containing one application project:
+The repository carries a local tool manifest. Set up the repository build once,
+then restore that manifest on later checkouts:
 
 ```console
+pwsh ./eng/setup-development.ps1
+dotnet tool restore
+```
+
+For a published release, create a manifest in the application repository and
+install the tool there instead of depending on a machine-global command:
+
+```console
+dotnet new tool-manifest
+dotnet tool install WebUIToolkit.DotNet.WebUIToolkit
+dotnet new install WebUIToolkit.Templates
+```
+
+Run the tool from a directory containing one application project:
+
+```console
+dotnet webuitoolkit doctor
 dotnet webuitoolkit dev
 dotnet webuitoolkit dev samples/Todo.React -- --advanced
 ```
+
+`doctor` checks the selected project's .NET SDK, optional Node/package manager,
+lock file, native CsWebUi library, browser, Vite setup, and generated contracts.
+Every failure includes a proposed correction and the command returns a nonzero
+exit code while required prerequisites are missing.
 
 The `dev` command:
 
 1. evaluates the selected project and its `WebUIToolkit.Frontend.Sdk`
    properties;
 2. generates and verifies configured C# and TypeScript contracts;
-3. performs one normal .NET/frontend build, restoring dependencies unless
-   `--no-restore` is supplied;
+3. restores the locked frontend workspace only when its package manager or lock
+   identity changed, then builds the managed host and cwhtml output;
 4. starts a loopback-only Vite development server for opted-in projects, or
    the project-provided build watcher for legacy projects;
 5. starts the native application under `dotnet watch`;
@@ -36,10 +58,12 @@ The `dev` command:
    root, and restarts the native host; and
 9. forwards Ctrl+C to both process trees and waits for their termination.
 
-Host rebuilds set `WebUIToolkitFrontendEnabled=false`, because the independently
-running frontend watcher owns that part of the loop. This prevents duplicate
-Vite builds. The initial regular build remains authoritative for shared assets
-and the runtime output layout.
+For a Vite development-server project, the initial managed build sets
+`WebUIToolkitFrontendBuild=false`; it creates the runtime web root but does not
+perform a production asset build before starting Vite. Host rebuilds also
+disable frontend targets because the independently running server owns that
+part of the loop. Non-Vite projects retain their configured initial build and
+watch target.
 
 ## Project contract
 
@@ -92,6 +116,19 @@ Use `--dry-run` to inspect the evaluated project, frontend, asset, runtime, and
 contract paths without generating files or starting child processes.
 Use `--no-dotnet-watch` to run the already-built managed host once while still
 supervising Vite; this is primarily useful for deterministic browser gates.
+Major setup phases print a concise elapsed time. A failed setup phase keeps its
+stable diagnostic ID and suggests `dotnet webuitoolkit doctor` when a missing
+prerequisite is likely.
+
+## Node-free cwhtml applications
+
+Node and Vite are optional. A cwhtml application can set
+`WebUIToolkitFrontendNodeEnabled=false` and keep
+`WebUIToolkitFrontendCwhtmlEnabled=true`, then ship checked-in CSS, JavaScript,
+fonts, and images from its configured web root. `dev` compiles changed cwhtml
+and takes the safe managed-host restart path; it does not start a package
+manager, frontend watcher, or Vite server. Production build and publish likewise
+do not require Node.
 
 ## Diagnostics
 

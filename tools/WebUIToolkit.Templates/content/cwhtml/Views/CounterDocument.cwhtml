@@ -1,0 +1,22 @@
+@namespace WebUIToolkitStarter
+@view CounterDocumentView(WebUIToolkitStarter.CounterDocumentModel model)
+html lang="en" {
+    head {
+        meta charset="utf-8";
+        meta name="viewport" content="width=device-width, initial-scale=1";
+        title { "WebUIToolkitStarter" }
+        @if (!model.Assets.IsViteDevelopment) {
+            link rel="stylesheet" href="cwhtml.css";
+        }
+    }
+    body {
+        @render(model.Application);
+        script src="webui.js" {}
+        script src="_content/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/webuitoolkit-htmx-cswebui-1.0.0.js" {}
+        @if (model.Assets.IsViteDevelopment) {
+            @render(model.Assets);
+        } @else {
+            script src="cwhtml.js" {}
+        }
+    }
+}

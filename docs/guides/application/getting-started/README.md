@@ -1,7 +1,7 @@
 # Getting started
 
-This guide runs the repository itself. Package templates and a published tool
-installation are roadmap work, so repository-local commands are shown first.
+This guide covers both the repository and a new application created from a
+template.
 
 ## Enter the pinned environment
 
@@ -10,13 +10,17 @@ Chromium, the native CsWebUi library, and the Linux WebView dependencies:
 
 ```bash
 direnv allow
-npm ci
+pwsh ./eng/setup-development.ps1
 dotnet build WebUIToolkit.slnx
 ```
 
 Run commands from the repository root after direnv has loaded. See
 [development modes](../contributing/development.md) for the difference between
 the ordinary inner loop and release verification.
+
+`setup-development.ps1` packs and restores the repository-local
+`dotnet webuitoolkit` command and installs the repository's template pack.
+Later checkouts only need `dotnet tool restore` unless those packages changed.
 
 ## Run the learning path
 
@@ -35,22 +39,18 @@ persistence, filtering, workflows, cancellation, and diagnostics.
 
 ## Use the coordinated development loop
 
-Until the tool is published or installed into a local tool manifest, run it
-directly from its project:
+Check the selected application's prerequisites, then start the coordinated
+loop:
 
 ```bash
-dotnet run --project tools/dotnet-webuitoolkit -- \
-  dev samples/SimpleTodo/SimpleTodo.csproj
-```
-
-An installed tool provides the shorter equivalent:
-
-```bash
+dotnet webuitoolkit doctor samples/SimpleTodo/SimpleTodo.csproj
 dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
 ```
 
-The command coordinates the initial .NET and Vite builds, CsWebUi, generated
-contracts, `dotnet watch`, diagnostics, and shutdown. In a native window:
+The command restores frontend packages only when the lock identity changes,
+then coordinates .NET, CsWebUi, generated contracts, Vite, `dotnet watch`,
+diagnostics, and shutdown. It does not run a redundant production asset build
+before starting a Vite development server. In a native window:
 
 - CSS and JavaScript use Vite HMR;
 - compatible `.cwhtml` renderer edits use .NET Hot Reload and refresh only the
@@ -60,6 +60,31 @@ contracts, `dotnet watch`, diagnostics, and shutdown. In a native window:
 
 Vite serves development assets only. Application actions do not become HTTP
 endpoints.
+
+## Create a new application
+
+The template pack includes cwhtml/HTMX, React, Vue, Svelte, and Angular:
+
+```bash
+dotnet new webuitoolkit-cwhtml -n MyApp
+cd MyApp
+dotnet tool restore
+dotnet webuitoolkit dev
+```
+
+Replace `webuitoolkit-cwhtml` with `webuitoolkit-react`,
+`webuitoolkit-vue`, `webuitoolkit-svelte`, or `webuitoolkit-angular`.
+The local tool restore is the one setup step; the development command owns the
+locked frontend install and native-window startup. Run
+`dotnet webuitoolkit doctor` if a prerequisite is missing.
+
+Published packages use the same local-manifest model:
+
+```bash
+dotnet new tool-manifest
+dotnet tool install WebUIToolkit.DotNet.WebUIToolkit
+dotnet new install WebUIToolkit.Templates
+```
 
 ## Try a framework frontend
 
@@ -76,4 +101,3 @@ dotnet run --project samples/Todo.Angular -- --advanced
 Continue with the [cwhtml guide](../guides/cwhtml.md), the
 [frontend-framework guide](../guides/frontend-frameworks.md), or the
 [WPF migration guide](../guides/wpf-migration.md).
-

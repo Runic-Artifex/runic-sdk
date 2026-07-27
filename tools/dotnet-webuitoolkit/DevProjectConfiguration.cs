@@ -10,6 +10,8 @@ namespace WebUIToolkit.DotNet.WebUIToolkit;
 internal sealed record DevProjectConfiguration(
     string ProjectPath,
     string ProjectDirectory,
+    bool NodeEnabled,
+    bool CwhtmlEnabled,
     string WorkspaceRoot,
     string Workspace,
     string FrontendPackageDirectory,
@@ -31,6 +33,8 @@ internal sealed record DevProjectConfiguration(
     [
         "MSBuildProjectFullPath",
         "WebUIToolkitFrontendEnabled",
+        "WebUIToolkitFrontendNodeEnabled",
+        "WebUIToolkitFrontendCwhtmlEnabled",
         "WebUIToolkitFrontendWorkspaceRoot",
         "WebUIToolkitFrontendWorkspace",
         "WebUIToolkitFrontendPackageDirectory",
@@ -52,6 +56,8 @@ internal sealed record DevProjectConfiguration(
     internal bool HasNodeWorkspace => !string.IsNullOrWhiteSpace(Workspace);
 
     internal bool HasFrontendWatchTarget => !string.IsNullOrWhiteSpace(FrontendWatchTarget);
+
+    internal bool HasFrontendWatcher => HasFrontendWatchTarget || HasNodeWorkspace;
 
     internal bool HasContracts => !string.IsNullOrWhiteSpace(ContractSource);
 
@@ -121,6 +127,10 @@ internal sealed record DevProjectConfiguration(
         var configurationResult = new DevProjectConfiguration(
             evaluatedProject,
             evaluatedProjectDirectory,
+            bool.TryParse(Value("WebUIToolkitFrontendNodeEnabled"), out bool nodeEnabled)
+                && nodeEnabled,
+            bool.TryParse(Value("WebUIToolkitFrontendCwhtmlEnabled"), out bool cwhtmlEnabled)
+                && cwhtmlEnabled,
             workspaceRoot,
             Value("WebUIToolkitFrontendWorkspace"),
             packageDirectory,
@@ -149,7 +159,14 @@ internal sealed record DevProjectConfiguration(
 
     private void Validate()
     {
-        if (!HasNodeWorkspace && !HasFrontendWatchTarget)
+        if (!NodeEnabled && !CwhtmlEnabled)
+        {
+            throw new DevUsageException(
+                "WUTDEV1005",
+                "Enable at least one frontend pipeline: Node/Vite or cwhtml.");
+        }
+
+        if (NodeEnabled && !HasNodeWorkspace && !HasFrontendWatchTarget)
         {
             throw new DevUsageException(
                 "WUTDEV1005",
@@ -157,7 +174,9 @@ internal sealed record DevProjectConfiguration(
         }
 
         if (ViteDevServerEnabled
-            && (!HasNodeWorkspace || string.IsNullOrWhiteSpace(ViteDevServerEntry)))
+            && (!NodeEnabled
+                || !HasNodeWorkspace
+                || string.IsNullOrWhiteSpace(ViteDevServerEntry)))
         {
             throw new DevUsageException(
                 "WUTDEV1005",
@@ -185,14 +204,15 @@ internal sealed record DevProjectConfiguration(
                 "WebUIToolkitFrontendViteDevServerEntry must be a root-relative Vite module path.");
         }
 
-        if (string.IsNullOrWhiteSpace(FrontendOutputDirectory))
+        if (NodeEnabled && string.IsNullOrWhiteSpace(FrontendOutputDirectory))
         {
             throw new DevUsageException(
                 "WUTDEV1005",
                 "WebUIToolkitFrontendOutputDirectory is required for coordinated reload.");
         }
 
-        if (HasNodeWorkspace
+        if (NodeEnabled
+            && HasNodeWorkspace
             && (string.IsNullOrWhiteSpace(WorkspaceRoot)
                 || string.IsNullOrWhiteSpace(FrontendPackageDirectory)
                 || string.IsNullOrWhiteSpace(FrontendOutputDirectory)))

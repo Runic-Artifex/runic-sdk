@@ -19,7 +19,11 @@ internal static class Program
 
         try
         {
-            return await DevApplication.RunAsync(arguments, CancellationToken.None)
+            return await (
+                arguments.Length > 0
+                && StringComparer.Ordinal.Equals(arguments[0], "doctor")
+                    ? DoctorApplication.RunAsync(arguments, CancellationToken.None)
+                    : DevApplication.RunAsync(arguments, CancellationToken.None))
                 .ConfigureAwait(false);
         }
         catch (DevUsageException exception)

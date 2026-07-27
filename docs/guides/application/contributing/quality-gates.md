@@ -52,10 +52,29 @@ prerequisites have been admitted.
 
 Both compiled `.cwhtml` Todo levels now have managed and Chromium/Native-AOT
 gates, and the framework adapters use the proven native path. The remaining
-consumer authoring surface, editor tooling, WPF capability expansion, and
+editor tooling, WPF capability expansion, and
 asset/VFS extraction remain roadmap work. The older G0–G7 sections below
 preserve cumulative historical release evidence; their existence does not mark
 those re-centered product outcomes complete.
+
+## First-run developer experience
+
+Priority 2 is covered by focused executable suites and repository checks:
+
+- `tests/WebUIToolkit.Templates.Tests` packs, installs, and instantiates all
+  five `dotnet new` templates, then restores their actual package graphs from
+  an isolated feed and completes every production build while rejecting
+  repository paths, project references, sample harnesses, and missing locks;
+- `tests/WebUIToolkit.DotNet.WebUIToolkit.Tests` verifies environment-doctor
+  health, Node-free projects, generated contracts, and actionable failures;
+- `tests/WebUIToolkit.Frontend.Sdk.Tests` verifies lock-identity install caching,
+  parallel shared-workspace serialization, and that Vite development suppresses
+  the production asset build;
+- `eng/setup-development.ps1` proves the repository-local manifest and template
+  setup path; and
+- `eng/verify-solution.ps1` plus `eng/verify-architecture.ps1` keep the template
+  pack and its acceptance project inside the canonical solution and ownership
+  graph.
 
 ## Planned cwhtml developer-experience acceptance
 

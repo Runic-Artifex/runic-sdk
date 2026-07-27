@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WebUIToolkitStarter</RootNamespace>
+    <WebUIToolkitFrontendNodeEnabled>true</WebUIToolkitFrontendNodeEnabled>
+    <WebUIToolkitFrontendCwhtmlEnabled>true</WebUIToolkitFrontendCwhtmlEnabled>
+    <WebUIToolkitFrontendWorkspace>@webuitoolkit/webuitoolkitstarter-cwhtml</WebUIToolkitFrontendWorkspace>
+    <WebUIToolkitFrontendPackageDirectory>$(MSBuildProjectDirectory)/Frontend</WebUIToolkitFrontendPackageDirectory>
+    <WebUIToolkitFrontendOutputDirectory>$(MSBuildProjectDirectory)/Frontend/dist</WebUIToolkitFrontendOutputDirectory>
+    <WebUIToolkitFrontendWorkspaceRoot>$(MSBuildProjectDirectory)</WebUIToolkitFrontendWorkspaceRoot>
+    <WebUIToolkitFrontendViteDevServerEnabled>true</WebUIToolkitFrontendViteDevServerEnabled>
+    <WebUIToolkitFrontendViteDevServerEntry>/src/main.js</WebUIToolkitFrontendViteDevServerEntry>
+    <WebUIToolkitFrontendBuildArguments>-- --mode production</WebUIToolkitFrontendBuildArguments>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="WebUIToolkit.Frontend.Sdk" Version="1.0.0" PrivateAssets="all" />
+    <PackageReference Include="WebUIToolkit.MVVM.Html.Build" Version="1.0.0" PrivateAssets="all" />
+    <PackageReference Include="WebUIToolkit.MVVM.Html.CommunityToolkit" Version="1.0.0" PrivateAssets="all" />
+    <PackageReference Include="WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App" Version="1.0.0-beta.1" />
+    <PackageReference Include="WebUIToolkit.MVVM.Html.Htmx.Js" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.MVVM.CommunityToolkit" Version="1.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <CwhtmlCodeBehind Include="CounterRenderModel.cs" />
+  </ItemGroup>
+</Project>

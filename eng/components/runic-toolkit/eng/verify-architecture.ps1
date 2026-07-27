@@ -25,7 +25,7 @@ function Get-PathOwner([string]$relativePath) {
     return $matches[0].name
 }
 
-$projectRoots = @('src', 'tests', 'samples', 'tools', 'benchmarks')
+$projectRoots = @('src', 'tests', 'samples', 'tools', 'templates', 'benchmarks')
 $projects = @()
 foreach ($projectRoot in $projectRoots) {
     $path = Join-Path $repositoryRoot $projectRoot

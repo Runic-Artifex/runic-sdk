@@ -62,8 +62,24 @@ metadata to the native application. Vite never proxies CsWebUi or HTMX
 application requests. `WebUIToolkitFrontendWatchAssets` remains the lower-level
 legacy build watcher.
 
-Set `WebUIToolkitFrontendInstall=false` when dependency restoration is managed
-outside MSBuild. `WebUIToolkitFrontendDevWatchTarget`,
+The SDK records the package manager and SHA-256 identity of
+`WebUIToolkitFrontendLockFile` under the workspace `obj` directory. An unchanged
+lock file and existing `node_modules` make dependency restoration a no-op;
+changing the lock file performs a fresh install. A cross-process workspace lock
+serializes parallel solution builds, so projects sharing one npm workspace
+cannot race destructive installs. npm defaults to
+`package-lock.json` (or `npm-shrinkwrap.json` when present). Set
+`WebUIToolkitFrontendInstall=false` when dependency restoration is managed
+outside MSBuild, or to honor `dotnet webuitoolkit dev --no-restore`.
+
+`dotnet webuitoolkit dev` sets `WebUIToolkitFrontendBuild=false` for a Vite
+development-server session. This skips the production npm build and asset copy
+while retaining the managed/cwhtml build and creating the runtime web root.
+Normal build and publish commands default the property to `true`.
+
+`WebUIToolkitFrontendPackageManager`, `WebUIToolkitFrontendLockFile`,
+`WebUIToolkitFrontendInstallCommand`, `WebUIToolkitFrontendInstallCacheDirectory`,
+`WebUIToolkitFrontendBuildCommand`, `WebUIToolkitFrontendDevWatchTarget`,
 `WebUIToolkitFrontendViteDevServerEnabled`,
 `WebUIToolkitFrontendViteDevServerEntry`,
 `WebUIToolkitFrontendViteConfiguration`, `WebUIToolkitDevProject`, and
