@@ -66,6 +66,59 @@ const svelte = text("samples/Todo.Frontends/svelte/src/TodoApp.svelte");
 for (const legacy of ["export let", "$:", "on:click", "on:submit"]) {
   if (svelte.includes(legacy)) fail(`Svelte Todo retains legacy syntax '${legacy}'.`);
 }
+for (const path of [
+  "samples/Todo.Frontends/svelte/src/simple/SimpleTodo.svelte",
+  "samples/Todo.Frontends/svelte/src/advanced/AdvancedTodo.svelte",
+  "samples/Todo.Frontends/svelte/src/components/AppHeader.svelte",
+]) {
+  requirePath(path);
+}
+if (svelte.includes("createSimpleTodoStores") ||
+    svelte.includes("createAdvancedTodoStores")) {
+  fail("The Svelte application root still owns feature-store machinery.");
+}
+
+const reactMain = text("samples/Todo.Frontends/react/src/main.tsx");
+for (const path of [
+  "samples/Todo.Frontends/react/src/simple/SimpleTodo.tsx",
+  "samples/Todo.Frontends/react/src/simple/useSimpleTodo.ts",
+  "samples/Todo.Frontends/react/src/advanced/AdvancedTodo.tsx",
+  "samples/Todo.Frontends/react/src/advanced/useAdvancedTodo.ts",
+  "samples/Todo.Frontends/react/src/components/AppHeader.tsx",
+]) {
+  requirePath(path);
+}
+for (const presentation of ["function SimpleTodo", "function AdvancedTodo", "useState("]) {
+  if (reactMain.includes(presentation)) {
+    fail(`The React application root retains presentation concern '${presentation}'.`);
+  }
+}
+
+const angularMain = text("samples/Todo.Frontends/angular/src/main.ts");
+for (const path of [
+  "samples/Todo.Frontends/angular/src/simple/simple-todo.component.ts",
+  "samples/Todo.Frontends/angular/src/simple/simple-todo.component.html",
+  "samples/Todo.Frontends/angular/src/advanced/advanced-todo.component.ts",
+  "samples/Todo.Frontends/angular/src/advanced/advanced-todo.component.html",
+  "samples/Todo.Frontends/angular/src/components/app-header.component.ts",
+]) {
+  requirePath(path);
+}
+if (angularMain.includes("@Component") || angularMain.includes("template:")) {
+  fail("The Angular application root still owns component presentation.");
+}
+contains(
+  text("samples/Todo.Frontends/angular/src/advanced/advanced-todo.component.ts"),
+  "signal(",
+  "Angular-local signal state",
+);
+
+for (const path of [
+  "samples/Todo.Frontends/vue/src/SimpleTodo.vue",
+  "samples/Todo.Frontends/vue/src/AdvancedTodo.vue",
+]) {
+  requirePath(path);
+}
 
 const inspector = text("web/packages/mvvm/src/inspector.ts");
 contains(inspector, "MvvmDevelopmentInspector", "private-binding inspector");

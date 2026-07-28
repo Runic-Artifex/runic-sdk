@@ -147,6 +147,13 @@ plugin. Angular production output uses the supported application builder and
 its AOT compiler/optimizer rather than the earlier compact sample-only JIT
 entry.
 
+The Todo projects now use recognizable ecosystem structure rather than
+protocol-probe entrypoints: React has focused features and custom hooks,
+Svelte has separate Svelte 5 Simple/Advanced components with feature-owned
+stores, Angular has standalone signal components and external templates, and
+Vue retains its ordinary Simple/Advanced SFCs. Application roots select and
+mount the generated owner; they do not contain feature presentation.
+
 The coordinated development path uses real development servers for every
 framework. React, Vue, and Svelte use Vite and their native HMR plugins;
 Angular uses `ng serve` and the Angular application development builder. The
