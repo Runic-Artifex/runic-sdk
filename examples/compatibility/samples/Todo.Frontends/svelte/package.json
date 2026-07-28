@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node --watch-path=src --watch-path=../shared build.mjs",
+    "build:production": "node build.mjs --production",
+    "dev": "vite",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build && node ../verify-build.mjs Svelte"
+    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build:production && node ../verify-build.mjs Svelte"
   },
   "dependencies": {
     "@webuitoolkit/mvvm": "0.1.0",

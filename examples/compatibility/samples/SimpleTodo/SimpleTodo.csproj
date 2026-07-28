@@ -44,6 +44,7 @@
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
+    <ProjectReference Include="../Cwhtml.SampleComponents/WebUIToolkit.Samples.Cwhtml.Components.csproj" />
     <ProjectReference Include="../Todo.Shared/Todo.Shared.csproj" />
   </ItemGroup>
 

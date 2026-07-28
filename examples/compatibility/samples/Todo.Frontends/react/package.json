@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node --watch-path=src --watch-path=../shared build.mjs",
+    "build:production": "node build.mjs --production",
+    "dev": "vite",
     "typecheck": "tsc --project tsconfig.json",
-    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build && node ../verify-build.mjs React"
+    "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build:production && node ../verify-build.mjs React"
   },
   "dependencies": {
     "@webuitoolkit/mvvm": "0.1.0",
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.1",
     "esbuild": "0.28.1",
     "typescript": "7.0.2"
   }

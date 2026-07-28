@@ -37,17 +37,24 @@ public static class TodoFrontendApplication
                 $"Build the {frontend} frontend before running the sample. Missing '{webRoot}'.");
         }
 
-        await using var root = new TodoFrontendRoot(frontend, demo);
         string entryPoint = $"{demo.ToString().ToLowerInvariant()}/index.html";
         if (args.Contains("--browser-smoke-test", StringComparer.Ordinal))
         {
+            await using var root = new TodoFrontendRoot(frontend, demo);
             return await TodoFrontendBrowserSmoke
-                .RunAsync(root, webRoot, entryPoint, frontend, demo)
+                .RunAsync(
+                    root,
+                    webRoot,
+                    entryPoint,
+                    frontend,
+                    demo,
+                    args.Contains("--hmr-smoke-test", StringComparer.Ordinal))
                 .ConfigureAwait(false);
         }
 
         if (args.Contains("--smoke-test", StringComparer.Ordinal))
         {
+            await using var root = new TodoFrontendRoot(frontend, demo);
             return await root.RunSmokeTestAsync().ConfigureAwait(false);
         }
 
@@ -56,22 +63,26 @@ public static class TodoFrontendApplication
         var assets = new DirectoryFrontendAssetProvider(webRoot, manifest);
         string id = $"todo-{frontend.ToLowerInvariant()}-{demo.ToString().ToLowerInvariant()}";
         var builder = WebUiApp.CreateBuilder(args);
-        var options = new CsWebUiAppOptions(
+        var options = new MvvmFrontendApplicationOptions<object>(
             assets,
-            root,
-            new CsWebUiAdapterOptions(webRoot, configureWindow: root.ConfigureWindow),
+            new CsWebUiAdapterOptions(webRoot),
             new BrowserHostOptions(id),
             new BrowserWindowOptions(
                 "main",
                 $"{demo} ToDo · {frontend}",
                 demo == TodoDemo.Advanced ? 1180 : 760,
-                demo == TodoDemo.Advanced ? 820 : 720));
-        _ = frontend switch
+                demo == TodoDemo.Advanced ? 820 : 720),
+            demo == TodoDemo.Simple
+                ? new MvvmContract(TodoContracts.SimpleTodo.Name)
+                : new MvvmContract(TodoContracts.AdvancedTodo.Name),
+            cancellationToken => ActivateModelAsync(frontend, demo, cancellationToken),
+            CreateAdapter);
+        await using MvvmFrontendApplication application = frontend switch
         {
-            "React" => builder.UseReact(options),
-            "Vue" => builder.UseVue(options),
-            "Svelte" => builder.UseSvelte(options),
-            "Angular" => builder.UseAngular(options),
+            "React" => builder.React.CreateApplication(options),
+            "Vue" => builder.Vue.CreateApplication(options),
+            "Svelte" => builder.Svelte.CreateApplication(options),
+            "Angular" => builder.Angular.CreateApplication(options),
             _ => throw new ArgumentException(
                 $"Unsupported Todo frontend '{frontend}'.",
                 nameof(frontend)),
@@ -79,6 +90,54 @@ public static class TodoFrontendApplication
 
         return await builder.RunAsync().ConfigureAwait(false);
     }
+
+    private static ValueTask<object> ActivateModelAsync(
+        string frontend,
+        TodoDemo demo,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (demo == TodoDemo.Simple)
+        {
+            return ValueTask.FromResult<object>(new SimpleTodoViewModel());
+        }
+
+        return ActivateAdvancedModelAsync(frontend, cancellationToken);
+    }
+
+    private static async ValueTask<object> ActivateAdvancedModelAsync(
+        string frontend,
+        CancellationToken cancellationToken)
+    {
+        string dataDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WebUIToolkit",
+            "Samples");
+        var repository = new JsonTodoRepository(Path.Combine(
+            dataDirectory,
+            $"advanced-todo-{frontend.ToLowerInvariant()}.json"));
+        var model = new AdvancedTodoViewModel(new TodoService(repository));
+        try
+        {
+            await model.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            return model;
+        }
+        catch
+        {
+            await model.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static IMvvmBindingAdapter CreateAdapter(object model) =>
+        model switch
+        {
+            SimpleTodoViewModel simple => TodoContracts.SimpleTodo.CreateAdapter(simple),
+            AdvancedTodoViewModel advanced => TodoContracts.AdvancedTodo.CreateAdapter(advanced),
+            _ => throw new ArgumentException(
+                $"Unsupported Todo ViewModel type '{model.GetType().FullName}'.",
+                nameof(model)),
+        };
 }
 
 internal enum TodoDemo

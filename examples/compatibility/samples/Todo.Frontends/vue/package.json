@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "build:production": "node build.mjs --production",
-    "dev": "node --watch-path=src --watch-path=../shared build.mjs",
+    "dev": "vite",
     "typecheck": "vue-tsc --project tsconfig.json --noEmit",
     "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build:production && node ../verify-build.mjs Vue && node verify-sfc-build.mjs"
   },

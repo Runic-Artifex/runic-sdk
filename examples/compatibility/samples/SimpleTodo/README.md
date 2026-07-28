@@ -28,6 +28,8 @@ It demonstrates:
 - one bounded CsWebUi JSON binding shared by all HTMX requests;
 - endpoint and native-transport limits configured through the cwhtml extension
   surface of the shared `WebUiAppBuilder`;
+- reusable sample components composed with `@render(...)` for Bootstrap
+  validation and a styling-neutral accessible live status;
 - npm-pinned HTMX 2.0.10, its CSP companion, Bootstrap 5.3.8, and Font Awesome,
   bundled by Vite and served entirely from local assets; and
 - deterministic reverse-order teardown of transport, view, runtime, session,

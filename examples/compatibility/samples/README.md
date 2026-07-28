@@ -59,6 +59,14 @@ Bootstrap's established layout, form, validation, navigation, modal, toast,
 and accessibility patterns before adding custom CSS. Font Awesome icons must
 retain accessible text or labels where the icon carries meaning.
 
+[`Cwhtml.SampleComponents`](./Cwhtml.SampleComponents) contains the reusable
+sample implementations of those patterns. They are ordinary
+`IHtmlRenderable` components composed from `.cwhtml` with `@render(...)`;
+SimpleTodo consumes the shared validation and live-status components. The
+component tests also compile a deliberately styling-neutral cwhtml example,
+proving that neither the component boundary nor the runtime requires
+Bootstrap or Font Awesome.
+
 This is a sample and migration convention, not a toolkit restriction. Core
 packages remain styling-neutral, and their extension points must support
 shadcn, Tailwind, raw CSS, or any consumer-owned design system.

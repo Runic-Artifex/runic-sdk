@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ToDo · Svelte</title>
+  <link rel="stylesheet" href="/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/fontawesome/css/fontawesome.min.css">
+  <link rel="stylesheet" href="/fontawesome/css/regular.min.css">
+  <link rel="stylesheet" href="/fontawesome/css/solid.min.css">
+  <link rel="stylesheet" href="/src/styles.css">
+  <script src="/webui.js"></script>
+</head>
+<body data-framework="Svelte">
+  <script>
+    document.body.dataset.demo =
+      location.pathname.includes("/advanced/") ? "advanced" : "simple";
+    document.title =
+      (document.body.dataset.demo === "advanced" ? "Advanced ToDo" : "Simple ToDo") +
+      " · Svelte";
+  </script>
+  <main id="app" aria-live="polite"></main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

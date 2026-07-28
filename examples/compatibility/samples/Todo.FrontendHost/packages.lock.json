@@ -275,6 +275,9 @@
       "webuitoolkit.collections": {
         "type": "Project"
       },
+      "webuitoolkit.desktop": {
+        "type": "Project"
+      },
       "webuitoolkit.hosting": {
         "type": "Project",
         "dependencies": {
@@ -282,7 +285,10 @@
         }
       },
       "webuitoolkit.hosting.abstractions": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.Desktop": "[1.0.0-beta.1, )"
+        }
       },
       "webuitoolkit.hosting.build": {
         "type": "Project",
@@ -300,6 +306,7 @@
       "webuitoolkit.hosting.cswebui.app": {
         "type": "Project",
         "dependencies": {
+          "WebUIToolkit.Desktop": "[1.0.0-beta.1, )",
           "WebUIToolkit.Hosting": "[1.0.0, )",
           "WebUIToolkit.Hosting.CsWebUi": "[1.0.0-beta.1, )",
           "WebUIToolkit.Hosting.GenericHost": "[1.0.0, )",
@@ -342,7 +349,10 @@
         }
       },
       "webuitoolkit.mvvm.flow": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.Desktop": "[1.0.0-beta.1, )"
+        }
       },
       "WebUIToolkit.Samples.Todo.Shared": {
         "type": "Project",

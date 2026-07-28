@@ -4,6 +4,7 @@ using System.Linq;
 using WebUIToolkit.MVVM.Html;
 using WebUIToolkit.MVVM.Html.Htmx;
 using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
+using WebUIToolkit.Samples.Cwhtml.Components;
 
 namespace WebUIToolkit.Samples.SimpleTodo;
 
@@ -36,6 +37,14 @@ public sealed class TodoRenderModel
     /// <summary>Gets whether a validation message is present.</summary>
     public bool HasValidationMessage => ValidationMessage is not null;
 
+    /// <summary>Gets the shared Bootstrap validation presentation.</summary>
+    public IHtmlRenderable Validation =>
+        new BootstrapValidationMessage(
+            "webui-error-title",
+            ValidationMessage ??
+                throw new InvalidOperationException(
+                    "Validation presentation requires a validation message."));
+
     /// <summary>Gets whether the list is empty.</summary>
     public bool IsEmpty => Items.Count == 0;
 
@@ -44,6 +53,14 @@ public sealed class TodoRenderModel
 
     /// <summary>Gets the number of completed tasks.</summary>
     public int Completed { get; }
+
+    /// <summary>Gets the shared styling-neutral live status presentation.</summary>
+    public IHtmlRenderable Status =>
+        new AccessibleStatusRegion(
+            $"{Remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)} remaining · " +
+            $"{Completed.ToString(System.Globalization.CultureInfo.InvariantCulture)} completed",
+            id: "stats",
+            className: "stats");
 
     /// <summary>Creates initial presentation state.</summary>
     internal static TodoRenderModel Initial(TodoViewModel model) =>

@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
-import {
-  toVueMvvmCollection,
-  toVueMvvmCommand,
-  toVueMvvmProperty,
-  toVueMvvmValidation,
-  type VueMvvmAdapter,
-} from "@webuitoolkit/mvvm-vue";
+import { computed, ref } from "vue";
+import { type VueMvvmAdapter } from "@webuitoolkit/mvvm-vue";
 
 import {
   type AdvancedTodoContract,
   type AdvancedTodoState,
 } from "../../shared/contracts";
+import { useAdvancedTodoBindings } from "./todo-bindings.g";
 
 const props = defineProps<{
   adapter: VueMvvmAdapter;
@@ -25,10 +20,10 @@ const notes = ref("");
 const priority = ref("Normal");
 const query = ref("");
 const filter = ref("All");
-const items = toVueMvvmCollection(props.adapter, props.todo.items);
-const diagnostics = toVueMvvmCollection(props.adapter, props.todo.diagnostics);
-const projectedState = toVueMvvmProperty(props.adapter, props.todo.state);
-const addState = toVueMvvmCommand(props.adapter, props.todo.add);
+const bindings = useAdvancedTodoBindings(props.todo, props.adapter);
+const items = bindings.items;
+const diagnostics = bindings.diagnostics;
+const projectedState = bindings.state;
 const state = computed<AdvancedTodoState>(() =>
   projectedState.value ?? {
     totalCount: 0,
@@ -38,7 +33,7 @@ const state = computed<AdvancedTodoState>(() =>
     wizardStep: null,
     wizardIssues: [],
   });
-const projectedValidation = toVueMvvmValidation(props.adapter, props.todo.newTitle);
+const projectedValidation = bindings.newTitleErrors;
 const validation = computed(() => projectedValidation.value ?? []);
 const connected = computed(() => snapshot.value.synchronized);
 const status = computed(() => snapshot.value.synchronized
@@ -46,8 +41,8 @@ const status = computed(() => snapshot.value.synchronized
   : snapshot.value.phase);
 const canAdd = computed(() =>
   snapshot.value.synchronized &&
-  addState.value?.canExecute === true &&
-  !addState.value.isExecuting);
+  bindings.add.canExecute.value &&
+  !bindings.add.isRunning.value);
 const wizardOpen = computed(() => state.value.wizardStep !== null);
 const wizardReview = computed(() => state.value.wizardStep === "todo.create.review");
 
@@ -59,7 +54,7 @@ async function setDraft() {
 
 async function add() {
   await setDraft();
-  await props.todo.add.execute().completion;
+  await bindings.add.execute().completion;
   if (props.todo.newTitle.validation.length === 0) {
     title.value = "";
     notes.value = "";
@@ -85,26 +80,25 @@ function formatTime(value: string) {
 }
 
 function toggle(id: string) {
-  void props.todo.toggle.execute(id).completion;
+  void bindings.toggle.execute(id).completion;
 }
 
 function deleteTodo(id: string) {
-  void props.todo.delete.execute(id).completion;
+  void bindings.delete.execute(id).completion;
 }
 
 function importTodos() {
-  void props.todo.import.execute().completion;
+  void bindings.import.execute().completion;
 }
 
 function cancelImport() {
-  void props.todo.cancelImport.execute().completion;
+  void bindings.cancelImport.execute().completion;
 }
 
 function clearCompleted() {
-  void props.todo.clearCompleted.execute().completion;
+  void bindings.clearCompleted.execute().completion;
 }
 
-onUnmounted(() => props.adapter.dispose());
 </script>
 
 <template>

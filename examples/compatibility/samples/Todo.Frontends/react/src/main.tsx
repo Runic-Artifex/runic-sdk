@@ -2,12 +2,8 @@ import { FormEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ReactMvvmProvider,
-  createReactMvvmStore,
-  useMvvmCollection,
-  useMvvmCommand,
-  useMvvmProperty,
+  startReactMvvmApplication,
   useMvvmSnapshot,
-  useMvvmValidation,
 } from "@webuitoolkit/mvvm-react";
 
 import {
@@ -19,29 +15,30 @@ import {
   type DiagnosticEntry,
   type SimpleTodoItem,
 } from "../../shared/contracts";
-import { connectTodo, reportStartupFailure } from "../../shared/runtime";
+import { exposeTodoReconnect, reportStartupFailure } from "../../shared/runtime";
+import {
+  useAdvancedTodoBindings,
+  useSimpleTodoBindings,
+} from "./todo-bindings.g";
 
 const framework = "React";
 const demo = demoFromDocument();
 
 try {
-  const connection = await connectTodo(demo);
-  const store = createReactMvvmStore(connection.projection);
-  const todo = demo === "simple"
-    ? new SimpleTodoContract(connection.projection)
-    : new AdvancedTodoContract(connection.projection);
+  const application = demo === "simple"
+    ? await startReactMvvmApplication({ contract: SimpleTodoContract })
+    : await startReactMvvmApplication({ contract: AdvancedTodoContract });
+  const todo = application.contract;
   const root = createRoot(document.querySelector("#app")!);
   root.render(
-    <ReactMvvmProvider store={store} ownsStore>
+    <ReactMvvmProvider store={application.store}>
       {todo instanceof SimpleTodoContract
         ? <SimpleTodo todo={todo} />
         : <AdvancedTodo todo={todo} />}
     </ReactMvvmProvider>,
   );
-  globalThis.addEventListener("pagehide", () => {
-    root.unmount();
-    void connection.dispose();
-  }, { once: true });
+  application.addCleanup(() => root.unmount());
+  exposeTodoReconnect(application);
 } catch (error) {
   reportStartupFailure(error);
 }
@@ -66,8 +63,8 @@ function Header({ title, subtitle }: { title: string; subtitle: string }) {
 
 function SimpleTodo({ todo }: { todo: SimpleTodoContract }) {
   const snapshot = useMvvmSnapshot();
-  const items: readonly SimpleTodoItem[] = useMvvmCollection(todo.items);
-  const addState = useMvvmCommand(todo.add);
+  const bindings = useSimpleTodoBindings(todo);
+  const items: readonly SimpleTodoItem[] = bindings.items;
   const [title, setTitle] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -77,7 +74,7 @@ function SimpleTodo({ todo }: { todo: SimpleTodoContract }) {
     setPending(true);
     try {
       await todo.newTitle.set(title);
-      await todo.add.execute().completion;
+      await bindings.add.execute().completion;
       setTitle("");
     } finally {
       setPending(false);
@@ -106,7 +103,7 @@ function SimpleTodo({ todo }: { todo: SimpleTodoContract }) {
             <button
               className="btn btn-primary"
               disabled={pending || title.trim().length < 2 ||
-                !snapshot.synchronized || addState?.canExecute !== true || addState.isExecuting}
+                !snapshot.synchronized || !bindings.add.canExecute || bindings.add.isRunning}
             >
               <i className="fa-solid fa-plus me-2" aria-hidden="true" />Add
             </button>
@@ -144,9 +141,10 @@ function SimpleTodo({ todo }: { todo: SimpleTodoContract }) {
 
 function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
   const snapshot = useMvvmSnapshot();
-  const items: readonly AdvancedTodoItem[] = useMvvmCollection(todo.items);
-  const diagnostics: readonly DiagnosticEntry[] = useMvvmCollection(todo.diagnostics);
-  const state: AdvancedTodoState = useMvvmProperty(todo.state) ?? {
+  const bindings = useAdvancedTodoBindings(todo);
+  const items: readonly AdvancedTodoItem[] = bindings.items;
+  const diagnostics: readonly DiagnosticEntry[] = bindings.diagnostics;
+  const state: AdvancedTodoState = bindings.state ?? {
     totalCount: 0,
     remainingCount: 0,
     completedCount: 0,
@@ -154,8 +152,7 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
     wizardStep: null,
     wizardIssues: [],
   };
-  const validation = useMvvmValidation(todo.newTitle) ?? [];
-  const addState = useMvvmCommand(todo.add);
+  const validation = bindings.newTitleErrors ?? [];
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [priority, setPriority] = useState("Normal");
@@ -171,7 +168,7 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
   async function add(event: FormEvent) {
     event.preventDefault();
     await setDraft();
-    await todo.add.execute().completion;
+    await bindings.add.execute().completion;
     if (todo.newTitle.validation.length === 0) {
       setTitle("");
       setNotes("");
@@ -221,7 +218,7 @@ function AdvancedTodo({ todo }: { todo: AdvancedTodoContract }) {
                   </div>
                   <div className="col-md-2 d-grid">
                     <button className="btn btn-primary" disabled={
-                      !snapshot.synchronized || addState?.canExecute !== true || addState.isExecuting
+                      !snapshot.synchronized || !bindings.add.canExecute || bindings.add.isRunning
                     }>Add</button>
                   </div>
                   <div className="col-12">

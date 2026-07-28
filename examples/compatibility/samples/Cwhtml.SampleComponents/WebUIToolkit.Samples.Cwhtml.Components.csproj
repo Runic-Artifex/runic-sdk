@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.Samples.Cwhtml.Components</AssemblyName>
+    <RootNamespace>WebUIToolkit.Samples.Cwhtml.Components</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html/WebUIToolkit.MVVM.Html.csproj" />
+  </ItemGroup>
+</Project>

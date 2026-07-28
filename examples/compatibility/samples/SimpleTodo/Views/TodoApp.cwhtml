@@ -40,9 +40,7 @@ main #todo-app .card .shadow-lg
             }
         }
         @if (model.HasValidationMessage) {
-            p #webui-error-title .validation .invalid-feedback .d-block role="alert" {
-                (model.ValidationMessage)
-            }
+            @render(model.Validation);
         }
     }
 
@@ -95,10 +93,5 @@ main #todo-app .card .shadow-lg
             " Nothing left to do. Add a task when inspiration strikes."
         }
     }
-    p #stats .stats aria-live="polite" {
-        (model.Remaining.ToString(System.Globalization.CultureInfo.InvariantCulture))
-        " remaining · "
-        (model.Completed.ToString(System.Globalization.CultureInfo.InvariantCulture))
-        " completed"
-    }
+    @render(model.Status);
 }

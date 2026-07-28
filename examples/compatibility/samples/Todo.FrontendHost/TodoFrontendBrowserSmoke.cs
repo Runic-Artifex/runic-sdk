@@ -17,7 +17,8 @@ internal static class TodoFrontendBrowserSmoke
         string webRoot,
         string entryPoint,
         string frontend,
-        TodoDemo demo)
+        TodoDemo demo,
+        bool verifyHmr)
     {
         if (await TodoFrontendQualityGates.RunManagedAsync(demo).ConfigureAwait(false) != 0)
         {
@@ -38,6 +39,19 @@ internal static class TodoFrontendBrowserSmoke
             $"webuitoolkit-{frontend.ToLowerInvariant()}-{demo.ToString().ToLowerInvariant()}-" +
             Guid.NewGuid().ToString("N"));
         string taskTitle = $"Verify {frontend} {demo} {Guid.NewGuid():N}";
+        string? hmrSource = verifyHmr
+            ? Environment.GetEnvironmentVariable("WEBUITOOLKIT_TODO_HMR_SOURCE")
+            : null;
+        if (verifyHmr &&
+            (string.IsNullOrWhiteSpace(hmrSource) || !File.Exists(hmrSource)))
+        {
+            Console.Error.WriteLine(
+                "FAIL: WEBUITOOLKIT_TODO_HMR_SOURCE must name the shared Todo stylesheet.");
+            return 1;
+        }
+        string? hmrToken = verifyHmr ? $"wut{Guid.NewGuid():N}" : null;
+        string? originalHmrSource = null;
+        bool hmrEditApplied = false;
         WebUiWindow? window = null;
         IRootSession? session = null;
         Process? browser = null;
@@ -87,8 +101,9 @@ internal static class TodoFrontendBrowserSmoke
 
             browserDiagnostics = browser.StandardError.ReadToEndAsync();
             string result = string.Empty;
-            string script = CreateRoundtripScript(taskTitle, demo);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+            string script = CreateRoundtripScript(taskTitle, demo, hmrToken);
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(verifyHmr ? 70 : 40));
             try
             {
                 while (!timeout.IsCancellationRequested)
@@ -99,6 +114,20 @@ internal static class TodoFrontendBrowserSmoke
                             script,
                             TimeSpan.FromSeconds(1),
                             responseBufferSize: 8192);
+                        if (result.StartsWith("ready-for-hmr|", StringComparison.Ordinal) &&
+                            !hmrEditApplied)
+                        {
+                            originalHmrSource = await File
+                                .ReadAllTextAsync(hmrSource!, timeout.Token)
+                                .ConfigureAwait(false);
+                            await File.WriteAllTextAsync(
+                                    hmrSource!,
+                                    originalHmrSource +
+                                    $"\nbody {{ --webuitoolkit-hmr-probe: {hmrToken}; }}\n",
+                                    timeout.Token)
+                                .ConfigureAwait(false);
+                            hmrEditApplied = true;
+                        }
                         if (result.StartsWith("pass|", StringComparison.Ordinal) ||
                             result.StartsWith("fail|", StringComparison.Ordinal) ||
                             result.StartsWith("error|", StringComparison.Ordinal))
@@ -127,7 +156,9 @@ internal static class TodoFrontendBrowserSmoke
             bool passed = result.StartsWith($"pass|{taskTitle}|", StringComparison.Ordinal);
             Console.WriteLine(passed
                 ? $"PASS: {frontend} {demo} passed roundtrip, validation, reconnect, " +
-                  "cancellation, accessibility, and lifecycle gates."
+                  "cancellation, accessibility, lifecycle" +
+                  (verifyHmr ? ", and retained-state HMR" : string.Empty) +
+                  " gates."
                 : $"FAIL: {frontend} {demo} native browser quality gate.");
             if (!passed)
             {
@@ -205,6 +236,19 @@ internal static class TodoFrontendBrowserSmoke
                     ref cleanupErrors,
                     () => Directory.Delete(browserProfile, recursive: true));
             }
+
+            if (hmrEditApplied && originalHmrSource is not null)
+            {
+                try
+                {
+                    await File.WriteAllTextAsync(hmrSource!, originalHmrSource)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    (cleanupErrors ??= []).Add(exception);
+                }
+            }
         }
 
         if (cleanupErrors is not null)
@@ -221,7 +265,10 @@ internal static class TodoFrontendBrowserSmoke
         return exitCode;
     }
 
-    private static string CreateRoundtripScript(string taskTitle, TodoDemo demo)
+    private static string CreateRoundtripScript(
+        string taskTitle,
+        TodoDemo demo,
+        string? hmrToken)
     {
         string expected = JsonSerializer.Serialize(
             taskTitle,
@@ -229,10 +276,16 @@ internal static class TodoFrontendBrowserSmoke
         string selector = demo == TodoDemo.Simple
             ? "\"#new-title\""
             : "\"input[placeholder='Task title']\"";
+        string expectedHmr = hmrToken is null
+            ? "null"
+            : JsonSerializer.Serialize(
+                hmrToken,
+                WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String);
         return $$"""
             return (() => {
               try {
                 const expected = {{expected}};
+                const expectedHmr = {{expectedHmr}};
                 const advanced = {{(demo == TodoDemo.Advanced ? "true" : "false")}};
                 const body = document.body;
                 const input = document.querySelector({{selector}});
@@ -399,8 +452,24 @@ internal static class TodoFrontendBrowserSmoke
                 if (finalAccessibilityIssues.length) {
                   return "fail|dynamic-accessibility|" + finalAccessibilityIssues.join(",");
                 }
+                if (expectedHmr !== null) {
+                  if (body.dataset.todoBrowserHmrRequested !== "true") {
+                    body.dataset.todoBrowserHmrRequested = "true";
+                    return "ready-for-hmr|" + expectedHmr;
+                  }
+                  const observedHmr = getComputedStyle(body)
+                    .getPropertyValue("--webuitoolkit-hmr-probe").trim();
+                  if (observedHmr !== expectedHmr) {
+                    return "waiting|hmr|" + observedHmr;
+                  }
+                  if (titles().filter(value => value === expected).length !== 1) {
+                    return "fail|hmr replaced ViewModel-backed state";
+                  }
+                  body.dataset.todoBrowserHmrPassed = "true";
+                }
                 if (!advanced) {
-                  return "pass|" + expected + "|validated-reconnected-accessible";
+                  return "pass|" + expected + "|validated-reconnected-accessible" +
+                    (expectedHmr === null ? "" : "-retained-hmr");
                 }
 
                 const importButton = findButton("Import starter tasks") ??
@@ -418,7 +487,8 @@ internal static class TodoFrontendBrowserSmoke
                 const imported = titles().includes("Explore the guided creation flow");
                 return body.dataset.todoBrowserImportingSeen === "true" && imported
                   ? "pass|" + expected +
-                    "|validated-cancelled-reconnected-accessible-host-pushed"
+                    "|validated-cancelled-reconnected-accessible-host-pushed" +
+                    (expectedHmr === null ? "" : "-retained-hmr")
                   : "waiting|host push";
               } catch (error) {
                 return "error|" + String(error);

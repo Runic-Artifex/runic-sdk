@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
-import {
-  toVueMvvmCollection,
-  toVueMvvmCommand,
-  type VueMvvmAdapter,
-} from "@webuitoolkit/mvvm-vue";
+import { computed, ref } from "vue";
+import { type VueMvvmAdapter } from "@webuitoolkit/mvvm-vue";
 
 import { type SimpleTodoContract } from "../../shared/contracts";
+import { useSimpleTodoBindings } from "./todo-bindings.g";
 
 const props = defineProps<{
   adapter: VueMvvmAdapter;
@@ -17,8 +14,8 @@ const framework = "Vue";
 const snapshot = props.adapter.state;
 const title = ref("");
 const pending = ref(false);
-const items = toVueMvvmCollection(props.adapter, props.todo.items);
-const addState = toVueMvvmCommand(props.adapter, props.todo.add);
+const bindings = useSimpleTodoBindings(props.todo, props.adapter);
+const items = bindings.items;
 const completed = computed(() => items.value.filter((item) => item.isCompleted).length);
 const connected = computed(() => snapshot.value.synchronized);
 const status = computed(() => snapshot.value.synchronized
@@ -28,15 +25,15 @@ const canAdd = computed(() =>
   !pending.value &&
   title.value.trim().length >= 2 &&
   snapshot.value.synchronized &&
-  addState.value?.canExecute === true &&
-  !addState.value.isExecuting);
+  bindings.add.canExecute.value &&
+  !bindings.add.isRunning.value);
 
 async function add() {
   if (title.value.trim().length < 2) return;
   pending.value = true;
   try {
     await props.todo.newTitle.set(title.value);
-    await props.todo.add.execute().completion;
+    await bindings.add.execute().completion;
     title.value = "";
   } finally {
     pending.value = false;
@@ -44,14 +41,13 @@ async function add() {
 }
 
 function toggle(id: string) {
-  void props.todo.toggle.execute(id).completion;
+  void bindings.toggle.execute(id).completion;
 }
 
 function remove(id: string) {
-  void props.todo.remove.execute(id).completion;
+  void bindings.remove.execute(id).completion;
 }
 
-onUnmounted(() => props.adapter.dispose());
 </script>
 
 <template>

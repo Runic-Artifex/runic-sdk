@@ -11,8 +11,14 @@
       "webuitoolkit.collections": {
         "type": "Project"
       },
-      "webuitoolkit.mvvm.flow": {
+      "webuitoolkit.desktop": {
         "type": "Project"
+      },
+      "webuitoolkit.mvvm.flow": {
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.Desktop": "[1.0.0-beta.1, )"
+        }
       }
     }
   }

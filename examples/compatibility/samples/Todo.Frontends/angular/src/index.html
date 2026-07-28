@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <base href="../">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>__TODO_TITLE__ · Angular</title>
-  <link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="vendor/fontawesome/css/fontawesome.min.css">
-  <link rel="stylesheet" href="vendor/fontawesome/css/regular.min.css">
-  <link rel="stylesheet" href="vendor/fontawesome/css/solid.min.css">
+  <title>ToDo · Angular</title>
   <script src="webui.js"></script>
 </head>
-<body data-demo="__TODO_DEMO__" data-framework="Angular">
+<body data-framework="Angular">
+  <script>
+    document.body.dataset.demo =
+      location.pathname.includes("/advanced/") ? "advanced" : "simple";
+    document.title =
+      (document.body.dataset.demo === "advanced" ? "Advanced ToDo" : "Simple ToDo") +
+      " · Angular";
+  </script>
   <todo-app id="app" aria-live="polite">
     <div class="app-shell"><div class="alert alert-secondary">Connecting to the native C# ViewModel…</div></div>
   </todo-app>

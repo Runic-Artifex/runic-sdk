@@ -1,0 +1,73 @@
+{
+  "schema": "webuitoolkit.frontend-support-matrix/1",
+  "policy": "A shared contract, owner, development loop, or protocol change is incomplete until every frontend has an explicit executable gate.",
+  "sharedGates": {
+    "nativeRoundtrip": "eng/verify-todo-frontends.ps1",
+    "nativeAot": "eng/verify-todo-frontends-native-aot.ps1",
+    "productionAssets": "eng/verify-frontend-production.mjs",
+    "nativeHmr": "eng/verify-todo-frontend-hmr.ps1",
+    "coordinator": "tests/WebUIToolkit.DotNet.WebUIToolkit.Tests",
+    "templates": "tests/WebUIToolkit.Templates.Tests"
+  },
+  "frontends": {
+    "cwhtml": {
+      "starter": "webuitoolkit-cwhtml",
+      "todo": ["samples/SimpleTodo", "samples/AdvancedTodo"],
+      "developmentServer": "vite",
+      "authoring": "compiled cwhtml components and HTMX",
+      "owner": "CwhtmlHtmxAppBuilder",
+      "hmr": "compatible renderer and fragment refresh",
+      "mock": "not frontend-only: cwhtml rendering and actions are compiled C#; use the retained native development host"
+    },
+    "react": {
+      "starter": "webuitoolkit-react",
+      "todo": ["samples/Todo.React"],
+      "developmentServer": "vite",
+      "authoring": "React components, providers, and hooks",
+      "owner": "startReactMvvmApplication",
+      "hmr": "React Fast Refresh",
+      "mock": "npm run dev:mock"
+    },
+    "vue": {
+      "starter": "webuitoolkit-vue",
+      "todo": ["samples/Todo.Vue"],
+      "developmentServer": "vite",
+      "authoring": "Vue SFCs, Composition API, and composables",
+      "owner": "startVueMvvmApplication",
+      "hmr": "Vue SFC HMR",
+      "mock": "npm run dev:mock"
+    },
+    "svelte": {
+      "starter": "webuitoolkit-svelte",
+      "todo": ["samples/Todo.Svelte"],
+      "developmentServer": "vite",
+      "authoring": "Svelte 5 runes, context, and current event attributes",
+      "owner": "startSvelteMvvmApplication",
+      "hmr": "Svelte component HMR",
+      "mock": "npm run dev:mock"
+    },
+    "angular": {
+      "starter": "webuitoolkit-angular",
+      "todo": ["samples/Todo.Angular"],
+      "developmentServer": "angular",
+      "authoring": "standalone components, signals, providers, and AOT",
+      "owner": "startAngularMvvmApplication",
+      "hmr": "Angular development-server HMR",
+      "mock": "npm run dev:mock"
+    }
+  },
+  "requiredCapabilities": [
+    "isolated-template",
+    "native-property-validation-command",
+    "retained-state-hmr",
+    "reconnect",
+    "cancellation",
+    "accessibility",
+    "deterministic-teardown",
+    "leak-gate",
+    "native-aot",
+    "production-budget",
+    "development-inspector",
+    "mock-replay"
+  ]
+}

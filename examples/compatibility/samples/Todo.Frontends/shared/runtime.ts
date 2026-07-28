@@ -1,61 +1,21 @@
-import {
-  startMvvmApplication,
-  type MvvmProjection,
-} from "@webuitoolkit/mvvm";
-
-import {
-  AdvancedTodoContract,
-  SimpleTodoContract,
-  type TodoDemo,
-} from "./contracts";
-
-export interface TodoConnection {
-  readonly projection: MvvmProjection;
-  /** Rebinds the retained session; used by the shared browser quality gate. */
+export interface TodoApplicationLifetime {
   reconnect(): Promise<void>;
+  addCleanup(cleanup: () => void | Promise<void>): () => void;
   dispose(): Promise<void>;
 }
 
-export async function connectTodo(demo: TodoDemo): Promise<TodoConnection> {
-  const bridgeUrl = new URL(
-    "../vendor/webuitoolkit-mvvm-cswebui.mjs",
-    document.baseURI,
-  ).href;
-  const bridge = await import(bridgeUrl) as {
-    CsWebUiFrameChannel: new () => import("@webuitoolkit/mvvm").FrameChannel;
-    waitForCsWebUiBinding(): Promise<void>;
-  };
-  await bridge.waitForCsWebUiBinding();
-  const contract = demo === "simple"
-    ? SimpleTodoContract.contractName
-    : AdvancedTodoContract.contractName;
-  let channel = new bridge.CsWebUiFrameChannel();
-  const application = await startMvvmApplication({
-    contract,
-    channel,
-  });
-
-  let diagnosticReconnect: (() => Promise<void>) | undefined;
-  const connection: TodoConnection = {
-    projection: application.projection,
-    async reconnect() {
-      await channel.close("Todo reconnect quality gate");
-      channel = new bridge.CsWebUiFrameChannel();
-      await application.reconnect(channel);
-    },
-    async dispose() {
-      if (globalThis.__webuitoolkitTodoReconnect === diagnosticReconnect) {
-        delete globalThis.__webuitoolkitTodoReconnect;
-      }
-      await application.dispose("Todo frontend unloaded");
-    },
-  };
+/** Exposes the one shared reconnect seam used by the native browser quality gate. */
+export function exposeTodoReconnect(application: TodoApplicationLifetime): void {
   // Internal sample diagnostic used by the repository's native browser gate.
   // It remains deliberately outside the public package API and every
   // framework consumes this one shared hook.
-  diagnosticReconnect = () => connection.reconnect();
+  const diagnosticReconnect = () => application.reconnect();
   globalThis.__webuitoolkitTodoReconnect = diagnosticReconnect;
-  return connection;
+  application.addCleanup(() => {
+    if (globalThis.__webuitoolkitTodoReconnect === diagnosticReconnect) {
+      delete globalThis.__webuitoolkitTodoReconnect;
+    }
+  });
 }
 
 export function reportStartupFailure(error: unknown): void {

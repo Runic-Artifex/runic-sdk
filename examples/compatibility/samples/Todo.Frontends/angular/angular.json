@@ -21,6 +21,10 @@
             "tsConfig": "tsconfig.app.json",
             "assets": [],
             "styles": [
+              "bootstrap/dist/css/bootstrap.min.css",
+              "@fortawesome/fontawesome-free/css/fontawesome.min.css",
+              "@fortawesome/fontawesome-free/css/regular.min.css",
+              "@fortawesome/fontawesome-free/css/solid.min.css",
               "../shared/styles.css"
             ],
             "aot": true,
@@ -50,8 +54,25 @@
             }
           },
           "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {
+            "headers": {
+              "Access-Control-Allow-Origin": "*"
+            }
+          },
+          "configurations": {
+            "development": {
+              "buildTarget": "todo-angular:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
         }
       }
     }
+  },
+  "cli": {
+    "analytics": false
   }
 }

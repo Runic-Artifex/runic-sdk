@@ -1,11 +1,15 @@
 import {
   Component,
   computed,
+  inject,
   provideZonelessChangeDetection,
-  type OnDestroy,
 } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
-import { AngularMvvmStore } from "@webuitoolkit/mvvm-angular";
+import {
+  injectAngularMvvmApplication,
+  provideAngularMvvmApplication,
+  startAngularMvvmApplication,
+} from "@webuitoolkit/mvvm-angular";
 
 import {
   AdvancedTodoContract,
@@ -14,12 +18,14 @@ import {
   type AdvancedTodoState,
   type TodoDemo,
 } from "../../shared/contracts";
-import { connectTodo, reportStartupFailure, type TodoConnection } from "../../shared/runtime";
+import { exposeTodoReconnect, reportStartupFailure } from "../../shared/runtime";
+import {
+  injectAdvancedTodoContract,
+  injectSimpleTodoContract,
+  provideAdvancedTodoContract,
+  provideSimpleTodoContract,
+} from "./todo-bindings.g";
 
-let connection: TodoConnection;
-let sampleStore: AngularMvvmStore;
-let simpleTodo: SimpleTodoContract;
-let advancedTodo: AdvancedTodoContract;
 const demo = demoFromDocument();
 
 @Component({
@@ -108,23 +114,28 @@ const demo = demoFromDocument();
     }
   `,
 })
-class TodoApplicationComponent implements OnDestroy {
+class TodoApplicationComponent {
+  private readonly application = injectAngularMvvmApplication<
+    SimpleTodoContract | AdvancedTodoContract
+  >();
   protected readonly demo: TodoDemo = demo;
-  protected readonly simpleTodo = simpleTodo;
-  protected readonly advancedTodo = advancedTodo;
-  protected readonly snapshot = sampleStore.snapshot;
+  protected readonly simpleBindings = injectSimpleTodoContract();
+  protected readonly advancedBindings = injectAdvancedTodoContract();
+  protected readonly simpleTodo = this.simpleBindings.contract;
+  protected readonly advancedTodo = this.advancedBindings.contract;
+  protected readonly snapshot = this.application.store.snapshot;
   protected readonly connected = computed(() => this.snapshot().synchronized);
   protected readonly status = computed(() => this.snapshot().synchronized
     ? `Connected · r${this.snapshot().revision}`
     : this.snapshot().phase);
-  protected readonly simpleItems = sampleStore.collection(this.simpleTodo.items);
-  protected readonly simpleAddState = sampleStore.command(this.simpleTodo.add);
+  protected readonly simpleItems = this.simpleBindings.items;
+  protected readonly simpleAddState = this.simpleBindings.add;
   protected readonly completed = computed(() =>
     this.simpleItems().filter((item) => item.isCompleted).length);
-  protected readonly advancedItems = sampleStore.collection(this.advancedTodo.items);
-  protected readonly diagnostics = sampleStore.collection(this.advancedTodo.diagnostics);
-  protected readonly projectedState = sampleStore.property(this.advancedTodo.state);
-  protected readonly advancedAddState = sampleStore.command(this.advancedTodo.add);
+  protected readonly advancedItems = this.advancedBindings.items;
+  protected readonly diagnostics = this.advancedBindings.diagnostics;
+  protected readonly projectedState = this.advancedBindings.state;
+  protected readonly advancedAddState = this.advancedBindings.add;
   protected readonly state = computed<AdvancedTodoState>(() =>
     this.projectedState() ?? {
       totalCount: 0,
@@ -134,7 +145,7 @@ class TodoApplicationComponent implements OnDestroy {
       wizardStep: null,
       wizardIssues: [],
     });
-  protected readonly projectedValidation = sampleStore.validation(this.advancedTodo.newTitle);
+  protected readonly projectedValidation = this.advancedBindings.newTitleErrors;
   protected readonly validation = computed(() => this.projectedValidation() ?? []);
   protected readonly wizardReview = computed(() =>
     this.state().wizardStep === "todo.create.review");
@@ -149,17 +160,15 @@ class TodoApplicationComponent implements OnDestroy {
   }
 
   protected canSimpleAdd(): boolean {
-    const command = this.simpleAddState();
     return this.snapshot().synchronized &&
-      command?.canExecute === true &&
-      !command.isExecuting;
+      this.simpleAddState.canExecute() &&
+      !this.simpleAddState.isRunning();
   }
 
   protected canAdvancedAdd(): boolean {
-    const command = this.advancedAddState();
     return this.snapshot().synchronized &&
-      command?.canExecute === true &&
-      !command.isExecuting;
+      this.advancedAddState.canExecute() &&
+      !this.advancedAddState.isRunning();
   }
 
   protected async addSimple(event: Event) {
@@ -168,7 +177,7 @@ class TodoApplicationComponent implements OnDestroy {
     this.pending = true;
     try {
       await this.simpleTodo.newTitle.set(this.title);
-      await this.simpleTodo.add.execute().completion;
+      await this.simpleAddState.execute().completion;
       this.title = "";
     } finally {
       this.pending = false;
@@ -184,7 +193,7 @@ class TodoApplicationComponent implements OnDestroy {
   protected async addAdvanced(event: Event) {
     event.preventDefault();
     await this.setDraft();
-    await this.advancedTodo.add.execute().completion;
+    await this.advancedAddState.execute().completion;
     if (this.advancedTodo.newTitle.validation.length === 0) {
       this.title = "";
       this.notes = "";
@@ -211,23 +220,28 @@ class TodoApplicationComponent implements OnDestroy {
     return new Date(value).toLocaleTimeString();
   }
 
-  public ngOnDestroy(): void {
-    sampleStore.destroy();
-  }
 }
 
 try {
-  connection = await connectTodo(demo);
-  sampleStore = new AngularMvvmStore(connection.projection);
-  simpleTodo = new SimpleTodoContract(connection.projection);
-  advancedTodo = new AdvancedTodoContract(connection.projection);
+  const nativeApplication = demo === "simple"
+    ? await startAngularMvvmApplication({ contract: SimpleTodoContract })
+    : await startAngularMvvmApplication({ contract: AdvancedTodoContract });
+  const simpleTodo = nativeApplication.contract instanceof SimpleTodoContract
+    ? nativeApplication.contract
+    : new SimpleTodoContract(nativeApplication.projection);
+  const advancedTodo = nativeApplication.contract instanceof AdvancedTodoContract
+    ? nativeApplication.contract
+    : new AdvancedTodoContract(nativeApplication.projection);
   const application = await bootstrapApplication(TodoApplicationComponent, {
-    providers: [provideZonelessChangeDetection()],
+    providers: [
+      provideZonelessChangeDetection(),
+      ...provideAngularMvvmApplication(nativeApplication),
+      ...provideSimpleTodoContract(nativeApplication.store, simpleTodo),
+      ...provideAdvancedTodoContract(nativeApplication.store, advancedTodo),
+    ],
   });
-  globalThis.addEventListener("pagehide", () => {
-    application.destroy();
-    void connection.dispose();
-  }, { once: true });
+  nativeApplication.addCleanup(() => application.destroy());
+  exposeTodoReconnect(nativeApplication);
 } catch (error) {
   reportStartupFailure(error);
 }

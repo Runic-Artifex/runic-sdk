@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>WebUIToolkit.Samples.Cwhtml.Components.Tests</AssemblyName>
+    <RootNamespace>WebUIToolkit.Samples.Cwhtml.Components.Tests</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../samples/Cwhtml.SampleComponents/WebUIToolkit.Samples.Cwhtml.Components.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Testing/WebUIToolkit.MVVM.Html.Testing.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Cwhtml Include="Views/StylingNeutralExample.cwhtml">
+      <LogicalPath>Views/StylingNeutralExample.cwhtml</LogicalPath>
+    </Cwhtml>
+    <CwhtmlCodeBehind Include="StylingNeutralExampleModel.cs" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <SampleCwhtmlTaskAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Build/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Build.dll</SampleCwhtmlTaskAssembly>
+  </PropertyGroup>
+
+  <UsingTask TaskName="WebUIToolkit.MVVM.Html.Build.WriteCwhtmlInputCache"
+             AssemblyFile="$(SampleCwhtmlTaskAssembly)" />
+  <UsingTask TaskName="WebUIToolkit.MVVM.Html.Build.CompileCwhtmlTemplates"
+             AssemblyFile="$(SampleCwhtmlTaskAssembly)" />
+
+  <Target Name="CompileSampleComponentCwhtml"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="ResolveProjectReferences">
+    <PropertyGroup>
+      <SampleCwhtmlOutputPath>$(IntermediateOutputPath)sample-components/</SampleCwhtmlOutputPath>
+      <SampleCwhtmlManifestPath>$(SampleCwhtmlOutputPath)manifest.json</SampleCwhtmlManifestPath>
+      <SampleCwhtmlInputCachePath>$(SampleCwhtmlOutputPath)inputs.cache</SampleCwhtmlInputCachePath>
+      <SampleCwhtmlStampPath>$(SampleCwhtmlOutputPath)build.stamp</SampleCwhtmlStampPath>
+    </PropertyGroup>
+    <WriteCwhtmlInputCache Templates="@(Cwhtml)"
+                           DependencyFiles="@(CwhtmlCodeBehind)"
+                           ProjectDirectory="$(MSBuildProjectDirectory)"
+                           CachePath="$(SampleCwhtmlInputCachePath)">
+      <Output TaskParameter="PreparedTemplates" ItemName="_SamplePreparedCwhtml" />
+    </WriteCwhtmlInputCache>
+    <CompileCwhtmlTemplates Templates="@(_SamplePreparedCwhtml)"
+                            ProjectDirectory="$(MSBuildProjectDirectory)"
+                            OutputDirectory="$(SampleCwhtmlOutputPath)"
+                            ManifestPath="$(SampleCwhtmlManifestPath)"
+                            InputCachePath="$(SampleCwhtmlInputCachePath)"
+                            StampPath="$(SampleCwhtmlStampPath)">
+      <Output TaskParameter="GeneratedFiles" ItemName="_SampleGeneratedCwhtml" />
+    </CompileCwhtmlTemplates>
+    <ItemGroup>
+      <Compile Include="@(_SampleGeneratedCwhtml)" />
+      <FileWrites Include="@(_SampleGeneratedCwhtml);$(SampleCwhtmlManifestPath);$(SampleCwhtmlInputCachePath);$(SampleCwhtmlStampPath)" />
+    </ItemGroup>
+  </Target>
+</Project>

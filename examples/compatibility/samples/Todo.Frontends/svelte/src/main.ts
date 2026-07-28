@@ -1,5 +1,5 @@
 import { mount, unmount } from "svelte";
-import { createSvelteMvvmStore } from "@webuitoolkit/mvvm-svelte";
+import { startSvelteMvvmApplication } from "@webuitoolkit/mvvm-svelte";
 
 import App from "./TodoApp.svelte";
 import {
@@ -7,28 +7,23 @@ import {
   demoFromDocument,
   SimpleTodoContract,
 } from "../../shared/contracts";
-import { connectTodo, reportStartupFailure } from "../../shared/runtime";
+import { exposeTodoReconnect, reportStartupFailure } from "../../shared/runtime";
 
 const demo = demoFromDocument();
 
 try {
-  const connection = await connectTodo(demo);
-  const model = createSvelteMvvmStore(connection.projection);
-  const todo = demo === "simple"
-    ? new SimpleTodoContract(connection.projection)
-    : new AdvancedTodoContract(connection.projection);
+  const application = demo === "simple"
+    ? await startSvelteMvvmApplication({ contract: SimpleTodoContract })
+    : await startSvelteMvvmApplication({ contract: AdvancedTodoContract });
   const target = document.querySelector<HTMLElement>("#app")!;
   target.replaceChildren();
   const app = mount(App, {
     target,
-    props: { demo, model, todo },
+    props: { demo, model: application.store, todo: application.contract },
   });
   target.querySelector(".alert-secondary")?.remove();
-  globalThis.addEventListener("pagehide", () => {
-    void unmount(app);
-    model.dispose();
-    void connection.dispose();
-  }, { once: true });
+  application.addCleanup(() => unmount(app));
+  exposeTodoReconnect(application);
 } catch (error) {
   reportStartupFailure(error);
 }
