@@ -40,6 +40,7 @@
     <Project Path="src/WebUIToolkit.TextResources/WebUIToolkit.TextResources.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/WebUIToolkit.Cwhtml.LanguageServer.Tests/WebUIToolkit.Cwhtml.LanguageServer.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Assets.Tests/WebUIToolkit.Assets.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Collections.Tests/WebUIToolkit.Collections.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Contracts.Tests/WebUIToolkit.CommandLine.Contracts.Tests.csproj" />
@@ -79,6 +80,7 @@
     <Project Path="tools/WebUIToolkit.MVVM.BindingCompiler/WebUIToolkit.MVVM.BindingCompiler.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/cwhtml-language-server/WebUIToolkit.Cwhtml.LanguageServer.csproj" />
     <Project Path="tools/dotnet-cwhtml/WebUIToolkit.DotNet.Cwhtml.csproj" />
     <Project Path="tools/dotnet-webuitoolkit/WebUIToolkit.DotNet.WebUIToolkit.csproj" />
   </Folder>

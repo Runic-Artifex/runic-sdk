@@ -7,6 +7,7 @@ Reference documentation lives beside the code that owns each contract:
 - [`dotnet webuitoolkit`](../../tools/dotnet-webuitoolkit/README.md)
 - [`dotnet new` template pack](../../templates/WebUIToolkit.Templates/README.md)
 - [`dotnet cwhtml`](../../tools/dotnet-cwhtml/README.md)
+- [cwhtml language server](../../tools/cwhtml-language-server/README.md)
 - [Frontend SDK](../../src/WebUIToolkit.Frontend.Sdk/README.md)
 - [cwhtml compiler](../../src/WebUIToolkit.MVVM.Html.Compiler/README.md)
 - [cwhtml build integration](../../src/WebUIToolkit.MVVM.Html.Build/README.md)
