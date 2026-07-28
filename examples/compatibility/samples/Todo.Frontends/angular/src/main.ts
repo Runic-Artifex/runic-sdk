@@ -1,12 +1,6 @@
-import {
-  Component,
-  computed,
-  inject,
-  provideZonelessChangeDetection,
-} from "@angular/core";
+import { provideZonelessChangeDetection } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
 import {
-  injectAngularMvvmApplication,
   provideAngularMvvmApplication,
   startAngularMvvmApplication,
 } from "@webuitoolkit/mvvm-angular";
@@ -15,233 +9,43 @@ import {
   AdvancedTodoContract,
   demoFromDocument,
   SimpleTodoContract,
-  type AdvancedTodoState,
-  type TodoDemo,
 } from "../../shared/contracts";
 import { exposeTodoReconnect, reportStartupFailure } from "../../shared/runtime";
+import { AdvancedTodoComponent } from "./advanced/advanced-todo.component";
+import { SimpleTodoComponent } from "./simple/simple-todo.component";
 import {
-  injectAdvancedTodoContract,
-  injectSimpleTodoContract,
   provideAdvancedTodoContract,
   provideSimpleTodoContract,
 } from "./todo-bindings.g";
 
-const demo = demoFromDocument();
-
-@Component({
-  selector: "todo-app",
-  standalone: true,
-  template: `
-    @if (demo === "simple") {
-      <div class="app-shell simple-shell">
-        <header class="mb-4"><div class="d-flex flex-wrap gap-2 justify-content-between align-items-start">
-          <div><span class="framework-badge badge text-bg-danger mb-2">Angular</span><h1 class="display-6 fw-semibold mb-1">Simple ToDo</h1><p class="text-secondary mb-0">One shared C# ViewModel surfaced through Angular signals.</p></div>
-          <span class="badge" [class.text-bg-success]="connected()" [class.text-bg-secondary]="!connected()">{{ status() }}</span>
-        </div></header>
-        <section class="card hero-card"><div class="card-body p-4">
-          <form class="input-group mb-4" (submit)="addSimple($event)">
-            <label class="visually-hidden" for="new-title">New task</label>
-            <input id="new-title" class="form-control" [value]="title" maxlength="80" placeholder="What needs doing?" (input)="title = inputValue($event)">
-            <button class="btn btn-primary" [disabled]="pending || title.trim().length < 2 || !canSimpleAdd()"><i class="fa-solid fa-plus me-2" aria-hidden="true"></i>Add</button>
-          </form>
-          <div class="d-flex justify-content-between text-secondary small mb-3"><span>{{ simpleItems().length - completed() }} remaining</span><span>{{ completed() }} completed</span></div>
-          <ul class="list-group list-group-flush">
-            @for (item of simpleItems(); track item.id) {
-              <li class="list-group-item px-0 todo-row" [class.completed]="item.isCompleted">
-                <button class="btn btn-sm btn-outline-primary rounded-circle" [attr.aria-label]="item.isCompleted ? 'Mark active' : 'Mark complete'" (click)="simpleTodo.toggle.execute(item.id).completion"><i [class]="item.isCompleted ? 'fa-solid fa-check' : 'fa-regular fa-circle'" aria-hidden="true"></i></button>
-                <span class="todo-title">{{ item.title }}</span>
-                <button class="btn btn-sm btn-outline-danger todo-actions" [attr.aria-label]="'Remove ' + item.title" (click)="simpleTodo.remove.execute(item.id).completion"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
-              </li>
-            }
-          </ul>
-        </div></section>
-      </div>
-    } @else {
-      <div class="app-shell">
-        <header class="mb-4"><div class="d-flex flex-wrap gap-2 justify-content-between align-items-start">
-          <div><span class="framework-badge badge text-bg-danger mb-2">Angular</span><h1 class="display-6 fw-semibold mb-1">Advanced ToDo</h1><p class="text-secondary mb-0">Persistence, filtering, validation, cancellation, and Flow through Angular signals.</p></div>
-          <span class="badge" [class.text-bg-success]="connected()" [class.text-bg-secondary]="!connected()">{{ status() }}</span>
-        </div></header>
-        <div class="row g-4">
-          <div class="col-lg-8">
-            <section class="card workspace-card mb-4"><div class="card-body p-4">
-              <h2 class="h5 mb-3">Quick add</h2>
-              <form (submit)="addAdvanced($event)"><div class="row g-3">
-                <div class="col-md-7"><label class="visually-hidden" for="advanced-title">Task title</label><input id="advanced-title" class="form-control" [class.is-invalid]="validation().length > 0" [value]="title" maxlength="120" placeholder="Task title" (input)="title = inputValue($event)">@if (validation().length) {<div class="invalid-feedback">{{ validation().join(" ") }}</div>}</div>
-                <div class="col-md-3"><label class="visually-hidden" for="advanced-priority">Priority</label><select id="advanced-priority" class="form-select" [value]="priority" (change)="priority = inputValue($event)"><option>Low</option><option>Normal</option><option>High</option></select></div>
-                <div class="col-md-2 d-grid"><button class="btn btn-primary" [disabled]="!canAdvancedAdd()">Add</button></div>
-                <div class="col-12"><label class="visually-hidden" for="advanced-notes">Notes</label><textarea id="advanced-notes" class="form-control" [value]="notes" rows="2" placeholder="Notes (optional)" (input)="notes = inputValue($event)"></textarea></div>
-              </div></form>
-            </div></section>
-            <section class="card workspace-card"><div class="card-body p-4">
-              <form class="row g-2 mb-4" (submit)="applyFilter($event)">
-                <div class="col-md-7"><label class="visually-hidden" for="advanced-query">Search tasks</label><input id="advanced-query" class="form-control" [value]="query" placeholder="Search title and notes" (input)="query = inputValue($event)"></div>
-                <div class="col-md-3"><label class="visually-hidden" for="advanced-filter">Completion filter</label><select id="advanced-filter" class="form-select" [value]="filter" (change)="filter = inputValue($event)"><option>All</option><option>Active</option><option>Completed</option></select></div>
-                <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Apply</button></div>
-              </form>
-              <div class="list-group list-group-flush">
-                @for (item of advancedItems(); track item.id) {
-                  <article class="list-group-item px-0 todo-row" [class.completed]="item.isCompleted">
-                    <button class="btn btn-sm btn-outline-primary rounded-circle" [attr.aria-label]="item.isCompleted ? 'Mark active' : 'Mark complete'" (click)="advancedTodo.toggle.execute(item.id).completion"><i [class]="item.isCompleted ? 'fa-solid fa-check' : 'fa-regular fa-circle'" aria-hidden="true"></i></button>
-                    <div><div class="d-flex gap-2 align-items-center"><strong class="todo-title">{{ item.title }}</strong><span class="badge" [class]="'badge priority-' + item.priority">{{ item.priority }}</span></div>@if (item.notes) {<div class="small text-secondary todo-notes">{{ item.notes }}</div>}</div>
-                    <button class="btn btn-sm btn-outline-danger todo-actions" [attr.aria-label]="'Delete ' + item.title" (click)="advancedTodo.delete.execute(item.id).completion"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
-                  </article>
-                } @empty {
-                  <p class="text-secondary text-center my-4">No tasks match this view.</p>
-                }
-              </div>
-            </div></section>
-          </div>
-          <aside class="col-lg-4">
-            <section class="card workspace-card mb-4"><div class="card-body">
-              <div class="summary-grid mb-3"><div class="summary-tile"><span class="summary-value">{{ state().totalCount }}</span><small>Total</small></div><div class="summary-tile"><span class="summary-value">{{ state().remainingCount }}</span><small>Active</small></div><div class="summary-tile"><span class="summary-value">{{ state().completedCount }}</span><small>Done</small></div></div>
-              <div class="d-grid gap-2"><button class="btn btn-outline-primary" [disabled]="state().isImporting" (click)="advancedTodo.import.execute().completion"><i class="fa-solid fa-download me-2" aria-hidden="true"></i>{{ state().isImporting ? "Importing…" : "Import starter tasks" }}</button>@if (state().isImporting) {<button class="btn btn-outline-danger" (click)="advancedTodo.cancelImport.execute().completion">Cancel import</button>}<button class="btn btn-outline-secondary" (click)="advancedTodo.clearCompleted.execute().completion">Clear completed</button></div>
-            </div></section>
-            <section class="card workspace-card mb-4"><div class="card-body">
-              <h2 class="h5">Guided creation</h2>
-              @if (state().wizardStep === null) {
-                <button class="btn btn-primary" (click)="wizard(advancedTodo.wizardStart)">Start workflow</button>
-              } @else {
-                <p class="small text-secondary">{{ wizardReview() ? "Review the retained draft before saving." : "Enter task details, then continue." }}</p>
-                @for (issue of state().wizardIssues; track issue) {<div class="alert alert-warning py-2">{{ issue }}</div>}
-                <div class="d-flex flex-wrap gap-2">@if (!wizardReview()) {<button class="btn btn-primary" (click)="wizard(advancedTodo.wizardNext)">Next</button>} @else {<button class="btn btn-outline-secondary" (click)="wizard(advancedTodo.wizardBack)">Back</button><button class="btn btn-success" (click)="wizard(advancedTodo.wizardFinish)">Save</button>}<button class="btn btn-outline-danger" (click)="wizard(advancedTodo.wizardCancel)">Cancel</button></div>
-              }
-            </div></section>
-            <section class="card workspace-card"><div class="card-body"><h2 class="h5">Diagnostics</h2><div class="diagnostic-list list-group list-group-flush">@for (entry of diagnostics(); track entry.at + $index) {<div class="list-group-item px-0"><div class="small"><span class="badge text-bg-light me-2">{{ entry.category }}</span><time>{{ formatTime(entry.at) }}</time></div><div>{{ entry.message }}</div></div>}</div></div></section>
-          </aside>
-        </div>
-      </div>
-    }
-  `,
-})
-class TodoApplicationComponent {
-  private readonly application = injectAngularMvvmApplication<
-    SimpleTodoContract | AdvancedTodoContract
-  >();
-  protected readonly demo: TodoDemo = demo;
-  protected readonly simpleBindings = injectSimpleTodoContract();
-  protected readonly advancedBindings = injectAdvancedTodoContract();
-  protected readonly simpleTodo = this.simpleBindings.contract;
-  protected readonly advancedTodo = this.advancedBindings.contract;
-  protected readonly snapshot = this.application.store.snapshot;
-  protected readonly connected = computed(() => this.snapshot().synchronized);
-  protected readonly status = computed(() => this.snapshot().synchronized
-    ? `Connected · r${this.snapshot().revision}`
-    : this.snapshot().phase);
-  protected readonly simpleItems = this.simpleBindings.items;
-  protected readonly simpleAddState = this.simpleBindings.add;
-  protected readonly completed = computed(() =>
-    this.simpleItems().filter((item) => item.isCompleted).length);
-  protected readonly advancedItems = this.advancedBindings.items;
-  protected readonly diagnostics = this.advancedBindings.diagnostics;
-  protected readonly projectedState = this.advancedBindings.state;
-  protected readonly advancedAddState = this.advancedBindings.add;
-  protected readonly state = computed<AdvancedTodoState>(() =>
-    this.projectedState() ?? {
-      totalCount: 0,
-      remainingCount: 0,
-      completedCount: 0,
-      isImporting: false,
-      wizardStep: null,
-      wizardIssues: [],
-    });
-  protected readonly projectedValidation = this.advancedBindings.newTitleErrors;
-  protected readonly validation = computed(() => this.projectedValidation() ?? []);
-  protected readonly wizardReview = computed(() =>
-    this.state().wizardStep === "todo.create.review");
-  protected title = "";
-  protected notes = "";
-  protected priority = "Normal";
-  protected query = "";
-  protected filter = "All";
-  protected pending = false;
-  protected inputValue(event: Event): string {
-    return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;
-  }
-
-  protected canSimpleAdd(): boolean {
-    return this.snapshot().synchronized &&
-      this.simpleAddState.canExecute() &&
-      !this.simpleAddState.isRunning();
-  }
-
-  protected canAdvancedAdd(): boolean {
-    return this.snapshot().synchronized &&
-      this.advancedAddState.canExecute() &&
-      !this.advancedAddState.isRunning();
-  }
-
-  protected async addSimple(event: Event) {
-    event.preventDefault();
-    if (this.title.trim().length < 2) return;
-    this.pending = true;
-    try {
-      await this.simpleTodo.newTitle.set(this.title);
-      await this.simpleAddState.execute().completion;
-      this.title = "";
-    } finally {
-      this.pending = false;
-    }
-  }
-
-  private async setDraft() {
-    await this.advancedTodo.newTitle.set(this.title);
-    await this.advancedTodo.newNotes.set(this.notes);
-    await this.advancedTodo.newPriority.set(this.priority);
-  }
-
-  protected async addAdvanced(event: Event) {
-    event.preventDefault();
-    await this.setDraft();
-    await this.advancedAddState.execute().completion;
-    if (this.advancedTodo.newTitle.validation.length === 0) {
-      this.title = "";
-      this.notes = "";
-      this.priority = "Normal";
-    }
-  }
-
-  protected async applyFilter(event: Event) {
-    event.preventDefault();
-    await this.advancedTodo.query.set(this.query);
-    await this.advancedTodo.filter.set(this.filter);
-    await this.advancedTodo.applyFilter.execute().completion;
-  }
-
-  protected async wizard(command: typeof this.advancedTodo.wizardStart) {
-    if (command === this.advancedTodo.wizardStart ||
-        command === this.advancedTodo.wizardNext) {
-      await this.setDraft();
-    }
-    await command.execute().completion;
-  }
-
-  protected formatTime(value: string): string {
-    return new Date(value).toLocaleTimeString();
-  }
-
-}
-
 try {
-  const nativeApplication = demo === "simple"
-    ? await startAngularMvvmApplication({ contract: SimpleTodoContract })
-    : await startAngularMvvmApplication({ contract: AdvancedTodoContract });
-  const simpleTodo = nativeApplication.contract instanceof SimpleTodoContract
-    ? nativeApplication.contract
-    : new SimpleTodoContract(nativeApplication.projection);
-  const advancedTodo = nativeApplication.contract instanceof AdvancedTodoContract
-    ? nativeApplication.contract
-    : new AdvancedTodoContract(nativeApplication.projection);
-  const application = await bootstrapApplication(TodoApplicationComponent, {
-    providers: [
-      provideZonelessChangeDetection(),
-      ...provideAngularMvvmApplication(nativeApplication),
-      ...provideSimpleTodoContract(nativeApplication.store, simpleTodo),
-      ...provideAdvancedTodoContract(nativeApplication.store, advancedTodo),
-    ],
-  });
-  nativeApplication.addCleanup(() => application.destroy());
-  exposeTodoReconnect(nativeApplication);
+  if (demoFromDocument() === "simple") {
+    const native = await startAngularMvvmApplication({
+      contract: SimpleTodoContract,
+    });
+    const angular = await bootstrapApplication(SimpleTodoComponent, {
+      providers: [
+        provideZonelessChangeDetection(),
+        ...provideAngularMvvmApplication(native),
+        ...provideSimpleTodoContract(native.store, native.contract),
+      ],
+    });
+    native.addCleanup(() => angular.destroy());
+    exposeTodoReconnect(native);
+  } else {
+    const native = await startAngularMvvmApplication({
+      contract: AdvancedTodoContract,
+    });
+    const angular = await bootstrapApplication(AdvancedTodoComponent, {
+      providers: [
+        provideZonelessChangeDetection(),
+        ...provideAngularMvvmApplication(native),
+        ...provideAdvancedTodoContract(native.store, native.contract),
+      ],
+    });
+    native.addCleanup(() => angular.destroy());
+    exposeTodoReconnect(native);
+  }
 } catch (error) {
   reportStartupFailure(error);
 }

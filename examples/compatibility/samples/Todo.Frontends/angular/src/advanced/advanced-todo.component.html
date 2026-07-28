@@ -1,0 +1,220 @@
+<div class="app-shell">
+  <todo-app-header
+    title="Advanced ToDo"
+    subtitle="Persistence, filtering, validation, cancellation, and Flow through Angular signals."
+  />
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <section class="card workspace-card mb-4">
+        <div class="card-body p-4">
+          <h2 class="h5 mb-3">Quick add</h2>
+          <form (submit)="add($event)">
+            <div class="row g-3">
+              <div class="col-md-7">
+                <label class="visually-hidden" for="advanced-title">Task title</label>
+                <input
+                  id="advanced-title"
+                  class="form-control"
+                  [class.is-invalid]="validation().length > 0"
+                  [value]="title()"
+                  maxlength="120"
+                  placeholder="Task title"
+                  (input)="setTitle($event)"
+                >
+                @if (validation().length) {
+                  <div class="invalid-feedback">{{ validation().join(" ") }}</div>
+                }
+              </div>
+              <div class="col-md-3">
+                <label class="visually-hidden" for="advanced-priority">Priority</label>
+                <select
+                  id="advanced-priority"
+                  class="form-select"
+                  [value]="priority()"
+                  (change)="setPriority($event)"
+                >
+                  <option>Low</option><option>Normal</option><option>High</option>
+                </select>
+              </div>
+              <div class="col-md-2 d-grid">
+                <button class="btn btn-primary" [disabled]="!canAdd()">Add</button>
+              </div>
+              <div class="col-12">
+                <label class="visually-hidden" for="advanced-notes">Notes</label>
+                <textarea
+                  id="advanced-notes"
+                  class="form-control"
+                  [value]="notes()"
+                  rows="2"
+                  placeholder="Notes (optional)"
+                  (input)="setNotes($event)"
+                ></textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+      <section class="card workspace-card">
+        <div class="card-body p-4">
+          <form class="row g-2 mb-4" (submit)="applyFilter($event)">
+            <div class="col-md-7">
+              <label class="visually-hidden" for="advanced-query">Search tasks</label>
+              <input
+                id="advanced-query"
+                class="form-control"
+                [value]="query()"
+                placeholder="Search title and notes"
+                (input)="setQuery($event)"
+              >
+            </div>
+            <div class="col-md-3">
+              <label class="visually-hidden" for="advanced-filter">Completion filter</label>
+              <select
+                id="advanced-filter"
+                class="form-select"
+                [value]="filter()"
+                (change)="setFilter($event)"
+              >
+                <option>All</option><option>Active</option><option>Completed</option>
+              </select>
+            </div>
+            <div class="col-md-2 d-grid">
+              <button class="btn btn-outline-primary">Apply</button>
+            </div>
+          </form>
+          <div class="list-group list-group-flush">
+            @for (item of items(); track item.id) {
+              <article
+                class="list-group-item px-0 todo-row"
+                [class.completed]="item.isCompleted"
+              >
+                <button
+                  class="btn btn-sm btn-outline-primary rounded-circle"
+                  [attr.aria-label]="item.isCompleted ? 'Mark active' : 'Mark complete'"
+                  (click)="todo.toggle.execute(item.id).completion"
+                >
+                  <i
+                    [class]="item.isCompleted ? 'fa-solid fa-check' : 'fa-regular fa-circle'"
+                    aria-hidden="true"
+                  ></i>
+                </button>
+                <div>
+                  <div class="d-flex gap-2 align-items-center">
+                    <strong class="todo-title">{{ item.title }}</strong>
+                    <span [class]="'badge priority-' + item.priority">{{ item.priority }}</span>
+                  </div>
+                  @if (item.notes) {
+                    <div class="small text-secondary todo-notes">{{ item.notes }}</div>
+                  }
+                </div>
+                <button
+                  class="btn btn-sm btn-outline-danger todo-actions"
+                  [attr.aria-label]="'Delete ' + item.title"
+                  (click)="todo.delete.execute(item.id).completion"
+                >
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                </button>
+              </article>
+            } @empty {
+              <p class="text-secondary text-center my-4">No tasks match this view.</p>
+            }
+          </div>
+        </div>
+      </section>
+    </div>
+    <aside class="col-lg-4">
+      <section class="card workspace-card mb-4">
+        <div class="card-body">
+          <div class="summary-grid mb-3">
+            <div class="summary-tile">
+              <span class="summary-value">{{ state().totalCount }}</span><small>Total</small>
+            </div>
+            <div class="summary-tile">
+              <span class="summary-value">{{ state().remainingCount }}</span><small>Active</small>
+            </div>
+            <div class="summary-tile">
+              <span class="summary-value">{{ state().completedCount }}</span><small>Done</small>
+            </div>
+          </div>
+          <div class="d-grid gap-2">
+            <button
+              class="btn btn-outline-primary"
+              [disabled]="state().isImporting"
+              (click)="todo.import.execute().completion"
+            >
+              <i class="fa-solid fa-download me-2" aria-hidden="true"></i>
+              {{ state().isImporting ? "Importing…" : "Import starter tasks" }}
+            </button>
+            @if (state().isImporting) {
+              <button
+                class="btn btn-outline-danger"
+                (click)="todo.cancelImport.execute().completion"
+              >Cancel import</button>
+            }
+            <button
+              class="btn btn-outline-secondary"
+              (click)="todo.clearCompleted.execute().completion"
+            >Clear completed</button>
+          </div>
+        </div>
+      </section>
+      <section class="card workspace-card mb-4">
+        <div class="card-body">
+          <h2 class="h5">Guided creation</h2>
+          @if (state().wizardStep === null) {
+            <button
+              class="btn btn-primary"
+              (click)="wizard(todo.wizardStart)"
+            >Start workflow</button>
+          } @else {
+            <p class="small text-secondary">
+              {{ wizardReview()
+                ? "Review the retained draft before saving."
+                : "Enter task details, then continue." }}
+            </p>
+            @for (issue of state().wizardIssues; track issue) {
+              <div class="alert alert-warning py-2">{{ issue }}</div>
+            }
+            <div class="d-flex flex-wrap gap-2">
+              @if (!wizardReview()) {
+                <button
+                  class="btn btn-primary"
+                  (click)="wizard(todo.wizardNext)"
+                >Next</button>
+              } @else {
+                <button
+                  class="btn btn-outline-secondary"
+                  (click)="wizard(todo.wizardBack)"
+                >Back</button>
+                <button
+                  class="btn btn-success"
+                  (click)="wizard(todo.wizardFinish)"
+                >Save</button>
+              }
+              <button
+                class="btn btn-outline-danger"
+                (click)="wizard(todo.wizardCancel)"
+              >Cancel</button>
+            </div>
+          }
+        </div>
+      </section>
+      <section class="card workspace-card">
+        <div class="card-body">
+          <h2 class="h5">Diagnostics</h2>
+          <div class="diagnostic-list list-group list-group-flush">
+            @for (entry of diagnostics(); track entry.at + $index) {
+              <div class="list-group-item px-0">
+                <div class="small">
+                  <span class="badge text-bg-light me-2">{{ entry.category }}</span>
+                  <time>{{ formatTime(entry.at) }}</time>
+                </div>
+                <div>{{ entry.message }}</div>
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>

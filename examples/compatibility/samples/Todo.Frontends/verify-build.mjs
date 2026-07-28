@@ -25,4 +25,7 @@ const advanced = await readFile(resolve(packageDirectory, "dist/advanced/index.h
 if (!simple.includes(`Simple ToDo · ${framework}`) || !advanced.includes(`Advanced ToDo · ${framework}`)) {
   throw new Error("Generated Todo entry documents do not identify the selected framework.");
 }
+if (!simple.includes(`<base href="../">`) || !advanced.includes(`<base href="../">`)) {
+  throw new Error("Generated Todo entry documents do not resolve root-owned toolkit assets.");
+}
 console.log(`${framework} Todo frontend build verified.`);
