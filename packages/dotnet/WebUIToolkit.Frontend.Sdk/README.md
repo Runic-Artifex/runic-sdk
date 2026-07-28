@@ -16,6 +16,7 @@ Configure a project with:
   <WebUIToolkitFrontendContractSource>$(MSBuildProjectDirectory)/frontend.json</WebUIToolkitFrontendContractSource>
   <WebUIToolkitFrontendContractCSharpOutput>$(MSBuildProjectDirectory)/FrontendContract.g.cs</WebUIToolkitFrontendContractCSharpOutput>
   <WebUIToolkitFrontendContractTypeScriptOutput>$(MSBuildProjectDirectory)/../frontend/contract.g.ts</WebUIToolkitFrontendContractTypeScriptOutput>
+  <WebUIToolkitFrontendContractReactOutput>$(MSBuildProjectDirectory)/../frontend/contract.react.g.ts</WebUIToolkitFrontendContractReactOutput>
 </PropertyGroup>
 ```
 
@@ -44,6 +45,12 @@ them explicitly with:
 ```console
 dotnet msbuild -t:WebUIToolkitFrontendGenerateContracts
 ```
+
+The React output shown above is optional. Vue, Svelte, and Angular use the
+matching `WebUIToolkitFrontendContractVueOutput`,
+`WebUIToolkitFrontendContractSvelteOutput`, and
+`WebUIToolkitFrontendContractAngularOutput` properties. Generation and
+`--verify` cover every configured output from the same symbol model.
 
 `WebUIToolkitFrontendContractVerifyCommand` remains an override point for
 applications with another contract compiler.

@@ -10,6 +10,7 @@ import {
   createReactMvvmStore,
   useMvvmCollection,
   useMvvmCommand,
+  useMvvmCommandFacade,
   useMvvmProperty,
   useMvvmSnapshot,
   useMvvmValidation,
@@ -32,8 +33,10 @@ function Consumer() {
   const label: string | undefined = useMvvmProperty(typedLabel);
   const items: readonly { readonly id: string }[] = useMvvmCollection(typedItems);
   const typedCommand = useMvvmCommand(typedSubmit);
+  const commandFacade = useMvvmCommandFacade(typedSubmit);
   const typedValidation = useMvvmValidation(typedAmount);
   void typedSubmit.execute(42);
+  void commandFacade.execute(42).completion;
   // @ts-expect-error generated command arguments stay strongly typed.
   void typedSubmit.execute("42");
   return (
@@ -41,6 +44,7 @@ function Consumer() {
       {snapshot.phase}:{String(property)}:{collection?.length}:{String(command?.canExecute)}:
       {validation?.length}:{amount}:{label}:{items.length}:{String(typedCommand?.canExecute)}:
       {typedValidation?.length}
+      :{commandFacade.status}:{String(commandFacade.result?.value)}
     </output>
   );
 }

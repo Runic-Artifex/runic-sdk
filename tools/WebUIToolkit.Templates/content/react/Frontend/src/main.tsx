@@ -1,26 +1,73 @@
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  ReactMvvmProvider,
+  startReactMvvmApplication,
+  useMvvmSnapshot,
+} from "@webuitoolkit/mvvm-react";
+import { CounterContract } from "./counter-contract.g";
+import { useCounterBindings } from "./counter-bindings.g";
 
-function App() {
+const mock = import.meta.env.MODE === "mock"
+  ? await import("./counter.mock")
+  : undefined;
+const application = await startReactMvvmApplication({
+  contract: CounterContract,
+  ...(mock === undefined
+    ? {}
+    : { channelFactory: mock.createCounterMockChannel }),
+});
+const root = createRoot(document.querySelector("#app")!);
+root.render(
+  <ReactMvvmProvider store={application.store}>
+    <Counter />
+  </ReactMvvmProvider>,
+);
+application.addCleanup(() => root.unmount());
+
+function Counter() {
+  const snapshot = useMvvmSnapshot();
+  const bindings = useCounterBindings(application.contract);
+  const errors = bindings.stepErrors ?? [];
   return (
-    <div className="container py-5">
-      <div className="card border-0 shadow">
-        <div className="card-body p-5">
-          <span className="badge text-bg-primary mb-3">React + CsWebUi</span>
-          <h1 className="display-5">WebUIToolkitStarter</h1>
-          <p className="lead mb-0">
-            Edit <code>Frontend/src/main.tsx</code> and save to exercise Vite HMR
-            inside the native window.
-          </p>
-        </div>
+    <main className="container py-5" style={{ maxWidth: 720 }}>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <span className="badge text-bg-primary">React + native C#</span>
+        <span className={`badge ${snapshot.synchronized ? "text-bg-success" : "text-bg-secondary"}`}>
+          {snapshot.synchronized ? `Connected · r${snapshot.revision}` : snapshot.phase}
+        </span>
       </div>
-    </div>
+      <section className="card border-0 shadow">
+        <div className="card-body p-5">
+          <p className="display-2 fw-semibold mb-2">{bindings.count ?? 0}</p>
+          <p className="lead text-secondary">{bindings.summary}</p>
+          <label className="form-label" htmlFor="step">Increment step</label>
+          <input
+            id="step"
+            type="number"
+            min="1"
+            max="10"
+            className={`form-control ${errors.length ? "is-invalid" : ""}`}
+            value={bindings.step ?? 1}
+            onChange={(event) => void application.contract.step.set(event.currentTarget.valueAsNumber)}
+          />
+          {errors.length > 0 && <div className="invalid-feedback">{errors.join(" ")}</div>}
+          <button
+            className="btn btn-primary w-100 mt-3"
+            disabled={!bindings.increment.canExecute || bindings.increment.isRunning}
+            onClick={() => void bindings.increment.execute().completion}
+          >
+            <i className="fa-solid fa-plus me-2" aria-hidden="true" />Increment in C#
+          </button>
+          <h2 className="h6 mt-4">History</h2>
+          <div className="d-flex flex-wrap gap-2">
+            {bindings.history.map((value, index) =>
+              <span className="badge text-bg-light" key={index}>{value}</span>)}
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
-
-createRoot(document.querySelector("#app")!).render(
-  <StrictMode><App /></StrictMode>,
-);

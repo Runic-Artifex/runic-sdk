@@ -1,10 +1,11 @@
 # WebUIToolkit.Hosting.Abstractions
 
 `WebUIToolkit.Hosting.Abstractions` contains the dependency-neutral vocabulary shared
-by the Hosting lifecycle, composition kernel, build tooling, and future adapters. The
-assembly targets the repository's `net10.0` policy and references only the BCL. It does
-not reference MVVM, CommandLine, Microsoft.Extensions Hosting/DI/logging, a native
-runtime, or external lowercase `cs-webui`.
+by the Hosting lifecycle, composition kernel, build tooling, and adapters. The
+assembly targets the repository's `net10.0` policy and references only the BCL plus
+the frontend-neutral `WebUIToolkit.Desktop` contracts. It does not reference MVVM,
+CommandLine, Microsoft.Extensions Hosting/DI/logging, a native runtime, or external
+lowercase `cs-webui`.
 
 The complete declared surface is recorded in [PUBLIC-API.md](PUBLIC-API.md).
 
@@ -18,7 +19,8 @@ The complete declared surface is recorded in [PUBLIC-API.md](PUBLIC-API.md).
 - Assets: normalized manifest-relative metadata, deterministic manifests, and a
   manifest/validate/open-only provider seam.
 - Browser hosting: validated host/window options, factory/host/window lifetime seams,
-  close signaling, and dispatcher-affine asynchronous work without native handles.
+  close signaling, dispatcher-affine asynchronous work, and an optional desktop
+  adapter seam without native handles.
 - Observability: ordered sanitized lifecycle events and a non-owning sink boundary;
   the kernel queues delivery so sink latency and failures are isolated from lifecycle work.
 
@@ -111,10 +113,11 @@ codes become `null`.
 
 ## Dependency manifest and Wave C boundary
 
-`WebUIToolkit.Hosting.Abstractions` has no authored project or runtime-package
-dependency. Its shipping-project lock records only SDK-supplied ILLink build tooling.
-The runtime kernel and deterministic manifest builder depend inward on it;
-generator/build tooling is not a runtime dependency of this assembly.
+`WebUIToolkit.Hosting.Abstractions` depends only on the authored
+`WebUIToolkit.Desktop` contract package. Its remaining shipping-project lock entries
+are SDK-supplied ILLink build tooling. The runtime kernel and deterministic manifest
+builder depend inward on it; generator/build tooling is not a runtime dependency of
+this assembly.
 
 Wave C supplies the Generic Host, MVVM/root-session, WebUi/external `cs-webui`,
 CommandLine, structured logging, and runtime asset-provider implementations. No

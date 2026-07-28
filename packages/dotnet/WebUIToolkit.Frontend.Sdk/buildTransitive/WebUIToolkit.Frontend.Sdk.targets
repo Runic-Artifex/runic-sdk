@@ -4,8 +4,20 @@
          Compose commands here so project-declared workspace and contract paths are visible. -->
     <WebUIToolkitFrontendBuildCommand
       Condition="'$(WebUIToolkitFrontendBuildCommand)' == ''">npm run build --workspace $(WebUIToolkitFrontendWorkspace) $(WebUIToolkitFrontendBuildArguments)</WebUIToolkitFrontendBuildCommand>
+    <WebUIToolkitFrontendDevServerKind
+      Condition="'$(WebUIToolkitFrontendDevServerKind)' == '' and
+                 '$(WebUIToolkitFrontendViteDevServerEnabled)' == 'true'">vite</WebUIToolkitFrontendDevServerKind>
+    <WebUIToolkitFrontendContractReactArgument
+      Condition="'$(WebUIToolkitFrontendContractReactOutput)' != ''"> --react &quot;$(WebUIToolkitFrontendContractReactOutput)&quot;</WebUIToolkitFrontendContractReactArgument>
+    <WebUIToolkitFrontendContractVueArgument
+      Condition="'$(WebUIToolkitFrontendContractVueOutput)' != ''"> --vue &quot;$(WebUIToolkitFrontendContractVueOutput)&quot;</WebUIToolkitFrontendContractVueArgument>
+    <WebUIToolkitFrontendContractSvelteArgument
+      Condition="'$(WebUIToolkitFrontendContractSvelteOutput)' != ''"> --svelte &quot;$(WebUIToolkitFrontendContractSvelteOutput)&quot;</WebUIToolkitFrontendContractSvelteArgument>
+    <WebUIToolkitFrontendContractAngularArgument
+      Condition="'$(WebUIToolkitFrontendContractAngularOutput)' != ''"> --angular &quot;$(WebUIToolkitFrontendContractAngularOutput)&quot;</WebUIToolkitFrontendContractAngularArgument>
+    <WebUIToolkitFrontendContractFrameworkArguments>$(WebUIToolkitFrontendContractReactArgument)$(WebUIToolkitFrontendContractVueArgument)$(WebUIToolkitFrontendContractSvelteArgument)$(WebUIToolkitFrontendContractAngularArgument)</WebUIToolkitFrontendContractFrameworkArguments>
     <WebUIToolkitFrontendContractVerifyCommand
-      Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' == '' and '$(WebUIToolkitFrontendContractSource)' != ''">node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot; --verify</WebUIToolkitFrontendContractVerifyCommand>
+      Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' == '' and '$(WebUIToolkitFrontendContractSource)' != ''">node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot;$(WebUIToolkitFrontendContractFrameworkArguments) --verify</WebUIToolkitFrontendContractVerifyCommand>
     <WebUIToolkitFrontendInstallCacheDirectory
       Condition="'$(WebUIToolkitFrontendInstallCacheDirectory)' == ''">$(WebUIToolkitFrontendWorkspaceRoot)/obj/WebUIToolkit.Frontend.Sdk/install</WebUIToolkitFrontendInstallCacheDirectory>
     <WebUIToolkitFrontendOutputDirectory
@@ -28,6 +40,15 @@
       Condition="'$(WebUIToolkitFrontendLockFile)' == '' and
                  '$(WebUIToolkitFrontendPackageManager)' == 'npm'">$(WebUIToolkitFrontendWorkspaceRoot)/package-lock.json</WebUIToolkitFrontendLockFile>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
+                        '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">
+    <Content Include="$(WebUIToolkitFrontendBridgeAsset)"
+             Link="$(WebUIToolkitFrontendWebRoot)/vendor/webuitoolkit-mvvm-cswebui.mjs"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             Condition="Exists('$(WebUIToolkitFrontendBridgeAsset)')" />
+  </ItemGroup>
 
   <Target Name="WebUIToolkitFrontendValidate"
           BeforeTargets="PrepareForBuild"
@@ -52,7 +73,7 @@
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendContractSource)' != ''">
-    <Exec Command="node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot;"
+    <Exec Command="node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot;$(WebUIToolkitFrontendContractFrameworkArguments)"
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
   </Target>
 
@@ -88,13 +109,6 @@
           Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' != ''" />
     <Exec Command="$(WebUIToolkitFrontendBuildCommand)"
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
-    <ItemGroup>
-      <Content Include="$(WebUIToolkitFrontendBridgeAsset)"
-               Link="$(WebUIToolkitFrontendWebRoot)/vendor/webuitoolkit-mvvm-cswebui.mjs"
-               CopyToOutputDirectory="PreserveNewest"
-               CopyToPublishDirectory="PreserveNewest"
-               Condition="Exists('$(WebUIToolkitFrontendBridgeAsset)')" />
-    </ItemGroup>
   </Target>
 
   <Target Name="WebUIToolkitFrontendCopyToOutput"

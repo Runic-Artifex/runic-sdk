@@ -23,13 +23,29 @@ internal interface ICsWebUiWindow : IDisposable
 
     void SetPublic(bool isPublic);
 
+    void SetProfile(string name, string storagePath);
+
     IDisposable BindEvents(Action<WebUiEventType> callback);
+
+    IDisposable BindDesktopMessages(Action<string> callback);
 
     void Show(string relativePath, CsWebUiPresentationMode presentationMode, WebUiBrowser browser);
 
     void Navigate(string relativePath);
 
     void SetTitle(string title);
+
+    void Focus();
+
+    void Minimize();
+
+    void Maximize();
+
+    void SetPosition(uint x, uint y);
+
+    void Center();
+
+    void RunJavaScript(string script);
 
     void Close();
 }
@@ -78,10 +94,26 @@ internal sealed class NativeCsWebUiWindow : ICsWebUiWindow
 
     public void SetPublic(bool isPublic) => _window.SetPublic(isPublic);
 
+    public void SetProfile(string name, string storagePath) => _window.SetProfile(name, storagePath);
+
     public IDisposable BindEvents(Action<WebUiEventType> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
         return _window.Bind(string.Empty, webUiEvent => callback(webUiEvent.EventType));
+    }
+
+    public IDisposable BindDesktopMessages(Action<string> callback)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        return _window.Bind(
+            "__webuitoolkit_desktop_result",
+            webUiEvent =>
+            {
+                if (webUiEvent.ArgumentCount == 1)
+                {
+                    callback(webUiEvent.GetString());
+                }
+            });
     }
 
     public void Show(
@@ -114,6 +146,18 @@ internal sealed class NativeCsWebUiWindow : ICsWebUiWindow
 
     public void SetTitle(string title) =>
         _window.RunJavaScript($"document.title = {JsonSerializer.Serialize(title, CsWebUiJsonContext.Default.String)};");
+
+    public void Focus() => _window.Focus();
+
+    public void Minimize() => _window.Minimize();
+
+    public void Maximize() => _window.Maximize();
+
+    public void SetPosition(uint x, uint y) => _window.SetPosition(x, y);
+
+    public void Center() => _window.Center();
+
+    public void RunJavaScript(string script) => _window.RunJavaScript(script);
 
     public void Close() => _window.Close();
 

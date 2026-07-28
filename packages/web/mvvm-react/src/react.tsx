@@ -3,17 +3,22 @@ import type {
   MemberIdentifier,
   MvvmCollection,
   MvvmCommand,
+  MvvmCommandExecution,
+  MvvmCommandExecutionSnapshot,
   MvvmCommandWithArgument,
   MvvmProperty,
   MvvmProjectedCommandState,
   MvvmProjectionSnapshot,
   MvvmReadonlyProperty,
+  CancelResult,
 } from "@webuitoolkit/mvvm";
+import { createMvvmCommandExecution } from "@webuitoolkit/mvvm";
 import {
   createContext,
   createElement,
   useContext,
   useEffect,
+  useMemo,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -101,6 +106,55 @@ export function useMvvmCommand(
     ? memberOrCommand
     : memberOrCommand.member;
   return useMvvmSnapshot().commands.get(member);
+}
+
+export interface ReactMvvmCommandFacade<
+  TArgument = void,
+  TResult extends JsonValue = JsonValue,
+> extends MvvmCommandExecutionSnapshot<TResult> {
+  readonly canExecute: boolean;
+  readonly projectedRunning: boolean;
+  execute: MvvmCommandExecution<TArgument, TResult>["execute"];
+  cancel(): Promise<CancelResult | undefined>;
+  reset(): void;
+}
+
+/**
+ * Composes projected command state with per-invocation result, failure,
+ * cancellation, and transition state.
+ */
+export function useMvvmCommandFacade<TResult>(
+  command: MvvmCommand<TResult>,
+): ReactMvvmCommandFacade<void, TResult & JsonValue>;
+export function useMvvmCommandFacade<TArgument, TResult>(
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+): ReactMvvmCommandFacade<TArgument, TResult & JsonValue>;
+export function useMvvmCommandFacade<TArgument, TResult>(
+  command:
+    | MvvmCommand<TResult>
+    | MvvmCommandWithArgument<TArgument, TResult>,
+): ReactMvvmCommandFacade<TArgument, TResult & JsonValue> {
+  const execution = useMemo(
+    () => createMvvmCommandExecution(
+      command as MvvmCommandWithArgument<TArgument, TResult & JsonValue>,
+    ),
+    [command],
+  );
+  useEffect(() => () => execution.dispose(), [execution]);
+  const lifecycle = useSyncExternalStore(
+    execution.subscribe.bind(execution),
+    () => execution.snapshot,
+    () => execution.snapshot,
+  );
+  const projected = useMvvmCommand(command.member);
+  return {
+    ...lifecycle,
+    canExecute: projected?.canExecute === true,
+    projectedRunning: projected?.isExecuting === true,
+    execute: execution.execute,
+    cancel: () => execution.cancel(),
+    reset: () => execution.reset(),
+  };
 }
 
 export function useMvvmValidation<T>(

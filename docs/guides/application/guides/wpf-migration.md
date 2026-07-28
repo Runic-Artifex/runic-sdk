@@ -17,13 +17,15 @@ wants browser-native component authoring and is comfortable maintaining a
 separate frontend project.
 
 Both tracks use the same ViewModels, collections, commands, Flow services,
-text resources, CsWebUi host, and desktop capability services.
+text resources, CsWebUi host, and `WebUIToolkit.Desktop` capability services.
+ViewModels consume those typed boundaries rather than WPF, CsWebUi, browser,
+DOM, or operating-system objects.
 
 ## Concept mapping
 
 | WPF | WebUIToolkit |
 | --- | --- |
-| `Window` / `Application` | `WebUiWindow`, `WebUiApplication`, and `WebUIToolkit.Hosting.CsWebUi` |
+| `Window` / `Application` | `IDesktopWindow`, `IDesktopApplicationLifetime`, and `IDesktopWindowManager` |
 | `DataContext` | One explicitly registered ViewModel contract/session |
 | `{Binding Path=...}` | Generated `.cwhtml` binding or generated TypeScript projection |
 | `INotifyPropertyChanged` | CommunityToolkit or ReactiveUI property binding |
@@ -32,9 +34,9 @@ text resources, CsWebUi host, and desktop capability services.
 | `INotifyDataErrorInfo` | Validation projection rendered beside the associated field |
 | `DataTemplate` | Compiled fragment/component selected by a closed ViewModel contract |
 | `ContentControl` / regions | Flow navigation region and frontend presenter |
-| modal `Window.ShowDialog` | Typed Flow dialog and CsWebUi presenter |
+| modal `Window.ShowDialog` | Typed Flow dialog projected through `ObservableDialogPresenter` |
 | `NavigationService` | `WebUIToolkit.MVVM.Navigation` |
-| `Dispatcher` | Host-owned `IUiDispatcher` for native window operations |
+| `Dispatcher` | `IDesktopDispatcher` |
 | `.resx` / resource lookup | `WebUIToolkit.TextResources` generated catalog |
 | styles and resource dictionaries | Bootstrap variables/components or a consumer design system |
 | value converter | Typed ViewModel property, generated render helper, or frontend formatter |
@@ -95,19 +97,27 @@ disposal. These behaviors matter more than matching the old window chrome.
 ### 5. Move desktop capabilities behind services
 
 Replace direct WPF APIs with application-owned interfaces before selecting the
-CsWebUi implementation. Typical boundaries include:
+CsWebUi implementation. The high-level CsWebUi builder registers:
 
-- clipboard;
-- open/save file selection;
-- drag and drop;
-- notifications and tray integration;
-- browser profile and storage;
-- focus and keyboard accelerators;
-- window size, position, minimize/maximize, and multi-window ownership;
-- external URL launch.
+- `IDesktopClipboard` and bounded-content `IDesktopFileDialogs`;
+- `IDesktopDropTarget`, `IDesktopNotifications`, and
+  `IDesktopExternalLauncher`;
+- `IDesktopBrowserProfile` and `IDesktopBrowserStorage`;
+- `IDesktopFocus`, `IDesktopKeyboardAccelerators`, and
+  `IDesktopDispatcher`;
+- `IDesktopWindow` for focus, size, position, centering, and state;
+- `IDesktopWindowManager` for application-owned secondary windows; and
+- `IDesktopApplicationLifetime` for close guards and stopping cancellation.
 
 This keeps ViewModels testable and makes unsupported platform behavior
-explicit.
+explicit. Inspect `IDesktopCapabilities.Report` before optional behavior.
+Clipboard and notification calls may report `PermissionRequired`; the browser
+then applies its normal permission policy.
+
+Programmatic close evaluates the registered guards before cancellation and
+native close. If the operating system or embedded browser has already forced a
+disconnect, CsWebUi cannot retroactively veto it; the host immediately cancels
+application work and performs deterministic teardown.
 
 ### 6. Validate the native application
 

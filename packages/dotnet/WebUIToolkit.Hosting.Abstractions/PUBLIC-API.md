@@ -248,13 +248,15 @@ public sealed record BrowserWindowOptions
         string title,
         int width = 1024,
         int height = 768,
-        bool isResizable = true);
+        bool isResizable = true,
+        WebUIToolkit.Desktop.DesktopBrowserProfile? browserProfile = null);
 
     public string WindowId { get; }
     public string Title { get; }
     public int Width { get; }
     public int Height { get; }
     public bool IsResizable { get; }
+    public WebUIToolkit.Desktop.DesktopBrowserProfile? BrowserProfile { get; }
 }
 
 public interface IBrowserHostFactory
@@ -290,6 +292,36 @@ public interface IUiDispatcher
         CancellationToken cancellationToken);
     ValueTask<TResult> InvokeAsync<TResult>(
         Func<CancellationToken, ValueTask<TResult>> callback,
+        CancellationToken cancellationToken);
+}
+
+public sealed class BrowserDesktopEventArgs : EventArgs
+{
+    public BrowserDesktopEventArgs(string name, string id, string payloadJson);
+    public string Name { get; }
+    public string Id { get; }
+    public string PayloadJson { get; }
+}
+
+public interface IBrowserWindowDesktopAdapter
+{
+    event EventHandler<BrowserDesktopEventArgs>? DesktopEventReceived;
+    WebUIToolkit.Desktop.DesktopCapabilityReport Capabilities { get; }
+    ValueTask FocusWindowAsync(CancellationToken cancellationToken);
+    ValueTask FocusElementAsync(string elementId, CancellationToken cancellationToken);
+    ValueTask SetSizeAsync(
+        WebUIToolkit.Desktop.DesktopSize size,
+        CancellationToken cancellationToken);
+    ValueTask SetPositionAsync(
+        WebUIToolkit.Desktop.DesktopPosition position,
+        CancellationToken cancellationToken);
+    ValueTask CenterAsync(CancellationToken cancellationToken);
+    ValueTask SetStateAsync(
+        WebUIToolkit.Desktop.DesktopWindowState state,
+        CancellationToken cancellationToken);
+    ValueTask<string> InvokeBrowserAsync(
+        string operation,
+        string payloadJson,
         CancellationToken cancellationToken);
 }
 

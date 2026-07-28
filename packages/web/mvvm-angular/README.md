@@ -19,6 +19,10 @@ readonly amountErrors = this.mvvm.validation(contract.amount);
 The resulting signals preserve the generated property and collection types.
 Numeric member identifiers remain supported for dynamic scenarios, and
 commands retain their typed `execute` method on the generated handle.
+`commandFacade` adds signal-native result, error, cancellation, and transition
+state. Generated `{Contract}ContractService` classes aggregate all member
+signals, and `provide{Contract}Contract` makes each service injectable in a
+standalone application.
 
 The supported peer range is Angular 20.3.26 through Angular 22.x. G6 verifies
 both endpoints with the Angular compiler in production mode and executes the

@@ -27,5 +27,10 @@
       Condition="'$(WebUIToolkitFrontendViteDevServerEnabled)' == ''">false</WebUIToolkitFrontendViteDevServerEnabled>
     <WebUIToolkitFrontendViteDevServerEntry
       Condition="'$(WebUIToolkitFrontendViteDevServerEntry)' == ''">/src/main.js</WebUIToolkitFrontendViteDevServerEntry>
+    <WebUIToolkitFrontendDevServerKind
+      Condition="'$(WebUIToolkitFrontendDevServerKind)' == '' and
+                 '$(WebUIToolkitFrontendViteDevServerEnabled)' == 'true'">vite</WebUIToolkitFrontendDevServerKind>
+    <WebUIToolkitFrontendDevServerDocument
+      Condition="'$(WebUIToolkitFrontendDevServerDocument)' == ''">index.html</WebUIToolkitFrontendDevServerDocument>
   </PropertyGroup>
 </Project>

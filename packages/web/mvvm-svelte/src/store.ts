@@ -3,6 +3,8 @@ import type {
   MemberIdentifier,
   MvvmCollection,
   MvvmCommand,
+  MvvmCommandExecution,
+  MvvmCommandExecutionSnapshot,
   MvvmCommandWithArgument,
   MvvmProperty,
   MvvmProjectedCommandInvocation,
@@ -11,9 +13,17 @@ import type {
   MvvmProjectionSnapshot,
   MvvmReadonlyProperty,
   Revision,
+  CancelResult,
 } from "@webuitoolkit/mvvm";
+import { createMvvmCommandExecution } from "@webuitoolkit/mvvm";
 import { onDestroy } from "svelte";
-import { derived, type Readable, type Subscriber, type Unsubscriber } from "svelte/store";
+import {
+  derived,
+  readable,
+  type Readable,
+  type Subscriber,
+  type Unsubscriber,
+} from "svelte/store";
 
 /** Controls whether disposing the store also disposes its input projection. */
 export interface SvelteMvvmStoreOptions {
@@ -101,6 +111,64 @@ export function derivedMvvmCommand(
   command: MvvmCommand<unknown> | MvvmCommandWithArgument<unknown, unknown>,
 ): Readable<Readonly<MvvmProjectedCommandState> | undefined> {
   return derived(store, (snapshot) => snapshot.commands.get(command.member));
+}
+
+export interface SvelteMvvmCommandSnapshot<TResult extends JsonValue = JsonValue>
+  extends MvvmCommandExecutionSnapshot<TResult>
+{
+  readonly canExecute: boolean;
+  readonly projectedRunning: boolean;
+}
+
+export interface SvelteMvvmCommandFacade<
+  TArgument = void,
+  TResult extends JsonValue = JsonValue,
+> extends Readable<SvelteMvvmCommandSnapshot<TResult>>
+{
+  execute: MvvmCommandExecution<TArgument, TResult>["execute"];
+  cancel(): Promise<CancelResult | undefined>;
+  reset(): void;
+  dispose(): void;
+}
+
+/**
+ * Creates a named-store-friendly command facade. The returned readable
+ * combines host command state with local invocation lifecycle and result data.
+ */
+export function createSvelteMvvmCommandFacade<TResult>(
+  store: SvelteMvvmStore,
+  command: MvvmCommand<TResult>,
+): SvelteMvvmCommandFacade<void, TResult & JsonValue>;
+export function createSvelteMvvmCommandFacade<TArgument, TResult>(
+  store: SvelteMvvmStore,
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+): SvelteMvvmCommandFacade<TArgument, TResult & JsonValue>;
+export function createSvelteMvvmCommandFacade<TArgument, TResult>(
+  store: SvelteMvvmStore,
+  command:
+    | MvvmCommand<TResult>
+    | MvvmCommandWithArgument<TArgument, TResult>,
+): SvelteMvvmCommandFacade<TArgument, TResult & JsonValue> {
+  const execution = createMvvmCommandExecution(
+    command as MvvmCommandWithArgument<TArgument, TResult & JsonValue>,
+  );
+  const lifecycle = readable(execution.snapshot, (set) =>
+    execution.subscribe(() => set(execution.snapshot)));
+  const combined = derived(
+    [store, lifecycle],
+    ([snapshot, executionSnapshot]): SvelteMvvmCommandSnapshot<TResult & JsonValue> => ({
+      ...executionSnapshot,
+      canExecute: snapshot.commands.get(command.member)?.canExecute === true,
+      projectedRunning: snapshot.commands.get(command.member)?.isExecuting === true,
+    }),
+  );
+  return {
+    subscribe: combined.subscribe,
+    execute: execution.execute,
+    cancel: () => execution.cancel(),
+    reset: () => execution.reset(),
+    dispose: () => execution.dispose(),
+  };
 }
 
 /** Creates a derived readable for validation associated with a generated handle. */

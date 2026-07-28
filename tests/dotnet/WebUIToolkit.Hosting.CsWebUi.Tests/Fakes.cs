@@ -31,6 +31,7 @@ internal sealed class FakeRuntime : ICsWebUiRuntime
 internal sealed class FakeWindow(bool configurationHookSupplied) : ICsWebUiWindow
 {
     private Action<WebUiEventType>? _events;
+    private Action<string>? _desktopMessages;
 
     internal bool ConfigurationHookSupplied { get; } = configurationHookSupplied;
 
@@ -43,6 +44,10 @@ internal sealed class FakeWindow(bool configurationHookSupplied) : ICsWebUiWindo
     internal bool IsResizable { get; private set; }
 
     internal bool IsPublic { get; private set; } = true;
+
+    internal string? ProfileName { get; private set; }
+
+    internal string? ProfilePath { get; private set; }
 
     internal string? ShownPath { get; private set; }
 
@@ -58,6 +63,22 @@ internal sealed class FakeWindow(bool configurationHookSupplied) : ICsWebUiWindo
 
     internal int DisposeCount { get; private set; }
 
+    internal int FocusCount { get; private set; }
+
+    internal int MinimizeCount { get; private set; }
+
+    internal int MaximizeCount { get; private set; }
+
+    internal uint PositionX { get; private set; }
+
+    internal uint PositionY { get; private set; }
+
+    internal int CenterCount { get; private set; }
+
+    internal List<string> Scripts { get; } = [];
+
+    internal Func<string, string?>? DesktopScriptResponder { get; set; }
+
     public void SetRootFolder(string path) => RootFolder = path;
 
     public void SetSize(uint width, uint height)
@@ -70,10 +91,22 @@ internal sealed class FakeWindow(bool configurationHookSupplied) : ICsWebUiWindo
 
     public void SetPublic(bool isPublic) => IsPublic = isPublic;
 
+    public void SetProfile(string name, string storagePath)
+    {
+        ProfileName = name;
+        ProfilePath = storagePath;
+    }
+
     public IDisposable BindEvents(Action<WebUiEventType> callback)
     {
         _events = callback;
         return new CallbackBinding(() => _events = null);
+    }
+
+    public IDisposable BindDesktopMessages(Action<string> callback)
+    {
+        _desktopMessages = callback;
+        return new CallbackBinding(() => _desktopMessages = null);
     }
 
     public void Show(
@@ -90,11 +123,37 @@ internal sealed class FakeWindow(bool configurationHookSupplied) : ICsWebUiWindo
 
     public void SetTitle(string title) => Title = title;
 
+    public void Focus() => FocusCount++;
+
+    public void Minimize() => MinimizeCount++;
+
+    public void Maximize() => MaximizeCount++;
+
+    public void SetPosition(uint x, uint y)
+    {
+        PositionX = x;
+        PositionY = y;
+    }
+
+    public void Center() => CenterCount++;
+
+    public void RunJavaScript(string script)
+    {
+        Scripts.Add(script);
+        string? response = DesktopScriptResponder?.Invoke(script);
+        if (response is not null)
+        {
+            _desktopMessages?.Invoke(response);
+        }
+    }
+
     public void Close() => CloseCount++;
 
     public void Dispose() => DisposeCount++;
 
     internal void Raise(WebUiEventType eventType) => _events?.Invoke(eventType);
+
+    internal void RaiseDesktop(string message) => _desktopMessages?.Invoke(message);
 
     private sealed class CallbackBinding(Action dispose) : IDisposable
     {

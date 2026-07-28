@@ -1,5 +1,7 @@
 using System;
 using CsWebUi;
+using Microsoft.Extensions.DependencyInjection;
+using WebUIToolkit.Desktop;
 using WebUIToolkit.Hosting;
 using WebUIToolkit.Hosting.WebUi;
 
@@ -84,6 +86,36 @@ public sealed class CsWebUiAppFrontendBuilder
         }
 
         _feature.FrontendName = frontendName;
+        var desktop = new CsWebUiDesktopServices(options.BrowserWindow.BrowserProfile);
+        _application.Services.AddSingleton(desktop);
+        _application.Services.AddSingleton<IDesktopCapabilities>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopApplicationLifetime>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopWindow>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopFocus>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopDispatcher>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopKeyboardAccelerators>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopClipboard>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopFileDialogs>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopDropTarget>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopExternalLauncher>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopNotifications>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopBrowserProfile>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopBrowserStorage>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
+        _application.Services.AddSingleton<IDesktopWindowManager>(
+            static services => services.GetRequiredService<CsWebUiDesktopServices>());
         var stop = new ApplicationStopControllerBinding();
         var endpoint = new FrontendAssetEndpoint(
             options.Assets,
@@ -100,7 +132,8 @@ public sealed class CsWebUiAppFrontendBuilder
                 options.BrowserHost,
                 options.BrowserWindow,
                 options.SessionCloseTimeout,
-                options.WindowCloseTimeout)));
+                options.WindowCloseTimeout),
+            desktop));
         _application.OnBuilt(application => stop.Bind(application.StopController));
         return _application;
     }

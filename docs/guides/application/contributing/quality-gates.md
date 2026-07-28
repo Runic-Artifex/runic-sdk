@@ -41,6 +41,14 @@ task. The common harness also:
   weak reference, and treats browser/process/profile cleanup failures as gate
   failures.
 
+`eng/verify-todo-frontend-hmr.ps1` exercises the coordinated development path
+separately. It starts each real frontend development server, creates a Todo in
+the native C# ViewModel, applies a live edit to the shared stylesheet, waits
+for the framework's HMR result in the existing native document, and requires
+the exact ViewModel-backed Todo to remain. React, Vue, and Svelte run through
+Vite; Angular runs through `ng serve`. The stylesheet is restored in the
+harness cleanup path even when a gate fails.
+
 Run `eng/verify-todo-frontends-native-aot.ps1` in the Nix/direnv shell for the
 release lane. It full-trim Native-AOT-publishes all four framework hosts with
 owned trim/AOT warnings promoted to errors, then runs both Todo levels from
@@ -51,11 +59,35 @@ wall-clock cost; no browser or AOT case is skipped after the two pinned
 prerequisites have been admitted.
 
 Both compiled `.cwhtml` Todo levels now have managed and Chromium/Native-AOT
-gates, and the framework adapters use the proven native path. The remaining
-editor tooling, WPF capability expansion, and
-asset/VFS extraction remain roadmap work. The older G0–G7 sections below
-preserve cumulative historical release evidence; their existence does not mark
-those re-centered product outcomes complete.
+gates, and the framework adapters use the proven native path. The WPF
+capability layer, frontend ergonomics, reusable sample components, and
+in-repository asset/VFS extraction are implemented. Cross-frontend
+developer-experience parity is now the next in-repository roadmap priority;
+editor tooling remains deferred until it is complete. The older G0–G7 sections
+below preserve cumulative historical release evidence; their existence does
+not mark other product outcomes complete.
+
+## Reordered roadmap acceptance
+
+- `tests/WebUIToolkit.Desktop.Tests` covers complete capability reports,
+  browser operations, guarded close, stopping cancellation, and deterministic
+  secondary-window ownership.
+- `tests/WebUIToolkit.Hosting.CsWebUi.NativeE2E` drives pinned Chromium through
+  both binary MVVM and the browser-storage desktop bridge.
+- `tests/WebUIToolkit.MVVM.Flow.Tests` covers observable navigation/dialog
+  outlets and reuse of current navigation guards for application close.
+- `npm test` builds and tests the direct TypeScript client plus React, Vue,
+  Svelte, and Angular packages and Todo consumers.
+- `npm run verify:frontend-production` performs two clean builds and enforces
+  deterministic raw, gzip-9, and Brotli-11 budgets.
+- `tests/WebUIToolkit.Samples.Cwhtml.Components.Tests` renders Bootstrap and
+  deliberately non-Bootstrap component compositions.
+- `tests/WebUIToolkit.Assets.Tests` covers hostile paths, deterministic
+  manifests, embedded assets, development refresh/drift, symbolic links,
+  cancellation, and dependency neutrality.
+- `tests/WebUIToolkit.Assets.PackageConsumer/Test-PackageConsumer.sh` packs the
+  independent asset package, restores it in isolation, Native-AOT publishes,
+  and executes it.
 
 ## First-run developer experience
 
@@ -76,7 +108,7 @@ Priority 2 is covered by focused executable suites and repository checks:
   pack and its acceptance project inside the canonical solution and ownership
   graph.
 
-## Planned cwhtml developer-experience acceptance
+## Current cwhtml developer-experience acceptance
 
 The cwhtml DX track adds a consumer-facing gate around the
 [cwhtml development guide](../guides/cwhtml.md). It
@@ -94,16 +126,15 @@ must prove, on SimpleTodo and AdvancedTodo, that:
 
 Exact latency budgets will be frozen only after repeatable measurements exist
 for the declared reference machine and application. Diagnostic identity and
-source locations must already agree across build, command line, browser
-overlay, and editor before the phase is accepted.
+source locations already agree across build, command line, and browser
+overlay; the deferred editor must consume the same contracts.
 
 The SimpleTodo native Chromium gate now covers all three delivered
 live-feedback paths: CSS/JavaScript HMR, the versioned cwhtml diagnostics
 overlay, and compatible renderer replacement with affected-fragment refresh.
 It proves that the replacement renders new output only after .NET Hot Reload
 acknowledges it, uses the private CsWebUi binding, and retains the browser
-document and ViewModel state. AdvancedTodo parity and editor diagnostic parity
-remain acceptance work.
+document and ViewModel state. Editor diagnostic parity remains acceptance work.
 
 ## G0: Repository and identity
 

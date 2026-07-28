@@ -27,6 +27,8 @@ internal static class Program
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
             ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
             ("Vite startup skips the production frontend build", ViteStartupSkipsProductionBuild),
+            ("Angular server arguments use the supported development builder", AngularArgumentsAreExplicit),
+            ("development bootstrap preserves private binding and remote assets", DevelopmentBootstrapIsNativeSafe),
             ("Vite bridge forwards cwhtml diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
             ("cwhtml reload comparison separates renderer edits from shape edits", CwhtmlReloadComparisonIsSafe),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
@@ -211,6 +213,103 @@ internal static class Program
                 "The initial Vite development build still enables production assets.");
         }
     }
+
+    private static void AngularArgumentsAreExplicit()
+    {
+        DevProjectConfiguration configuration = CreateDevelopmentServerConfiguration(
+            "angular",
+            "simple/index.html;advanced/index.html");
+        SequenceEqual(
+            [
+                "run",
+                "dev",
+                "--workspace",
+                "@example/app",
+                "--",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "43124",
+                "--hmr",
+                "--live-reload",
+            ],
+            AngularDevelopmentServer.CreateArguments(configuration, 43124));
+
+        DevOptions options = DevOptions.Parse(["dev"]);
+        IReadOnlyList<string> build =
+            DevApplication.CreateBuildArguments(configuration, options);
+        if (!build.Contains(
+                "-property:WebUIToolkitFrontendBuild=false",
+                StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Angular development startup still enables a production frontend build.");
+        }
+    }
+
+    private static void DevelopmentBootstrapIsNativeSafe()
+    {
+        using var workspace = new TestWorkspace();
+        string target = Directory.CreateDirectory(
+            Path.Combine(workspace.Root, "bin")).FullName;
+        DevProjectConfiguration configuration = CreateDevelopmentServerConfiguration(
+            "vite",
+            "simple/index.html;advanced/index.html",
+            target);
+        var origin = new Uri("http://127.0.0.1:43125/");
+        const string source =
+            """
+            <!doctype html>
+            <html><head><base href="/"><script src="/webui.js"></script>
+            <script type="module">import { refresh } from "/@react-refresh";</script></head>
+            <body><main id="app"></main><script type="module" src="/src/main.ts"></script></body></html>
+            """;
+
+        foreach (string document in configuration.DevelopmentServerDocuments)
+        {
+            FrontendDevelopmentDocument.Write(configuration, origin, document, source);
+        }
+
+        string simple = File.ReadAllText(
+            Path.Combine(target, "www", "simple", "index.html"));
+        string advanced = File.ReadAllText(
+            Path.Combine(target, "www", "advanced", "index.html"));
+        Contains(simple, "<script src=\"/webui.js\"></script>");
+        Contains(simple, "http://127.0.0.1:43125/src/main.ts");
+        Contains(simple, "<base href=\"/\">");
+        Contains(simple, "from \"http://127.0.0.1:43125/@react-refresh\"");
+        Equal(simple, advanced);
+    }
+
+    private static DevProjectConfiguration CreateDevelopmentServerConfiguration(
+        string kind,
+        string documents,
+        string targetDirectory = "/repo/bin/Debug/net10.0") =>
+        new(
+            ProjectPath: "/repo/App.csproj",
+            ProjectDirectory: "/repo",
+            NodeEnabled: true,
+            CwhtmlEnabled: false,
+            WorkspaceRoot: "/repo",
+            Workspace: "@example/app",
+            FrontendPackageDirectory: "/repo/frontend",
+            FrontendOutputDirectory: "/repo/frontend/dist",
+            FrontendWebRoot: "www",
+            ContractSource: "",
+            ContractCSharpOutput: "",
+            ContractTypeScriptOutput: "",
+            ContractTool: "",
+            FrontendWatchTarget: "WebUIToolkitFrontendWatchAssets",
+            ViteDevServerEnabled: kind == "vite",
+            ViteDevServerEntry: "/src/main.ts",
+            ViteConfigurationPath: "",
+            CwhtmlDiagnosticsPath: "",
+            CwhtmlHotReloadPath: "",
+            TargetDirectory: targetDirectory)
+        {
+            DevelopmentServerKind = kind,
+            DevelopmentServerDocument = documents,
+        };
 
     private static void ViteBridgeForwardsDiagnostics()
     {

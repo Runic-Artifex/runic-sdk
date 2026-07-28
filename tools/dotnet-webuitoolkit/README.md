@@ -41,7 +41,8 @@ The `dev` command:
 2. generates and verifies configured C# and TypeScript contracts;
 3. restores the locked frontend workspace only when its package manager or lock
    identity changed, then builds the managed host and cwhtml output;
-4. starts a loopback-only Vite development server for opted-in projects, or
+4. starts the selected loopback-only development server—Vite for cwhtml,
+   React, Vue, and Svelte, or Angular CLI's supported `ng serve` builder—or
    the project-provided build watcher for legacy projects;
 5. starts the native application under `dotnet watch`;
 6. injects Vite's client and source entry into the native document only for
@@ -58,7 +59,7 @@ The `dev` command:
    root, and restarts the native host; and
 9. forwards Ctrl+C to both process trees and waits for their termination.
 
-For a Vite development-server project, the initial managed build sets
+For a supervised development-server project, the initial managed build sets
 `WebUIToolkitFrontendBuild=false`; it creates the runtime web root but does not
 perform a production asset build before starting Vite. Host rebuilds also
 disable frontend targets because the independently running server owns that
@@ -76,7 +77,9 @@ The command consumes these evaluated MSBuild properties:
 - `WebUIToolkitFrontendOutputDirectory`
 - `WebUIToolkitFrontendWebRoot`
 - `WebUIToolkitFrontendDevWatchTarget`
-- `WebUIToolkitFrontendViteDevServerEnabled`
+- `WebUIToolkitFrontendDevServerKind`
+- `WebUIToolkitFrontendDevServerDocument`
+- `WebUIToolkitFrontendViteDevServerEnabled` (compatibility alias for `vite`)
 - `WebUIToolkitFrontendViteDevServerEntry`
 - `WebUIToolkitFrontendViteConfiguration`
 - `WebUIToolkitCwhtmlDiagnosticsPath`
@@ -86,12 +89,19 @@ The command consumes these evaluated MSBuild properties:
 - `WebUIToolkitFrontendContractTypeScriptOutput`
 - `WebUIToolkitFrontendContractTool`
 
-`WebUIToolkitFrontendViteDevServerEnabled=true` selects the native-window HMR
-path. The tool assigns a free loopback port, passes `--host 127.0.0.1`,
-`--strictPort`, and the selected port to the workspace's `dev` script, waits
-for `/@vite/client`, then supplies the origin and configured entry module to
-the managed application. Vite serves assets only; HTMX requests continue to
-use the private CsWebUi binding.
+`WebUIToolkitFrontendDevServerKind` selects `vite` or `angular`.
+`WebUIToolkitFrontendDevServerDocument` contains one or more semicolon-separated
+relative native entry documents. The coordinator fetches each development
+document from the selected server, keeps `/webui.js` on the native CsWebUi
+origin, and rewrites only framework assets to the loopback development origin.
+This is how both Todo entrypoints receive HMR without moving commands or state
+onto HTTP.
+
+Vite receives `--host 127.0.0.1`, `--strictPort`, and a reserved port. Angular
+receives the equivalent loopback host and port plus `--hmr --live-reload`;
+its workspace `dev` script must invoke `ng serve`. Both process types are
+health-checked, streamed, cancelled, and disposed through the same coordinator
+contract.
 
 The coordinator wraps the application's normal Vite configuration with a
 development-only plugin. It watches the atomic

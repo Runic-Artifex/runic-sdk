@@ -10,11 +10,17 @@
     <WebUIToolkitFrontendViteDevServerEnabled>true</WebUIToolkitFrontendViteDevServerEnabled>
     <WebUIToolkitFrontendViteDevServerEntry>/src/main.ts</WebUIToolkitFrontendViteDevServerEntry>
     <WebUIToolkitFrontendBuildArguments>-- --mode production</WebUIToolkitFrontendBuildArguments>
+    <WebUIToolkitFrontendContractSource>$(MSBuildProjectDirectory)/counter.frontend.json</WebUIToolkitFrontendContractSource>
+    <WebUIToolkitFrontendContractCSharpOutput>$(MSBuildProjectDirectory)/CounterContracts.g.cs</WebUIToolkitFrontendContractCSharpOutput>
+    <WebUIToolkitFrontendContractTypeScriptOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-contract.g.ts</WebUIToolkitFrontendContractTypeScriptOutput>
+    <WebUIToolkitFrontendContractVueOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-bindings.g.ts</WebUIToolkitFrontendContractVueOutput>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="WebUIToolkit.Frontend.Sdk" Version="1.0.0" PrivateAssets="all" />
     <PackageReference Include="WebUIToolkit.Hosting.Build" Version="1.0.0" />
     <PackageReference Include="WebUIToolkit.Hosting.CsWebUi.App" Version="1.0.0-beta.1" />
     <PackageReference Include="WebUIToolkit.Hosting.CsWebUi.Mvvm" Version="1.0.0-beta.1" />
+    <PackageReference Include="WebUIToolkit.MVVM.CommunityToolkit" Version="1.0.0" />
   </ItemGroup>
 </Project>

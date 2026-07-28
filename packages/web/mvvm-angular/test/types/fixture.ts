@@ -22,6 +22,7 @@ const typedAmount: Signal<number | undefined> = store.property(amountHandle);
 const typedItems: Signal<readonly { readonly id: string }[]> =
   store.collection(itemsHandle);
 const typedCommand = store.command(submitHandle);
+const commandFacade = store.commandFacade(submitHandle);
 const typedValidation = store.validation(amountHandle);
 void submitHandle.execute(7);
 // @ts-expect-error generated command arguments stay strongly typed.
@@ -37,4 +38,6 @@ void ANGULAR_MVVM_STORE;
 void typedAmount;
 void typedItems;
 void typedCommand;
+void commandFacade.execute(7).completion;
+void commandFacade.result();
 void typedValidation;

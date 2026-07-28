@@ -353,7 +353,8 @@ internal sealed class ViteConfigurationBridge : IDisposable
             """;
     }
 
-    private static string Json(string value) => JsonSerializer.Serialize(value);
+    private static string Json(string value) =>
+        string.Concat('"', JsonEncodedText.Encode(value).ToString(), '"');
 
     private static string NormalizePath(string path) => path.Replace('\\', '/');
 

@@ -51,6 +51,7 @@ public sealed class WebUiModeRunner : IApplicationModeRunner
     private readonly FrontendAssetEndpoint _assets;
     private readonly IApplicationStopController _stopController;
     private readonly WebUiModeOptions _options;
+    private readonly IWebUiWindowAttachment? _windowAttachment;
 
     /// <summary>Initializes the closed UI mode runner.</summary>
     public WebUiModeRunner(
@@ -59,6 +60,26 @@ public sealed class WebUiModeRunner : IApplicationModeRunner
         FrontendAssetEndpoint assets,
         IApplicationStopController stopController,
         WebUiModeOptions options)
+        : this(
+            browserHostFactory,
+            rootSessionFactory,
+            assets,
+            stopController,
+            options,
+            windowAttachment: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes the UI runner with an optional lifecycle-bound desktop service attachment.
+    /// </summary>
+    public WebUiModeRunner(
+        IBrowserHostFactory browserHostFactory,
+        IRootSessionFactory rootSessionFactory,
+        FrontendAssetEndpoint assets,
+        IApplicationStopController stopController,
+        WebUiModeOptions options,
+        IWebUiWindowAttachment? windowAttachment)
     {
         _browserHostFactory = browserHostFactory
             ?? throw new ArgumentNullException(nameof(browserHostFactory));
@@ -67,6 +88,7 @@ public sealed class WebUiModeRunner : IApplicationModeRunner
         _assets = assets ?? throw new ArgumentNullException(nameof(assets));
         _stopController = stopController ?? throw new ArgumentNullException(nameof(stopController));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _windowAttachment = windowAttachment;
     }
 
     /// <inheritdoc />
@@ -104,6 +126,7 @@ public sealed class WebUiModeRunner : IApplicationModeRunner
                     token => browserHost.CreateWindowAsync(_options.BrowserWindow, token),
                     cancellationToken)
                 .ConfigureAwait(false);
+            _windowAttachment?.Attach(browserHost, window);
             rootSession = await _rootSessionFactory
                 .OpenAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -159,6 +182,14 @@ public sealed class WebUiModeRunner : IApplicationModeRunner
 
             if (window is not null)
             {
+                if (_windowAttachment is not null)
+                {
+                    await CaptureCleanupAsync(
+                        token => _windowAttachment.DetachAsync(window, token),
+                        _options.WindowCloseTimeout,
+                        cleanupFailures).ConfigureAwait(false);
+                }
+
                 if (browserHost is not null)
                 {
                     await CaptureCleanupAsync(
@@ -196,10 +227,14 @@ public sealed class WebUiModeRunner : IApplicationModeRunner
         try
         {
             await dispatcher.InvokeAsync(
-                _ =>
+                async token =>
                 {
+                    if (_windowAttachment is IWebUiNativeCloseNotification notification)
+                    {
+                        await notification.NativeWindowClosedAsync(token).ConfigureAwait(false);
+                    }
+
                     _stopController.RequestStop(StopReason.WindowClosed);
-                    return ValueTask.CompletedTask;
                 },
                 CancellationToken.None).ConfigureAwait(false);
         }

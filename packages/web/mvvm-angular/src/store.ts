@@ -11,6 +11,8 @@ import type {
   MemberIdentifier,
   MvvmCollection,
   MvvmCommand,
+  MvvmCommandExecution,
+  MvvmCommandExecutionSnapshot,
   MvvmCommandWithArgument,
   MvvmProperty,
   MvvmProjectedCommandInvocation,
@@ -19,7 +21,9 @@ import type {
   MvvmProjectionEvent,
   MvvmProjectionSnapshot,
   MvvmReadonlyProperty,
+  CancelResult,
 } from "@webuitoolkit/mvvm";
+import { createMvvmCommandExecution } from "@webuitoolkit/mvvm";
 
 export interface AngularMvvmStoreOptions {
   /** Dispose the framework-neutral projection with this store. */
@@ -36,6 +40,7 @@ export class AngularMvvmStore {
     new WeakMap<object, Signal<readonly unknown[]>>();
   private readonly commandSignals =
     new Map<MemberIdentifier, Signal<Readonly<MvvmProjectedCommandState> | undefined>>();
+  private readonly commandFacades = new Set<AngularMvvmCommandFacade<unknown, JsonValue>>();
   private readonly validationSignals = new Map<MemberIdentifier, Signal<readonly string[] | undefined>>();
   private readonly unsubscribeProjection: () => void;
   private disposed = false;
@@ -134,6 +139,34 @@ export class AngularMvvmStore {
     ));
   }
 
+  public commandFacade<TResult>(
+    command: MvvmCommand<TResult>,
+  ): AngularMvvmCommandFacade<void, TResult & JsonValue>;
+  public commandFacade<TArgument, TResult>(
+    command: MvvmCommandWithArgument<TArgument, TResult>,
+  ): AngularMvvmCommandFacade<TArgument, TResult & JsonValue>;
+  public commandFacade<TArgument, TResult>(
+    command:
+      | MvvmCommand<TResult>
+      | MvvmCommandWithArgument<TArgument, TResult>,
+  ): AngularMvvmCommandFacade<TArgument, TResult & JsonValue> {
+    this.assertActive();
+    let facade: AngularMvvmCommandFacade<TArgument, TResult & JsonValue>;
+    facade = new AngularMvvmCommandFacade(
+      this.command(command.member),
+      command as MvvmCommandWithArgument<TArgument, TResult & JsonValue>,
+      (): void => {
+        this.commandFacades.delete(
+          facade as AngularMvvmCommandFacade<unknown, JsonValue>,
+        );
+      },
+    );
+    this.commandFacades.add(
+      facade as AngularMvvmCommandFacade<unknown, JsonValue>,
+    );
+    return facade;
+  }
+
   public subscribe(listener: (event: MvvmProjectionEvent) => void): () => void {
     this.assertActive();
     this.listeners.add(listener);
@@ -170,11 +203,79 @@ export class AngularMvvmStore {
     this.collectionSignals.clear();
     this.commandSignals.clear();
     this.validationSignals.clear();
+    for (const facade of this.commandFacades) facade.destroy();
+    this.commandFacades.clear();
     if (this.options.ownsProjection === true) this.projection.dispose();
   }
 
   private assertActive(): void {
     if (this.disposed) throw new Error("The Angular MVVM store has been destroyed.");
+  }
+}
+
+/** Signal-native command result/error/running/cancellation facade. */
+export class AngularMvvmCommandFacade<
+  TArgument = void,
+  TResult extends JsonValue = JsonValue,
+> {
+  private readonly execution: MvvmCommandExecution<TArgument, TResult>;
+  private readonly lifecycleSource;
+  private readonly unsubscribe: () => void;
+  private destroyed = false;
+
+  public readonly lifecycle: Signal<MvvmCommandExecutionSnapshot<TResult>>;
+  public readonly status;
+  public readonly result;
+  public readonly error;
+  public readonly isRunning;
+  public readonly canExecute;
+  public readonly canCancel;
+  public readonly execute: MvvmCommandExecution<TArgument, TResult>["execute"];
+
+  public constructor(
+    commandState: Signal<Readonly<MvvmProjectedCommandState> | undefined>,
+    command: MvvmCommandWithArgument<TArgument, TResult>,
+    private readonly onDestroy: () => void = () => undefined,
+  ) {
+    this.execution = createMvvmCommandExecution(command);
+    this.lifecycleSource = signal(this.execution.snapshot, { equal: Object.is });
+    this.lifecycle = this.lifecycleSource.asReadonly();
+    this.status = computed(() => this.lifecycleSource().status);
+    this.result = computed(() => this.lifecycleSource().result);
+    this.error = computed(() => this.lifecycleSource().error);
+    this.isRunning = computed(
+      () => this.lifecycleSource().isRunning || commandState()?.isExecuting === true,
+    );
+    this.canExecute = computed(() => commandState()?.canExecute === true);
+    this.canCancel = computed(() => this.lifecycleSource().canCancel);
+    this.execute = this.execution.execute;
+    this.unsubscribe = this.execution.subscribe(
+      () => this.lifecycleSource.set(this.execution.snapshot),
+    );
+  }
+
+  public cancel(): Promise<CancelResult | undefined> {
+    this.assertActive();
+    return this.execution.cancel();
+  }
+
+  public reset(): void {
+    this.assertActive();
+    this.execution.reset();
+  }
+
+  public destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.unsubscribe();
+    this.execution.dispose();
+    this.onDestroy();
+  }
+
+  private assertActive(): void {
+    if (this.destroyed) {
+      throw new Error("The Angular MVVM command facade has been destroyed.");
+    }
   }
 }
 

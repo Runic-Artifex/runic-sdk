@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 
 string repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
@@ -15,8 +16,10 @@ string generatedDirectory = Path.Combine(temporaryRoot, "generated");
 string templateHive = Path.Combine(temporaryRoot, "template-hive");
 string consumerPackages = Path.Combine(temporaryRoot, "consumer-packages");
 string packageSourceRoot = Path.Combine(temporaryRoot, "package-source");
+string npmPackageDirectory = Path.Combine(temporaryRoot, "npm-packages");
 Directory.CreateDirectory(packageDirectory);
 Directory.CreateDirectory(generatedDirectory);
+Directory.CreateDirectory(npmPackageDirectory);
 
 string templateProject = Path.Combine(
     repositoryRoot,
@@ -28,6 +31,7 @@ try
 {
     CopyPackageSources(repositoryRoot, packageSourceRoot);
     PackConsumerPackageGraph(packageSourceRoot, packageDirectory);
+    PackFrontendPackages(repositoryRoot, npmPackageDirectory);
     Run(repositoryRoot, "dotnet", "pack", templateProject, "-o", packageDirectory);
     string installedPackage = Directory
         .EnumerateFiles(packageDirectory, "WebUIToolkit.Templates.*.nupkg")
@@ -69,6 +73,7 @@ try
             "--debug:custom-hive",
             templateHive);
         ValidateOutput(output, projectName, shortName);
+        PrepareFrontendPackages(output, shortName, npmPackageDirectory);
         string project = Directory.EnumerateFiles(output, "*.csproj").Single();
         Run(
             output,
@@ -82,10 +87,39 @@ try
             "--packages",
             consumerPackages);
         Run(output, "dotnet", "build", project, "--configuration", "Release", "--no-restore");
+        if (shortName != "webuitoolkit-cwhtml")
+        {
+            Run(
+                output,
+                "dotnet",
+                "run",
+                "--project",
+                project,
+                "--configuration",
+                "Release",
+                "--no-build",
+                "--",
+                "--smoke-test");
+        }
+        Run(
+            output,
+            "dotnet",
+            "publish",
+            project,
+            "--configuration",
+            "Release",
+            "--no-restore",
+            "--output",
+            Path.Combine(output, "publish"));
+        if (shortName != "webuitoolkit-cwhtml")
+        {
+            AssertProductionExcludesMock(output, shortName);
+            BuildMockFrontend(output, shortName);
+        }
     }
 
     Console.WriteLine(
-        "All five WebUIToolkit templates passed isolated package restore and production build acceptance.");
+        "All five WebUIToolkit templates passed isolated package restore, native exercise, production build, publish, and isolated mock-graph acceptance.");
     return 0;
 }
 finally
@@ -103,6 +137,57 @@ finally
     }
 
     Directory.Delete(temporaryRoot, recursive: true);
+}
+
+static void PackFrontendPackages(string repositoryRoot, string output)
+{
+    string[] packages =
+    [
+        "web/packages/mvvm",
+        "web/packages/mvvm-react",
+        "web/packages/mvvm-vue",
+        "web/packages/mvvm-svelte",
+        "web/packages/mvvm-angular",
+    ];
+    foreach (string package in packages)
+    {
+        Run(
+            repositoryRoot,
+            "npm",
+            "pack",
+            Path.Combine(repositoryRoot, package),
+            "--pack-destination",
+            output);
+    }
+}
+
+static void PrepareFrontendPackages(
+    string output,
+    string shortName,
+    string packageDirectory)
+{
+    if (shortName == "webuitoolkit-cwhtml")
+    {
+        return;
+    }
+
+    string framework = shortName["webuitoolkit-".Length..];
+    string packagePath = Path.Combine(output, "Frontend", "package.json");
+    JsonNode root = JsonNode.Parse(File.ReadAllText(packagePath))
+        ?? throw new InvalidOperationException("Frontend package.json is empty.");
+    JsonObject dependencies = root["dependencies"]?.AsObject()
+        ?? throw new InvalidOperationException("Frontend package.json has no dependencies.");
+    dependencies["@webuitoolkit/mvvm"] =
+        "file:" + Path.Combine(packageDirectory, "webuitoolkit-mvvm-0.1.0.tgz");
+    dependencies[$"@webuitoolkit/mvvm-{framework}"] =
+        "file:" + Path.Combine(
+            packageDirectory,
+            $"webuitoolkit-mvvm-{framework}-0.1.0.tgz");
+    File.WriteAllText(
+        packagePath,
+        root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) +
+        Environment.NewLine);
+    Run(output, "npm", "install", "--package-lock-only", "--ignore-scripts");
 }
 
 static void CopyPackageSources(string repositoryRoot, string destinationRoot)
@@ -299,7 +384,6 @@ static void ValidateOutput(string output, string projectName, string shortName)
         "../../src/",
         "../../samples/",
         "<ProjectReference",
-        "--smoke-test",
         "WebUIToolkitStarter",
     ];
     foreach (string path in Directory.EnumerateFiles(output, "*", SearchOption.AllDirectories))
@@ -320,6 +404,46 @@ static void ValidateOutput(string output, string projectName, string shortName)
                 $"{shortName} output '{relative}' contains forbidden marker '{violation}'.");
         }
     }
+}
+
+static void AssertProductionExcludesMock(string output, string shortName)
+{
+    string frontendOutput = Path.Combine(output, "Frontend", "dist");
+    foreach (string path in Directory.EnumerateFiles(
+                 frontendOutput,
+                 "*",
+                 SearchOption.AllDirectories)
+             .Where(path =>
+                 Path.GetExtension(path) is ".js" or ".css" or ".html" or ".json"))
+    {
+        if (File.ReadAllText(path).Contains("Step must be a whole number", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"{shortName} included its development-only mock fixture in production output.");
+        }
+    }
+}
+
+static void BuildMockFrontend(string output, string shortName)
+{
+    string frontend = Path.Combine(output, "Frontend");
+    Run(frontend, "npm", "run", "typecheck");
+    if (shortName == "webuitoolkit-angular")
+    {
+        Run(
+            frontend,
+            "npm",
+            "exec",
+            "--",
+            "ng",
+            "build",
+            "frontend",
+            "--configuration",
+            "mock");
+        return;
+    }
+
+    Run(frontend, "npm", "run", "build", "--", "--mode", "mock");
 }
 
 static string FindRepositoryRoot(string start)

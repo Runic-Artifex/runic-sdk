@@ -18,10 +18,10 @@ provideVueMvvm(createMvvmProjection(client), { ownsProjection: true });
 
 // In a descendant's setup:
 const amount = useVueMvvmProperty(contract.amount);
-const submit = useVueMvvmCommand(contract.submit);
-const canSubmit = computed(() => submit.value?.canExecute === true);
+const submit = useVueMvvmCommandFacade(contract.submit);
+const canSubmit = computed(() => submit.canExecute.value && !submit.isRunning.value);
 await contract.amount.set(7);
-const result = await contract.submit.execute().completion;
+const result = await submit.execute().completion;
 ```
 
 `property`, `collection`, `command`, and `validation` return cached computed
@@ -31,6 +31,8 @@ run, so all accessors observe the same accepted snapshot.
 The corresponding `toVueMvvmProperty`, `toVueMvvmCollection`,
 `toVueMvvmCommand`, and `toVueMvvmValidation` helpers accept an explicit
 adapter when dependency injection is not appropriate.
+Generated `use{Contract}Bindings` composables aggregate these refs and register
+their command-facade cleanup with the active effect scope.
 
 ## Ownership and cleanup
 

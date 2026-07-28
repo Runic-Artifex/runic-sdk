@@ -7,7 +7,9 @@ import {
   shallowReadonly,
   shallowRef,
   type ComputedRef,
+  type App,
   type InjectionKey,
+  type Plugin,
   type ShallowRef,
 } from "vue";
 import type {
@@ -15,6 +17,8 @@ import type {
   MemberIdentifier,
   MvvmCollection,
   MvvmCommand,
+  MvvmCommandExecution,
+  MvvmCommandExecutionSnapshot,
   MvvmCommandWithArgument,
   MvvmProperty,
   MvvmProjectedCommandInvocation,
@@ -23,6 +27,13 @@ import type {
   MvvmProjectionEvent,
   MvvmProjectionSnapshot,
   MvvmReadonlyProperty,
+  NativeMvvmApplication,
+  NativeMvvmApplicationOptions,
+  CancelResult,
+} from "@webuitoolkit/mvvm";
+import {
+  createMvvmCommandExecution,
+  startNativeMvvmApplication,
 } from "@webuitoolkit/mvvm";
 
 export interface VueMvvmAdapterOptions {
@@ -184,6 +195,41 @@ export function useVueMvvm(): VueMvvmAdapter {
   return adapter;
 }
 
+/** A typed native application with its Vue reactive adapter. */
+export interface VueMvvmApplication<TContract>
+  extends NativeMvvmApplication<TContract>
+{
+  readonly adapter: VueMvvmAdapter;
+}
+
+/** Opens the native application and owns its Vue adapter. */
+export async function startVueMvvmApplication<TContract>(
+  options: Readonly<NativeMvvmApplicationOptions<TContract>>,
+): Promise<VueMvvmApplication<TContract>> {
+  const application = await startNativeMvvmApplication(options);
+  const adapter = createVueMvvmAdapter(application.projection);
+  application.addCleanup(() => adapter.dispose());
+  return Object.freeze({
+    ...application,
+    adapter,
+  });
+}
+
+/**
+ * Creates a normal Vue plugin that provides the application adapter and binds
+ * native disposal to the Vue application root.
+ */
+export function createVueMvvmApplicationPlugin(
+  application: VueMvvmApplication<unknown>,
+): Plugin {
+  return {
+    install(app: App): void {
+      app.provide(vueMvvmKey, application.adapter);
+      app.onUnmount(() => void application.dispose("Vue MVVM root unmounted"));
+    },
+  };
+}
+
 /** Adapts a generated property handle to a typed Vue computed ref. */
 export function toVueMvvmProperty<T>(
   adapter: VueMvvmAdapter,
@@ -228,15 +274,17 @@ export function toVueMvvmValidation<T>(
 /** Injects the current adapter and returns a typed generated-property ref. */
 export function useVueMvvmProperty<T>(
   property: MvvmReadonlyProperty<T> | MvvmProperty<T>,
+  adapter: VueMvvmAdapter = useVueMvvm(),
 ): ComputedRef<T | undefined> {
-  return toVueMvvmProperty(useVueMvvm(), property);
+  return toVueMvvmProperty(adapter, property);
 }
 
 /** Injects the current adapter and returns a typed generated-collection ref. */
 export function useVueMvvmCollection<T>(
   collection: MvvmCollection<T>,
+  adapter: VueMvvmAdapter = useVueMvvm(),
 ): ComputedRef<readonly T[]> {
-  return toVueMvvmCollection(useVueMvvm(), collection);
+  return toVueMvvmCollection(adapter, collection);
 }
 
 /** Injects the current adapter and returns a generated command-state ref. */
@@ -252,11 +300,103 @@ export function useVueMvvmCommand(
   return useVueMvvm().command(command.member);
 }
 
+export interface VueMvvmCommandFacade<
+  TArgument = void,
+  TResult extends JsonValue = JsonValue,
+> {
+  readonly lifecycle: Readonly<ShallowRef<MvvmCommandExecutionSnapshot<TResult>>>;
+  readonly command: ComputedRef<Readonly<MvvmProjectedCommandState> | undefined>;
+  readonly status: ComputedRef<MvvmCommandExecutionSnapshot<TResult>["status"]>;
+  readonly result: ComputedRef<MvvmCommandExecutionSnapshot<TResult>["result"]>;
+  readonly error: ComputedRef<unknown>;
+  readonly isRunning: ComputedRef<boolean>;
+  readonly canExecute: ComputedRef<boolean>;
+  readonly canCancel: ComputedRef<boolean>;
+  execute: MvvmCommandExecution<TArgument, TResult>["execute"];
+  cancel(): Promise<CancelResult | undefined>;
+  reset(): void;
+  dispose(): void;
+}
+
+/** Creates a caller-owned command facade over an explicit Vue adapter. */
+export function toVueMvvmCommandFacade<TResult>(
+  adapter: VueMvvmAdapter,
+  command: MvvmCommand<TResult>,
+): VueMvvmCommandFacade<void, TResult & JsonValue>;
+export function toVueMvvmCommandFacade<TArgument, TResult>(
+  adapter: VueMvvmAdapter,
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+): VueMvvmCommandFacade<TArgument, TResult & JsonValue>;
+export function toVueMvvmCommandFacade<TArgument, TResult>(
+  adapter: VueMvvmAdapter,
+  command:
+    | MvvmCommand<TResult>
+    | MvvmCommandWithArgument<TArgument, TResult>,
+): VueMvvmCommandFacade<TArgument, TResult & JsonValue> {
+  const execution = createMvvmCommandExecution(
+    command as MvvmCommandWithArgument<TArgument, TResult & JsonValue>,
+  );
+  const lifecycleSource = shallowRef(execution.snapshot);
+  const unsubscribe = execution.subscribe(() => {
+    lifecycleSource.value = execution.snapshot;
+  });
+  const projected = adapter.command(command.member);
+  let disposed = false;
+  return {
+    lifecycle: shallowReadonly(lifecycleSource),
+    command: projected,
+    status: computed(() => lifecycleSource.value.status),
+    result: computed(() => lifecycleSource.value.result),
+    error: computed(() => lifecycleSource.value.error),
+    isRunning: computed(
+      () => lifecycleSource.value.isRunning || projected.value?.isExecuting === true,
+    ),
+    canExecute: computed(() => projected.value?.canExecute === true),
+    canCancel: computed(() => lifecycleSource.value.canCancel),
+    execute: execution.execute,
+    cancel: () => execution.cancel(),
+    reset: () => execution.reset(),
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      unsubscribe();
+      execution.dispose();
+    },
+  };
+}
+
+/** Creates a scope-owned command facade from the nearest provided adapter. */
+export function useVueMvvmCommandFacade<TResult>(
+  command: MvvmCommand<TResult>,
+  adapter?: VueMvvmAdapter,
+): VueMvvmCommandFacade<void, TResult & JsonValue>;
+export function useVueMvvmCommandFacade<TArgument, TResult>(
+  command: MvvmCommandWithArgument<TArgument, TResult>,
+  adapter?: VueMvvmAdapter,
+): VueMvvmCommandFacade<TArgument, TResult & JsonValue>;
+export function useVueMvvmCommandFacade<TArgument, TResult>(
+  command:
+    | MvvmCommand<TResult>
+    | MvvmCommandWithArgument<TArgument, TResult>,
+  adapter: VueMvvmAdapter = useVueMvvm(),
+): VueMvvmCommandFacade<TArgument, TResult & JsonValue> {
+  if (getCurrentScope() === undefined) {
+    throw new Error("useVueMvvmCommandFacade must run inside an active Vue effect scope.");
+  }
+  const facade = toVueMvvmCommandFacade(
+    adapter,
+    command as MvvmCommandWithArgument<TArgument, TResult & JsonValue>,
+  );
+  onScopeDispose(() => facade.dispose());
+  return facade;
+}
+
 /** Injects the current adapter and returns validation for a generated handle. */
 export function useVueMvvmValidation<T>(
   binding: MvvmReadonlyProperty<T> | MvvmProperty<T> | MvvmCollection<T>,
+  adapter: VueMvvmAdapter = useVueMvvm(),
 ): ComputedRef<readonly string[] | undefined> {
-  return toVueMvvmValidation(useVueMvvm(), binding);
+  return toVueMvvmValidation(adapter, binding);
 }
 
 function cached<T>(

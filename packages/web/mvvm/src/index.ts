@@ -4,4 +4,8 @@ export * from "./transport.js";
 export * from "./client.js";
 export * from "./projection.js";
 export * from "./typed.js";
+export * from "./command.js";
 export * from "./application.js";
+export * from "./native.js";
+export * from "./inspector.js";
+export * from "./mock.js";

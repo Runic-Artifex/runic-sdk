@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Security;
 using System.Text;
 using System.Threading;
@@ -102,6 +103,10 @@ internal static class Program
         AssertSuccess(first, "Initial contract generation");
         byte[] firstCSharp = File.ReadAllBytes(fixture.CSharpOutput);
         byte[] firstTypeScript = File.ReadAllBytes(fixture.TypeScriptOutput);
+        Dictionary<string, byte[]> firstFrameworks = fixture.FrameworkOutputs.ToDictionary(
+            static path => path,
+            File.ReadAllBytes,
+            StringComparer.Ordinal);
 
         ProcessResult second = RunContractTool(workspace.Root, fixture);
         AssertSuccess(second, "Repeated contract generation");
@@ -114,6 +119,13 @@ internal static class Program
             firstTypeScript,
             File.ReadAllBytes(fixture.TypeScriptOutput),
             "TypeScript output changed between identical compiler invocations.");
+        foreach ((string path, byte[] expected) in firstFrameworks)
+        {
+            AssertSequenceEqual(
+                expected,
+                File.ReadAllBytes(path),
+                $"{Path.GetFileName(path)} changed between identical compiler invocations.");
+        }
     }
 
     private static void VerifyAcceptsCurrentOutputs()
@@ -186,6 +198,10 @@ internal static class Program
             "Validation failure was not actionable.");
         AssertFalse(File.Exists(fixture.CSharpOutput), "Malformed input unexpectedly emitted C#.");
         AssertFalse(File.Exists(fixture.TypeScriptOutput), "Malformed input unexpectedly emitted TypeScript.");
+        foreach (string path in fixture.FrameworkOutputs)
+        {
+            AssertFalse(File.Exists(path), "Malformed input unexpectedly emitted a framework facade.");
+        }
     }
 
     private static void SdkValidationAcceptsCompleteConfiguration()
@@ -449,6 +465,14 @@ internal static class Program
             fixture.CSharpOutput,
             "--typescript",
             fixture.TypeScriptOutput,
+            "--react",
+            fixture.ReactOutput,
+            "--vue",
+            fixture.VueOutput,
+            "--svelte",
+            fixture.SvelteOutput,
+            "--angular",
+            fixture.AngularOutput,
         ];
         if (verify)
         {
@@ -637,7 +661,18 @@ internal static class Program
         public string CombinedOutput => StandardOutput + StandardError;
     }
 
-    private sealed record ContractFixture(string Source, string CSharpOutput, string TypeScriptOutput);
+    private sealed record ContractFixture(
+        string Source,
+        string CSharpOutput,
+        string TypeScriptOutput,
+        string ReactOutput,
+        string VueOutput,
+        string SvelteOutput,
+        string AngularOutput)
+    {
+        public IReadOnlyList<string> FrameworkOutputs =>
+            [ReactOutput, VueOutput, SvelteOutput, AngularOutput];
+    }
 
     private sealed class TestWorkspace : IDisposable
     {
@@ -660,7 +695,11 @@ internal static class Program
             return new ContractFixture(
                 source,
                 Path.Combine(output, "Contracts.g.cs"),
-                Path.Combine(output, "contract.g.ts"));
+                Path.Combine(output, "contract.g.ts"),
+                Path.Combine(output, "contract.react.g.ts"),
+                Path.Combine(output, "contract.vue.g.ts"),
+                Path.Combine(output, "contract.svelte.g.ts"),
+                Path.Combine(output, "contract.angular.g.ts"));
         }
 
         public string WriteText(string relativePath, string content)

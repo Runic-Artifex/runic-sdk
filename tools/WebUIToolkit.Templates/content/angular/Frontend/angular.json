@@ -30,14 +30,26 @@
               "optimization": false,
               "outputHashing": "none",
               "sourceMap": true
+            },
+            "mock": {
+              "browser": "src/main.mock.ts",
+              "optimization": false,
+              "outputHashing": "none",
+              "sourceMap": true
             }
           },
           "defaultConfiguration": "production"
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": {
+            "headers": {
+              "Access-Control-Allow-Origin": "*"
+            }
+          },
           "configurations": {
-            "development": { "buildTarget": "frontend:build:development" }
+            "development": { "buildTarget": "frontend:build:development" },
+            "mock": { "buildTarget": "frontend:build:mock" }
           },
           "defaultConfiguration": "development"
         }

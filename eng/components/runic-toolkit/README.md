@@ -116,11 +116,15 @@ The [development modes](./docs/contributing/development.md) and
 The native transports, shared ViewModels, frontend integrations, Vite pipeline,
 browser diagnostics, three live-feedback tiers, high-level application
 composition, project templates, and environment doctor are implemented. The
-next priority is the cwhtml language server and editor extension.
+WPF migration capability layer, generated aggregate framework façades,
+reusable sample components, and framework-neutral asset/VFS boundary are also
+implemented. The cs-webui organization transfer remains external maintainer
+coordination.
 
-WPF desktop capability services, generated aggregate framework façades, reusable
-sample components, and the separate VFS/assets package follow in the
-[roadmap](./docs/roadmap/README.md).
+The next in-repository priority is first-class developer-experience parity
+across cwhtml/HTMX, React, Vue, Svelte, and Angular. The cwhtml language server
+and editor extension remain deliberately deferred until that work is complete,
+as described by the [roadmap](./docs/roadmap/README.md).
 
 Earlier wave plans and release evidence remain available under
 [`docs/roadmap/archive`](./docs/roadmap/archive) and

@@ -138,6 +138,8 @@ internal sealed class HostProcessController : IAsyncDisposable
             [ViteDevelopmentServer.DiagnosticsEnvironmentVariable] = null,
             [ViteDevelopmentServer.HotReloadEnvironmentVariable] = null,
             [ViteDevelopmentServer.ProjectEnvironmentVariable] = null,
+            [AngularDevelopmentServer.ServerEnvironmentVariable] = null,
+            [AngularDevelopmentServer.KindEnvironmentVariable] = null,
         };
         foreach ((string key, string? value) in _developmentEnvironment)
         {

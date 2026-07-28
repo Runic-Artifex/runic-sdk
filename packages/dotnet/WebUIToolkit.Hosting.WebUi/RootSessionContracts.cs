@@ -22,6 +22,26 @@ public interface IRootSession : IAsyncDisposable
 }
 
 /// <summary>
+/// Receives the exact native window lifetime owned by <see cref="WebUiModeRunner"/>.
+/// Implementations bind frontend-neutral services before the root session opens.
+/// </summary>
+public interface IWebUiWindowAttachment
+{
+    /// <summary>Attaches one initialized host and hidden native window.</summary>
+    void Attach(IBrowserHost browserHost, IBrowserWindow window);
+
+    /// <summary>Detaches the exact window before its native resources are closed.</summary>
+    ValueTask DetachAsync(IBrowserWindow window, CancellationToken cancellationToken);
+}
+
+/// <summary>Receives notification after the native host reports that its window is gone.</summary>
+public interface IWebUiNativeCloseNotification
+{
+    /// <summary>Signals forced close so application-scoped cancellation starts immediately.</summary>
+    ValueTask NativeWindowClosedAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Optional, explicitly registered activation callback for a scoped MVVM root.
 /// </summary>
 public interface IMvvmRootActivation

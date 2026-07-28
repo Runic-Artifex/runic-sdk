@@ -29,6 +29,11 @@ internal sealed record DevProjectConfiguration(
     string CwhtmlHotReloadPath,
     string TargetDirectory)
 {
+    internal string DevelopmentServerKind { get; init; } =
+        ViteDevServerEnabled ? "vite" : string.Empty;
+
+    internal string DevelopmentServerDocument { get; init; } = "index.html";
+
     private static readonly string[] PropertyNames =
     [
         "MSBuildProjectFullPath",
@@ -48,6 +53,8 @@ internal sealed record DevProjectConfiguration(
         "WebUIToolkitFrontendViteDevServerEnabled",
         "WebUIToolkitFrontendViteDevServerEntry",
         "WebUIToolkitFrontendViteConfiguration",
+        "WebUIToolkitFrontendDevServerKind",
+        "WebUIToolkitFrontendDevServerDocument",
         "WebUIToolkitCwhtmlDiagnosticsPath",
         "WebUIToolkitCwhtmlHotReloadPath",
         "TargetDir",
@@ -60,6 +67,13 @@ internal sealed record DevProjectConfiguration(
     internal bool HasFrontendWatcher => HasFrontendWatchTarget || HasNodeWorkspace;
 
     internal bool HasContracts => !string.IsNullOrWhiteSpace(ContractSource);
+
+    internal bool HasDevelopmentServer =>
+        DevelopmentServerKind is "vite" or "angular";
+
+    internal IReadOnlyList<string> DevelopmentServerDocuments =>
+        DevelopmentServerDocument
+            .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     internal string RuntimeWebRoot => Path.GetFullPath(
         Path.Combine(TargetDirectory, FrontendWebRoot));
@@ -152,7 +166,15 @@ internal sealed record DevProjectConfiguration(
                 packageDirectory.Length == 0 ? workspaceRoot : packageDirectory),
             NormalizeOptional(Value("WebUIToolkitCwhtmlDiagnosticsPath"), evaluatedProjectDirectory),
             NormalizeOptional(Value("WebUIToolkitCwhtmlHotReloadPath"), evaluatedProjectDirectory),
-            targetDirectory);
+            targetDirectory)
+        {
+            DevelopmentServerKind =
+                Value("WebUIToolkitFrontendDevServerKind").Trim().ToLowerInvariant(),
+            DevelopmentServerDocument =
+                string.IsNullOrWhiteSpace(Value("WebUIToolkitFrontendDevServerDocument"))
+                    ? "index.html"
+                    : Value("WebUIToolkitFrontendDevServerDocument"),
+        };
         configurationResult.Validate();
         return configurationResult;
     }
@@ -164,6 +186,39 @@ internal sealed record DevProjectConfiguration(
             throw new DevUsageException(
                 "WUTDEV1005",
                 "Enable at least one frontend pipeline: Node/Vite or cwhtml.");
+        }
+
+        if (DevelopmentServerKind.Length != 0 &&
+            DevelopmentServerKind is not ("vite" or "angular"))
+        {
+            throw new DevUsageException(
+                "WUTDEV1005",
+                "WebUIToolkitFrontendDevServerKind must be 'vite', 'angular', or empty.");
+        }
+
+        if (HasDevelopmentServer && (!NodeEnabled || !HasNodeWorkspace))
+        {
+            throw new DevUsageException(
+                "WUTDEV1005",
+                "Frontend development-server mode requires a configured Node workspace.");
+        }
+
+        if (HasDevelopmentServer &&
+            (DevelopmentServerDocuments.Count == 0 ||
+             Array.Exists(
+                 [.. DevelopmentServerDocuments],
+                 static document =>
+                     Path.IsPathRooted(document) ||
+                     Array.Exists(
+                         document.Split(
+                             ['/', '\\'],
+                             StringSplitOptions.RemoveEmptyEntries),
+                         static segment => segment is "." or ".."))))
+        {
+            throw new DevUsageException(
+                "WUTDEV1005",
+                "WebUIToolkitFrontendDevServerDocument must contain safe relative file paths " +
+                "separated by semicolons.");
         }
 
         if (NodeEnabled && !HasNodeWorkspace && !HasFrontendWatchTarget)

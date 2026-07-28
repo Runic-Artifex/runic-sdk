@@ -5,10 +5,14 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@webuitoolkit/mvvm": "0.1.0",
+    "@webuitoolkit/mvvm-react": "0.1.0",
     "bootstrap": "5.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8"

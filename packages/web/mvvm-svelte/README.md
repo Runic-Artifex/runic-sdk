@@ -8,7 +8,7 @@ the client revision machine, or depend on another UI adapter.
 <script lang="ts">
   import {
     createSvelteMvvmStore,
-    derivedMvvmCommand,
+    createSvelteMvvmCommandFacade,
     derivedMvvmProperty,
     disposeSvelteMvvmStoreOnDestroy,
   } from "@webuitoolkit/mvvm-svelte";
@@ -17,7 +17,7 @@ the client revision machine, or depend on another UI adapter.
   disposeSvelteMvvmStoreOnDestroy(model);
 
   const amount = derivedMvvmProperty(model, contract.amount);
-  const submit = derivedMvvmCommand(model, contract.submit);
+  const submit = createSvelteMvvmCommandFacade(model, contract.submit);
 </script>
 
 <input
@@ -26,7 +26,7 @@ the client revision machine, or depend on another UI adapter.
 />
 <button
   disabled={!$submit?.canExecute}
-  on:click={() => contract.submit.execute()}
+  on:click={() => $submit.canExecute && submit.execute()}
 >
   Submit
 </button>
@@ -34,6 +34,10 @@ the client revision machine, or depend on another UI adapter.
 
 `derivedMvvmCollection` and `derivedMvvmValidation` provide the corresponding
 typed readables for generated collection and validation handles.
+Generated `create{Contract}Stores` functions group those readables and command
+facades by contract member. Svelte 5 consumers can adapt any of them to a
+rune-tracked getter with `toSvelteMvvmRune` from the `/runes` export; Svelte 4
+continues to use ordinary `$store` syntax.
 
 The store subscribes to its projection only while it has Svelte subscribers.
 Multiple components share that single upstream subscription. Unsubscribing the

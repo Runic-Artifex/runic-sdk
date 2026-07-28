@@ -18,6 +18,7 @@ export interface FrameChannelObserver {
 export type TransportState = "connected" | "disconnected" | "faulted" | "closed";
 
 export type TransportEvent =
+  | { readonly type: "send"; readonly message: ClientMessage; readonly rawFrame: Uint8Array }
   | { readonly type: "message"; readonly message: HostMessage; readonly rawFrame: Uint8Array }
   | { readonly type: "state"; readonly previous: TransportState; readonly current: TransportState }
   | { readonly type: "protocolError"; readonly error: ProtocolTransportError };
@@ -134,6 +135,7 @@ export class ProtocolTransport {
     }
 
     try {
+      this.emit({ type: "send", message, rawFrame: frame.slice() });
       await this.channel.send(frame);
     } catch (cause) {
       this.handleChannelFailure(cause);

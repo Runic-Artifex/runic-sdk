@@ -1,10 +1,12 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/WebUIToolkit.Assets/WebUIToolkit.Assets.csproj" />
     <Project Path="src/WebUIToolkit.Collections/WebUIToolkit.Collections.csproj" />
     <Project Path="src/WebUIToolkit.CommandLine.Abstractions/WebUIToolkit.CommandLine.Abstractions.csproj" />
     <Project Path="src/WebUIToolkit.CommandLine.Hosting/WebUIToolkit.CommandLine.Hosting.csproj" />
     <Project Path="src/WebUIToolkit.CommandLine.Processes/WebUIToolkit.CommandLine.Processes.csproj" />
     <Project Path="src/WebUIToolkit.CommandLine/WebUIToolkit.CommandLine.csproj" />
+    <Project Path="src/WebUIToolkit.Desktop/WebUIToolkit.Desktop.csproj" />
     <Project Path="src/WebUIToolkit.Frontend.Sdk/WebUIToolkit.Frontend.Sdk.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.Abstractions/WebUIToolkit.Hosting.Abstractions.csproj" />
     <Project Path="src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
@@ -37,12 +39,14 @@
     <Project Path="src/WebUIToolkit.TextResources/WebUIToolkit.TextResources.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/WebUIToolkit.Assets.Tests/WebUIToolkit.Assets.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Collections.Tests/WebUIToolkit.Collections.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Contracts.Tests/WebUIToolkit.CommandLine.Contracts.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Hosting.Tests/WebUIToolkit.CommandLine.Hosting.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Processes.Tests/WebUIToolkit.CommandLine.Processes.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Tests/WebUIToolkit.CommandLine.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.DotNet.WebUIToolkit.Tests/WebUIToolkit.DotNet.WebUIToolkit.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.Desktop.Tests/WebUIToolkit.Desktop.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Frontend.Sdk.Tests/WebUIToolkit.Frontend.Sdk.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.Build.Tests/WebUIToolkit.Hosting.Build.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Hosting.CompositionTests/WebUIToolkit.Hosting.CompositionTests.csproj" />
@@ -63,6 +67,7 @@
     <Project Path="tests/WebUIToolkit.MVVM.ReactiveUI.Tests/AotSmoke/WebUIToolkit.MVVM.ReactiveUI.AotSmoke.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.ReactiveUI.Tests/WebUIToolkit.MVVM.ReactiveUI.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Tests/WebUIToolkit.MVVM.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.Samples.Cwhtml.Components.Tests/WebUIToolkit.Samples.Cwhtml.Components.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.TextResources.ApiTests/WebUIToolkit.TextResources.ApiTests.csproj" />
     <Project Path="tests/WebUIToolkit.TextResources.Build.Tests/WebUIToolkit.TextResources.Build.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.TextResources.Compiler.Tests/WebUIToolkit.TextResources.Compiler.Tests.csproj" />
@@ -85,6 +90,7 @@
     <Project Path="samples/03-MvvmCounterProjection/MvvmCounterProjection.csproj" />
     <Project Path="samples/04-NativeMvvmCounter/NativeMvvmCounter.csproj" />
     <Project Path="samples/AdvancedTodo/AdvancedTodo.csproj" />
+    <Project Path="samples/Cwhtml.SampleComponents/WebUIToolkit.Samples.Cwhtml.Components.csproj" />
     <Project Path="samples/SimpleTodo/SimpleTodo.csproj" />
     <Project Path="samples/Todo.Angular/Todo.Angular.csproj" />
     <Project Path="samples/Todo.FrontendHost/Todo.FrontendHost.csproj" />

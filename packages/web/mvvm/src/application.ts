@@ -1,12 +1,15 @@
 import { MvvmClient } from "./client.js";
 import { createMvvmProjection, type MvvmProjection } from "./projection.js";
 import { ProtocolTransport, type FrameChannel } from "./transport.js";
+import type { MvvmDevelopmentInspector } from "./inspector.js";
 
 /** Options for the shared framework-neutral MVVM application bootstrap. */
 export interface MvvmApplicationOptions {
   readonly contract: string;
   readonly channel: FrameChannel;
   readonly clientId?: string;
+  /** Opt-in bounded, sanitized development inspection. */
+  readonly inspector?: MvvmDevelopmentInspector;
 }
 
 /** One opened MVVM application and its exact owned lifetime. */
@@ -29,6 +32,7 @@ export async function startMvvmApplication(
 ): Promise<MvvmApplication> {
   if (options.contract.length === 0) throw new TypeError("An MVVM contract is required.");
   const transport = new ProtocolTransport(options.channel);
+  const stopInspection = options.inspector?.attach(transport);
   let transportFailure: Error | undefined;
   const stopDiagnostics = transport.subscribe((event) => {
     if (event.type === "protocolError") transportFailure = event.error;
@@ -39,6 +43,7 @@ export async function startMvvmApplication(
     await client.start(options.contract, options.clientId ?? crypto.randomUUID());
   } catch (error) {
     projection.dispose();
+    stopInspection?.();
     await transport.close("MVVM application startup failed");
     const detail = transportFailure === undefined
       ? ""
@@ -90,6 +95,7 @@ export async function startMvvmApplication(
         // owns deterministic projection and channel cleanup.
       }
       projection.dispose();
+      stopInspection?.();
       await transport.close(reason);
     },
   };

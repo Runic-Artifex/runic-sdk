@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using WebUIToolkit.Desktop;
 
 namespace WebUIToolkit.Hosting;
 
@@ -27,12 +28,14 @@ public sealed record BrowserWindowOptions
     /// <param name="width">The initial client width in device-independent pixels.</param>
     /// <param name="height">The initial client height in device-independent pixels.</param>
     /// <param name="isResizable">Whether the user may resize the window.</param>
+    /// <param name="browserProfile">Optional profile/storage policy applied before startup.</param>
     public BrowserWindowOptions(
         string windowId,
         string title,
         int width = 1024,
         int height = 768,
-        bool isResizable = true)
+        bool isResizable = true,
+        DesktopBrowserProfile? browserProfile = null)
     {
         WindowId = BrowserContractValidation.NormalizeIdentifier(windowId, nameof(windowId));
 
@@ -64,6 +67,7 @@ public sealed record BrowserWindowOptions
         Width = width;
         Height = height;
         IsResizable = isResizable;
+        BrowserProfile = browserProfile;
     }
 
     /// <summary>Gets the stable identifier used for diagnostics.</summary>
@@ -80,6 +84,9 @@ public sealed record BrowserWindowOptions
 
     /// <summary>Gets whether the user may resize the window.</summary>
     public bool IsResizable { get; }
+
+    /// <summary>Gets the browser profile/storage policy selected before startup.</summary>
+    public DesktopBrowserProfile? BrowserProfile { get; }
 }
 
 /// <summary>Creates an isolated browser host without exposing a native runtime.</summary>

@@ -13,6 +13,7 @@ work queue; use the [product roadmap](../roadmap/README.md) for priorities.
 - [0007 — Hosting lifecycle and failure precedence](./0007-hosting-lifecycle-policy.md)
 - [0011 — CsWebUi host boundary](./0011-cs-webui-host-boundary.md)
 - [0012 — Native HTML and frontend direction](./0012-native-html-and-frontend-direction.md)
+- [0013 — Framework-neutral asset and VFS boundary](./0013-framework-neutral-asset-boundary.md)
 
 ## Delivery and coordination decisions
 
@@ -24,4 +25,3 @@ work queue; use the [product roadmap](../roadmap/README.md) for priorities.
 The wave-oriented records preserve the constraints and reasoning in effect when
 they were accepted. Current implementation ordering comes from the roadmap and
 current path ownership comes from `eng/ownership.json`.
-

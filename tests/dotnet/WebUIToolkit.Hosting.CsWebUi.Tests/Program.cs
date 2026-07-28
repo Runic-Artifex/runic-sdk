@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
+using WebUIToolkit.Desktop;
 using WebUIToolkit.Hosting;
 using WebUIToolkit.Hosting.CsWebUi;
 
@@ -166,8 +167,16 @@ internal static class Program
                 CancellationToken.None));
 
         await host.InitializeAsync(CancellationToken.None);
+        using var profileRoot = new TemporaryDirectory();
+        string profilePath = Path.Combine(profileRoot.Path, "profile");
         await using IBrowserWindow window = await host.CreateWindowAsync(
-            new BrowserWindowOptions("main", "Demo title", 900, 600, isResizable: false),
+            new BrowserWindowOptions(
+                "main",
+                "Demo title",
+                900,
+                600,
+                isResizable: false,
+                browserProfile: new DesktopBrowserProfile("demo-profile", profilePath)),
             CancellationToken.None);
         FakeWindow native = runtime.Windows.Single();
         Equal(webRoot.Path, native.RootFolder);
@@ -176,6 +185,9 @@ internal static class Program
         False(native.IsResizable);
         False(native.IsPublic);
         True(native.ConfigurationHookSupplied);
+        Equal("demo-profile", native.ProfileName);
+        Equal(profilePath, native.ProfilePath);
+        True(Directory.Exists(profilePath));
 
         await ThrowsAsync<InvalidOperationException>(async () =>
             await window.ShowAsync(CancellationToken.None));
@@ -189,6 +201,55 @@ internal static class Program
 
         await window.NavigateAsync(new Uri("app://demo/settings.html"), CancellationToken.None);
         Equal("settings.html", native.NavigateCalls.Single());
+
+        var desktop = (IBrowserWindowDesktopAdapter)window;
+        True(desktop.Capabilities[DesktopCapability.WindowFocus].IsSupported);
+        True(desktop.Capabilities[DesktopCapability.BrowserProfile].IsSupported);
+        True(desktop.Capabilities[DesktopCapability.BrowserStorage].IsSupported);
+        await desktop.FocusWindowAsync(CancellationToken.None);
+        await desktop.FocusElementAsync("title", CancellationToken.None);
+        await desktop.SetSizeAsync(new DesktopSize(700, 500), CancellationToken.None);
+        await desktop.SetPositionAsync(new DesktopPosition(20, 30), CancellationToken.None);
+        await desktop.CenterAsync(CancellationToken.None);
+        await desktop.SetStateAsync(DesktopWindowState.Minimized, CancellationToken.None);
+        await desktop.SetStateAsync(DesktopWindowState.Maximized, CancellationToken.None);
+        await desktop.SetStateAsync(DesktopWindowState.Normal, CancellationToken.None);
+        Equal(2, native.FocusCount);
+        Equal((uint)900, native.Width);
+        Equal((uint)600, native.Height);
+        Equal((uint)20, native.PositionX);
+        Equal((uint)30, native.PositionY);
+        Equal(1, native.CenterCount);
+        Equal(1, native.MinimizeCount);
+        Equal(1, native.MaximizeCount);
+        True(native.Scripts.Any(script => script.Contains("title", StringComparison.Ordinal)));
+        True(native.Scripts.Any(
+            script => script.Contains("__webuitoolkitDesktop", StringComparison.Ordinal)));
+        native.DesktopScriptResponder = script =>
+        {
+            const string marker = "invoke(\"";
+            int start = script.IndexOf(marker, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return null;
+            }
+
+            start += marker.Length;
+            int end = script.IndexOf('"', start);
+            string id = script[start..end];
+            return $$"""{"kind":"result","id":"{{id}}","ok":true,"value":"stored"}""";
+        };
+        Equal(
+            "\"stored\"",
+            await desktop.InvokeBrowserAsync(
+                "storage.read",
+                """{"key":"theme"}""",
+                CancellationToken.None));
+        BrowserDesktopEventArgs? observedEvent = null;
+        desktop.DesktopEventReceived += (_, desktopEvent) => observedEvent = desktopEvent;
+        native.RaiseDesktop(
+            """{"kind":"event","name":"accelerator","id":"save","payload":{}}""");
+        Equal("save", observedEvent!.Id);
     }
 
     private static async Task PresentationModesMap()

@@ -87,6 +87,33 @@ current channel has reported a close, pass a replacement channel to
 handshake and authoritative replacement snapshot; reconnects are serialized
 and are rejected before disconnection or after disposal.
 
+`startNativeMvvmApplication` is the higher-level CsWebUi owner used by the
+framework packages. It loads the private bridge, waits for binding readiness,
+opens the generated contract, owns reconnect and page teardown, and lets the
+framework register cleanup under that same lifetime. Its mutually exclusive
+`channelFactory` option bypasses bridge loading for development-only
+mock/replay hosts while retaining the production transport, client,
+projection, generated contract, reconnect, and teardown code paths.
+
+### Development inspector and mock host
+
+`MvvmDevelopmentInspector` is an opt-in private-binding inspector.
+`mountMvvmInspectorOverlay` renders its bounded event stream in the native
+window. Events include direction, operation, member, revision, byte count,
+duration, patch size, faults, and connection transitions. They deliberately
+exclude capability tokens, arguments, property values, validation strings,
+raw frames, and exception details. Pass a generated contract's
+`memberMetadata` to the inspector to label correlated operations with both the
+TypeScript member and its C# authoring member without exposing runtime values.
+
+`MvvmMockFrameChannel` is a development-only in-memory host that speaks the
+real `webuitoolkit.mvvm/1` protocol. Supply an initial snapshot and mutation
+handlers, then pass the channel to `startMvvmApplication`; generated contracts
+and framework adapters run unchanged. The mock supports latency, validation,
+command results and faults, pushed updates, stale revisions, cancellation
+responses, and explicit disconnects, and exposes `mode === "mock"` so a
+frontend can label the session unambiguously.
+
 ## Protocol behavior
 
 The SDK follows the normative specification and deterministic corpus under

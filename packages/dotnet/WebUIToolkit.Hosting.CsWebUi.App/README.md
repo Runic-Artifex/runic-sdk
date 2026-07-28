@@ -22,3 +22,10 @@ Framework integrations normally wrap `UseCsWebUi` with their own extension
 members, such as `UseReact`. Compiled cwhtml/HTMX composition lives in the
 separate `WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App` package so other frontends
 do not acquire cwhtml runtime dependencies.
+
+Registration also contributes the frontend-neutral `WebUIToolkit.Desktop`
+services. Applications can inject typed lifetime, window, focus, dispatcher,
+keyboard, clipboard, file, drop, external-launch, notification, browser
+profile/storage, and owned-window contracts without referencing CsWebUi or DOM
+types. The services attach to the exact native window lifetime owned by the
+mode runner and release secondary windows before the browser host.

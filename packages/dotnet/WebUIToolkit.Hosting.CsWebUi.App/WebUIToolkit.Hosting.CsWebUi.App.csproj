@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\WebUIToolkit.Desktop\WebUIToolkit.Desktop.csproj" />
     <ProjectReference Include="..\WebUIToolkit.Hosting\WebUIToolkit.Hosting.csproj" />
     <ProjectReference Include="..\WebUIToolkit.Hosting.CsWebUi\WebUIToolkit.Hosting.CsWebUi.csproj" />
     <ProjectReference Include="..\WebUIToolkit.Hosting.GenericHost\WebUIToolkit.Hosting.GenericHost.csproj" />

@@ -12,10 +12,12 @@ import {
   createVueMvvmAdapter,
   toVueMvvmCollection,
   toVueMvvmCommand,
+  toVueMvvmCommandFacade,
   toVueMvvmProperty,
   toVueMvvmValidation,
   useVueMvvmCollection,
   useVueMvvmCommand,
+  useVueMvvmCommandFacade,
   useVueMvvmProperty,
   useVueMvvmValidation,
   type VueMvvmAdapter,
@@ -37,10 +39,12 @@ const typedAmount: ComputedRef<number | undefined> =
 const typedItems: ComputedRef<readonly { readonly id: string }[]> =
   toVueMvvmCollection(adapter, itemsHandle);
 const typedCommand = toVueMvvmCommand(adapter, submitHandle);
+const commandFacade = toVueMvvmCommandFacade(adapter, submitHandle);
 const typedValidation = toVueMvvmValidation(adapter, amountHandle);
 const injectedAmount = useVueMvvmProperty(amountHandle);
 const injectedItems = useVueMvvmCollection(itemsHandle);
 const injectedCommand = useVueMvvmCommand(submitHandle);
+const injectedCommandFacade = useVueMvvmCommandFacade(submitHandle);
 const injectedValidation = useVueMvvmValidation(amountHandle);
 void submitHandle.execute(7);
 
@@ -52,10 +56,12 @@ void invocation;
 void typedAmount;
 void typedItems;
 void typedCommand;
+void commandFacade.execute(7).completion;
 void typedValidation;
 void injectedAmount;
 void injectedItems;
 void injectedCommand;
+void injectedCommandFacade.result.value;
 void injectedValidation;
 
 // @ts-expect-error state is exposed as a read-only ref.

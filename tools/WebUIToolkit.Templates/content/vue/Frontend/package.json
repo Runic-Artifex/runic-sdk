@@ -3,9 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "scripts": { "build": "vite build", "dev": "vite", "typecheck": "vue-tsc --noEmit" },
+  "scripts": { "build": "vite build", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "vue-tsc --noEmit" },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@webuitoolkit/mvvm": "0.1.0",
+    "@webuitoolkit/mvvm-vue": "0.1.0",
     "bootstrap": "5.3.8",
     "vue": "3.5.40"
   },

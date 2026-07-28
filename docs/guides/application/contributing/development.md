@@ -98,6 +98,6 @@ action/field/command/fragment registration from build-time cwhtml metadata and
 use the high-level native application builder. Their development documents
 load Vite's client and source entry directly from the supervised loopback
 server, while HTMX requests, including development fragment refreshes, stay on
-the private CsWebUi binding. Richer typed declarations and editor tooling
-remain in the
-[cwhtml development guide](../guides/cwhtml.md).
+the private CsWebUi binding. The remaining editor work is documented in the
+[cwhtml development guide](../guides/cwhtml.md) and deliberately follows the
+non-editor product priorities.

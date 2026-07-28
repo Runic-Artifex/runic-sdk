@@ -22,6 +22,7 @@
     <PackageReference Include="WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App" Version="1.0.0-beta.1" />
     <PackageReference Include="WebUIToolkit.MVVM.Html.Htmx.Js" Version="1.0.0" />
     <PackageReference Include="WebUIToolkit.MVVM.CommunityToolkit" Version="1.0.0" />
+    <PackageReference Include="WebUIToolkit.MVVM" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>

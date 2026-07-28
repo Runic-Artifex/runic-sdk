@@ -263,6 +263,9 @@
         "resolved": "10.0.10",
         "contentHash": "OvGz3PrzuAI/Sj7LTcXcCe3FClRI1IyRMZjNONcZtFh+Ww7nAtSh4kh08r8KVe/xxkXJPjR0Y1jF7H+N42d4xQ=="
       },
+      "webuitoolkit.desktop": {
+        "type": "Project"
+      },
       "webuitoolkit.hosting": {
         "type": "Project",
         "dependencies": {
@@ -270,7 +273,10 @@
         }
       },
       "webuitoolkit.hosting.abstractions": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.Desktop": "[1.0.0-beta.1, )"
+        }
       },
       "webuitoolkit.hosting.cswebui": {
         "type": "Project",

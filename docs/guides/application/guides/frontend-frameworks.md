@@ -9,8 +9,8 @@ The initial probe found six cross-framework gaps. They are now implemented in
 the shared runtime and samples. A second DX pass also removed handwritten C#
 adapter registration and added typed framework-native reads. Native-AOT,
 reconnect, validation, cancellation, accessibility, and leak gates now cover
-all eight variants. The remaining work is aggregate generated framework
-façades and package-release alignment.
+all eight variants. Generated aggregate framework façades and package-release
+alignment now sit on top of that shared contract.
 
 ## Implemented product changes
 
@@ -91,7 +91,21 @@ than implementing their own binding poll. Framework code now supplies only its
 generated contract and adapts the accepted projection into native reactive
 primitives.
 
-### Frontend SDK and Vite builds
+The native owner is also exposed in ecosystem-native forms:
+
+- `startReactMvvmApplication` owns the external store and provider lifetime;
+- `startVueMvvmApplication` plus `createVueMvvmApplicationPlugin` owns the
+  adapter and application unmount;
+- `startSvelteMvvmApplication` plus the context helpers owns the readable store
+  and component teardown; and
+- `startAngularMvvmApplication` plus environment providers owns the signal
+  store and application destruction.
+
+Normal entrypoints now select a generated contract, mount a root, and register
+that root's cleanup. They do not poll the bridge, create channels, recover
+revisions, or reproduce reconnect logic.
+
+### Frontend SDK and development servers
 
 `WebUIToolkit.Frontend.Sdk` owns npm install/build/watch integration, generated
 contract verification, bridge publication, and copying the produced asset
@@ -133,6 +147,35 @@ plugin. Angular production output uses the supported application builder and
 its AOT compiler/optimizer rather than the earlier compact sample-only JIT
 entry.
 
+The coordinated development path uses real development servers for every
+framework. React, Vue, and Svelte use Vite and their native HMR plugins;
+Angular uses `ng serve` and the Angular application development builder. The
+coordinator writes both `simple/index.html` and `advanced/index.html` native
+bootstraps, retains `/webui.js` and MVVM commands on CsWebUi, and serves only
+the framework asset graph from loopback HTTP. The .NET process, window,
+document, and ViewModel therefore survive compatible component and style
+updates.
+
+`eng/verify-todo-frontend-hmr.ps1` proves that claim against pinned Chromium:
+it creates native C# state, edits the shared CSS source, observes the
+framework's live update, and requires the same ViewModel-backed Todo to remain
+in the existing native document for React, Vue, Svelte, and Angular.
+
+For debugging without HTTP controllers or Swagger, applications may opt into
+the shared sanitized private-binding inspector. Generated contracts expose
+member metadata so correlated operations can point back to their C# authoring
+member without retaining arguments, values, validation text, or raw frames.
+For presentation-only work,
+`MvvmMockFrameChannel` drives the production client and generated framework
+bindings from deterministic fixtures; it is a protocol mock, not a replacement
+framework store. Generated React, Vue, Svelte, and Angular projects expose that
+path as `cd Frontend && npm run dev:mock`; normal production builds use a
+separate entry graph and template acceptance rejects leaked fixture code.
+cwhtml deliberately has no frontend-only equivalent because its renderer and
+actions are compiled C#—its retained native development host is the meaningful
+fast loop. The checked-in parity policy and gate mapping live in
+`eng/frontend-support-matrix.json`.
+
 ## What the implementation confirmed
 
 - `MvvmProjection` is a credible common boundary. Framework adapters do not
@@ -149,21 +192,24 @@ entry.
 - One frontend project can contain both teaching levels without duplicating its
   native host.
 
-## Remaining framework-specific improvements
+## Generated framework façades
 
-Generated handles now compose with each framework's native reactive primitive.
-The next layer should generate an aggregate façade so application authors do
-not have to wire each handle individually:
+The frontend contract generator emits four optional framework views alongside
+the direct TypeScript handles:
 
-- React: named contract hooks plus result, error, cancellation, and transition
-  composition around the existing typed command-state hook.
-- Vue: a generated contract composable with effect-scope ownership.
-- Svelte: named stores and Svelte 5 rune-friendly helpers around the existing
-  typed derived readables.
-- Angular: a generated injectable contract service and standalone provider.
+- React aggregate hooks with named values, validation, collections, and command
+  façades;
+- Vue contract composables whose command lifetimes follow the active effect
+  scope;
+- Svelte named store groups plus the Svelte 5-only
+  `@webuitoolkit/mvvm-svelte/runes` getter adapter; and
+- Angular injectable contract services with standalone provider helpers.
 
-These are adapter ergonomics, not protocol gaps. They must preserve the one
-generated symbol model and framework-neutral runtime.
+Every command façade presents the same idle/running/succeeded/failed/canceled
+transition model, last result or error, cancellation state, and the host's
+projected `canExecute`/running state. The underlying generated command handle
+remains available, so direct TypeScript consumers do not have to adopt a
+framework adapter.
 
 ## Verification and remaining release alignment
 
@@ -183,7 +229,11 @@ four native hosts and runs both Todo levels. The shared gates cover
 authoritative reconnect snapshots, validation, asynchronous cancellation,
 accessibility structure, and managed/browser/process leak behavior.
 
-Remaining release work is package-only consumer and supported-version
-alignment plus deterministic production-output checks from clean roots.
-Compressed-size budgets should be frozen only after a reference machine and
-measurement method are declared.
+G5 and G6 install packed SDK/adapter tarballs into isolated consumers at both
+ends of every supported framework range. Those consumers compile and bundle
+the command façades as well as the original primitive APIs.
+
+`npm run verify:frontend-production` performs two clean production builds for
+each Todo frontend, compares the complete asset graph by SHA-256, and enforces
+the checked-in raw, gzip-9, and Brotli-11 entrypoint budgets. The runtime and
+compression method are frozen in `eng/frontend-production-budgets.json`.

@@ -15,21 +15,21 @@ root.render(
 );
 
 function AmountEditor() {
-  // Generated handles preserve the C# member types through the hooks.
-  const amount = useMvvmProperty(contract.amount);
-  const submit = useMvvmCommand(contract.submit);
+  const todo = useTodoBindings(contract); // generated aggregate hook
   return (
     <button
-      disabled={!submit?.canExecute || submit.isExecuting}
-      onClick={() => void contract.submit.execute().completion}
+      disabled={!todo.submit.canExecute || todo.submit.isRunning}
+      onClick={() => void todo.submit.execute().completion}
     >
-      Submit {amount}
+      Submit {todo.amount}
     </button>
   );
 }
 ```
 
 Numeric member identifiers remain supported for dynamic scenarios.
+`useMvvmCommandFacade` is also available directly and exposes the last result,
+error, cancellation request, and monotonically ordered lifecycle transition.
 
 Ownership is explicit at both boundaries:
 

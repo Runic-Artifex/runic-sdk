@@ -8,6 +8,7 @@ import {
 } from "@webuitoolkit/mvvm";
 import {
   createSvelteMvvmStore,
+  createSvelteMvvmCommandFacade,
   derivedMvvmCollection,
   derivedMvvmCommand,
   derivedMvvmProperty,
@@ -16,6 +17,7 @@ import {
   type SvelteDestroyRegistrar,
   type SvelteMvvmStore,
 } from "@webuitoolkit/mvvm-svelte";
+import { toSvelteMvvmRune } from "@webuitoolkit/mvvm-svelte/runes";
 import type { Readable } from "svelte/store";
 
 declare const projection: MvvmProjection;
@@ -31,6 +33,8 @@ const typedAmount: Readable<number | undefined> = derivedMvvmProperty(store, amo
 const typedItems: Readable<readonly { readonly id: string }[]> =
   derivedMvvmCollection(store, itemsHandle);
 const typedCommand = derivedMvvmCommand(store, submitHandle);
+const commandFacade = createSvelteMvvmCommandFacade(store, submitHandle);
+const commandRune = toSvelteMvvmRune(commandFacade);
 const typedValidation: Readable<readonly string[]> =
   derivedMvvmValidation(store, amountHandle);
 const value: JsonValue | undefined = store.property(1);
@@ -47,6 +51,8 @@ void submitHandle.execute(4);
 void typedAmount;
 void typedItems;
 void typedCommand;
+void commandFacade.execute(4).completion;
+void commandRune.current.status;
 void typedValidation;
 // @ts-expect-error generated command arguments stay strongly typed.
 submitHandle.execute("4");

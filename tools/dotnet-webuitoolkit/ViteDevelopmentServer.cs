@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace WebUIToolkit.DotNet.WebUIToolkit;
 
-internal sealed class ViteDevelopmentServer : IAsyncDisposable
+internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 {
     internal const string ServerEnvironmentVariable = "WEBUITOOLKIT_VITE_DEV_SERVER";
     internal const string EntryEnvironmentVariable = "WEBUITOOLKIT_VITE_ENTRY";
@@ -48,11 +48,11 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         };
     }
 
-    internal Uri Origin { get; }
+    public Uri Origin { get; }
 
-    internal IReadOnlyDictionary<string, string?> HostEnvironment { get; }
+    public IReadOnlyDictionary<string, string?> HostEnvironment { get; }
 
-    internal Task<int> Completion => _process.Completion;
+    public Task<int> Completion => _process.Completion;
 
     internal static async Task<ViteDevelopmentServer> StartAsync(
         DevProjectConfiguration configuration,
@@ -98,6 +98,20 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
         try
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
+            if (!configuration.CwhtmlEnabled)
+            {
+                foreach (string destination in configuration.DevelopmentServerDocuments)
+                {
+                    string document = await server
+                        .ReadDevelopmentDocumentAsync(destination, cancellationToken)
+                        .ConfigureAwait(false);
+                    FrontendDevelopmentDocument.Write(
+                        configuration,
+                        origin,
+                        destination,
+                        document);
+                }
+            }
             Console.WriteLine($"[dev] Vite development server ready at {origin}");
             phase.Complete();
             return server;
@@ -107,6 +121,15 @@ internal sealed class ViteDevelopmentServer : IAsyncDisposable
             await server.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    private async Task<string> ReadDevelopmentDocumentAsync(
+        string document,
+        CancellationToken cancellationToken)
+    {
+        using var client = new HttpClient();
+        return await client.GetStringAsync(new Uri(Origin, document), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal static IReadOnlyList<string> CreateArguments(

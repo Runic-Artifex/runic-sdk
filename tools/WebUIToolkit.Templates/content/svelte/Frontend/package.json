@@ -3,9 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "scripts": { "build": "vite build", "dev": "vite", "typecheck": "svelte-check --tsconfig ./tsconfig.json" },
+  "scripts": { "build": "vite build", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "svelte-check --tsconfig ./tsconfig.json" },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@webuitoolkit/mvvm": "0.1.0",
+    "@webuitoolkit/mvvm-svelte": "0.1.0",
     "bootstrap": "5.3.8",
     "svelte": "5.56.8"
   },

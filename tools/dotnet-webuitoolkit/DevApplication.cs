@@ -78,36 +78,38 @@ internal static class DevApplication
         DevOptions options,
         CancellationToken cancellationToken)
     {
-        bool useViteServer = options.WatchFrontend && configuration.ViteDevServerEnabled;
-        await using ViteDevelopmentServer? vite = useViteServer
-            ? await ViteDevelopmentServer
-                .StartAsync(configuration, cancellationToken)
-                .ConfigureAwait(false)
-            : null;
+        bool useDevelopmentServer =
+            options.WatchFrontend && configuration.HasDevelopmentServer;
+        await using IFrontendDevelopmentServer? developmentServer =
+            useDevelopmentServer
+                ? await StartDevelopmentServerAsync(
+                    configuration,
+                    cancellationToken).ConfigureAwait(false)
+                : null;
         await using var host = new HostProcessController(
             dotnetHost,
             configuration,
             options,
-            vite?.HostEnvironment);
+            developmentServer?.HostEnvironment);
         using (PhaseTimer phase = PhaseTimer.Start("Starting native application host"))
         {
             await host.StartAsync(cancellationToken).ConfigureAwait(false);
             phase.Complete();
         }
         CwhtmlHotReloadCoordinator? cwhtmlReload =
-            useViteServer &&
+            configuration.DevelopmentServerKind == "vite" &&
             options.WatchHost &&
             !string.IsNullOrWhiteSpace(configuration.CwhtmlHotReloadPath) &&
             File.Exists(configuration.CwhtmlHotReloadPath)
                 ? CwhtmlHotReloadCoordinator.Create(configuration.CwhtmlHotReloadPath, host)
                 : null;
         await using RunningProcess? frontend =
-            options.WatchFrontend && !useViteServer && configuration.HasFrontendWatcher
+            options.WatchFrontend && !useDevelopmentServer && configuration.HasFrontendWatcher
                 ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
                 : null;
 
         Task assetMonitor =
-            useViteServer
+            useDevelopmentServer
             || !options.WatchFrontend
             || !configuration.HasFrontendWatcher
             ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
@@ -156,9 +158,9 @@ internal static class DevApplication
         {
             observed.Add(frontend.Completion);
         }
-        if (vite is not null)
+        if (developmentServer is not null)
         {
-            observed.Add(vite.Completion);
+            observed.Add(developmentServer.Completion);
         }
 
         Task completed = await Task.WhenAny(observed).ConfigureAwait(false);
@@ -188,11 +190,27 @@ internal static class DevApplication
             "WUTDEV1007",
             completed == host.Completion
                 ? $"The CsWebUi host watcher exited unexpectedly with code {exitCode}."
-                : completed == vite?.Completion
-                    ? $"The Vite development server exited unexpectedly with code {exitCode}."
+                : completed == developmentServer?.Completion
+                    ? $"The {configuration.DevelopmentServerKind} development server " +
+                      $"exited unexpectedly with code {exitCode}."
                     : $"The frontend watcher exited unexpectedly with code {exitCode}.");
         return Program.DevelopmentFailure;
     }
+
+    private static async Task<IFrontendDevelopmentServer> StartDevelopmentServerAsync(
+        DevProjectConfiguration configuration,
+        CancellationToken cancellationToken) =>
+        configuration.DevelopmentServerKind switch
+        {
+            "vite" => await ViteDevelopmentServer
+                .StartAsync(configuration, cancellationToken)
+                .ConfigureAwait(false),
+            "angular" => await AngularDevelopmentServer
+                .StartAsync(configuration, cancellationToken)
+                .ConfigureAwait(false),
+            _ => throw new InvalidOperationException(
+                $"Unsupported frontend development server '{configuration.DevelopmentServerKind}'."),
+        };
 
     private static async Task CompileCwhtmlAsync(
         string dotnetHost,
@@ -291,8 +309,8 @@ internal static class DevApplication
         IReadOnlyList<string> arguments = CreateBuildArguments(configuration, options);
 
         using PhaseTimer phase = PhaseTimer.Start(
-            configuration.ViteDevServerEnabled && options.WatchFrontend
-                ? "Building managed host and cwhtml"
+            configuration.HasDevelopmentServer && options.WatchFrontend
+                ? "Building managed host and development bootstrap"
                 : "Building managed host and frontend assets");
         await RequireSuccessAsync(
             dotnetHost,
@@ -324,7 +342,7 @@ internal static class DevApplication
             "-property:WebUIToolkitCwhtmlDevelopmentHotReload=true",
             "-property:WebUIToolkitFrontendInstall=" + (options.Restore ? "true" : "false"),
             "-property:WebUIToolkitFrontendBuild="
-                + (options.WatchFrontend && configuration.ViteDevServerEnabled
+                + (options.WatchFrontend && configuration.HasDevelopmentServer
                     ? "false"
                     : "true"),
         };
@@ -410,8 +428,9 @@ internal static class DevApplication
     {
         Console.WriteLine($"[dev] Project: {configuration.ProjectPath}");
         Console.WriteLine(
-            configuration.ViteDevServerEnabled
-                ? $"[dev] Frontend: Vite dev server for {configuration.Workspace}"
+            configuration.HasDevelopmentServer
+                ? $"[dev] Frontend: {configuration.DevelopmentServerKind} dev server " +
+                  $"for {configuration.Workspace}"
                 : configuration.HasFrontendWatchTarget
                 ? $"[dev] Frontend: MSBuild target {configuration.FrontendWatchTarget}"
                 : configuration.HasNodeWorkspace

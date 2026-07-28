@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <WebUIToolkitShippingProject>true</WebUIToolkitShippingProject>
+    <AssemblyName>WebUIToolkit.Desktop</AssemblyName>
+    <RootNamespace>WebUIToolkit.Desktop</RootNamespace>
+    <PackageId>WebUIToolkit.Desktop</PackageId>
+    <Version>1.0.0-beta.1</Version>
+    <Description>Frontend-neutral desktop capability contracts for testable WebUIToolkit ViewModels.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="PUBLIC-API.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

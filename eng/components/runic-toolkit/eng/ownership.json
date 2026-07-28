@@ -2,6 +2,9 @@
   "version": 1,
   "worktreeRoot": "../WebUIToolkit.worktrees",
   "allowedProjectReferences": [
+    { "from": "hosting", "to": "desktop", "reason": "The CsWebUi host implements frontend-neutral desktop capability contracts without exposing its native window to ViewModels." },
+    { "from": "flow", "to": "desktop", "reason": "Flow maps existing navigation guards onto the frontend-neutral application close contract." },
+    { "from": "desktop", "to": "hosting", "reason": "The desktop owner integration suite proves the CsWebUi implementation while the shipping Desktop package remains dependency-free." },
     { "from": "mvvm-compiler-build", "to": "mvvm-protocol-core", "reason": "Integrated source-build edge; packed artifacts remain the release boundary." },
     { "from": "mvvm-compiler-build", "to": "communitytoolkit", "reason": "The owner-local semantic test compiles and executes generated collection delegates through the runtime adapter; shipping build artifacts retain the packed handoff boundary." },
     { "from": "communitytoolkit", "to": "mvvm-protocol-core", "reason": "First-party runtime adapter consumes only the frozen MVVM v1 runtime seam." },
@@ -27,6 +30,8 @@
     { "from": "demo-samples", "to": "text-resources", "reason": "Advanced demonstrations may compose generated text resources." }
   ],
   "tasks": [
+    { "name": "asset-vfs", "branch": "work/asset-vfs", "paths": ["src/WebUIToolkit.Assets/*", "tests/WebUIToolkit.Assets.*/*"] },
+    { "name": "desktop", "branch": "work/desktop", "paths": ["src/WebUIToolkit.Desktop/*", "tests/WebUIToolkit.Desktop.*/*"] },
     { "name": "mvvm-protocol-core", "branch": "work/mvvm-protocol-core", "paths": ["protocol/mvvm/*", "src/WebUIToolkit.MVVM/*", "tests/WebUIToolkit.MVVM.Tests/*", "tests/WebUIToolkit.MVVM.Protocol.Tests/*", "tests/WebUIToolkit.MVVM.AotSmoke/*"] },
     { "name": "mvvm-compiler-build", "branch": "work/mvvm-compiler-build", "paths": ["src/WebUIToolkit.MVVM.Build/*", "tools/WebUIToolkit.MVVM.BindingCompiler/*", "tests/WebUIToolkit.MVVM.Build.Tests/*", "tests/WebUIToolkit.MVVM.BindingCompiler.Tests/*"] },
     { "name": "web-sdk-conformance", "branch": "work/web-sdk-conformance", "paths": ["web/packages/mvvm/*", "web/packages/conformance/*", "web/fixtures/conformance/*"] },
@@ -39,7 +44,7 @@
     { "name": "template-engine", "branch": "work/template-engine", "paths": ["src/WebUIToolkit.MVVM.Html/*", "src/WebUIToolkit.MVVM.Html.Compiler/*", "src/WebUIToolkit.MVVM.Html.Build/*", "src/WebUIToolkit.MVVM.Html.Testing/*", "src/WebUIToolkit.MVVM.Html.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Html.ReactiveUI/*", "tools/dotnet-cwhtml/*", "spec/templates/*", "tests/WebUIToolkit.MVVM.Html.Tests/*"] },
     { "name": "htmx", "branch": "work/htmx", "paths": ["src/WebUIToolkit.MVVM.Html.Htmx/*", "src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/*", "src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/*", "src/WebUIToolkit.MVVM.Html.Htmx.Js/*", "tests/WebUIToolkit.MVVM.Html.Htmx.Tests/*", "tests/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.Tests/*", "tests/Fixtures/Htmx/*"] },
     { "name": "hosting", "branch": "work/hosting", "paths": ["src/WebUIToolkit.Hosting/*", "src/WebUIToolkit.Hosting.Abstractions/*", "src/WebUIToolkit.Hosting.WebUi/*", "src/WebUIToolkit.Hosting.CsWebUi/*", "src/WebUIToolkit.Hosting.CsWebUi.App/*", "src/WebUIToolkit.Hosting.CsWebUi.Mvvm/*", "src/WebUIToolkit.Hosting.CommandLine/*", "src/WebUIToolkit.Hosting.Generators/*", "src/WebUIToolkit.Hosting.GenericHost/*", "src/WebUIToolkit.Hosting.Build/*", "src/WebUIToolkit.Frontend.Sdk/*", "tools/dotnet-webuitoolkit/*", "tests/WebUIToolkit.Hosting.*/*", "tests/WebUIToolkit.Frontend.Sdk.Tests/*", "tests/WebUIToolkit.DotNet.WebUIToolkit.Tests/*", "tests/Fixtures/Hosting.*/*"] },
-    { "name": "demo-samples", "branch": "work/demo-samples", "paths": ["samples/SharedAssets/*", "samples/01-HelloLifecycle/*", "samples/02-GreetingCommandLine/*", "samples/03-MvvmCounterProjection/*", "samples/04-NativeMvvmCounter/*", "samples/SimpleTodo/*", "samples/AdvancedTodo/*", "samples/Todo.*/*"] },
+    { "name": "demo-samples", "branch": "work/demo-samples", "paths": ["samples/SharedAssets/*", "samples/01-HelloLifecycle/*", "samples/02-GreetingCommandLine/*", "samples/03-MvvmCounterProjection/*", "samples/04-NativeMvvmCounter/*", "samples/Cwhtml.*/*", "samples/SimpleTodo/*", "samples/AdvancedTodo/*", "samples/Todo.*/*", "tests/WebUIToolkit.Samples.*/*"] },
     { "name": "flow", "branch": "work/flow", "paths": ["src/WebUIToolkit.MVVM.Flow/*", "src/WebUIToolkit.MVVM.Flow.Generators/*", "src/WebUIToolkit.MVVM.Flow.CommunityToolkit/*", "src/WebUIToolkit.MVVM.Flow.ReactiveUI/*", "tests/WebUIToolkit.MVVM.Flow.*/*", "samples/Flow.*/*"] },
     { "name": "text-resources", "branch": "work/text-resources", "paths": ["src/WebUIToolkit.TextResources*/*", "tools/dotnet-textresources/*", "spec/text-resources/*", "tests/WebUIToolkit.TextResources.*/*", "samples/TextResources.*/*"] },
     { "name": "command-line", "branch": "work/command-line", "paths": ["src/WebUIToolkit.CommandLine*/*", "eng/cli-evaluation/*", "spec/command-line/*", "tests/WebUIToolkit.CommandLine.*/*", "tests/Fixtures/CommandLine.*/*"] },

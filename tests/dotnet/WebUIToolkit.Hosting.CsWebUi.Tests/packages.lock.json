@@ -7,8 +7,14 @@
         "resolved": "2.5.0-beta.4.3",
         "contentHash": "8HVNW6Eh+Ht8iMS+vJ3jpvRTXOBg9sk4IQb7AnMs2lWPKudu5awkW/+Q/4X8EGqW//uJMfKYTUaz0Hyap8QV2Q=="
       },
-      "webuitoolkit.hosting.abstractions": {
+      "webuitoolkit.desktop": {
         "type": "Project"
+      },
+      "webuitoolkit.hosting.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "WebUIToolkit.Desktop": "[1.0.0-beta.1, )"
+        }
       },
       "webuitoolkit.hosting.cswebui": {
         "type": "Project",

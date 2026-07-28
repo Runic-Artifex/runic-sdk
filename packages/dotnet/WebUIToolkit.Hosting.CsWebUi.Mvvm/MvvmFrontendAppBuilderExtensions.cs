@@ -1,5 +1,7 @@
 using System;
+using System.Threading.Tasks;
 using WebUIToolkit.Hosting.CsWebUi;
+using WebUIToolkit.MVVM;
 
 namespace WebUIToolkit.Hosting.CsWebUi.Mvvm;
 
@@ -20,6 +22,80 @@ public readonly struct MvvmFrontendAppBuilder
     /// <summary>Registers this framework's native MVVM frontend.</summary>
     public WebUiAppBuilder Use(CsWebUiAppOptions options) =>
         _application.UseCsWebUi(Name, options);
+
+    /// <summary>
+    /// Creates and registers one generated-contract ViewModel application.
+    /// </summary>
+    public MvvmFrontendApplication CreateApplication<TModel>(
+        MvvmFrontendApplicationOptions<TModel> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var registry = new MvvmSessionRegistry();
+        registry.Map(options.Contract, async cancellationToken =>
+        {
+            TModel model = await options.ActivateModel(cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                IMvvmBindingAdapter adapter = options.CreateAdapter(model);
+                return model is IAsyncDisposable or IDisposable
+                    ? new MvvmSessionActivation(adapter, model!)
+                    : new MvvmSessionActivation(adapter);
+            }
+            catch
+            {
+                await DisposeModelAsync(model).ConfigureAwait(false);
+                throw;
+            }
+        });
+
+        var root = new MvvmFrontendRoot(
+            options.Contract,
+            registry.Build(options.Limits));
+        Action<global::CsWebUi.WebUiWindow>? configureApplication =
+            options.Adapter.ConfigureWindow;
+        var adapterOptions = new CsWebUiAdapterOptions(
+            options.Adapter.WebRoot,
+            options.Adapter.PresentationMode,
+            options.Adapter.Browser,
+            window =>
+            {
+                configureApplication?.Invoke(window);
+                root.AttachWindow(window);
+            });
+        try
+        {
+            _application.UseCsWebUi(
+                Name,
+                new CsWebUiAppOptions(
+                    options.Assets,
+                    root,
+                    adapterOptions,
+                    options.BrowserHost,
+                    options.BrowserWindow,
+                    options.SessionCloseTimeout,
+                    options.WindowCloseTimeout));
+            return new MvvmFrontendApplication(root);
+        }
+        catch
+        {
+            root.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            throw;
+        }
+    }
+
+    private static async ValueTask DisposeModelAsync<TModel>(TModel model)
+    {
+        switch (model)
+        {
+            case IAsyncDisposable asynchronous:
+                await asynchronous.DisposeAsync().ConfigureAwait(false);
+                break;
+            case IDisposable synchronous:
+                synchronous.Dispose();
+                break;
+        }
+    }
 }
 
 /// <summary>Contributes framework-native frontend members to the common builder.</summary>

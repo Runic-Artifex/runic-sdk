@@ -4,11 +4,13 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CsWebUi;
 using WebUIToolkit.Hosting.CsWebUi.Mvvm;
+using WebUIToolkit.Hosting.CsWebUi;
 using WebUIToolkit.MVVM;
 using WebUIToolkit.MVVM.CommunityToolkit;
 
@@ -55,6 +57,7 @@ internal static class Program
             "webuitoolkit-native-e2e-" + Guid.NewGuid().ToString("N"));
         WebUiWindow? window = null;
         CsWebUiMvvmBridge? bridge = null;
+        WebUiBinding? desktopBinding = null;
         Process? browser = null;
         Task<string>? browserDiagnostics = null;
         bool serverStarted = false;
@@ -68,6 +71,21 @@ internal static class Program
             window.SetPublic(false);
             window.SetRootFolder(webRoot);
             bridge = CsWebUiMvvmBridge.Attach(window, session);
+            var desktopMessages = Channel.CreateUnbounded<string>(
+                new UnboundedChannelOptions
+                {
+                    SingleReader = true,
+                    SingleWriter = false,
+                });
+            desktopBinding = window.Bind(
+                "__webuitoolkit_desktop_result",
+                webUiEvent =>
+                {
+                    if (webUiEvent.ArgumentCount == 1)
+                    {
+                        desktopMessages.Writer.TryWrite(webUiEvent.GetString());
+                    }
+                });
             string url = window.StartServer("index.html");
             serverStarted = true;
 
@@ -130,10 +148,30 @@ internal static class Program
             {
             }
 
-            bool passed = string.Equals(result, "pass|1", StringComparison.Ordinal);
+            bool mvvmPassed = string.Equals(result, "pass|1", StringComparison.Ordinal);
+            bool desktopPassed = false;
+            if (mvvmPassed)
+            {
+                window.RunJavaScript(CsWebUiDesktopBridgeScript.Bootstrap);
+                window.RunJavaScript(
+                    """globalThis.__webuitoolkitDesktop.invoke("native-write","storage.write",{"key":"native-e2e","value":"stored"});""");
+                string writeResult = await desktopMessages.Reader
+                    .ReadAsync(timeout.Token)
+                    .ConfigureAwait(false);
+                window.RunJavaScript(
+                    """globalThis.__webuitoolkitDesktop.invoke("native-read","storage.read",{"key":"native-e2e"});""");
+                string readResult = await desktopMessages.Reader
+                    .ReadAsync(timeout.Token)
+                    .ConfigureAwait(false);
+                desktopPassed =
+                    IsDesktopResult(writeResult, "native-write", expectedValue: null)
+                    && IsDesktopResult(readResult, "native-read", "stored");
+            }
+
+            bool passed = mvvmPassed && desktopPassed;
             Console.WriteLine(passed
-                ? "PASS: real CsWebUi server + Chromium + binary MVVM binding updated the DOM."
-                : "FAIL: native browser-to-C# DOM roundtrip.");
+                ? "PASS: real CsWebUi + Chromium exercised binary MVVM and desktop storage."
+                : "FAIL: native browser-to-C# MVVM or desktop bridge roundtrip.");
             if (!passed)
             {
                 Console.Error.WriteLine(result.Length == 0 ? "(no DOM result)" : result);
@@ -159,6 +197,8 @@ internal static class Program
                     (cleanupErrors ??= []).Add(exception);
                 }
             }
+
+            CaptureCleanupError(ref cleanupErrors, () => desktopBinding?.Dispose());
 
             if (window is not null)
             {
@@ -220,6 +260,26 @@ internal static class Program
         }
 
         return exitCode;
+    }
+
+    private static bool IsDesktopResult(
+        string json,
+        string expectedId,
+        string? expectedValue)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        System.Text.Json.JsonElement root = document.RootElement;
+        if (root.GetProperty("kind").GetString() != "result"
+            || root.GetProperty("id").GetString() != expectedId
+            || !root.GetProperty("ok").GetBoolean())
+        {
+            return false;
+        }
+
+        System.Text.Json.JsonElement value = root.GetProperty("value");
+        return expectedValue is null
+            ? value.ValueKind == System.Text.Json.JsonValueKind.Null
+            : value.GetString() == expectedValue;
     }
 
     private static void CaptureCleanupError(

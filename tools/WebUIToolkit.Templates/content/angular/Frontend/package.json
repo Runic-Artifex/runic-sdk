@@ -4,13 +4,17 @@
   "version": "1.0.0",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node build.mjs --watch"
+    "dev": "ng serve frontend --configuration development",
+    "dev:mock": "ng serve frontend --configuration mock",
+    "typecheck": "ngc --project tsconfig.app.json --noEmit"
   },
   "dependencies": {
     "@angular/common": "22.0.8",
     "@angular/core": "22.0.8",
     "@angular/platform-browser": "22.0.8",
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@webuitoolkit/mvvm": "0.1.0",
+    "@webuitoolkit/mvvm-angular": "0.1.0",
     "bootstrap": "5.3.8",
     "rxjs": "7.8.2"
   },
