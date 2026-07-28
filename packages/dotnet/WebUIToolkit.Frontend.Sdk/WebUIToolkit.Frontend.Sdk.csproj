@@ -10,6 +10,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\WebUIToolkit.Frontend.Generators\WebUIToolkit.Frontend.Generators.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="/" />
     <None Update="buildTransitive/WebUIToolkit.Frontend.Sdk.props"
           Pack="true"
@@ -23,6 +29,9 @@
     <None Update="tools/install-frontend.mjs"
           Pack="true"
           PackagePath="tools/install-frontend.mjs" />
+    <None Include="..\WebUIToolkit.Frontend.Generators\bin\$(Configuration)\$(WebUIToolkitGeneratorTargetFramework)\WebUIToolkit.Frontend.Generators.dll"
+          Pack="true"
+          PackagePath="analyzers\dotnet\cs\WebUIToolkit.Frontend.Generators.dll" />
     <None Include="../WebUIToolkit.Hosting.CsWebUi.Mvvm/assets/webuitoolkit-mvvm-cswebui.mjs"
           Pack="true"
           PackagePath="assets/webuitoolkit-mvvm-cswebui.mjs" />

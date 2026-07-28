@@ -10,8 +10,7 @@
     <WebUIToolkitFrontendViteDevServerEnabled>true</WebUIToolkitFrontendViteDevServerEnabled>
     <WebUIToolkitFrontendViteDevServerEntry>/src/main.tsx</WebUIToolkitFrontendViteDevServerEntry>
     <WebUIToolkitFrontendBuildArguments>-- --mode production</WebUIToolkitFrontendBuildArguments>
-    <WebUIToolkitFrontendContractSource>$(MSBuildProjectDirectory)/counter.frontend.json</WebUIToolkitFrontendContractSource>
-    <WebUIToolkitFrontendContractCSharpOutput>$(MSBuildProjectDirectory)/CounterContracts.g.cs</WebUIToolkitFrontendContractCSharpOutput>
+    <WebUIToolkitFrontendContractCSharpFirst>true</WebUIToolkitFrontendContractCSharpFirst>
     <WebUIToolkitFrontendContractTypeScriptOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-contract.g.ts</WebUIToolkitFrontendContractTypeScriptOutput>
     <WebUIToolkitFrontendContractReactOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-bindings.g.ts</WebUIToolkitFrontendContractReactOutput>
   </PropertyGroup>

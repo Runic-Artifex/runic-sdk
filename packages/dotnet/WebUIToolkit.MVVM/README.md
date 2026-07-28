@@ -5,6 +5,13 @@
 framework, an MVVM framework, dependency injection, or the external lowercase
 `cs-webui` host. Hosting integrates its transport through these explicit APIs.
 
+The package also owns the C#-first frontend contract attributes.
+`WebUiFrontendContract` selects a ViewModel, while
+`WebUiFrontendProperty`, `WebUiFrontendCollection`, and
+`WebUiFrontendCommand` select explicitly numbered exported members. The
+frontend SDK consumes those declarations at compile time and emits a
+reflection-free adapter plus the canonical frontend contract.
+
 ## Public API shape
 
 - `MvvmSessionRegistry` maps ordinal `MvvmContract` values to closed

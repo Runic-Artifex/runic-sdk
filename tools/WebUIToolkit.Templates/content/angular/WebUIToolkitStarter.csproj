@@ -10,8 +10,7 @@
     <WebUIToolkitFrontendViteDevServerEnabled>false</WebUIToolkitFrontendViteDevServerEnabled>
     <WebUIToolkitFrontendDevServerKind>angular</WebUIToolkitFrontendDevServerKind>
     <WebUIToolkitFrontendDevServerDocument>index.html</WebUIToolkitFrontendDevServerDocument>
-    <WebUIToolkitFrontendContractSource>$(MSBuildProjectDirectory)/counter.frontend.json</WebUIToolkitFrontendContractSource>
-    <WebUIToolkitFrontendContractCSharpOutput>$(MSBuildProjectDirectory)/CounterContracts.g.cs</WebUIToolkitFrontendContractCSharpOutput>
+    <WebUIToolkitFrontendContractCSharpFirst>true</WebUIToolkitFrontendContractCSharpFirst>
     <WebUIToolkitFrontendContractTypeScriptOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-contract.g.ts</WebUIToolkitFrontendContractTypeScriptOutput>
     <WebUIToolkitFrontendContractAngularOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-bindings.g.ts</WebUIToolkitFrontendContractAngularOutput>
   </PropertyGroup>

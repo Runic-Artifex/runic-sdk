@@ -4,7 +4,8 @@ import { pathToFileURL } from "node:url";
 
 export async function generateFrontendContracts(options) {
   const sourcePath = resolve(options.sourcePath);
-  const csharpPath = resolve(options.csharpPath);
+  const csharpPath =
+    options.csharpPath === undefined ? undefined : resolve(options.csharpPath);
   const typescriptPath = resolve(options.typescriptPath);
   const source = JSON.parse(await readFile(sourcePath, "utf8"));
 
@@ -12,7 +13,9 @@ export async function generateFrontendContracts(options) {
     throw new Error("Unsupported frontend contract schema.");
   }
   validate(source);
-  await emit(csharpPath, csharp(source), options.verify === true);
+  if (csharpPath !== undefined) {
+    await emit(csharpPath, csharp(source), options.verify === true);
+  }
   await emit(typescriptPath, typescript(source.contracts), options.verify === true);
   for (const [path, renderer] of [
     [options.reactPath, react],
@@ -294,7 +297,10 @@ function typescript(contracts) {
         "    { " +
         `id: ${member.id}, ` +
         `name: ${JSON.stringify(member.name)}, ` +
-        `sourceMember: ${JSON.stringify(`${modelType}.${member.csharp.sourceMember}`)} ` +
+        `sourceMember: ${JSON.stringify(`${modelType}.${member.csharp.sourceMember}`)}` +
+        (member.source === undefined
+          ? " "
+          : `, source: ${JSON.stringify(member.source)} `) +
         "},");
     }
     lines.push("  ] as const;", "");
@@ -593,7 +599,7 @@ if (process.argv[1] !== undefined &&
     }
     values.set(argument.slice(2), process.argv[++index]);
   }
-  for (const required of ["source", "csharp", "typescript"]) {
+  for (const required of ["source", "typescript"]) {
     if (!values.has(required)) throw new Error(`--${required} is required.`);
   }
   await generateFrontendContracts({

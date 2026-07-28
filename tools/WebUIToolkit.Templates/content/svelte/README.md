@@ -9,8 +9,8 @@ dotnet webuitoolkit dev
 ```
 
 The counter is a real native MVVM roundtrip: `CounterViewModel.cs` owns
-validation, history, derived state, and the command; `counter.frontend.json`
-generates the trim-safe C# adapter and typed Svelte contract; and
+validation, history, derived state, the command, and its C#-first contract
+attributes, which generate the trim-safe adapter and typed Svelte contract; and
 `Frontend/src/App.svelte` uses Svelte 5 props, current event attributes,
 context ownership, and generated stores.
 

@@ -1,5 +1,9 @@
 <Project>
   <PropertyGroup>
+    <WebUIToolkitFrontendContractArtifact
+      Condition="'$(WebUIToolkitFrontendContractArtifact)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'webuitoolkit.frontend.json'))</WebUIToolkitFrontendContractArtifact>
+    <WebUIToolkitFrontendContractSource
+      Condition="'$(WebUIToolkitFrontendContractCSharpFirst)' == 'true'">$(WebUIToolkitFrontendContractArtifact)</WebUIToolkitFrontendContractSource>
     <!-- Package buildTransitive props are imported before consumer project properties.
          Compose commands here so project-declared workspace and contract paths are visible. -->
     <WebUIToolkitFrontendBuildCommand
@@ -16,8 +20,13 @@
     <WebUIToolkitFrontendContractAngularArgument
       Condition="'$(WebUIToolkitFrontendContractAngularOutput)' != ''"> --angular &quot;$(WebUIToolkitFrontendContractAngularOutput)&quot;</WebUIToolkitFrontendContractAngularArgument>
     <WebUIToolkitFrontendContractFrameworkArguments>$(WebUIToolkitFrontendContractReactArgument)$(WebUIToolkitFrontendContractVueArgument)$(WebUIToolkitFrontendContractSvelteArgument)$(WebUIToolkitFrontendContractAngularArgument)</WebUIToolkitFrontendContractFrameworkArguments>
+    <WebUIToolkitFrontendContractCSharpArgument
+      Condition="'$(WebUIToolkitFrontendContractCSharpFirst)' != 'true' and
+                 '$(WebUIToolkitFrontendContractCSharpOutput)' != ''"> --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot;</WebUIToolkitFrontendContractCSharpArgument>
     <WebUIToolkitFrontendContractVerifyCommand
-      Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' == '' and '$(WebUIToolkitFrontendContractSource)' != ''">node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot;$(WebUIToolkitFrontendContractFrameworkArguments) --verify</WebUIToolkitFrontendContractVerifyCommand>
+      Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' == '' and '$(WebUIToolkitFrontendContractSource)' != ''">node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot;$(WebUIToolkitFrontendContractCSharpArgument) --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot;$(WebUIToolkitFrontendContractFrameworkArguments) --verify</WebUIToolkitFrontendContractVerifyCommand>
+    <WebUIToolkitFrontendContractGenerateCommand
+      Condition="'$(WebUIToolkitFrontendContractGenerateCommand)' == '' and '$(WebUIToolkitFrontendContractSource)' != ''">node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot;$(WebUIToolkitFrontendContractCSharpArgument) --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot;$(WebUIToolkitFrontendContractFrameworkArguments)</WebUIToolkitFrontendContractGenerateCommand>
     <WebUIToolkitFrontendInstallCacheDirectory
       Condition="'$(WebUIToolkitFrontendInstallCacheDirectory)' == ''">$(WebUIToolkitFrontendWorkspaceRoot)/obj/WebUIToolkit.Frontend.Sdk/install</WebUIToolkitFrontendInstallCacheDirectory>
     <WebUIToolkitFrontendOutputDirectory
@@ -63,8 +72,9 @@
                       '$(WebUIToolkitFrontendPackageDirectory)' == ''"
            Text="WebUIToolkitFrontendPackageDirectory is required." />
     <Error Condition="'$(WebUIToolkitFrontendContractSource)' != '' and
-                      ('$(WebUIToolkitFrontendContractCSharpOutput)' == '' or
-                       '$(WebUIToolkitFrontendContractTypeScriptOutput)' == '')"
+                      ('$(WebUIToolkitFrontendContractTypeScriptOutput)' == '' or
+                       ('$(WebUIToolkitFrontendContractCSharpFirst)' != 'true' and
+                        '$(WebUIToolkitFrontendContractCSharpOutput)' == ''))"
            Text="Both frontend contract output paths are required when a contract source is configured." />
   </Target>
 
@@ -72,8 +82,21 @@
           DependsOnTargets="WebUIToolkitFrontendValidate"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
-                     '$(WebUIToolkitFrontendContractSource)' != ''">
-    <Exec Command="node &quot;$(WebUIToolkitFrontendContractTool)&quot; --source &quot;$(WebUIToolkitFrontendContractSource)&quot; --csharp &quot;$(WebUIToolkitFrontendContractCSharpOutput)&quot; --typescript &quot;$(WebUIToolkitFrontendContractTypeScriptOutput)&quot;$(WebUIToolkitFrontendContractFrameworkArguments)"
+                     '$(WebUIToolkitFrontendContractSource)' != '' and
+                     '$(WebUIToolkitFrontendContractCSharpFirst)' != 'true'">
+    <Exec Command="$(WebUIToolkitFrontendContractGenerateCommand)"
+          WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
+  </Target>
+
+  <Target Name="WebUIToolkitFrontendGenerateContractsCSharpFirst"
+          AfterTargets="CoreCompile"
+          Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
+                     '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
+                     '$(WebUIToolkitFrontendContractCSharpFirst)' == 'true'">
+    <Error Condition="!Exists('$(WebUIToolkitFrontendContractArtifact)')"
+           Code="WUTFE0002"
+           Text="The C# frontend contract generator did not produce '$(WebUIToolkitFrontendContractArtifact)'." />
+    <Exec Command="$(WebUIToolkitFrontendContractGenerateCommand)"
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
   </Target>
 
@@ -103,7 +126,22 @@
           DependsOnTargets="WebUIToolkitFrontendInstall"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
-                     '$(WebUIToolkitFrontendBuild)' == 'true'">
+                     '$(WebUIToolkitFrontendBuild)' == 'true' and
+                     '$(WebUIToolkitFrontendContractCSharpFirst)' != 'true'">
+    <Exec Command="$(WebUIToolkitFrontendContractVerifyCommand)"
+          WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)"
+          Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' != ''" />
+    <Exec Command="$(WebUIToolkitFrontendBuildCommand)"
+          WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)" />
+  </Target>
+
+  <Target Name="WebUIToolkitFrontendBuildCSharpFirst"
+          AfterTargets="WebUIToolkitFrontendGenerateContractsCSharpFirst"
+          DependsOnTargets="WebUIToolkitFrontendInstall"
+          Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
+                     '$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
+                     '$(WebUIToolkitFrontendBuild)' == 'true' and
+                     '$(WebUIToolkitFrontendContractCSharpFirst)' == 'true'">
     <Exec Command="$(WebUIToolkitFrontendContractVerifyCommand)"
           WorkingDirectory="$(WebUIToolkitFrontendWorkspaceRoot)"
           Condition="'$(WebUIToolkitFrontendContractVerifyCommand)' != ''" />
@@ -113,7 +151,7 @@
 
   <Target Name="WebUIToolkitFrontendCopyToOutput"
           AfterTargets="Build"
-          DependsOnTargets="WebUIToolkitFrontendBuild"
+          DependsOnTargets="WebUIToolkitFrontendBuild;WebUIToolkitFrontendBuildCSharpFirst"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">
     <MakeDir Directories="$(TargetDir)$(WebUIToolkitFrontendWebRoot)" />
@@ -134,7 +172,7 @@
 
   <Target Name="WebUIToolkitFrontendCopyToPublish"
           AfterTargets="Publish"
-          DependsOnTargets="WebUIToolkitFrontendBuild"
+          DependsOnTargets="WebUIToolkitFrontendBuild;WebUIToolkitFrontendBuildCSharpFirst"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true' and
                      '$(WebUIToolkitFrontendNodeEnabled)' == 'true'">
     <MakeDir Directories="$(PublishDir)$(WebUIToolkitFrontendWebRoot)" />

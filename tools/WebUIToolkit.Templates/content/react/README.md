@@ -9,8 +9,8 @@ dotnet webuitoolkit dev
 ```
 
 The counter is a real native MVVM roundtrip: `CounterViewModel.cs` owns
-validation, history, derived state, and the command; `counter.frontend.json`
-generates the trim-safe C# adapter and typed React contract; and
+validation, history, derived state, the command, and its C#-first contract
+attributes, which generate the trim-safe adapter and typed React contract; and
 `Frontend/src/main.tsx` uses the generated provider, hooks, and command façade.
 
 The development command installs the locked frontend dependencies and runs

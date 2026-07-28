@@ -7,6 +7,8 @@
       Condition="'$(WebUIToolkitFrontendCwhtmlEnabled)' == ''">false</WebUIToolkitFrontendCwhtmlEnabled>
     <WebUIToolkitFrontendInstall Condition="'$(WebUIToolkitFrontendInstall)' == ''">true</WebUIToolkitFrontendInstall>
     <WebUIToolkitFrontendBuild Condition="'$(WebUIToolkitFrontendBuild)' == ''">true</WebUIToolkitFrontendBuild>
+    <WebUIToolkitFrontendContractCSharpFirst
+      Condition="'$(WebUIToolkitFrontendContractCSharpFirst)' == ''">false</WebUIToolkitFrontendContractCSharpFirst>
     <WebUIToolkitFrontendPackageManager
       Condition="'$(WebUIToolkitFrontendPackageManager)' == ''">npm</WebUIToolkitFrontendPackageManager>
     <WebUIToolkitFrontendInstallCommand
@@ -33,4 +35,10 @@
     <WebUIToolkitFrontendDevServerDocument
       Condition="'$(WebUIToolkitFrontendDevServerDocument)' == ''">index.html</WebUIToolkitFrontendDevServerDocument>
   </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="WebUIToolkitFrontendContractCSharpFirst" />
+    <CompilerVisibleProperty Include="WebUIToolkitFrontendContractArtifact" />
+    <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+  </ItemGroup>
 </Project>

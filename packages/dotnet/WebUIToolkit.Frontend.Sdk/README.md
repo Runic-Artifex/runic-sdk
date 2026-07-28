@@ -20,6 +20,25 @@ Configure a project with:
 </PropertyGroup>
 ```
 
+New projects use C#-first contract authoring:
+
+```xml
+<PropertyGroup>
+  <WebUIToolkitFrontendContractCSharpFirst>true</WebUIToolkitFrontendContractCSharpFirst>
+  <WebUIToolkitFrontendContractTypeScriptOutput>$(MSBuildProjectDirectory)/Frontend/src/contract.g.ts</WebUIToolkitFrontendContractTypeScriptOutput>
+  <WebUIToolkitFrontendContractReactOutput>$(MSBuildProjectDirectory)/Frontend/src/contract.react.g.ts</WebUIToolkitFrontendContractReactOutput>
+</PropertyGroup>
+```
+
+`WebUiFrontendContract`, `WebUiFrontendProperty`,
+`WebUiFrontendCollection`, and `WebUiFrontendCommand` attributes on the
+ViewModel select the exported surface. The compiler emits the trim-safe
+CommunityToolkit adapter and a canonical JSON artifact under `obj`, then this
+SDK generates TypeScript and framework bindings from that artifact after
+`CoreCompile`. Explicit positive member IDs remain stable across C# and
+frontend renames. `WUTFE` diagnostics reject duplicate IDs/names and
+unsupported shapes at their C# source locations.
+
 For a compiled C#/HTMX application that also uses Vite:
 
 ```xml
@@ -36,7 +55,7 @@ For a compiled C#/HTMX application that also uses Vite:
 Set `WebUIToolkitFrontendNodeEnabled=false` for a Node-free compiled-HTML
 project. At least one of the Node/Vite or cwhtml pipelines must be enabled.
 
-When the contract properties are present, the SDK verifies that its generated
+When JSON-first contract properties are present, the SDK verifies that its generated
 C# and TypeScript surfaces have not drifted. The C# output contains stable
 member IDs and a closed CommunityToolkit adapter factory; the TypeScript output
 contains matching typed property, collection, and command handles. Regenerate
@@ -50,7 +69,10 @@ The React output shown above is optional. Vue, Svelte, and Angular use the
 matching `WebUIToolkitFrontendContractVueOutput`,
 `WebUIToolkitFrontendContractSvelteOutput`, and
 `WebUIToolkitFrontendContractAngularOutput` properties. Generation and
-`--verify` cover every configured output from the same symbol model.
+`--verify` cover every configured output from the same canonical model.
+C#-first applications do not set
+`WebUIToolkitFrontendContractCSharpOutput`; their adapter is a compiler output
+rather than a checked-in file.
 
 `WebUIToolkitFrontendContractVerifyCommand` remains an override point for
 applications with another contract compiler.

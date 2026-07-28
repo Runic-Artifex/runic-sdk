@@ -53,6 +53,12 @@ publication blocked.
 
 ## Binding and projection helpers
 
+- `WebUiFrontendContractAttribute`, `WebUiFrontendPropertyAttribute`,
+  `WebUiFrontendCollectionAttribute`, and `WebUiFrontendCommandAttribute`
+  provide the trim-safe C#-first declaration surface consumed by the frontend
+  compiler. Every projected member carries an explicit stable positive wire
+  ID; optional properties describe non-standard source, TypeScript, serializer,
+  validation, access, and asynchronous-command conventions.
 - `MvvmBindingMember`, `MvvmBindingVocabulary`, and `MvvmBindingMemberKind` define
   a closed generated property/collection/command vocabulary with one principal
   kind per positive numeric member ID.

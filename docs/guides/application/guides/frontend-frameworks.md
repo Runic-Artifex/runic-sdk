@@ -16,11 +16,12 @@ alignment now sit on top of that shared contract.
 
 ### One generated, typed contract
 
-`samples/Todo.Frontends/todo.frontend.json` is the single symbol model for the
-two demos. The frontend SDK's contract tool emits the C# member vocabulary and
-closed CommunityToolkit adapter factory used by `Todo.FrontendHost`, plus the
-TypeScript contract used by every frontend. The workspace and MSBuild builds
-verify generated-file drift before compiling.
+`samples/Todo.Frontends/todo.frontend.json` remains the JSON-first single
+symbol model for the two shared reference demos. New framework templates use
+the C#-first attributes described in
+[Frontend contracts](./frontend-contracts.md). Both paths produce the same
+canonical artifact consumed by the frontend SDK, and both emit the closed
+CommunityToolkit adapter plus the TypeScript contract used by each frontend.
 
 The model records each ViewModel source member, synchronous or asynchronous
 command shape, validation participation, and source-generated `JsonTypeInfo`.
