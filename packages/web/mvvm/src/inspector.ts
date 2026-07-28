@@ -25,6 +25,8 @@ export interface MvvmDevelopmentEvent {
   readonly memberName?: string;
   /** C# authoring member emitted by the contract generator, never a value. */
   readonly sourceMember?: string;
+  /** Project-relative authoring location emitted by a C#-first contract. */
+  readonly source?: Readonly<MvvmDevelopmentSourceLocation>;
   readonly revision?: Revision;
   readonly bytes?: number;
   readonly durationMilliseconds?: number;
@@ -47,6 +49,13 @@ export interface MvvmDevelopmentMemberMetadata {
   readonly id: MemberIdentifier;
   readonly name: string;
   readonly sourceMember?: string;
+  readonly source?: Readonly<MvvmDevelopmentSourceLocation>;
+}
+
+export interface MvvmDevelopmentSourceLocation {
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
 }
 
 export type MvvmDevelopmentListener =
@@ -79,7 +88,13 @@ export class MvvmDevelopmentInspector {
       if (this.members.has(member.id)) {
         throw new TypeError(`Inspector member metadata duplicates ID ${member.id}.`);
       }
-      this.members.set(member.id, Object.freeze({ ...member }));
+      if (member.source !== undefined) validateSourceLocation(member.source);
+      this.members.set(member.id, Object.freeze({
+        ...member,
+        ...(member.source === undefined
+          ? {}
+          : { source: Object.freeze({ ...member.source }) }),
+      }));
     }
   }
 
@@ -117,6 +132,7 @@ export class MvvmDevelopmentInspector {
         ...(outgoing.member === undefined ? {} : { member: outgoing.member }),
         ...(outgoing.memberName === undefined ? {} : { memberName: outgoing.memberName }),
         ...(outgoing.sourceMember === undefined ? {} : { sourceMember: outgoing.sourceMember }),
+        ...(outgoing.source === undefined ? {} : { source: outgoing.source }),
       });
       this.publish(outgoing);
       return;
@@ -175,6 +191,7 @@ export class MvvmDevelopmentInspector {
       ...(metadata.sourceMember === undefined
         ? {}
         : { sourceMember: metadata.sourceMember }),
+      ...(metadata.source === undefined ? {} : { source: metadata.source }),
     };
   }
 
@@ -198,6 +215,10 @@ export class MvvmDevelopmentInspector {
 export interface MvvmInspectorOverlayOptions {
   readonly document?: Document;
   readonly title?: string;
+  /** Called when a source link is activated. Defaults to copying `file:line:column`. */
+  readonly openSource?: (
+    source: Readonly<MvvmDevelopmentSourceLocation>,
+  ) => void | Promise<void>;
 }
 
 /** Mounts a dependency-free, opt-in native-window inspector overlay. */
@@ -235,9 +256,24 @@ export function mountMvvmInspectorOverlay(
       : ` ${event.memberName ?? event.member} ← ${event.sourceMember}`;
     const revision = event.revision === undefined ? "" : ` r${event.revision}`;
     const bytes = event.bytes === undefined ? "" : ` ${event.bytes}B`;
-    item.textContent =
+    const label =
       `#${event.sequence} ${event.direction} ${event.kind}${member}${source}${revision}${bytes}${duration}` +
       (event.outcome === undefined ? "" : ` ${event.outcome}`);
+    item.append(owner.createTextNode(label));
+    if (event.source !== undefined) {
+      const link = owner.createElement("a");
+      link.href = "#";
+      link.textContent =
+        ` ${event.source.file}:${event.source.line}:${event.source.column}`;
+      link.title = "Open or copy the C# authoring location";
+      link.style.cssText = "color:#79c0ff;margin-left:.35rem";
+      link.addEventListener("click", event_ => {
+        event_.preventDefault();
+        const action = options.openSource ?? copySourceLocation;
+        void action(event.source!);
+      });
+      item.append(link);
+    }
     list.prepend(item);
     while (list.childElementCount > 100) list.lastElementChild?.remove();
   };
@@ -247,6 +283,106 @@ export function mountMvvmInspectorOverlay(
     stop();
     details.remove();
   };
+}
+
+export interface MvvmInspectorEndpointReporterOptions {
+  readonly fetch?: typeof globalThis.fetch;
+}
+
+export interface InjectedMvvmDevelopmentTools {
+  readonly inspector: MvvmDevelopmentInspector;
+  dispose(): void;
+}
+
+/**
+ * Activates the overlay and terminal reporter only when the coordinated
+ * development bootstrap injected its random loopback endpoint.
+ */
+export function createInjectedMvvmDevelopmentTools(
+  members: readonly Readonly<MvvmDevelopmentMemberMetadata>[],
+): InjectedMvvmDevelopmentTools | undefined {
+  const injected = (
+    globalThis as typeof globalThis & {
+      __webuitoolkitMvvmDevelopment?: unknown;
+    }
+  ).__webuitoolkitMvvmDevelopment;
+  if (injected === null || typeof injected !== "object") return undefined;
+  const endpointValue = Reflect.get(injected, "endpoint");
+  if (typeof endpointValue !== "string") return undefined;
+  const endpoint = new URL(endpointValue);
+  if (endpoint.protocol !== "http:" ||
+      !["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname)) {
+    throw new Error("The injected MVVM inspector endpoint must be loopback HTTP.");
+  }
+
+  const inspector = new MvvmDevelopmentInspector({ members });
+  const stopEndpoint = reportMvvmInspectorToEndpoint(inspector, endpoint);
+  const stopOverlay = globalThis.document === undefined
+    ? undefined
+    : mountMvvmInspectorOverlay(inspector);
+  let disposed = false;
+  return Object.freeze({
+    inspector,
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      stopOverlay?.();
+      stopEndpoint();
+    },
+  });
+}
+
+/**
+ * Streams the same bounded, sanitized events to the loopback development
+ * coordinator. The endpoint is injected only by `dotnet webuitoolkit dev`.
+ */
+export function reportMvvmInspectorToEndpoint(
+  inspector: MvvmDevelopmentInspector,
+  endpoint: string | URL,
+  options: Readonly<MvvmInspectorEndpointReporterOptions> = {},
+): () => void {
+  const send = options.fetch ?? globalThis.fetch;
+  if (typeof send !== "function") {
+    throw new Error("The inspector endpoint reporter requires fetch.");
+  }
+  const target = endpoint.toString();
+  return inspector.subscribe(event => {
+    void send(target, {
+      method: "POST",
+      headers: { "content-type": "text/plain;charset=UTF-8" },
+      body: serializeInspectorEvent(event),
+      keepalive: true,
+    }).catch(() => {
+      // Development diagnostics must never interrupt application traffic.
+    });
+  });
+}
+
+function serializeInspectorEvent(event: Readonly<MvvmDevelopmentEvent>): string {
+  return JSON.stringify(event, (_, value: unknown) =>
+    typeof value === "bigint" ? value.toString(10) : value);
+}
+
+async function copySourceLocation(
+  source: Readonly<MvvmDevelopmentSourceLocation>,
+): Promise<void> {
+  const value = `${source.file}:${source.line}:${source.column}`;
+  if (globalThis.navigator?.clipboard === undefined) return;
+  await globalThis.navigator.clipboard.writeText(value);
+}
+
+function validateSourceLocation(
+  source: Readonly<MvvmDevelopmentSourceLocation>,
+): void {
+  if (typeof source.file !== "string" ||
+      source.file.length === 0 ||
+      source.file.length > 1_024 ||
+      !Number.isSafeInteger(source.line) ||
+      source.line < 1 ||
+      !Number.isSafeInteger(source.column) ||
+      source.column < 1) {
+    throw new TypeError("Inspector source locations require a bounded file and positive line/column.");
+  }
 }
 
 function clientEvent(
@@ -291,6 +427,9 @@ function hostEvent(
     ...(correlation?.sourceMember === undefined
       ? {}
       : { sourceMember: correlation.sourceMember }),
+    ...(correlation?.source === undefined
+      ? {}
+      : { source: correlation.source }),
     ...(revision === undefined ? {} : { revision }),
     bytes,
     ...(correlation === undefined
@@ -312,6 +451,7 @@ interface PendingInspection {
   readonly member?: MemberIdentifier;
   readonly memberName?: string;
   readonly sourceMember?: string;
+  readonly source?: Readonly<MvvmDevelopmentSourceLocation>;
 }
 
 interface CorrelatedInspection extends PendingInspection {

@@ -57,7 +57,11 @@ The `dev` command:
    restart path; legacy build-watch mode still
    detects `webuitoolkit.assets.json`, mirrors that graph into the runtime web
    root, and restarts the native host; and
-9. forwards Ctrl+C to both process trees and waits for their termination.
+9. injects a random loopback-only MVVM inspector endpoint into development
+   documents; generated starters show the bounded sanitized stream in the
+   native overlay and print the same correlated operations with C# source
+   locations in the terminal; and
+10. forwards Ctrl+C to both process trees and waits for their termination.
 
 For a supervised development-server project, the initial managed build sets
 `WebUIToolkitFrontendBuild=false`; it creates the runtime web root but does not
@@ -96,6 +100,13 @@ document from the selected server, keeps `/webui.js` on the native CsWebUi
 origin, and rewrites only framework assets to the loopback development origin.
 This is how both Todo entrypoints receive HMR without moving commands or state
 onto HTTP.
+
+The development document also receives an unguessable loopback URL for
+sanitized MVVM inspector events. It is not an application endpoint and it
+accepts no commands, capabilities, arguments, values, raw frames, or exception
+details. The coordinator bounds and validates each event, ignores unknown
+fields, refuses source paths outside the selected project, and removes the
+listener at shutdown.
 
 Vite receives `--host 127.0.0.1`, `--strictPort`, and a reserved port. Angular
 receives the equivalent loopback host and port plus `--hmr --live-reload`;

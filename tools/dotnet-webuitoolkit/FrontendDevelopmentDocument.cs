@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace WebUIToolkit.DotNet.WebUIToolkit;
@@ -10,11 +11,13 @@ internal static partial class FrontendDevelopmentDocument
     internal static void Write(
         DevProjectConfiguration configuration,
         Uri origin,
+        Uri inspectorEndpoint,
         string destinationDocument,
         string developmentDocument)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(origin);
+        ArgumentNullException.ThrowIfNull(inspectorEndpoint);
         ArgumentNullException.ThrowIfNull(developmentDocument);
         string document = BaseElement().IsMatch(developmentDocument)
             ? BaseElement().Replace(
@@ -57,6 +60,15 @@ internal static partial class FrontendDevelopmentDocument
                 "<head><script src=\"/webui.js\"></script>",
                 1);
         }
+        string inspectorBootstrap =
+            "<script>globalThis.__webuitoolkitMvvmDevelopment=Object.freeze({" +
+            "endpoint:" + JsonSerializer.Serialize(inspectorEndpoint.AbsoluteUri) + "," +
+            "projectDirectory:" + JsonSerializer.Serialize(configuration.ProjectDirectory) +
+            "});</script>";
+        document = HeadElement().Replace(
+            document,
+            match => match.Value + inspectorBootstrap,
+            1);
 
         string destination = Path.GetFullPath(
             destinationDocument,

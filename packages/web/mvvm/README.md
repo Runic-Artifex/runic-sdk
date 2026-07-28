@@ -105,6 +105,11 @@ exclude capability tokens, arguments, property values, validation strings,
 raw frames, and exception details. Pass a generated contract's
 `memberMetadata` to the inspector to label correlated operations with both the
 TypeScript member and its C# authoring member without exposing runtime values.
+C#-first metadata also carries project-relative file, line, and column
+coordinates. `createInjectedMvvmDevelopmentTools` activates the bounded native
+overlay and `reportMvvmInspectorToEndpoint` terminal stream only when
+`dotnet webuitoolkit dev` injects its random loopback endpoint; normal
+production documents do not contain that endpoint.
 
 `MvvmMockFrameChannel` is a development-only in-memory host that speaks the
 real `webuitoolkit.mvvm/1` protocol. Supply an initial snapshot and mutation

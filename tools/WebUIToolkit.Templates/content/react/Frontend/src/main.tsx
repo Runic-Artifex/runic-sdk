@@ -2,6 +2,7 @@ import "@fortawesome/fontawesome-free/css/all.min.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import { createRoot } from "react-dom/client";
+import { createInjectedMvvmDevelopmentTools } from "@webuitoolkit/mvvm";
 import {
   ReactMvvmProvider,
   startReactMvvmApplication,
@@ -13,8 +14,12 @@ import { useCounterBindings } from "./counter-bindings.g";
 const mock = import.meta.env.MODE === "mock"
   ? await import("./counter.mock")
   : undefined;
+const development = createInjectedMvvmDevelopmentTools(
+  CounterContract.memberMetadata,
+);
 const application = await startReactMvvmApplication({
   contract: CounterContract,
+  ...(development === undefined ? {} : { inspector: development.inspector }),
   ...(mock === undefined
     ? {}
     : { channelFactory: mock.createCounterMockChannel }),
@@ -26,6 +31,9 @@ root.render(
   </ReactMvvmProvider>,
 );
 application.addCleanup(() => root.unmount());
+if (development !== undefined) {
+  application.addCleanup(() => development.dispose());
+}
 
 function Counter() {
   const snapshot = useMvvmSnapshot();

@@ -29,6 +29,7 @@ internal static class Program
             ("Vite startup skips the production frontend build", ViteStartupSkipsProductionBuild),
             ("Angular server arguments use the supported development builder", AngularArgumentsAreExplicit),
             ("development bootstrap preserves private binding and remote assets", DevelopmentBootstrapIsNativeSafe),
+            ("MVVM inspector terminal sink stays bounded and source-aware", InspectorTerminalSinkIsSafe),
             ("Vite bridge forwards cwhtml diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
             ("cwhtml reload comparison separates renderer edits from shape edits", CwhtmlReloadComparisonIsSafe),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
@@ -257,6 +258,7 @@ internal static class Program
             "simple/index.html;advanced/index.html",
             target);
         var origin = new Uri("http://127.0.0.1:43125/");
+        var inspector = new Uri("http://127.0.0.1:43126/token/events");
         const string source =
             """
             <!doctype html>
@@ -267,7 +269,12 @@ internal static class Program
 
         foreach (string document in configuration.DevelopmentServerDocuments)
         {
-            FrontendDevelopmentDocument.Write(configuration, origin, document, source);
+            FrontendDevelopmentDocument.Write(
+                configuration,
+                origin,
+                inspector,
+                document,
+                source);
         }
 
         string simple = File.ReadAllText(
@@ -278,7 +285,51 @@ internal static class Program
         Contains(simple, "http://127.0.0.1:43125/src/main.ts");
         Contains(simple, "<base href=\"/\">");
         Contains(simple, "from \"http://127.0.0.1:43125/@react-refresh\"");
+        Contains(simple, "__webuitoolkitMvvmDevelopment");
+        Contains(simple, "http://127.0.0.1:43126/token/events");
+        Contains(simple, configuration.ProjectDirectory);
         Equal(simple, advanced);
+    }
+
+    private static void InspectorTerminalSinkIsSafe()
+    {
+        DevelopmentInspectorServer server =
+            DevelopmentInspectorServer.Start("/repo");
+        try
+        {
+            if (!server.TryFormat(
+                    """
+                    {
+                      "sequence": 7,
+                      "direction": "client",
+                      "kind": "setProperty",
+                      "memberName": "step",
+                      "sourceMember": "Example.CounterViewModel.Step",
+                      "revision": "4",
+                      "bytes": 128,
+                      "payload": "must never reach the terminal",
+                      "source": {
+                        "file": "CounterViewModel.cs",
+                        "line": 12,
+                        "column": 6
+                      }
+                    }
+                    """,
+                    out string? formatted))
+            {
+                throw new InvalidOperationException(
+                    "A valid sanitized inspector event was rejected.");
+            }
+
+            Contains(formatted!, "[mvvm] #7 client setProperty");
+            Contains(formatted!, "Example.CounterViewModel.Step");
+            Contains(formatted!, "/repo/CounterViewModel.cs:12:6");
+            DoesNotContain(formatted!, "must never reach the terminal");
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
     }
 
     private static DevProjectConfiguration CreateDevelopmentServerConfiguration(
@@ -601,6 +652,15 @@ internal static class Program
         if (!value.Contains(expected, StringComparison.Ordinal))
         {
             throw new InvalidOperationException($"Expected text containing '{expected}'.");
+        }
+    }
+
+    private static void DoesNotContain(string value, string unexpected)
+    {
+        if (value.Contains(unexpected, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Expected text not to contain '{unexpected}'.");
         }
     }
 

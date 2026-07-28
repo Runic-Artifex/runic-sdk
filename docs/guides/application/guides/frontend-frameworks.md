@@ -185,6 +185,11 @@ well. The fixture visibly marks the document, implements validation,
 collections, filtering, commands, guided workflow, latency, reconnect, and
 deterministic disposal, and the production-size gate rejects its marker from
 native application entrypoints.
+For generated C#-first starters, inspector member metadata also includes the
+authoring file, line, and column. During `dotnet webuitoolkit dev`, the
+coordinator injects a random loopback diagnostic endpoint: the native overlay
+shows clickable/copyable source coordinates and the terminal prints the same
+payload-free correlated event with a project-contained absolute path.
 cwhtml deliberately has no frontend-only equivalent because its renderer and
 actions are compiled C#—its retained native development host is the meaningful
 fast loop. The checked-in parity policy and gate mapping live in

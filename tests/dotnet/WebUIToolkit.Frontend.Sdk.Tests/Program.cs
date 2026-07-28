@@ -61,6 +61,7 @@ internal static class Program
         (string Name, Action Body)[] tests =
         [
             ("generation is deterministic", GenerationIsDeterministic),
+            ("source locations flow into generated inspector metadata", SourceLocationsFlowToInspectorMetadata),
             ("verify accepts current outputs", VerifyAcceptsCurrentOutputs),
             ("verify rejects stale outputs", VerifyRejectsStaleOutputs),
             ("malformed contracts fail validation", MalformedContractsFailValidation),
@@ -126,6 +127,18 @@ internal static class Program
                 File.ReadAllBytes(path),
                 $"{Path.GetFileName(path)} changed between identical compiler invocations.");
         }
+    }
+
+    private static void SourceLocationsFlowToInspectorMetadata()
+    {
+        using TestWorkspace workspace = new();
+        ContractFixture fixture = workspace.CreateContractFixture();
+        AssertSuccess(RunContractTool(workspace.Root, fixture), "Contract generation");
+        string generated = File.ReadAllText(fixture.TypeScriptOutput);
+        AssertContains(
+            generated,
+            "source: {\"file\":\"FixtureViewModel.cs\",\"line\":14,\"column\":6}",
+            "Generated member metadata omitted the canonical C# source location.");
     }
 
     private static void VerifyAcceptsCurrentOutputs()
@@ -755,6 +768,11 @@ internal static class Program
                       "type": "string",
                       "access": "readwrite",
                       "validation": true,
+                      "source": {
+                        "file": "FixtureViewModel.cs",
+                        "line": 14,
+                        "column": 6
+                      },
                       "csharp": {
                         "sourceMember": "Title",
                         "binding": "property",
