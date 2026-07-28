@@ -1,13 +1,20 @@
-import { MvvmMockFrameChannel } from "@webuitoolkit/mvvm";
+import {
+  createMvvmMockChannelFactory,
+  type MvvmMockFixture,
+} from "@webuitoolkit/mvvm";
 
 import { CounterContract } from "./counter-contract.g";
 
 /** Development-only Counter host. Production entrypoints never import this module. */
-export function createCounterMockChannel(): MvvmMockFrameChannel {
+export const createCounterMockChannel = createMvvmMockChannelFactory(
+  createCounterMockFixture(),
+);
+
+function createCounterMockFixture(): MvvmMockFixture {
   let count = 0;
   let step = 1;
   const history = [0];
-  return new MvvmMockFrameChannel({
+  return {
     contract: CounterContract.contractName,
     initial: [
       { type: "property", member: 1, value: count },
@@ -54,7 +61,7 @@ export function createCounterMockChannel(): MvvmMockFrameChannel {
         ],
       };
     },
-  });
+  };
 
   function summary(): string {
     return `${count} after ${history.length - 1} increment(s) · MOCK`;

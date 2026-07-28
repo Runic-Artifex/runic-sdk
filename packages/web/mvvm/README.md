@@ -113,6 +113,9 @@ and framework adapters run unchanged. The mock supports latency, validation,
 command results and faults, pushed updates, stale revisions, cancellation
 responses, and explicit disconnects, and exposes `mode === "mock"` so a
 frontend can label the session unambiguously.
+Use `createMvvmMockChannelFactory` when the high-level owner exposes reconnect:
+replacement channels retain the fixture closure, accepted snapshot members,
+and authoritative revision instead of silently resetting mock state.
 
 ## Protocol behavior
 

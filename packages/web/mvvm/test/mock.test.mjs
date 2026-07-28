@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   MvvmMockFrameChannel,
+  createMvvmMockChannelFactory,
   createMvvmReplayFixture,
   startMvvmApplication,
 } from "../dist/esm/index.js";
@@ -119,5 +120,50 @@ test("mock host exposes deterministic faults without bypassing client recovery",
     application.projection.execute(1).completion,
     /Fixture requested failure/,
   );
+  await application.dispose();
+});
+
+test("closing a mock channel exposes the production reconnect transition", async () => {
+  const first = new MvvmMockFrameChannel({
+    contract: "tests.mock.reconnect",
+    initial: [{ type: "property", member: 1, value: "first" }],
+  });
+  const application = await startMvvmApplication({
+    contract: "tests.mock.reconnect",
+    clientId: "00000000-0000-4000-8000-000000000106",
+    channel: first,
+  });
+  assert.equal(application.projection.snapshot.properties.get(1), "first");
+
+  first.close();
+  const second = new MvvmMockFrameChannel({
+    contract: "tests.mock.reconnect",
+    initial: [{ type: "property", member: 1, value: "second" }],
+  });
+  await application.reconnect(second);
+  assert.equal(application.projection.snapshot.properties.get(1), "second");
+
+  await application.dispose();
+});
+
+test("mock channel factory preserves accepted state and revision across reconnect", async () => {
+  const createChannel = createMvvmMockChannelFactory({
+    contract: "tests.mock.persistent-reconnect",
+    initial: [{ type: "property", member: 1, value: "initial" }],
+  });
+  const first = createChannel();
+  const application = await startMvvmApplication({
+    contract: "tests.mock.persistent-reconnect",
+    clientId: "00000000-0000-4000-8000-000000000107",
+    channel: first,
+  });
+  await application.projection.setProperty(1, "retained");
+  assert.equal(application.projection.snapshot.revision, 1n);
+
+  first.close();
+  await application.reconnect(createChannel());
+  assert.equal(application.projection.snapshot.revision, 1n);
+  assert.equal(application.projection.snapshot.properties.get(1), "retained");
+
   await application.dispose();
 });

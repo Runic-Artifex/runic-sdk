@@ -178,6 +178,12 @@ bindings from deterministic fixtures; it is a protocol mock, not a replacement
 framework store. Generated React, Vue, Svelte, and Angular projects expose that
 path as `cd Frontend && npm run dev:mock`; normal production builds use a
 separate entry graph and template acceptance rejects leaked fixture code.
+The reference SimpleTodo and AdvancedTodo applications now use one shared
+fixture through each ecosystem's conventional `npm run dev:mock` command as
+well. The fixture visibly marks the document, implements validation,
+collections, filtering, commands, guided workflow, latency, reconnect, and
+deterministic disposal, and the production-size gate rejects its marker from
+native application entrypoints.
 cwhtml deliberately has no frontend-only equivalent because its renderer and
 actions are compiled C#—its retained native development host is the meaningful
 fast loop. The checked-in parity policy and gate mapping live in

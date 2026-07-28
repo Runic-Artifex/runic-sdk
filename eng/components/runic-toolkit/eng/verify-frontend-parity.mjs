@@ -59,7 +59,14 @@ for (const framework of ["react", "vue", "svelte"]) {
   if (package_.scripts.dev !== "vite") {
     fail(`${framework} Todo must use its Vite development server.`);
   }
+  if (package_.scripts["dev:mock"] !== "vite --mode mock") {
+    fail(`${framework} Todo must expose its Vite mock mode.`);
+  }
   requirePath(`samples/Todo.Frontends/${framework}/vite.config.mjs`);
+}
+if (angularPackage.scripts["dev:mock"] !==
+    "ng serve todo-angular --configuration mock") {
+  fail("Angular Todo must expose its application-builder mock configuration.");
 }
 
 const svelte = text("samples/Todo.Frontends/svelte/src/TodoApp.svelte");
@@ -126,6 +133,14 @@ contains(inspector, "mountMvvmInspectorOverlay", "native inspector overlay");
 const mock = text("web/packages/mvvm/src/mock.ts");
 contains(mock, "MvvmMockFrameChannel", "frontend-only protocol mock");
 contains(mock, 'mode = "mock"', "visible mock identity");
+const todoMock = text("samples/Todo.Frontends/shared/todo.mock.ts");
+contains(todoMock, "createTodoMockChannel", "shared Todo protocol fixture");
+contains(todoMock, "webuitoolkit.todo.mock/1", "visible Todo mock identity");
+contains(
+  text("samples/Todo.Frontends/angular/angular.json"),
+  '"browser": "src/main.mock.ts"',
+  "Angular Todo mock entrypoint",
+);
 contains(
   text("web/packages/mvvm/src/native.ts"),
   "channelFactory",

@@ -22,6 +22,16 @@ import { parseClientMessage } from "./validation.js";
 
 const mockSession = "00000000-0000-4000-8000-000000000101";
 const mockCapability = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const persistentSession = Symbol("webuitoolkit.mvvm.mock.session");
+
+interface MvvmMockSessionState {
+  revision: Revision;
+  readonly members: Map<string, SnapshotMember>;
+}
+
+type PersistentMvvmMockFixture = MvvmMockFixture & {
+  readonly [persistentSession]: MvvmMockSessionState;
+};
 
 export interface MvvmMockMutation {
   readonly changes?: readonly PatchChange[];
@@ -69,6 +79,24 @@ export interface MvvmReplayScript {
    */
   readonly steps: readonly MvvmReplayStep[];
   readonly latencyMilliseconds?: number;
+}
+
+/**
+ * Creates reconnectable channels over one fixture closure and authoritative
+ * in-memory session. A replacement channel resumes accepted members and
+ * revision instead of resetting the protocol behind a reconnecting client.
+ */
+export function createMvvmMockChannelFactory(
+  fixture: Readonly<MvvmMockFixture>,
+): () => MvvmMockFrameChannel {
+  const persistent = Object.create(fixture) as PersistentMvvmMockFixture;
+  Object.defineProperty(persistent, persistentSession, {
+    value: createSessionState(fixture.initial),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return () => new MvvmMockFrameChannel(persistent);
 }
 
 /**
@@ -125,18 +153,17 @@ export function createMvvmReplayFixture(
 export class MvvmMockFrameChannel implements FrameChannel {
   public readonly mode = "mock" as const;
   private readonly fixture: MvvmMockFixture;
-  private readonly members = new Map<string, SnapshotMember>();
+  private readonly session: MvvmMockSessionState;
   private readonly cancellation = new AbortController();
   private observer: FrameChannelObserver | undefined;
-  private revision: Revision = 0n;
   private closed = false;
 
   public constructor(fixture: Readonly<MvvmMockFixture>) {
     if (fixture.contract.length === 0) throw new TypeError("A mock contract is required.");
     this.fixture = fixture;
-    for (const member of fixture.initial) {
-      this.members.set(key(member), structuredClone(member));
-    }
+    this.session = isPersistentFixture(fixture)
+      ? fixture[persistentSession]
+      : createSessionState(fixture.initial);
   }
 
   public subscribe(observer: FrameChannelObserver): () => void {
@@ -160,7 +187,9 @@ export class MvvmMockFrameChannel implements FrameChannel {
     if (this.closed) return;
     this.closed = true;
     this.cancellation.abort();
+    const observer = this.observer;
     this.observer = undefined;
+    observer?.close();
   }
 
   /** Emits a deterministic host-originated projection update. */
@@ -170,8 +199,8 @@ export class MvvmMockFrameChannel implements FrameChannel {
   ): Promise<void> {
     if (changes.length === 0) return;
     await this.wait(delayMilliseconds);
-    const fromRevision = this.revision;
-    this.revision++;
+    const fromRevision = this.session.revision;
+    this.session.revision++;
     this.apply(changes);
     this.host({
       v: 1,
@@ -180,7 +209,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
       view: this.currentView,
       payload: {
         fromRevision,
-        toRevision: this.revision,
+        toRevision: this.session.revision,
         changes,
       },
     });
@@ -275,7 +304,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
           session: mockSession,
           view: request.view,
           request: request.request,
-          payload: { operation: "ack", revision: this.revision },
+          payload: { operation: "ack", revision: this.session.revision },
         });
         return;
       case "cancel":
@@ -287,7 +316,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
           request: request.request,
           payload: {
             operation: "cancel",
-            revision: this.revision,
+            revision: this.session.revision,
             targetRequest: request.payload.targetRequest,
             accepted: false,
           },
@@ -301,7 +330,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
           view: request.view,
           request: request.request,
           payload: {
-            revision: this.revision,
+            revision: this.session.revision,
             reason: request.payload.reason ?? "Mock session closed",
           },
         });
@@ -311,7 +340,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
 
   private context(): MvvmMockContext {
     return Object.freeze({
-      revision: this.revision,
+      revision: this.session.revision,
       signal: this.cancellation.signal,
       push: (changes: readonly PatchChange[], delay?: number) =>
         this.push(changes, delay),
@@ -321,7 +350,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
   private acceptRevision(
     request: ClientSetPropertyMessage | ClientExecuteMessage,
   ): boolean {
-    if (request.baseRevision === this.revision) return true;
+    if (request.baseRevision === this.session.revision) return true;
     this.fault(
       request.request,
       "revision.stale",
@@ -355,10 +384,10 @@ export class MvvmMockFrameChannel implements FrameChannel {
       view: request.view,
       request: request.request,
       payload: operation === "setProperty"
-        ? { operation, revision: this.revision }
+        ? { operation, revision: this.session.revision }
         : {
             operation,
-            revision: this.revision,
+            revision: this.session.revision,
             ...(mutation.result === undefined ? {} : { value: mutation.result }),
           },
     });
@@ -381,7 +410,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
         message: sanitize(message),
         retryable,
         ...(code === "revision.stale"
-          ? { currentRevision: this.revision, snapshotRequired: true }
+          ? { currentRevision: this.session.revision, snapshotRequired: true }
           : {}),
       },
     });
@@ -389,8 +418,9 @@ export class MvvmMockFrameChannel implements FrameChannel {
 
   private snapshot() {
     return {
-      revision: this.revision,
-      members: [...this.members.values()].map((member) => structuredClone(member)),
+      revision: this.session.revision,
+      members: [...this.session.members.values()]
+        .map((member) => structuredClone(member)),
     };
   }
 
@@ -399,10 +429,10 @@ export class MvvmMockFrameChannel implements FrameChannel {
       if (change.type === "property" ||
           change.type === "command" ||
           change.type === "validation") {
-        this.members.set(key(change), structuredClone(change));
+        this.session.members.set(key(change), structuredClone(change));
         continue;
       }
-      const existing = this.members.get(`collection:${change.member}`);
+      const existing = this.session.members.get(`collection:${change.member}`);
       if (existing?.type !== "collection") continue;
       const items = [...existing.items];
       if (change.type === "collectionMove") {
@@ -417,7 +447,7 @@ export class MvvmMockFrameChannel implements FrameChannel {
       } else {
         items.splice(change.index, change.items.length, ...change.items);
       }
-      this.members.set(
+      this.session.members.set(
         `collection:${change.member}`,
         { type: "collection", member: change.member, items },
       );
@@ -438,6 +468,22 @@ export class MvvmMockFrameChannel implements FrameChannel {
       }, { once: true });
     });
   }
+}
+
+function createSessionState(
+  initial: readonly SnapshotMember[],
+): MvvmMockSessionState {
+  const members = new Map<string, SnapshotMember>();
+  for (const member of initial) {
+    members.set(key(member), structuredClone(member));
+  }
+  return { revision: 0n, members };
+}
+
+function isPersistentFixture(
+  fixture: Readonly<MvvmMockFixture>,
+): fixture is PersistentMvvmMockFixture {
+  return persistentSession in fixture;
 }
 
 function key(member: SnapshotMember | PatchChange): string {

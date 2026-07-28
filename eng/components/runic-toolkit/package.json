@@ -17,7 +17,8 @@
     "test": "node eng/run-workspaces.mjs test",
     "verify:frontend-production": "node eng/verify-frontend-production.mjs",
     "verify:frontend-parity": "node eng/verify-frontend-parity.mjs",
-    "verify": "npm run build && npm run test"
+    "verify:todo-mocks": "node eng/verify-todo-mocks.mjs",
+    "verify": "npm run build && npm run test && npm run verify:frontend-parity && npm run verify:todo-mocks"
   },
   "devDependencies": {
     "esbuild": "0.28.1",
