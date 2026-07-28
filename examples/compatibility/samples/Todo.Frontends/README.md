@@ -50,6 +50,22 @@ dotnet run --project samples/Todo.React -- --browser-smoke-test
 dotnet run --project samples/Todo.React -- --advanced --browser-smoke-test
 ```
 
+For presentation-only work, run the selected frontend without .NET or a native
+window:
+
+```console
+cd samples/Todo.Frontends/react
+npm run dev:mock
+```
+
+Replace `react` with `vue`, `svelte`, or `angular`. Open `/simple/` or
+`/advanced/`; both use the same generated contracts and production protocol
+client as the native application. The deterministic fixture supports
+validation, filtering, commands, workflow changes, latency, reconnect, and
+disposal, and the page carries a persistent frontend-only mock badge. Mock
+code is split from Vite production graphs and uses Angular's dedicated
+application-builder entrypoint.
+
 Release builds invoke Vite minification and content hashing and emit both
 Vite's manifest and a SHA-256 asset manifest. The
 [framework integration guide](../../docs/guides/frontend-frameworks.md) records the gaps,

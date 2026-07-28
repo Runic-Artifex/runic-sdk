@@ -7,6 +7,7 @@
     "build": "node build.mjs",
     "build:production": "node build.mjs --production",
     "dev": "ng serve todo-angular --configuration development",
+    "dev:mock": "ng serve todo-angular --configuration mock",
     "typecheck": "ngc --project tsconfig.app.json --noEmit",
     "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build:production && node ../verify-build.mjs Angular && node verify-angular-build.mjs"
   },

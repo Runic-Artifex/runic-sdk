@@ -51,6 +51,13 @@
               "optimization": false,
               "outputHashing": "none",
               "sourceMap": true
+            },
+            "mock": {
+              "browser": "src/main.mock.ts",
+              "aot": true,
+              "optimization": false,
+              "outputHashing": "none",
+              "sourceMap": true
             }
           },
           "defaultConfiguration": "production"
@@ -65,6 +72,9 @@
           "configurations": {
             "development": {
               "buildTarget": "todo-angular:build:development"
+            },
+            "mock": {
+              "buildTarget": "todo-angular:build:mock"
             }
           },
           "defaultConfiguration": "development"

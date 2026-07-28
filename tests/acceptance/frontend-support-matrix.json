@@ -6,6 +6,7 @@
     "nativeAot": "eng/verify-todo-frontends-native-aot.ps1",
     "productionAssets": "eng/verify-frontend-production.mjs",
     "nativeHmr": "eng/verify-todo-frontend-hmr.ps1",
+    "mockProtocol": "eng/verify-todo-mocks.mjs",
     "coordinator": "tests/WebUIToolkit.DotNet.WebUIToolkit.Tests",
     "templates": "tests/WebUIToolkit.Templates.Tests"
   },

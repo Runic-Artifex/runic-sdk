@@ -114,6 +114,11 @@ function measure(framework, output) {
   let brotliBytes = 0;
   for (const path of paths) {
     const bytes = readFileSync(resolve(output.directory, path));
+    if (bytes.includes("webuitoolkit.todo.mock/1")) {
+      throw new Error(
+        `${framework} production entrypoints contain the frontend-only Todo fixture.`,
+      );
+    }
     rawBytes += bytes.byteLength;
     gzipBytes += gzipSync(bytes, { level: 9 }).byteLength;
     brotliBytes += brotliCompressSync(bytes, {

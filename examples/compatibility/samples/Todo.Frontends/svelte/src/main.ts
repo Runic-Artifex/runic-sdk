@@ -10,11 +10,24 @@ import {
 import { exposeTodoReconnect, reportStartupFailure } from "../../shared/runtime";
 
 const demo = demoFromDocument();
+const mock = import.meta.env.MODE === "mock"
+  ? await import("../../shared/todo.mock")
+  : undefined;
+mock?.markTodoMockMode();
+const ownerOptions = mock === undefined
+  ? {}
+  : { channelFactory: () => mock.createTodoMockChannel(demo) };
 
 try {
   const application = demo === "simple"
-    ? await startSvelteMvvmApplication({ contract: SimpleTodoContract })
-    : await startSvelteMvvmApplication({ contract: AdvancedTodoContract });
+    ? await startSvelteMvvmApplication({
+        contract: SimpleTodoContract,
+        ...ownerOptions,
+      })
+    : await startSvelteMvvmApplication({
+        contract: AdvancedTodoContract,
+        ...ownerOptions,
+      });
   const target = document.querySelector<HTMLElement>("#app")!;
   target.replaceChildren();
   const app = mount(App, {
