@@ -17,9 +17,12 @@ internal sealed class ViteConfigurationBridge : IDisposable
 
     internal string ConfigurationPath { get; }
 
-    internal static ViteConfigurationBridge Create(DevProjectConfiguration configuration)
+    internal static ViteConfigurationBridge Create(
+        DevProjectConfiguration configuration,
+        Uri renderedFragmentsEndpoint)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(renderedFragmentsEndpoint);
         string directory = Path.Combine(
             Path.GetTempPath(),
             "webuitoolkit-vite",
@@ -30,7 +33,7 @@ internal sealed class ViteConfigurationBridge : IDisposable
         {
             File.WriteAllText(
                 path,
-                CreateSource(configuration),
+                CreateSource(configuration, renderedFragmentsEndpoint),
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true));
             return new ViteConfigurationBridge(directory, path);
         }
@@ -41,9 +44,12 @@ internal sealed class ViteConfigurationBridge : IDisposable
         }
     }
 
-    internal static string CreateSource(DevProjectConfiguration configuration)
+    internal static string CreateSource(
+        DevProjectConfiguration configuration,
+        Uri renderedFragmentsEndpoint)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(renderedFragmentsEndpoint);
         string entryPath = Path.GetFullPath(
             configuration.ViteDevServerEntry.TrimStart('/'),
             configuration.FrontendPackageDirectory);
@@ -54,6 +60,9 @@ internal sealed class ViteConfigurationBridge : IDisposable
         string diagnosticsPath = Json(configuration.CwhtmlDiagnosticsPath);
         string hotReloadPath = Json(configuration.CwhtmlHotReloadPath + ".ready");
         string normalizedEntry = Json(NormalizePath(entryPath));
+        string fragmentInspectorEndpoint = configuration.CwhtmlEnabled
+            ? Json(renderedFragmentsEndpoint.AbsoluteUri)
+            : "undefined";
 
         return $$"""
             import { readFile } from "node:fs/promises";
@@ -64,6 +73,9 @@ internal sealed class ViteConfigurationBridge : IDisposable
             const entryPath = {{normalizedEntry}};
             const diagnosticsContract = "webuitoolkit.cwhtml.diagnostics/1.0";
             const hotReloadContract = "webuitoolkit.cwhtml.hot-reload/1.0";
+            const renderedFragmentsContract =
+              "webuitoolkit.cwhtml.rendered-fragments/1.0";
+            const renderedFragmentsEndpoint = {{fragmentInspectorEndpoint}};
             const virtualClientId = "\0virtual:webuitoolkit-cwhtml-diagnostics";
 
             const normalizePath = value => value.replaceAll("\\", "/");
@@ -242,6 +254,24 @@ internal sealed class ViteConfigurationBridge : IDisposable
                 }
               }
 
+              async function publishFragmentHandles() {
+                const snapshot = await readHotReloadSnapshot();
+                if (!snapshot) {
+                  return;
+                }
+                const fragments = new Set();
+                for (const template of snapshot.templates) {
+                  for (const fragment of template.affectedFragments ?? []) {
+                    fragments.add(fragment);
+                  }
+                }
+                server.ws.send({
+                  type: "custom",
+                  event: "webuitoolkit:cwhtml-fragment-handles",
+                  data: { fragments: Array.from(fragments).sort() },
+                });
+              }
+
               function schedulePublish(changedPath) {
                 const path = cleanModuleId(changedPath);
                 if (diagnosticsPath && path === normalizePath(diagnosticsPath)) {
@@ -271,7 +301,10 @@ internal sealed class ViteConfigurationBridge : IDisposable
                   }
                   server.ws.on(
                     "webuitoolkit:cwhtml-diagnostics-ready",
-                    () => void publish(true));
+                    () => {
+                      void publish(true);
+                      void publishFragmentHandles();
+                    });
                   server.httpServer?.once("close", () => {
                     clearTimeout(publishTimer);
                     clearInterval(publishInterval);
@@ -287,7 +320,55 @@ internal sealed class ViteConfigurationBridge : IDisposable
                     return undefined;
                   }
                   return `
+                    const renderedFragmentsEndpoint = ${JSON.stringify(renderedFragmentsEndpoint)};
+                    const renderedFragmentsContract =
+                      "webuitoolkit.cwhtml.rendered-fragments/1.0";
+                    const inspectedFragments = new Set();
+                    let inspectionTimer;
+                    let inspectionQueue = Promise.resolve();
+
+                    function scheduleRenderedFragmentInspection() {
+                      if (!renderedFragmentsEndpoint || inspectedFragments.size === 0) {
+                        return;
+                      }
+                      clearTimeout(inspectionTimer);
+                      inspectionTimer = setTimeout(() => {
+                        inspectionQueue = inspectionQueue.then(async () => {
+                          const fragments = [];
+                          for (const handle of inspectedFragments) {
+                            const element = document.getElementById(handle);
+                            if (element && element.outerHTML.length <= 262144) {
+                              fragments.push({ handle, html: element.outerHTML });
+                            }
+                          }
+                          await fetch(renderedFragmentsEndpoint, {
+                            method: "POST",
+                            mode: "no-cors",
+                            headers: { "Content-Type": "text/plain;charset=UTF-8" },
+                            body: JSON.stringify({
+                              contract: renderedFragmentsContract,
+                              fragments,
+                            }),
+                          });
+                        }).catch(() => {});
+                      }, 40);
+                    }
+
+                    document.addEventListener(
+                      "htmx:afterSettle",
+                      scheduleRenderedFragmentInspection);
                     if (import.meta.hot) {
+                      import.meta.hot.on(
+                        "webuitoolkit:cwhtml-fragment-handles",
+                        update => {
+                          inspectedFragments.clear();
+                          for (const fragment of update?.fragments ?? []) {
+                            if (/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(fragment)) {
+                              inspectedFragments.add(fragment);
+                            }
+                          }
+                          scheduleRenderedFragmentInspection();
+                        });
                       import.meta.hot.on(
                         "webuitoolkit:cwhtml-diagnostics-state",
                         state => {
@@ -316,6 +397,7 @@ internal sealed class ViteConfigurationBridge : IDisposable
                             state: "refreshed",
                             fragments,
                           };
+                          scheduleRenderedFragmentInspection();
                         });
                       import.meta.hot.send("webuitoolkit:cwhtml-diagnostics-ready");
                     }

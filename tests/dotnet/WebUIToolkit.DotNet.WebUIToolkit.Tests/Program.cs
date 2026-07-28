@@ -30,6 +30,7 @@ internal static class Program
             ("Angular server arguments use the supported development builder", AngularArgumentsAreExplicit),
             ("development bootstrap preserves private binding and remote assets", DevelopmentBootstrapIsNativeSafe),
             ("MVVM inspector terminal sink stays bounded and source-aware", InspectorTerminalSinkIsSafe),
+            ("cwhtml rendered-fragment snapshots stay bounded and private", RenderedFragmentSnapshotsAreSafe),
             ("Vite bridge forwards cwhtml diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
             ("cwhtml reload comparison separates renderer edits from shape edits", CwhtmlReloadComparisonIsSafe),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
@@ -332,6 +333,56 @@ internal static class Program
         }
     }
 
+    private static void RenderedFragmentSnapshotsAreSafe()
+    {
+        using var workspace = new TestWorkspace();
+        DevelopmentInspectorServer server =
+            DevelopmentInspectorServer.Start(workspace.Root);
+        try
+        {
+            if (!server.TryWriteRenderedFragments(
+                    """
+                    {
+                      "contract": "webuitoolkit.cwhtml.rendered-fragments/1.0",
+                      "fragments": [
+                        {
+                          "handle": "todo_fragment",
+                          "html": "<section id=\"todo_fragment\">ready</section>"
+                        }
+                      ]
+                    }
+                    """))
+            {
+                throw new InvalidOperationException(
+                    "A valid rendered-fragment snapshot was rejected.");
+            }
+
+            string snapshot = File.ReadAllText(server.RenderedFragmentsSnapshotPath);
+            Contains(snapshot, "\"handle\": \"todo_fragment\"");
+            Contains(snapshot, "\\u003Csection");
+            DoesNotContain(
+                server.RenderedFragmentsEndpoint.AbsoluteUri,
+                server.Endpoint.AbsoluteUri);
+            False(
+                server.TryWriteRenderedFragments(
+                    """
+                    {
+                      "contract": "webuitoolkit.cwhtml.rendered-fragments/1.0",
+                      "fragments": [{ "handle": "../escape", "html": "bad" }]
+                    }
+                    """),
+                "An invalid rendered-fragment handle was accepted.");
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+
+        False(
+            File.Exists(server.RenderedFragmentsSnapshotPath),
+            "The rendered-fragment snapshot survived the dev session.");
+    }
+
     private static DevProjectConfiguration CreateDevelopmentServerConfiguration(
         string kind,
         string documents,
@@ -385,7 +436,11 @@ internal static class Program
             CwhtmlDiagnosticsPath: "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json",
             CwhtmlHotReloadPath: "/repo/obj/Debug/net10.0/cwhtml/hot-reload.json",
             TargetDirectory: "/repo/bin/Debug/net10.0");
-        string source = ViteConfigurationBridge.CreateSource(configuration);
+        var renderedFragmentsEndpoint =
+            new Uri("http://127.0.0.1:43126/token/rendered-fragments");
+        string source = ViteConfigurationBridge.CreateSource(
+            configuration,
+            renderedFragmentsEndpoint);
         Contains(source, "webuitoolkit.cwhtml.diagnostics/1.0");
         Contains(source, "webuitoolkit:cwhtml-diagnostics");
         Contains(source, "server.ws.send({ type: \"error\"");
@@ -393,6 +448,9 @@ internal static class Program
         Contains(source, "/repo/obj/Debug/net10.0/cwhtml/diagnostics.json");
         Contains(source, "webuitoolkit.cwhtml.hot-reload/1.0");
         Contains(source, "webuitoolkit:cwhtml-fragments");
+        Contains(source, "webuitoolkit:cwhtml-fragment-handles");
+        Contains(source, "webuitoolkit.cwhtml.rendered-fragments/1.0");
+        Contains(source, renderedFragmentsEndpoint.AbsoluteUri);
         Contains(source, "/_webui/htmx/dev-refresh/");
         Contains(source, "/repo/frontend/src/main.js");
     }

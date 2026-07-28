@@ -88,7 +88,7 @@ internal static class DevApplication
             useDevelopmentServer
                 ? await StartDevelopmentServerAsync(
                     configuration,
-                    inspectorServer!.Endpoint,
+                    inspectorServer!,
                     cancellationToken).ConfigureAwait(false)
                 : null;
         await using var host = new HostProcessController(
@@ -204,15 +204,19 @@ internal static class DevApplication
 
     private static async Task<IFrontendDevelopmentServer> StartDevelopmentServerAsync(
         DevProjectConfiguration configuration,
-        Uri inspectorEndpoint,
+        DevelopmentInspectorServer inspectorServer,
         CancellationToken cancellationToken) =>
         configuration.DevelopmentServerKind switch
         {
             "vite" => await ViteDevelopmentServer
-                .StartAsync(configuration, inspectorEndpoint, cancellationToken)
+                .StartAsync(
+                    configuration,
+                    inspectorServer.Endpoint,
+                    inspectorServer.RenderedFragmentsEndpoint,
+                    cancellationToken)
                 .ConfigureAwait(false),
             "angular" => await AngularDevelopmentServer
-                .StartAsync(configuration, inspectorEndpoint, cancellationToken)
+                .StartAsync(configuration, inspectorServer.Endpoint, cancellationToken)
                 .ConfigureAwait(false),
             _ => throw new InvalidOperationException(
                 $"Unsupported frontend development server '{configuration.DevelopmentServerKind}'."),

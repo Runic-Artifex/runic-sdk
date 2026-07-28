@@ -57,15 +57,17 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     internal static async Task<ViteDevelopmentServer> StartAsync(
         DevProjectConfiguration configuration,
         Uri inspectorEndpoint,
+        Uri renderedFragmentsEndpoint,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(inspectorEndpoint);
+        ArgumentNullException.ThrowIfNull(renderedFragmentsEndpoint);
         using PhaseTimer phase = PhaseTimer.Start("Starting Vite development server");
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
         ViteConfigurationBridge configurationBridge =
-            ViteConfigurationBridge.Create(configuration);
+            ViteConfigurationBridge.Create(configuration, renderedFragmentsEndpoint);
         RunningProcess process;
         try
         {

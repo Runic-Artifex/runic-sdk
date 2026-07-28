@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,9 +16,14 @@ namespace WebUIToolkit.DotNet.WebUIToolkit;
 /// Receives payload-free browser inspector events on a random loopback URL and
 /// renders only its fixed, bounded diagnostic vocabulary in the dev terminal.
 /// </summary>
-internal sealed class DevelopmentInspectorServer : IAsyncDisposable
+internal sealed partial class DevelopmentInspectorServer : IAsyncDisposable
 {
     private const int MaximumBodyCharacters = 16_384;
+    private const int MaximumRenderedBodyCharacters = 1_048_576;
+    private const int MaximumRenderedFragmentCharacters = 262_144;
+    private const int MaximumRenderedFragments = 64;
+    private const string RenderedFragmentsContract =
+        "webuitoolkit.cwhtml.rendered-fragments/1.0";
     private readonly HttpListener _listener;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _loop;
@@ -25,15 +32,27 @@ internal sealed class DevelopmentInspectorServer : IAsyncDisposable
     private DevelopmentInspectorServer(
         HttpListener listener,
         Uri endpoint,
+        Uri renderedFragmentsEndpoint,
         string projectDirectory)
     {
         _listener = listener;
         Endpoint = endpoint;
+        RenderedFragmentsEndpoint = renderedFragmentsEndpoint;
         _projectDirectory = projectDirectory;
+        RenderedFragmentsSnapshotPath = Path.Combine(
+            _projectDirectory,
+            "obj",
+            "WebUIToolkit",
+            "cwhtml-rendered-fragments.json");
+        DeleteRenderedFragmentsSnapshot();
         _loop = ListenAsync(_shutdown.Token);
     }
 
     internal Uri Endpoint { get; }
+
+    internal Uri RenderedFragmentsEndpoint { get; }
+
+    internal string RenderedFragmentsSnapshotPath { get; }
 
     internal static DevelopmentInspectorServer Start(string projectDirectory)
     {
@@ -42,12 +61,14 @@ internal sealed class DevelopmentInspectorServer : IAsyncDisposable
         string token = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         var origin = new Uri($"http://127.0.0.1:{port}/", UriKind.Absolute);
         var endpoint = new Uri(origin, $"{token}/events");
+        var renderedFragmentsEndpoint = new Uri(origin, $"{token}/rendered-fragments");
         var listener = new HttpListener();
         listener.Prefixes.Add(origin.AbsoluteUri);
         listener.Start();
         return new DevelopmentInspectorServer(
             listener,
             endpoint,
+            renderedFragmentsEndpoint,
             Path.GetFullPath(projectDirectory));
     }
 
@@ -85,17 +106,30 @@ internal sealed class DevelopmentInspectorServer : IAsyncDisposable
         try
         {
             context.Response.Headers["Access-Control-Allow-Origin"] = "*";
-            if (!string.Equals(
-                    context.Request.Url?.AbsolutePath,
-                    Endpoint.AbsolutePath,
-                    StringComparison.Ordinal)
-                || !string.Equals(context.Request.HttpMethod, "POST", StringComparison.Ordinal))
+            if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.Ordinal))
             {
                 context.Response.StatusCode = (int)HttpStatusCode.NotFound;
                 return;
             }
 
-            if (context.Request.ContentLength64 > MaximumBodyCharacters * 4L)
+            string? path = context.Request.Url?.AbsolutePath;
+            int maximumCharacters = string.Equals(
+                path,
+                RenderedFragmentsEndpoint.AbsolutePath,
+                StringComparison.Ordinal)
+                ? MaximumRenderedBodyCharacters
+                : MaximumBodyCharacters;
+            if (!string.Equals(path, Endpoint.AbsolutePath, StringComparison.Ordinal)
+                && !string.Equals(
+                    path,
+                    RenderedFragmentsEndpoint.AbsolutePath,
+                    StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = (int)HttpStatusCode.NotFound;
+                return;
+            }
+
+            if (context.Request.ContentLength64 > maximumCharacters * 4L)
             {
                 context.Response.StatusCode = (int)HttpStatusCode.RequestEntityTooLarge;
                 return;
@@ -107,18 +141,31 @@ internal sealed class DevelopmentInspectorServer : IAsyncDisposable
                 detectEncodingFromByteOrderMarks: false,
                 bufferSize: 1_024,
                 leaveOpen: false);
-            var buffer = new char[MaximumBodyCharacters + 1];
+            var buffer = new char[maximumCharacters + 1];
             int length = await reader
                 .ReadBlockAsync(buffer.AsMemory(), cancellationToken)
                 .ConfigureAwait(false);
-            if (length > MaximumBodyCharacters)
+            if (length > maximumCharacters)
             {
                 context.Response.StatusCode = (int)HttpStatusCode.RequestEntityTooLarge;
                 return;
             }
 
             string body = new(buffer, 0, length);
-            if (TryFormat(body, out string? formatted))
+            if (string.Equals(
+                    path,
+                    RenderedFragmentsEndpoint.AbsolutePath,
+                    StringComparison.Ordinal))
+            {
+                if (!TryWriteRenderedFragments(body))
+                {
+                    context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                    return;
+                }
+
+                context.Response.StatusCode = (int)HttpStatusCode.NoContent;
+            }
+            else if (TryFormat(body, out string? formatted))
             {
                 Console.WriteLine(formatted);
                 context.Response.StatusCode = (int)HttpStatusCode.NoContent;
@@ -139,6 +186,81 @@ internal sealed class DevelopmentInspectorServer : IAsyncDisposable
         {
             context.Response.Close();
         }
+    }
+
+    internal bool TryWriteRenderedFragments(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            json,
+            new JsonDocumentOptions
+            {
+                MaxDepth = 4,
+                CommentHandling = JsonCommentHandling.Disallow,
+            });
+        JsonElement root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object
+            || !TryBoundedString(root, "contract", 64, out string contract)
+            || !StringComparer.Ordinal.Equals(contract, RenderedFragmentsContract)
+            || !root.TryGetProperty("fragments", out JsonElement fragments)
+            || fragments.ValueKind != JsonValueKind.Array
+            || fragments.GetArrayLength() > MaximumRenderedFragments)
+        {
+            return false;
+        }
+
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(
+                   stream,
+                   new JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("contract", RenderedFragmentsContract);
+            writer.WriteString("capturedAtUtc", DateTimeOffset.UtcNow);
+            writer.WriteStartArray("fragments");
+            var handles = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonElement fragment in fragments.EnumerateArray())
+            {
+                if (fragment.ValueKind != JsonValueKind.Object
+                    || !TryBoundedString(fragment, "handle", 64, out string handle)
+                    || !RenderedFragmentHandle().IsMatch(handle)
+                    || !handles.Add(handle)
+                    || !TryBoundedString(
+                        fragment,
+                        "html",
+                        MaximumRenderedFragmentCharacters,
+                        out string html))
+                {
+                    return false;
+                }
+
+                writer.WriteStartObject();
+                writer.WriteString("handle", handle);
+                writer.WriteString("html", html);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        string? directory = Path.GetDirectoryName(RenderedFragmentsSnapshotPath);
+        Directory.CreateDirectory(directory!);
+        string temporary = RenderedFragmentsSnapshotPath + ".tmp." +
+            Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+        try
+        {
+            File.WriteAllBytes(temporary, stream.ToArray());
+            File.Move(temporary, RenderedFragmentsSnapshotPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+        }
+
+        return true;
     }
 
     internal bool TryFormat(string json, out string? formatted)
@@ -279,6 +401,9 @@ internal sealed class DevelopmentInspectorServer : IAsyncDisposable
         }
     }
 
+    [GeneratedRegex("^[A-Za-z][A-Za-z0-9_-]{0,63}$", RegexOptions.CultureInvariant)]
+    private static partial Regex RenderedFragmentHandle();
+
     public async ValueTask DisposeAsync()
     {
         _shutdown.Cancel();
@@ -292,7 +417,22 @@ internal sealed class DevelopmentInspectorServer : IAsyncDisposable
         }
         finally
         {
+            DeleteRenderedFragmentsSnapshot();
             _shutdown.Dispose();
+        }
+    }
+
+    private void DeleteRenderedFragmentsSnapshot()
+    {
+        try
+        {
+            File.Delete(RenderedFragmentsSnapshotPath);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 }
