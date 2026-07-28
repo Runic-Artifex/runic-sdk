@@ -121,10 +121,11 @@ reusable sample components, and framework-neutral asset/VFS boundary are also
 implemented. The cs-webui organization transfer remains external maintainer
 coordination.
 
-The next in-repository priority is first-class developer-experience parity
-across cwhtml/HTMX, React, Vue, Svelte, and Angular. The cwhtml language server
-and editor extension remain deliberately deferred until that work is complete,
-as described by the [roadmap](./docs/roadmap/README.md).
+Developer-experience parity across cwhtml/HTMX, React, Vue, Svelte, and Angular
+is implemented. The active in-repository priority is the remaining semantic
+cwhtml editor work. The production compiler now backs a Language Server
+Protocol host and a packaged first-party VS Code extension, as described by
+the [roadmap](./docs/roadmap/README.md).
 
 Earlier wave plans and release evidence remain available under
 [`docs/roadmap/archive`](./docs/roadmap/archive) and

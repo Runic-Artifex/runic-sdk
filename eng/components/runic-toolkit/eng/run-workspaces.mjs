@@ -8,6 +8,7 @@ if (!command) {
 }
 
 const packageRoots = [
+  join(import.meta.dirname, '..', 'editors'),
   join(import.meta.dirname, '..', 'web', 'packages'),
   join(import.meta.dirname, '..', 'samples', 'Todo.Frontends'),
 ].filter(existsSync);
