@@ -33,7 +33,15 @@ for (const demo of ["simple", "advanced"]) {
     resolve(demoDirectory, "index.html"),
     builtDocument
       .replaceAll("__TODO_DEMO__", demo)
-      .replaceAll("__TODO_TITLE__", demo === "advanced" ? "Advanced ToDo" : "Simple ToDo"),
+      .replaceAll("__TODO_TITLE__", demo === "advanced" ? "Advanced ToDo" : "Simple ToDo")
+      .replace(
+        "<title>ToDo · Angular</title>",
+        `<title>${demo === "advanced" ? "Advanced ToDo" : "Simple ToDo"} · Angular</title>`,
+      )
+      .replace(
+        '<body data-framework="Angular">',
+        `<body data-framework="Angular" data-demo="${demo}">`,
+      ),
     "utf8",
   );
 }

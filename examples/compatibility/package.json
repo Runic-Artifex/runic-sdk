@@ -8,6 +8,7 @@
     "npm": "11.16.x"
   },
   "workspaces": [
+    "editors/*",
     "web/packages/*",
     "samples/Todo.Frontends/*",
     "samples/Todo.Cwhtml.Frontend"
