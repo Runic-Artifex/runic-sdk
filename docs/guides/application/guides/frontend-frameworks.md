@@ -230,7 +230,7 @@ projected `canExecute`/running state. The underlying generated command handle
 remains available, so direct TypeScript consumers do not have to adopt a
 framework adapter.
 
-## Verification and remaining release alignment
+## Verification and release alignment
 
 Each project provides managed smoke modes and real pinned-Chromium modes for
 both Todo levels. `eng/verify-todo-frontends.ps1` runs the eight browser cases

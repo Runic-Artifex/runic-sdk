@@ -122,10 +122,12 @@ implemented. The cs-webui organization transfer remains external maintainer
 coordination.
 
 Developer-experience parity across cwhtml/HTMX, React, Vue, Svelte, and Angular
-is implemented. The active in-repository priority is the remaining semantic
-cwhtml editor work. The production compiler now backs a Language Server
-Protocol host and a packaged first-party VS Code extension, as described by
-the [roadmap](./docs/roadmap/README.md).
+is implemented. The production compiler backs a Language Server Protocol host
+and a packaged first-party VS Code extension with project-aware C# semantics,
+safe cross-language rename, generated-artifact inspection, and inspection of
+the live fragment rendered in the native window. All roadmap work controlled
+by this repository is complete; the [roadmap](./docs/roadmap/README.md) retains
+the external cs-webui organization transfer for maintainer coordination.
 
 Earlier wave plans and release evidence remain available under
 [`docs/roadmap/archive`](./docs/roadmap/archive) and
