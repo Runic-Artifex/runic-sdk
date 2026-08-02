@@ -81,7 +81,7 @@ pinned Chromium automatically. The browser test owns a unique temporary
 Chromium profile and deletes it after shutting down CsWebUi, the native
 transport, and the browser process.
 
-The experimental C# markup application runs the equivalent managed and browser
+The stable C# markup application runs the equivalent managed and browser
 gates with generated application metadata from `Views/TodoCsharpMarkup.cwuix`:
 
 ```bash

@@ -646,6 +646,20 @@ internal static class TodoBrowserSmoke
             if (body.dataset.simpleTodoBrowserSubmitted !== "true") {
               body.dataset.simpleTodoBrowserSubmitted = "true";
               body.dataset.simpleTodoInitialRevision = revision;
+              for (const name of ["htmx:beforeRequest", "htmx:afterRequest",
+                  "htmx:responseError", "htmx:sendError"]) {
+                body.addEventListener(name, event => {
+                  const status = event.detail?.xhr?.status ?? "";
+                  const error = event.detail?.xhr?._lastError ?? "";
+                  body.dataset.simpleTodoLastEvent = name + ":" + status + ":" + error;
+                });
+              }
+              globalThis.addEventListener("error", event => {
+                body.dataset.simpleTodoBrowserError = String(event.message ?? event.error);
+              });
+              globalThis.addEventListener("unhandledrejection", event => {
+                body.dataset.simpleTodoBrowserError = String(event.reason);
+              });
               fragment.dataset.simpleTodoOriginalFragment = "true";
               input.value = "Verify the native browser roundtrip";
               input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -668,7 +682,9 @@ internal static class TodoBrowserSmoke
               return "pass|" + title + "|" + initialRevision + "->" + currentRevision;
             }
 
-            return "waiting|" + title + "|" + initialRevision + "->" + currentRevision;
+            return "waiting|" + title + "|" + initialRevision + "->" + currentRevision +
+              "|" + (body.dataset.simpleTodoLastEvent ?? "no-event") +
+              "|" + (body.dataset.simpleTodoBrowserError ?? "no-error");
           } catch (error) {
             return "error|" + String(error);
           }

@@ -1,7 +1,8 @@
 using System;
 using System.Linq;
-using WebUIToolkit.Experimental.CsharpMarkup;
+using WebUIToolkit.CsharpMarkup;
 using WebUIToolkit.MVVM.Html.Htmx;
+using static WebUIToolkit.Samples.Cwhtml.Components.CsharpMarkupComponents;
 
 namespace WebUIToolkit.Samples.SimpleTodo;
 
@@ -131,7 +132,7 @@ public static partial class TodoCsharpMarkupViews
                     Nothing left to do. Add a task when inspiration strikes.
                 </p>
                 : null}
-            {model.Status}
+            <StatusBadge Content={model.Status} Active={!model.IsEmpty} />
         </main>;
 
     [HtmlDocumentView]

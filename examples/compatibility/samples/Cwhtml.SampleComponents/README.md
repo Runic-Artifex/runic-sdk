@@ -1,4 +1,4 @@
-# cwhtml sample components
+# Compiled HTML sample components
 
 This sample-only project demonstrates reusable components composed into
 `.cwhtml` through `@render(...)`. It deliberately is not a runtime package.
@@ -13,3 +13,7 @@ WebUIToolkit runtime does not depend on them.
 attributes without Bootstrap, Font Awesome, JavaScript, or framework classes.
 The component test project composes it from a compiled `.cwhtml` view with
 deliberately non-Bootstrap class names.
+
+`StatusBadge` is authored in `.cwuix` and consumed by `SimpleTodo` across the
+project boundary. It proves that stable `WebUIToolkit.CsharpMarkup.HtmlContent`
+values can flow through reusable libraries.

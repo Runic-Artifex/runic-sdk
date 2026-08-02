@@ -96,7 +96,7 @@ submits Quick Add through the production native bridge:
 dotnet run --project samples/AdvancedTodo -- --browser-smoke-test
 ```
 
-The experimental C# markup variant exercises the same persistence, validation,
+The stable C# markup variant exercises the same persistence, validation,
 Flow, cancellation, native transport, and fragment behavior from
 `Views/AdvancedTodoCsharpMarkup.cwuix`:
 

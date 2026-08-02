@@ -1,0 +1,14 @@
+#nullable enable
+using WebUIToolkit.CsharpMarkup;
+using WebUIToolkit.MVVM.Html;
+
+namespace WebUIToolkit.Samples.Cwhtml.Components;
+
+public static class CsharpMarkupComponents
+{
+    [HtmlComponent]
+    public static HtmlContent StatusBadge(IHtmlRenderable? Content, bool Active) =>
+        <span class={Active ? "badge text-bg-success" : "badge text-bg-secondary"}>
+            {Content}
+        </span>;
+}
