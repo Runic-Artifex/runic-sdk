@@ -129,6 +129,106 @@ for the declared reference machine and application. Diagnostic identity and
 source locations already agree across build, command line, and browser
 overlay; the deferred editor must consume the same contracts.
 
+## Experimental C# markup Milestone 0
+
+Run `eng/verify-csharp-markup-milestone0.ps1` in the Nix/direnv environment to
+verify the recursive C#/markup feasibility spike. The focused gate builds and
+runs the ambiguity, deterministic-projection, source-location, and fail-closed
+HTML-safety compiler tests; builds and runs the complete managed `.cwuix`
+vertical with a CommunityToolkit peer generator; then full-trim Native-AOT
+publishes and executes that same vertical with owned warnings treated as
+errors. RID-specific restore state remains isolated and the portable lock file
+must not change.
+
+Passing this focused gate is evidence for the experimental language direction
+only. It does not add a supported package, stable syntax, editor integration,
+or CWHTML compatibility claim. Those remain gated by the later milestones in
+the [C# markup components plan](../roadmap/csharp-markup-components.md).
+
+## Experimental C# markup Milestone 1
+
+Run `eng/verify-csharp-markup-milestone1.ps1` in the Nix/direnv environment to
+verify the shared semantic-core milestone. It includes the Milestone 0 gate and
+adds the frozen CWHTML compiler/corpus suite, cross-language semantic/render-plan
+differentials, contextual-safety parity, compiled HTMX, reusable CWHTML sample
+components, the complete CWHTML language-server regression suite, and a
+full-trim Native-AOT executable generated from an authored `.cwhtml` file.
+
+The gate treats owned trim/AOT warnings as errors for both native verticals,
+uses isolated RID restore state, and rejects portable lock-file changes. Passing
+it preserves CWHTML 1.0 and approves the internal shared core and render-plan
+prototype; it does not stabilize the `.cwuix` parser, source map, runtime, or
+package surface.
+
+## Experimental C# markup Milestone 2
+
+Run `eng/verify-csharp-markup-milestone2.ps1` in the Nix/direnv environment to
+verify the lossless parser and projection-map milestone. It includes the full
+Milestone 1 gate, then requires the frozen language 0.1 clean, invalid, and
+ambiguity corpus; delimiter-deletion recovery matrix; bidirectional and
+discontinuous interval-map vectors; nested-island ancestry; exact preservation
+of copied C# tokens; and 2,000 seeded property/fuzz inputs for termination,
+determinism, losslessness, and span containment.
+
+Passing this gate freezes the experimental 0.1 parsing and mapping contract for
+Milestone 3 binding work. It does not stabilize component resolution, prop
+binding, the materialized runtime, editor integration, a package, or a public
+API.
+
+## Experimental C# markup Milestone 3
+
+Run `eng/verify-csharp-markup-milestone3.ps1` in the Nix/direnv environment to
+verify consumer-compilation Roslyn binding. It includes the complete Milestone
+2 gate and adds structure/context projection equivalence, component symbol and
+candidate identities, generic inference, overload and accessibility behavior,
+named/default/duplicate/missing props, nullable and implicit conversions,
+supported and rejected child categories, null content, capture/ref-like
+classification, cross-file `.cwuix` binding, ordinary-source components,
+peer-generator deferral, exact diagnostic/edit mapping, generator-driver
+emission, and semantic cache invalidation.
+
+Passing this gate freezes the experimental binding decisions used by Milestone
+4. It does not stabilize the materialized runtime, direct-writer ABI, capture
+lowering, performance, editor integration, package, or public API.
+
+## Experimental C# markup Milestone 4
+
+Run `eng/verify-csharp-markup-milestone4.ps1` in the Nix/direnv environment to
+verify deterministic generation and the typed runtime ABI. It includes the
+complete Milestone 3 gate and adds frozen direct-writer output shape, static and
+captured-state factories, typed sequences, component writer entries,
+left-to-right/exactly-once evaluation, repeated-render behavior, ref-like
+escape legality, zero-allocation static construction, render allocation and
+throughput budgets against an equivalent CWHTML writer plan, trim analysis,
+full-trim Native AOT, and hostile-input regressions.
+
+Passing this gate freezes the experimental Milestone 4 lowering contract used
+by application-parity work. It does not stabilize dynamic URL syntax, HTMX
+application generation, editor integration, a package, or a public API.
+
+## Experimental C# markup Milestone 5
+
+Run `eng/verify-csharp-markup-milestone5.ps1` in the Nix/direnv environment to
+verify HTMX/MVVM application parity. It includes the complete Milestone 4 gate,
+then builds and runs the generated C# markup variants of SimpleTodo and
+AdvancedTodo through their managed scenarios and the repository-pinned native
+CsWebUi/Chromium path. The scenarios cover closed view/document registration,
+typed fragments/actions/fields/commands/collections, opaque routes, validation,
+persistence, Flow navigation, safe import cancellation, fragment replacement,
+assets, and teardown without changing either ViewModel.
+
+The gate also full-trim Native-AOT publishes both sample executables with ILC
+warnings treated as errors, then repeats their managed and real-browser C#
+markup paths. The inherited HTMX and Todo runtime suites retain reconnect,
+validation, cancellation, accessibility, leak, cleanup, and lifecycle coverage.
+The gate requires the pinned `CSWEBUI_NATIVE_LIBRARY` and
+`WEBUI_BROWSER_PATH`, isolates RID-specific state under `obj`, and rejects
+portable lock-file changes.
+
+Passing this gate approves Milestone 6 build and development-loop work. It does
+not stabilize the source-injected application attributes, generated type names,
+transitive build/package integration, editor experience, or a public API.
+
 The SimpleTodo native Chromium gate now covers all three delivered
 live-feedback paths: CSS/JavaScript HMR, the versioned cwhtml diagnostics
 overlay, and compatible renderer replacement with affected-fragment refresh.

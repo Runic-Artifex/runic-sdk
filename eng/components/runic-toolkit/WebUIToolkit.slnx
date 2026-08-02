@@ -27,6 +27,7 @@
     <Project Path="src/WebUIToolkit.MVVM.Flow/WebUIToolkit.MVVM.Flow.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Compiler/WebUIToolkit.MVVM.Html.Compiler.csproj" />
+    <Project Path="src/WebUIToolkit.MVVM.Html.CsharpMarkup.Generator/WebUIToolkit.MVVM.Html.CsharpMarkup.Generator.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App.csproj" />
     <Project Path="src/WebUIToolkit.MVVM.Html.Htmx.Js/WebUIToolkit.MVVM.Html.Htmx.Js.csproj" />
@@ -65,6 +66,8 @@
     <Project Path="tests/WebUIToolkit.MVVM.Html.Htmx.Tests/WebUIToolkit.MVVM.Html.Htmx.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.Tests/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Html.Tests/WebUIToolkit.MVVM.Html.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.Html.CsharpMarkup.Compiler.Tests/WebUIToolkit.MVVM.Html.CsharpMarkup.Compiler.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.MVVM.Html.CsharpMarkup.Tests/WebUIToolkit.MVVM.Html.CsharpMarkup.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.Protocol.Tests/WebUIToolkit.MVVM.Protocol.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.ReactiveUI.Tests/AotSmoke/WebUIToolkit.MVVM.ReactiveUI.AotSmoke.csproj" />
     <Project Path="tests/WebUIToolkit.MVVM.ReactiveUI.Tests/WebUIToolkit.MVVM.ReactiveUI.Tests.csproj" />
