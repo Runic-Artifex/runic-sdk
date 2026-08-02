@@ -7,6 +7,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using WebUIToolkit.MVVM;
+using WebUIToolkit.MVVM.CommunityToolkit;
+using WebUIToolkit.MVVM.Html;
 using WebUIToolkit.MVVM.Html.Htmx;
 using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 using WebUIToolkit.Samples.AdvancedTodo.Application;
@@ -29,12 +31,78 @@ internal static class AdvancedTodoSmoke
         TodoService service)
     {
         ArgumentNullException.ThrowIfNull(root);
+        return await RunAsync(
+            root,
+            service,
+            static view =>
+            {
+                AdvancedTodoAppView.HtmxRoutes routes =
+                    AdvancedTodoAppView.CreateHtmxRoutes(view);
+                return new SmokeRoutes(
+                    routes.Filter,
+                    routes.Add,
+                    routes.ClearCompleted,
+                    routes.Toggle,
+                    routes.Delete,
+                    routes.WizardStart,
+                    routes.WizardNext,
+                    routes.WizardCancel,
+                    routes.WizardBack,
+                    routes.WizardFinish,
+                    routes.ImportStatus,
+                    routes.CancelImport,
+                    routes.Import);
+            },
+            AdvancedTodoAppView.HtmxActions.All).ConfigureAwait(false);
+    }
+
+    internal static async Task<int> RunAsync(
+        AdvancedTodoCsharpMarkupApplication root,
+        TodoService service)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        return await RunAsync(
+            root,
+            service,
+            static view =>
+            {
+                AdvancedTodoAppGenerated.HtmxRoutes routes =
+                    AdvancedTodoAppGenerated.CreateHtmxRoutes(view);
+                return new SmokeRoutes(
+                    routes.Filter,
+                    routes.Add,
+                    routes.ClearCompleted,
+                    routes.Toggle,
+                    routes.Delete,
+                    routes.WizardStart,
+                    routes.WizardNext,
+                    routes.WizardCancel,
+                    routes.WizardBack,
+                    routes.WizardFinish,
+                    routes.ImportStatus,
+                    routes.CancelImport,
+                    routes.Import);
+            },
+            AdvancedTodoAppGenerated.HtmxActions.All).ConfigureAwait(false);
+    }
+
+    private static async Task<int> RunAsync<TView>(
+        CwhtmlHtmxApplication<
+            TodoViewModel,
+            CommunityToolkitMvvmBindingAdapter<TodoViewModel>,
+            TView,
+            AdvancedTodoRenderModel> root,
+        TodoService service,
+        Func<HtmxOpenedView, SmokeRoutes> createRoutes,
+        IReadOnlyList<HtmxActionHandle> actionHandles)
+        where TView : IHtmlRenderable
+    {
+        ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(service);
         CsWebUiHtmxApplication application = root.HtmxApplication;
         HtmxOpenedView view = application.OpenedView;
         TodoViewModel model = root.ViewModel;
-        AdvancedTodoAppView.HtmxRoutes routes =
-            AdvancedTodoAppView.CreateHtmxRoutes(view);
+        SmokeRoutes routes = createRoutes(view);
 
         long revision = view.Revision;
         CaptureTransport invalid = await PostAsync(
@@ -165,7 +233,7 @@ internal static class AdvancedTodoSmoke
             wizardFinish.Body,
             importStarted.Body,
             cancelled.Body);
-        bool routesAreOpaque = AdvancedTodoAppView.HtmxActions.All.All(handle =>
+        bool routesAreOpaque = actionHandles.All(handle =>
             renderedRouteSurface.Contains(
                 view.ActionRoutes[handle],
                 StringComparison.Ordinal));
@@ -222,6 +290,21 @@ internal static class AdvancedTodoSmoke
 
         return passed ? 0 : 1;
     }
+
+    private sealed record SmokeRoutes(
+        string Filter,
+        string Add,
+        string ClearCompleted,
+        string Toggle,
+        string Delete,
+        string WizardStart,
+        string WizardNext,
+        string WizardCancel,
+        string WizardBack,
+        string WizardFinish,
+        string ImportStatus,
+        string CancelImport,
+        string Import);
 
     private static HtmxEndpointRequest Request(
         HtmxOpenedView view,

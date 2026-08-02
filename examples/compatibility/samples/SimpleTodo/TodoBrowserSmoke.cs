@@ -15,9 +15,29 @@ internal static class TodoBrowserSmoke
 {
     private const string TaskTitle = "Verify the native browser roundtrip";
 
-    internal static async Task<int> RunAsync(TodoApplication root)
+    internal static Task<int> RunAsync(TodoApplication root)
     {
         ArgumentNullException.ThrowIfNull(root);
+        return RunAsync(
+            root.WebRoot,
+            root.ConfigureWindow,
+            root.DisposeAsync);
+    }
+
+    internal static Task<int> RunAsync(TodoCsharpMarkupApplication root)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        return RunAsync(
+            root.WebRoot,
+            root.ConfigureWindow,
+            root.DisposeAsync);
+    }
+
+    private static async Task<int> RunAsync(
+        string webRoot,
+        Action<WebUiWindow> configureWindow,
+        Func<ValueTask> disposeApplication)
+    {
         string? chromium = Environment.GetEnvironmentVariable("WEBUI_BROWSER_PATH");
         if (string.IsNullOrWhiteSpace(chromium) || !File.Exists(chromium))
         {
@@ -41,8 +61,8 @@ internal static class TodoBrowserSmoke
         {
             window = new WebUiWindow();
             window.SetPublic(false);
-            window.SetRootFolder(root.WebRoot);
-            root.ConfigureWindow(window);
+            window.SetRootFolder(webRoot);
+            configureWindow(window);
             string url = window.StartServer("index.html");
             serverStarted = true;
 
@@ -148,7 +168,7 @@ internal static class TodoBrowserSmoke
 
             try
             {
-                await root.DisposeAsync().ConfigureAwait(false);
+                await disposeApplication().ConfigureAwait(false);
             }
             catch (Exception exception)
             {

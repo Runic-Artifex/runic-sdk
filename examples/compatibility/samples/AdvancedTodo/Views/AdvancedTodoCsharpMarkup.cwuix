@@ -1,0 +1,281 @@
+using System;
+using System.Linq;
+using WebUIToolkit.Experimental.CsharpMarkup;
+using WebUIToolkit.MVVM.Html.Htmx;
+
+namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+
+public static partial class AdvancedTodoCsharpMarkupViews
+{
+    [HtmlHtmxView(
+        "advanced-todo",
+        "advanced_fragment",
+        typeof(TodoViewModel),
+        typeof(AdvancedTodoJsonContext))]
+    [HtmlHtmxAction("filter", nameof(TodoViewModel.ApplyFilterCommand))]
+    [HtmlHtmxAction("add", nameof(TodoViewModel.AddCommand), SuccessEvents = "todo:changed", InvalidFocus = "new-title")]
+    [HtmlHtmxAction("clear-completed", nameof(TodoViewModel.ClearCompletedCommand), SuccessEvents = "todo:changed")]
+    [HtmlHtmxAction("toggle", nameof(TodoViewModel.ToggleCommand), SuccessEvents = "todo:changed")]
+    [HtmlHtmxAction("delete", nameof(TodoViewModel.DeleteCommand), SuccessEvents = "todo:changed")]
+    [HtmlHtmxAction("wizard-start", nameof(TodoViewModel.StartWizardCommand))]
+    [HtmlHtmxAction("wizard-next", nameof(TodoViewModel.WizardNextCommand), InvalidFocus = "wizard-title")]
+    [HtmlHtmxAction("wizard-cancel", nameof(TodoViewModel.WizardCancelCommand))]
+    [HtmlHtmxAction("wizard-back", nameof(TodoViewModel.WizardBackCommand))]
+    [HtmlHtmxAction("wizard-finish", nameof(TodoViewModel.WizardFinishCommand), SuccessEvents = "todo:changed")]
+    [HtmlHtmxAction("import-status", nameof(TodoViewModel.RefreshImportCommand))]
+    [HtmlHtmxAction("cancel-import", nameof(TodoViewModel.CancelImportCommand))]
+    [HtmlHtmxAction("import", nameof(TodoViewModel.ImportCommand), SuccessEvents = "todo:changed")]
+    [HtmlHtmxField("filter", "query", nameof(TodoViewModel.Query), MaximumLength = 120)]
+    [HtmlHtmxField("filter", "filter", nameof(TodoViewModel.Filter), AllowedValues = "All|Active|Completed", Message = "Choose All, Active, or Completed.")]
+    [HtmlHtmxField("add", "title", nameof(TodoViewModel.NewTitle), Required = true, MinimumLength = 2, MaximumLength = 120, Message = "Give the task a title between 2 and 120 characters.", IncludeValidation = true)]
+    [HtmlHtmxField("add", "notes", nameof(TodoViewModel.NewNotes), MaximumLength = 2000)]
+    [HtmlHtmxField("add", "priority", nameof(TodoViewModel.NewPriority), AllowedValues = "Low|Normal|High", Message = "Choose Low, Normal, or High priority.")]
+    [HtmlHtmxField("toggle", "selectedId", nameof(TodoViewModel.SelectedId), Format = "guid", Message = "That task is no longer available.")]
+    [HtmlHtmxField("delete", "selectedId", nameof(TodoViewModel.SelectedId), Format = "guid", Message = "That task is no longer available.")]
+    [HtmlHtmxField("wizard-next", "wizardTitle", nameof(TodoViewModel.NewTitle), Required = true, MinimumLength = 2, MaximumLength = 120, Message = "Give the task a title before continuing.")]
+    [HtmlHtmxField("wizard-next", "notes", nameof(TodoViewModel.NewNotes), MaximumLength = 2000)]
+    [HtmlHtmxField("wizard-next", "priority", nameof(TodoViewModel.NewPriority), AllowedValues = "Low|Normal|High", Message = "Choose Low, Normal, or High priority.")]
+    public static HtmlContent AdvancedTodoApp(
+        AdvancedTodoRenderModel model,
+        HtmxRenderContext htmx) =>
+        <div
+            class="app-shell"
+            data-webui-view="advanced-todo"
+            data-webui-revision={htmx.Revision}>
+            <header class="hero">
+                <div class="eyebrow">ADVANCED SAMPLE · C# MARKUP + NATIVE HTMX</div>
+                <h1>Tasks with an architecture</h1>
+                <p class="lede">Persistent storage, typed commands, searchable projections, cancellable work, and a real Flow workflow.</p>
+            </header>
+            <section class="stats" aria-label="Task overview">
+                <div class="stat"><strong>{model.TotalCount}</strong><span>Total</span></div>
+                <div class="stat"><strong>{model.RemainingCount}</strong><span>Remaining</span></div>
+                <div class="stat"><strong>{model.CompletedCount}</strong><span>Completed</span></div>
+            </section>
+            <main class="layout">
+                <section class="board">
+                    <FilterForm Model={model} Htmx={htmx} />
+                    <AddForm Model={model} Htmx={htmx} />
+                    <TaskList Model={model} Htmx={htmx} />
+                </section>
+                <aside class="side-panel">
+                    <Wizard Model={model} Htmx={htmx} />
+                    <Diagnostics Model={model} Htmx={htmx} />
+                </aside>
+            </main>
+        </div>;
+
+    [HtmlComponent]
+    public static HtmlContent FilterForm(AdvancedTodoRenderModel Model, HtmxRenderContext Htmx) =>
+        <form
+            id="filter-form"
+            class="toolbar"
+            data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.Filter)}
+            data-hx-target="#advanced_fragment"
+            data-hx-swap="outerHTML">
+            <label for="query">Search tasks</label>
+            <input id="query" class="form-control" type="search" name="query" value={Model.Query} maxlength="120" autocomplete="off" />
+            <label for="filter">Filter</label>
+            <select id="filter" class="form-select" name="filter">
+                <option value="All" selected={Model.FilterIsAll}>All</option>
+                <option value="Active" selected={Model.FilterIsActive}>Active</option>
+                <option value="Completed" selected={Model.FilterIsCompleted}>Completed</option>
+            </select>
+            <button class="quiet btn btn-secondary" type="submit">Apply</button>
+        </form>;
+
+    [HtmlComponent]
+    public static HtmlContent AddForm(AdvancedTodoRenderModel Model, HtmxRenderContext Htmx) =>
+        <section class="card add-card">
+            <h2>Quick add</h2>
+            <form
+                id="add-form"
+                class="add-form"
+                data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.Add)}
+                data-hx-target="#advanced_fragment"
+                data-hx-swap="outerHTML">
+                <div class="field field-wide">
+                    <label for="new-title">Title</label>
+                    <input
+                        id="new-title"
+                        class="form-control"
+                        name="title"
+                        value={Model.Title}
+                        minlength="2"
+                        maxlength="120"
+                        autocomplete="off"
+                        aria-invalid={Model.HasValidationMessage ? "true" : null}
+                        aria-describedby={Model.HasValidationMessage ? "quick-title-errors" : null}
+                        required />
+                    {Model.HasValidationMessage
+                        ? <p id="quick-title-errors" class="validation" role="alert">{Model.ValidationMessage}</p>
+                        : null}
+                </div>
+                <div class="field">
+                    <label for="new-notes">Notes</label>
+                    <input id="new-notes" class="form-control" name="notes" value={Model.Notes} maxlength="2000" />
+                </div>
+                <div class="field">
+                    <label for="new-priority">Priority</label>
+                    <select id="new-priority" class="form-select" name="priority">
+                        <option value="Low" selected={Model.PriorityIsLow}>Low</option>
+                        <option value="Normal" selected={Model.PriorityIsNormal}>Normal</option>
+                        <option value="High" selected={Model.PriorityIsHigh}>High</option>
+                    </select>
+                </div>
+                <button class="primary btn btn-success" type="submit">Add task</button>
+            </form>
+        </section>;
+
+    [HtmlComponent]
+    public static HtmlContent TaskList(AdvancedTodoRenderModel Model, HtmxRenderContext Htmx) =>
+        <section class="task-list">
+            <div class="section-heading">
+                <h2>Your tasks</h2>
+                <p>{Model.ShownCount} shown</p>
+                <form
+                    data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.ClearCompleted)}
+                    data-hx-target="#advanced_fragment"
+                    data-hx-swap="outerHTML">
+                    <button class="quiet btn btn-secondary" type="submit">Clear completed</button>
+                </form>
+            </div>
+            <div id="tasks" aria-live="polite">
+                {Model.HasItems
+                    ? (System.Collections.Generic.IEnumerable<HtmlContent>)Model.Items.Select(item =>
+                        <article class={item.CssClass}>
+                            <form
+                                data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.Toggle)}
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML">
+                                <button class="check" type="submit" name="selectedId" value={item.Id} aria-label={item.ToggleLabel}>
+                                    <i class={item.ToggleIconClass} aria-hidden="true"></i>
+                                </button>
+                            </form>
+                            <div class="todo-copy">
+                                <div class="todo-title">{item.Title}</div>
+                                {item.HasNotes ? <p>{item.Notes}</p> : null}
+                                <div class="meta"><span class={item.PriorityCssClass}>{item.Priority}</span><time>{item.Created}</time></div>
+                            </div>
+                            <form
+                                data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.Delete)}
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML">
+                                <button class="danger" type="submit" name="selectedId" value={item.Id} aria-label={item.DeleteLabel}>Delete</button>
+                            </form>
+                        </article>)
+                    : new HtmlContent[] { <div class="empty"><h3>Nothing to show</h3><p>Add a task or try another filter.</p></div> }}
+            </div>
+        </section>;
+
+    [HtmlComponent]
+    public static HtmlContent Wizard(AdvancedTodoRenderModel Model, HtmxRenderContext Htmx) =>
+        <section class="card planner">
+            <h2>Guided planner</h2>
+            <div id="planner">
+                {Model.WizardIsClosed
+                    ? <form
+                        data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.WizardStart)}
+                        data-hx-target="#advanced_fragment"
+                        data-hx-swap="outerHTML">
+                        <p>Create a task through a typed Details → Review workflow.</p>
+                        <button class="primary" type="submit">Open planner</button>
+                    </form>
+                    : Model.WizardIsDetails
+                        ? <>
+                            <div class="steps"><span class="active">1 Details</span><span>2 Review</span></div>
+                            <form
+                                class="stack"
+                                data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.WizardNext)}
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML">
+                                <label for="wizard-title">Title</label>
+                                <input id="wizard-title" name="wizardTitle" value={Model.Title} minlength="2" maxlength="120" required />
+                                <label for="wizard-notes">Notes</label>
+                                <textarea id="wizard-notes" name="notes" maxlength="2000">{Model.Notes}</textarea>
+                                <label for="wizard-priority">Priority</label>
+                                <select id="wizard-priority" name="priority">
+                                    <option value="Low" selected={Model.PriorityIsLow}>Low</option>
+                                    <option value="Normal" selected={Model.PriorityIsNormal}>Normal</option>
+                                    <option value="High" selected={Model.PriorityIsHigh}>High</option>
+                                </select>
+                                {Model.WizardIssues.Select(issue => <p class="validation" role="alert">{issue}</p>)}
+                                <button class="primary" type="submit">Continue to review</button>
+                            </form>
+                            <form
+                                data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.WizardCancel)}
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML">
+                                <button class="quiet" type="submit">Cancel</button>
+                            </form>
+                        </>
+                        : <>
+                            <div class="steps"><span class="done">1 Details</span><span class="active">2 Review</span></div>
+                            <div class="review"><strong>{Model.Title}</strong><p>{Model.Notes}</p><span>{Model.Priority}</span></div>
+                            <form
+                                data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.WizardBack)}
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML">
+                                <button class="quiet" type="submit">Back</button>
+                            </form>
+                            <form
+                                data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.WizardFinish)}
+                                data-hx-target="#advanced_fragment"
+                                data-hx-swap="outerHTML">
+                                <button class="primary" type="submit">Create task</button>
+                            </form>
+                        </>}
+            </div>
+        </section>;
+
+    [HtmlComponent]
+    public static HtmlContent Diagnostics(AdvancedTodoRenderModel Model, HtmxRenderContext Htmx) =>
+        <section class="card diagnostics">
+            <h2>Activity</h2>
+            <ol id="activity" class="activity" aria-live="polite">
+                {Model.HasDiagnostics
+                    ? (System.Collections.Generic.IEnumerable<HtmlContent>)Model.Diagnostics.Select(entry => <li><time>{entry.Time}</time><span class="diagnostic-kind">{entry.Category}</span><p>{entry.Message}</p></li>)
+                    : new HtmlContent[] { <li><p>Actions and workflow transitions appear here.</p></li> }}
+            </ol>
+            {Model.IsImporting
+                ? <>
+                    <form
+                        id="import-status"
+                        data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.ImportStatus)}
+                        data-hx-trigger="load delay:2200ms"
+                        data-hx-target="#advanced_fragment"
+                        data-hx-swap="outerHTML"></form>
+                    <form
+                        id="import-cancel"
+                        data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.CancelImport)}
+                        data-hx-target="#advanced_fragment"
+                        data-hx-swap="outerHTML">
+                        <button class="quiet btn btn-secondary" type="submit">Cancel running import</button>
+                    </form>
+                </>
+                : <form
+                    id="import-form"
+                    data-hx-post={Htmx.ActionRoute(AdvancedTodoAppGenerated.HtmxActions.Import)}
+                    data-hx-target="#advanced_fragment"
+                    data-hx-swap="outerHTML">
+                    <button class="secondary btn btn-info" type="submit">Import starter tasks (2s)</button>
+                </form>}
+        </section>;
+
+    [HtmlDocumentView]
+    public static HtmlContent AdvancedTodoDocument(AdvancedTodoDocumentModel model) =>
+        <html lang="en">
+            <head>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1" />
+                <meta name="color-scheme" content="dark" />
+                <title>Advanced ToDo · WebUIToolkit</title>
+                {!model.Assets.IsViteDevelopment ? <link rel="stylesheet" href="cwhtml.css" /> : null}
+            </head>
+            <body>
+                <div id="advanced_fragment">{model.Application}</div>
+                <script src="webui.js"></script>
+                {model.Assets.IsViteDevelopment ? model.Assets : <script src="cwhtml.js"></script>}
+            </body>
+        </html>;
+}

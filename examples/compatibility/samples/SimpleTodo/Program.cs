@@ -30,8 +30,19 @@ CwhtmlHtmxAppBuilder frontend = builder.CwhtmlHtmx
         maximumResponseBytes: 256 * 1024,
         maximumFields: 8,
         maximumFieldBytes: 1024));
-await using TodoApplication root =
-    await TodoApplicationRoot.CreateAsync(staticWebRoot, frontend);
+if (args.Contains("--csharp-markup-smoke-test", StringComparer.Ordinal) ||
+    args.Contains("--csharp-markup-browser-smoke-test", StringComparer.Ordinal))
+{
+    await using TodoCsharpMarkupApplication csharpMarkupRoot =
+        await TodoCsharpMarkupApplicationRoot.CreateAsync(staticWebRoot, frontend);
+    if (args.Contains("--csharp-markup-browser-smoke-test", StringComparer.Ordinal))
+    {
+        return await TodoBrowserSmoke.RunAsync(csharpMarkupRoot);
+    }
+    return await TodoCsharpMarkupSmoke.RunAsync(csharpMarkupRoot);
+}
+
+await using TodoApplication root = await TodoApplicationRoot.CreateAsync(staticWebRoot, frontend);
 if (args.Contains("--smoke-test", StringComparer.Ordinal))
 {
     return await TodoSmoke.RunAsync(root);

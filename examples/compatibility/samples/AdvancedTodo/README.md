@@ -11,7 +11,8 @@ the local development and minified production asset graph served by CsWebUi.
 
 ## What it demonstrates
 
-- Compiled `AdvancedTodoDocument.cwhtml` and `AdvancedTodoApp.cwhtml` views.
+- Compiled `AdvancedTodoDocument.cwhtml` and `AdvancedTodoApp.cwhtml` views,
+  plus a complete experimental `.cwuix` variant over the unchanged ViewModel.
 - Compiler-generated action, field, command, focus, event, and render-plan
   registration for all 13 application actions, with typed
   `HtmxFields`/`HtmxCommands` handles instead of consumer-authored protocol IDs.
@@ -93,6 +94,15 @@ submits Quick Add through the production native bridge:
 
 ```bash
 dotnet run --project samples/AdvancedTodo -- --browser-smoke-test
+```
+
+The experimental C# markup variant exercises the same persistence, validation,
+Flow, cancellation, native transport, and fragment behavior from
+`Views/AdvancedTodoCsharpMarkup.cwuix`:
+
+```bash
+dotnet run --project samples/AdvancedTodo -- --csharp-markup-self-test
+dotnet run --project samples/AdvancedTodo -- --csharp-markup-browser-smoke-test
 ```
 
 ## Architecture

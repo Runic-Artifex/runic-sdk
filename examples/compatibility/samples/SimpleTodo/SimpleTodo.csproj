@@ -41,6 +41,9 @@
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx/WebUIToolkit.MVVM.Html.Htmx.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.csproj" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App.csproj" />
+    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.CsharpMarkup.Generator/WebUIToolkit.MVVM.Html.CsharpMarkup.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
@@ -50,6 +53,7 @@
 
   <ItemGroup>
     <CwhtmlCodeBehind Include="TodoRenderModel.cs" />
+    <AdditionalFiles Include="Views/TodoCsharpMarkup.cwuix" />
   </ItemGroup>
 
   <Import Project="../../src/WebUIToolkit.MVVM.Html.Build/buildTransitive/WebUIToolkit.MVVM.Html.Build.targets" />

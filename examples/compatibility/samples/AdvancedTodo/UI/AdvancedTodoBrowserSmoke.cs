@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
+using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
 
 namespace WebUIToolkit.Samples.AdvancedTodo.UI;
 
@@ -13,9 +14,23 @@ internal static class AdvancedTodoBrowserSmoke
 {
     private const string TaskTitle = "Verify the advanced native roundtrip";
 
-    internal static async Task<int> RunAsync(AdvancedTodoApplication root)
+    internal static Task<int> RunAsync(AdvancedTodoApplication root)
     {
         ArgumentNullException.ThrowIfNull(root);
+        return RunAsync(root.WebRoot, root.ConfigureWindow, root.DisposeAsync);
+    }
+
+    internal static Task<int> RunAsync(AdvancedTodoCsharpMarkupApplication root)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        return RunAsync(root.WebRoot, root.ConfigureWindow, root.DisposeAsync);
+    }
+
+    private static async Task<int> RunAsync(
+        string webRoot,
+        Action<WebUiWindow> configureWindow,
+        Func<ValueTask> disposeApplication)
+    {
         string? chromium = Environment.GetEnvironmentVariable("WEBUI_BROWSER_PATH");
         if (string.IsNullOrWhiteSpace(chromium) || !File.Exists(chromium))
         {
@@ -39,8 +54,8 @@ internal static class AdvancedTodoBrowserSmoke
         {
             window = new WebUiWindow();
             window.SetPublic(false);
-            window.SetRootFolder(root.WebRoot);
-            root.ConfigureWindow(window);
+            window.SetRootFolder(webRoot);
+            configureWindow(window);
             string url = window.StartServer("index.html");
             serverStarted = true;
 
@@ -129,7 +144,7 @@ internal static class AdvancedTodoBrowserSmoke
 
             try
             {
-                await root.DisposeAsync().ConfigureAwait(false);
+                await disposeApplication().ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -238,6 +253,20 @@ internal static class AdvancedTodoBrowserSmoke
             if (body.dataset.advancedTodoBrowserSubmitted !== "true") {
               body.dataset.advancedTodoBrowserSubmitted = "true";
               body.dataset.advancedTodoInitialRevision = revision;
+              for (const name of ["htmx:beforeRequest", "htmx:afterRequest",
+                  "htmx:responseError", "htmx:sendError"]) {
+                body.addEventListener(name, event => {
+                  const status = event.detail?.xhr?.status ?? "";
+                  const error = event.detail?.xhr?._lastError ?? "";
+                  body.dataset.advancedTodoLastEvent = name + ":" + status + ":" + error;
+                });
+              }
+              globalThis.addEventListener("error", event => {
+                body.dataset.advancedTodoBrowserError = String(event.message ?? event.error);
+              });
+              globalThis.addEventListener("unhandledrejection", event => {
+                body.dataset.advancedTodoBrowserError = String(event.reason);
+              });
               fragment.dataset.advancedTodoOriginalFragment = "true";
               titleInput.value = "Verify the advanced native roundtrip";
               notesInput.value = "Generated registration exercised by Chromium";
@@ -264,7 +293,9 @@ internal static class AdvancedTodoBrowserSmoke
               return "pass|" + title + "|" + initialRevision + "->" + currentRevision;
             }
 
-            return "waiting|" + title + "|" + initialRevision + "->" + currentRevision;
+            return "waiting|" + title + "|" + initialRevision + "->" + currentRevision +
+              "|" + (body.dataset.advancedTodoLastEvent ?? "no-event") +
+              "|" + (body.dataset.advancedTodoBrowserError ?? "no-error");
           } catch (error) {
             return "error|" + String(error);
           }

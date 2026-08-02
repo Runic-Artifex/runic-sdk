@@ -19,6 +19,12 @@ if (!Directory.Exists(staticWebRoot))
 
 bool selfTest = args.Contains("--self-test", StringComparer.Ordinal);
 bool browserSmokeTest = args.Contains("--browser-smoke-test", StringComparer.Ordinal);
+bool csharpMarkupSelfTest = args.Contains(
+    "--csharp-markup-self-test",
+    StringComparer.Ordinal);
+bool csharpMarkupBrowserSmokeTest = args.Contains(
+    "--csharp-markup-browser-smoke-test",
+    StringComparer.Ordinal);
 var builder = WebUiApp.CreateBuilder(args);
 CwhtmlHtmxAppBuilder frontend = builder.CwhtmlHtmx
     .ConfigureEndpoint(new HtmxEndpointOptions(
@@ -36,7 +42,7 @@ CwhtmlHtmxAppBuilder frontend = builder.CwhtmlHtmx
         maximumFieldBytes: 4 * 1024));
 string? testDirectory = null;
 string dataPath;
-if (selfTest || browserSmokeTest)
+if (selfTest || browserSmokeTest || csharpMarkupSelfTest || csharpMarkupBrowserSmokeTest)
 {
     testDirectory = Path.Combine(
         Path.GetTempPath(),
@@ -54,6 +60,28 @@ else
 }
 
 var service = new TodoService(new JsonTodoRepository(dataPath));
+if (csharpMarkupSelfTest || csharpMarkupBrowserSmokeTest)
+{
+    await using AdvancedTodoCsharpMarkupApplication csharpMarkupRoot =
+        await AdvancedTodoCsharpMarkupApplicationRoot.CreateAsync(
+            service,
+            staticWebRoot,
+            frontend);
+    try
+    {
+        return csharpMarkupBrowserSmokeTest
+            ? await AdvancedTodoBrowserSmoke.RunAsync(csharpMarkupRoot)
+            : await AdvancedTodoSmoke.RunAsync(csharpMarkupRoot, service);
+    }
+    finally
+    {
+        if (testDirectory is not null && Directory.Exists(testDirectory))
+        {
+            Directory.Delete(testDirectory, recursive: true);
+        }
+    }
+}
+
 await using AdvancedTodoApplication root =
     await AdvancedTodoApplicationRoot.CreateAsync(
         service,

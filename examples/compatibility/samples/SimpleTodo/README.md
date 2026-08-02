@@ -14,7 +14,8 @@ It demonstrates:
 - `ObservableRangeCollection<T>` projected through the CommunityToolkit
   collection binding;
 - `.cwhtml` authoring for both the initial document and HTMX response
-  fragment;
+  fragment, plus a complete experimental `.cwuix` application variant using
+  the same ViewModel and application owner;
 - compiler-generated action, field, command, fragment, focus, and event
   registration, with `nameof(...)` declarations shared through typed
   `HtmxFields`/`HtmxCommands` handles and closed per-view routes assigned by
@@ -79,6 +80,14 @@ The repository's Nix/direnv development shell sets `WEBUI_BROWSER_PATH` to its
 pinned Chromium automatically. The browser test owns a unique temporary
 Chromium profile and deletes it after shutting down CsWebUi, the native
 transport, and the browser process.
+
+The experimental C# markup application runs the equivalent managed and browser
+gates with generated application metadata from `Views/TodoCsharpMarkup.cwuix`:
+
+```bash
+dotnet run --project samples/SimpleTodo -- --csharp-markup-smoke-test
+dotnet run --project samples/SimpleTodo -- --csharp-markup-browser-smoke-test
+```
 
 ## Architecture
 
