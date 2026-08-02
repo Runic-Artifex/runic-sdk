@@ -24,6 +24,7 @@ tests/WebUIToolkit.TextResources.AotTests/WebUIToolkit.TextResources.AotTests.cs
 tests/WebUIToolkit.TextResources.PackageTests/WebUIToolkit.TextResources.PackageTests.csproj
 # Source projects embedded in the template package and instantiated by its acceptance test.
 templates/WebUIToolkit.Templates/content/angular/WebUIToolkitStarter.csproj
+templates/WebUIToolkit.Templates/content/csharp-markup/WebUIToolkitStarter.csproj
 templates/WebUIToolkit.Templates/content/cwhtml/WebUIToolkitStarter.csproj
 templates/WebUIToolkit.Templates/content/react/WebUIToolkitStarter.csproj
 templates/WebUIToolkit.Templates/content/svelte/WebUIToolkitStarter.csproj

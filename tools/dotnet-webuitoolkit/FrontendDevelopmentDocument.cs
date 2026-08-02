@@ -62,8 +62,8 @@ internal static partial class FrontendDevelopmentDocument
         }
         string inspectorBootstrap =
             "<script>globalThis.__webuitoolkitMvvmDevelopment=Object.freeze({" +
-            "endpoint:" + JsonSerializer.Serialize(inspectorEndpoint.AbsoluteUri) + "," +
-            "projectDirectory:" + JsonSerializer.Serialize(configuration.ProjectDirectory) +
+            "endpoint:" + JsonString(inspectorEndpoint.AbsoluteUri) + "," +
+            "projectDirectory:" + JsonString(configuration.ProjectDirectory) +
             "});</script>";
         document = HeadElement().Replace(
             document,
@@ -92,6 +92,9 @@ internal static partial class FrontendDevelopmentDocument
         Console.WriteLine(
             $"[dev] Wrote native frontend bootstrap '{destination}'.");
     }
+
+    private static string JsonString(string value) =>
+        "\"" + JsonEncodedText.Encode(value).ToString() + "\"";
 
     [GeneratedRegex("<base\\s+[^>]*href\\s*=\\s*[\"'][^\"']*[\"'][^>]*>", RegexOptions.IgnoreCase)]
     private static partial Regex BaseElement();

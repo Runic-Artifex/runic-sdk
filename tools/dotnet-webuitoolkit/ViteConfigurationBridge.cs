@@ -57,10 +57,20 @@ internal sealed class ViteConfigurationBridge : IDisposable
             configuration.ViteConfigurationPath)
             ? "const userConfigExport = {};"
             : $"import userConfigExport from {Json(new Uri(configuration.ViteConfigurationPath).AbsoluteUri)};";
-        string diagnosticsPath = Json(configuration.CwhtmlDiagnosticsPath);
-        string hotReloadPath = Json(configuration.CwhtmlHotReloadPath + ".ready");
+        string cwhtmlDiagnosticsPath = configuration.CwhtmlEnabled
+            ? Json(configuration.CwhtmlDiagnosticsPath)
+            : "undefined";
+        string csharpMarkupDiagnosticsPath = configuration.CsharpMarkupEnabled
+            ? Json(configuration.CsharpMarkupDiagnosticsPath)
+            : "undefined";
+        string cwhtmlHotReloadPath = configuration.CwhtmlEnabled
+            ? Json(configuration.CwhtmlHotReloadPath + ".ready")
+            : "undefined";
+        string csharpMarkupHotReloadPath = configuration.CsharpMarkupEnabled
+            ? Json(configuration.CsharpMarkupHotReloadPath + ".ready")
+            : "undefined";
         string normalizedEntry = Json(NormalizePath(entryPath));
-        string fragmentInspectorEndpoint = configuration.CwhtmlEnabled
+        string fragmentInspectorEndpoint = configuration.HasMarkupPipeline
             ? Json(renderedFragmentsEndpoint.AbsoluteUri)
             : "undefined";
 
@@ -68,11 +78,27 @@ internal sealed class ViteConfigurationBridge : IDisposable
             import { readFile } from "node:fs/promises";
             {{userConfigurationImport}}
 
-            const diagnosticsPath = {{diagnosticsPath}};
-            const hotReloadPath = {{hotReloadPath}};
+            const diagnosticsSources = [
+              {
+                path: {{cwhtmlDiagnosticsPath}},
+                contract: "webuitoolkit.cwhtml.diagnostics/1.0",
+              },
+              {
+                path: {{csharpMarkupDiagnosticsPath}},
+                contract: "webuitoolkit.csharp-markup.diagnostics/1.0",
+              },
+            ].filter(source => source.path);
+            const hotReloadSources = [
+              {
+                path: {{cwhtmlHotReloadPath}},
+                contract: "webuitoolkit.cwhtml.hot-reload/1.0",
+              },
+              {
+                path: {{csharpMarkupHotReloadPath}},
+                contract: "webuitoolkit.csharp-markup.hot-reload/1.0",
+              },
+            ].filter(source => source.path);
             const entryPath = {{normalizedEntry}};
-            const diagnosticsContract = "webuitoolkit.cwhtml.diagnostics/1.0";
-            const hotReloadContract = "webuitoolkit.cwhtml.hot-reload/1.0";
             const renderedFragmentsContract =
               "webuitoolkit.cwhtml.rendered-fragments/1.0";
             const renderedFragmentsEndpoint = {{fragmentInspectorEndpoint}};
@@ -89,34 +115,39 @@ internal sealed class ViteConfigurationBridge : IDisposable
               let lastHotReloadSnapshot;
 
               async function readSnapshot() {
-                if (!diagnosticsPath) {
+                if (diagnosticsSources.length === 0) {
                   return { raw: "", diagnostics: [] };
                 }
 
-                try {
-                  const raw = await readFile(diagnosticsPath, "utf8");
-                  const snapshot = JSON.parse(raw);
-                  if (snapshot?.contract !== diagnosticsContract ||
-                      !Array.isArray(snapshot?.diagnostics)) {
-                    throw new Error(`Expected ${diagnosticsContract}.`);
-                  }
-                  return { raw, diagnostics: snapshot.diagnostics };
-                } catch (error) {
-                  if (error?.code === "ENOENT") {
-                    return { raw: "", diagnostics: [] };
-                  }
-                  return {
-                    raw: `invalid:${error?.message ?? error}`,
-                    diagnostics: [{
+                const rawParts = [];
+                const diagnostics = [];
+                for (const source of diagnosticsSources) {
+                  try {
+                    const raw = await readFile(source.path, "utf8");
+                    const snapshot = JSON.parse(raw);
+                    if (snapshot?.contract !== source.contract ||
+                        !Array.isArray(snapshot?.diagnostics)) {
+                      throw new Error(`Expected ${source.contract}.`);
+                    }
+                    rawParts.push(`${source.contract}:${raw}`);
+                    diagnostics.push(...snapshot.diagnostics);
+                  } catch (error) {
+                    if (error?.code === "ENOENT") {
+                      rawParts.push(`${source.contract}:missing`);
+                      continue;
+                    }
+                    rawParts.push(`${source.contract}:invalid:${error?.message ?? error}`);
+                    diagnostics.push({
                       id: "WUTDEV1008",
                       severity: "error",
-                      message: `Could not read the cwhtml diagnostics snapshot: ${error?.message ?? error}`,
-                      logicalPath: diagnosticsPath,
-                      filePath: diagnosticsPath,
+                      message: `Could not read the compiled-markup diagnostics snapshot: ${error?.message ?? error}`,
+                      logicalPath: source.path,
+                      filePath: source.path,
                       range: null,
-                    }],
-                  };
+                    });
+                  }
                 }
+                return { raw: rawParts.join("\n"), diagnostics };
               }
 
               async function sourceFrame(diagnostic) {
@@ -150,23 +181,31 @@ internal sealed class ViteConfigurationBridge : IDisposable
               }
 
               async function readHotReloadSnapshot() {
-                if (!hotReloadPath) {
+                if (hotReloadSources.length === 0) {
                   return undefined;
                 }
-                try {
-                  const raw = await readFile(hotReloadPath, "utf8");
-                  const snapshot = JSON.parse(raw);
-                  if (snapshot?.contract !== hotReloadContract ||
-                      !Array.isArray(snapshot?.templates)) {
-                    throw new Error(`Expected ${hotReloadContract}.`);
+
+                const templates = [];
+                for (const source of hotReloadSources) {
+                  try {
+                    const raw = await readFile(source.path, "utf8");
+                    const snapshot = JSON.parse(raw);
+                    if (snapshot?.contract !== source.contract ||
+                        !Array.isArray(snapshot?.templates)) {
+                      throw new Error(`Expected ${source.contract}.`);
+                    }
+                    templates.push(...snapshot.templates.map(template => ({
+                      ...template,
+                      sourceContract: source.contract,
+                    })));
+                  } catch (error) {
+                    if (error?.code === "ENOENT") {
+                      continue;
+                    }
+                    throw error;
                   }
-                  return snapshot;
-                } catch (error) {
-                  if (error?.code === "ENOENT") {
-                    return undefined;
-                  }
-                  throw error;
                 }
+                return templates.length === 0 ? undefined : { templates };
               }
 
               async function errorPayload(errors) {
@@ -234,10 +273,11 @@ internal sealed class ViteConfigurationBridge : IDisposable
                 }
                 const previous = new Map(
                   lastHotReloadSnapshot.templates.map(template =>
-                    [template.logicalPath, template]));
+                    [`${template.sourceContract}:${template.logicalPath}`, template]));
                 const fragments = new Set();
                 for (const template of snapshot.templates) {
-                  const prior = previous.get(template.logicalPath);
+                  const prior = previous.get(
+                    `${template.sourceContract}:${template.logicalPath}`);
                   if (prior?.rendererSha256 !== template.rendererSha256) {
                     for (const fragment of template.affectedFragments ?? []) {
                       fragments.add(fragment);
@@ -274,11 +314,13 @@ internal sealed class ViteConfigurationBridge : IDisposable
 
               function schedulePublish(changedPath) {
                 const path = cleanModuleId(changedPath);
-                if (diagnosticsPath && path === normalizePath(diagnosticsPath)) {
+                if (diagnosticsSources.some(
+                    source => path === normalizePath(source.path))) {
                   clearTimeout(publishTimer);
                   publishTimer = setTimeout(() => void publish(), 25);
                 }
-                if (hotReloadPath && path === normalizePath(hotReloadPath)) {
+                if (hotReloadSources.some(
+                    source => path === normalizePath(source.path))) {
                   setTimeout(() => void publishHotReload(), 25);
                 }
               }
@@ -288,15 +330,19 @@ internal sealed class ViteConfigurationBridge : IDisposable
                 enforce: "pre",
                 configureServer(viteServer) {
                   server = viteServer;
-                  if (diagnosticsPath) {
-                    server.watcher.add(diagnosticsPath);
+                  if (diagnosticsSources.length !== 0) {
+                    for (const source of diagnosticsSources) {
+                      server.watcher.add(source.path);
+                    }
                     server.watcher.on("add", schedulePublish);
                     server.watcher.on("change", schedulePublish);
                     server.watcher.on("unlink", schedulePublish);
                     publishInterval = setInterval(() => void publish(), 250);
                   }
-                  if (hotReloadPath) {
-                    server.watcher.add(hotReloadPath);
+                  for (const source of hotReloadSources) {
+                    server.watcher.add(source.path);
+                  }
+                  if (hotReloadSources.length !== 0) {
                     void publishHotReload();
                   }
                   server.ws.on(

@@ -42,6 +42,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WebUIToolkit.Cwhtml.LanguageServer.Tests/WebUIToolkit.Cwhtml.LanguageServer.Tests.csproj" />
+    <Project Path="tests/WebUIToolkit.CsharpMarkup.LanguageServer.Tests/WebUIToolkit.CsharpMarkup.LanguageServer.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Assets.Tests/WebUIToolkit.Assets.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.Collections.Tests/WebUIToolkit.Collections.Tests.csproj" />
     <Project Path="tests/WebUIToolkit.CommandLine.Contracts.Tests/WebUIToolkit.CommandLine.Contracts.Tests.csproj" />

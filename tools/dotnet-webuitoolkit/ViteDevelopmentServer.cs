@@ -96,13 +96,17 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             origin,
             configuration.ViteDevServerEntry,
             configuration.FrontendPackageDirectory,
-            configuration.CwhtmlDiagnosticsPath,
-            configuration.CwhtmlHotReloadPath + ".ready",
+            configuration.CwhtmlEnabled
+                ? configuration.CwhtmlDiagnosticsPath
+                : configuration.EffectiveDiagnosticsPath,
+            (configuration.CwhtmlEnabled
+                ? configuration.CwhtmlHotReloadPath
+                : configuration.EffectiveHotReloadPath) + ".ready",
             configuration.ProjectPath);
         try
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
-            if (!configuration.CwhtmlEnabled)
+            if (!configuration.HasMarkupPipeline)
             {
                 foreach (string destination in configuration.DevelopmentServerDocuments)
                 {

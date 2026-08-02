@@ -11,6 +11,8 @@ namespace WebUIToolkit.DotNet.WebUIToolkit;
 internal sealed class CwhtmlHotReloadCoordinator
 {
     internal const string Contract = "webuitoolkit.cwhtml.hot-reload/1.0";
+    internal const string CsharpMarkupContract =
+        "webuitoolkit.csharp-markup.hot-reload/1.0";
 
     private readonly string _sourcePath;
     private readonly string _readyPath;
@@ -63,7 +65,7 @@ internal sealed class CwhtmlHotReloadCoordinator
         if (decision.Kind == ReloadKind.Restart)
         {
             Console.WriteLine(
-                $"[cwhtml] Generated shape changed ({decision.Reason}); restarting the native host.");
+                $"[{_current.Kind}] Generated shape changed ({decision.Reason}); restarting the native host.");
             await _host.RestartAsync(cancellationToken).ConfigureAwait(false);
             _acknowledgedHotReloadGeneration = _host.HotReloadGeneration;
             return;
@@ -76,13 +78,13 @@ internal sealed class CwhtmlHotReloadCoordinator
                 cancellationToken).ConfigureAwait(false);
             PublishReadySnapshot();
             Console.WriteLine(
-                $"[cwhtml] Renderer hot reload applied; refreshing " +
+                $"[{_current.Kind}] Renderer hot reload applied; refreshing " +
                 $"{decision.AffectedFragments.Count} affected fragment(s).");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             Console.WriteLine(
-                "[cwhtml] The managed Hot Reload acknowledgement timed out; restarting safely.");
+                $"[{_current.Kind}] The managed Hot Reload acknowledgement timed out; restarting safely.");
             await _host.RestartAsync(cancellationToken).ConfigureAwait(false);
             _acknowledgedHotReloadGeneration = _host.HotReloadGeneration;
         }
@@ -120,6 +122,11 @@ internal sealed class CwhtmlHotReloadCoordinator
             return ReloadDecision.Restart("the template set changed");
         }
 
+        if (!StringComparer.Ordinal.Equals(previous.Contract, current.Contract))
+        {
+            return ReloadDecision.Restart("the language contract changed");
+        }
+
         var affected = new SortedSet<string>(StringComparer.Ordinal);
         foreach ((string path, Template next) in current.Templates)
         {
@@ -154,7 +161,10 @@ internal sealed class CwhtmlHotReloadCoordinator
             : ReloadDecision.Refresh(affected);
     }
 
-    private sealed record Snapshot(IReadOnlyDictionary<string, Template> Templates)
+    private sealed record Snapshot(
+        string Contract,
+        string Kind,
+        IReadOnlyDictionary<string, Template> Templates)
     {
         internal static Snapshot Parse(ReadOnlySpan<byte> content)
         {
@@ -162,11 +172,13 @@ internal sealed class CwhtmlHotReloadCoordinator
             JsonElement root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object ||
                 !root.TryGetProperty("contract", out JsonElement contract) ||
-                contract.GetString() != Contract ||
+                contract.GetString() is not (
+                    CwhtmlHotReloadCoordinator.Contract or CsharpMarkupContract) ||
                 !root.TryGetProperty("templates", out JsonElement templates) ||
                 templates.ValueKind != JsonValueKind.Array)
             {
-                throw new InvalidDataException($"Expected {Contract}.");
+                throw new InvalidDataException(
+                    $"Expected {CwhtmlHotReloadCoordinator.Contract} or {CsharpMarkupContract}.");
             }
 
             var parsed = new Dictionary<string, Template>(StringComparer.Ordinal);
@@ -186,11 +198,15 @@ internal sealed class CwhtmlHotReloadCoordinator
                     fragments);
                 if (!parsed.TryAdd(path, template))
                 {
-                    throw new InvalidDataException($"Duplicate cwhtml template '{path}'.");
+                    throw new InvalidDataException($"Duplicate markup template '{path}'.");
                 }
             }
 
-            return new Snapshot(parsed);
+            string contractValue = contract.GetString()!;
+            return new Snapshot(
+                contractValue,
+                contractValue == CsharpMarkupContract ? "csharp-markup" : "cwhtml",
+                parsed);
         }
 
         private static string RequiredString(JsonElement item, string name) =>

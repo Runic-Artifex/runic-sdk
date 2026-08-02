@@ -4,7 +4,7 @@
     <PackageId>WebUIToolkit.Templates</PackageId>
     <PackageVersion>1.0.0-beta.1</PackageVersion>
     <Title>WebUIToolkit project templates</Title>
-    <Description>dotnet new templates for native CsWebUi applications using cwhtml, React, Vue, Svelte, or Angular.</Description>
+    <Description>dotnet new templates for native CsWebUi applications using C# markup, cwhtml, React, Vue, Svelte, or Angular.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageType>Template</PackageType>
     <IncludeContentInPack>true</IncludeContentInPack>
@@ -19,5 +19,15 @@
     <Content Include="content/**/*"
              Exclude="content/**/bin/**/*;content/**/obj/**/*;content/**/node_modules/**/*;content/**/dist/**/*;content/**/.angular/**/*" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="content/cwhtml/package.json" Pack="true" PackagePath="content/content/csharp-markup/package.json" />
+    <None Include="content/cwhtml/package-lock.json" Pack="true" PackagePath="content/content/csharp-markup/package-lock.json" />
+    <None Include="content/cwhtml/Frontend/package.json" Pack="true" PackagePath="content/content/csharp-markup/Frontend/package.json" />
+    <None Include="content/cwhtml/Frontend/vite.config.mjs" Pack="true" PackagePath="content/content/csharp-markup/Frontend/vite.config.mjs" />
+    <None Include="content/cwhtml/Frontend/src/main.js" Pack="true" PackagePath="content/content/csharp-markup/Frontend/src/main.js" />
+    <None Include="content/cwhtml/.config/dotnet-tools.json" Pack="true" PackagePath="content/content/csharp-markup/.config/dotnet-tools.json" />
+    <None Include="content/cwhtml/.gitignore" Pack="true" PackagePath="content/content/csharp-markup/.gitignore" />
   </ItemGroup>
 </Project>

@@ -19,12 +19,15 @@ internal static class Program
 
         try
         {
-            return await (
-                arguments.Length > 0
-                && StringComparer.Ordinal.Equals(arguments[0], "doctor")
-                    ? DoctorApplication.RunAsync(arguments, CancellationToken.None)
-                    : DevApplication.RunAsync(arguments, CancellationToken.None))
-                .ConfigureAwait(false);
+            Task<int> command = arguments.Length > 0
+                ? arguments[0] switch
+                {
+                    "doctor" => DoctorApplication.RunAsync(arguments, CancellationToken.None),
+                    "inspect" => InspectApplication.RunAsync(arguments, CancellationToken.None),
+                    _ => DevApplication.RunAsync(arguments, CancellationToken.None),
+                }
+                : DevApplication.RunAsync(arguments, CancellationToken.None);
+            return await command.ConfigureAwait(false);
         }
         catch (DevUsageException exception)
         {

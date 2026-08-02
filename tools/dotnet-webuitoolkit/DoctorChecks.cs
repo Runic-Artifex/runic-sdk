@@ -137,6 +137,7 @@ internal static class DoctorChecks
             runtime,
             cancellationToken).ConfigureAwait(false);
         CheckFrontendMode(checks, project);
+        CheckCsharpMarkup(checks, project);
 
         string? node = await CheckNodeAsync(
             checks,
@@ -224,7 +225,7 @@ internal static class DoctorChecks
             return;
         }
 
-        if (!project.NodeEnabled && !project.CwhtmlEnabled)
+        if (!project.NodeEnabled && !project.CwhtmlEnabled && !project.CsharpMarkupEnabled)
         {
             checks.Add(Fail(
                 "frontend-sdk",
@@ -235,11 +236,83 @@ internal static class DoctorChecks
 
         checks.Add(Pass(
             "frontend-sdk",
-            project.NodeEnabled && project.CwhtmlEnabled
-                ? "Node/Vite and cwhtml frontend pipelines are enabled."
+            project.NodeEnabled && (project.CwhtmlEnabled || project.CsharpMarkupEnabled)
+                ? "Node/Vite and compiled-markup frontend pipelines are enabled."
                 : project.NodeEnabled
                     ? "The Node/Vite frontend pipeline is enabled."
-                    : "The Node-free cwhtml/static-assets pipeline is enabled."));
+                    : project.CsharpMarkupEnabled
+                        ? "The Node-free C# markup/static-assets pipeline is enabled."
+                        : "The Node-free cwhtml/static-assets pipeline is enabled."));
+    }
+
+    private static void CheckCsharpMarkup(
+        List<DoctorCheck> checks,
+        DoctorProjectConfiguration project)
+    {
+        if (!project.CsharpMarkupEnabled)
+        {
+            checks.Add(Pass("csharp-markup", "The C# markup pipeline is not enabled."));
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(project.CsharpMarkupGeneratorAssembly) ||
+            !File.Exists(project.CsharpMarkupGeneratorAssembly))
+        {
+            checks.Add(Fail(
+                "csharp-markup",
+                $"The C# markup generator '{project.CsharpMarkupGeneratorAssembly}' is missing.",
+                "Restore WebUIToolkit.MVVM.Html.Build and verify its transitive analyzer assets."));
+            return;
+        }
+
+        string[] documents = Directory.EnumerateFiles(
+                project.ProjectDirectory,
+                "*.cwuix",
+                SearchOption.AllDirectories)
+            .Where(path => !Path.GetRelativePath(project.ProjectDirectory, path)
+                .Split(Path.DirectorySeparatorChar)
+                .Any(static segment => segment is "bin" or "obj"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (documents.Length == 0)
+        {
+            checks.Add(Warn(
+                "csharp-markup",
+                "The C# markup pipeline is enabled but no .cwuix documents were found.",
+                "Add a .cwuix document or disable WebUIToolkitCsharpMarkupEnabled."));
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(project.CsharpMarkupManifestPath) &&
+            File.Exists(project.CsharpMarkupManifestPath))
+        {
+            try
+            {
+                using JsonDocument manifest = JsonDocument.Parse(
+                    File.ReadAllBytes(project.CsharpMarkupManifestPath));
+                if (manifest.RootElement.TryGetProperty("contract", out JsonElement contract) &&
+                    contract.GetString() == "webuitoolkit.csharp-markup.manifest/1.0")
+                {
+                    checks.Add(Pass(
+                        "csharp-markup",
+                        $"Found {documents.Length} .cwuix document(s) and a valid deterministic manifest."));
+                    return;
+                }
+            }
+            catch (JsonException)
+            {
+            }
+
+            checks.Add(Fail(
+                "csharp-markup",
+                $"C# markup manifest '{project.CsharpMarkupManifestPath}' is invalid.",
+                "Delete the C# markup intermediate directory and rebuild."));
+            return;
+        }
+
+        checks.Add(Pass(
+            "csharp-markup",
+            $"The generator and {documents.Length} .cwuix document(s) are ready; the first build will create the manifest."));
     }
 
     private static async Task<string?> CheckNodeAsync(

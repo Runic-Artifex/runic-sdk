@@ -29,6 +29,9 @@ This file is owned by the orchestrator. Domain tasks reserve identifiers here be
 | G3 fixture | flow | `flow.projection.communitytoolkit.async-command.v1` | Allocated |
 | Flow diagnostics | flow | `WUTFLOW0001`–`WUTFLOW0999` | ADR 0005 reserved |
 | Template diagnostics | template-engine | `WUTHTML0001`–`WUTHTML7999` | ADR 0005 reserved |
+| C# markup language | template-engine | `csharp-markup/1.0` | Stable |
+| C# markup build artifacts | template-engine | `webuitoolkit.csharp-markup.manifest/1.0`, `webuitoolkit.csharp-markup.diagnostics/1.0`, `webuitoolkit.csharp-markup.hot-reload/1.0`, `webuitoolkit.csharp-markup.build-metadata/1.0` | Stable |
+| C# markup diagnostics | template-engine | `WUTUIX0001`–`WUTUIX4999` | Allocated; remainder reserved |
 | Text diagnostics | text-resources | `WUTTEXT0001`–`WUTTEXT0999` | ADR 0005 reserved |
 | CLI diagnostics | command-line | `WUTCLI0001`–`WUTCLI9999` | ADR 0005 reserved |
 | Hosting diagnostics | hosting | `WUTHOST0001`–`WUTHOST0007`, `WUTHOST1001`, `WUTHOST1101`–`WUTHOST1103`, `WUTHOST1201`–`WUTHOST1202`, `WUTHOST1301`, `WUTHOST1401`–`WUTHOST1405` | Allocated; remainder reserved by ADR 0005 |

@@ -16,7 +16,7 @@ JavaScript bindings.
 
 | Track | Authoring model | Native transport |
 | --- | --- | --- |
-| cwhtml + HTMX | Compile-time typed C# HTML views and fragments | One private HTMX binding per window |
+| C# markup / cwhtml + HTMX | TSX-shaped mixed C# (`.cwuix`) or declarative typed HTML views and fragments | One private HTMX binding per window |
 | React, Vue, Svelte, Angular | Framework components over generated TypeScript contracts | Binary MVVM FrameChannel |
 
 Both tracks share C# models and ViewModels, CommunityToolkit integration,
@@ -43,7 +43,7 @@ dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
 ```
 
 The development loop coordinates .NET, CsWebUi, Vite, generated contracts,
-browser diagnostics, CSS/JavaScript HMR, state-preserving compatible cwhtml
+browser diagnostics, CSS/JavaScript HMR, state-preserving compatible compiled-markup
 renderer replacement, and safe restart fallback.
 
 See [Getting started](./docs/getting-started/README.md) for the complete first
@@ -54,6 +54,7 @@ run and framework examples.
 - [Documentation index](./docs/README.md)
 - [Getting started](./docs/getting-started/README.md)
 - [cwhtml development guide](./docs/guides/cwhtml.md)
+- [C# markup 1.0 language contract](./spec/csharp-markup/language/1.0/README.md)
 - [Frontend framework integration](./docs/guides/frontend-frameworks.md)
 - [WPF migration guide](./docs/guides/wpf-migration.md)
 - [Architecture](./docs/architecture/README.md)
@@ -73,7 +74,7 @@ The [`samples`](./samples) directory is an ordered learning path:
 2. typed command-line execution;
 3. framework-neutral MVVM projection;
 4. the production native binary FrameChannel;
-5. SimpleTodo and AdvancedTodo through compiled cwhtml/HTMX; and
+5. SimpleTodo and AdvancedTodo through compiled C# markup and cwhtml/HTMX; and
 6. both Todo levels through React, Vue, Svelte, and Angular.
 
 The Todo variants share their C# model/ViewModel layer and use locally pinned
@@ -121,7 +122,7 @@ reusable sample components, and framework-neutral asset/VFS boundary are also
 implemented. The cs-webui organization transfer remains external maintainer
 coordination.
 
-Developer-experience parity across cwhtml/HTMX, React, Vue, Svelte, and Angular
+Developer-experience parity across C# markup/cwhtml/HTMX, React, Vue, Svelte, and Angular
 is implemented. The production compiler backs a Language Server Protocol host
 and a packaged first-party VS Code extension with project-aware C# semantics,
 safe cross-language rename, generated-artifact inspection, and inspection of

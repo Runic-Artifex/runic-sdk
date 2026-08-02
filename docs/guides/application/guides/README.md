@@ -1,5 +1,7 @@
 # Guides
 
+- [C# markup development](./csharp-markup.md)
+
 - [cwhtml development](./cwhtml.md) explains the compiled C#/HTMX authoring
   model, Vite asset pipeline, live-feedback tiers, and editor surface.
 - [Frontend framework integration](./frontend-frameworks.md) records the shared

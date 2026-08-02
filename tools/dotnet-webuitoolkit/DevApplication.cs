@@ -101,12 +101,23 @@ internal static class DevApplication
             await host.StartAsync(cancellationToken).ConfigureAwait(false);
             phase.Complete();
         }
+        bool coordinateMarkupReload =
+            configuration.DevelopmentServerKind == "vite" && options.WatchHost;
         CwhtmlHotReloadCoordinator? cwhtmlReload =
-            configuration.DevelopmentServerKind == "vite" &&
-            options.WatchHost &&
+            coordinateMarkupReload &&
+            configuration.CwhtmlEnabled &&
             !string.IsNullOrWhiteSpace(configuration.CwhtmlHotReloadPath) &&
             File.Exists(configuration.CwhtmlHotReloadPath)
                 ? CwhtmlHotReloadCoordinator.Create(configuration.CwhtmlHotReloadPath, host)
+                : null;
+        CwhtmlHotReloadCoordinator? csharpMarkupReload =
+            coordinateMarkupReload &&
+            configuration.CsharpMarkupEnabled &&
+            !string.IsNullOrWhiteSpace(configuration.CsharpMarkupHotReloadPath) &&
+            File.Exists(configuration.CsharpMarkupHotReloadPath)
+                ? CwhtmlHotReloadCoordinator.Create(
+                    configuration.CsharpMarkupHotReloadPath,
+                    host)
                 : null;
         await using RunningProcess? frontend =
             options.WatchFrontend && !useDevelopmentServer && configuration.HasFrontendWatcher
@@ -125,8 +136,15 @@ internal static class DevApplication
                 token => GenerateAndVerifyContractsAsync(configuration, token),
                 cancellationToken)
             : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        Task cwhtmlMonitor = cwhtmlReload?.WatchAsync(cancellationToken)
-            ?? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        var markupReloadMonitors = new List<Task>();
+        if (cwhtmlReload is not null)
+        {
+            markupReloadMonitors.Add(cwhtmlReload.WatchAsync(cancellationToken));
+        }
+        if (csharpMarkupReload is not null)
+        {
+            markupReloadMonitors.Add(csharpMarkupReload.WatchAsync(cancellationToken));
+        }
         Task cwhtmlCompilerMonitor = options.WatchHost && configuration.CwhtmlEnabled
             ? FilePoller.WatchTreeAsync(
                 configuration.ProjectDirectory,
@@ -155,10 +173,10 @@ internal static class DevApplication
             host.Completion,
             assetMonitor,
             contractMonitor,
-            cwhtmlMonitor,
             cwhtmlCompilerMonitor,
             cancellation,
         };
+        observed.AddRange(markupReloadMonitors);
         if (frontend is not null)
         {
             observed.Add(frontend.Completion);
@@ -177,7 +195,7 @@ internal static class DevApplication
 
         if (completed == assetMonitor ||
             completed == contractMonitor ||
-            completed == cwhtmlMonitor ||
+            markupReloadMonitors.Contains(completed) ||
             completed == cwhtmlCompilerMonitor)
         {
             await completed.ConfigureAwait(false);
@@ -456,6 +474,12 @@ internal static class DevApplication
             Console.WriteLine($"[dev] Contract: {configuration.ContractSource}");
         }
 
+        if (configuration.HasMarkupPipeline)
+        {
+            Console.WriteLine(
+                $"[dev] Markup: {configuration.MarkupKind} with diagnostics and compatible fragment refresh");
+        }
+
         if (options.DryRun)
         {
             Console.WriteLine("[dev] Dry run complete; no files or processes were changed.");
@@ -469,6 +493,7 @@ internal static class DevApplication
             Usage:
               dotnet webuitoolkit dev [PROJECT] [options] [-- APPLICATION_ARGUMENTS]
               dotnet webuitoolkit doctor [PROJECT]
+              dotnet webuitoolkit inspect [PROJECT] --artifact manifest
 
             Options:
               --project PATH          Select a .csproj or a directory containing one.

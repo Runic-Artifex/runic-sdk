@@ -17,6 +17,7 @@ string templateHive = Path.Combine(temporaryRoot, "template-hive");
 string consumerPackages = Path.Combine(temporaryRoot, "consumer-packages");
 string packageSourceRoot = Path.Combine(temporaryRoot, "package-source");
 string npmPackageDirectory = Path.Combine(temporaryRoot, "npm-packages");
+string nugetConfig = Path.Combine(temporaryRoot, "NuGet.Config");
 Directory.CreateDirectory(packageDirectory);
 Directory.CreateDirectory(generatedDirectory);
 Directory.CreateDirectory(npmPackageDirectory);
@@ -31,6 +32,7 @@ try
 {
     CopyPackageSources(repositoryRoot, packageSourceRoot);
     PackConsumerPackageGraph(packageSourceRoot, packageDirectory);
+    WriteConsumerNuGetConfig(nugetConfig, packageDirectory);
     PackFrontendPackages(repositoryRoot, npmPackageDirectory);
     Run(repositoryRoot, "dotnet", "pack", templateProject, "-o", packageDirectory);
     string installedPackage = Directory
@@ -50,6 +52,7 @@ try
     string[] shortNames =
     [
         "webuitoolkit-cwhtml",
+        "webuitoolkit-csharp-markup",
         "webuitoolkit-react",
         "webuitoolkit-vue",
         "webuitoolkit-svelte",
@@ -80,14 +83,12 @@ try
             "dotnet",
             "restore",
             project,
-            "--source",
-            packageDirectory,
-            "--source",
-            "https://api.nuget.org/v3/index.json",
+            "--configfile",
+            nugetConfig,
             "--packages",
             consumerPackages);
         Run(output, "dotnet", "build", project, "--configuration", "Release", "--no-restore");
-        if (shortName != "webuitoolkit-cwhtml")
+        if (!IsCompiledMarkup(shortName))
         {
             Run(
                 output,
@@ -111,7 +112,7 @@ try
             "--no-restore",
             "--output",
             Path.Combine(output, "publish"));
-        if (shortName != "webuitoolkit-cwhtml")
+        if (!IsCompiledMarkup(shortName))
         {
             AssertProductionExcludesMock(output, shortName);
             BuildMockFrontend(output, shortName);
@@ -119,7 +120,7 @@ try
     }
 
     Console.WriteLine(
-        "All five WebUIToolkit templates passed isolated package restore, native exercise, production build, publish, and isolated mock-graph acceptance.");
+        "All six WebUIToolkit templates passed isolated package restore, native exercise, production build, publish, and isolated mock-graph acceptance.");
     return 0;
 }
 finally
@@ -166,7 +167,7 @@ static void PrepareFrontendPackages(
     string shortName,
     string packageDirectory)
 {
-    if (shortName == "webuitoolkit-cwhtml")
+    if (IsCompiledMarkup(shortName))
     {
         return;
     }
@@ -188,6 +189,32 @@ static void PrepareFrontendPackages(
         root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) +
         Environment.NewLine);
     Run(output, "npm", "install", "--package-lock-only", "--ignore-scripts");
+}
+
+static bool IsCompiledMarkup(string shortName) =>
+    shortName is "webuitoolkit-cwhtml" or "webuitoolkit-csharp-markup";
+
+static void WriteConsumerNuGetConfig(string path, string packageDirectory)
+{
+    var document = new XDocument(
+        new XElement("configuration",
+            new XElement("packageSources",
+                new XElement("clear"),
+                new XElement("add",
+                    new XAttribute("key", "webuitoolkit-local"),
+                    new XAttribute("value", packageDirectory)),
+                new XElement("add",
+                    new XAttribute("key", "nuget.org"),
+                    new XAttribute("value", "https://api.nuget.org/v3/index.json"),
+                    new XAttribute("protocolVersion", "3"))),
+            new XElement("packageSourceMapping",
+                new XElement("packageSource",
+                    new XAttribute("key", "webuitoolkit-local"),
+                    new XElement("package", new XAttribute("pattern", "WebUIToolkit.*"))),
+                new XElement("packageSource",
+                    new XAttribute("key", "nuget.org"),
+                    new XElement("package", new XAttribute("pattern", "*"))))));
+    document.Save(path);
 }
 
 static void CopyPackageSources(string repositoryRoot, string destinationRoot)

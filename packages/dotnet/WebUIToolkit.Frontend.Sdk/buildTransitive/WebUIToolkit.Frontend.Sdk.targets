@@ -63,7 +63,9 @@
           BeforeTargets="PrepareForBuild"
           Condition="'$(WebUIToolkitFrontendEnabled)' == 'true'">
     <Error Condition="'$(WebUIToolkitFrontendNodeEnabled)' != 'true' and
-                      '$(WebUIToolkitFrontendCwhtmlEnabled)' != 'true'"
+                      '$(WebUIToolkitFrontendCwhtmlEnabled)' != 'true' and
+                      '$(WebUIToolkitCsharpMarkupActive)' != 'true' and
+                      '@(CsharpMarkup)' == ''"
            Text="Enable at least one WebUIToolkit frontend pipeline: Node/Vite or cwhtml." />
     <Error Condition="'$(WebUIToolkitFrontendNodeEnabled)' == 'true' and
                       '$(WebUIToolkitFrontendWorkspace)' == ''"

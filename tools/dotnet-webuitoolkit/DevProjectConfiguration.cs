@@ -29,6 +29,29 @@ internal sealed record DevProjectConfiguration(
     string CwhtmlHotReloadPath,
     string TargetDirectory)
 {
+    internal bool CsharpMarkupEnabled { get; init; }
+
+    internal string CsharpMarkupDiagnosticsPath { get; init; } = string.Empty;
+
+    internal string CsharpMarkupHotReloadPath { get; init; } = string.Empty;
+
+    internal string EffectiveDiagnosticsPath => CsharpMarkupEnabled
+        ? CsharpMarkupDiagnosticsPath
+        : CwhtmlDiagnosticsPath;
+
+    internal string EffectiveHotReloadPath => CsharpMarkupEnabled
+        ? CsharpMarkupHotReloadPath
+        : CwhtmlHotReloadPath;
+
+    internal string MarkupKind => (CwhtmlEnabled, CsharpMarkupEnabled) switch
+    {
+        (true, true) => "cwhtml + csharp-markup",
+        (false, true) => "csharp-markup",
+        _ => "cwhtml",
+    };
+
+    internal bool HasMarkupPipeline => CsharpMarkupEnabled || CwhtmlEnabled;
+
     internal string DevelopmentServerKind { get; init; } =
         ViteDevServerEnabled ? "vite" : string.Empty;
 
@@ -57,6 +80,9 @@ internal sealed record DevProjectConfiguration(
         "WebUIToolkitFrontendDevServerDocument",
         "WebUIToolkitCwhtmlDiagnosticsPath",
         "WebUIToolkitCwhtmlHotReloadPath",
+        "WebUIToolkitCsharpMarkupActive",
+        "WebUIToolkitCsharpMarkupDiagnosticsPath",
+        "WebUIToolkitCsharpMarkupHotReloadPath",
         "TargetDir",
     ];
 
@@ -93,6 +119,7 @@ internal sealed record DevProjectConfiguration(
             "-nologo",
             $"-property:Configuration={configuration}",
             $"-getProperty:{string.Join(',', PropertyNames)}",
+            "-getItem:CsharpMarkup",
         };
         CommandResult result = await CommandRunner
             .RunAsync(dotnetHost, projectDirectory, arguments, cancellationToken)
@@ -106,6 +133,9 @@ internal sealed record DevProjectConfiguration(
 
         using JsonDocument document = JsonDocument.Parse(result.StandardOutput);
         JsonElement properties = document.RootElement.GetProperty("Properties");
+        bool hasCsharpMarkup = document.RootElement.TryGetProperty("Items", out JsonElement items) &&
+            items.TryGetProperty("CsharpMarkup", out JsonElement csharpMarkupItems) &&
+            csharpMarkupItems.GetArrayLength() != 0;
         string Value(string name) =>
             properties.TryGetProperty(name, out JsonElement value)
                 ? value.GetString() ?? string.Empty
@@ -168,6 +198,15 @@ internal sealed record DevProjectConfiguration(
             NormalizeOptional(Value("WebUIToolkitCwhtmlHotReloadPath"), evaluatedProjectDirectory),
             targetDirectory)
         {
+            CsharpMarkupEnabled = hasCsharpMarkup || bool.TryParse(
+                Value("WebUIToolkitCsharpMarkupActive"),
+                out bool csharpMarkupEnabled) && csharpMarkupEnabled,
+            CsharpMarkupDiagnosticsPath = NormalizeOptional(
+                Value("WebUIToolkitCsharpMarkupDiagnosticsPath"),
+                evaluatedProjectDirectory),
+            CsharpMarkupHotReloadPath = NormalizeOptional(
+                Value("WebUIToolkitCsharpMarkupHotReloadPath"),
+                evaluatedProjectDirectory),
             DevelopmentServerKind =
                 Value("WebUIToolkitFrontendDevServerKind").Trim().ToLowerInvariant(),
             DevelopmentServerDocument =
@@ -181,7 +220,7 @@ internal sealed record DevProjectConfiguration(
 
     private void Validate()
     {
-        if (!NodeEnabled && !CwhtmlEnabled)
+        if (!NodeEnabled && !HasMarkupPipeline)
         {
             throw new DevUsageException(
                 "WUTDEV1005",

@@ -236,6 +236,31 @@ It proves that the replacement renders new output only after .NET Hot Reload
 acknowledges it, uses the private CsWebUi binding, and retains the browser
 document and ViewModel state. Editor diagnostic parity remains acceptance work.
 
+## C# markup Milestone 6
+
+Run `eng/verify-csharp-markup-milestone6.ps1`. The gate builds the transitive
+build package and development CLI, exercises all templates, performs repeated
+sample builds, compares manifest/diagnostics/hot-reload hashes, and verifies
+that CLI inspection reads the stable production artifact.
+
+## C# markup Milestone 7
+
+Run `eng/verify-csharp-markup-milestone7.ps1`. In addition to Milestone 6, the
+gate runs the complete C# markup editor suite, the CWHTML regression suite, and
+the VS Code extension build and tests. It covers nested/incomplete projections,
+Roslyn navigation and rename, combined semantic tokens, formatting, quick
+fixes, cancellation, stale documents, and the 1,000-element stress case.
+
+## C# markup Milestone 8 / stable 1.0
+
+Run `eng/verify-csharp-markup-milestone8.ps1` from the Nix/direnv environment.
+It is cumulative: parser fuzz and hostile corpora, runtime/performance/trim
+analysis, locked isolated package-only restore and build, deterministic clean
+roots/cultures, Native AOT, both native Chromium applications, editor and
+template coverage, and full repository verification must pass. Local iteration
+may use `-SkipNativeAot` or `-SkipNativeBrowser`; neither switch is permitted
+for release evidence.
+
 ## G0: Repository and identity
 
 - A clean clone restores without private feeds or machine-local inputs.

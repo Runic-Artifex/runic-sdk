@@ -32,7 +32,9 @@ internal static class Program
             ("MVVM inspector terminal sink stays bounded and source-aware", InspectorTerminalSinkIsSafe),
             ("cwhtml rendered-fragment snapshots stay bounded and private", RenderedFragmentSnapshotsAreSafe),
             ("Vite bridge forwards cwhtml diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
+            ("Vite bridge forwards C# markup diagnostics through the native overlay", ViteBridgeForwardsCsharpMarkupDiagnostics),
             ("cwhtml reload comparison separates renderer edits from shape edits", CwhtmlReloadComparisonIsSafe),
+            ("C# markup reload comparison separates renderer edits from shape edits", CsharpMarkupReloadComparisonIsSafe),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
             ("phase timings are concise and stable", PhaseTimingsAreConcise),
             ("doctor supports a healthy Node-free project", DoctorSupportsNodeFreeProject),
@@ -476,6 +478,48 @@ internal static class Program
             ReloadKind.None,
             CwhtmlHotReloadCoordinator.Compare(rendererEdit, rendererEdit).Kind);
     }
+
+    private static void ViteBridgeForwardsCsharpMarkupDiagnostics()
+    {
+        DevProjectConfiguration configuration = CreateDevelopmentServerConfiguration(
+            targetDirectory: "/repo/bin/Debug/net10.0",
+            kind: "vite",
+            documents: "index.html") with
+        {
+            CsharpMarkupEnabled = true,
+            CsharpMarkupDiagnosticsPath =
+                "/repo/obj/Debug/net10.0/csharp-markup/diagnostics.json",
+            CsharpMarkupHotReloadPath =
+                "/repo/obj/Debug/net10.0/csharp-markup/hot-reload.json",
+        };
+        string source = ViteConfigurationBridge.CreateSource(
+            configuration,
+            new Uri("http://127.0.0.1:43126/token/rendered-fragments"));
+        Contains(source, "webuitoolkit.csharp-markup.diagnostics/1.0");
+        Contains(source, "webuitoolkit.csharp-markup.hot-reload/1.0");
+        Contains(source, configuration.CsharpMarkupDiagnosticsPath);
+        Contains(source, configuration.CsharpMarkupHotReloadPath);
+    }
+
+    private static void CsharpMarkupReloadComparisonIsSafe()
+    {
+        byte[] baseline = CsharpMarkupReloadSnapshot("renderer-one", "shape-one");
+        byte[] rendererEdit = CsharpMarkupReloadSnapshot("renderer-two", "shape-one");
+        byte[] shapeEdit = CsharpMarkupReloadSnapshot("renderer-three", "shape-two");
+
+        Equal(
+            ReloadKind.Refresh,
+            CwhtmlHotReloadCoordinator.Compare(baseline, rendererEdit).Kind);
+        Equal(
+            ReloadKind.Restart,
+            CwhtmlHotReloadCoordinator.Compare(rendererEdit, shapeEdit).Kind);
+    }
+
+    private static byte[] CsharpMarkupReloadSnapshot(string renderer, string shape) =>
+        System.Text.Encoding.UTF8.GetBytes(
+            $$"""
+            {"contract":"webuitoolkit.csharp-markup.hot-reload/1.0","templates":[{"logicalPath":"Views/Todo.cwuix","rendererSha256":"{{renderer}}","compatibilitySha256":"{{shape}}","canRefreshFragments":true,"affectedFragments":["todo_fragment"]}]}
+            """);
 
     private static byte[] ReloadSnapshot(
         string renderer,

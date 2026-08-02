@@ -25,6 +25,7 @@ Run the tool from a directory containing one application project:
 
 ```console
 dotnet webuitoolkit doctor
+dotnet webuitoolkit inspect --artifact manifest
 dotnet webuitoolkit dev
 dotnet webuitoolkit dev samples/Todo.React -- --advanced
 ```
@@ -40,7 +41,7 @@ The `dev` command:
    properties;
 2. generates and verifies configured C# and TypeScript contracts;
 3. restores the locked frontend workspace only when its package manager or lock
-   identity changed, then builds the managed host and cwhtml output;
+   identity changed, then builds the managed host and compiled markup output;
 4. starts the selected loopback-only development server—Vite for cwhtml,
    React, Vue, and Svelte, or Angular CLI's supported `ng serve` builder—or
    the project-provided build watcher for legacy projects;
@@ -88,6 +89,10 @@ The command consumes these evaluated MSBuild properties:
 - `WebUIToolkitFrontendViteConfiguration`
 - `WebUIToolkitCwhtmlDiagnosticsPath`
 - `WebUIToolkitCwhtmlHotReloadPath`
+- `WebUIToolkitCsharpMarkupActive`
+- `WebUIToolkitCsharpMarkupManifestPath`
+- `WebUIToolkitCsharpMarkupDiagnosticsPath`
+- `WebUIToolkitCsharpMarkupHotReloadPath`
 - `WebUIToolkitFrontendContractSource`
 - `WebUIToolkitFrontendContractCSharpOutput`
 - `WebUIToolkitFrontendContractTypeScriptOutput`
@@ -135,6 +140,9 @@ vendor files.
 
 Use `--dry-run` to inspect the evaluated project, frontend, asset, runtime, and
 contract paths without generating files or starting child processes.
+Use `dotnet webuitoolkit inspect [PROJECT] --artifact
+manifest|diagnostics|hot-reload|generated` to open the exact production artifact
+for either compiled-markup language.
 Use `--no-dotnet-watch` to run the already-built managed host once while still
 supervising Vite; this is primarily useful for deterministic browser gates.
 Major setup phases print a concise elapsed time. A failed setup phase keeps its

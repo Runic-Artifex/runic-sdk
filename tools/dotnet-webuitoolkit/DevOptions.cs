@@ -26,7 +26,7 @@ internal sealed record DevOptions(
         {
             throw new DevUsageException(
                 "WUTDEV1001",
-                $"Unknown command '{arguments[0]}'. Expected 'dev' or 'doctor'.");
+                $"Unknown command '{arguments[0]}'. Expected 'dev', 'doctor', or 'inspect'.");
         }
 
         string? project = null;
