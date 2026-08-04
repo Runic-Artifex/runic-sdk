@@ -6,9 +6,9 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.CommandLine.Processes;
+using RunicCommandLine.Processes;
 
-namespace WebUIToolkit.CommandLine.Samples.Kernel;
+namespace RunicCommandLine.Samples.Kernel;
 
 internal static class Program
 {
@@ -103,7 +103,7 @@ internal static class Program
                CommandLine.Kernel --help
                CommandLine.Kernel --version
 
-        WEBUITOOLKIT_CLI_OUTPUT may select human or json when --output is absent.
+        RUNIC_COMMANDLINE_OUTPUT may select human or json when --output is absent.
         """;
 }
 
@@ -259,7 +259,7 @@ internal sealed class ProbeResultCodec : ICommandResultCodec<ProbeResult>
     {
     }
 
-    public string PayloadType => "webuitoolkit.cli.sample.probe/1";
+    public string PayloadType => "runic.commandline.sample.probe/1";
 
     public JsonTypeInfo<ProbeResult> TypeInfo => SampleJsonContext.Default.ProbeResult;
 

@@ -10,7 +10,7 @@ The command-line plan requires current stable evaluation of System.CommandLine, 
 
 Repository policy adds a separate integration constraint: third-party package versions are centrally managed, and the authoritative root `Directory.Packages.props` contains no parser version. The command-line task cannot edit that shared policy. Evaluation package references therefore remain inert templates copied to temporary directories; they are not product references and do not generate retained lock files.
 
-First-party identity is fixed as `WebUIToolkit.CommandLine.*`; machine output uses `WEBUITOOLKIT_CLI_OUTPUT` and protocol identity `webuitoolkit.cli/1`. Parser-native types, messages, help documents, and error categories must not cross those boundaries.
+First-party identity is fixed as `RunicCommandLine.*`; machine output uses `RUNIC_COMMANDLINE_OUTPUT` and protocol identity `runic.commandline/1`. Parser-native types, messages, help documents, and error categories must not cross those boundaries.
 
 ## Candidate decision
 
@@ -28,10 +28,10 @@ The minimal in-house spike passed the narrow corpus and AOT publish. It is not s
 
 ## Consequences
 
-- C1 abstractions, grammar corpus, outcomes, faults, exit categories, help model, and `webuitoolkit.cli/1` protocol identity remain library-owned and parser-neutral.
+- C1 abstractions, grammar corpus, outcomes, faults, exit categories, help model, and `runic.commandline/1` protocol identity remain library-owned and parser-neutral.
 - No parser package or parser-native public type is introduced in Wave A.
 - The orchestrator may later approve a central System.CommandLine version. That approval alone is insufficient; the internal adapter and packed consumer must pass the complete corpus and Native AOT gates.
-- Native help/error prose is test evidence only. Stable diagnostics use owned `WUTCLI####` identities; this evaluation uses symbolic kinds except for the already established `WUTCLI1001` mapping.
+- Native help/error prose is test evidence only. Stable diagnostics use owned `RCLI####` identities; this evaluation uses symbolic kinds except for the already established `RCLI1001` mapping.
 - The in-house implementation cannot graduate from control to product parser without a separate decision demonstrating the required consumers and long-tail grammar/help burden.
 
 ## Evidence

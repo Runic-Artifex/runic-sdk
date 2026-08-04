@@ -2,7 +2,7 @@
 param(
     [string[]] $Candidate = @('SystemCommandLine', 'SpectreConsoleCli', 'Cocona', 'CommandLineParser', 'InHouse'),
     [string] $RuntimeIdentifier = [System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier,
-    [string] $OutputDirectory = (Join-Path ([System.IO.Path]::GetTempPath()) 'webuitoolkit-cli-evaluation-results'),
+    [string] $OutputDirectory = (Join-Path ([System.IO.Path]::GetTempPath()) 'runiccommandline-cli-evaluation-results'),
     [switch] $KeepWorkspace
 )
 
@@ -11,7 +11,7 @@ $evaluationRoot = Split-Path -Parent $PSScriptRoot
 $manifest = Get-Content -Raw -LiteralPath (Join-Path $evaluationRoot 'candidate-manifest.json') | ConvertFrom-Json
 $corpus = Get-Content -Raw -LiteralPath (Join-Path $evaluationRoot 'corpus/grammar.json') | ConvertFrom-Json
 $Candidate = @($Candidate | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
-$workspace = Join-Path ([System.IO.Path]::GetTempPath()) ('webuitoolkit-cli-evaluation-' + [Guid]::NewGuid().ToString('N'))
+$workspace = Join-Path ([System.IO.Path]::GetTempPath()) ('runiccommandline-cli-evaluation-' + [Guid]::NewGuid().ToString('N'))
 [void](New-Item -ItemType Directory -Path $workspace)
 [void](New-Item -ItemType Directory -Force -Path $OutputDirectory)
 
@@ -135,12 +135,12 @@ try {
     }
 
     $document = [ordered]@{
-        schemaVersion = 'webuitoolkit.cli.evaluation-results/1'
+        schemaVersion = 'runic.commandline.evaluation-results/1'
         evaluatedAtUtc = [DateTimeOffset]::UtcNow.ToString('O')
         sdkVersion = $actualSdk
         runtimeIdentifier = $RuntimeIdentifier
-        protocolIdentity = 'webuitoolkit.cli/1'
-        outputEnvironmentVariable = 'WEBUITOOLKIT_CLI_OUTPUT'
+        protocolIdentity = 'runic.commandline/1'
+        outputEnvironmentVariable = 'RUNIC_COMMANDLINE_OUTPUT'
         temporaryWorkspace = if ($KeepWorkspace) { $workspace } else { '<deleted>' }
         candidates = $results
     }

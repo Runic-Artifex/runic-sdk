@@ -1,10 +1,10 @@
 {
-  "schemaVersion": "webuitoolkit.cli.evaluation-summary/1",
+  "schemaVersion": "runic.commandline.evaluation-summary/1",
   "evaluatedAt": "2026-07-22",
   "sdkVersion": "10.0.302",
   "runtimeIdentifier": "win-x64",
-  "protocolIdentity": "webuitoolkit.cli/1",
-  "outputEnvironmentVariable": "WEBUITOOLKIT_CLI_OUTPUT",
+  "protocolIdentity": "runic.commandline/1",
+  "outputEnvironmentVariable": "RUNIC_COMMANDLINE_OUTPUT",
   "corpusCaseCount": 33,
   "candidates": [
     {

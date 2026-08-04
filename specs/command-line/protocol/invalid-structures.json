@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "protocol": "webuitoolkit.cli/1",
+  "protocol": "runic.commandline/1",
   "cases": [
     {
       "id": "invalid.missing-required-protocol",
@@ -9,114 +9,114 @@
     },
     {
       "id": "invalid.unsupported-protocol",
-      "document": { "protocol": "webuitoolkit.cli/2", "requestId": "req-2", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/2", "requestId": "req-2", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "unsupported-protocol" }
     },
     {
       "id": "invalid.request-id-type",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": 7, "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": 7, "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "invalid-request-id" }
     },
     {
       "id": "invalid.request-id-empty",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "invalid-request-id" }
     },
     {
       "id": "invalid.command-shape",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-5", "command": "Status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-5", "command": "Status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "invalid-command" }
     },
     {
       "id": "invalid.success-nonzero-exit",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-6", "command": "status", "success": true, "exitCode": 10, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-6", "command": "status", "success": true, "exitCode": 10, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "outcome-invariant" }
     },
     {
       "id": "invalid.success-with-fault",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-7", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": { "code": "WUTCLI3001", "message": "Failed.", "details": {}, "retryable": false }, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-7", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": { "code": "RCLI3001", "message": "Failed.", "details": {}, "retryable": false }, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "outcome-invariant" }
     },
     {
       "id": "invalid.success-without-payload-type",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-8", "command": "status", "success": true, "exitCode": 0, "payloadType": null, "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-8", "command": "status", "success": true, "exitCode": 0, "payloadType": null, "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "missing-payload-type" }
     },
     {
       "id": "invalid.payload-type-shape",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-9", "command": "status", "success": true, "exitCode": 0, "payloadType": "System.Object, Example", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-9", "command": "status", "success": true, "exitCode": 0, "payloadType": "System.Object, Example", "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "invalid-payload-type" }
     },
     {
       "id": "invalid.failure-zero-exit",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-10", "command": "status", "success": false, "exitCode": 0, "payloadType": null, "payload": null, "fault": { "code": "WUTCLI3001", "message": "Failed.", "details": {}, "retryable": false }, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-10", "command": "status", "success": false, "exitCode": 0, "payloadType": null, "payload": null, "fault": { "code": "RCLI3001", "message": "Failed.", "details": {}, "retryable": false }, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "outcome-invariant" }
     },
     {
       "id": "invalid.failure-with-payload",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-11", "command": "status", "success": false, "exitCode": 10, "payloadType": "sample.status/1", "payload": {}, "fault": { "code": "WUTCLI3001", "message": "Failed.", "details": {}, "retryable": false }, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-11", "command": "status", "success": false, "exitCode": 10, "payloadType": "sample.status/1", "payload": {}, "fault": { "code": "RCLI3001", "message": "Failed.", "details": {}, "retryable": false }, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "outcome-invariant" }
     },
     {
       "id": "invalid.failure-without-fault",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-12", "command": "status", "success": false, "exitCode": 10, "payloadType": null, "payload": null, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-12", "command": "status", "success": false, "exitCode": 10, "payloadType": null, "payload": null, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "missing-fault" }
     },
     {
       "id": "invalid.diagnostic-severity",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-13", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "WUTCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "WUTCLI2001", "kind": "invalid-value", "commandPath": ["status"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "fatal", "tokenIndex": 1, "arguments": [] }] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-13", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "RCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "RCLI2001", "kind": "invalid-value", "commandPath": ["status"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "fatal", "tokenIndex": 1, "arguments": [] }] },
       "expected": { "kind": "protocol-error", "reason": "invalid-diagnostic" }
     },
     {
       "id": "invalid.unknown-field-is-accepted",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-14", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": { "state": "ready", "futurePayloadField": 1 }, "fault": null, "diagnostics": [], "futureEnvelopeField": { "revision": 2 } },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-14", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": { "state": "ready", "futurePayloadField": 1 }, "fault": null, "diagnostics": [], "futureEnvelopeField": { "revision": 2 } },
       "expected": { "kind": "accepted", "reason": "unknown-additive-field" }
     },
     {
       "id": "invalid.unsupported-payload-type",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-15", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.future-status/2", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-15", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.future-status/2", "payload": {}, "fault": null, "diagnostics": [] },
       "clientContext": { "supportedPayloadTypes": ["sample.status/1"] },
       "expected": { "kind": "protocol-error", "reason": "unsupported-payload-type", "payloadDeserializationAttempted": false }
     },
     {
       "id": "invalid.payload-shape-mismatch",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-16", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": ["not", "an", "object"], "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-16", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": ["not", "an", "object"], "fault": null, "diagnostics": [] },
       "clientContext": { "supportedPayloadTypes": ["sample.status/1"], "expectedPayloadJsonKind": "object" },
       "expected": { "kind": "protocol-error", "reason": "payload-shape-mismatch", "payloadDeserializationAttempted": true }
     },
     {
       "id": "invalid.request-id-control",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req\u001b[31m", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req\u001b[31m", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.status/1", "payload": {}, "fault": null, "diagnostics": [] },
       "expected": { "kind": "protocol-error", "reason": "invalid-request-id" }
     },
     {
       "id": "invalid.unsafe-diagnostic-content",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-18", "command": "export", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "WUTCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "WUTCLI2001", "kind": "invalid-value", "commandPath": ["export"], "messageKey": "diagnostics.invalid-value", "message": "token=super-secret\ninvalid", "phase": "binding", "severity": "error", "tokenIndex": 2, "arguments": ["super-secret"] }] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-18", "command": "export", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "RCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "RCLI2001", "kind": "invalid-value", "commandPath": ["export"], "messageKey": "diagnostics.invalid-value", "message": "token=super-secret\ninvalid", "phase": "binding", "severity": "error", "tokenIndex": 2, "arguments": ["super-secret"] }] },
       "expected": { "kind": "protocol-error", "reason": "unsafe-diagnostic-content" }
     },
     {
       "id": "invalid.unknown-nested-fields-are-accepted",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-19", "command": "export", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "WUTCLI2001", "message": "Invalid.", "details": {}, "retryable": false, "futureFaultField": 1 }, "diagnostics": [{ "code": "WUTCLI2001", "kind": "invalid-value", "commandPath": ["export"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": null, "arguments": [], "futureDiagnosticField": [1, 2] }] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-19", "command": "export", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "RCLI2001", "message": "Invalid.", "details": {}, "retryable": false, "futureFaultField": 1 }, "diagnostics": [{ "code": "RCLI2001", "kind": "invalid-value", "commandPath": ["export"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": null, "arguments": [], "futureDiagnosticField": [1, 2] }] },
       "expected": { "kind": "accepted", "reason": "unknown-additive-field" }
     },
     {
       "id": "invalid.success-null-payload-is-accepted",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-20", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.optional-status/1", "payload": null, "fault": null, "diagnostics": [] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-20", "command": "status", "success": true, "exitCode": 0, "payloadType": "sample.optional-status/1", "payload": null, "fault": null, "diagnostics": [] },
       "expected": { "kind": "accepted", "reason": "typed-null-payload" }
     },
     {
       "id": "invalid.diagnostic-missing-arguments",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-21", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "WUTCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "WUTCLI2001", "kind": "invalid-value", "commandPath": ["status"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": 1 }] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-21", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "RCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "RCLI2001", "kind": "invalid-value", "commandPath": ["status"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": 1 }] },
       "expected": { "kind": "protocol-error", "reason": "missing-required-field" }
     },
     {
       "id": "invalid.diagnostic-command-path",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-22", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "WUTCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "WUTCLI2001", "kind": "invalid-value", "commandPath": ["Status"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": 1, "arguments": [] }] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-22", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "RCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "RCLI2001", "kind": "invalid-value", "commandPath": ["Status"], "messageKey": "diagnostics.invalid-value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": 1, "arguments": [] }] },
       "expected": { "kind": "protocol-error", "reason": "invalid-diagnostic-command-path" }
     },
     {
       "id": "invalid.diagnostic-message-key",
-      "document": { "protocol": "webuitoolkit.cli/1", "requestId": "req-23", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "WUTCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "WUTCLI2001", "kind": "invalid-value", "commandPath": ["status"], "messageKey": "diagnostics/invalid value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": 1, "arguments": [] }] },
+      "document": { "protocol": "runic.commandline/1", "requestId": "req-23", "command": "status", "success": false, "exitCode": 3, "payloadType": null, "payload": null, "fault": { "code": "RCLI2001", "message": "Invalid.", "details": {}, "retryable": false }, "diagnostics": [{ "code": "RCLI2001", "kind": "invalid-value", "commandPath": ["status"], "messageKey": "diagnostics/invalid value", "message": "Invalid.", "phase": "binding", "severity": "error", "tokenIndex": 1, "arguments": [] }] },
       "expected": { "kind": "protocol-error", "reason": "invalid-diagnostic-message-key" }
     }
   ]

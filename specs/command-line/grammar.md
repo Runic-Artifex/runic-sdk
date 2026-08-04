@@ -25,15 +25,15 @@ Diagnostic `tokenIndex` is zero-based. When input ends before a required token, 
 
 | Code | Kind |
 |---|---|
-| `WUTCLI1001` | `unknown-option` |
-| `WUTCLI1002` | `unknown-command` |
-| `WUTCLI1003` | `missing-option-value` |
-| `WUTCLI1004` | `unexpected-option-value` |
-| `WUTCLI1005` | `missing-argument` |
-| `WUTCLI1006` | `unexpected-argument` |
-| `WUTCLI1007` | `duplicate-option` |
-| `WUTCLI1008` | `unsupported-short-bundle` |
-| `WUTCLI1010` | `invalid-output-mode` |
+| `RCLI1001` | `unknown-option` |
+| `RCLI1002` | `unknown-command` |
+| `RCLI1003` | `missing-option-value` |
+| `RCLI1004` | `unexpected-option-value` |
+| `RCLI1005` | `missing-argument` |
+| `RCLI1006` | `unexpected-argument` |
+| `RCLI1007` | `duplicate-option` |
+| `RCLI1008` | `unsupported-short-bundle` |
+| `RCLI1010` | `invalid-output-mode` |
 
 Usage and parse diagnostics map to the stable usage exit category, whose default process exit code is 2. Diagnostics contain token positions and safe identifiers, not secret-bearing values.
 
@@ -41,6 +41,6 @@ Usage and parse diagnostics map to the stable usage exit category, whose default
 
 `--output human|json` is a reserved scalar selector recognized in separated and equals forms before `--`. It is case-insensitive for the two invariant values. Duplicate selectors, a missing value, or another value are usage errors. After `--`, the same text is positional data.
 
-An explicit valid selector has highest precedence and causes `WEBUITOOLKIT_CLI_OUTPUT` to be ignored, even when the captured environment value is invalid. Without an explicit selector, non-empty environment values `human` and `json` are recognized case-insensitively. Null and empty environment values are absent. Any other value, including whitespace-padded text, is invalid. If both sources are absent, the default is `human`.
+An explicit valid selector has highest precedence and causes `RUNIC_COMMANDLINE_OUTPUT` to be ignored, even when the captured environment value is invalid. Without an explicit selector, non-empty environment values `human` and `json` are recognized case-insensitively. Null and empty environment values are absent. Any other value, including whitespace-padded text, is invalid. If both sources are absent, the default is `human`.
 
 Classification is a pure operation over captured arguments and a captured nullable environment value. Implementations must not read or mutate process-global environment state while replaying the corpus.

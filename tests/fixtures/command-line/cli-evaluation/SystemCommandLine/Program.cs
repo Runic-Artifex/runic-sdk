@@ -2,7 +2,7 @@ using System;
 using System.CommandLine;
 
 FixtureOutput.ApplyCulture();
-RootCommand root = new("WebUIToolkit parser evaluation fixture");
+RootCommand root = new("RunicCommandLine parser evaluation fixture");
 
 Command status = new("status");
 Option<bool> statusVerbose = new("--verbose", "-v");

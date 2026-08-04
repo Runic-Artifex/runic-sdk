@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "webuitoolkit.cli.grammar/1",
+  "schemaVersion": "runic.commandline.grammar/1",
   "fixtureId": "nested-portable-v1",
   "cases": [
     { "id": "G001", "args": [], "expected": { "disposition": "error", "diagnosticKind": "MissingCommand" } },
@@ -15,7 +15,7 @@
     { "id": "G011", "args": ["export", "db", "--format", "json", "--format", "text"], "expected": { "disposition": "error", "diagnosticKind": "DuplicateScalar" } },
     { "id": "G012", "args": ["export", "db", "--tag", "a", "--tag=b"], "expected": { "disposition": "invoke", "commandPath": "export" } },
     { "id": "G013", "args": ["export", "db", "-vf"], "expected": { "disposition": "error", "diagnosticKind": "UnknownOption" } },
-    { "id": "G014", "args": ["export", "db", "--Format=json"], "expected": { "disposition": "error", "diagnosticKind": "UnknownOption", "publicCode": "WUTCLI1001" } },
+    { "id": "G014", "args": ["export", "db", "--Format=json"], "expected": { "disposition": "error", "diagnosticKind": "UnknownOption", "publicCode": "RCLI1001" } },
     { "id": "G015", "args": ["cache", "clear", "/quiet"], "expected": { "disposition": "invoke", "commandPath": "cache/clear", "bridge": "slash-alias" } },
     { "id": "G016", "args": ["cache", "clear", "--", "/quiet"], "expected": { "disposition": "invoke", "commandPath": "cache/clear" } },
     { "id": "G017", "args": ["run", "--", "-x", "/quiet", ""], "expected": { "disposition": "invoke", "commandPath": "run" } },
@@ -31,7 +31,7 @@
     { "id": "G027", "args": ["-h"], "expected": { "disposition": "help", "commandPath": "root" } },
     { "id": "G028", "args": ["cache", "clear", "--help"], "expected": { "disposition": "help", "commandPath": "cache/clear" } },
     { "id": "G029", "args": ["--version"], "expected": { "disposition": "version", "commandPath": "root" } },
-    { "id": "G030", "args": ["export", "db", "--wat"], "expected": { "disposition": "error", "diagnosticKind": "UnknownOption", "publicCode": "WUTCLI1001" } },
+    { "id": "G030", "args": ["export", "db", "--wat"], "expected": { "disposition": "error", "diagnosticKind": "UnknownOption", "publicCode": "RCLI1001" } },
     { "id": "G031", "args": ["export", "db", "--verbose", "--verbose"], "expected": { "disposition": "error", "diagnosticKind": "DuplicateScalar" } },
     { "id": "G032", "args": ["cache", "clear", "--", "-x"], "expected": { "disposition": "invoke", "commandPath": "cache/clear" } },
     { "id": "G033", "args": ["export", "db", "--verbose=false"], "expected": { "disposition": "error", "diagnosticKind": "AttachedValueForFlag" } }
