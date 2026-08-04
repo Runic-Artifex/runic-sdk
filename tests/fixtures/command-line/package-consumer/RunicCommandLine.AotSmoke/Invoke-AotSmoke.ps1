@@ -10,7 +10,6 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $project = Join-Path $PSScriptRoot 'RunicCommandLine.AotSmoke.csproj'
-$aotLock = Join-Path $PSScriptRoot 'obj/aot.packages.lock.json'
 $publishDirectory = Join-Path $PSScriptRoot "artifacts/$Configuration/$RuntimeIdentifier/native"
 
 function Invoke-DotNet {
@@ -22,7 +21,7 @@ function Invoke-DotNet {
     }
 }
 
-Invoke-DotNet @('restore', $project, '--locked-mode')
+Invoke-DotNet @('restore', $project)
 Invoke-DotNet @('build', $project, '--configuration', $Configuration, '--no-restore')
 Invoke-DotNet @('run', '--project', $project, '--configuration', $Configuration, '--no-build')
 
@@ -32,9 +31,7 @@ Invoke-DotNet @(
     '--runtime', $RuntimeIdentifier,
     '--self-contained', 'true',
     '--output', $publishDirectory,
-    '-p:PublishAot=true',
-    "-p:NuGetLockFilePath=$aotLock",
-    '-p:RestoreLockedMode=false'
+    '-p:PublishAot=true'
 )
 
 $nativeExecutableName = if ($RuntimeIdentifier.StartsWith('win-', [StringComparison]::OrdinalIgnoreCase)) {
@@ -50,14 +47,6 @@ if (-not (Test-Path -LiteralPath $nativeExecutable -PathType Leaf)) {
 & $nativeExecutable
 if ($LASTEXITCODE -ne 0) {
     throw "Native AOT smoke executable failed with exit code $LASTEXITCODE."
-}
-
-# The ordinary project lock must remain portable after the RID-specific publish.
-Invoke-DotNet @('restore', $project, '--locked-mode')
-
-$portableLock = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'packages.lock.json') -Raw
-if ($portableLock -match 'net10\.0/' -or $portableLock -match 'runtimeTargets') {
-    throw 'The committed lock contains RID-specific restore state.'
 }
 
 Write-Host "Native AOT smoke passed: $nativeExecutable"

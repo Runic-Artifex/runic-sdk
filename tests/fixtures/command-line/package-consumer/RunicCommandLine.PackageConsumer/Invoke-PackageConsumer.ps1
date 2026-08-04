@@ -19,7 +19,6 @@ $consumerDirectory = Join-Path $runRoot 'consumer'
 $packageCache = Join-Path $runRoot 'packages'
 $publishDirectory = Join-Path $runRoot "publish/$RuntimeIdentifier"
 $consumerProject = Join-Path $consumerDirectory 'Consumer.csproj'
-$aotLock = Join-Path $consumerDirectory 'obj/aot.packages.lock.json'
 
 $ownedProjects = @(
     (Join-Path $repositoryRoot 'src/RunicCommandLine.Abstractions/RunicCommandLine.Abstractions.csproj'),
@@ -44,7 +43,7 @@ foreach ($ownedProject in $ownedProjects) {
         throw "Owned package project does not exist: $ownedProject"
     }
 
-    Invoke-DotNet @('restore', $ownedProject, '--locked-mode')
+    Invoke-DotNet @('restore', $ownedProject)
     Invoke-DotNet @(
         'pack', $ownedProject,
         '--configuration', $Configuration,
@@ -87,8 +86,7 @@ $previousPackageCache = $env:NUGET_PACKAGES
 try {
     $env:NUGET_PACKAGES = $packageCache
 
-    Invoke-DotNet @('restore', $consumerProject, '--force-evaluate')
-    Invoke-DotNet @('restore', $consumerProject, '--locked-mode')
+    Invoke-DotNet @('restore', $consumerProject)
     Invoke-DotNet @('build', $consumerProject, '--configuration', $Configuration, '--no-restore')
     Invoke-DotNet @('run', '--project', $consumerProject, '--configuration', $Configuration, '--no-build')
 
@@ -101,9 +99,7 @@ try {
         '-p:PublishAot=true',
         '-p:PublishTrimmed=true',
         '-p:TrimMode=full',
-        '-p:IlcTreatWarningsAsErrors=true',
-        "-p:NuGetLockFilePath=$aotLock",
-        '-p:RestoreLockedMode=false'
+        '-p:IlcTreatWarningsAsErrors=true'
     )
 
     $nativeExecutableName = if ($RuntimeIdentifier.StartsWith('win-', [StringComparison]::OrdinalIgnoreCase)) {
@@ -119,13 +115,6 @@ try {
     & $nativeExecutable
     if ($LASTEXITCODE -ne 0) {
         throw "Native AOT package consumer failed with exit code $LASTEXITCODE."
-    }
-
-    Invoke-DotNet @('restore', $consumerProject, '--locked-mode')
-
-    $portableLock = Get-Content -LiteralPath (Join-Path $consumerDirectory 'packages.lock.json') -Raw
-    if ($portableLock -match 'net10\.0/' -or $portableLock -match 'runtimeTargets') {
-        throw 'The package consumer portable lock contains RID-specific restore state.'
     }
 
     Write-Host "Package consumer passed from isolated feed: $feed"

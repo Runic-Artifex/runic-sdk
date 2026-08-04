@@ -9,6 +9,6 @@ Per-run artifacts
 use a short uniquely named directory below the OS temporary directory so the
 isolated Native AOT package cache remains below Windows path-length limits.
 
-The ordinary consumer lock is generated and verified as portable. Native AOT
-restore uses the ignored `obj/aot.packages.lock.json` path so RID-specific
-sections cannot enter a committed project lock.
+The fresh package cache and isolated feed prove that the consumer resolves only
+the packed artifacts and their declared dependencies before managed and NativeAOT
+execution.
