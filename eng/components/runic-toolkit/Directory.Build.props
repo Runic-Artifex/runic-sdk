@@ -2,7 +2,7 @@
   <PropertyGroup>
     <!--
       Development is the approachable inner loop. Verification is selected by CI
-      and eng/verify.ps1 for locked restores and release-grade analysis.
+      and eng/verify.ps1 for release-grade analysis.
     -->
     <WebUIToolkitBuildMode Condition="'$(WebUIToolkitBuildMode)' == '' and '$(CI)' == 'true'">Verification</WebUIToolkitBuildMode>
     <WebUIToolkitBuildMode Condition="'$(WebUIToolkitBuildMode)' == ''">Development</WebUIToolkitBuildMode>
@@ -28,10 +28,7 @@
     <RepositoryUrl>https://github.com/Runic-Artifex/runic-toolkit</RepositoryUrl>
     <PackageProjectUrl>https://github.com/Runic-Artifex/runic-toolkit</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <!-- Repository projects keep updateable lock files; only Verification locks them. -->
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <RestoreLockedMode Condition="'$(WebUIToolkitVerificationBuild)' == 'true'">true</RestoreLockedMode>
-    <RestoreLockedMode Condition="'$(RestoreLockedMode)' == ''">false</RestoreLockedMode>
+    <!-- Libraries leave dependency resolution to their consuming applications. -->
     <NuGetAudit Condition="'$(WebUIToolkitVerificationBuild)' == 'true'">true</NuGetAudit>
     <NuGetAudit Condition="'$(NuGetAudit)' == ''">false</NuGetAudit>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>

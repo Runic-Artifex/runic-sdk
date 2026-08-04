@@ -17,6 +17,7 @@ editors/vscode-cwhtml/server/
 *.suo
 *.nupkg
 *.snupkg
+packages.lock.json
 *.binlog
 *.trx
 .DS_Store
