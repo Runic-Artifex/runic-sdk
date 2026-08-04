@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $runRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
-    'wut-cli-consumer-' + [Guid]::NewGuid().ToString('N'))
+    'runic-cli-consumer-' + [Guid]::NewGuid().ToString('N'))
 $feed = Join-Path $runRoot 'feed'
 $consumerDirectory = Join-Path $runRoot 'consumer'
 $packageCache = Join-Path $runRoot 'packages'
@@ -25,7 +25,6 @@ $ownedProjects = @(
     (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine.Abstractions/WebUIToolkit.CommandLine.Abstractions.csproj'),
     (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine/WebUIToolkit.CommandLine.csproj'),
     (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine.Hosting/WebUIToolkit.CommandLine.Hosting.csproj'),
-    (Join-Path $repositoryRoot 'src/WebUIToolkit.Hosting.Abstractions/WebUIToolkit.Hosting.Abstractions.csproj'),
     (Join-Path $repositoryRoot 'src/WebUIToolkit.CommandLine.Processes/WebUIToolkit.CommandLine.Processes.csproj')
 )
 
@@ -71,7 +70,8 @@ $nugetConfiguration = @"
   </packageSources>
   <packageSourceMapping>
     <packageSource key="owned-command-line-feed">
-      <package pattern="WebUIToolkit.*" />
+      <package pattern="WebUIToolkit.CommandLine" />
+      <package pattern="WebUIToolkit.CommandLine.*" />
     </packageSource>
     <packageSource key="nuget.org">
       <package pattern="Microsoft.*" />

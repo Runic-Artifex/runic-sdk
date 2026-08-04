@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using WebUIToolkit.CommandLine;
 using WebUIToolkit.CommandLine.Hosting;
 using WebUIToolkit.CommandLine.Processes;
-using WebUIToolkit.Hosting;
 
 namespace WebUIToolkit.CommandLine.PackageConsumer;
 
@@ -33,8 +32,7 @@ internal static class Program
 
         if (command.Kind != HostedCommandLineDecisionKind.Invocation ||
             command.OutputClassification is not
-                { Mode: CommandOutputMode.Json, Source: CommandOutputModeSource.Environment } ||
-            MapToLaunchKind(command.Kind) != LaunchKind.Command)
+                { Mode: CommandOutputMode.Json, Source: CommandOutputModeSource.Environment })
         {
             return 10;
         }
@@ -63,12 +61,6 @@ internal static class Program
             return 20;
         }
 
-        ApplicationRunResult applicationResult = ApplicationRunResult.FromExitCode(execution.ExitCode);
-        if (!applicationResult.IsSuccess || applicationResult.ExitCode != execution.ExitCode)
-        {
-            return 21;
-        }
-
         string json = commandConsole.StandardOutput;
         if (commandConsole.StandardError.Length != 0 || !ValidateEnvelope(json))
         {
@@ -78,16 +70,6 @@ internal static class Program
         Console.Out.Write(json);
         return 0;
     }
-
-    private static LaunchKind MapToLaunchKind(HostedCommandLineDecisionKind kind) => kind switch
-    {
-        HostedCommandLineDecisionKind.Invocation => LaunchKind.Command,
-        HostedCommandLineDecisionKind.Help => LaunchKind.Help,
-        HostedCommandLineDecisionKind.Version => LaunchKind.Version,
-        HostedCommandLineDecisionKind.Invalid => LaunchKind.Invalid,
-        HostedCommandLineDecisionKind.UserInterface => LaunchKind.UserInterface,
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
 
     private static bool ValidateEnvelope(string json)
     {

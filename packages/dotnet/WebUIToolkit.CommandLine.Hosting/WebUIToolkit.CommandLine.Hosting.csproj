@@ -5,14 +5,13 @@
     <AssemblyName>WebUIToolkit.CommandLine.Hosting</AssemblyName>
     <RootNamespace>WebUIToolkit.CommandLine.Hosting</RootNamespace>
     <PackageId>WebUIToolkit.CommandLine.Hosting</PackageId>
-    <Description>Neutral command-line launch and execution bridge for WebUIToolkit Hosting applications.</Description>
+    <Description>Neutral command-line launch classification and execution bridge for application hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\WebUIToolkit.CommandLine\WebUIToolkit.CommandLine.csproj" />
-    <ProjectReference Include="..\WebUIToolkit.Hosting.Abstractions\WebUIToolkit.Hosting.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
