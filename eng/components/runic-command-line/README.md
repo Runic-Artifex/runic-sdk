@@ -22,6 +22,11 @@ selection can be supplied through `RUNIC_COMMANDLINE_OUTPUT`.
 
 The packages are not published yet. The repository verifies their dependency
 metadata and consumes them from an isolated local feed before any registry release.
+A manual prerelease workflow can create a uniquely versioned, checksummed package
+artifact. Publishing that verified artifact to the organization-scoped GitHub
+Packages feed is a separate explicit choice and is disabled by default.
+Changes to the packaging configuration exercise the same artifact path in pull
+requests, but the publishing job cannot run for pull-request events.
 
 ## Development
 
@@ -35,6 +40,13 @@ nix develop
 Verification builds the standalone solution, runs all product tests, publishes and
 executes a NativeAOT smoke application, then packs and consumes the four owned
 packages from an isolated local NuGet feed.
+
+To create the same package set locally after verification, supply a SemVer version
+and an empty output directory:
+
+```bash
+./eng/pack.sh 0.1.0-preview.local ./artifacts/packages
+```
 
 Toolkit-specific launch and lifecycle mapping will live in a future
 `RunicCommandLine.RunicToolkit` integration package owned by this repository.
