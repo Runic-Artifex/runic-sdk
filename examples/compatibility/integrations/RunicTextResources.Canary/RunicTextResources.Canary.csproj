@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RunicArtifex.Examples.TextResources</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RunicTextResources" />
+    <PackageReference Include="RunicTextResources.Build" PrivateAssets="all" />
+    <PackageReference Include="RunicTextResources.Generator"
+                      PrivateAssets="all"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TextResourceCatalog Include="Resources/catalog.json" />
+    <TextResourceDocument Include="Resources/en.json" />
+  </ItemGroup>
+</Project>
