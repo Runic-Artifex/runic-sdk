@@ -5,9 +5,8 @@ protocol. The package owns transport-independent message validation and the
 client-side MVVM session model; UI framework bindings belong in separate
 adapter packages.
 
-> **Publication status:** this repository has not granted a source or package
-> license. The package is marked `private` and `UNLICENSED` until the project
-> publication review is complete.
+> **Publication status:** this package is MIT licensed and remains marked
+> `private` until package identity and release-readiness review is complete.
 
 ## Runtime support
 

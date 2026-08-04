@@ -150,4 +150,5 @@ failure-precedence, timeout, and teardown behavior.
 not load native UI or frontend assets for command-only execution because it has no
 concrete adapter capable of doing so.
 
-Publication remains blocked by the repository's pending license decision.
+The package is MIT licensed. Publication still requires package identity and
+release-readiness review.

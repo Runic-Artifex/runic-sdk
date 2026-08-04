@@ -38,7 +38,8 @@ This is stronger than compile-only evidence. It does not make upstream `cs-webui
 - The high-level API exposes sync/async bindings, `StartServer`, browser/WebView show methods, JavaScript execution, raw data, close, disposal, and application cleanup.
 - Window disposal cancels its shutdown token and defers native destruction until active managed callbacks drain.
 - The wrapper's native workflow builds five 64-bit assets: `win-x64`, `linux-x64`, `linux-arm64`, `osx-x64`, and `osx-arm64`. Its standard build disables TLS and Windows requests the static MSVC runtime.
-- The wrapper and pinned WebUI source both contain MIT license texts. The wrapper `NOTICE` attributes WebUI. This factual inventory does not override WebUIToolkit's publication hold or replace dependency/license review.
+- The wrapper, pinned WebUI source, and Runic Toolkit are MIT licensed. The wrapper
+  `NOTICE` attributes WebUI; dependency and notice review remains independently required.
 
 ## Executed evidence
 
@@ -79,7 +80,8 @@ The locally built `webui-2.dll` was 543,744 bytes with SHA-256 `5954D96895ED3F26
 6. Browser mode requires an installed supported browser. Embedded WebView mode adds platform prerequisites such as WebView2 on Windows and GTK/WebKit on Linux.
 7. The out-of-tree probe proves the integration seam but is not an upstream regression test. A release gate should preserve a package-consumer version of the round trip and run the published binary for every supported target.
 8. This probe exercises a framework-neutral string callback, not the WebUIToolkit MVVM protocol corpus, session revisions, cancellation, reconnect, or frontend adapters. Those remain downstream gates.
-9. Dependency attribution and redistribution terms still require the repository's formal notices/SBOM/license review; upstream MIT files do not lift WebUIToolkit ADR 0004's publication hold.
+9. Dependency attribution and redistribution terms still require the repository's
+   formal notices and SBOM review even though ADR 0014 licenses Runic Toolkit under MIT.
 
 ## Adoption decision for Wave A
 

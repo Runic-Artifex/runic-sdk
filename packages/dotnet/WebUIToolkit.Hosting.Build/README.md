@@ -41,4 +41,5 @@ risk; untrusted writers must not have access to the frontend output tree during 
 - Generator/analyzer packaging remains separate and must not introduce Roslyn or MSBuild
   dependencies into this kernel assembly.
 
-Publication remains blocked by the repository's pending license decision.
+The package is MIT licensed. Publication still requires package identity and
+release-readiness review.

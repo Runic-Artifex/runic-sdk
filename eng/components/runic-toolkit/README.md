@@ -134,10 +134,9 @@ Earlier wave plans and release evidence remain available under
 [`docs/roadmap/archive`](./docs/roadmap/archive) and
 [`docs/release`](./docs/release), but they do not describe current priorities.
 
-## Publication status
+## License and publication
 
-[ADR 0004](./docs/adr/0004-license-pending.md) records an explicit publication
-hold. Public visibility does not grant reuse or redistribution rights. API
-ownership, dependency licensing, package identities, notices, SBOM linkage,
-and publication terms must be reviewed before reusable artifacts are
-published.
+Runic Toolkit is licensed under the [MIT License](./LICENSE), as recorded by
+[ADR 0014](./docs/adr/0014-mit-license.md). Third-party components retain their
+own licenses and notices. Public package releases still require package identity,
+dependency, notice, SBOM, security, and release-readiness review.

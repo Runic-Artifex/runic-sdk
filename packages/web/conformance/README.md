@@ -5,9 +5,8 @@ Runtime-neutral conformance support for TypeScript implementations of the
 session cases against `@webuitoolkit/mvvm`; it does not provide a UI adapter or
 choose a transport.
 
-> **Publication status:** this repository has not granted a source or package
-> license. The package is marked `private` and `UNLICENSED` until the project
-> publication review is complete.
+> **Publication status:** this package is MIT licensed and remains marked
+> `private` until package identity and release-readiness review is complete.
 
 ## What the suite covers
 

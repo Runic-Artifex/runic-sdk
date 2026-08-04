@@ -22,7 +22,12 @@
     <DebugType>embedded</DebugType>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/ViktorJannicke/WebUIToolkit</RepositoryUrl>
+    <Authors>RunicArtifex</Authors>
+    <Company>RunicArtifex</Company>
+    <Copyright>Copyright (c) 2026 Viktor Jannicke</Copyright>
+    <RepositoryUrl>https://github.com/Runic-Artifex/runic-toolkit</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Runic-Artifex/runic-toolkit</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <!-- Repository projects keep updateable lock files; only Verification locks them. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode Condition="'$(WebUIToolkitVerificationBuild)' == 'true'">true</RestoreLockedMode>

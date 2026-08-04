@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Runtime-neutral conformance runner for the webuitoolkit.mvvm/1 TypeScript SDK.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/esm/index.js",

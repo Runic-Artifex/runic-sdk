@@ -2,6 +2,7 @@
   "name": "@webuitoolkit/webuitoolkitstarter-angular",
   "private": true,
   "version": "1.0.0",
+  "license": "MIT",
   "scripts": {
     "build": "node build.mjs",
     "dev": "ng serve frontend --configuration development",

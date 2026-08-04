@@ -158,4 +158,5 @@ outcomes or teardown.
 
 The versioned wire specification, schemas, and cross-language corpus live under
 `protocol/mvvm/`. The package has no runtime package dependencies and supports
-trimming and Native AOT. Package publication remains blocked by ADR 0004.
+trimming and Native AOT. The package is MIT licensed; publication still requires
+package identity and release-readiness review.

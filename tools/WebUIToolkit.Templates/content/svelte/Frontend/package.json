@@ -2,6 +2,7 @@
   "name": "@webuitoolkit/webuitoolkitstarter-svelte",
   "private": true,
   "version": "1.0.0",
+  "license": "MIT",
   "type": "module",
   "scripts": { "build": "vite build", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "svelte-check --tsconfig ./tsconfig.json" },
   "dependencies": {

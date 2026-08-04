@@ -41,4 +41,5 @@ properties without adding framework dependencies to the shared package.
 
 The complete declared surface is recorded in [PUBLIC-API.md](PUBLIC-API.md).
 
-Publication remains blocked by the repository's pending license decision.
+The package is MIT licensed. Publication still requires package identity and
+release-readiness review.

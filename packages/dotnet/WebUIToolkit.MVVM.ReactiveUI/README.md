@@ -20,4 +20,5 @@ The supported ReactiveUI range is 22.3.1 through 23.x. G6 exercises both range
 endpoints, ReactiveUI.SourceGenerators 3.1.0 generated members, managed package
 consumers, trimming, and Native AOT.
 
-Publication remains blocked by ADR 0004.
+The package is MIT licensed. Publication still requires package identity and
+release-readiness review.

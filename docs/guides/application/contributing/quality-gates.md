@@ -268,7 +268,8 @@ for release evidence.
 - Owned root identifiers use `WebUIToolkit`; the external `cs-webui` project,
   `CsWebUi` package/namespace, and explicitly named adapter remain unchanged.
 - Architecture checks enforce dependency direction and exclusive path ownership.
-- ADR 0004 records an explicit publication hold; reusable publication remains blocked until a later license ADR replaces it.
+- ADR 0014 records the repository's MIT license; publication remains separately
+  gated by identity, dependency, notice, security, and release review.
 
 ## G1: Contracts and test foundations
 
@@ -354,7 +355,8 @@ logs, provenance, and `SHA256SUMS` are written to the ignored
 - Hosting, MVVM reconnect, Flow navigation, Text Resources, Command Line, and WebUi scenarios execute concurrently and without semantic exclusions.
 - Clean-cache, offline, coherent-upgrade, managed cross-publish, current-host full-trim Native-AOT, deterministic-package, provenance, and checksum lanes pass.
 - Cross-publish evidence is not treated as native execution; the same verifier records native execution only on a matching host RID.
-- Technical readiness does not override ADR 0004. Publication remains blocked until an owner accepts a replacement license ADR and verifies NuGet/npm identity ownership.
+- Technical readiness does not itself authorize a release. Publication remains
+  blocked until NuGet/npm identity ownership and the remaining release gates are verified.
 
 Run `./eng/verify-wave-g.ps1` for the cumulative G7 acceptance surface. It executes
 G6 first, produces the approved NuGet/npm package set twice, validates byte-stable
