@@ -16,7 +16,6 @@ $smokeProject = Join-Path $smokeDirectory "WebUIToolkit.MVVM.AotSmoke.csproj"
 $temporaryDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("webuitoolkit-mvvm-aot-" + [Guid]::NewGuid().ToString("N"))
 $packageDirectory = Join-Path $temporaryDirectory "package"
 $publishDirectory = Join-Path $temporaryDirectory "publish"
-$consumerLockFile = Join-Path $temporaryDirectory "consumer.packages.lock.json"
 $packagesPath = Join-Path $temporaryDirectory "packages"
 $intermediatePath = (Join-Path $temporaryDirectory "obj") + [System.IO.Path]::DirectorySeparatorChar
 $outputPath = (Join-Path $temporaryDirectory "bin") + [System.IO.Path]::DirectorySeparatorChar
@@ -27,7 +26,7 @@ try {
     & dotnet pack $libraryProject --configuration Release --output $packageDirectory "-p:PackageVersion=$PackageVersion"
     if ($LASTEXITCODE -ne 0) { throw "Packing WebUIToolkit.MVVM failed." }
 
-    & dotnet publish $smokeProject --configuration Release --runtime $RuntimeIdentifier --output $publishDirectory "-p:MvvmUsePackage=true" "-p:MvvmPackageVersion=$PackageVersion" "-p:MvvmNativeAot=true" "-p:NuGetLockFilePath=$consumerLockFile" "-p:RestorePackagesPath=$packagesPath" "-p:RestoreAdditionalProjectSources=$packageDirectory" "-p:BaseIntermediateOutputPath=$intermediatePath" "-p:BaseOutputPath=$outputPath" "-p:RestoreDisableParallel=true" -maxcpucount:1 -nodeReuse:false
+    & dotnet publish $smokeProject --configuration Release --runtime $RuntimeIdentifier --output $publishDirectory "-p:MvvmUsePackage=true" "-p:MvvmPackageVersion=$PackageVersion" "-p:MvvmNativeAot=true" "-p:RestorePackagesPath=$packagesPath" "-p:RestoreAdditionalProjectSources=$packageDirectory" "-p:BaseIntermediateOutputPath=$intermediatePath" "-p:BaseOutputPath=$outputPath" "-p:RestoreDisableParallel=true" -maxcpucount:1 -nodeReuse:false
     if ($LASTEXITCODE -ne 0) { throw "Native-AOT package-consumer publish failed." }
 
     $windowsExecutable = Join-Path $publishDirectory "WebUIToolkit.MVVM.AotSmoke.exe"

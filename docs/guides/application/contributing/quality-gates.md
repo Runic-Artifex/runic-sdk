@@ -255,7 +255,7 @@ fixes, cancellation, stale documents, and the 1,000-element stress case.
 
 Run `eng/verify-csharp-markup-milestone8.ps1` from the Nix/direnv environment.
 It is cumulative: parser fuzz and hostile corpora, runtime/performance/trim
-analysis, locked isolated package-only restore and build, deterministic clean
+analysis, isolated package-only restore and build, deterministic clean
 roots/cultures, Native AOT, both native Chromium applications, editor and
 template coverage, and full repository verification must pass. Local iteration
 may use `-SkipNativeAot` or `-SkipNativeBrowser`; neither switch is permitted
@@ -264,7 +264,7 @@ for release evidence.
 ## G0: Repository and identity
 
 - A clean clone restores without private feeds or machine-local inputs.
-- SDK, package, frontend, and tool versions are centrally pinned with committed lock files.
+- SDK, package, frontend, and tool constraints are centrally managed.
 - Owned root identifiers use `WebUIToolkit`; the external `cs-webui` project,
   `CsWebUi` package/namespace, and explicitly named adapter remain unchanged.
 - Architecture checks enforce dependency direction and exclusive path ownership.
@@ -301,7 +301,7 @@ does not claim the Native-AOT package-consumer requirements of G4.
 ## G4: Native AOT and core release candidate
 
 - Packed consumers publish and run actual executables with full trimming and Native AOT, zero owned trim/AOT warnings, deterministic cleanup, and exit code zero.
-- Repository smoke projects use `./eng/verify-native-aot.ps1`; RID-specific restore state is isolated under ignored `obj/aot.packages.lock.json` files so committed locks remain portable.
+- Repository smoke projects use `./eng/verify-native-aot.ps1` and restore the selected RID before publishing.
 - `./eng/verify-cswebui-native-e2e.ps1` Native-AOT-publishes a binary-MVVM host plus both compiled Todo HTMX applications, drives them with the Nix-pinned Chromium, executes C# commands through their production native transports, and verifies the resulting DOM. `eng/verify.ps1` includes this gate when the direnv-provided native library and browser paths are available.
 - The core vertical matrix runs the same scenario through the framework-neutral web SDK, CommunityToolkit, and compiled HTMX.
 - Clean-clone, empty-cache, offline, package-consumer, browser, security, fuzz, stress, leak, compatibility, and performance suites pass.

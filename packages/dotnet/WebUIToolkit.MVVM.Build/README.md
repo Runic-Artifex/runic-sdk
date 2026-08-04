@@ -152,9 +152,8 @@ generation. The command-line host additionally enforces bounded file counts and
 total input bytes, strict UTF-8, project-contained paths, and duplicate-path
 rejection.
 
-Committed NuGet lock files are RID-free. If a Native-AOT smoke publish is run, its
-runtime-specific restore must use an ignored `obj/aot.packages.lock.json` rather
-than altering a committed lock.
+The library declares package constraints; consuming applications own their resolved
+dependency graphs.
 
 ## Versioned runtime edge
 

@@ -21,8 +21,7 @@ Collections ownership boundary.
 | Notification allocation/performance envelope | `benchmarks/WebUIToolkit.Collections.Benchmarks -- --gate` | The complete matrix has expected event/identity counts and stays below `performance-gate-v1.md` allocation ceilings. |
 | Reproducible benchmark baseline | `benchmarks/WebUIToolkit.Collections.Benchmarks/baseline-v1.csv` and `--full` | CSV covers range policies and reconciliation strategies through size 10,000; handoff records the run without presenting timings as a universal guarantee. |
 | Package structure and API consumption | `tests/WebUIToolkit.Collections.PackageConsumer` | A temporary local-only feed/cache restores the packed package, validates nuspec/assets, builds, and runs the managed consumer. |
-| Trim/Native-AOT safety | package consumer `--aot` and `tests/WebUIToolkit.Collections.AotSmoke/run-native-smoke.ps1` | Current-host native executables publish with zero owned trim/AOT warnings, run, print PASS, and exit zero using an ignored RID lock. |
-| Portable restore | all owned committed `packages.lock.json` files | Each ordinary project restore passes `--locked-mode`; committed locks have no RID-specific entries. |
+| Trim/Native-AOT safety | package consumer `--aot` and `tests/WebUIToolkit.Collections.AotSmoke/run-native-smoke.ps1` | Current-host native executables publish with zero owned trim/AOT warnings, run, print PASS, and exit zero. |
 | Architecture and identity | repository namespace/architecture/ownership gates | `WebUIToolkit.Collections` is preserved and no dependency or edit crosses into MVVM or another task's paths. |
 
 The package consumer is maintained by this repository. It proves package-boundary
@@ -32,7 +31,7 @@ host/RID actually run and leave unexecuted platforms unclaimed.
 
 ## Mandatory handoff commands
 
-Run ordinary locked restore and Release build for every owned project, then:
+Run restore and Release build for every owned project, then:
 
 ```console
 dotnet run --project tests/WebUIToolkit.Collections.Tests -c Release --no-build
@@ -42,10 +41,8 @@ dotnet run --project tests/WebUIToolkit.Collections.PackageConsumer -c Release -
 ```
 
 Run the packed consumer with `--aot` and the standalone native smoke on each host
-available for the promotion matrix. Both harnesses place RID-specific lock state
-under ignored `obj/`. Finally rerun ordinary portable restore with `--locked-mode`,
-run the repository namespace/architecture/ownership gates, and require a clean
-worktree.
+available for the promotion matrix. Finally run the repository
+namespace/architecture/ownership gates and require a clean worktree.
 
 The handoff must record the commit SHA, test total, benchmark gate result and row
 count, packed-consumer result, each native host/RID result, warnings, and any deferred

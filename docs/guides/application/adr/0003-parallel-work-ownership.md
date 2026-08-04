@@ -11,7 +11,7 @@ document records the original Wave A/B coordination model.
 
 Every implementation stream uses one long-lived Codex task, one branch, one Git worktree, and an exclusive path set. Parallel agents inside that task may edit only disjoint owned paths; one integrator owns commits.
 
-Only the orchestrator edits root solution files, `Directory.*`, `global.json`, root/shared lockfiles, shared CI/release files, the contract registry, and cross-repository documentation. A domain owns and commits `packages.lock.json` files located inside its registered project directories.
+Only the orchestrator edits root solution files, `Directory.*`, `global.json`, shared CI/release files, the contract registry, and cross-repository documentation. A domain owns its package constraints; consuming applications own resolved dependency graphs.
 
 Each handoff contains:
 

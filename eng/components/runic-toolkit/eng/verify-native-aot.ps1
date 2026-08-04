@@ -43,31 +43,20 @@ try {
                 --output $feed
             if ($LASTEXITCODE -ne 0) { throw 'Packing Text Resources for Native-AOT verification failed.' }
 
-            & (Join-Path $PSScriptRoot 'normalize-nuget-package.ps1') `
-                (Join-Path $feed 'WebUIToolkit.TextResources.1.0.0.nupkg')
             $projectProperties += "-p:TextResourcesPackageFeed=$feed"
         }
 
-        $portableLock = Join-Path $projectDirectory 'packages.lock.json'
-        if (-not (Test-Path -LiteralPath $portableLock -PathType Leaf)) {
-            throw "Portable lock file is missing: $relativePath"
-        }
-
-        $portableLockHash = (Get-FileHash -LiteralPath $portableLock -Algorithm SHA256).Hash
-        dotnet restore $project.FullName --locked-mode -p:RuntimeIdentifier= -p:RuntimeIdentifiers= `
+        dotnet restore $project.FullName -p:RuntimeIdentifier= -p:RuntimeIdentifiers= `
             -p:NuGetAudit=false @projectProperties
-        if ($LASTEXITCODE -ne 0) { throw "Portable locked restore failed: $relativePath" }
+        if ($LASTEXITCODE -ne 0) { throw "Restore failed: $relativePath" }
 
-        $aotLock = Join-Path $projectDirectory 'obj/aot.packages.lock.json'
         $publishDirectory = Join-Path $projectDirectory "obj/aot-publish/$RuntimeIdentifier"
         dotnet publish $project.FullName --configuration $Configuration --runtime $RuntimeIdentifier --self-contained true `
             -p:PublishAot=true `
             -p:PublishTrimmed=true `
             -p:TrimMode=full `
             -p:IlcTreatWarningsAsErrors=true `
-            -p:NuGetLockFilePath=$aotLock `
             -p:NuGetAudit=false `
-            -p:RestoreLockedMode=false `
             -p:PublishDir=$publishDirectory `
             @projectProperties
         if ($LASTEXITCODE -ne 0) { throw "Native-AOT publish failed: $relativePath" }
@@ -86,10 +75,6 @@ try {
         & $executable
         if ($LASTEXITCODE -ne 0) { throw "Native-AOT smoke failed: $relativePath" }
 
-        $currentPortableLockHash = (Get-FileHash -LiteralPath $portableLock -Algorithm SHA256).Hash
-        if ($currentPortableLockHash -ne $portableLockHash) {
-            throw "Native-AOT verification changed the portable lock file: $relativePath"
-        }
     }
 }
 finally {

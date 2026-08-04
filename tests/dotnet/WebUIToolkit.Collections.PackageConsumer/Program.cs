@@ -6,7 +6,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Xml.Linq;
 
@@ -44,7 +43,7 @@ internal static class Program
             string nugetConfig = WriteNuGetConfig(temporaryRoot, feed, packages);
             string aotNugetConfig = WriteAotNuGetConfig(temporaryRoot, feed, packages);
 
-            RunDotNet(repositoryRoot, null, "restore", shippingProject, "--locked-mode");
+            RunDotNet(repositoryRoot, null, "restore", shippingProject);
             RunDotNet(repositoryRoot, null, "build", shippingProject, "-c", "Release", "--no-restore");
             RunDotNet(
                 repositoryRoot,
@@ -80,16 +79,6 @@ internal static class Program
                 consumerProject,
                 "--configfile",
                 nugetConfig);
-            ValidatePortableLock(Path.Combine(consumer, "packages.lock.json"));
-            RunDotNet(
-                consumer,
-                environment,
-                "restore",
-                consumerProject,
-                "--configfile",
-                nugetConfig,
-                "--locked-mode",
-                "--force");
             RunDotNet(consumer, environment, "build", consumerProject, "-c", "Release", "--no-restore");
             CommandResult managed = RunDotNet(
                 consumer,
@@ -155,8 +144,6 @@ internal static class Program
             "-p:PublishAot=true",
             "-p:PublishTrimmed=true",
             "-p:InvariantGlobalization=true",
-            "-p:NuGetLockFilePath=obj/aot.packages.lock.json",
-            "-p:RestoreLockedMode=false",
             "--output",
             publishDirectory);
 
@@ -290,27 +277,6 @@ internal static class Program
             "BCL-only package unexpectedly declares a package dependency.");
     }
 
-    private static void ValidatePortableLock(string lockPath)
-    {
-        Require(File.Exists(lockPath), "Consumer restore did not generate a package lock.");
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(lockPath));
-        JsonElement dependencies = document.RootElement.GetProperty("dependencies");
-        JsonProperty target = dependencies.EnumerateObject().Single();
-        Require(target.NameEquals("net10.0"), $"Consumer lock unexpectedly contains target '{target.Name}'.");
-        JsonProperty packageEntry = target.Value.EnumerateObject().Single();
-        Require(
-            packageEntry.NameEquals(PackageId) &&
-            packageEntry.Value.ValueKind == JsonValueKind.Object,
-            $"Consumer lock unexpectedly contains package '{packageEntry.Name}'.");
-        JsonElement package = packageEntry.Value;
-        Require(
-            package.GetProperty("resolved").GetString() == PackageVersion,
-            "Consumer lock does not resolve the packed package version.");
-        Require(
-            !string.IsNullOrWhiteSpace(package.GetProperty("contentHash").GetString()),
-            "Consumer lock is missing its package content hash.");
-    }
-
     private static string ReadMetadata(XElement metadata, string name) =>
         metadata.Elements().Single(element => element.Name.LocalName == name).Value;
 
@@ -324,7 +290,6 @@ internal static class Program
                 <Nullable>enable</Nullable>
                 <ImplicitUsings>disable</ImplicitUsings>
                 <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-                <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
                 <AssemblyName>PackageConsumer</AssemblyName>
               </PropertyGroup>
               <ItemGroup>

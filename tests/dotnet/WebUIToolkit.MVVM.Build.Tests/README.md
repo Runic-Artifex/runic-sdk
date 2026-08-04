@@ -1,11 +1,11 @@
 # WebUIToolkit.MVVM.Build executable contracts
 
 This project is a console test harness for the binding compiler and its build
-integration. Its generated-member proof has one locked CommunityToolkit.Mvvm
+integration. Its generated-member proof has one exact CommunityToolkit.Mvvm
 package dependency. Run it from the repository root:
 
 ```console
-dotnet restore tests/WebUIToolkit.MVVM.Build.Tests/WebUIToolkit.MVVM.Build.Tests.csproj --locked-mode -p:WebUIToolkitLocalPackageSource=<packed-feed>
+dotnet restore tests/WebUIToolkit.MVVM.Build.Tests/WebUIToolkit.MVVM.Build.Tests.csproj -p:WebUIToolkitLocalPackageSource=<packed-feed>
 dotnet run --project tests/WebUIToolkit.MVVM.Build.Tests/WebUIToolkit.MVVM.Build.Tests.csproj --configuration Release --no-restore
 ```
 
@@ -15,9 +15,6 @@ restored. The test project never uses a cross-owner project reference.
 
 Every contract prints one `PASS` or `FAIL` line. The final line is stable and
 machine readable: `TOTAL <total> PASSED <passed> FAILED <failed>`.
-
-The committed NuGet lock is intentionally RID-free. Native-AOT smoke publishing,
-when needed, must use an ignored intermediate lock rather than changing this file.
 
 The executable also contains the Wave C generated-member proof fixtures
 `communitytoolkit.generated-member.title.v1` and

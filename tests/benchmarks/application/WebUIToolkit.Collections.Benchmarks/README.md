@@ -15,7 +15,7 @@ can reasonably arrange.
 Quick validation covers sizes 10, 100, and 1,000 with three repetitions:
 
 ```console
-dotnet restore benchmarks/WebUIToolkit.Collections.Benchmarks --locked-mode
+dotnet restore benchmarks/WebUIToolkit.Collections.Benchmarks
 dotnet run -c Release --no-restore --project benchmarks/WebUIToolkit.Collections.Benchmarks -- --quick
 ```
 

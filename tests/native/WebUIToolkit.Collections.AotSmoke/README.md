@@ -15,9 +15,7 @@ The promotion matrix covers the desktop hosts currently supported by this smoke:
 | Apple Silicon macOS with Xcode command-line tools | `osx-arm64` |
 
 Run the host-aware harness from PowerShell 7. It auto-detects the RID, rejects
-cross-compilation, runs the managed smoke, publishes and runs the native binary,
-then restores portable assets and verifies that both committed lock files are
-byte-for-byte unchanged:
+cross-compilation, runs the managed smoke, and publishes and runs the native binary:
 
 ```powershell
 ./tests/WebUIToolkit.Collections.AotSmoke/run-native-smoke.ps1
@@ -36,19 +34,16 @@ below, replacing `<rid>` with the RID matching the current host:
 
 ```console
 dotnet build -c Release src/WebUIToolkit.Collections
-dotnet restore --locked-mode tests/WebUIToolkit.Collections.AotSmoke
+dotnet restore tests/WebUIToolkit.Collections.AotSmoke
 dotnet run -c Release --no-restore --project tests/WebUIToolkit.Collections.AotSmoke
-dotnet restore -r <rid> --disable-parallel -p:PublishAot=true -p:PublishTrimmed=true -p:NuGetLockFilePath=obj/aot.packages.lock.json -p:RestoreLockedMode=false tests/WebUIToolkit.Collections.AotSmoke
-dotnet publish -c Release -r <rid> --no-restore -p:PublishAot=true -p:PublishTrimmed=true -p:NuGetLockFilePath=obj/aot.packages.lock.json tests/WebUIToolkit.Collections.AotSmoke
-dotnet restore --locked-mode tests/WebUIToolkit.Collections.AotSmoke
+dotnet restore -r <rid> --disable-parallel -p:PublishAot=true -p:PublishTrimmed=true tests/WebUIToolkit.Collections.AotSmoke
+dotnet publish -c Release -r <rid> --no-restore -p:PublishAot=true -p:PublishTrimmed=true tests/WebUIToolkit.Collections.AotSmoke
 ```
 
 The RID-specific smoke consumes the built shipping assembly through the explicit
 Release-bin `HintPath`. A non-reference-producing project edge orders the shipping
 build deterministically without changing the assembly under test. RID properties
-therefore do participate in the restore graph, but the global native lock override
-routes the entire graph to the ignored `obj/aot.packages.lock.json`; neither
-committed portable lock is eligible for a RID-specific rewrite.
+therefore participate in the restore graph.
 
 Run the native executable from the publish directory. Success prints one stable
 `PASS` line and exits zero; validation failures print one `FAIL` line and exit one.

@@ -18,9 +18,8 @@ current runtime identifier:
 dotnet run --project tests/WebUIToolkit.Collections.PackageConsumer -c Release -- --aot
 ```
 
-The AOT restore writes `obj/aot.packages.lock.json` inside the disposable
-consumer directory. The committed harness lock therefore remains portable and
-RID-free. Its source mapping still requires `WebUIToolkit.Collections` to come
+The disposable consumer uses a fresh package cache. Its source mapping requires
+`WebUIToolkit.Collections` to come
 from the temporary feed; when the installed SDK does not include Native-AOT
 packs, only Microsoft/runtime toolchain packages may come from NuGet.org. Use
 `--keep-temp` to retain the generated consumer for diagnosis.

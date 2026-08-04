@@ -132,9 +132,8 @@ contracts; runtime asset serving remains an adapter responsibility.
 | `WebUIToolkit.Hosting.Build` | `WebUIToolkit.Hosting.Abstractions` | Deterministic manifest construction; no runtime-project dependency |
 | `WebUIToolkit.Hosting.Generators` | .NET BCL only | Non-packable dependency-neutral generation contract/diagnostic model; no runtime-project dependency |
 
-All projects target a repository-selected framework. Shipping-project lockfiles also
-record the SDK-supplied ILLink build tooling; it is not a runtime package dependency.
-Normal lockfiles are portable and RID-free. The core kernel does not reference MVVM,
+All projects target a repository-selected framework. SDK-supplied ILLink build tooling
+is not a runtime package dependency. The core kernel does not reference MVVM,
 CommandLine, Microsoft.Extensions Hosting, a native runtime, or external lowercase
 `cs-webui`; framework integrations remain in inward-depending adapter packages.
 

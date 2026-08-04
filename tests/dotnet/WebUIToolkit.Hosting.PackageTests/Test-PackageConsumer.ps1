@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
     [string] $RuntimeIdentifier = [System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier,
-    [switch] $RefreshPortableLock,
     [switch] $SkipNativeAot
 )
 
@@ -21,6 +20,7 @@ $buildProject = Join-Path $repositoryRoot 'src\WebUIToolkit.Hosting.Build\WebUIT
 $webUiProject = Join-Path $repositoryRoot 'src\WebUIToolkit.Hosting.WebUi\WebUIToolkit.Hosting.WebUi.csproj'
 $generatorsProject = Join-Path $repositoryRoot 'src\WebUIToolkit.Hosting.Generators\WebUIToolkit.Hosting.Generators.csproj'
 $mvvmProject = Join-Path $repositoryRoot 'src\WebUIToolkit.MVVM\WebUIToolkit.MVVM.csproj'
+$desktopProject = Join-Path $repositoryRoot 'src\WebUIToolkit.Desktop\WebUIToolkit.Desktop.csproj'
 
 $packagesPrefix = $packagesDirectory + [System.IO.Path]::DirectorySeparatorChar
 if (-not $consumerCache.StartsWith($packagesPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -37,136 +37,37 @@ $env:NUGET_PACKAGES = $consumerCache
 
 try {
 
-function ConvertTo-DeterministicPackage {
-    param([Parameter(Mandatory)] [string] $PackagePath)
+dotnet pack $desktopProject --configuration Release --output $feedDirectory --no-restore -m:1 `
+    -p:PackageVersion=1.0.0
+if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.Desktop failed.' }
 
-    $normalizedPath = $PackagePath + '.normalized'
-    if ([System.IO.File]::Exists($normalizedPath)) {
-        [System.IO.File]::Delete($normalizedPath)
-    }
-
-    $entries = [System.Collections.Generic.List[object]]::new()
-    $inputArchive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
-    try {
-        foreach ($entry in $inputArchive.Entries) {
-            $entryStream = $entry.Open()
-            try {
-                $content = [System.IO.MemoryStream]::new()
-                try {
-                    $entryStream.CopyTo($content)
-                    $bytes = $content.ToArray()
-                }
-                finally {
-                    $content.Dispose()
-                }
-            }
-            finally {
-                $entryStream.Dispose()
-            }
-
-            $name = $entry.FullName
-            if ($name -eq '_rels/.rels') {
-                $relationships = [System.Text.Encoding]::UTF8.GetString($bytes)
-                $relationships = [regex]::Replace(
-                    $relationships,
-                    'package/services/metadata/core-properties/[^"/]+\.psmdcp',
-                    'package/services/metadata/core-properties/core.psmdcp')
-                $relationships = [regex]::Replace(
-                    $relationships,
-                    '(<Relationship Type="http://schemas\.microsoft\.com/packaging/2010/07/manifest"[^>]* Id=")[^"]+("\s*/>)',
-                    '$1RManifest$2')
-                $relationships = [regex]::Replace(
-                    $relationships,
-                    '(<Relationship Type="http://schemas\.openxmlformats\.org/package/2006/relationships/metadata/core-properties"[^>]* Id=")[^"]+("\s*/>)',
-                    '$1RCoreProperties$2')
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($relationships)
-            }
-            elseif ($name -like 'package/services/metadata/core-properties/*.psmdcp') {
-                $name = 'package/services/metadata/core-properties/core.psmdcp'
-            }
-
-            $entries.Add([pscustomobject]@{ Name = $name; Content = $bytes })
-        }
-    }
-    finally {
-        $inputArchive.Dispose()
-    }
-
-    $outputArchive = [System.IO.Compression.ZipFile]::Open(
-        $normalizedPath,
-        [System.IO.Compression.ZipArchiveMode]::Create)
-    try {
-        $fixedTimestamp = [System.DateTimeOffset]::new(1980, 1, 1, 0, 0, 0, [System.TimeSpan]::Zero)
-        foreach ($item in @($entries | Sort-Object -Property Name)) {
-            $outputEntry = $outputArchive.CreateEntry(
-                $item.Name,
-                [System.IO.Compression.CompressionLevel]::Optimal)
-            $outputEntry.LastWriteTime = $fixedTimestamp
-            $outputStream = $outputEntry.Open()
-            try {
-                $outputStream.Write($item.Content, 0, $item.Content.Length)
-            }
-            finally {
-                $outputStream.Dispose()
-            }
-        }
-    }
-    finally {
-        $outputArchive.Dispose()
-    }
-
-    [System.IO.File]::Move($normalizedPath, $PackagePath, $true)
-}
-
-$stableRevision = '0000000000000000000000000000000000000000'
 dotnet pack $abstractionsProject --configuration Release --output $feedDirectory --no-restore -m:1 `
-    -p:PackageVersion=1.0.0 `
-    -p:RepositoryCommit=$stableRevision `
-    -p:SourceRevisionId=$stableRevision
+    -p:PackageVersion=1.0.0
 if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.Hosting.Abstractions failed.' }
-ConvertTo-DeterministicPackage (Join-Path $feedDirectory 'WebUIToolkit.Hosting.Abstractions.1.0.0.nupkg')
 
 dotnet pack $hostingProject --configuration Release --output $feedDirectory --no-restore -m:1 `
-    -p:PackageVersion=1.0.0 `
-    -p:RepositoryCommit=$stableRevision `
-    -p:SourceRevisionId=$stableRevision
+    -p:PackageVersion=1.0.0
 if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.Hosting failed.' }
-ConvertTo-DeterministicPackage (Join-Path $feedDirectory 'WebUIToolkit.Hosting.1.0.0.nupkg')
 
 dotnet pack $genericHostProject --configuration Release --output $feedDirectory --no-restore -m:1 `
-    -p:PackageVersion=1.0.0 `
-    -p:RepositoryCommit=$stableRevision `
-    -p:SourceRevisionId=$stableRevision
+    -p:PackageVersion=1.0.0
 if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.Hosting.GenericHost failed.' }
-ConvertTo-DeterministicPackage (Join-Path $feedDirectory 'WebUIToolkit.Hosting.GenericHost.1.0.0.nupkg')
 
 dotnet pack $buildProject --configuration Release --output $feedDirectory --no-restore -m:1 `
-    -p:PackageVersion=1.0.0 `
-    -p:RepositoryCommit=$stableRevision `
-    -p:SourceRevisionId=$stableRevision
+    -p:PackageVersion=1.0.0
 if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.Hosting.Build failed.' }
-ConvertTo-DeterministicPackage (Join-Path $feedDirectory 'WebUIToolkit.Hosting.Build.1.0.0.nupkg')
 
 dotnet pack $mvvmProject --configuration Release --output $feedDirectory --no-restore -m:1 `
-    -p:PackageVersion=1.0.0 `
-    -p:RepositoryCommit=$stableRevision `
-    -p:SourceRevisionId=$stableRevision
+    -p:PackageVersion=1.0.0
 if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.MVVM failed.' }
-ConvertTo-DeterministicPackage (Join-Path $feedDirectory 'WebUIToolkit.MVVM.1.0.0.nupkg')
 
 dotnet pack $webUiProject --configuration Release --output $feedDirectory --no-restore -m:1 `
-    -p:PackageVersion=1.0.0 `
-    -p:RepositoryCommit=$stableRevision `
-    -p:SourceRevisionId=$stableRevision
+    -p:PackageVersion=1.0.0
 if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.Hosting.WebUi failed.' }
-ConvertTo-DeterministicPackage (Join-Path $feedDirectory 'WebUIToolkit.Hosting.WebUi.1.0.0.nupkg')
 
 dotnet pack $generatorsProject --configuration Release --output $feedDirectory --no-restore -m:1 `
-    -p:PackageVersion=1.0.0 `
-    -p:RepositoryCommit=$stableRevision `
-    -p:SourceRevisionId=$stableRevision
+    -p:PackageVersion=1.0.0
 if ($LASTEXITCODE -ne 0) { throw 'Packing WebUIToolkit.Hosting.Generators failed.' }
-ConvertTo-DeterministicPackage (Join-Path $feedDirectory 'WebUIToolkit.Hosting.Generators.1.0.0.nupkg')
 
 function Assert-PackageEntry {
     param(
@@ -192,6 +93,8 @@ $buildPackage = Join-Path $feedDirectory 'WebUIToolkit.Hosting.Build.1.0.0.nupkg
 $webUiPackage = Join-Path $feedDirectory 'WebUIToolkit.Hosting.WebUi.1.0.0.nupkg'
 $generatorsPackage = Join-Path $feedDirectory 'WebUIToolkit.Hosting.Generators.1.0.0.nupkg'
 $mvvmPackage = Join-Path $feedDirectory 'WebUIToolkit.MVVM.1.0.0.nupkg'
+$desktopPackage = Join-Path $feedDirectory 'WebUIToolkit.Desktop.1.0.0.nupkg'
+Assert-PackageEntry $desktopPackage 'lib/net10.0/WebUIToolkit.Desktop.dll'
 Assert-PackageEntry $abstractionsPackage 'lib/net10.0/WebUIToolkit.Hosting.Abstractions.dll'
 Assert-PackageEntry $hostingPackage 'lib/net10.0/WebUIToolkit.Hosting.dll'
 Assert-PackageEntry $genericHostPackage 'lib/net10.0/WebUIToolkit.Hosting.GenericHost.dll'
@@ -315,13 +218,8 @@ if ($generatorDependencies | Where-Object { $_.id -like 'WebUIToolkit.Hosting*' 
     throw 'WebUIToolkit.Hosting.Generators must not acquire a Hosting runtime dependency.'
 }
 
-if ($RefreshPortableLock) {
-    dotnet restore $consumerProject --force-evaluate -p:RestoreLockedMode=false
-    if ($LASTEXITCODE -ne 0) { throw 'Refreshing the portable package lock failed.' }
-}
-
-dotnet restore $consumerProject --locked-mode
-if ($LASTEXITCODE -ne 0) { throw 'Portable locked restore failed.' }
+dotnet restore $consumerProject --no-cache
+if ($LASTEXITCODE -ne 0) { throw 'Package consumer restore failed.' }
 
 dotnet build $consumerProject --configuration Release --no-restore
 if ($LASTEXITCODE -ne 0) { throw 'Portable release build failed.' }
@@ -329,38 +227,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Portable release build failed.' }
 dotnet run --project $consumerProject --configuration Release --no-build --no-restore
 if ($LASTEXITCODE -ne 0) { throw 'Managed package-consumer scenarios failed.' }
 
-$portableLock = Get-Content (Join-Path $projectDirectory 'packages.lock.json') -Raw | ConvertFrom-Json
-if (@($portableLock.dependencies.PSObject.Properties.Name | Where-Object { $_ -match '/' }).Count -ne 0) {
-    throw 'The committed package lock contains a RID-specific dependency section.'
-}
-
-function Assert-PackageLockHash {
-    param(
-        [Parameter(Mandatory)] [string] $PackagePath,
-        [Parameter(Mandatory)] [string] $ExpectedHash
-    )
-
-    $actualHash = [Convert]::ToBase64String(
-        [System.Security.Cryptography.SHA512]::HashData(
-            [System.IO.File]::ReadAllBytes($PackagePath)))
-    if ($actualHash -ne $ExpectedHash) {
-        throw "Package '$PackagePath' does not match its portable lock contentHash."
-    }
-}
-
-$lockedDependencies = $portableLock.dependencies.'net10.0'
-Assert-PackageLockHash $hostingPackage $lockedDependencies.'WebUIToolkit.Hosting'.contentHash
-Assert-PackageLockHash $genericHostPackage $lockedDependencies.'WebUIToolkit.Hosting.GenericHost'.contentHash
-Assert-PackageLockHash $abstractionsPackage $lockedDependencies.'WebUIToolkit.Hosting.Abstractions'.contentHash
-Assert-PackageLockHash $buildPackage $lockedDependencies.'WebUIToolkit.Hosting.Build'.contentHash
-Assert-PackageLockHash $webUiPackage $lockedDependencies.'WebUIToolkit.Hosting.WebUi'.contentHash
-Assert-PackageLockHash $generatorsPackage $lockedDependencies.'WebUIToolkit.Hosting.Generators'.contentHash
-Assert-PackageLockHash $mvvmPackage $lockedDependencies.'WebUIToolkit.MVVM'.contentHash
-
 if ($SkipNativeAot) {
-    dotnet restore $consumerProject --locked-mode
-    if ($LASTEXITCODE -ne 0) { throw 'Final portable locked restore failed.' }
-
     Write-Host 'Hosting managed package-consumer verification passed; Native AOT was explicitly skipped.'
     return
 }
@@ -370,8 +237,6 @@ dotnet publish $consumerProject --configuration Release --runtime $RuntimeIdenti
     -p:PublishTrimmed=true `
     -p:TrimMode=full `
     -p:IlcTreatWarningsAsErrors=true `
-    -p:NuGetLockFilePath=obj/aot.packages.lock.json `
-    -p:RestoreLockedMode=false `
     -p:RestoreForceEvaluate=true
 if ($LASTEXITCODE -ne 0) { throw 'Native-AOT package-consumer publish failed.' }
 
@@ -388,9 +253,6 @@ if (-not (Test-Path -LiteralPath $nativeExecutable -PathType Leaf)) {
 
 & $nativeExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Native package-consumer scenarios failed.' }
-
-dotnet restore $consumerProject --locked-mode
-if ($LASTEXITCODE -ne 0) { throw 'Final portable locked restore failed.' }
 
 Write-Host 'Hosting package-consumer verification passed.'
 }

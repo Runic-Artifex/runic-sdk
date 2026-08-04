@@ -345,12 +345,7 @@ static void PackProjectAndDependencies(
         }
     }
 
-    string lockDirectory = Path.Combine(packageDirectory, "locks");
     string restorePackages = Path.Combine(packageDirectory, "restore-packages");
-    Directory.CreateDirectory(lockDirectory);
-    string lockPath = Path.Combine(
-        lockDirectory,
-        Path.GetFileNameWithoutExtension(project) + ".packages.lock.json");
     Run(
         repositoryRoot,
         "dotnet",
@@ -361,9 +356,7 @@ static void PackProjectAndDependencies(
         "--output",
         packageDirectory,
         $"-property:WebUIToolkitLocalPackageSource={packageDirectory}",
-        $"-property:NuGetLockFilePath={lockPath}",
-        $"-property:RestorePackagesPath={restorePackages}",
-        "-property:RestoreLockedMode=false");
+        $"-property:RestorePackagesPath={restorePackages}");
 }
 
 static void ValidateOutput(string output, string projectName, string shortName)
