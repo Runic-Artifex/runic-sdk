@@ -4,13 +4,16 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
+export NUGET_PACKAGES="$test_root/packages"
 
 dotnet pack "$repository_root/src/WebUIToolkit.Assets/WebUIToolkit.Assets.csproj" \
   --configuration Release \
   --output "$test_root/feed" \
   -p:PackageVersion=1.0.0
 dotnet restore "$repository_root/tests/WebUIToolkit.Assets.PackageConsumer/WebUIToolkit.Assets.PackageConsumer.csproj" \
-  --source "$test_root/feed"
+  --source "$test_root/feed" \
+  --source "https://api.nuget.org/v3/index.json" \
+  --no-cache
 dotnet publish "$repository_root/tests/WebUIToolkit.Assets.PackageConsumer/WebUIToolkit.Assets.PackageConsumer.csproj" \
   --configuration Release \
   --no-restore \
