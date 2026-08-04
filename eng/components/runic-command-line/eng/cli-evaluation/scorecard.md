@@ -26,7 +26,7 @@ Evaluation date: 2026-07-22. Scores use the weights and mandatory rules in `comm
 | Spectre.Console.Cli 0.55.0 | net10.0 asset; Spectre.Console, then Spectre.Console.Ansi. | MIT; stable published 2026-04-03; active repository. |
 | Cocona 2.2.0 | net6.0 fallback; Cocona.Core plus Microsoft.Extensions.DependencyInjection, Hosting, and Logging 6.0. | MIT; stable published 2023-03-27; repository archived 2025-12-14 with no reactivation plan. |
 | CommandLineParser 2.9.1 | netstandard2.0 asset; no package dependencies. | MIT license file; stable published 2022-05-17; no later stable release and trimming work remains unmerged. |
-| In-house | BCL only. | First-party source remains under repository publication hold ADR 0004; no independent maintainer or compatibility history. |
+| In-house | BCL only. | MIT under the repository license; no independent maintainer or compatibility history. |
 
 Primary sources:
 

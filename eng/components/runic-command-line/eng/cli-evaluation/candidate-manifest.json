@@ -43,7 +43,7 @@
       "id": "InHouse",
       "package": null,
       "version": "wave-a-spike",
-      "license": "repository publication hold (ADR 0004)",
+      "license": "MIT",
       "sourceUrl": "fixtures/InHouse"
     }
   ]
