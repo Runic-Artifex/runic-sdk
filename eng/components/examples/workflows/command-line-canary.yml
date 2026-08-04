@@ -1,0 +1,66 @@
+name: Command Line canary
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: command-line-canary-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+
+jobs:
+  verify:
+    name: Consume published packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore package-only canary
+        run: dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --locked-mode
+
+      - name: Build package-only canary
+        run: dotnet build integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --no-restore --configuration Release
+
+      - name: Run package-only canary
+        run: dotnet run --project integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --no-build --configuration Release
+
+      - name: Publish NativeAOT canary
+        run: >-
+          dotnet publish integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj
+          --configuration Release
+          --runtime linux-x64
+          --self-contained true
+          --output "$RUNNER_TEMP/native"
+          -p:PublishAot=true
+          -p:PublishTrimmed=true
+          -p:TrimMode=full
+          -p:IlcTreatWarningsAsErrors=true
+          -p:NuGetLockFilePath="$RUNNER_TEMP/aot.packages.lock.json"
+          -p:RestoreLockedMode=false
+
+      - name: Run NativeAOT canary
+        run: "$RUNNER_TEMP/native/RunicCommandLine.Canary"
+
+      - name: Ensure portable inputs are unchanged
+        run: git diff --exit-code

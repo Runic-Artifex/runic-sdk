@@ -12,6 +12,10 @@
     <PackageVersion Include="RunicTextResources" Version="0.1.0-preview.2.1" />
     <PackageVersion Include="RunicTextResources.Build" Version="0.1.0-preview.2.1" />
     <PackageVersion Include="RunicTextResources.Generator" Version="0.1.0-preview.2.1" />
+    <PackageVersion Include="RunicCommandLine" Version="0.1.0-preview.3.1" />
+    <PackageVersion Include="RunicCommandLine.Abstractions" Version="0.1.0-preview.3.1" />
+    <PackageVersion Include="RunicCommandLine.Hosting" Version="0.1.0-preview.3.1" />
+    <PackageVersion Include="RunicCommandLine.Processes" Version="0.1.0-preview.3.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />
