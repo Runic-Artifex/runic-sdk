@@ -1,10 +1,10 @@
 {
-  "schemaVersion": "webuitoolkit.cli.evaluation/1",
+  "schemaVersion": "runic.commandline.evaluation/1",
   "evaluatedAtUtc": "2026-07-22T00:00:00Z",
   "sdkVersion": "10.0.302",
   "targetFramework": "net10.0",
-  "protocolIdentity": "webuitoolkit.cli/1",
-  "outputEnvironmentVariable": "WEBUITOOLKIT_CLI_OUTPUT",
+  "protocolIdentity": "runic.commandline/1",
+  "outputEnvironmentVariable": "RUNIC_COMMANDLINE_OUTPUT",
   "candidates": [
     {
       "id": "SystemCommandLine",

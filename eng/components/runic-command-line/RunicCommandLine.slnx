@@ -1,15 +1,15 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/WebUIToolkit.CommandLine.Abstractions/WebUIToolkit.CommandLine.Abstractions.csproj" />
-    <Project Path="src/WebUIToolkit.CommandLine/WebUIToolkit.CommandLine.csproj" />
-    <Project Path="src/WebUIToolkit.CommandLine.Hosting/WebUIToolkit.CommandLine.Hosting.csproj" />
-    <Project Path="src/WebUIToolkit.CommandLine.Processes/WebUIToolkit.CommandLine.Processes.csproj" />
+    <Project Path="src/RunicCommandLine.Abstractions/RunicCommandLine.Abstractions.csproj" />
+    <Project Path="src/RunicCommandLine/RunicCommandLine.csproj" />
+    <Project Path="src/RunicCommandLine.Hosting/RunicCommandLine.Hosting.csproj" />
+    <Project Path="src/RunicCommandLine.Processes/RunicCommandLine.Processes.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/WebUIToolkit.CommandLine.AotSmoke/WebUIToolkit.CommandLine.AotSmoke.csproj" />
-    <Project Path="tests/WebUIToolkit.CommandLine.Contracts.Tests/WebUIToolkit.CommandLine.Contracts.Tests.csproj" />
-    <Project Path="tests/WebUIToolkit.CommandLine.Hosting.Tests/WebUIToolkit.CommandLine.Hosting.Tests.csproj" />
-    <Project Path="tests/WebUIToolkit.CommandLine.Processes.Tests/WebUIToolkit.CommandLine.Processes.Tests.csproj" />
-    <Project Path="tests/WebUIToolkit.CommandLine.Tests/WebUIToolkit.CommandLine.Tests.csproj" />
+    <Project Path="tests/RunicCommandLine.AotSmoke/RunicCommandLine.AotSmoke.csproj" />
+    <Project Path="tests/RunicCommandLine.Contracts.Tests/RunicCommandLine.Contracts.Tests.csproj" />
+    <Project Path="tests/RunicCommandLine.Hosting.Tests/RunicCommandLine.Hosting.Tests.csproj" />
+    <Project Path="tests/RunicCommandLine.Processes.Tests/RunicCommandLine.Processes.Tests.csproj" />
+    <Project Path="tests/RunicCommandLine.Tests/RunicCommandLine.Tests.csproj" />
   </Folder>
 </Solution>

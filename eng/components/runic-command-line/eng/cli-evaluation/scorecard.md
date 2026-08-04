@@ -42,6 +42,6 @@ Adopt no package in Wave A. `System.CommandLine` is the leading candidate for a 
 1. the orchestrator approving and centrally pinning its package version;
 2. an adapter passing all 33 portable cases, including invariant conversion and duplicate/flag semantics;
 3. packed-consumer AOT evidence under repository policy; and
-4. parser-native messages and help remaining outside stable `WebUIToolkit.CommandLine.*` and `webuitoolkit.cli/1` contracts.
+4. parser-native messages and help remaining outside stable `RunicCommandLine.*` and `runic.commandline/1` contracts.
 
 The minimal in-house spike remains a control only. Selecting it would require explicit approval and two independent consumer scenarios, neither of which exists in Wave A.

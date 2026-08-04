@@ -1,0 +1,63 @@
+#nullable enable
+namespace RunicCommandLine.Hosting
+{
+    public enum EmptyInputFallback
+    {
+        Invalid = 0,
+        UserInterface = 1,
+    }
+    public enum HostedCommandLineDecisionKind
+    {
+        Invocation = 0,
+        Help = 1,
+        Version = 2,
+        Invalid = 3,
+        UserInterface = 4,
+    }
+    public sealed class HostedCommandLineLaunchInput
+    {
+        public HostedCommandLineLaunchInput(System.Collections.Generic.IReadOnlyList<string> arguments, string? outputEnvironmentValue = null, RunicCommandLine.Hosting.EmptyInputFallback emptyInputFallback = RunicCommandLine.Hosting.EmptyInputFallback.Invalid, RunicCommandLine.CommandOutputMode defaultOutputMode = RunicCommandLine.CommandOutputMode.Human);
+        public System.Collections.Generic.IReadOnlyList<string> Arguments { get; }
+        public RunicCommandLine.CommandOutputMode DefaultOutputMode { get; }
+        public RunicCommandLine.Hosting.EmptyInputFallback EmptyInputFallback { get; }
+        public string? OutputEnvironmentValue { get; }
+    }
+    public sealed class HostedCommandLineDecision
+    {
+        public HostedCommandLineDecision(RunicCommandLine.Hosting.HostedCommandLineDecisionKind kind, RunicCommandLine.Hosting.HostedCommandLineLaunchInput input, RunicCommandLine.CommandPath? path = null, System.Collections.Generic.IReadOnlyList<RunicCommandLine.CommandDiagnostic>? diagnostics = null, RunicCommandLine.CommandOutputClassification? outputClassification = null);
+        public System.Collections.Generic.IReadOnlyList<string> Arguments { get; }
+        public bool CanExecute { get; }
+        public string? CommandName { get; }
+        public System.Collections.Generic.IReadOnlyList<RunicCommandLine.CommandDiagnostic> Diagnostics { get; }
+        public RunicCommandLine.Hosting.HostedCommandLineDecisionKind Kind { get; }
+        public RunicCommandLine.CommandOutputClassification? OutputClassification { get; }
+        public RunicCommandLine.CommandPath? Path { get; }
+    }
+    public sealed class HostedCommandLineExecutionInput
+    {
+        public HostedCommandLineExecutionInput(RunicCommandLine.Hosting.HostedCommandLineDecision decision, RunicCommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, string correlationId, RunicCommandLine.ICommandOutcomeSink outcomeSink);
+        public System.Globalization.CultureInfo Culture { get; }
+        public RunicCommandLine.Hosting.HostedCommandLineDecision Decision { get; }
+        public RunicCommandLine.ICommandConsole Console { get; }
+        public string CorrelationId { get; }
+        public RunicCommandLine.ICommandOutcomeSink OutcomeSink { get; }
+    }
+    public sealed class HostedCommandLineExecutionResult
+    {
+        public RunicCommandLine.CommandExitCategory ExitCategory { get; }
+        public int ExitCode { get; }
+        public RunicCommandLine.CommandFault? Fault { get; }
+        public bool IsSuccess { get; }
+    }
+    public interface IHostedCommandLineAdapter
+    {
+        RunicCommandLine.Hosting.HostedCommandLineDecision Classify(RunicCommandLine.Hosting.HostedCommandLineLaunchInput input);
+        System.Threading.Tasks.ValueTask<RunicCommandLine.Hosting.HostedCommandLineExecutionResult> ExecuteAsync(RunicCommandLine.Hosting.HostedCommandLineExecutionInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public sealed class CommandLineHostingAdapter : RunicCommandLine.Hosting.IHostedCommandLineAdapter
+    {
+        public CommandLineHostingAdapter(RunicCommandLine.CommandCatalog catalog, RunicCommandLine.CommandExecutor executor, RunicCommandLine.ICommandSyntaxAdapter? syntaxAdapter = null);
+        public RunicCommandLine.Hosting.HostedCommandLineDecision Classify(RunicCommandLine.Hosting.HostedCommandLineLaunchInput input);
+        public System.Threading.Tasks.ValueTask<RunicCommandLine.Hosting.HostedCommandLineExecutionResult> ExecuteAsync(RunicCommandLine.Hosting.HostedCommandLineExecutionInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+}

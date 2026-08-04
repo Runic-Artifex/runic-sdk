@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicCommandLineDefaultTargetFramework)</TargetFramework>
+    <RunicCommandLineShippingProject>true</RunicCommandLineShippingProject>
+    <AssemblyName>RunicCommandLine.Abstractions</AssemblyName>
+    <RootNamespace>RunicCommandLine</RootNamespace>
+    <PackageId>RunicCommandLine.Abstractions</PackageId>
+    <Description>Parser-neutral command-line contracts for .NET applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="PublicAPI.Shipped.txt" Pack="true" PackagePath="" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>

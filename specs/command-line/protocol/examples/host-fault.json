@@ -1,1 +1,1 @@
-{"protocol":"webuitoolkit.cli/1","requestId":"req-generated-0004","command":"status","success":false,"exitCode":70,"payloadType":null,"payload":null,"fault":{"code":"WUTCLI5000","message":"The command host could not complete the request.","details":{},"retryable":false},"diagnostics":[]}
+{"protocol":"runic.commandline/1","requestId":"req-generated-0004","command":"status","success":false,"exitCode":70,"payloadType":null,"payload":null,"fault":{"code":"RCLI5000","message":"The command host could not complete the request.","details":{},"retryable":false},"diagnostics":[]}

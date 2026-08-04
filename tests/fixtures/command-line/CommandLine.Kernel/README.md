@@ -21,12 +21,12 @@ Run from the repository root:
 dotnet restore tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj --locked-mode
 dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo
 dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo --output=json
-$env:WEBUITOOLKIT_CLI_OUTPUT = 'json'
+$env:RUNIC_COMMANDLINE_OUTPUT = 'json'
 dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe
 ```
 
-The machine protocol remains `webuitoolkit.cli/1`. Output selection remains
-`--output` first, then `WEBUITOOLKIT_CLI_OUTPUT`, then the human default.
+The machine protocol remains `runic.commandline/1`. Output selection remains
+`--output` first, then `RUNIC_COMMANDLINE_OUTPUT`, then the human default.
 
 No external parser package is adopted: the fixture uses the deterministic
 library-owned parser control while an external package pin remains unapproved.

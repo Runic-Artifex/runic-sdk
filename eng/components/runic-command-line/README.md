@@ -6,9 +6,22 @@ host-neutral launch classification, and bounded child-process support without a 
 framework dependency.
 
 This repository was extracted from Runic Toolkit with its product history intact.
-The current `WebUIToolkit.CommandLine.*` identities are retained temporarily so the
-standalone build can be proven before the clean-break `RunicCommandLine.*` rename.
-No package is published under the retired identity.
+Its clean-break product identity is `RunicCommandLine.*`; the retired Toolkit
+package and namespace names are not compatibility aliases. Its portable machine
+protocol is `runic.commandline/1`, diagnostics use `RCLI####`, and output-mode
+selection can be supplied through `RUNIC_COMMANDLINE_OUTPUT`.
+
+## Packages
+
+| Package | Purpose |
+| --- | --- |
+| `RunicCommandLine.Abstractions` | Parser-neutral outcomes, diagnostics, console, and protocol contracts |
+| `RunicCommandLine` | Command catalogs, portable parsing, execution, and deterministic output |
+| `RunicCommandLine.Hosting` | Framework-neutral launch classification and execution handoff |
+| `RunicCommandLine.Processes` | Bounded, cancellable child-process execution |
+
+The packages are not published yet. The repository verifies their dependency
+metadata and consumes them from an isolated local feed before any registry release.
 
 ## Development
 

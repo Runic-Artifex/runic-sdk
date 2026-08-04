@@ -1,0 +1,86 @@
+#nullable enable
+namespace RunicCommandLine
+{
+    public enum CommandDiagnosticPhase
+    {
+        Binding = 1,
+        Execution = 2,
+        Parse = 0,
+    }
+    public enum CommandDiagnosticSeverity
+    {
+        Error = 0,
+        Information = 2,
+        Warning = 1,
+    }
+    public interface ICommandConsole
+    {
+        bool IsErrorRedirected { get; }
+        bool IsInputRedirected { get; }
+        bool IsInteractive { get; }
+        bool IsOutputRedirected { get; }
+        System.Threading.Tasks.ValueTask WriteErrorAsync(System.ReadOnlyMemory<char> value, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask WriteOutAsync(System.ReadOnlyMemory<char> value, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask WriteOutBytesAsync(System.ReadOnlyMemory<byte> value, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask<string?> ReadLineAsync(System.Threading.CancellationToken cancellationToken);
+    }
+    public interface ICommandExecutionScope : System.IAsyncDisposable
+    {
+        System.IServiceProvider Services { get; }
+    }
+    public interface ICommandExecutionScopeFactory
+    {
+        RunicCommandLine.ICommandExecutionScope CreateScope();
+    }
+    public interface ICommandHandler<in TOptions, TResult>
+    {
+        System.Threading.Tasks.ValueTask<RunicCommandLine.CommandOutcome<TResult>> ExecuteAsync(TOptions options, RunicCommandLine.CommandExecutionContext context, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface ICommandHandlerFactory<out THandler> where THandler : notnull
+    {
+        THandler Create(System.IServiceProvider services);
+    }
+    public interface ICommandResultCodec<T>
+    {
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> TypeInfo { get; }
+        string PayloadType { get; }
+        System.Threading.Tasks.ValueTask WriteHumanAsync(T value, RunicCommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, System.Threading.CancellationToken cancellationToken);
+    }
+    public sealed class CommandExecutionContext
+    {
+        public CommandExecutionContext(System.IServiceProvider services, RunicCommandLine.ICommandConsole console, RunicCommandLine.CommandPath path, RunicCommandLine.CommandOutputMode outputMode, System.Globalization.CultureInfo culture, string correlationId);
+        public System.Globalization.CultureInfo Culture { get; }
+        public System.IServiceProvider Services { get; }
+        public RunicCommandLine.CommandOutputMode OutputMode { get; }
+        public RunicCommandLine.CommandPath Path { get; }
+        public RunicCommandLine.ICommandConsole Console { get; }
+        public string CorrelationId { get; }
+    }
+    public sealed class CommandPath : System.IEquatable<RunicCommandLine.CommandPath>
+    {
+        public CommandPath(System.Collections.Generic.IEnumerable<string> segments);
+        public System.Collections.Generic.IReadOnlyList<string> Segments { get; }
+        public static RunicCommandLine.CommandPath Root { get; }
+        public int Count { get; }
+        public override bool Equals(object? obj);
+        public override int GetHashCode();
+        public override string ToString();
+        public bool Equals(RunicCommandLine.CommandPath? other);
+        public static bool operator !=(RunicCommandLine.CommandPath? left, RunicCommandLine.CommandPath? right);
+        public static bool operator ==(RunicCommandLine.CommandPath? left, RunicCommandLine.CommandPath? right);
+        public string this[int index] { get; }
+    }
+    public sealed record CommandDiagnostic
+    {
+        public CommandDiagnostic(string code, string kind, string message, RunicCommandLine.CommandDiagnosticPhase phase, RunicCommandLine.CommandDiagnosticSeverity severity, int? tokenIndex = null, System.Collections.Generic.IEnumerable<string>? arguments = null, RunicCommandLine.CommandPath? path = null, string? messageKey = null);
+        public System.Collections.Generic.IReadOnlyList<string> Arguments { get; }
+        public RunicCommandLine.CommandDiagnosticPhase Phase { get; }
+        public RunicCommandLine.CommandDiagnosticSeverity Severity { get; }
+        public RunicCommandLine.CommandPath Path { get; }
+        public int? TokenIndex { get; }
+        public string Code { get; }
+        public string Kind { get; }
+        public string Message { get; }
+        public string MessageKey { get; }
+    }
+}

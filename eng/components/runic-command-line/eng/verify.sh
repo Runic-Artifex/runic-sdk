@@ -7,23 +7,25 @@ cd "$repository_root"
 solution="RunicCommandLine.slnx"
 configuration="Release"
 
+./eng/verify-identities.sh
+
 dotnet restore "$solution" --locked-mode
 dotnet build "$solution" --configuration "$configuration" --no-restore
 
 test_projects=(
-  "tests/WebUIToolkit.CommandLine.Contracts.Tests/WebUIToolkit.CommandLine.Contracts.Tests.csproj"
-  "tests/WebUIToolkit.CommandLine.Tests/WebUIToolkit.CommandLine.Tests.csproj"
-  "tests/WebUIToolkit.CommandLine.Hosting.Tests/WebUIToolkit.CommandLine.Hosting.Tests.csproj"
-  "tests/WebUIToolkit.CommandLine.Processes.Tests/WebUIToolkit.CommandLine.Processes.Tests.csproj"
+  "tests/RunicCommandLine.Contracts.Tests/RunicCommandLine.Contracts.Tests.csproj"
+  "tests/RunicCommandLine.Tests/RunicCommandLine.Tests.csproj"
+  "tests/RunicCommandLine.Hosting.Tests/RunicCommandLine.Hosting.Tests.csproj"
+  "tests/RunicCommandLine.Processes.Tests/RunicCommandLine.Processes.Tests.csproj"
 )
 
 for project in "${test_projects[@]}"; do
   dotnet run --project "$project" --configuration "$configuration" --no-build
 done
 
-pwsh -NoProfile -File tests/WebUIToolkit.CommandLine.AotSmoke/Invoke-AotSmoke.ps1 \
+pwsh -NoProfile -File tests/RunicCommandLine.AotSmoke/Invoke-AotSmoke.ps1 \
   -Configuration "$configuration"
 
-pwsh -NoProfile -File tests/WebUIToolkit.CommandLine.PackageConsumer/Invoke-PackageConsumer.ps1 \
+pwsh -NoProfile -File tests/RunicCommandLine.PackageConsumer/Invoke-PackageConsumer.ps1 \
   -Configuration "$configuration" \
   -PackageVersion 0.1.0-preview.local

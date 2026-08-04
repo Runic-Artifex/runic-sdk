@@ -1,0 +1,81 @@
+#nullable enable
+namespace RunicCommandLine
+{
+    public enum CommandExitCategory
+    {
+        Cancelled = 3,
+        CommandFailure = 5,
+        HostFailure = 6,
+        Success = 0,
+        Unavailable = 4,
+        Usage = 1,
+        Validation = 2,
+    }
+    public enum CommandOutputMode
+    {
+        Human = 0,
+        Json = 1,
+    }
+    public enum CommandOutputModeSource
+    {
+        Default = 0,
+        Environment = 1,
+        ExplicitArgument = 2,
+    }
+    public interface IExitCodePolicy
+    {
+        int GetExitCode(RunicCommandLine.CommandExitCategory category);
+    }
+    public readonly record struct CommandOutputClassification
+    {
+        public bool IsValid { get; }
+        public string? InvalidEnvironmentValue { get; }
+        public RunicCommandLine.CommandOutputMode? Mode { get; }
+        public RunicCommandLine.CommandOutputModeSource? Source { get; }
+    }
+    public sealed class CommandOutcome<T>
+    {
+        public T? Value { get; }
+        public RunicCommandLine.CommandExitCategory ExitCategory { get; }
+        public RunicCommandLine.CommandFault? Fault { get; }
+        public bool IsSuccess { get; }
+    }
+    public sealed record CommandFault
+    {
+        public CommandFault(string code, string message, System.Collections.Generic.IReadOnlyDictionary<string, string>? details = null, bool retryable = false);
+        public System.Collections.Generic.IReadOnlyDictionary<string, string> Details { get; }
+        public bool Retryable { get; }
+        public string Code { get; }
+        public string Message { get; }
+    }
+    public sealed class DefaultExitCodePolicy : RunicCommandLine.IExitCodePolicy
+    {
+        public static RunicCommandLine.DefaultExitCodePolicy Instance { get; }
+        public int GetExitCode(RunicCommandLine.CommandExitCategory category);
+    }
+    public static class CliProtocol
+    {
+        public const string Identity = "runic.commandline/1";
+    }
+    public static class CommandExitCodes
+    {
+        public const int Cancelled = 4;
+        public const int CommandFailure = 10;
+        public const int HostFailure = 70;
+        public const int Success = 0;
+        public const int Unavailable = 5;
+        public const int Usage = 2;
+        public const int Validation = 3;
+        public static int GetDefault(RunicCommandLine.CommandExitCategory category);
+    }
+    public static class CommandOutputClassifier
+    {
+        public const string EnvironmentVariableName = "RUNIC_COMMANDLINE_OUTPUT";
+        public static RunicCommandLine.CommandOutputClassification Classify(RunicCommandLine.CommandOutputMode? explicitMode, string? environmentValue, RunicCommandLine.CommandOutputMode defaultMode = RunicCommandLine.CommandOutputMode.Human);
+    }
+    public static class CommandOutcome
+    {
+        public static RunicCommandLine.CommandOutcome<T> Failure<T>(RunicCommandLine.CommandExitCategory category, RunicCommandLine.CommandFault fault);
+        public static RunicCommandLine.CommandOutcome<T> Success<T>(T value);
+    }
+}

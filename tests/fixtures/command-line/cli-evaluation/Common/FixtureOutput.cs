@@ -18,7 +18,7 @@ internal static class FixtureOutput
     internal static int Invoke(string commandPath, object? data = null)
     {
         string path = JsonEncodedText.Encode(commandPath).ToString();
-        Console.Out.WriteLine($"{{\"disposition\":\"invoke\",\"commandPath\":\"{path}\",\"protocolIdentity\":\"webuitoolkit.cli/1\"}}");
+        Console.Out.WriteLine($"{{\"disposition\":\"invoke\",\"commandPath\":\"{path}\",\"protocolIdentity\":\"runic.commandline/1\"}}");
         return 0;
     }
 }

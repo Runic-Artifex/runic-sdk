@@ -1,9 +1,9 @@
-# `webuitoolkit.cli/1` machine response protocol
+# `runic.commandline/1` machine response protocol
 
-This directory is the language-neutral, offline contract for WebUIToolkit
+This directory is the language-neutral, offline contract for RunicCommandLine
 command-line machine output. `--output json` or the captured
-`WEBUITOOLKIT_CLI_OUTPUT=json` value selects this protocol. The namespace of
-the implementation remains `WebUIToolkit.CommandLine.*`; neither a parser
+`RUNIC_COMMANDLINE_OUTPUT=json` value selects this protocol. The namespace of
+the implementation remains `RunicCommandLine.*`; neither a parser
 package nor a hosting framework is part of the wire contract.
 
 The words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
@@ -21,7 +21,7 @@ MUST NOT need stderr to interpret the response.
 The complete framed response MUST be at most 1,048,576 bytes, including the
 terminal LF, and JSON nesting MUST be at most 32 levels. A reader rejects an
 oversized response while continuing to drain the process pipe. NDJSON and
-streaming are not `webuitoolkit.cli/1`.
+streaming are not `runic.commandline/1`.
 
 ## Envelope
 
@@ -31,7 +31,7 @@ output; consumers MUST NOT depend on property order.
 
 | Key | JSON type | Rule |
 |---|---|---|
-| `protocol` | string | Exactly `webuitoolkit.cli/1`. |
+| `protocol` | string | Exactly `runic.commandline/1`. |
 | `requestId` | string | Valid opaque request identifier, as defined below. |
 | `command` | string | Non-null canonical command path separated by one ASCII space. |
 | `success` | Boolean | True only for the success outcome category. |
@@ -69,7 +69,7 @@ escaped source characters.
   MUST report an unsupported or mismatched identifier as a protocol failure,
   not as a command fault.
 - Fault and diagnostic codes are 1 to 64 ASCII bytes matching
-  `[A-Z][A-Z0-9_.-]*`. Codes owned by this library use `WUTCLI####`.
+  `[A-Z][A-Z0-9_.-]*`. Codes owned by this library use `RCLI####`.
 
 The protocol deliberately defines no JSON Schema `$id` and assigns no domain
 name. Payload owners choose their own type identifier within their documented
@@ -80,7 +80,7 @@ application boundary.
 A fault contains every key below in this output order:
 
 ```json
-{"code":"WUTCLI3001","message":"The command could not complete.","details":{},"retryable":false}
+{"code":"RCLI3001","message":"The command could not complete.","details":{},"retryable":false}
 ```
 
 - `code` is a stable code satisfying the identifier rule.
@@ -96,10 +96,10 @@ A fault contains every key below in this output order:
 A diagnostic contains every key below in this output order:
 
 ```json
-{"code":"WUTCLI2001","kind":"invalid-format","commandPath":["export"],"messageKey":"diagnostics.invalid-format","message":"The value is invalid.","phase":"binding","severity":"error","tokenIndex":2,"arguments":["format"]}
+{"code":"RCLI2001","kind":"invalid-format","commandPath":["export"],"messageKey":"diagnostics.invalid-format","message":"The value is invalid.","phase":"binding","severity":"error","tokenIndex":2,"arguments":["format"]}
 ```
 
-- `code` is exactly `WUTCLI` followed by four ASCII digits other than
+- `code` is exactly `RCLI` followed by four ASCII digits other than
   `0000`.
 - `kind` is a stable symbolic identity of at most 128 UTF-8 bytes matching
   `[a-z][a-z0-9-]*`, without consecutive or trailing hyphens.
@@ -123,7 +123,7 @@ are consumer-safe surfaces. They MUST NOT contain secrets, original values of
 sensitive options, stack traces, exception type names, environment-variable
 values, absolute internal paths, line breaks, terminal controls, or Unicode
 control characters. Unexpected exceptions are logged only to an authorized
-diagnostic sink and map to the sanitized `WUTCLI5000` host fault.
+diagnostic sink and map to the sanitized `RCLI5000` host fault.
 
 ## Compatibility
 

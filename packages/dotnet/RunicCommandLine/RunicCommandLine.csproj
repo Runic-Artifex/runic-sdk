@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicCommandLineDefaultTargetFramework)</TargetFramework>
+    <RunicCommandLineShippingProject>true</RunicCommandLineShippingProject>
+    <AssemblyName>RunicCommandLine</AssemblyName>
+    <RootNamespace>RunicCommandLine</RootNamespace>
+    <PackageId>RunicCommandLine</PackageId>
+    <Description>Parser-neutral command catalog, execution, and output kernel for .NET applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../RunicCommandLine.Abstractions/RunicCommandLine.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="PublicAPI.Unshipped.txt" Pack="true" PackagePath="" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>
