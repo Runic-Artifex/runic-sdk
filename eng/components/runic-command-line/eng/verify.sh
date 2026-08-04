@@ -9,7 +9,7 @@ configuration="Release"
 
 ./eng/verify-identities.sh
 
-dotnet restore "$solution" --locked-mode
+dotnet restore "$solution"
 dotnet build "$solution" --configuration "$configuration" --no-restore
 
 test_projects=(

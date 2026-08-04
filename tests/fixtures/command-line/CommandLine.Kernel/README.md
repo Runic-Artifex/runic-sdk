@@ -18,7 +18,7 @@ project references. It demonstrates the intended separation of concerns:
 Run from the repository root:
 
 ```powershell
-dotnet restore tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj --locked-mode
+dotnet restore tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj
 dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo
 dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo --output=json
 $env:RUNIC_COMMANDLINE_OUTPUT = 'json'
