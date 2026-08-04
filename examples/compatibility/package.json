@@ -2,6 +2,7 @@
   "name": "@webuitoolkit/workspace",
   "private": true,
   "version": "0.0.0-private",
+  "license": "MIT",
   "packageManager": "npm@11.16.0",
   "engines": {
     "node": "24.18.x",
