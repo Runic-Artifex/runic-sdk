@@ -3,8 +3,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
 
-    [ValidateSet('win-x64')]
-    [string] $RuntimeIdentifier = 'win-x64'
+    [string] $RuntimeIdentifier = [System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,7 +37,12 @@ Invoke-DotNet @(
     '-p:RestoreLockedMode=false'
 )
 
-$nativeExecutable = Join-Path $publishDirectory 'WebUIToolkit.CommandLine.AotSmoke.exe'
+$nativeExecutableName = if ($RuntimeIdentifier.StartsWith('win-', [StringComparison]::OrdinalIgnoreCase)) {
+    'WebUIToolkit.CommandLine.AotSmoke.exe'
+} else {
+    'WebUIToolkit.CommandLine.AotSmoke'
+}
+$nativeExecutable = Join-Path $publishDirectory $nativeExecutableName
 if (-not (Test-Path -LiteralPath $nativeExecutable -PathType Leaf)) {
     throw "Native AOT executable was not produced at $nativeExecutable."
 }

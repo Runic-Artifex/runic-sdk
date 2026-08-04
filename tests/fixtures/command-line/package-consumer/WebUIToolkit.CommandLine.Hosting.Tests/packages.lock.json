@@ -14,17 +14,7 @@
       "webuitoolkit.commandline.hosting": {
         "type": "Project",
         "dependencies": {
-          "WebUIToolkit.CommandLine": "[1.0.0, )",
-          "WebUIToolkit.Hosting.Abstractions": "[1.0.0, )"
-        }
-      },
-      "webuitoolkit.desktop": {
-        "type": "Project"
-      },
-      "webuitoolkit.hosting.abstractions": {
-        "type": "Project",
-        "dependencies": {
-          "WebUIToolkit.Desktop": "[1.0.0-beta.1, )"
+          "WebUIToolkit.CommandLine": "[1.0.0, )"
         }
       }
     }
