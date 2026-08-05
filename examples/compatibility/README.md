@@ -1,13 +1,11 @@
 # Runic Toolkit Examples
 
 This repository preserves the filtered history of the examples extracted from
-WebUIToolkit. The examples are being migrated incrementally to released packages
-owned by the Runic Artifex organization.
-
-Most historical samples still reference Toolkit projects that have not been
-published independently. They remain useful migration material, but are not yet a
-standalone build. Package-only integration canaries under [`integrations/`](integrations/)
-are the executable proof points during that transition.
+WebUIToolkit and now consumes the independently released Runic Artifex packages.
+Every sample is standalone from the product source repositories: .NET projects
+restore exact NuGet versions, browser projects restore exact npm versions, and
+the package-only canaries under [`integrations/`](integrations/) guard each
+product boundary.
 
 ## Package authentication
 
@@ -23,9 +21,24 @@ dotnet restore integrations/RunicAssets.Canary/RunicAssets.Canary.csproj
 dotnet restore integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj
 ```
 
+The frontend packages use GitHub's npm registry through the committed `.npmrc`:
+
+```bash
+export NODE_AUTH_TOKEN="YOUR_TOKEN"
+npm ci
+```
+
+After both package managers are authenticated, the full package-only check is:
+
+```bash
+dotnet restore samples/Todo.React/Todo.React.csproj
+npm run verify
+dotnet build samples/Todo.React/Todo.React.csproj --configuration Release
+```
+
 GitHub Actions uses its repository `GITHUB_TOKEN` with `packages: read`. Each
-private package must grant this repository Actions access before the canary job can
-restore it.
+private NuGet or npm package must grant this repository Actions access before its
+workflow can restore it.
 
 ## License
 

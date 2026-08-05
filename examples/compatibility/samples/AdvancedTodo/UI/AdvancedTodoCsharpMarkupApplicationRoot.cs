@@ -1,20 +1,20 @@
 global using AdvancedTodoCsharpMarkupApplication =
-    WebUIToolkit.MVVM.Html.Htmx.CsWebUi.CwhtmlHtmxApplication<
-        WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel,
-        WebUIToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<
-            WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel>,
-        WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoAppGenerated.RenderView,
-        WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel>;
+    RunicMarkup.RunicToolkit.Htmx.CsWebUi.CwhtmlHtmxApplication<
+        RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel,
+        RunicToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<
+            RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel>,
+        RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoAppGenerated.RenderView,
+        RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel>;
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
+using RunicToolkit.Samples.AdvancedTodo.Application;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+namespace RunicToolkit.Samples.AdvancedTodo.UI;
 
 /// <summary>Composes AdvancedTodo entirely from the generated C# markup application surface.</summary>
 internal static class AdvancedTodoCsharpMarkupApplicationRoot

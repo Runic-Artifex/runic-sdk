@@ -1,20 +1,20 @@
 global using TodoCsharpMarkupApplication =
-    WebUIToolkit.MVVM.Html.Htmx.CsWebUi.CwhtmlHtmxApplication<
-        WebUIToolkit.Samples.SimpleTodo.TodoViewModel,
-        WebUIToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<
-            WebUIToolkit.Samples.SimpleTodo.TodoViewModel>,
-        WebUIToolkit.Samples.SimpleTodo.TodoAppGenerated.RenderView,
-        WebUIToolkit.Samples.SimpleTodo.TodoRenderModel>;
+    RunicMarkup.RunicToolkit.Htmx.CsWebUi.CwhtmlHtmxApplication<
+        RunicToolkit.Samples.SimpleTodo.TodoViewModel,
+        RunicToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<
+            RunicToolkit.Samples.SimpleTodo.TodoViewModel>,
+        RunicToolkit.Samples.SimpleTodo.TodoAppGenerated.RenderView,
+        RunicToolkit.Samples.SimpleTodo.TodoRenderModel>;
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
+using RunicToolkit.MVVM;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 /// <summary>Experimental C#-markup application composition over the production HTMX runtime.</summary>
 internal static class TodoCsharpMarkupApplicationRoot

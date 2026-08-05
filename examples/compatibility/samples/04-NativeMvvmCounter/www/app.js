@@ -3,7 +3,7 @@ import {
   ProtocolTransport,
   createMvvmProjection,
 } from "./vendor/mvvm/index.js";
-import { CsWebUiFrameChannel } from "./vendor/webuitoolkit-mvvm-cswebui.mjs";
+import { CsWebUiFrameChannel } from "./vendor/runic-toolkit-mvvm-cswebui.mjs";
 
 const status = document.querySelector("#status");
 const count = document.querySelector("#count");

@@ -17,7 +17,7 @@ if (!buildScript.includes("@vitejs/plugin-vue") ||
 }
 
 const manifest = JSON.parse(await readFile(
-  resolve(packageDirectory, "dist/webuitoolkit.assets.json"),
+  resolve(packageDirectory, "dist/runic-toolkit.assets.json"),
   "utf8",
 ));
 if (manifest.mode !== "production") {

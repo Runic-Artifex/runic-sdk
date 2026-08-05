@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>WebUIToolkit.Samples.Todo.React</AssemblyName>
-    <RootNamespace>WebUIToolkit.Samples.Todo.React</RootNamespace>
-    <TodoFrontendWorkspace>@webuitoolkit/sample-todo-react</TodoFrontendWorkspace>
+    <AssemblyName>RunicToolkit.Samples.Todo.React</AssemblyName>
+    <RootNamespace>RunicToolkit.Samples.Todo.React</RootNamespace>
+    <TodoFrontendWorkspace>@runic-artifex/sample-todo-react</TodoFrontendWorkspace>
     <TodoFrontendDirectory>react</TodoFrontendDirectory>
   </PropertyGroup>
   <Import Project="../Todo.Frontends/TodoFrontendSample.props" />

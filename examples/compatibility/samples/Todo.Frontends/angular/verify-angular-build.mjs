@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 const packageDirectory = import.meta.dirname;
 const manifest = JSON.parse(await readFile(
-  resolve(packageDirectory, "dist/webuitoolkit.assets.json"),
+  resolve(packageDirectory, "dist/runic-toolkit.assets.json"),
   "utf8",
 ));
 if (manifest.builder !== "@angular/build:application" ||

@@ -1,10 +1,10 @@
 using System;
 using System.Linq;
-using WebUIToolkit.CsharpMarkup;
-using WebUIToolkit.MVVM.Html.Htmx;
-using static WebUIToolkit.Samples.Cwhtml.Components.CsharpMarkupComponents;
+using RunicMarkup.Csharp;
+using RunicMarkup.RunicToolkit.Htmx;
+using static RunicToolkit.Samples.Cwhtml.Components.CsharpMarkupComponents;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 public static partial class TodoCsharpMarkupViews
 {
@@ -58,7 +58,7 @@ public static partial class TodoCsharpMarkupViews
             <header>
                 <p class="eyebrow">
                     <i class="fa-solid fa-laptop-code" aria-hidden="true"></i>
-                    WebUIToolkit · beginner sample
+                    Runic Toolkit · beginner sample
                 </p>
                 <h1>Things worth doing</h1>
                 <p class="intro">A tiny C#-authored compiled-HTML desktop MVVM app transported by HTMX.</p>
@@ -141,7 +141,7 @@ public static partial class TodoCsharpMarkupViews
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
-                <title>Simple Todo · WebUIToolkit</title>
+                <title>Simple Todo · Runic Toolkit</title>
                 {!model.Assets.IsViteDevelopment
                     ? <link rel="stylesheet" href="cwhtml.css" />
                     : null}

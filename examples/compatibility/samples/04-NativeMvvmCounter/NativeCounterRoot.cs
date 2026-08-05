@@ -3,12 +3,12 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
-using WebUIToolkit.Hosting.CsWebUi.Mvvm;
-using WebUIToolkit.Hosting.WebUi;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.CommunityToolkit;
+using RunicToolkit.Hosting.CsWebUi.Mvvm;
+using RunicToolkit.Hosting.WebUi;
+using RunicToolkit.MVVM;
+using RunicToolkit.MVVM.CommunityToolkit;
 
-namespace WebUIToolkit.Samples.NativeMvvmCounter;
+namespace RunicToolkit.Samples.NativeMvvmCounter;
 
 /// <summary>
 /// Joins the WebUiModeRunner lifecycle to one retained MVVM session and native bridge.

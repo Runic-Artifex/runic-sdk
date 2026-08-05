@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
-using WebUIToolkit.Samples.AdvancedTodo.UI;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
+using RunicToolkit.Samples.AdvancedTodo.UI;
 
-namespace WebUIToolkit.Samples.AdvancedTodo;
+namespace RunicToolkit.Samples.AdvancedTodo;
 
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

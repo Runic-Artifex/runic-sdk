@@ -1,7 +1,7 @@
 using System;
-using WebUIToolkit.MVVM.Html;
+using RunicMarkup;
 
-namespace WebUIToolkit.Samples.Cwhtml.Components;
+namespace RunicToolkit.Samples.Cwhtml.Components;
 
 /// <summary>Small composition helpers used by the sample-only component library.</summary>
 public static class ComponentContent

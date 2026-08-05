@@ -1,6 +1,6 @@
 {
-  "name": "@webuitoolkit/sample-todo-angular",
-  "version": "0.1.0",
+  "name": "@runic-artifex/sample-todo-angular",
+  "version": "0.1.0-preview.4.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,8 +16,8 @@
     "@angular/core": "22.0.8",
     "@angular/platform-browser": "22.0.8",
     "@fortawesome/fontawesome-free": "7.3.1",
-    "@webuitoolkit/mvvm": "0.1.0",
-    "@webuitoolkit/mvvm-angular": "0.1.0",
+    "@runic-artifex/mvvm": "0.1.0-preview.4.1",
+    "@runic-artifex/mvvm-angular": "0.1.0-preview.4.1",
     "bootstrap": "5.3.8",
     "rxjs": "7.8.2"
   },

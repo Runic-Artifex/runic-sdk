@@ -1,5 +1,5 @@
 {
-  "name": "@webuitoolkit/workspace",
+  "name": "@runic-artifex/toolkit-examples",
   "private": true,
   "version": "0.0.0-private",
   "license": "MIT",
@@ -9,8 +9,6 @@
     "npm": "11.16.x"
   },
   "workspaces": [
-    "editors/*",
-    "web/packages/*",
     "samples/Todo.Frontends/*",
     "samples/Todo.Cwhtml.Frontend"
   ],

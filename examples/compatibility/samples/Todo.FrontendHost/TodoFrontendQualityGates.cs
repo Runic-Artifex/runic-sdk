@@ -5,13 +5,13 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
-using AdvancedTodoViewModel = WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel;
-using SimpleTodoViewModel = WebUIToolkit.Samples.SimpleTodo.TodoViewModel;
+using RunicToolkit.MVVM;
+using RunicToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
+using AdvancedTodoViewModel = RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel;
+using SimpleTodoViewModel = RunicToolkit.Samples.SimpleTodo.TodoViewModel;
 
-namespace WebUIToolkit.Samples.Todo.FrontendHost;
+namespace RunicToolkit.Samples.Todo.FrontendHost;
 
 /// <summary>
 /// Framework-neutral lifecycle gates run by every browser variant before its
@@ -131,7 +131,7 @@ internal static class TodoFrontendQualityGates
         using (JsonDocument recoveredValue = JsonDocument.Parse(
             JsonSerializer.Serialize(
                 recoveryTitle,
-                WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String)))
+                RunicToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String)))
         {
             MvvmResponse changed = await session.DispatchAsync(new MvvmMutationRequest(
                 NewRequest(),

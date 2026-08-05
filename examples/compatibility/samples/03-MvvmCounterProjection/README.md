@@ -3,7 +3,7 @@
 **Difficulty:** Intermediate
 
 This sample connects a familiar CommunityToolkit.Mvvm view model to
-WebUIToolkit's session runtime. It shows what sits beneath a browser transport:
+Runic Toolkit's session runtime. It shows what sits beneath a browser transport:
 the client requests a snapshot, sends typed mutations, and receives small
 revisioned patches to apply to its UI.
 

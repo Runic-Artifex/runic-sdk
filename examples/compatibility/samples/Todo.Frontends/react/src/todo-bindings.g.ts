@@ -4,7 +4,7 @@ import {
   useMvvmCommandFacade,
   useMvvmProperty,
   useMvvmValidation,
-} from "@webuitoolkit/mvvm-react";
+} from "@runic-artifex/mvvm-react";
 import type { SimpleTodoContract, AdvancedTodoContract } from "../../shared/todo-contract.g.js";
 
 export function useSimpleTodoBindings(contract: SimpleTodoContract) {

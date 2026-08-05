@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>WebUIToolkit.Samples.Todo.Angular</AssemblyName>
-    <RootNamespace>WebUIToolkit.Samples.Todo.Angular</RootNamespace>
-    <TodoFrontendWorkspace>@webuitoolkit/sample-todo-angular</TodoFrontendWorkspace>
+    <AssemblyName>RunicToolkit.Samples.Todo.Angular</AssemblyName>
+    <RootNamespace>RunicToolkit.Samples.Todo.Angular</RootNamespace>
+    <TodoFrontendWorkspace>@runic-artifex/sample-todo-angular</TodoFrontendWorkspace>
     <TodoFrontendDirectory>angular</TodoFrontendDirectory>
   </PropertyGroup>
   <Import Project="../Todo.Frontends/TodoFrontendSample.props" />

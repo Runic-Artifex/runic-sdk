@@ -1,13 +1,14 @@
 # Samples
 
-These projects are an ordered learning path. They reference repository source
-projects so editing the toolkit and rerunning a demo is immediate.
+These projects are an ordered learning path. They consume exact published
+Runic Toolkit, Markup, CommandLine, and Flow packages without referencing any
+product source checkout.
 
 | Level | Project | What it demonstrates |
 | --- | --- | --- |
 | 1 | `01-HelloLifecycle` | Application startup, mode selection, shutdown, and Generic Host composition |
 | 2 | `02-GreetingCommandLine` | Typed command catalog, parsing, execution, and human/JSON output |
-| 3 | `03-MvvmCounterProjection` | CommunityToolkit.MVVM projected through the revisioned WebUIToolkit protocol |
+| 3 | `03-MvvmCounterProjection` | CommunityToolkit.MVVM projected through the revisioned Runic Toolkit protocol |
 | 4 | `04-NativeMvvmCounter` | The production binary CsWebUi FrameChannel driving the framework-neutral browser client |
 | 5 | `SimpleTodo` | Compiled C#/HTMX, one native transport, validation, commands, collections, local assets, and a real-browser gate |
 | 6 | `AdvancedTodo` | The same compiled native path expanded with persistence, filtering, workflows, cancellation, and diagnostics |
@@ -33,13 +34,12 @@ Replace `React` with `Vue`, `Svelte`, or `Angular` to inspect the other
 framework adapters. The framework projects share
 [`Todo.Shared`](./Todo.Shared) with the cwhtml demos and share one native host
 and projection map in [`Todo.FrontendHost`](./Todo.FrontendHost). See the
-[framework sample guide](./Todo.Frontends/README.md) and recorded
-[frontend integration findings](../docs/guides/frontend-frameworks.md).
+[framework sample guide](./Todo.Frontends/README.md).
 
 The two desktop applications follow the same progressive-teaching idea as
 Avalonia's [Simple ToDo](https://github.com/AvaloniaUI/Avalonia.Samples/tree/main/src/Avalonia.Samples/CompleteApps/SimpleToDoList)
 and [Advanced ToDo](https://github.com/AvaloniaUI/Avalonia.Samples/tree/main/src/Avalonia.Samples/CompleteApps/AdvancedToDoList)
-examples, but are original implementations of WebUIToolkit's own architecture.
+examples, but are original implementations of Runic Toolkit's architecture.
 The original two now render compiled `.cwhtml` documents and fragments and submit through
 one bounded CsWebUi/HTMX binding. Their shared npm/Vite workspace pins HTMX,
 Bootstrap, and Font Awesome and emits the minified, hashed local asset graph
@@ -76,6 +76,6 @@ the pinned .NET SDK, native WebUI library, Chromium, and Linux WebView libraries
 SimpleTodo provides managed and real-browser smoke modes; AdvancedTodo provides
 a deterministic application self-test without opening a window.
 
-The former projects in this directory were release and acceptance harnesses.
-They now live under [`tests/Fixtures`](../tests/Fixtures) and retain their
-deterministic verification role.
+Package-only canaries under [`../integrations`](../integrations) and the
+component executable under [`../tests`](../tests) retain the deterministic
+verification role.

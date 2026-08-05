@@ -34,7 +34,7 @@ try {
         if (-not $NoBuild) {
             dotnet build $project `
                 --configuration $Configuration `
-                -p:WebUIToolkitBuildMode=Development
+                -p:RunicToolkitBuildMode=Development
             if ($LASTEXITCODE -ne 0) {
                 throw "$name failed to build."
             }

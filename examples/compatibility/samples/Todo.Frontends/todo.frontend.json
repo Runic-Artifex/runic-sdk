@@ -1,7 +1,7 @@
 {
-  "$schema": "webuitoolkit.mvvm.frontend-contract/1",
+  "$schema": "runic.toolkit.mvvm.frontend-contract/1",
   "csharp": {
-    "namespace": "WebUIToolkit.Samples.Todo.FrontendHost",
+    "namespace": "RunicToolkit.Samples.Todo.FrontendHost",
     "className": "TodoContracts"
   },
   "contracts": [
@@ -9,7 +9,7 @@
       "name": "samples.todo.simple",
       "client": "SimpleTodo",
       "csharp": {
-        "modelType": "global::WebUIToolkit.Samples.SimpleTodo.TodoViewModel"
+        "modelType": "global::RunicToolkit.Samples.SimpleTodo.TodoViewModel"
       },
       "types": {
         "SimpleTodoItem": {
@@ -29,7 +29,7 @@
           "csharp": {
             "sourceMember": "NewTitle",
             "binding": "property",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String"
           }
         },
         {
@@ -40,7 +40,7 @@
           "csharp": {
             "sourceMember": "Items",
             "binding": "collection",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.TodoItem"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.SimpleTodo.TodoJsonContext.Default.TodoItem"
           }
         },
         {
@@ -60,7 +60,7 @@
           "csharp": {
             "sourceMember": "ToggleByIdCommand",
             "binding": "command",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String"
           }
         },
         {
@@ -71,7 +71,7 @@
           "csharp": {
             "sourceMember": "RemoveByIdCommand",
             "binding": "command",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String"
           }
         }
       ]
@@ -80,7 +80,7 @@
       "name": "samples.todo.advanced",
       "client": "AdvancedTodo",
       "csharp": {
-        "modelType": "global::WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel"
+        "modelType": "global::RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel"
       },
       "types": {
         "AdvancedTodoItem": {
@@ -117,7 +117,7 @@
           "csharp": {
             "sourceMember": "NewTitle",
             "binding": "property",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
           }
         },
         {
@@ -129,7 +129,7 @@
           "csharp": {
             "sourceMember": "NewNotes",
             "binding": "property",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
           }
         },
         {
@@ -141,7 +141,7 @@
           "csharp": {
             "sourceMember": "NewPriority",
             "binding": "property",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
           }
         },
         {
@@ -153,7 +153,7 @@
           "csharp": {
             "sourceMember": "Query",
             "binding": "property",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
           }
         },
         {
@@ -165,7 +165,7 @@
           "csharp": {
             "sourceMember": "Filter",
             "binding": "property",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
           }
         },
         {
@@ -176,7 +176,7 @@
           "csharp": {
             "sourceMember": "VisibleItems",
             "binding": "collection",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.TodoItem"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.TodoItem"
           }
         },
         {
@@ -187,7 +187,7 @@
           "csharp": {
             "sourceMember": "Diagnostics",
             "binding": "collection",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.DiagnosticEntry"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.DiagnosticEntry"
           }
         },
         {
@@ -199,7 +199,7 @@
           "csharp": {
             "sourceMember": "State",
             "binding": "readOnlyProperty",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.AdvancedTodoState"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.AdvancedTodoState"
           }
         },
         {
@@ -228,7 +228,7 @@
           "csharp": {
             "sourceMember": "ToggleByIdCommand",
             "binding": "asyncCommand",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
           }
         },
         {
@@ -239,7 +239,7 @@
           "csharp": {
             "sourceMember": "DeleteByIdCommand",
             "binding": "asyncCommand",
-            "jsonTypeInfo": "global::WebUIToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
+            "jsonTypeInfo": "global::RunicToolkit.Samples.AdvancedTodo.AdvancedTodoJsonContext.Default.String"
           }
         },
         {

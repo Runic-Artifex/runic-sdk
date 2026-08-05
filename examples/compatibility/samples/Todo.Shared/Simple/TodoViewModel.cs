@@ -2,9 +2,9 @@ using System;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using WebUIToolkit.Collections;
+using RunicToolkit.Collections;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 /// <summary>
 /// Owns the page state. It has no knowledge of HTML, JavaScript, or CsWebUi.

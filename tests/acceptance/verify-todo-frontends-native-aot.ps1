@@ -88,7 +88,7 @@ try {
             -p:NuGetLockFilePath=$aotLock `
             -p:NuGetAudit=false `
             -p:RestoreLockedMode=false `
-            -p:WebUIToolkitBuildMode=Verification `
+            -p:RunicToolkitBuildMode=Verification `
             -p:PublishDir=$publishDirectory
         if ($LASTEXITCODE -ne 0) {
             throw "Native-AOT publish failed: $relativeProject"
@@ -97,10 +97,10 @@ try {
         $executableName = if ($RuntimeIdentifier.StartsWith(
             'win-',
             [System.StringComparison]::OrdinalIgnoreCase)) {
-            "WebUIToolkit.Samples.$name.exe"
+            "RunicToolkit.Samples.$name.exe"
         }
         else {
-            "WebUIToolkit.Samples.$name"
+            "RunicToolkit.Samples.$name"
         }
         $executable = Join-Path $publishDirectory $executableName
         if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {

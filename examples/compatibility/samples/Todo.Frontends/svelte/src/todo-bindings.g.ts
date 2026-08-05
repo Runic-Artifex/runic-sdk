@@ -5,7 +5,7 @@ import {
   derivedMvvmProperty,
   derivedMvvmValidation,
   type SvelteMvvmStore,
-} from "@webuitoolkit/mvvm-svelte";
+} from "@runic-artifex/mvvm-svelte";
 import type { SimpleTodoContract, AdvancedTodoContract } from "../../shared/todo-contract.g.js";
 
 export function createSimpleTodoStores(

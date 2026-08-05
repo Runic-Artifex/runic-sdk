@@ -2,21 +2,22 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>WebUIToolkit.Samples.NativeMvvmCounter</AssemblyName>
-    <RootNamespace>WebUIToolkit.Samples.NativeMvvmCounter</RootNamespace>
+    <AssemblyName>RunicToolkit.Samples.NativeMvvmCounter</AssemblyName>
+    <RootNamespace>RunicToolkit.Samples.NativeMvvmCounter</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CsWebUi" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi/WebUIToolkit.Hosting.CsWebUi.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/WebUIToolkit.Hosting.CsWebUi.Mvvm.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.CommunityToolkit/WebUIToolkit.MVVM.CommunityToolkit.csproj" />
+    <PackageReference Include="RunicAssets" />
+    <PackageReference Include="RunicAssets.RunicToolkit" />
+    <PackageReference Include="RunicToolkit.Hosting" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.Mvvm" />
+    <PackageReference Include="RunicToolkit.Hosting.GenericHost" />
+    <PackageReference Include="RunicToolkit.Hosting.WebUi" />
+    <PackageReference Include="RunicToolkit.MVVM.CommunityToolkit" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,10 +25,10 @@
     <Content Include="../SharedAssets/**/*"
              Link="www/vendor/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/assets/webuitoolkit-mvvm-cswebui.mjs"
-             Link="www/vendor/webuitoolkit-mvvm-cswebui.mjs"
+    <Content Include="$([System.IO.Path]::Combine('$(NuGetPackageRoot)', 'runictoolkit.hosting.cswebui.mvvm/0.1.0-preview.4.1/contentFiles/any/any/wwwroot/runic-toolkit-mvvm-cswebui.mjs'))"
+             Link="www/vendor/runic-toolkit-mvvm-cswebui.mjs"
              CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="../../web/packages/mvvm/dist/esm/**/*"
+    <Content Include="../../node_modules/@runic-artifex/mvvm/dist/esm/**/*"
              Link="www/vendor/mvvm/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

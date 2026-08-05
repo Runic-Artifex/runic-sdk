@@ -2,13 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using WebUIToolkit.MVVM.Html;
-using WebUIToolkit.MVVM.Html.Htmx;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
+using RunicMarkup;
+using RunicMarkup.RunicToolkit.Htmx;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
+using RunicToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+namespace RunicToolkit.Samples.AdvancedTodo.UI;
 
 /// <summary>Immutable presentation state consumed by the compiled advanced view.</summary>
 public sealed class AdvancedTodoRenderModel

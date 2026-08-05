@@ -1,11 +1,11 @@
-@namespace WebUIToolkit.Samples.AdvancedTodo.UI
-@view AdvancedTodoDocumentView(WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoDocumentModel model)
+@namespace RunicToolkit.Samples.AdvancedTodo.UI
+@view AdvancedTodoDocumentView(RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoDocumentModel model)
 html lang="en" {
     head {
         meta charset="utf-8";
         meta name="viewport" content="width=device-width, initial-scale=1";
         meta name="color-scheme" content="dark";
-        title { "Advanced ToDo · WebUIToolkit" }
+        title { "Advanced ToDo · Runic Toolkit" }
         @if (!model.Assets.IsViteDevelopment) {
             link rel="stylesheet" href="cwhtml.css";
         }

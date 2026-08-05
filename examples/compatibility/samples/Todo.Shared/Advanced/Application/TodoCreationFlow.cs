@@ -1,11 +1,11 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM.Flow;
-using WebUIToolkit.MVVM.Workflows;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
+using RunicFlow;
+using RunicFlow.Workflows;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.Application;
+namespace RunicToolkit.Samples.AdvancedTodo.Application;
 
 internal sealed record TodoDraft(string Title, string Notes, TodoPriority Priority);
 

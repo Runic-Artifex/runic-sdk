@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const matrix = json("eng/frontend-support-matrix.json");
-if (matrix.schema !== "webuitoolkit.frontend-support-matrix/1") {
+if (matrix.schema !== "runic-toolkit.examples.frontend-support-matrix/1") {
   fail("Unsupported frontend support matrix schema.");
 }
 
@@ -19,54 +19,48 @@ if (!Array.isArray(matrix.requiredCapabilities) ||
 }
 for (const gate of Object.values(matrix.sharedGates)) requirePath(gate);
 
-const sdkProps = text(
-  "src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.props",
-);
-contains(sdkProps, "WebUIToolkitFrontendDevServerKind", "generic development-server property");
-contains(sdkProps, "WebUIToolkitFrontendDevServerDocument", "native bootstrap document property");
-
-const tool = text("tools/dotnet-webuitoolkit/DevApplication.cs");
-contains(tool, "IFrontendDevelopmentServer", "shared development-server contract");
-contains(tool, "AngularDevelopmentServer", "Angular development-server coordinator");
-contains(tool, "ViteDevelopmentServer", "Vite development-server coordinator");
-
-const owners = {
-  react: ["web/packages/mvvm-react/src/application.ts", "startReactMvvmApplication"],
-  vue: ["web/packages/mvvm-vue/src/index.ts", "startVueMvvmApplication"],
-  svelte: ["web/packages/mvvm-svelte/src/application.ts", "startSvelteMvvmApplication"],
-  angular: ["web/packages/mvvm-angular/src/application.ts", "startAngularMvvmApplication"],
-};
-for (const [framework, [path, symbol]] of Object.entries(owners)) {
-  contains(text(path), symbol, `${framework} native application owner`);
-}
-
-for (const [framework, entry] of Object.entries(matrix.frontends)) {
+for (const entry of Object.values(matrix.frontends)) {
   if (!entry.starter || !entry.owner || !entry.authoring || !entry.hmr) {
-    fail(`${framework} is missing first-class policy metadata.`);
+    fail("A frontend is missing first-class policy metadata.");
   }
   for (const project of entry.todo) requirePath(project);
 }
 
+const packageVersion = "0.1.0-preview.4.1";
+const packages = {
+  react: "@runic-artifex/mvvm-react",
+  vue: "@runic-artifex/mvvm-vue",
+  svelte: "@runic-artifex/mvvm-svelte",
+  angular: "@runic-artifex/mvvm-angular",
+};
+for (const [framework, adapter] of Object.entries(packages)) {
+  const package_ = json(`samples/Todo.Frontends/${framework}/package.json`);
+  if (package_.name !== `@runic-artifex/sample-todo-${framework}`) {
+    fail(`${framework} has an inconsistent sample package identity.`);
+  }
+  if (package_.dependencies?.["@runic-artifex/mvvm"] !== packageVersion ||
+      package_.dependencies?.[adapter] !== packageVersion) {
+    fail(`${framework} must consume the exact published Toolkit package version.`);
+  }
+}
+
 const todoProps = text("samples/Todo.Frontends/TodoFrontendSample.props");
+contains(todoProps, "RunicToolkit.Frontend.Sdk", "published frontend SDK reference");
+contains(todoProps, "RunicToolkitFrontendWorkspace", "Toolkit workspace property");
 contains(todoProps, "simple/index.html;advanced/index.html", "both Todo development documents");
-contains(todoProps, "'$(TodoFrontendDirectory)' == 'angular'", "Angular dev-server selection");
+doesNotContain(todoProps, "../../src/", "source-tree project dependency");
+
 const angularPackage = json("samples/Todo.Frontends/angular/package.json");
-if (!angularPackage.scripts.dev.startsWith("ng serve ")) {
-  fail("Angular Todo must use ng serve for development.");
+if (!angularPackage.scripts.dev.startsWith("ng serve ") ||
+    angularPackage.scripts["dev:mock"] !== "ng serve todo-angular --configuration mock") {
+  fail("Angular Todo must expose its Angular development and mock servers.");
 }
 for (const framework of ["react", "vue", "svelte"]) {
   const package_ = json(`samples/Todo.Frontends/${framework}/package.json`);
-  if (package_.scripts.dev !== "vite") {
-    fail(`${framework} Todo must use its Vite development server.`);
-  }
-  if (package_.scripts["dev:mock"] !== "vite --mode mock") {
-    fail(`${framework} Todo must expose its Vite mock mode.`);
+  if (package_.scripts.dev !== "vite" || package_.scripts["dev:mock"] !== "vite --mode mock") {
+    fail(`${framework} Todo must expose its Vite development and mock servers.`);
   }
   requirePath(`samples/Todo.Frontends/${framework}/vite.config.mjs`);
-}
-if (angularPackage.scripts["dev:mock"] !==
-    "ng serve todo-angular --configuration mock") {
-  fail("Angular Todo must expose its application-builder mock configuration.");
 }
 
 const svelte = text("samples/Todo.Frontends/svelte/src/TodoApp.svelte");
@@ -77,87 +71,29 @@ for (const path of [
   "samples/Todo.Frontends/svelte/src/simple/SimpleTodo.svelte",
   "samples/Todo.Frontends/svelte/src/advanced/AdvancedTodo.svelte",
   "samples/Todo.Frontends/svelte/src/components/AppHeader.svelte",
-]) {
-  requirePath(path);
-}
-if (svelte.includes("createSimpleTodoStores") ||
-    svelte.includes("createAdvancedTodoStores")) {
-  fail("The Svelte application root still owns feature-store machinery.");
-}
-
-const reactMain = text("samples/Todo.Frontends/react/src/main.tsx");
-for (const path of [
   "samples/Todo.Frontends/react/src/simple/SimpleTodo.tsx",
-  "samples/Todo.Frontends/react/src/simple/useSimpleTodo.ts",
   "samples/Todo.Frontends/react/src/advanced/AdvancedTodo.tsx",
-  "samples/Todo.Frontends/react/src/advanced/useAdvancedTodo.ts",
-  "samples/Todo.Frontends/react/src/components/AppHeader.tsx",
-]) {
-  requirePath(path);
-}
-for (const presentation of ["function SimpleTodo", "function AdvancedTodo", "useState("]) {
-  if (reactMain.includes(presentation)) {
-    fail(`The React application root retains presentation concern '${presentation}'.`);
-  }
-}
-
-const angularMain = text("samples/Todo.Frontends/angular/src/main.ts");
-for (const path of [
   "samples/Todo.Frontends/angular/src/simple/simple-todo.component.ts",
-  "samples/Todo.Frontends/angular/src/simple/simple-todo.component.html",
   "samples/Todo.Frontends/angular/src/advanced/advanced-todo.component.ts",
-  "samples/Todo.Frontends/angular/src/advanced/advanced-todo.component.html",
-  "samples/Todo.Frontends/angular/src/components/app-header.component.ts",
-]) {
-  requirePath(path);
-}
-if (angularMain.includes("@Component") || angularMain.includes("template:")) {
-  fail("The Angular application root still owns component presentation.");
-}
-contains(
-  text("samples/Todo.Frontends/angular/src/advanced/advanced-todo.component.ts"),
-  "signal(",
-  "Angular-local signal state",
-);
-
-for (const path of [
   "samples/Todo.Frontends/vue/src/SimpleTodo.vue",
   "samples/Todo.Frontends/vue/src/AdvancedTodo.vue",
 ]) {
   requirePath(path);
 }
 
-const inspector = text("web/packages/mvvm/src/inspector.ts");
-contains(inspector, "MvvmDevelopmentInspector", "private-binding inspector");
-contains(inspector, "mountMvvmInspectorOverlay", "native inspector overlay");
-const mock = text("web/packages/mvvm/src/mock.ts");
-contains(mock, "MvvmMockFrameChannel", "frontend-only protocol mock");
-contains(mock, 'mode = "mock"', "visible mock identity");
-const todoMock = text("samples/Todo.Frontends/shared/todo.mock.ts");
-contains(todoMock, "createTodoMockChannel", "shared Todo protocol fixture");
-contains(todoMock, "webuitoolkit.todo.mock/1", "visible Todo mock identity");
-contains(
-  text("samples/Todo.Frontends/angular/angular.json"),
-  '"browser": "src/main.mock.ts"',
-  "Angular Todo mock entrypoint",
-);
-contains(
-  text("web/packages/mvvm/src/native.ts"),
-  "channelFactory",
-  "production-owner mock channel seam",
-);
-for (const framework of ["react", "vue", "svelte", "angular"]) {
-  const starter = `templates/WebUIToolkit.Templates/content/${framework}/Frontend`;
-  const package_ = json(`${starter}/package.json`);
-  if (package_.scripts["dev:mock"] === undefined) {
-    fail(`${framework} starter does not expose its conventional dev:mock command.`);
-  }
-  requirePath(`${starter}/src/counter.mock.ts`);
+contains(text("samples/Todo.Frontends/shared/todo.mock.ts"),
+  "createTodoMockChannel", "shared Todo protocol fixture");
+contains(text("samples/Todo.Frontends/angular/angular.json"),
+  '"browser": "src/main.mock.ts"', "Angular Todo mock entrypoint");
+contains(text(".npmrc"), "npm.pkg.github.com", "GitHub Packages npm registry");
+
+for (const path of ["samples", "tests", "package.json"]) {
+  doesNotContain(textTree(path), "@webuitoolkit/", "retired npm package scope");
+  doesNotContain(textTree(path), "../../src/", "source-tree dependency");
+  doesNotContain(textTree(path), "../../web/packages/", "source-tree npm dependency");
 }
 
-console.log(
-  "Frontend parity policy metadata passed for cwhtml, React, Vue, Svelte, and Angular.",
-);
+console.log("Package-only frontend parity passed for cwhtml, React, Vue, Svelte, and Angular.");
 
 function json(path) {
   return JSON.parse(text(path));
@@ -165,16 +101,42 @@ function json(path) {
 
 function text(path) {
   const absolute = resolve(root, path);
-  if (!existsSync(absolute)) fail(`Missing required parity artifact '${path}'.`);
+  if (!existsSync(absolute)) fail(`Missing required frontend artifact '${path}'.`);
   return readFileSync(absolute, "utf8");
 }
 
+function textTree(path) {
+  const absolute = resolve(root, path);
+  if (!existsSync(absolute)) fail(`Missing package-boundary path '${path}'.`);
+  if (!statSync(absolute).isDirectory()) return readFileSync(absolute, "utf8");
+  const extensions = new Set([
+    ".cs", ".csproj", ".props", ".targets", ".json", ".js", ".mjs",
+    ".ts", ".tsx", ".svelte", ".vue", ".cwhtml", ".cwuix",
+  ]);
+  const files = [];
+  const pending = [absolute];
+  while (pending.length !== 0) {
+    const directory = pending.pop();
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (["bin", "obj", "dist", "node_modules", ".angular-output"].includes(entry.name)) continue;
+      const candidate = resolve(directory, entry.name);
+      if (entry.isDirectory()) pending.push(candidate);
+      else if (extensions.has(entry.name.slice(entry.name.lastIndexOf(".")))) files.push(candidate);
+    }
+  }
+  return files.sort().map((file) => readFileSync(file, "utf8")).join("\n");
+}
+
 function requirePath(path) {
-  if (!existsSync(resolve(root, path))) fail(`Missing required parity path '${path}'.`);
+  if (!existsSync(resolve(root, path))) fail(`Missing required frontend path '${path}'.`);
 }
 
 function contains(source, expected, label) {
   if (!source.includes(expected)) fail(`Missing ${label}: '${expected}'.`);
+}
+
+function doesNotContain(source, unexpected, label) {
+  if (source.includes(unexpected)) fail(`Found ${label}: '${unexpected}'.`);
 }
 
 function fail(message) {

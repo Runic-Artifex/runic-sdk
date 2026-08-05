@@ -7,12 +7,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using WebUIToolkit.MVVM.Flow;
-using WebUIToolkit.MVVM.Workflows;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
+using RunicFlow;
+using RunicFlow.Workflows;
+using RunicToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+namespace RunicToolkit.Samples.AdvancedTodo.UI;
 
 internal sealed partial class TodoViewModel :
     ObservableObject,

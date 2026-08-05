@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { useMvvmSnapshot } from "@webuitoolkit/mvvm-react";
+import { useMvvmSnapshot } from "@runic-artifex/mvvm-react";
 
 import {
   type AdvancedTodoContract,

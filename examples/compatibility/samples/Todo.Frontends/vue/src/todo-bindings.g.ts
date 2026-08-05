@@ -5,7 +5,7 @@ import {
   useVueMvvmProperty,
   useVueMvvmValidation,
   type VueMvvmAdapter,
-} from "@webuitoolkit/mvvm-vue";
+} from "@runic-artifex/mvvm-vue";
 import type { SimpleTodoContract, AdvancedTodoContract } from "../../shared/todo-contract.g.js";
 
 export function useSimpleTodoBindings(

@@ -6,11 +6,11 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.Html.Htmx;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
+using RunicToolkit.MVVM;
+using RunicMarkup.RunicToolkit.Htmx;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 internal static class TodoCsharpMarkupSmoke
 {
@@ -74,7 +74,7 @@ internal static class TodoCsharpMarkupSmoke
             !removed.Body.Contains("Run the C# markup desktop sample", StringComparison.Ordinal) &&
             collectionBinding &&
             !Directory.Exists(generatedRoot) &&
-            StringComparer.Ordinal.Equals(CsWebUiHtmxTransport.BindingName, "webuitoolkitHtmx");
+            StringComparer.Ordinal.Equals(CsWebUiHtmxTransport.BindingName, "runic-toolkitHtmx");
         Console.WriteLine(passed
             ? "SimpleTodo C# markup native HTMX smoke test passed."
             : "SimpleTodo C# markup native HTMX smoke test failed.");

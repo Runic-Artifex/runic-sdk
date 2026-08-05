@@ -1,7 +1,7 @@
-using WebUIToolkit.MVVM.Html;
-using WebUIToolkit.Samples.Cwhtml.Components;
+using RunicMarkup;
+using RunicToolkit.Samples.Cwhtml.Components;
 
-namespace WebUIToolkit.Samples.Cwhtml.Components.Tests;
+namespace RunicToolkit.Samples.Cwhtml.Components.Tests;
 
 public sealed class StylingNeutralExampleModel
 {

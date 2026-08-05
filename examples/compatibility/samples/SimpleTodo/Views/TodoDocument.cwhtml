@@ -1,10 +1,10 @@
-@namespace WebUIToolkit.Samples.SimpleTodo
-@view TodoDocumentView(WebUIToolkit.Samples.SimpleTodo.TodoDocumentModel model)
+@namespace RunicToolkit.Samples.SimpleTodo
+@view TodoDocumentView(RunicToolkit.Samples.SimpleTodo.TodoDocumentModel model)
 html lang="en" {
     head {
         meta charset="utf-8";
         meta name="viewport" content="width=device-width, initial-scale=1";
-        title { "Simple Todo · WebUIToolkit" }
+        title { "Simple Todo · Runic Toolkit" }
         @if (!model.Assets.IsViteDevelopment) {
             link rel="stylesheet" href="cwhtml.css";
         }

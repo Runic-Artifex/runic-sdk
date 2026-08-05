@@ -1,9 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.Hosting;
+using RunicToolkit.Hosting;
 
-var builder = new GenericHostWebUIToolkitApplicationBuilder(args);
+var builder = new GenericHostRunicToolkitApplicationBuilder(args);
 
 // A participant prepares application services before the selected mode runs.
 builder.Application.AddStartupParticipant(new WorkspaceParticipant());
@@ -11,7 +11,7 @@ builder.Application.AddStartupParticipant(new WorkspaceParticipant());
 // A mode runner contains the work for one launch kind.
 builder.Application.AddModeRunner(new WelcomeMode());
 
-await using WebUIToolkitApplication application = builder.Build();
+await using RunicToolkitApplication application = builder.Build();
 ApplicationRunResult result = await application.RunAsync(args);
 
 Console.WriteLine($"Application finished in state {application.State}.");
@@ -46,7 +46,7 @@ internal sealed class WelcomeMode : IApplicationModeRunner
     {
         cancellationToken.ThrowIfCancellationRequested();
         Console.WriteLine();
-        Console.WriteLine("Hello from WebUIToolkit!");
+        Console.WriteLine("Hello from Runic Toolkit!");
         Console.WriteLine($"The launcher selected the {decision.Kind} mode.");
         Console.WriteLine();
         return Task.FromResult(ApplicationRunResult.FromExitCode(0));

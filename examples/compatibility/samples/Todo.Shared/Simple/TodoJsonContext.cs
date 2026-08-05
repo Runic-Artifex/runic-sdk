@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 /// <summary>Provides reflection-free JSON metadata for the closed MVVM bindings.</summary>
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

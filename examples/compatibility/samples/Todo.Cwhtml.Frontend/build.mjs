@@ -4,6 +4,9 @@ import { resolve } from "node:path";
 import { build } from "vite";
 
 const packageDirectory = import.meta.dirname;
+const repositoryRoot = resolve(packageDirectory, "../..");
+const nugetPackages = process.env.NUGET_PACKAGES ??
+  resolve(repositoryRoot, ".packages/nuget");
 const outputDirectory = resolve(packageDirectory, "dist");
 const buildLockDirectory = resolve(packageDirectory, ".build-lock");
 const production = process.argv.includes("--production") ||
@@ -11,7 +14,7 @@ const production = process.argv.includes("--production") ||
 const watch = process.argv.includes("--watch");
 
 const emitStableEntrypoints = {
-  name: "webuitoolkit-cwhtml-entrypoints",
+  name: "runic-toolkit-cwhtml-entrypoints",
   async closeBundle() {
     const manifestPath = resolve(outputDirectory, "vite.manifest.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -47,6 +50,9 @@ try {
     configFile: false,
     publicDir: false,
     logLevel: "info",
+    resolve: {
+      alias: runicMarkupAliases(nugetPackages),
+    },
     plugins: [emitStableEntrypoints],
     build: {
       outDir: outputDirectory,
@@ -84,6 +90,21 @@ try {
   if (!watch) {
     await rm(buildLockDirectory, { recursive: true, force: true });
   }
+}
+
+function runicMarkupAliases(packageRoot) {
+  const htmxAssets = resolve(
+    packageRoot,
+    "runicmarkup.runictoolkit.htmx.js/0.1.0-preview.9.1/contentFiles/any/any/wwwroot/_content/RunicMarkup.RunicToolkit.Htmx.Js",
+  );
+  return {
+    "runic-markup-htmx-cswebui": resolve(
+      packageRoot,
+      "runicmarkup.runictoolkit.htmx.cswebui/0.1.0-preview.9.1/contentFiles/any/any/wwwroot/_content/RunicMarkup.RunicToolkit.Htmx.CsWebUi/runic-markup-htmx-cswebui-1.0.0.js",
+    ),
+    "runic-markup-htmx-csp": resolve(htmxAssets, "htmx-csp-2.0.10.js"),
+    "runic-markup-htmx": resolve(htmxAssets, "runic-markup-htmx-1.0.0.mjs"),
+  };
 }
 
 async function acquireBuildLock() {
@@ -143,7 +164,7 @@ function isProcessRunning(pid) {
 async function writeAssetManifest(entry) {
   const files = await collectFiles(outputDirectory);
   const manifest = {
-    schema: "webuitoolkit.frontend-assets/1",
+    schema: "runic-toolkit.frontend-assets/1",
     framework: "cwhtml-htmx",
     mode: production ? "production" : "development",
     entrypoints: {
@@ -153,7 +174,7 @@ async function writeAssetManifest(entry) {
       compiledStyles: entry.css[0],
     },
     files: Object.fromEntries(await Promise.all(files
-      .filter((path) => path !== "webuitoolkit.assets.json")
+      .filter((path) => path !== "runic-toolkit.assets.json")
       .map(async (relativePath) => {
         const bytes = await readFile(resolve(outputDirectory, relativePath));
         return [relativePath, {
@@ -163,7 +184,7 @@ async function writeAssetManifest(entry) {
       }))),
   };
   await writeFile(
-    resolve(outputDirectory, "webuitoolkit.assets.json"),
+    resolve(outputDirectory, "runic-toolkit.assets.json"),
     JSON.stringify(manifest, null, 2) + "\n",
     "utf8",
   );

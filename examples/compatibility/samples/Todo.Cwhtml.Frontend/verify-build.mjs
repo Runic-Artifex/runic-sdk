@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 
 const root = import.meta.dirname;
 const manifest = JSON.parse(await readFile(
-  resolve(root, "dist/webuitoolkit.assets.json"),
+  resolve(root, "dist/runic-toolkit.assets.json"),
   "utf8",
 ));
 
-if (manifest.schema !== "webuitoolkit.frontend-assets/1" ||
+if (manifest.schema !== "runic-toolkit.frontend-assets/1" ||
     manifest.framework !== "cwhtml-htmx" ||
     manifest.mode !== "production") {
   throw new Error("The cwhtml asset manifest identity is invalid.");

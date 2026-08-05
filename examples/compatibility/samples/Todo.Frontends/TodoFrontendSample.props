@@ -1,40 +1,36 @@
 <Project>
-  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.props" />
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <WebUIToolkitFrontendWorkspace>$(TodoFrontendWorkspace)</WebUIToolkitFrontendWorkspace>
-    <WebUIToolkitFrontendPackageDirectory>$(MSBuildThisFileDirectory)$(TodoFrontendDirectory)</WebUIToolkitFrontendPackageDirectory>
-    <WebUIToolkitFrontendOutputDirectory>$(MSBuildThisFileDirectory)$(TodoFrontendDirectory)/dist</WebUIToolkitFrontendOutputDirectory>
-    <WebUIToolkitFrontendWorkspaceRoot>$(MSBuildThisFileDirectory)../..</WebUIToolkitFrontendWorkspaceRoot>
-    <WebUIToolkitFrontendBridgeAsset>$(MSBuildThisFileDirectory)../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/assets/webuitoolkit-mvvm-cswebui.mjs</WebUIToolkitFrontendBridgeAsset>
-    <WebUIToolkitFrontendContractSource>$(MSBuildThisFileDirectory)todo.frontend.json</WebUIToolkitFrontendContractSource>
-    <WebUIToolkitFrontendContractCSharpOutput>$(MSBuildThisFileDirectory)../Todo.FrontendHost/TodoContracts.g.cs</WebUIToolkitFrontendContractCSharpOutput>
-    <WebUIToolkitFrontendContractTypeScriptOutput>$(MSBuildThisFileDirectory)shared/todo-contract.g.ts</WebUIToolkitFrontendContractTypeScriptOutput>
-    <WebUIToolkitFrontendContractReactOutput>$(MSBuildThisFileDirectory)react/src/todo-bindings.g.ts</WebUIToolkitFrontendContractReactOutput>
-    <WebUIToolkitFrontendContractVueOutput>$(MSBuildThisFileDirectory)vue/src/todo-bindings.g.ts</WebUIToolkitFrontendContractVueOutput>
-    <WebUIToolkitFrontendContractSvelteOutput>$(MSBuildThisFileDirectory)svelte/src/todo-bindings.g.ts</WebUIToolkitFrontendContractSvelteOutput>
-    <WebUIToolkitFrontendContractAngularOutput>$(MSBuildThisFileDirectory)angular/src/todo-bindings.g.ts</WebUIToolkitFrontendContractAngularOutput>
-    <WebUIToolkitFrontendDevServerDocument>simple/index.html;advanced/index.html</WebUIToolkitFrontendDevServerDocument>
-    <WebUIToolkitFrontendViteDevServerEnabled
-      Condition="'$(TodoFrontendDirectory)' != 'angular'">true</WebUIToolkitFrontendViteDevServerEnabled>
-    <WebUIToolkitFrontendViteDevServerEntry
-      Condition="'$(TodoFrontendDirectory)' == 'react'">/src/main.tsx</WebUIToolkitFrontendViteDevServerEntry>
-    <WebUIToolkitFrontendViteDevServerEntry
+    <RunicToolkitFrontendWorkspace>$(TodoFrontendWorkspace)</RunicToolkitFrontendWorkspace>
+    <RunicToolkitFrontendPackageDirectory>$(MSBuildThisFileDirectory)$(TodoFrontendDirectory)</RunicToolkitFrontendPackageDirectory>
+    <RunicToolkitFrontendOutputDirectory>$(MSBuildThisFileDirectory)$(TodoFrontendDirectory)/dist</RunicToolkitFrontendOutputDirectory>
+    <RunicToolkitFrontendWorkspaceRoot>$(MSBuildThisFileDirectory)../..</RunicToolkitFrontendWorkspaceRoot>
+    <RunicToolkitFrontendContractSource>$(MSBuildThisFileDirectory)todo.frontend.json</RunicToolkitFrontendContractSource>
+    <RunicToolkitFrontendContractCSharpOutput>$(MSBuildThisFileDirectory)../Todo.FrontendHost/TodoContracts.g.cs</RunicToolkitFrontendContractCSharpOutput>
+    <RunicToolkitFrontendContractTypeScriptOutput>$(MSBuildThisFileDirectory)shared/todo-contract.g.ts</RunicToolkitFrontendContractTypeScriptOutput>
+    <RunicToolkitFrontendContractReactOutput>$(MSBuildThisFileDirectory)react/src/todo-bindings.g.ts</RunicToolkitFrontendContractReactOutput>
+    <RunicToolkitFrontendContractVueOutput>$(MSBuildThisFileDirectory)vue/src/todo-bindings.g.ts</RunicToolkitFrontendContractVueOutput>
+    <RunicToolkitFrontendContractSvelteOutput>$(MSBuildThisFileDirectory)svelte/src/todo-bindings.g.ts</RunicToolkitFrontendContractSvelteOutput>
+    <RunicToolkitFrontendContractAngularOutput>$(MSBuildThisFileDirectory)angular/src/todo-bindings.g.ts</RunicToolkitFrontendContractAngularOutput>
+    <RunicToolkitFrontendDevServerDocument>simple/index.html;advanced/index.html</RunicToolkitFrontendDevServerDocument>
+    <RunicToolkitFrontendViteDevServerEnabled
+      Condition="'$(TodoFrontendDirectory)' != 'angular'">true</RunicToolkitFrontendViteDevServerEnabled>
+    <RunicToolkitFrontendViteDevServerEntry
+      Condition="'$(TodoFrontendDirectory)' == 'react'">/src/main.tsx</RunicToolkitFrontendViteDevServerEntry>
+    <RunicToolkitFrontendViteDevServerEntry
       Condition="'$(TodoFrontendDirectory)' != 'react' and
-                 '$(TodoFrontendDirectory)' != 'angular'">/src/main.ts</WebUIToolkitFrontendViteDevServerEntry>
-    <WebUIToolkitFrontendDevServerKind
-      Condition="'$(TodoFrontendDirectory)' == 'angular'">angular</WebUIToolkitFrontendDevServerKind>
+                 '$(TodoFrontendDirectory)' != 'angular'">/src/main.ts</RunicToolkitFrontendViteDevServerEntry>
+    <RunicToolkitFrontendDevServerKind
+      Condition="'$(TodoFrontendDirectory)' == 'angular'">angular</RunicToolkitFrontendDevServerKind>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Todo.FrontendHost/Todo.FrontendHost.csproj" />
+    <PackageReference Include="RunicToolkit.Frontend.Sdk" PrivateAssets="all" />
     <Content Include="$(MSBuildThisFileDirectory)../SharedAssets/**/*"
              Link="www/vendor/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-
-  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.targets" />
 </Project>

@@ -1,8 +1,8 @@
 #nullable enable
-using WebUIToolkit.CsharpMarkup;
-using WebUIToolkit.MVVM.Html;
+using RunicMarkup.Csharp;
+using RunicMarkup;
 
-namespace WebUIToolkit.Samples.Cwhtml.Components;
+namespace RunicToolkit.Samples.Cwhtml.Components;
 
 public static class CsharpMarkupComponents
 {

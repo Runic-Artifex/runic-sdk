@@ -10,10 +10,10 @@ export function exposeTodoReconnect(application: TodoApplicationLifetime): void 
   // It remains deliberately outside the public package API and every
   // framework consumes this one shared hook.
   const diagnosticReconnect = () => application.reconnect();
-  globalThis.__webuitoolkitTodoReconnect = diagnosticReconnect;
+  globalThis.__runicToolkitTodoReconnect = diagnosticReconnect;
   application.addCleanup(() => {
-    if (globalThis.__webuitoolkitTodoReconnect === diagnosticReconnect) {
-      delete globalThis.__webuitoolkitTodoReconnect;
+    if (globalThis.__runicToolkitTodoReconnect === diagnosticReconnect) {
+      delete globalThis.__runicToolkitTodoReconnect;
     }
   });
 }
@@ -33,6 +33,6 @@ export function reportStartupFailure(error: unknown): void {
 declare global {
   // Installed only by these Todo samples so the repository's native browser
   // harness can drive one shared reconnect path across all four frameworks.
-  // This is not part of the published WebUIToolkit package API.
-  var __webuitoolkitTodoReconnect: (() => Promise<void>) | undefined;
+  // This is not part of the published Runic Toolkit package API.
+  var __runicToolkitTodoReconnect: (() => Promise<void>) | undefined;
 }

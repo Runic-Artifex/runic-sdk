@@ -5,10 +5,10 @@ browser framework:
 
 | .NET project | Browser adapter | Simple | Advanced |
 | --- | --- | --- | --- |
-| `Todo.React` | `@webuitoolkit/mvvm-react` hooks and external store | yes | yes |
-| `Todo.Vue` | `@webuitoolkit/mvvm-vue` computed refs | yes | yes |
-| `Todo.Svelte` | `@webuitoolkit/mvvm-svelte` readable store | yes | yes |
-| `Todo.Angular` | `@webuitoolkit/mvvm-angular` signals | yes | yes |
+| `Todo.React` | `@runic-artifex/mvvm-react` hooks and external store | yes | yes |
+| `Todo.Vue` | `@runic-artifex/mvvm-vue` computed refs | yes | yes |
+| `Todo.Svelte` | `@runic-artifex/mvvm-svelte` readable store | yes | yes |
+| `Todo.Angular` | `@runic-artifex/mvvm-angular` signals | yes | yes |
 
 Each project starts SimpleTodo by default and selects AdvancedTodo with
 `--advanced`:
@@ -19,7 +19,7 @@ dotnet run --project samples/Todo.React -- --advanced
 ```
 
 Replace `React` with `Vue`, `Svelte`, or `Angular` to run the other frontend.
-`WebUIToolkit.Frontend.Sdk` invokes the matching frontend production build and
+`RunicToolkit.Frontend.Sdk` invokes the matching frontend production build and
 publishes its manifest-driven output and the CsWebUi frame bridge. React, Vue,
 and Svelte use Vite; Angular uses its supported application builder. The
 sample projects add the locally pinned Bootstrap 5.3 and Font Awesome assets.
@@ -42,8 +42,8 @@ projection without browser polling.
 Run deterministic checks without opening a window:
 
 ```console
-npm test --workspace @webuitoolkit/sample-todo-react
-dotnet msbuild samples/Todo.React/Todo.React.csproj -t:WebUIToolkitFrontendWatch
+npm test --workspace @runic-artifex/sample-todo-react
+dotnet msbuild samples/Todo.React/Todo.React.csproj -t:RunicToolkitFrontendWatch
 dotnet run --project samples/Todo.React -- --smoke-test
 dotnet run --project samples/Todo.React -- --advanced --smoke-test
 dotnet run --project samples/Todo.React -- --browser-smoke-test
@@ -67,6 +67,6 @@ code is split from Vite production graphs and uses Angular's dedicated
 application-builder entrypoint.
 
 Release builds invoke Vite minification and content hashing and emit both
-Vite's manifest and a SHA-256 asset manifest. The
-[framework integration guide](../../docs/guides/frontend-frameworks.md) records the gaps,
-implemented product changes, and remaining release work exposed by this matrix.
+Vite's manifest and a SHA-256 asset manifest. The package-only parity and
+production gates under `eng/` keep these five frontends aligned without
+reaching back into the Toolkit source repository.

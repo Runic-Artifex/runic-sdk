@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace WebUIToolkit.Samples.NativeMvvmCounter;
+namespace RunicToolkit.Samples.NativeMvvmCounter;
 
 [JsonSerializable(typeof(int))]
 internal sealed partial class CounterJsonContext : JsonSerializerContext;

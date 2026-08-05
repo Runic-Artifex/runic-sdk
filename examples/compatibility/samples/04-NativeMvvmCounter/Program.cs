@@ -2,11 +2,12 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using WebUIToolkit.Hosting;
-using WebUIToolkit.Hosting.Build;
-using WebUIToolkit.Hosting.CsWebUi;
-using WebUIToolkit.Hosting.WebUi;
-using WebUIToolkit.Samples.NativeMvvmCounter;
+using RunicAssets;
+using RunicAssets.RunicToolkit;
+using RunicToolkit.Hosting;
+using RunicToolkit.Hosting.CsWebUi;
+using RunicToolkit.Hosting.WebUi;
+using RunicToolkit.Samples.NativeMvvmCounter;
 
 string webRoot = Path.Combine(AppContext.BaseDirectory, "www");
 if (!Directory.Exists(webRoot))
@@ -20,11 +21,12 @@ if (args.Contains("--smoke-test", StringComparer.Ordinal))
     return await root.RunSmokeTestAsync();
 }
 
-FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
-    .BuildFromDirectory(webRoot, "index.html");
-var assets = new DirectoryFrontendAssetProvider(webRoot, manifest);
+var source = new DevelopmentDirectoryAssetSource(webRoot, "index.html");
+var assets = new RunicToolkitAssetBoundary(
+    source,
+    new Uri("app://native-counter/application/"));
 var stop = new ApplicationStopControllerBinding();
-var builder = new GenericHostWebUIToolkitApplicationBuilder(args);
+var builder = new GenericHostRunicToolkitApplicationBuilder(args);
 
 builder.Application.AddValidator(LaunchKind.UserInterface, new FrontendAssetValidator(assets));
 builder.Application.AddModeRunner(new WebUiModeRunner(
@@ -40,7 +42,7 @@ builder.Application.AddModeRunner(new WebUiModeRunner(
         TimeSpan.FromSeconds(5),
         TimeSpan.FromSeconds(5))));
 
-await using WebUIToolkitApplication application = builder.Build();
+await using RunicToolkitApplication application = builder.Build();
 stop.Bind(application.StopController);
 ApplicationRunResult result = await application.RunAsync();
 return result.ExitCode ?? 1;

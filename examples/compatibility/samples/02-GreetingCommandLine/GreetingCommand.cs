@@ -4,9 +4,9 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.CommandLine;
+using RunicCommandLine;
 
-namespace WebUIToolkit.Samples.GreetingCommandLine;
+namespace RunicToolkit.Samples.GreetingCommandLine;
 
 internal static class GreetingCommand
 {

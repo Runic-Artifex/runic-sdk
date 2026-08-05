@@ -33,6 +33,18 @@
     <PackageVersion Include="RunicMarkup.RunicToolkit.Htmx.CsWebUi.App" Version="0.1.0-preview.9.1" />
     <PackageVersion Include="RunicMarkup.RunicToolkit.CommunityToolkit" Version="0.1.0-preview.9.1" />
     <PackageVersion Include="RunicMarkup.RunicToolkit.FrontendCompiler" Version="0.1.0-preview.9.1" />
+    <PackageVersion Include="RunicToolkit.Collections" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Frontend.Sdk" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.Abstractions" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.Build" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi.App" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi.Mvvm" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.GenericHost" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.WebUi" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.MVVM" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicToolkit.MVVM.CommunityToolkit" Version="0.1.0-preview.4.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />

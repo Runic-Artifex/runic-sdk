@@ -1,7 +1,7 @@
 using System;
-using WebUIToolkit.MVVM.Html;
+using RunicMarkup;
 
-namespace WebUIToolkit.Samples.Cwhtml.Components;
+namespace RunicToolkit.Samples.Cwhtml.Components;
 
 /// <summary>Controls how updates in an accessible live region are announced.</summary>
 public enum LiveRegionPoliteness

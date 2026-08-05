@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
-  import type { SvelteMvvmStore } from "@webuitoolkit/mvvm-svelte";
-  import { toSvelteMvvmRune } from "@webuitoolkit/mvvm-svelte/runes";
+  import type { SvelteMvvmStore } from "@runic-artifex/mvvm-svelte";
+  import { toSvelteMvvmRune } from "@runic-artifex/mvvm-svelte/runes";
   import type { SimpleTodoContract } from "../../../shared/contracts";
   import AppHeader from "../components/AppHeader.svelte";
   import { createSimpleTodoStores } from "../todo-bindings.g";

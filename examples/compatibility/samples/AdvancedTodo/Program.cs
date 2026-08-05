@@ -2,13 +2,13 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using WebUIToolkit.Hosting;
-using WebUIToolkit.Hosting.CsWebUi;
-using WebUIToolkit.MVVM.Html.Htmx;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
-using WebUIToolkit.Samples.AdvancedTodo.Infrastructure;
-using WebUIToolkit.Samples.AdvancedTodo.UI;
+using RunicToolkit.Hosting;
+using RunicToolkit.Hosting.CsWebUi;
+using RunicMarkup.RunicToolkit.Htmx;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
+using RunicToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.Samples.AdvancedTodo.Infrastructure;
+using RunicToolkit.Samples.AdvancedTodo.UI;
 
 string staticWebRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
 if (!Directory.Exists(staticWebRoot))
@@ -46,7 +46,7 @@ if (selfTest || browserSmokeTest || csharpMarkupSelfTest || csharpMarkupBrowserS
 {
     testDirectory = Path.Combine(
         Path.GetTempPath(),
-        "webuitoolkit-advanced-todo-test-" + Guid.NewGuid().ToString("N"));
+        "runic-toolkit-advanced-todo-test-" + Guid.NewGuid().ToString("N"));
     dataPath = Path.Combine(testDirectory, "todos.json");
 }
 else
@@ -54,7 +54,7 @@ else
     dataPath = Environment.GetEnvironmentVariable("ADVANCED_TODO_DATA")
         ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WebUIToolkit",
+            "RunicToolkit",
             "AdvancedTodo",
             "todos.json");
 }
@@ -104,7 +104,7 @@ try
         new BrowserHostOptions("advanced-todo"),
         new BrowserWindowOptions(
             "main",
-            "Advanced ToDo · WebUIToolkit",
+            "Advanced ToDo · Runic Toolkit",
             width: 1180,
             height: 820));
 

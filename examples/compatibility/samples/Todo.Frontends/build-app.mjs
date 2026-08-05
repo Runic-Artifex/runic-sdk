@@ -69,7 +69,7 @@ export async function buildTodoFrontend(options) {
 
   const files = await collectFiles(outputDirectory);
   const manifest = {
-    schema: "webuitoolkit.frontend-assets/1",
+    schema: "runic-toolkit.frontend-assets/1",
     framework: options.framework,
     mode: production ? "production" : "development",
     entrypoints: { app: `assets/${app}`, styles: `assets/${styles}` },
@@ -82,7 +82,7 @@ export async function buildTodoFrontend(options) {
     }))),
   };
   await writeFile(
-    resolve(outputDirectory, "webuitoolkit.assets.json"),
+    resolve(outputDirectory, "runic-toolkit.assets.json"),
     JSON.stringify(manifest, null, 2) + "\n",
     "utf8",
   );

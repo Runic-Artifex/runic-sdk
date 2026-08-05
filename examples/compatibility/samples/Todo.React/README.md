@@ -1,6 +1,6 @@
 # React Todo
 
-Runs both Todo demos through `@webuitoolkit/mvvm-react`.
+Runs both Todo demos through `@runic-artifex/mvvm-react`.
 
 ```console
 dotnet run --project samples/Todo.React

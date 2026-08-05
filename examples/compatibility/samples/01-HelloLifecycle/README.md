@@ -2,10 +2,9 @@
 
 **Difficulty:** Beginner
 
-This is the smallest useful WebUIToolkit application. It teaches how the
+This is the smallest useful Runic Toolkit application. It teaches how the
 hosting layer separates application startup, mode execution, and shutdown.
-There is no package feed setup: the sample references the projects in `src/`
-directly.
+It consumes the exact published hosting packages from GitHub Packages.
 
 ## Run it
 
@@ -21,8 +20,8 @@ assertions.
 
 ## Guided code tour
 
-1. `Program.cs` creates `GenericHostWebUIToolkitApplicationBuilder`, the
-   convenient bridge between .NET Generic Host and WebUIToolkit.
+1. `Program.cs` creates `GenericHostRunicToolkitApplicationBuilder`, the
+   convenient bridge between .NET Generic Host and Runic Toolkit.
 2. `WorkspaceParticipant` represents infrastructure with an owned lifecycle.
    Participants start in phase order and stop during application teardown.
 3. `WelcomeMode` handles `LaunchKind.UserInterface`. A real desktop or web

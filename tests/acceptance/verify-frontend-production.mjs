@@ -16,10 +16,10 @@ const budgets = measureOnly
   ? undefined
   : JSON.parse(readFileSync(budgetPath, "utf8"));
 const frameworks = [
-  ["react", "@webuitoolkit/sample-todo-react"],
-  ["vue", "@webuitoolkit/sample-todo-vue"],
-  ["svelte", "@webuitoolkit/sample-todo-svelte"],
-  ["angular", "@webuitoolkit/sample-todo-angular"],
+  ["react", "@runic-artifex/sample-todo-react"],
+  ["vue", "@runic-artifex/sample-todo-vue"],
+  ["svelte", "@runic-artifex/sample-todo-svelte"],
+  ["angular", "@runic-artifex/sample-todo-angular"],
 ];
 const measurements = {};
 
@@ -33,11 +33,11 @@ for (const [framework, workspace] of frameworks) {
 }
 
 const report = {
-  schema: "webuitoolkit.frontend-production-measurement/1",
+  schema: "runic-toolkit.examples.frontend-production-measurement/1",
   method: {
     runtime: process.version,
     build: "two clean production builds in one fixed repository root",
-    files: "application and stylesheet entrypoints from webuitoolkit.assets.json",
+    files: "application and stylesheet entrypoints from runic-toolkit.assets.json",
     gzip: "node:zlib gzipSync level 9",
     brotli: "node:zlib brotliCompressSync quality 11, generic mode",
   },
@@ -49,7 +49,7 @@ if (measureOnly) {
   process.exit(0);
 }
 
-if (budgets.schema !== "webuitoolkit.frontend-production-budgets/1") {
+if (budgets.schema !== "runic-toolkit.examples.frontend-production-budgets/1") {
   throw new Error("The frontend production budget file has an unsupported schema.");
 }
 for (const [framework, measurement] of Object.entries(measurements)) {
@@ -75,7 +75,7 @@ function readManifest(framework) {
     `samples/Todo.Frontends/${framework}/dist`,
   );
   const manifest = JSON.parse(readFileSync(
-    resolve(directory, "webuitoolkit.assets.json"),
+    resolve(directory, "runic-toolkit.assets.json"),
     "utf8",
   ));
   if (manifest.mode !== "production") {
@@ -95,7 +95,7 @@ function assertDeterministic(framework, first, second) {
 function stableFiles(manifest) {
   return Object.fromEntries(
     Object.entries(manifest.files)
-      .filter(([path]) => path !== "webuitoolkit.assets.json")
+      .filter(([path]) => path !== "runic-toolkit.assets.json")
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([path, metadata]) => [
         path,
@@ -114,7 +114,7 @@ function measure(framework, output) {
   let brotliBytes = 0;
   for (const path of paths) {
     const bytes = readFileSync(resolve(output.directory, path));
-    if (bytes.includes("webuitoolkit.todo.mock/1")) {
+    if (bytes.includes("runic-toolkit.todo.mock/1")) {
       throw new Error(
         `${framework} production entrypoints contain the frontend-only Todo fixture.`,
       );

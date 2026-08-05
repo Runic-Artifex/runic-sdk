@@ -1,10 +1,10 @@
 using System;
 using System.Text.Json;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.CommunityToolkit;
+using RunicToolkit.MVVM;
+using RunicToolkit.MVVM.CommunityToolkit;
 
-namespace WebUIToolkit.Samples.MvvmCounterProjection;
+namespace RunicToolkit.Samples.MvvmCounterProjection;
 
 internal static class Program
 {

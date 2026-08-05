@@ -1,18 +1,15 @@
 {
-  "schema": "webuitoolkit.frontend-support-matrix/1",
+  "schema": "runic-toolkit.examples.frontend-support-matrix/1",
   "policy": "A shared contract, owner, development loop, or protocol change is incomplete until every frontend has an explicit executable gate.",
   "sharedGates": {
     "nativeRoundtrip": "eng/verify-todo-frontends.ps1",
     "nativeAot": "eng/verify-todo-frontends-native-aot.ps1",
     "productionAssets": "eng/verify-frontend-production.mjs",
-    "nativeHmr": "eng/verify-todo-frontend-hmr.ps1",
-    "mockProtocol": "eng/verify-todo-mocks.mjs",
-    "coordinator": "tests/WebUIToolkit.DotNet.WebUIToolkit.Tests",
-    "templates": "tests/WebUIToolkit.Templates.Tests"
+    "mockProtocol": "eng/verify-todo-mocks.mjs"
   },
   "frontends": {
     "cwhtml": {
-      "starter": "webuitoolkit-cwhtml",
+      "starter": "runic-toolkit-cwhtml",
       "todo": ["samples/SimpleTodo", "samples/AdvancedTodo"],
       "developmentServer": "vite",
       "authoring": "compiled cwhtml components and HTMX",
@@ -21,7 +18,7 @@
       "mock": "not frontend-only: cwhtml rendering and actions are compiled C#; use the retained native development host"
     },
     "react": {
-      "starter": "webuitoolkit-react",
+      "starter": "runic-toolkit-react",
       "todo": ["samples/Todo.React"],
       "developmentServer": "vite",
       "authoring": "React components, providers, and hooks",
@@ -30,7 +27,7 @@
       "mock": "npm run dev:mock"
     },
     "vue": {
-      "starter": "webuitoolkit-vue",
+      "starter": "runic-toolkit-vue",
       "todo": ["samples/Todo.Vue"],
       "developmentServer": "vite",
       "authoring": "Vue SFCs, Composition API, and composables",
@@ -39,7 +36,7 @@
       "mock": "npm run dev:mock"
     },
     "svelte": {
-      "starter": "webuitoolkit-svelte",
+      "starter": "runic-toolkit-svelte",
       "todo": ["samples/Todo.Svelte"],
       "developmentServer": "vite",
       "authoring": "Svelte 5 runes, context, and current event attributes",
@@ -48,7 +45,7 @@
       "mock": "npm run dev:mock"
     },
     "angular": {
-      "starter": "webuitoolkit-angular",
+      "starter": "runic-toolkit-angular",
       "todo": ["samples/Todo.Angular"],
       "developmentServer": "angular",
       "authoring": "standalone components, signals, providers, and AOT",

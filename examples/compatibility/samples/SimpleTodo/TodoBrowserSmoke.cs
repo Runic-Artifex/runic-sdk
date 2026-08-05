@@ -6,9 +6,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 /// <summary>Drives the production native transport through a real pinned Chromium process.</summary>
 internal static class TodoBrowserSmoke
@@ -48,7 +48,7 @@ internal static class TodoBrowserSmoke
 
         string browserProfile = Path.Combine(
             Path.GetTempPath(),
-            "webuitoolkit-simple-todo-browser-" + Guid.NewGuid().ToString("N"));
+            "runic-toolkit-simple-todo-browser-" + Guid.NewGuid().ToString("N"));
         WebUiWindow? window = null;
         Process? browser = null;
         Task<string>? browserDiagnostics = null;
@@ -287,8 +287,8 @@ internal static class TodoBrowserSmoke
         {
             string prepared = window.ExecuteJavaScript(
                 $$"""
-                document.body.dataset.webuitoolkitHmrDocument = "{{token}}";
-                return document.documentElement.dataset.webuitoolkitHmrProbe ?? "";
+                document.body.dataset.runicToolkitHmrDocument = "{{token}}";
+                return document.documentElement.dataset.runicToolkitHmrProbe ?? "";
                 """,
                 TimeSpan.FromSeconds(2),
                 responseBufferSize: 512);
@@ -317,11 +317,11 @@ internal static class TodoBrowserSmoke
                             .some(element =>
                               element.textContent?.trim() === "{{TaskTitle}}");
                           const sameDocument =
-                            document.body.dataset.webuitoolkitHmrDocument === "{{token}}";
+                            document.body.dataset.runicToolkitHmrDocument === "{{token}}";
                           const javascript =
-                            document.documentElement.dataset.webuitoolkitHmrProbe === "{{token}}";
+                            document.documentElement.dataset.runicToolkitHmrProbe === "{{token}}";
                           const css = getComputedStyle(document.documentElement)
-                            .getPropertyValue("--webuitoolkit-hmr-probe")
+                            .getPropertyValue("--runic-toolkit-hmr-probe")
                             .includes("{{token}}");
                           return title && sameDocument && javascript && css
                             ? "pass|{{token}}"
@@ -373,7 +373,7 @@ internal static class TodoBrowserSmoke
         Process browser)
     {
         string diagnosticsPath = Environment.GetEnvironmentVariable(
-            FrontendDevelopmentAssets.CwhtmlDiagnosticsEnvironmentVariable)
+            FrontendDevelopmentAssets.CompilerDiagnosticsEnvironmentVariable)
             ?? throw new InvalidOperationException(
                 "The supervised cwhtml diagnostics path was not supplied.");
         string projectPath = Environment.GetEnvironmentVariable(
@@ -391,7 +391,7 @@ internal static class TodoBrowserSmoke
         {
             window.ExecuteJavaScript(
                 $$"""
-                document.body.dataset.webuitoolkitDiagnosticsDocument = "{{token}}";
+                document.body.dataset.runicToolkitDiagnosticsDocument = "{{token}}";
                 return "";
                 """,
                 TimeSpan.FromSeconds(2),
@@ -406,8 +406,8 @@ internal static class TodoBrowserSmoke
                   const overlay = document.querySelector("vite-error-overlay");
                   const text = overlay?.shadowRoot?.textContent ?? "";
                   const sameDocument =
-                    document.body.dataset.webuitoolkitDiagnosticsDocument === "{{token}}";
-                  const state = globalThis.__webuitoolkitCwhtmlDiagnostics?.state;
+                    document.body.dataset.runicToolkitDiagnosticsDocument === "{{token}}";
+                  const state = globalThis.__runicMarkupCwhtmlDiagnostics?.state;
                   return overlay && text.includes("WUTHTML1001") &&
                       sameDocument && state === "error"
                     ? "pass|shown"
@@ -431,10 +431,10 @@ internal static class TodoBrowserSmoke
                 return (() => {
                   const overlay = document.querySelector("vite-error-overlay");
                   const sameDocument =
-                    document.body.dataset.webuitoolkitDiagnosticsDocument === "{{token}}";
+                    document.body.dataset.runicToolkitDiagnosticsDocument === "{{token}}";
                   const title = Array.from(document.querySelectorAll("#tasks .task-title"))
                     .some(element => element.textContent?.trim() === "{{TaskTitle}}");
-                  const state = globalThis.__webuitoolkitCwhtmlDiagnostics?.state;
+                  const state = globalThis.__runicMarkupCwhtmlDiagnostics?.state;
                   return !overlay && sameDocument && title && state === "clear"
                     ? "pass|cleared"
                     : "waiting|" + [Boolean(overlay), sameDocument, title, state].join("|");
@@ -466,7 +466,7 @@ internal static class TodoBrowserSmoke
             new JsonWriterOptions { Indented = true }))
         {
             writer.WriteStartObject();
-            writer.WriteString("contract", "webuitoolkit.cwhtml.diagnostics/1.0");
+            writer.WriteString("contract", "runic.markup.cwhtml.diagnostics/1.0");
             writer.WriteStartArray("diagnostics");
             writer.WriteStartObject();
             writer.WriteString("id", "WUTHTML1001");
@@ -518,9 +518,9 @@ internal static class TodoBrowserSmoke
         {
             window.ExecuteJavaScript(
                 """
-                document.body.dataset.webuitoolkitRendererDocument = "retained";
-                document.querySelector("footer").dataset.webuitoolkitRendererOutside = "retained";
-                document.querySelector("#todo_fragment").dataset.webuitoolkitRendererOld = "true";
+                document.body.dataset.runicToolkitRendererDocument = "retained";
+                document.querySelector("footer").dataset.runicToolkitRendererOutside = "retained";
+                document.querySelector("#todo_fragment").dataset.runicToolkitRendererOld = "true";
                 return "";
                 """,
                 TimeSpan.FromSeconds(2),
@@ -536,14 +536,14 @@ internal static class TodoBrowserSmoke
                   const title = Array.from(document.querySelectorAll("#tasks .task-title"))
                     .some(element => element.textContent?.trim() === "{{TaskTitle}}");
                   const sameDocument =
-                    document.body.dataset.webuitoolkitRendererDocument === "retained";
+                    document.body.dataset.runicToolkitRendererDocument === "retained";
                   const outside =
                     document.querySelector("footer")
-                      ?.dataset.webuitoolkitRendererOutside === "retained";
+                      ?.dataset.runicToolkitRendererOutside === "retained";
                   const affectedWasReplaced =
                     document.querySelector("#todo_fragment")
-                      ?.dataset.webuitoolkitRendererOld !== "true";
-                  const refresh = globalThis.__webuitoolkitCwhtmlHotReload?.state;
+                      ?.dataset.runicToolkitRendererOld !== "true";
+                  const refresh = globalThis.__runicMarkupCwhtmlHotReload?.state;
                   return heading === "{{token}}" && title && sameDocument && outside &&
                       affectedWasReplaced && refresh === "refreshed"
                     ? "pass|renderer"
@@ -637,8 +637,8 @@ internal static class TodoBrowserSmoke
             const input = document.querySelector("#new-title");
             if (!body || !application || !fragment || !composer || !input ||
                 typeof globalThis.htmx !== "object" ||
-                typeof globalThis.webuitoolkitHtmx !== "function" ||
-                !globalThis.WebUIToolkitHtmxCsWebUi) {
+                typeof globalThis["runic-toolkitHtmx"] !== "function" ||
+                !globalThis.RunicToolkitHtmxCsWebUi) {
               return "waiting|browser assets";
             }
 

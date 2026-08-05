@@ -1,10 +1,10 @@
 import { provideZonelessChangeDetection } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
-import type { FrameChannel } from "@webuitoolkit/mvvm";
+import type { FrameChannel } from "@runic-artifex/mvvm";
 import {
   provideAngularMvvmApplication,
   startAngularMvvmApplication,
-} from "@webuitoolkit/mvvm-angular";
+} from "@runic-artifex/mvvm-angular";
 
 import {
   AdvancedTodoContract,

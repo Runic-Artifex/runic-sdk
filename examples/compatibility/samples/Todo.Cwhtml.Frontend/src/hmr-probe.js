@@ -3,7 +3,7 @@ import "./hmr-probe.css";
 export const token = "baseline";
 
 export function apply() {
-  document.documentElement.dataset.webuitoolkitHmrProbe = token;
+  document.documentElement.dataset.runicToolkitHmrProbe = token;
 }
 
 apply();

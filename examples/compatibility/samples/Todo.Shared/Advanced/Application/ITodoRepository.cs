@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.Application;
+namespace RunicToolkit.Samples.AdvancedTodo.Application;
 
 internal interface ITodoRepository : IDisposable
 {

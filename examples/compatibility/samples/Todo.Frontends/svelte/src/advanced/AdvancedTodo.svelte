@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
-  import type { SvelteMvvmStore } from "@webuitoolkit/mvvm-svelte";
-  import { toSvelteMvvmRune } from "@webuitoolkit/mvvm-svelte/runes";
+  import type { SvelteMvvmStore } from "@runic-artifex/mvvm-svelte";
+  import { toSvelteMvvmRune } from "@runic-artifex/mvvm-svelte/runes";
   import {
     type AdvancedTodoContract,
     type AdvancedTodoState,
@@ -259,7 +259,7 @@
                 ? "Review the retained draft before saving."
                 : "Enter task details, then continue."}
             </p>
-            {#each todoState.wizardIssues as issue}
+            {#each todoState.wizardIssues as issue (issue)}
               <div class="alert alert-warning py-2">{issue}</div>
             {/each}
             <div class="d-flex flex-wrap gap-2">

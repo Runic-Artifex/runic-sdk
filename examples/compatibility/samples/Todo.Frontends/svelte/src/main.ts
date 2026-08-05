@@ -1,5 +1,5 @@
 import { mount, unmount } from "svelte";
-import { startSvelteMvvmApplication } from "@webuitoolkit/mvvm-svelte";
+import { startSvelteMvvmApplication } from "@runic-artifex/mvvm-svelte";
 
 import App from "./TodoApp.svelte";
 import {

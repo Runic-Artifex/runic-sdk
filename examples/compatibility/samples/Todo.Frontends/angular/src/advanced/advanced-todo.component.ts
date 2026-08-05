@@ -3,7 +3,7 @@ import {
   computed,
   signal,
 } from "@angular/core";
-import { injectAngularMvvmApplication } from "@webuitoolkit/mvvm-angular";
+import { injectAngularMvvmApplication } from "@runic-artifex/mvvm-angular";
 
 import {
   type AdvancedTodoContract,

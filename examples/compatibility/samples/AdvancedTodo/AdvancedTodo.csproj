@@ -1,60 +1,46 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <Import Project="../../src/WebUIToolkit.MVVM.Html.Build/buildTransitive/WebUIToolkit.MVVM.Html.Build.props" />
-  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.props" />
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>WebUIToolkit.Samples.AdvancedTodo</AssemblyName>
-    <RootNamespace>WebUIToolkit.Samples.AdvancedTodo</RootNamespace>
+    <AssemblyName>RunicToolkit.Samples.AdvancedTodo</AssemblyName>
+    <RootNamespace>RunicToolkit.Samples.AdvancedTodo</RootNamespace>
     <IsPackable>false</IsPackable>
     <DebugType>none</DebugType>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <WebUIToolkitFrontendNodeEnabled>true</WebUIToolkitFrontendNodeEnabled>
-    <WebUIToolkitFrontendCwhtmlEnabled>true</WebUIToolkitFrontendCwhtmlEnabled>
-    <WebUIToolkitFrontendWorkspace>@webuitoolkit/sample-todo-cwhtml</WebUIToolkitFrontendWorkspace>
-    <WebUIToolkitFrontendPackageDirectory>$(MSBuildProjectDirectory)/../Todo.Cwhtml.Frontend</WebUIToolkitFrontendPackageDirectory>
-    <WebUIToolkitFrontendOutputDirectory>$(MSBuildProjectDirectory)/../Todo.Cwhtml.Frontend/dist</WebUIToolkitFrontendOutputDirectory>
-    <WebUIToolkitFrontendWorkspaceRoot>$(MSBuildProjectDirectory)/../..</WebUIToolkitFrontendWorkspaceRoot>
-    <WebUIToolkitFrontendWebRoot>wwwroot</WebUIToolkitFrontendWebRoot>
-    <WebUIToolkitFrontendBridgeAsset></WebUIToolkitFrontendBridgeAsset>
-    <WebUIToolkitFrontendViteDevServerEnabled>true</WebUIToolkitFrontendViteDevServerEnabled>
-    <WebUIToolkitFrontendViteDevServerEntry>/src/main.js</WebUIToolkitFrontendViteDevServerEntry>
-    <WebUIToolkitCwhtmlTaskAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Build/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Build.dll</WebUIToolkitCwhtmlTaskAssembly>
-    <WebUIToolkitCwhtmlCompilerAssembly>$(MSBuildProjectDirectory)/../../src/WebUIToolkit.MVVM.Html.Compiler/bin/$(Configuration)/$(TargetFramework)/WebUIToolkit.MVVM.Html.Compiler.dll</WebUIToolkitCwhtmlCompilerAssembly>
+    <RunicToolkitFrontendNodeEnabled>true</RunicToolkitFrontendNodeEnabled>
+    <RunicToolkitFrontendWorkspace>@runic-artifex/sample-todo-cwhtml</RunicToolkitFrontendWorkspace>
+    <RunicToolkitFrontendPackageDirectory>$(MSBuildProjectDirectory)/../Todo.Cwhtml.Frontend</RunicToolkitFrontendPackageDirectory>
+    <RunicToolkitFrontendOutputDirectory>$(MSBuildProjectDirectory)/../Todo.Cwhtml.Frontend/dist</RunicToolkitFrontendOutputDirectory>
+    <RunicToolkitFrontendWorkspaceRoot>$(MSBuildProjectDirectory)/../..</RunicToolkitFrontendWorkspaceRoot>
+    <RunicToolkitFrontendWebRoot>wwwroot</RunicToolkitFrontendWebRoot>
+    <RunicToolkitFrontendViteDevServerEnabled>true</RunicToolkitFrontendViteDevServerEnabled>
+    <RunicToolkitFrontendViteDevServerEntry>/src/main.js</RunicToolkitFrontendViteDevServerEntry>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CsWebUi" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.Abstractions/WebUIToolkit.Hosting.Abstractions.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi/WebUIToolkit.Hosting.CsWebUi.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.CsWebUi.App/WebUIToolkit.Hosting.CsWebUi.App.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.Frontend.Sdk/WebUIToolkit.Frontend.Sdk.csproj"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.CommunityToolkit/WebUIToolkit.MVVM.CommunityToolkit.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Flow/WebUIToolkit.MVVM.Flow.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx/WebUIToolkit.MVVM.Html.Htmx.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.CsharpMarkup.Generator/WebUIToolkit.MVVM.Html.CsharpMarkup.Generator.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../../src/WebUIToolkit.MVVM.Html.Build/WebUIToolkit.MVVM.Html.Build.csproj"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
+    <PackageReference Include="RunicToolkit.Hosting" />
+    <PackageReference Include="RunicToolkit.Hosting.Abstractions" />
+    <PackageReference Include="RunicToolkit.Hosting.Build" PrivateAssets="all" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App" />
+    <PackageReference Include="RunicToolkit.Hosting.GenericHost" />
+    <PackageReference Include="RunicToolkit.Hosting.WebUi" />
+    <PackageReference Include="RunicToolkit.Frontend.Sdk" PrivateAssets="all" />
+    <PackageReference Include="RunicToolkit.MVVM.CommunityToolkit" />
+    <PackageReference Include="RunicFlow" />
+    <PackageReference Include="RunicMarkup.Build" PrivateAssets="all" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.CommunityToolkit" PrivateAssets="all" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx.Js" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx.CsWebUi" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx.CsWebUi.App" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.FrontendCompiler" PrivateAssets="all" />
     <ProjectReference Include="../Todo.Shared/Todo.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <CwhtmlCodeBehind Include="UI/AdvancedTodoRenderModel.cs" />
   </ItemGroup>
-
-  <Import Project="../../src/WebUIToolkit.MVVM.Html.Build/buildTransitive/WebUIToolkit.MVVM.Html.Build.targets" />
-  <Import Project="../../src/WebUIToolkit.Frontend.Sdk/buildTransitive/WebUIToolkit.Frontend.Sdk.targets" />
 </Project>

@@ -6,11 +6,11 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.Html.Htmx;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
+using RunicToolkit.MVVM;
+using RunicMarkup.RunicToolkit.Htmx;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 /// <summary>Out-of-process-style transport and asset checks for the sample.</summary>
 internal static class TodoSmoke
@@ -19,7 +19,7 @@ internal static class TodoSmoke
     [
         "cwhtml.css",
         "cwhtml.js",
-        "webuitoolkit.assets.json",
+        "runic-toolkit.assets.json",
     ];
 
     internal static async Task<int> RunAsync(TodoApplication root)
@@ -81,7 +81,7 @@ internal static class TodoSmoke
                 binding => !content.Contains(binding, StringComparison.Ordinal)));
         string assemblyPath = Path.Combine(
             AppContext.BaseDirectory,
-            "WebUIToolkit.Samples.SimpleTodo.dll");
+            "RunicToolkit.Samples.SimpleTodo.dll");
         bool applicationAssemblyIsClean = !File.Exists(assemblyPath);
         if (!applicationAssemblyIsClean)
         {
@@ -123,7 +123,7 @@ internal static class TodoSmoke
             generatedRootRemoved &&
             StringComparer.Ordinal.Equals(
                 CsWebUiHtmxTransport.BindingName,
-                "webuitoolkitHtmx");
+                "runic-toolkitHtmx");
         Console.WriteLine(passed
             ? "SimpleTodo compiled native HTMX smoke test passed."
             : "SimpleTodo compiled native HTMX smoke test failed.");

@@ -1,6 +1,6 @@
 # Angular Todo
 
-Runs both Todo demos through `@webuitoolkit/mvvm-angular`.
+Runs both Todo demos through `@runic-artifex/mvvm-angular`.
 
 ```console
 dotnet run --project samples/Todo.Angular

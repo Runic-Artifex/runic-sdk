@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>$(WebUIToolkitDefaultTargetFramework)</TargetFramework>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/WebUIToolkit.CommandLine.Abstractions/WebUIToolkit.CommandLine.Abstractions.csproj" />
-    <ProjectReference Include="../../src/WebUIToolkit.CommandLine/WebUIToolkit.CommandLine.csproj" />
+    <PackageReference Include="RunicCommandLine.Abstractions" />
+    <PackageReference Include="RunicCommandLine" />
   </ItemGroup>
 </Project>

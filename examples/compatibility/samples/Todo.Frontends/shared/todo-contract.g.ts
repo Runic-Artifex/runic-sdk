@@ -6,7 +6,7 @@ import {
   MvvmProperty,
   MvvmReadonlyProperty,
   type MvvmProjection,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 
 export interface SimpleTodoItem {
   readonly id: string;
@@ -42,11 +42,11 @@ export interface DiagnosticEntry {
 export class SimpleTodoContract {
   public static readonly contractName = "samples.todo.simple" as const;
   public static readonly memberMetadata = [
-    { id: 1, name: "newTitle", sourceMember: "WebUIToolkit.Samples.SimpleTodo.TodoViewModel.NewTitle" },
-    { id: 3, name: "items", sourceMember: "WebUIToolkit.Samples.SimpleTodo.TodoViewModel.Items" },
-    { id: 10, name: "add", sourceMember: "WebUIToolkit.Samples.SimpleTodo.TodoViewModel.AddCommand" },
-    { id: 11, name: "toggle", sourceMember: "WebUIToolkit.Samples.SimpleTodo.TodoViewModel.ToggleByIdCommand" },
-    { id: 12, name: "remove", sourceMember: "WebUIToolkit.Samples.SimpleTodo.TodoViewModel.RemoveByIdCommand" },
+    { id: 1, name: "newTitle", sourceMember: "RunicToolkit.Samples.SimpleTodo.TodoViewModel.NewTitle" },
+    { id: 3, name: "items", sourceMember: "RunicToolkit.Samples.SimpleTodo.TodoViewModel.Items" },
+    { id: 10, name: "add", sourceMember: "RunicToolkit.Samples.SimpleTodo.TodoViewModel.AddCommand" },
+    { id: 11, name: "toggle", sourceMember: "RunicToolkit.Samples.SimpleTodo.TodoViewModel.ToggleByIdCommand" },
+    { id: 12, name: "remove", sourceMember: "RunicToolkit.Samples.SimpleTodo.TodoViewModel.RemoveByIdCommand" },
   ] as const;
 
   public readonly newTitle;
@@ -67,26 +67,26 @@ export class SimpleTodoContract {
 export class AdvancedTodoContract {
   public static readonly contractName = "samples.todo.advanced" as const;
   public static readonly memberMetadata = [
-    { id: 1, name: "newTitle", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.NewTitle" },
-    { id: 2, name: "newNotes", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.NewNotes" },
-    { id: 3, name: "newPriority", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.NewPriority" },
-    { id: 4, name: "query", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.Query" },
-    { id: 5, name: "filter", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.Filter" },
-    { id: 20, name: "items", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.VisibleItems" },
-    { id: 21, name: "diagnostics", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.Diagnostics" },
-    { id: 22, name: "state", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.State" },
-    { id: 40, name: "add", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.AddCommand" },
-    { id: 41, name: "applyFilter", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ApplyFilterCommand" },
-    { id: 42, name: "toggle", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ToggleByIdCommand" },
-    { id: 43, name: "delete", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.DeleteByIdCommand" },
-    { id: 44, name: "clearCompleted", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ClearCompletedCommand" },
-    { id: 45, name: "import", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ImportCommand" },
-    { id: 46, name: "cancelImport", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.CancelImportCommand" },
-    { id: 48, name: "wizardStart", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.StartWizardCommand" },
-    { id: 49, name: "wizardNext", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardNextCommand" },
-    { id: 50, name: "wizardBack", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardBackCommand" },
-    { id: 51, name: "wizardFinish", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardFinishCommand" },
-    { id: 52, name: "wizardCancel", sourceMember: "WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardCancelCommand" },
+    { id: 1, name: "newTitle", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.NewTitle" },
+    { id: 2, name: "newNotes", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.NewNotes" },
+    { id: 3, name: "newPriority", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.NewPriority" },
+    { id: 4, name: "query", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.Query" },
+    { id: 5, name: "filter", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.Filter" },
+    { id: 20, name: "items", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.VisibleItems" },
+    { id: 21, name: "diagnostics", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.Diagnostics" },
+    { id: 22, name: "state", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.State" },
+    { id: 40, name: "add", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.AddCommand" },
+    { id: 41, name: "applyFilter", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ApplyFilterCommand" },
+    { id: 42, name: "toggle", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ToggleByIdCommand" },
+    { id: 43, name: "delete", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.DeleteByIdCommand" },
+    { id: 44, name: "clearCompleted", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ClearCompletedCommand" },
+    { id: 45, name: "import", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.ImportCommand" },
+    { id: 46, name: "cancelImport", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.CancelImportCommand" },
+    { id: 48, name: "wizardStart", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.StartWizardCommand" },
+    { id: 49, name: "wizardNext", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardNextCommand" },
+    { id: 50, name: "wizardBack", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardBackCommand" },
+    { id: 51, name: "wizardFinish", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardFinishCommand" },
+    { id: 52, name: "wizardCancel", sourceMember: "RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel.WizardCancelCommand" },
   ] as const;
 
   public readonly newTitle;

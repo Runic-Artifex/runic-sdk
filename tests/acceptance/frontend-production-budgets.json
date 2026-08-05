@@ -1,5 +1,5 @@
 {
-  "schema": "webuitoolkit.frontend-production-budgets/1",
+  "schema": "runic-toolkit.examples.frontend-production-budgets/1",
   "reference": {
     "node": "24.18.0",
     "npm": "11.16.0",

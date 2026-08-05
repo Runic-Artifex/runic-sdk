@@ -1,12 +1,13 @@
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
-using WebUIToolkit.MVVM.Html;
-using WebUIToolkit.MVVM.Html.Testing;
-using WebUIToolkit.Samples.Cwhtml.Components;
+using System.Text;
+using RunicMarkup;
+using RunicToolkit.Samples.Cwhtml.Components;
 
-namespace WebUIToolkit.Samples.Cwhtml.Components.Tests;
+namespace RunicToolkit.Samples.Cwhtml.Components.Tests;
 
 internal static class Program
 {
@@ -108,11 +109,28 @@ internal static class Program
             reference.Name?.Contains("FontAwesome", StringComparison.OrdinalIgnoreCase) == true));
     }
 
-    private static string Render(IHtmlRenderable component) =>
-        HtmlRenderTest.AssertDeterministic(
-            component,
-            new TemplateContext(CultureInfo.InvariantCulture),
-            repetitions: 3).Text;
+    private static string Render(IHtmlRenderable component)
+    {
+        var context = new TemplateContext(CultureInfo.InvariantCulture);
+        string? baseline = null;
+        for (int repetition = 0; repetition < 3; repetition++)
+        {
+            var output = new ArrayBufferWriter<byte>();
+            var writer = new Utf8HtmlWriter(output);
+            component.Render(ref writer, context);
+            writer.Complete();
+            string candidate = Encoding.UTF8.GetString(output.WrittenSpan);
+            if (baseline is not null &&
+                !string.Equals(baseline, candidate, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Rendering was nondeterministic.");
+            }
+
+            baseline = candidate;
+        }
+
+        return baseline!;
+    }
 
     private static void Run(string name, Action body)
     {

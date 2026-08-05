@@ -1,31 +1,31 @@
-@namespace WebUIToolkit.Samples.SimpleTodo
-@view TodoAppView(WebUIToolkit.Samples.SimpleTodo.TodoRenderModel model)
+@namespace RunicToolkit.Samples.SimpleTodo
+@view TodoAppView(RunicToolkit.Samples.SimpleTodo.TodoRenderModel model)
 main #todo-app .card .shadow-lg
     data-webui-view="simple-todo"
-    data-wut-adapter="community-toolkit"
-    data-wut-collection=(nameof(TodoViewModel.Items)) {
+    data-runic-adapter="community-toolkit"
+    data-runic-collection=(nameof(TodoViewModel.Items)) {
     header {
         p .eyebrow {
             i .fa-solid .fa-laptop-code aria-hidden="true" {}
-            " WebUIToolkit · beginner sample"
+            " Runic Toolkit · beginner sample"
         }
         h1 { "Things worth doing" }
         p .intro { "A tiny compiled-HTML desktop MVVM app transported by HTMX." }
     }
 
     form #composer .composer
-        data-wut-action="add"
-        data-wut-command=(nameof(TodoViewModel.AddCommand))
-        data-wut-success-event="todo:changed"
-        data-wut-invalid-focus="new-title"
+        data-runic-action="add"
+        data-runic-command=(nameof(TodoViewModel.AddCommand))
+        data-runic-success-event="todo:changed"
+        data-runic-invalid-focus="new-title"
         data-hx-target="#todo_fragment"
         data-hx-swap="outerHTML" {
         label .form-label for="new-title" { "What needs doing?" }
         div .composer-row .input-group {
             input #new-title .form-control
                 name="title"
-                data-wut-member=(nameof(TodoViewModel.NewTitle))
-                data-wut-validation-message="Give the task a name between 2 and 80 characters."
+                data-runic-member=(nameof(TodoViewModel.NewTitle))
+                data-runic-validation-message="Give the task a name between 2 and 80 characters."
                 value=(model.Draft)
                 placeholder="e.g. Review the pull request"
                 minlength="2"
@@ -45,20 +45,20 @@ main #todo-app .card .shadow-lg
     }
 
     ul #tasks .tasks .list-group .list-group-flush aria-live="polite" {
-        @foreach (WebUIToolkit.Samples.SimpleTodo.TodoRenderItem item in model.Items) {
+        @foreach (RunicToolkit.Samples.SimpleTodo.TodoRenderItem item in model.Items) {
             li class=(item.CssClass) {
                 form
-                    data-wut-action="toggle"
-                    data-wut-command=(nameof(TodoViewModel.ToggleCommand))
-                    data-wut-success-event="todo:changed"
+                    data-runic-action="toggle"
+                    data-runic-command=(nameof(TodoViewModel.ToggleCommand))
+                    data-runic-success-event="todo:changed"
                     data-hx-target="#todo_fragment"
                     data-hx-swap="outerHTML" {
                     button .toggle .btn .btn-sm .btn-outline-success
                         type="submit"
                         name="selectedId"
-                        data-wut-member=(nameof(TodoViewModel.SelectedId))
-                        data-wut-format="guid"
-                        data-wut-validation-message="That task is no longer available."
+                        data-runic-member=(nameof(TodoViewModel.SelectedId))
+                        data-runic-format="guid"
+                        data-runic-validation-message="That task is no longer available."
                         value=(item.Id)
                         aria-label=(item.ToggleLabel) {
                         i class=(item.ToggleIconClass) aria-hidden="true" {}
@@ -66,17 +66,17 @@ main #todo-app .card .shadow-lg
                 }
                 span .task-title { (item.Title) }
                 form
-                    data-wut-action="remove"
-                    data-wut-command=(nameof(TodoViewModel.RemoveCommand))
-                    data-wut-success-event="todo:changed"
+                    data-runic-action="remove"
+                    data-runic-command=(nameof(TodoViewModel.RemoveCommand))
+                    data-runic-success-event="todo:changed"
                     data-hx-target="#todo_fragment"
                     data-hx-swap="outerHTML" {
                     button .remove .btn .btn-sm .btn-outline-danger
                         type="submit"
                         name="selectedId"
-                        data-wut-member=(nameof(TodoViewModel.SelectedId))
-                        data-wut-format="guid"
-                        data-wut-validation-message="That task is no longer available."
+                        data-runic-member=(nameof(TodoViewModel.SelectedId))
+                        data-runic-format="guid"
+                        data-runic-validation-message="That task is no longer available."
                         value=(item.Id)
                         aria-label=(item.RemoveLabel) {
                         i .fa-solid .fa-trash aria-hidden="true" {}

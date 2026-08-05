@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>WebUIToolkit.Samples.Todo.Svelte</AssemblyName>
-    <RootNamespace>WebUIToolkit.Samples.Todo.Svelte</RootNamespace>
-    <TodoFrontendWorkspace>@webuitoolkit/sample-todo-svelte</TodoFrontendWorkspace>
+    <AssemblyName>RunicToolkit.Samples.Todo.Svelte</AssemblyName>
+    <RootNamespace>RunicToolkit.Samples.Todo.Svelte</RootNamespace>
+    <TodoFrontendWorkspace>@runic-artifex/sample-todo-svelte</TodoFrontendWorkspace>
     <TodoFrontendDirectory>svelte</TodoFrontendDirectory>
   </PropertyGroup>
   <Import Project="../Todo.Frontends/TodoFrontendSample.props" />

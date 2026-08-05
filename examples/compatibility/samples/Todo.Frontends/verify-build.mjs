@@ -7,15 +7,15 @@ const packageDirectory = process.cwd();
 for (const file of [
   "dist/simple/index.html",
   "dist/advanced/index.html",
-  "dist/webuitoolkit.assets.json",
+  "dist/runic-toolkit.assets.json",
 ]) {
   await access(resolve(packageDirectory, file));
 }
 const manifest = JSON.parse(await readFile(
-  resolve(packageDirectory, "dist/webuitoolkit.assets.json"),
+  resolve(packageDirectory, "dist/runic-toolkit.assets.json"),
   "utf8",
 ));
-if (manifest.schema !== "webuitoolkit.frontend-assets/1") {
+if (manifest.schema !== "runic-toolkit.frontend-assets/1") {
   throw new Error("Generated frontend asset manifest has an unsupported schema.");
 }
 await access(resolve(packageDirectory, "dist", manifest.entrypoints.app));

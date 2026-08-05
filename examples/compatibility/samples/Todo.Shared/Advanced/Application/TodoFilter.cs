@@ -1,4 +1,4 @@
-namespace WebUIToolkit.Samples.AdvancedTodo.Application;
+namespace RunicToolkit.Samples.AdvancedTodo.Application;
 
 internal enum TodoFilter
 {

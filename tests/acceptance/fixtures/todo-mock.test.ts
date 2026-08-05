@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { startNativeMvvmApplication } from "@webuitoolkit/mvvm";
+import { startNativeMvvmApplication } from "@runic-artifex/mvvm";
 import {
   AdvancedTodoContract,
   SimpleTodoContract,
@@ -13,7 +13,7 @@ import {
 await verifySimpleTodo();
 await verifyAdvancedTodo();
 
-assert.equal(TODO_MOCK_MARKER, "webuitoolkit.todo.mock/1");
+assert.equal(TODO_MOCK_MARKER, "runic-toolkit.todo.mock/1");
 console.log(
   "Todo frontend-only fixture passed generated property, validation, " +
   "collection, command, filter, workflow, reconnect, and disposal gates.",

@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("WebUIToolkit.Samples.SimpleTodo")]
-[assembly: InternalsVisibleTo("WebUIToolkit.Samples.AdvancedTodo")]
-[assembly: InternalsVisibleTo("WebUIToolkit.Samples.Todo.FrontendHost")]
+[assembly: InternalsVisibleTo("RunicToolkit.Samples.SimpleTodo")]
+[assembly: InternalsVisibleTo("RunicToolkit.Samples.AdvancedTodo")]
+[assembly: InternalsVisibleTo("RunicToolkit.Samples.Todo.FrontendHost")]

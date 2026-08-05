@@ -4,7 +4,7 @@
 **Style:** Compiled HTML and HTMX in a native CsWebUi window
 
 Simple Todo is a small desktop application that demonstrates the intended
-compiled WebUIToolkit stack without ASP.NET or a loopback API. Its browser
+compiled Runic Toolkit stack without ASP.NET or a loopback API. Its browser
 dependencies and CSS/JavaScript production graph use the same npm/Vite
 pipeline as the framework samples.
 
@@ -47,7 +47,7 @@ dotnet run --project samples/SimpleTodo
 For the coordinated asset, cwhtml, C#, and CsWebUi development loop:
 
 ```bash
-dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
+dotnet runic-toolkit dev samples/SimpleTodo/SimpleTodo.csproj
 ```
 
 If the packaged tool is not installed, use the repository-local command shown
@@ -125,7 +125,7 @@ root is deleted during application teardown.
 1. Start with `TodoViewModel.cs` and `TodoItem.cs` for ordinary MVVM state.
 2. Read `Views/TodoApp.cwhtml`; static `data-hx-*` is rendered HTMX
    configuration, action URLs and revisions are generated, and build-time-only
-   `data-wut-*` declarations generate closed registration metadata and are
+   `data-runic-*` declarations generate closed registration metadata and are
    stripped from the HTML.
 3. Read `TodoApplicationRoot.cs` for the small domain-specific composition
    factory: model creation, generated adapter creation, render-model

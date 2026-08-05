@@ -2,7 +2,7 @@ import { createApp } from "vue";
 import {
   createVueMvvmApplicationPlugin,
   startVueMvvmApplication,
-} from "@webuitoolkit/mvvm-vue";
+} from "@runic-artifex/mvvm-vue";
 
 import {
   AdvancedTodoContract,

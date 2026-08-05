@@ -4,10 +4,10 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
+using RunicToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.Infrastructure;
+namespace RunicToolkit.Samples.AdvancedTodo.Infrastructure;
 
 internal sealed class JsonTodoRepository : ITodoRepository
 {

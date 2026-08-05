@@ -1,7 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 /// <summary>A single task displayed by the sample.</summary>
 public sealed partial class TodoItem(string title) : ObservableObject

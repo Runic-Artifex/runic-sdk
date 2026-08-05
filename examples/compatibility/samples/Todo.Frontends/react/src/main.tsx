@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import {
   ReactMvvmProvider,
   startReactMvvmApplication,
-} from "@webuitoolkit/mvvm-react";
+} from "@runic-artifex/mvvm-react";
 
 import {
   AdvancedTodoContract,

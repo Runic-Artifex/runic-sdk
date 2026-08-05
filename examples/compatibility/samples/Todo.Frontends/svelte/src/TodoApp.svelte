@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SvelteMvvmStore } from "@webuitoolkit/mvvm-svelte";
+  import type { SvelteMvvmStore } from "@runic-artifex/mvvm-svelte";
   import {
     type AdvancedTodoContract,
     type SimpleTodoContract,

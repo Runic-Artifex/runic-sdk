@@ -1,5 +1,5 @@
 {
-  description = "WebUIToolkit development environment";
+  description = "Runic Toolkit Examples development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

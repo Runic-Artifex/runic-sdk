@@ -5,19 +5,19 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
-using WebUIToolkit.Hosting;
-using WebUIToolkit.Hosting.Build;
-using WebUIToolkit.Hosting.CsWebUi;
-using WebUIToolkit.Hosting.CsWebUi.Mvvm;
-using WebUIToolkit.Hosting.WebUi;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.Samples.AdvancedTodo;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
-using WebUIToolkit.Samples.AdvancedTodo.Infrastructure;
-using AdvancedTodoViewModel = WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel;
-using SimpleTodoViewModel = WebUIToolkit.Samples.SimpleTodo.TodoViewModel;
+using RunicToolkit.Hosting;
+using RunicToolkit.Hosting.Build;
+using RunicToolkit.Hosting.CsWebUi;
+using RunicToolkit.Hosting.CsWebUi.Mvvm;
+using RunicToolkit.Hosting.WebUi;
+using RunicToolkit.MVVM;
+using RunicToolkit.Samples.AdvancedTodo;
+using RunicToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.Samples.AdvancedTodo.Infrastructure;
+using AdvancedTodoViewModel = RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel;
+using SimpleTodoViewModel = RunicToolkit.Samples.SimpleTodo.TodoViewModel;
 
-namespace WebUIToolkit.Samples.Todo.FrontendHost;
+namespace RunicToolkit.Samples.Todo.FrontendHost;
 
 /// <summary>Runs either shared Todo ViewModel through one selected browser framework.</summary>
 public static class TodoFrontendApplication
@@ -111,7 +111,7 @@ public static class TodoFrontendApplication
     {
         string dataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WebUIToolkit",
+            "RunicToolkit",
             "Samples");
         var repository = new JsonTodoRepository(Path.Combine(
             dataDirectory,
@@ -173,7 +173,7 @@ internal sealed class TodoFrontendRoot : IRootSessionFactory, IAsyncDisposable
             {
                 string dataDirectory = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "WebUIToolkit",
+                    "RunicToolkit",
                     "Samples");
                 var repository = new JsonTodoRepository(Path.Combine(
                     dataDirectory,

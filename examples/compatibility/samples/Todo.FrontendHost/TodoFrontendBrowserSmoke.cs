@@ -6,9 +6,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
-using WebUIToolkit.Hosting.WebUi;
+using RunicToolkit.Hosting.WebUi;
 
-namespace WebUIToolkit.Samples.Todo.FrontendHost;
+namespace RunicToolkit.Samples.Todo.FrontendHost;
 
 internal static class TodoFrontendBrowserSmoke
 {
@@ -36,17 +36,17 @@ internal static class TodoFrontendBrowserSmoke
 
         string browserProfile = Path.Combine(
             Path.GetTempPath(),
-            $"webuitoolkit-{frontend.ToLowerInvariant()}-{demo.ToString().ToLowerInvariant()}-" +
+            $"runic-toolkit-{frontend.ToLowerInvariant()}-{demo.ToString().ToLowerInvariant()}-" +
             Guid.NewGuid().ToString("N"));
         string taskTitle = $"Verify {frontend} {demo} {Guid.NewGuid():N}";
         string? hmrSource = verifyHmr
-            ? Environment.GetEnvironmentVariable("WEBUITOOLKIT_TODO_HMR_SOURCE")
+            ? Environment.GetEnvironmentVariable("RUNIC_TOOLKIT_TODO_HMR_SOURCE")
             : null;
         if (verifyHmr &&
             (string.IsNullOrWhiteSpace(hmrSource) || !File.Exists(hmrSource)))
         {
             Console.Error.WriteLine(
-                "FAIL: WEBUITOOLKIT_TODO_HMR_SOURCE must name the shared Todo stylesheet.");
+                "FAIL: RUNIC_TOOLKIT_TODO_HMR_SOURCE must name the shared Todo stylesheet.");
             return 1;
         }
         string? hmrToken = verifyHmr ? $"wut{Guid.NewGuid():N}" : null;
@@ -123,7 +123,7 @@ internal static class TodoFrontendBrowserSmoke
                             await File.WriteAllTextAsync(
                                     hmrSource!,
                                     originalHmrSource +
-                                    $"\nbody {{ --webuitoolkit-hmr-probe: {hmrToken}; }}\n",
+                                    $"\nbody {{ --runic-toolkit-hmr-probe: {hmrToken}; }}\n",
                                     timeout.Token)
                                 .ConfigureAwait(false);
                             hmrEditApplied = true;
@@ -272,7 +272,7 @@ internal static class TodoFrontendBrowserSmoke
     {
         string expected = JsonSerializer.Serialize(
             taskTitle,
-            WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String);
+            RunicToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String);
         string selector = demo == TodoDemo.Simple
             ? "\"#new-title\""
             : "\"input[placeholder='Task title']\"";
@@ -280,7 +280,7 @@ internal static class TodoFrontendBrowserSmoke
             ? "null"
             : JsonSerializer.Serialize(
                 hmrToken,
-                WebUIToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String);
+                RunicToolkit.Samples.SimpleTodo.TodoJsonContext.Default.String);
         return $$"""
             return (() => {
               try {
@@ -343,7 +343,7 @@ internal static class TodoFrontendBrowserSmoke
                 const startupFailure = document.querySelector(".alert-danger")?.textContent?.trim();
                 if (startupFailure) {
                   return "fail|" + startupFailure +
-                    "|binding=" + typeof globalThis.__webuitoolkit_mvvm_send +
+                    "|binding=" + typeof globalThis.__runicToolkit_mvvm_send +
                     "|webui=" + typeof globalThis.webui;
                 }
                 if (!body || !input || !form || !connected()) {
@@ -432,11 +432,11 @@ internal static class TodoFrontendBrowserSmoke
                     if (failure) return "fail|reconnect|" + failure;
                     return "waiting|reconnect-" + (reconnectCount + 1);
                   }
-                  if (typeof globalThis.__webuitoolkitTodoReconnect !== "function") {
+                  if (typeof globalThis.__runicToolkitTodoReconnect !== "function") {
                     return "fail|reconnect diagnostic is unavailable";
                   }
                   body.dataset.todoBrowserReconnectPending = "true";
-                  globalThis.__webuitoolkitTodoReconnect().then(() => {
+                  globalThis.__runicToolkitTodoReconnect().then(() => {
                     body.dataset.todoBrowserReconnectCount = String(reconnectCount + 1);
                     delete body.dataset.todoBrowserReconnectPending;
                   }).catch(error => {
@@ -458,7 +458,7 @@ internal static class TodoFrontendBrowserSmoke
                     return "ready-for-hmr|" + expectedHmr;
                   }
                   const observedHmr = getComputedStyle(body)
-                    .getPropertyValue("--webuitoolkit-hmr-probe").trim();
+                    .getPropertyValue("--runic-toolkit-hmr-probe").trim();
                   if (observedHmr !== expectedHmr) {
                     return "waiting|hmr|" + observedHmr;
                   }

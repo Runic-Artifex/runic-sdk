@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>RunicToolkit.Samples.Cwhtml.Components</AssemblyName>
+    <RootNamespace>RunicToolkit.Samples.Cwhtml.Components</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RunicMarkup" />
+    <PackageReference Include="RunicMarkup.Build" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

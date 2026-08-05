@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using WebUIToolkit.MVVM.Html;
-using WebUIToolkit.MVVM.Html.Htmx;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
-using WebUIToolkit.Samples.Cwhtml.Components;
+using RunicMarkup;
+using RunicMarkup.RunicToolkit.Htmx;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
+using RunicToolkit.Samples.Cwhtml.Components;
 
-namespace WebUIToolkit.Samples.SimpleTodo;
+namespace RunicToolkit.Samples.SimpleTodo;
 
 /// <summary>Immutable state consumed only by the compiled todo fragment.</summary>
 public sealed class TodoRenderModel

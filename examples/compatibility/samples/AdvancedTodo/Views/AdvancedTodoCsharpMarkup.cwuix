@@ -1,9 +1,9 @@
 using System;
 using System.Linq;
-using WebUIToolkit.CsharpMarkup;
-using WebUIToolkit.MVVM.Html.Htmx;
+using RunicMarkup.Csharp;
+using RunicMarkup.RunicToolkit.Htmx;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+namespace RunicToolkit.Samples.AdvancedTodo.UI;
 
 public static partial class AdvancedTodoCsharpMarkupViews
 {
@@ -269,7 +269,7 @@ public static partial class AdvancedTodoCsharpMarkupViews
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <meta name="color-scheme" content="dark" />
-                <title>Advanced ToDo · WebUIToolkit</title>
+                <title>Advanced ToDo · Runic Toolkit</title>
                 {!model.Assets.IsViteDevelopment ? <link rel="stylesheet" href="cwhtml.css" /> : null}
             </head>
             <body>

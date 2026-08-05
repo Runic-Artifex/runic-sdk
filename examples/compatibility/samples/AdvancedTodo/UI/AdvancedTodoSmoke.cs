@@ -6,15 +6,15 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.CommunityToolkit;
-using WebUIToolkit.MVVM.Html;
-using WebUIToolkit.MVVM.Html.Htmx;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
-using WebUIToolkit.Samples.AdvancedTodo.Domain;
+using RunicToolkit.MVVM;
+using RunicToolkit.MVVM.CommunityToolkit;
+using RunicMarkup;
+using RunicMarkup.RunicToolkit.Htmx;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
+using RunicToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.Samples.AdvancedTodo.Domain;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+namespace RunicToolkit.Samples.AdvancedTodo.UI;
 
 /// <summary>Out-of-process-style transport, persistence, and asset checks.</summary>
 internal static class AdvancedTodoSmoke
@@ -23,7 +23,7 @@ internal static class AdvancedTodoSmoke
     [
         "cwhtml.css",
         "cwhtml.js",
-        "webuitoolkit.assets.json",
+        "runic-toolkit.assets.json",
     ];
 
     internal static async Task<int> RunAsync(
@@ -274,7 +274,7 @@ internal static class AdvancedTodoSmoke
             generatedRootRemoved &&
             StringComparer.Ordinal.Equals(
                 CsWebUiHtmxTransport.BindingName,
-                "webuitoolkitHtmx");
+                "runic-toolkitHtmx");
         Console.WriteLine(passed
             ? "Advanced ToDo compiled native HTMX self-test passed."
             : "Advanced ToDo compiled native HTMX self-test failed.");

@@ -1,8 +1,8 @@
-@namespace WebUIToolkit.Samples.AdvancedTodo.UI
-@view AdvancedTodoAppView(WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel model)
+@namespace RunicToolkit.Samples.AdvancedTodo.UI
+@view AdvancedTodoAppView(RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel model)
 div .app-shell
     data-webui-view="advanced-todo"
-    data-wut-adapter="community-toolkit" {
+    data-runic-adapter="community-toolkit" {
     header .hero {
         div .eyebrow {
             i .fa-solid .fa-diagram-project aria-hidden="true" {}
@@ -32,15 +32,15 @@ div .app-shell
     main .layout {
         section .board {
             form #filter-form .toolbar
-                data-wut-action="filter"
-                data-wut-command=(nameof(TodoViewModel.ApplyFilterCommand))
+                data-runic-action="filter"
+                data-runic-command=(nameof(TodoViewModel.ApplyFilterCommand))
                 data-hx-target="#advanced_fragment"
                 data-hx-swap="outerHTML" {
                 label for="query" { "Search tasks" }
                 input #query .form-control
                     type="search"
                     name="query"
-                    data-wut-member=(nameof(TodoViewModel.Query))
+                    data-runic-member=(nameof(TodoViewModel.Query))
                     value=(model.Query)
                     maxlength="120"
                     placeholder="Search title or notes…"
@@ -48,8 +48,8 @@ div .app-shell
                 label for="filter" { "Filter" }
                 select #filter .form-select
                     name="filter"
-                    data-wut-member=(nameof(TodoViewModel.Filter))
-                    data-wut-validation-message="Choose All, Active, or Completed." {
+                    data-runic-member=(nameof(TodoViewModel.Filter))
+                    data-runic-validation-message="Choose All, Active, or Completed." {
                     option value="All" selected[=(model.FilterIsAll)] { "All" }
                     option value="Active" selected[=(model.FilterIsActive)] { "Active" }
                     option value="Completed" selected[=(model.FilterIsCompleted)] { "Completed" }
@@ -68,19 +68,19 @@ div .app-shell
                     }
                 }
                 form #add-form .add-form
-                    data-wut-action="add"
-                    data-wut-command=(nameof(TodoViewModel.AddCommand))
-                    data-wut-success-event="todo:changed"
-                    data-wut-invalid-focus="new-title"
+                    data-runic-action="add"
+                    data-runic-command=(nameof(TodoViewModel.AddCommand))
+                    data-runic-success-event="todo:changed"
+                    data-runic-invalid-focus="new-title"
                     data-hx-target="#advanced_fragment"
                     data-hx-swap="outerHTML" {
                     div .field .field-wide {
                         label for="new-title" { "Title" }
                         input #new-title .form-control
                             name="title"
-                            data-wut-member=(nameof(TodoViewModel.NewTitle))
-                            data-wut-include-validation="true"
-                            data-wut-validation-message="Give the task a title between 2 and 120 characters."
+                            data-runic-member=(nameof(TodoViewModel.NewTitle))
+                            data-runic-include-validation="true"
+                            data-runic-validation-message="Give the task a title between 2 and 120 characters."
                             value=(model.Title)
                             minlength="2"
                             maxlength="120"
@@ -99,7 +99,7 @@ div .app-shell
                         label for="new-notes" { "Notes" }
                         input #new-notes .form-control
                             name="notes"
-                            data-wut-member=(nameof(TodoViewModel.NewNotes))
+                            data-runic-member=(nameof(TodoViewModel.NewNotes))
                             value=(model.Notes)
                             maxlength="2000"
                             placeholder="Optional context";
@@ -108,8 +108,8 @@ div .app-shell
                         label for="new-priority" { "Priority" }
                         select #new-priority .form-select
                             name="priority"
-                            data-wut-member=(nameof(TodoViewModel.NewPriority))
-                            data-wut-validation-message="Choose Low, Normal, or High priority." {
+                            data-runic-member=(nameof(TodoViewModel.NewPriority))
+                            data-runic-validation-message="Choose Low, Normal, or High priority." {
                             option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
                             option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
                             option value="High" selected[=(model.PriorityIsHigh)] { "High" }
@@ -132,9 +132,9 @@ div .app-shell
                         }
                     }
                     form
-                        data-wut-action="clear-completed"
-                        data-wut-command=(nameof(TodoViewModel.ClearCompletedCommand))
-                        data-wut-success-event="todo:changed"
+                        data-runic-action="clear-completed"
+                        data-runic-command=(nameof(TodoViewModel.ClearCompletedCommand))
+                        data-runic-success-event="todo:changed"
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
                         button .quiet .btn .btn-secondary type="submit" {
@@ -145,20 +145,20 @@ div .app-shell
                 }
                 div #tasks aria-live="polite" {
                     @if (model.HasItems) {
-                        @foreach (WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderItem item in model.Items) {
+                        @foreach (RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderItem item in model.Items) {
                             article class=(item.CssClass) {
                                 form
-                                    data-wut-action="toggle"
-                                    data-wut-command=(nameof(TodoViewModel.ToggleCommand))
-                                    data-wut-success-event="todo:changed"
+                                    data-runic-action="toggle"
+                                    data-runic-command=(nameof(TodoViewModel.ToggleCommand))
+                                    data-runic-success-event="todo:changed"
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .check
                                         type="submit"
                                         name="selectedId"
-                                        data-wut-member=(nameof(TodoViewModel.SelectedId))
-                                        data-wut-format="guid"
-                                        data-wut-validation-message="That task is no longer available."
+                                        data-runic-member=(nameof(TodoViewModel.SelectedId))
+                                        data-runic-format="guid"
+                                        data-runic-validation-message="That task is no longer available."
                                         value=(item.Id)
                                         aria-label=(item.ToggleLabel) {
                                         i class=(item.ToggleIconClass) aria-hidden="true" {}
@@ -175,17 +175,17 @@ div .app-shell
                                     }
                                 }
                                 form
-                                    data-wut-action="delete"
-                                    data-wut-command=(nameof(TodoViewModel.DeleteCommand))
-                                    data-wut-success-event="todo:changed"
+                                    data-runic-action="delete"
+                                    data-runic-command=(nameof(TodoViewModel.DeleteCommand))
+                                    data-runic-success-event="todo:changed"
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .danger
                                         type="submit"
                                         name="selectedId"
-                                        data-wut-member=(nameof(TodoViewModel.SelectedId))
-                                        data-wut-format="guid"
-                                        data-wut-validation-message="That task is no longer available."
+                                        data-runic-member=(nameof(TodoViewModel.SelectedId))
+                                        data-runic-format="guid"
+                                        data-runic-validation-message="That task is no longer available."
                                         value=(item.Id)
                                         aria-label=(item.DeleteLabel) {
                                         i .fa-solid .fa-trash aria-hidden="true" {}
@@ -212,7 +212,7 @@ div .app-shell
             section .card .planner {
                 div .section-heading {
                     div {
-                        div .eyebrow { "WEBUITOOLKIT.MVVM.FLOW" }
+                        div .eyebrow { "RUNIC FLOW" }
                         h2 { "Guided planner" }
                     }
                 }
@@ -222,8 +222,8 @@ div .app-shell
                             "Create a task through a typed Details → Review workflow with validation and retained Back navigation."
                         }
                         form
-                            data-wut-action="wizard-start"
-                            data-wut-command=(nameof(TodoViewModel.StartWizardCommand))
+                            data-runic-action="wizard-start"
+                            data-runic-command=(nameof(TodoViewModel.StartWizardCommand))
                             data-hx-target="#advanced_fragment"
                             data-hx-swap="outerHTML" {
                             button .primary type="submit" { "Open planner" }
@@ -236,30 +236,30 @@ div .app-shell
                         }
                         @if (model.WizardIsDetails) {
                             form .stack
-                                data-wut-action="wizard-next"
-                                data-wut-command=(nameof(TodoViewModel.WizardNextCommand))
-                                data-wut-invalid-focus="wizard-title"
+                                data-runic-action="wizard-next"
+                                data-runic-command=(nameof(TodoViewModel.WizardNextCommand))
+                                data-runic-invalid-focus="wizard-title"
                                 data-hx-target="#advanced_fragment"
                                 data-hx-swap="outerHTML" {
                                 label for="wizard-title" { "Title" }
                                 input #wizard-title
                                     name="wizardTitle"
-                                    data-wut-member=(nameof(TodoViewModel.NewTitle))
-                                    data-wut-validation-message="Give the task a title before continuing."
+                                    data-runic-member=(nameof(TodoViewModel.NewTitle))
+                                    data-runic-validation-message="Give the task a title before continuing."
                                     value=(model.Title)
                                     minlength="2"
                                     maxlength="120"
                                     autocomplete="off"
                                     required[=true];
                                 label for="wizard-notes" { "Notes" }
-                                textarea #wizard-notes name="notes" data-wut-member=(nameof(TodoViewModel.NewNotes)) maxlength="2000" {
+                                textarea #wizard-notes name="notes" data-runic-member=(nameof(TodoViewModel.NewNotes)) maxlength="2000" {
                                     (model.Notes)
                                 }
                                 label for="wizard-priority" { "Priority" }
                                 select #wizard-priority
                                     name="priority"
-                                    data-wut-member=(nameof(TodoViewModel.NewPriority))
-                                    data-wut-validation-message="Choose Low, Normal, or High priority." {
+                                    data-runic-member=(nameof(TodoViewModel.NewPriority))
+                                    data-runic-validation-message="Choose Low, Normal, or High priority." {
                                     option value="Low" selected[=(model.PriorityIsLow)] { "Low" }
                                     option value="Normal" selected[=(model.PriorityIsNormal)] { "Normal" }
                                     option value="High" selected[=(model.PriorityIsHigh)] { "High" }
@@ -270,8 +270,8 @@ div .app-shell
                                 button .primary type="submit" { "Continue to review" }
                             }
                             form
-                                data-wut-action="wizard-cancel"
-                                data-wut-command=(nameof(TodoViewModel.WizardCancelCommand))
+                                data-runic-action="wizard-cancel"
+                                data-runic-command=(nameof(TodoViewModel.WizardCancelCommand))
                                 data-hx-target="#advanced_fragment"
                                 data-hx-swap="outerHTML" {
                                 button .quiet type="submit" { "Cancel" }
@@ -287,16 +287,16 @@ div .app-shell
                             }
                             div .button-row {
                                 form
-                                    data-wut-action="wizard-back"
-                                    data-wut-command=(nameof(TodoViewModel.WizardBackCommand))
+                                    data-runic-action="wizard-back"
+                                    data-runic-command=(nameof(TodoViewModel.WizardBackCommand))
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .quiet type="submit" { "Back" }
                                 }
                                 form
-                                    data-wut-action="wizard-finish"
-                                    data-wut-command=(nameof(TodoViewModel.WizardFinishCommand))
-                                    data-wut-success-event="todo:changed"
+                                    data-runic-action="wizard-finish"
+                                    data-runic-command=(nameof(TodoViewModel.WizardFinishCommand))
+                                    data-runic-success-event="todo:changed"
                                     data-hx-target="#advanced_fragment"
                                     data-hx-swap="outerHTML" {
                                     button .primary type="submit" { "Create task" }
@@ -316,7 +316,7 @@ div .app-shell
                 }
                 ol #activity .activity aria-live="polite" {
                     @if (model.HasDiagnostics) {
-                        @foreach (WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoDiagnostic entry in model.Diagnostics) {
+                        @foreach (RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoDiagnostic entry in model.Diagnostics) {
                             li {
                                 time { (entry.Time) }
                                 span .diagnostic-kind { (entry.Category) }
@@ -330,15 +330,15 @@ div .app-shell
                 }
                 @if (model.IsImporting) {
                     form #import-status
-                        data-wut-action="import-status"
-                        data-wut-command=(nameof(TodoViewModel.RefreshImportCommand))
+                        data-runic-action="import-status"
+                        data-runic-command=(nameof(TodoViewModel.RefreshImportCommand))
                         data-hx-trigger="load delay:2200ms"
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
                     }
                     form #import-cancel
-                        data-wut-action="cancel-import"
-                        data-wut-command=(nameof(TodoViewModel.CancelImportCommand))
+                        data-runic-action="cancel-import"
+                        data-runic-command=(nameof(TodoViewModel.CancelImportCommand))
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
                         button .quiet .btn .btn-secondary type="submit" {
@@ -349,9 +349,9 @@ div .app-shell
                 }
                 @else {
                     form #import-form
-                        data-wut-action="import"
-                        data-wut-command=(nameof(TodoViewModel.ImportCommand))
-                        data-wut-success-event="todo:changed"
+                        data-runic-action="import"
+                        data-runic-command=(nameof(TodoViewModel.ImportCommand))
+                        data-runic-success-event="todo:changed"
                         data-hx-target="#advanced_fragment"
                         data-hx-swap="outerHTML" {
                         button .secondary .btn .btn-info type="submit" {

@@ -5,9 +5,9 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CsWebUi;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+namespace RunicToolkit.Samples.AdvancedTodo.UI;
 
 /// <summary>Drives the generated AdvancedTodo registration through a real Chromium process.</summary>
 internal static class AdvancedTodoBrowserSmoke
@@ -41,7 +41,7 @@ internal static class AdvancedTodoBrowserSmoke
 
         string browserProfile = Path.Combine(
             Path.GetTempPath(),
-            "webuitoolkit-advanced-todo-browser-" + Guid.NewGuid().ToString("N"));
+            "runic-toolkit-advanced-todo-browser-" + Guid.NewGuid().ToString("N"));
         WebUiWindow? window = null;
         Process? browser = null;
         Task<string>? browserDiagnostics = null;
@@ -244,8 +244,8 @@ internal static class AdvancedTodoBrowserSmoke
             if (!body || !application || !fragment || !form || !titleInput ||
                 !notesInput || !priorityInput ||
                 typeof globalThis.htmx !== "object" ||
-                typeof globalThis.webuitoolkitHtmx !== "function" ||
-                !globalThis.WebUIToolkitHtmxCsWebUi) {
+                typeof globalThis["runic-toolkitHtmx"] !== "function" ||
+                !globalThis.RunicToolkitHtmxCsWebUi) {
               return "waiting|browser assets";
             }
 

@@ -1,4 +1,4 @@
-import { useMvvmSnapshot } from "@webuitoolkit/mvvm-react";
+import { useMvvmSnapshot } from "@runic-artifex/mvvm-react";
 
 export interface AppHeaderProps {
   readonly title: string;

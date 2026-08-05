@@ -1,9 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.CommandLine;
+using RunicCommandLine;
 
-namespace WebUIToolkit.Samples.GreetingCommandLine;
+namespace RunicToolkit.Samples.GreetingCommandLine;
 
 internal sealed class EmptyScopeFactory : ICommandExecutionScopeFactory
 {

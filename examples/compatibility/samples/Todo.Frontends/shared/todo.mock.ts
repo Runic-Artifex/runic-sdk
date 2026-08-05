@@ -7,7 +7,7 @@ import {
   type PatchChange,
   type PropertySnapshotMember,
   type CommandSnapshotMember,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 
 import {
   AdvancedTodoContract,
@@ -15,7 +15,7 @@ import {
   type TodoDemo,
 } from "./contracts";
 
-export const TODO_MOCK_MARKER = "webuitoolkit.todo.mock/1";
+export const TODO_MOCK_MARKER = "runic-toolkit.todo.mock/1";
 const createSimpleTodoMockChannel = createMvvmMockChannelFactory(
   createSimpleTodoMockFixture(),
 );
@@ -30,10 +30,10 @@ export function createTodoMockChannel(demo: TodoDemo): MvvmMockFrameChannel {
 }
 
 export function markTodoMockMode(): void {
-  document.body.dataset.webuitoolkitMode = "mock";
-  if (document.querySelector("[data-webuitoolkit-mock]") !== null) return;
+  document.body.dataset.runicToolkitMode = "mock";
+  if (document.querySelector("[data-runic-toolkit-mock]") !== null) return;
   const badge = document.createElement("div");
-  badge.dataset.webuitoolkitMock = TODO_MOCK_MARKER;
+  badge.dataset.runicToolkitMock = TODO_MOCK_MARKER;
   badge.className =
     "position-fixed bottom-0 start-50 translate-middle-x badge " +
     "rounded-top-pill rounded-bottom-0 text-bg-warning px-3 py-2";

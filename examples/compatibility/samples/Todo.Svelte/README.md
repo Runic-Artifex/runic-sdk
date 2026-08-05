@@ -1,6 +1,6 @@
 # Svelte Todo
 
-Runs both Todo demos through `@webuitoolkit/mvvm-svelte`.
+Runs both Todo demos through `@runic-artifex/mvvm-svelte`.
 
 ```console
 dotnet run --project samples/Todo.Svelte

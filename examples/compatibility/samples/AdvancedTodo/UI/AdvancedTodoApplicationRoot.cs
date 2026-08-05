@@ -1,21 +1,21 @@
 global using AdvancedTodoApplication =
-    WebUIToolkit.MVVM.Html.Htmx.CsWebUi.CwhtmlHtmxApplication<
-        WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel,
-        WebUIToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<
-            WebUIToolkit.Samples.AdvancedTodo.UI.TodoViewModel>,
-        WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoAppView,
-        WebUIToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel>;
+    RunicMarkup.RunicToolkit.Htmx.CsWebUi.CwhtmlHtmxApplication<
+        RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel,
+        RunicToolkit.MVVM.CommunityToolkit.CommunityToolkitMvvmBindingAdapter<
+            RunicToolkit.Samples.AdvancedTodo.UI.TodoViewModel>,
+        RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoAppView,
+        RunicToolkit.Samples.AdvancedTodo.UI.AdvancedTodoRenderModel>;
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.MVVM;
-using WebUIToolkit.MVVM.Html.Htmx.CsWebUi;
-using WebUIToolkit.Samples.AdvancedTodo.Application;
+using RunicToolkit.MVVM;
+using RunicMarkup.RunicToolkit.Htmx.CsWebUi;
+using RunicToolkit.Samples.AdvancedTodo.Application;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.UI;
+namespace RunicToolkit.Samples.AdvancedTodo.UI;
 
 /// <summary>Describes AdvancedTodo's domain-specific generated application composition.</summary>
 internal static class AdvancedTodoApplicationRoot

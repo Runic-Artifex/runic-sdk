@@ -3,7 +3,7 @@ import {
   computed,
   input,
 } from "@angular/core";
-import { injectAngularMvvmApplication } from "@webuitoolkit/mvvm-angular";
+import { injectAngularMvvmApplication } from "@runic-artifex/mvvm-angular";
 
 @Component({
   selector: "todo-app-header",

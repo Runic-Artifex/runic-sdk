@@ -1,6 +1,6 @@
 # Vue Todo
 
-Runs both Todo demos through `@webuitoolkit/mvvm-vue`.
+Runs both Todo demos through `@runic-artifex/mvvm-vue`.
 
 ```console
 dotnet run --project samples/Todo.Vue

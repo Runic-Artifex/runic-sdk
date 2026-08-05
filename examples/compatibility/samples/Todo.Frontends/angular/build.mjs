@@ -54,7 +54,7 @@ if (app === undefined || styles === undefined) {
 }
 
 const manifest = {
-  schema: "webuitoolkit.frontend-assets/1",
+  schema: "runic-toolkit.frontend-assets/1",
   framework: "Angular",
   mode: production ? "production" : "development",
   builder: "@angular/build:application",
@@ -69,7 +69,7 @@ const manifest = {
   }))),
 };
 await writeFile(
-  resolve(outputDirectory, "webuitoolkit.assets.json"),
+  resolve(outputDirectory, "runic-toolkit.assets.json"),
   JSON.stringify(manifest, null, 2) + "\n",
   "utf8",
 );

@@ -1,5 +1,5 @@
-@namespace WebUIToolkit.Samples.Cwhtml.Components.Tests
-@view StylingNeutralExampleView(WebUIToolkit.Samples.Cwhtml.Components.Tests.StylingNeutralExampleModel model)
+@namespace RunicToolkit.Samples.Cwhtml.Components.Tests
+@view StylingNeutralExampleView(RunicToolkit.Samples.Cwhtml.Components.Tests.StylingNeutralExampleModel model)
 article .paper-panel {
     header .paper-heading {
         h1 { "Styling-neutral cwhtml" }

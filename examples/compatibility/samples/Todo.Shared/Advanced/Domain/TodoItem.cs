@@ -1,6 +1,6 @@
 using System;
 
-namespace WebUIToolkit.Samples.AdvancedTodo.Domain;
+namespace RunicToolkit.Samples.AdvancedTodo.Domain;
 
 internal enum TodoPriority
 {

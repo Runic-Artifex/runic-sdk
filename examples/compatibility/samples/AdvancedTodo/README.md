@@ -24,7 +24,7 @@ the local development and minified production asset graph served by CsWebUi.
 - Generated action URLs and authoritative revision markup; the presentation
   model contains no endpoint routes or transport revision.
 - A private runtime web root containing the generated initial document.
-- One fixed native binding (`webuitoolkitHtmx`) instead of feature-specific
+- One fixed native binding (`runic-toolkitHtmx`) instead of feature-specific
   `WebUiWindow.BindAsync` callbacks.
 - Random closed HTMX routes for quick add, search/filter, toggle, delete, clear,
   import, and each workflow transition.
@@ -33,7 +33,7 @@ the local development and minified production asset graph served by CsWebUi.
 - A cancellable two-second starter import. The start command owns background
   work, the cancel command awaits deterministic cancellation, and a declarative
   HTMX status action refreshes successful completion.
-- A typed `WebUIToolkit.MVVM.Flow` Details → Review workflow with validation,
+- A typed `RunicFlow.Workflows` Details → Review workflow with validation,
   retained Back navigation, Finish, and Cancel.
 - A bounded in-app diagnostic feed containing safe application outcomes.
 - A high-level `CsWebUiHtmxApplication` owning transport, view, endpoint,
@@ -58,7 +58,7 @@ Use the coordinated developer loop while editing `.cwhtml`, C#, JavaScript,
 or CSS:
 
 ```bash
-dotnet webuitoolkit dev samples/AdvancedTodo/AdvancedTodo.csproj
+dotnet runic-toolkit dev samples/AdvancedTodo/AdvancedTodo.csproj
 ```
 
 If the packaged tool is not installed, use the repository-local command shown
@@ -67,7 +67,7 @@ in [Getting started](../../docs/getting-started/README.md).
 Tasks persist below the platform local application-data directory:
 
 ```text
-WebUIToolkit/AdvancedTodo/todos.json
+RunicToolkit/AdvancedTodo/todos.json
 ```
 
 Choose an explicit file with:

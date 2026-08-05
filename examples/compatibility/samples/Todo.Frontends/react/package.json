@@ -1,6 +1,6 @@
 {
-  "name": "@webuitoolkit/sample-todo-react",
-  "version": "0.1.0",
+  "name": "@runic-artifex/sample-todo-react",
+  "version": "0.1.0-preview.4.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,8 +12,8 @@
     "test": "node ../generate-contracts.mjs --verify && npm run typecheck && npm run build:production && node ../verify-build.mjs React"
   },
   "dependencies": {
-    "@webuitoolkit/mvvm": "0.1.0",
-    "@webuitoolkit/mvvm-react": "0.1.0",
+    "@runic-artifex/mvvm": "0.1.0-preview.4.1",
+    "@runic-artifex/mvvm-react": "0.1.0-preview.4.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

@@ -5,21 +5,15 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "../../SimpleTodo/www/site.css";
 import "../../AdvancedTodo/wwwroot/advanced-todo.css";
 
-await import(
-  "../../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/assets/webuitoolkit-htmx-cswebui-1.0.0.js"
-);
+await import("runic-markup-htmx-cswebui");
 const htmxModule = await import("htmx.org");
 globalThis.htmx ??= htmxModule.default;
-await import(
-  "../../../src/WebUIToolkit.MVVM.Html.Htmx.Js/assets/htmx-csp-2.0.10.js"
-);
-await import(
-  "../../../src/WebUIToolkit.MVVM.Html.Htmx.Js/assets/webuitoolkit-htmx-1.0.0.mjs"
-);
+await import("runic-markup-htmx-csp");
+await import("runic-markup-htmx");
 await import("bootstrap/dist/js/bootstrap.bundle.min.js");
 
-globalThis.__webuitoolkitViteModuleRevision =
-  (globalThis.__webuitoolkitViteModuleRevision ?? 0) + 1;
+globalThis.__runicToolkitViteModuleRevision =
+  (globalThis.__runicToolkitViteModuleRevision ?? 0) + 1;
 if (import.meta.hot) {
   await import("./hmr-probe.js");
   import.meta.hot.accept();
