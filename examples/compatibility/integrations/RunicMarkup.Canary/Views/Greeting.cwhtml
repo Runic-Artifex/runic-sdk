@@ -1,0 +1,6 @@
+@namespace RunicArtifex.Examples.Markup
+@view GreetingView(RunicArtifex.Examples.Markup.GreetingModel model)
+main #greeting {
+    "Hello, "
+    (model.Name)
+}

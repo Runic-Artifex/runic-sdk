@@ -1,0 +1,74 @@
+name: Markup canary
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: markup-canary-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  MARKUP_VERSION: 0.1.0-preview.7.1
+  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+
+jobs:
+  verify:
+    name: Consume published packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore package-only canary
+        run: dotnet restore integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj --locked-mode
+
+      - name: Build package-only canary
+        run: dotnet build integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj --no-restore --configuration Release
+
+      - name: Run package-only canary
+        run: dotnet run --project integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj --no-build --configuration Release
+
+      - name: Install published tools
+        run: |
+          dotnet tool install RunicMarkup.Tool --version "$MARKUP_VERSION" --tool-path "$RUNNER_TEMP/tools"
+          dotnet tool install RunicMarkup.LanguageServer --version "$MARKUP_VERSION" --tool-path "$RUNNER_TEMP/tools"
+          "$RUNNER_TEMP/tools/dotnet-cwhtml" --version
+          test -x "$RUNNER_TEMP/tools/cwhtml-language-server"
+
+      - name: Publish NativeAOT canary
+        run: >-
+          dotnet publish integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj
+          --configuration Release
+          --runtime linux-x64
+          --self-contained true
+          --output "$RUNNER_TEMP/native"
+          -p:PublishAot=true
+          -p:PublishTrimmed=true
+          -p:TrimMode=full
+          -p:IlcTreatWarningsAsErrors=true
+          -p:NuGetLockFilePath="$RUNNER_TEMP/aot.packages.lock.json"
+          -p:RestoreLockedMode=false
+
+      - name: Run NativeAOT canary
+        run: "$RUNNER_TEMP/native/RunicMarkup.Canary"
+
+      - name: Ensure portable inputs are unchanged
+        run: git diff --exit-code
