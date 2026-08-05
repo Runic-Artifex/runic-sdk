@@ -1,0 +1,14 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+
+export const metadata: Metadata = { title: "Getting started", description: "Choose a Runic Artifex product and prepare for the first public preview." };
+
+export default function GettingStartedPage() {
+  return <main><section className="page-hero shell"><p className="eyebrow">Getting started</p><h1>Begin at the capability boundary.</h1><p className="lede">Runic Artifex is not one mandatory stack. Choose an independent product, then add integrations owned by that product when your application needs them.</p></section><section className="content-grid shell">
+    <article className="info-card"><p className="eyebrow">01 · Choose</p><h2>Pick the owner</h2><ul><li>Need a desktop browser host? Start with <Link href="/products/cs-webui">CsWebUi</Link>.</li><li>Need compiled UI languages? Start with <Link href="/products/runic-markup">Runic Markup</Link>.</li><li>Need application composition across hosts and frontends? Start with <Link href="/products/runic-toolkit">Runic Toolkit</Link>.</li><li>Need flow, assets, localization, or CLI only? Consume that product without Toolkit.</li></ul></article>
+    <article className="info-card"><p className="eyebrow">02 · Install</p><h2>Use exact preview versions</h2><p>The first public train preserves versions already proven through private package canaries.</p><pre><code>dotnet add package RunicToolkit.Hosting.CsWebUi.App --version 0.1.0-preview.4.1</code></pre><pre><code>npm install @runic-artifex/mvvm@0.1.0-preview.4.1</code></pre></article>
+    <article className="info-card"><p className="eyebrow">03 · Integrate</p><h2>Let adapters point inward</h2><p>For example, Runic Flow remains UI-neutral. <code>RunicFlow.RunicToolkit</code> depends on both Flow and Toolkit and is released by Flow.</p><pre><code>dotnet add package RunicFlow.RunicToolkit --version 0.1.0-preview.4.1</code></pre></article>
+    <article className="info-card"><p className="eyebrow">04 · Verify</p><h2>Keep the application in control</h2><ul><li>Pin exact product versions during the preview.</li><li>Publish the final application with trimming and NativeAOT when supported.</li><li>Do not add NuGet <code>packages.lock.json</code>; application package managers already own dependency resolution.</li><li>Keep ordinary npm <code>package-lock.json</code> files for applications.</li></ul></article>
+    <article className="info-card full"><div className="notice"><strong>Before public launch</strong><p>These commands name verified release candidates but will resolve publicly only after the documentation gate, repository visibility change, and registry trusted-publisher setup are completed together.</p></div><p>Continue with the <Link className="text-link" href="/packages">full package catalog</Link> or read the <Link className="text-link" href="/architecture">dependency rules</Link>.</p></article>
+  </section></main>;
+}
