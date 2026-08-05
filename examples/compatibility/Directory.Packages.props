@@ -16,6 +16,9 @@
     <PackageVersion Include="RunicCommandLine.Abstractions" Version="0.1.0-preview.3.1" />
     <PackageVersion Include="RunicCommandLine.Hosting" Version="0.1.0-preview.3.1" />
     <PackageVersion Include="RunicCommandLine.Processes" Version="0.1.0-preview.3.1" />
+    <PackageVersion Include="RunicFlow" Version="0.1.0-preview.2.1" />
+    <PackageVersion Include="RunicFlow.Generators" Version="0.1.0-preview.2.1" />
+    <PackageVersion Include="RunicFlow.CommunityToolkit" Version="0.1.0-preview.2.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />

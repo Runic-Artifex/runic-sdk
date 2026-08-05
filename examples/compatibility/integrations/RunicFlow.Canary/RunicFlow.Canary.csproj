@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RunicArtifex.Examples.Flow</RootNamespace>
+    <AssemblyName>RunicFlow.Canary</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RunicFlow" />
+    <PackageReference Include="RunicFlow.Generators" />
+    <PackageReference Include="RunicFlow.CommunityToolkit" />
+  </ItemGroup>
+</Project>
