@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace WebUIToolkit.Assets;
+namespace RunicAssets;
 
 /// <summary>Describes the cache semantics of immutable or live asset content.</summary>
 public enum AssetCacheMode
@@ -91,7 +91,7 @@ public sealed record AssetDescriptor
 public sealed class AssetManifest
 {
     /// <summary>The current package-neutral manifest schema identifier.</summary>
-    public const string CurrentVersion = "webuitoolkit.assets/1";
+    public const string CurrentVersion = "runic.assets/1";
     private readonly IReadOnlyList<AssetDescriptor> _assets;
     private readonly Dictionary<string, AssetDescriptor> _byPath;
     private readonly string _version = CurrentVersion;

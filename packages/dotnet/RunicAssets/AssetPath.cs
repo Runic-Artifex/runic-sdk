@@ -1,6 +1,6 @@
 using System;
 
-namespace WebUIToolkit.Assets;
+namespace RunicAssets;
 
 /// <summary>Validates application-relative asset paths at every trust boundary.</summary>
 public static class AssetPath

@@ -1,7 +1,6 @@
-# WebUIToolkit.Assets
+# RunicAssets
 
-`WebUIToolkit.Assets` is the framework-neutral static-asset boundary for
-WebUIToolkit applications. It has no dependency on hosting, CsWebUi, HTMX,
+`RunicAssets` is a framework-neutral static-asset boundary. It has no dependency on hosting, CsWebUi, HTMX,
 MVVM, a CSS system, or a browser framework.
 
 - `EmbeddedAssetSource` serves explicitly mapped assembly resources directly,

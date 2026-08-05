@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="WebUIToolkit.Assets" Version="1.0.0" />
+    <PackageReference Include="RunicAssets" Version="$(RunicAssetsPackageVersion)" />
     <EmbeddedResource Include="index.html" LogicalName="PackageConsumer.index.html" />
   </ItemGroup>
 </Project>

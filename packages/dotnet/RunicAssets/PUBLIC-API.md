@@ -1,6 +1,6 @@
 # Public API
 
-Namespace: `WebUIToolkit.Assets`
+Namespace: `RunicAssets`
 
 - `AssetPath`
 - `AssetMediaTypes`
@@ -8,6 +8,9 @@ Namespace: `WebUIToolkit.Assets`
 - `AssetDescriptor`
 - `AssetManifest`
 - `IAssetSource`
+- `AssetArchive`
+- `AssetArchiveReadOptions`
+- `AssetArchiveSource`
 - `EmbeddedAssetRegistration`
 - `EmbeddedAssetSource`
 - `DevelopmentDirectoryAssetSource`

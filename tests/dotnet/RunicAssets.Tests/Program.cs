@@ -6,8 +6,11 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using RunicAssets.AspNetCore;
+using RunicAssets.CsWebUi;
 
-namespace WebUIToolkit.Assets.Tests;
+namespace RunicAssets.Tests;
 
 internal static class Program
 {
@@ -16,6 +19,9 @@ internal static class Program
         new("paths reject traversal and ambiguous syntax", SafePaths),
         new("manifest metadata and ordering are deterministic", DeterministicManifest),
         new("embedded assets validate and open offline", EmbeddedAssets),
+        new("portable archives round-trip deterministic metadata", ArchiveRoundTrip),
+        new("CsWebUi integration preloads exact assets", CsWebUiIntegration),
+        new("ASP.NET Core integration preserves response metadata", AspNetCoreIntegration),
         new("development directory refresh preserves immutable snapshots", DirectoryRefresh),
         new("development directory detects content drift", DirectoryDrift),
         new("development directory rejects symbolic links", DirectoryLinks),
@@ -108,6 +114,66 @@ internal static class Program
             async () => await source.OpenReadAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
     }
 
+    private static async Task ArchiveRoundTrip()
+    {
+        var source = NewEmbeddedSource();
+        using var first = new MemoryStream();
+        using var second = new MemoryStream();
+        await AssetArchive.WriteAsync(source, first).ConfigureAwait(false);
+        await AssetArchive.WriteAsync(source, second).ConfigureAwait(false);
+        SequenceEqual(first.ToArray(), second.ToArray());
+
+        first.Position = 0;
+        AssetArchiveSource restored = AssetArchive.Read(first);
+        await restored.ValidateAsync().ConfigureAwait(false);
+        SequenceEqual(
+            source.Manifest.Assets.Select(static asset =>
+                (asset.RelativePath, asset.MediaType, asset.Length, asset.Sha256, asset.CacheMode)),
+            restored.Manifest.Assets.Select(static asset =>
+                (asset.RelativePath, asset.MediaType, asset.Length, asset.Sha256, asset.CacheMode)));
+
+        second.Position = 0;
+        Throws<InvalidDataException>(() => AssetArchive.Read(
+            second,
+            new AssetArchiveReadOptions { MaxArchiveBytes = 1 }));
+    }
+
+    private static async Task CsWebUiIntegration()
+    {
+        var source = NewEmbeddedSource();
+        global::CsWebUi.WebUiVirtualFileSystem fileSystem = await source
+            .ToWebUiVirtualFileSystemAsync()
+            .ConfigureAwait(false);
+        True(fileSystem.TryGetFile("/", out ReadOnlyMemory<byte> entry));
+        True(Encoding.UTF8.GetString(entry.Span).Contains("Asset boundary", StringComparison.Ordinal));
+        True(fileSystem.TryGetFile("/assets/app.css", out _));
+    }
+
+    private static async Task AspNetCoreIntegration()
+    {
+        var source = NewEmbeddedSource();
+        AssetDescriptor descriptor = source.Manifest.EntryPoint;
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        await RunicAssetEndpointExtensions
+            .WriteAssetAsync(context, source, descriptor)
+            .ConfigureAwait(false);
+
+        Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Equal(descriptor.MediaType, context.Response.ContentType);
+        Equal(descriptor.Length, context.Response.ContentLength);
+        Equal(descriptor.EntityTag, context.Response.Headers.ETag.ToString());
+        Equal(descriptor.CacheControl, context.Response.Headers.CacheControl.ToString());
+        Equal(descriptor.Length, context.Response.Body.Length);
+
+        var conditional = new DefaultHttpContext();
+        conditional.Request.Headers.IfNoneMatch = descriptor.EntityTag;
+        await RunicAssetEndpointExtensions
+            .WriteAssetAsync(conditional, source, descriptor)
+            .ConfigureAwait(false);
+        Equal(StatusCodes.Status304NotModified, conditional.Response.StatusCode);
+    }
+
     private static async Task DirectoryRefresh()
     {
         using var directory = new TemporaryDirectory();
@@ -175,7 +241,7 @@ internal static class Program
         Assembly assembly = typeof(AssetManifest).Assembly;
         string[] references = assembly.GetReferencedAssemblies().Select(static reference => reference.Name ?? "").ToArray();
         True(!references.Any(static name =>
-            name.StartsWith("WebUIToolkit.", StringComparison.Ordinal)
+            name.StartsWith("RunicToolkit.", StringComparison.Ordinal)
             || name.Contains("CsWebUi", StringComparison.OrdinalIgnoreCase)
             || name.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase)));
         return Task.CompletedTask;
@@ -185,10 +251,10 @@ internal static class Program
         new(
             typeof(Program).Assembly,
             [
-                new("index.html", "WebUIToolkit.Assets.Tests.index.html", IsEntryPoint: true),
+                new("index.html", "RunicAssets.Tests.index.html", IsEntryPoint: true),
                 new(
                     "assets/app.css",
-                    "WebUIToolkit.Assets.Tests.app.css",
+                    "RunicAssets.Tests.app.css",
                     CacheMode: AssetCacheMode.Immutable),
             ]);
 

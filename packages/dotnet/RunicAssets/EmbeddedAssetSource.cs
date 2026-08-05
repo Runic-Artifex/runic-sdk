@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace WebUIToolkit.Assets;
+namespace RunicAssets;
 
 /// <summary>Maps explicit assembly resources to deterministic application asset paths.</summary>
 public sealed record EmbeddedAssetRegistration(

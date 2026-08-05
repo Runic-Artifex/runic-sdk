@@ -3,7 +3,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 
-namespace WebUIToolkit.Assets;
+namespace RunicAssets;
 
 /// <summary>Provides deterministic, platform-independent asset media types.</summary>
 public static class AssetMediaTypes
@@ -23,14 +23,22 @@ public static class AssetMediaTypes
             [".json"] = "application/json",
             [".map"] = "application/json",
             [".mjs"] = "text/javascript",
+            [".mp3"] = "audio/mpeg",
+            [".mp4"] = "video/mp4",
+            [".otf"] = "font/otf",
+            [".pdf"] = "application/pdf",
             [".png"] = "image/png",
             [".svg"] = "image/svg+xml",
             [".txt"] = "text/plain",
+            [".ttf"] = "font/ttf",
             [".wasm"] = "application/wasm",
             [".webp"] = "image/webp",
+            [".webm"] = "video/webm",
+            [".webmanifest"] = "application/manifest+json",
             [".woff"] = "font/woff",
             [".woff2"] = "font/woff2",
             [".xml"] = "application/xml",
+            [".wav"] = "audio/wav",
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Resolves a known media type, falling back to <c>application/octet-stream</c>.</summary>

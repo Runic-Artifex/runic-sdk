@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
-using WebUIToolkit.Assets;
+using RunicAssets;
 
 var source = new EmbeddedAssetSource(
     Assembly.GetExecutingAssembly(),

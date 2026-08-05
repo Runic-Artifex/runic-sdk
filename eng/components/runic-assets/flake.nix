@@ -1,9 +1,9 @@
 {
-  description = "WebUIToolkit development environment";
+  description = "Runic Assets development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    cs-webui.url = "github:ViktorJannicke/cs-webui";
+    cs-webui.url = "github:Runic-Artifex/cs-webui";
   };
 
   outputs =

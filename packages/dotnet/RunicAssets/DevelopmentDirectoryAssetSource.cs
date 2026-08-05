@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace WebUIToolkit.Assets;
+namespace RunicAssets;
 
 /// <summary>
 /// Exposes a refreshable local directory for development. Reparse points are rejected,
