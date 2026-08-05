@@ -30,6 +30,7 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <PackageProjectUrl>https://github.com/Runic-Artifex/runic-command-line</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags Condition="'$(PackageTags)' == ''">runic-artifex;command-line;cli;dotnet;nativeaot</PackageTags>
     <!-- Libraries leave dependency resolution to their consuming applications. -->
     <NuGetAudit Condition="'$(RunicCommandLineVerificationBuild)' == 'true'">true</NuGetAudit>
     <NuGetAudit Condition="'$(NuGetAudit)' == ''">false</NuGetAudit>
