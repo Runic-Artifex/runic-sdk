@@ -132,7 +132,9 @@ jobs:
       - name: Publish npm packages
         run: |
           for package in "$RUNNER_TEMP"/packages/*.tgz; do
-            npm publish "$package" --registry "https://npm.pkg.github.com"
+            npm publish "$package" \
+              --registry "https://npm.pkg.github.com" \
+              --tag preview
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
