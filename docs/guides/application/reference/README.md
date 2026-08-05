@@ -1,31 +1,28 @@
 # Reference
 
-Reference documentation lives beside the code that owns each contract:
+## Core
 
-## Tools and build integration
+- [`RunicToolkit.Collections`](../../src/RunicToolkit.Collections/README.md)
+- [`RunicToolkit.Desktop`](../../src/RunicToolkit.Desktop/README.md)
+- [`RunicToolkit.MVVM`](../../src/RunicToolkit.MVVM/README.md)
+- [`RunicToolkit.MVVM.Build`](../../src/RunicToolkit.MVVM.Build/README.md)
+- [`RunicToolkit.MVVM.CommunityToolkit`](../../src/RunicToolkit.MVVM.CommunityToolkit/README.md)
+- [`RunicToolkit.MVVM.ReactiveUI`](../../src/RunicToolkit.MVVM.ReactiveUI/README.md)
 
-- [`dotnet webuitoolkit`](../../tools/dotnet-webuitoolkit/README.md)
-- [`dotnet new` template pack](../../templates/WebUIToolkit.Templates/README.md)
-- [`dotnet cwhtml`](../../tools/dotnet-cwhtml/README.md)
-- [cwhtml language server](../../tools/cwhtml-language-server/README.md)
-- [VS Code cwhtml extension](../../editors/vscode-cwhtml/README.md)
-- [Frontend SDK](../../src/WebUIToolkit.Frontend.Sdk/README.md)
-- [cwhtml compiler](../../src/WebUIToolkit.MVVM.Html.Compiler/README.md)
-- [cwhtml build integration](../../src/WebUIToolkit.MVVM.Html.Build/README.md)
+## Hosting and frontend
 
-## Runtime surfaces
+- [`RunicToolkit.Hosting`](../../src/RunicToolkit.Hosting/README.md)
+- [`RunicToolkit.Hosting.Abstractions`](../../src/RunicToolkit.Hosting.Abstractions/README.md)
+- [`RunicToolkit.Hosting.Build`](../../src/RunicToolkit.Hosting.Build/README.md)
+- [`RunicToolkit.Hosting.WebUi`](../../src/RunicToolkit.Hosting.WebUi/README.md)
+- [`RunicToolkit.Hosting.CsWebUi`](../../src/RunicToolkit.Hosting.CsWebUi/README.md)
+- [`RunicToolkit.Hosting.CsWebUi.App`](../../src/RunicToolkit.Hosting.CsWebUi.App/README.md)
+- [`RunicToolkit.Hosting.CsWebUi.Mvvm`](../../src/RunicToolkit.Hosting.CsWebUi.Mvvm/README.md)
+- [`RunicToolkit.Frontend.Sdk`](../../src/RunicToolkit.Frontend.Sdk/README.md)
 
-- [Package map](../../src/README.md)
-- [MVVM runtime](../../src/WebUIToolkit.MVVM/README.md)
-- [Native CsWebUi MVVM hosting](../../src/WebUIToolkit.Hosting.CsWebUi.Mvvm/README.md)
-- [cwhtml and HTMX runtime](../../src/WebUIToolkit.MVVM.Html.Htmx/README.md)
-- [CsWebUi HTMX transport](../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi/README.md)
-- [High-level cwhtml/CsWebUi application builder](../../src/WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App/README.md)
-- [Application Flow](../../src/WebUIToolkit.MVVM.Flow/README.md)
-- [Hosting](../../src/WebUIToolkit.Hosting/README.md)
+## Tools and web packages
 
-## Versioned identities
-
-The [contract and identifier registry](../contracts/registry.md) owns protocol
-names, diagnostic ranges, schema identifiers, and package ownership. Public API
-baselines remain beside their packages.
+- [`dotnet-runic-toolkit`](../../tools/dotnet-runic-toolkit/README.md)
+- [MVVM binding compiler](../../tools/RunicToolkit.MVVM.BindingCompiler/README.md)
+- [TypeScript MVVM core](../../web/packages/mvvm/README.md)
+- [TypeScript conformance package](../../web/packages/conformance/README.md)

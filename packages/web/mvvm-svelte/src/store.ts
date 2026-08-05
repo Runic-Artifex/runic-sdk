@@ -14,8 +14,8 @@ import type {
   MvvmReadonlyProperty,
   Revision,
   CancelResult,
-} from "@webuitoolkit/mvvm";
-import { createMvvmCommandExecution } from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
+import { createMvvmCommandExecution } from "@runic-artifex/mvvm";
 import { onDestroy } from "svelte";
 import {
   derived,

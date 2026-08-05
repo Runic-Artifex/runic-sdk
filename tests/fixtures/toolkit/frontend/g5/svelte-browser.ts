@@ -1,5 +1,5 @@
-import { PROTOCOL_IDENTITY } from "@webuitoolkit/mvvm";
-import { createSvelteMvvmStore } from "@webuitoolkit/mvvm-svelte";
+import { PROTOCOL_IDENTITY } from "@runic-artifex/mvvm";
+import { createSvelteMvvmStore } from "@runic-artifex/mvvm-svelte";
 import { mount, unmount } from "svelte";
 
 import { G5Projection } from "./fake-projection.js";
@@ -9,7 +9,7 @@ import View from "./svelte-browser.svelte";
 const hostile = "<img src=x onerror=\"globalThis.__g5Xss = true\">";
 
 async function main(): Promise<void> {
-  assert(PROTOCOL_IDENTITY === "webuitoolkit.mvvm/1", "The G4 protocol identity changed.");
+  assert(PROTOCOL_IDENTITY === "runic.toolkit.mvvm/1", "The G4 protocol identity changed.");
   const projection = new G5Projection();
   const store = createSvelteMvvmStore(projection);
   let isolatedDeliveries = 0;

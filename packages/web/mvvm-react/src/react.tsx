@@ -11,8 +11,8 @@ import type {
   MvvmProjectionSnapshot,
   MvvmReadonlyProperty,
   CancelResult,
-} from "@webuitoolkit/mvvm";
-import { createMvvmCommandExecution } from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
+import { createMvvmCommandExecution } from "@runic-artifex/mvvm";
 import {
   createContext,
   createElement,

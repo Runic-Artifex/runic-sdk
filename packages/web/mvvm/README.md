@@ -1,12 +1,9 @@
-# `@webuitoolkit/mvvm`
+# `@runic-artifex/mvvm`
 
-Framework-neutral TypeScript support for the `webuitoolkit.mvvm/1` wire
+Framework-neutral TypeScript support for the `runic.toolkit.mvvm/1` wire
 protocol. The package owns transport-independent message validation and the
 client-side MVVM session model; UI framework bindings belong in separate
 adapter packages.
-
-> **Publication status:** this package is MIT licensed and remains marked
-> `private` until package identity and release-readiness review is complete.
 
 ## Runtime support
 
@@ -35,11 +32,11 @@ It does not install a browser global. Use a namespace import when a single
 parent namespace is useful:
 
 ```ts
-import * as WebUIToolkit from "@webuitoolkit/mvvm";
+import * as RunicToolkit from "@runic-artifex/mvvm";
 ```
 
-`WebUIToolkit` remains the product's parent namespace. `MVVM` is the feature
-area, while the lowercase string `webuitoolkit.mvvm/1` is the fixed, case-
+`RunicToolkit` remains the product's parent namespace. `MVVM` is the feature
+area, while the lowercase string `runic.toolkit.mvvm/1` is the fixed, case-
 sensitive wire protocol identity; it is not a JavaScript namespace.
 
 CommonJS consumers can load the ESM entry point with dynamic `import()`. A
@@ -58,13 +55,13 @@ exposes the same bounded UTF-8/JSON reader for conformance cases that exercise
 parser ceilings without requiring a client- or host-message envelope.
 
 ```ts
-import * as WebUIToolkit from "@webuitoolkit/mvvm";
+import * as RunicToolkit from "@runic-artifex/mvvm";
 
-declare const channel: WebUIToolkit.FrameChannel;
-declare const viewId: WebUIToolkit.Uuid;
+declare const channel: RunicToolkit.FrameChannel;
+declare const viewId: RunicToolkit.Uuid;
 
-const transport = new WebUIToolkit.ProtocolTransport(channel);
-const client = new WebUIToolkit.MvvmClient(transport);
+const transport = new RunicToolkit.ProtocolTransport(channel);
+const client = new RunicToolkit.MvvmClient(transport);
 
 const unsubscribe = client.subscribe((event) => {
   if (event.type === "state") renderFrom(event.snapshot);
@@ -72,7 +69,7 @@ const unsubscribe = client.subscribe((event) => {
 
 await client.start("Example.App", viewId);
 
-declare function renderFrom(snapshot: WebUIToolkit.ClientSnapshot): void;
+declare function renderFrom(snapshot: RunicToolkit.ClientSnapshot): void;
 ```
 
 The channel deals only in `Uint8Array` frames and supplies frame, close, and
@@ -107,11 +104,11 @@ TypeScript member and its C# authoring member without exposing runtime values.
 C#-first metadata also carries project-relative file, line, and column
 coordinates. `createInjectedMvvmDevelopmentTools` activates the bounded native
 overlay and `reportMvvmInspectorToEndpoint` terminal stream only when
-`dotnet webuitoolkit dev` injects its random loopback endpoint; normal
+`dotnet runic-toolkit dev` injects its random loopback endpoint; normal
 production documents do not contain that endpoint.
 
 `MvvmMockFrameChannel` is a development-only in-memory host that speaks the
-real `webuitoolkit.mvvm/1` protocol. Supply an initial snapshot and mutation
+real `runic.toolkit.mvvm/1` protocol. Supply an initial snapshot and mutation
 handlers, then pass the channel to `startMvvmApplication`; generated contracts
 and framework adapters run unchanged. The mock supports latency, validation,
 command results and faults, pushed updates, stale revisions, cancellation

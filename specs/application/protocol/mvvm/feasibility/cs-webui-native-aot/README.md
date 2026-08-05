@@ -26,7 +26,7 @@ The actual upstream sources satisfy the narrow feasibility question exercised he
 3. A separate high-level probe publishes with full trimming/AOT analyzers and warnings as errors.
 4. That published native executable starts a WebUI server; headless Edge loads its HTML and `webui.js`; JavaScript calls the managed `roundTrip` binding; managed code reads `native-aot`, returns `ack:native-aot`, and exits zero after deterministic cleanup.
 
-This is stronger than compile-only evidence. It does not make upstream `cs-webui` part of `WebUIToolkit.MVVM`: the neutral protocol/session library remains BCL-only, and a future host adapter owns the external dependency.
+This is stronger than compile-only evidence. It does not make upstream `cs-webui` part of `RunicToolkit.MVVM`: the neutral protocol/session library remains BCL-only, and a future host adapter owns the external dependency.
 
 ## Verified source facts
 
@@ -79,7 +79,7 @@ The locally built `webui-2.dll` was 543,744 bytes with SHA-256 `5954D96895ED3F26
 5. No assets are declared for Windows ARM64/x86, musl, or other unlisted RIDs.
 6. Browser mode requires an installed supported browser. Embedded WebView mode adds platform prerequisites such as WebView2 on Windows and GTK/WebKit on Linux.
 7. The out-of-tree probe proves the integration seam but is not an upstream regression test. A release gate should preserve a package-consumer version of the round trip and run the published binary for every supported target.
-8. This probe exercises a framework-neutral string callback, not the WebUIToolkit MVVM protocol corpus, session revisions, cancellation, reconnect, or frontend adapters. Those remain downstream gates.
+8. This probe exercises a framework-neutral string callback, not the RunicToolkit MVVM protocol corpus, session revisions, cancellation, reconnect, or frontend adapters. Those remain downstream gates.
 9. Dependency attribution and redistribution terms still require the repository's
    formal notices and SBOM review even though ADR 0014 licenses Runic Toolkit under MIT.
 

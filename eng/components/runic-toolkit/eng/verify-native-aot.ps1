@@ -27,24 +27,6 @@ try {
 
         $projectDirectory = $project.DirectoryName
         $projectProperties = @()
-        if ($project.BaseName -ceq 'WebUIToolkit.TextResources.AotTests') {
-            $feed = Join-Path $projectDirectory 'obj/aot-feed'
-            if (Test-Path -LiteralPath $feed) {
-                Remove-Item -LiteralPath $feed -Recurse -Force
-            }
-            New-Item -ItemType Directory -Path $feed | Out-Null
-            $runtimeProject = Join-Path $repositoryRoot `
-                'src/WebUIToolkit.TextResources/WebUIToolkit.TextResources.csproj'
-            dotnet pack $runtimeProject --configuration $Configuration --no-restore `
-                -p:PackageVersion=1.0.0 `
-                -p:ContinuousIntegrationBuild=true `
-                "-p:PathMap=$repositoryRoot=/_/" `
-                -p:NuGetAudit=false `
-                --output $feed
-            if ($LASTEXITCODE -ne 0) { throw 'Packing Text Resources for Native-AOT verification failed.' }
-
-            $projectProperties += "-p:TextResourcesPackageFeed=$feed"
-        }
 
         dotnet restore $project.FullName -p:RuntimeIdentifier= -p:RuntimeIdentifiers= `
             -p:NuGetAudit=false @projectProperties

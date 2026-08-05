@@ -3,15 +3,15 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.Hosting;
-using WebUIToolkit.Hosting.Build;
-using WebUIToolkit.Hosting.WebUi;
+using RunicToolkit.Hosting;
+using RunicToolkit.Hosting.Build;
+using RunicToolkit.Hosting.WebUi;
 
 FrontendAssetManifest manifest = new FrontendAssetManifestBuilder().Build(
     [new FrontendAssetBuildItem("index.html", Encoding.UTF8.GetBytes("<main>Hosting UI</main>"), true)]);
 var provider = new MemoryAssets(manifest);
 var stop = new ApplicationStopControllerBinding();
-var genericHost = new GenericHostWebUIToolkitApplicationBuilder();
+var genericHost = new GenericHostRunicToolkitApplicationBuilder();
 genericHost.Application.AddValidator(
     LaunchKind.UserInterface,
     new FrontendAssetValidator(provider));
@@ -26,7 +26,7 @@ genericHost.Application.AddModeRunner(new WebUiModeRunner(
         TimeSpan.FromSeconds(2),
         TimeSpan.FromSeconds(2))));
 
-await using WebUIToolkitApplication application = genericHost.Build();
+await using RunicToolkitApplication application = genericHost.Build();
 stop.Bind(application.StopController);
 ApplicationRunResult result = await application.RunAsync();
 return result.ExitCode ?? 1;

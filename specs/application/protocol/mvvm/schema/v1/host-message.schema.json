@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "WebUIToolkit MVVM protocol v1 host message",
+  "title": "RunicToolkit MVVM protocol v1 host message",
   "oneOf": [
     { "$ref": "#/$defs/handshakeResult" },
     { "$ref": "#/$defs/opened" },

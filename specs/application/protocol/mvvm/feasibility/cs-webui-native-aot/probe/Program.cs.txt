@@ -2,7 +2,7 @@
 using CsWebUi;
 using CsWebUi.Native;
 
-namespace WebUIToolkit.MVVM.UpstreamAotProbe;
+namespace RunicToolkit.MVVM.UpstreamAotProbe;
 
 internal static class Program
 {

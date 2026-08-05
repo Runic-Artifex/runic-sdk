@@ -1,14 +1,14 @@
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.Hosting;
+using RunicToolkit.Hosting;
 
-var builder = new GenericHostWebUIToolkitApplicationBuilder(args);
+var builder = new GenericHostRunicToolkitApplicationBuilder(args);
 builder.Application.AddModeRunner(new ExitRunner(LaunchKind.UserInterface, 0));
 builder.Application.AddModeRunner(new ExitRunner(LaunchKind.Command, 17));
 builder.Application.AddModeRunner(new ExitRunner(LaunchKind.Help, 0));
 builder.Application.AddModeRunner(new ExitRunner(LaunchKind.Version, 0));
 
-await using WebUIToolkitApplication application = builder.Build();
+await using RunicToolkitApplication application = builder.Build();
 ApplicationRunResult result = await application.RunAsync(args);
 return result.ExitCode ?? 1;
 

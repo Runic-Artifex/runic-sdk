@@ -1,32 +1,19 @@
-# WebUIToolkit documentation
+# Runic Toolkit documentation
 
-WebUIToolkit is a Native-AOT-first toolkit for building desktop applications on
-top of CsWebUi. It supports two frontend tracks:
+Runic Toolkit provides reusable .NET application hosting, desktop capability
+contracts, MVVM runtime/build support, frontend SDK infrastructure, TypeScript
+MVVM clients, framework adapters, and Toolkit-specific developer tools.
 
-- compiled mixed C# `.cwuix` or declarative `.cwhtml` views with HTMX over one
-  private native binding; and
-- React, Vue, Svelte, or Angular views over the generated binary MVVM contract.
+- [Architecture](architecture/README.md)
+- [Getting started](getting-started/README.md)
+- [Frontend contracts](guides/frontend-contracts.md)
+- [Framework adapters](guides/frontend-frameworks.md)
+- [Reference](reference/README.md)
+- [Development](contributing/development.md)
+- [Quality gates](contributing/quality-gates.md)
+- [Architecture decisions](adr/README.md)
 
-Both tracks share C# ViewModels, commands, validation, collections, application
-flow, hosting, and desktop capability services.
-
-## Start here
-
-- [Getting started](./getting-started/README.md) — enter the development
-  environment, run a sample, and use the coordinated development command.
-- [Guides](./guides/README.md) — C# markup, cwhtml, frontend-framework, and WPF migration
-  guidance.
-- [Reference](./reference/README.md) — command-line tools, SDKs, generated
-  contracts, and package-level documentation.
-- [Architecture](./architecture/README.md) — product boundaries, package
-  direction, and architectural decisions.
-- [Roadmap](./roadmap/README.md) — the single current ordering of product work.
-- [Contributing](./contributing/README.md) — development modes, quality gates,
-  and repository orchestration.
-
-## Historical material
-
-The [release evidence](./release/README.md) and
-[archived plans](./roadmap/archive/README.md) explain earlier delivery waves.
-They are retained for traceability, but they do not describe the current
-product priorities. The current roadmap is authoritative for unfinished work.
+Runnable applications live in
+[`runic-toolkit-examples`](https://github.com/Runic-Artifex/runic-toolkit-examples).
+Markup, Flow, Text Resources, Command Line, and Assets each evolve in their own
+repository and own any Toolkit integration package they publish.

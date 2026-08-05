@@ -1,8 +1,16 @@
 {
-  "name": "@webuitoolkit/mvvm-conformance",
+  "name": "@runic-artifex/mvvm-conformance",
   "version": "0.1.0",
-  "private": true,
-  "description": "Runtime-neutral conformance runner for the webuitoolkit.mvvm/1 TypeScript SDK.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/conformance"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "description": "Runtime-neutral conformance runner for the runic.toolkit.mvvm/1 TypeScript SDK.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -33,7 +41,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@webuitoolkit/mvvm": "0.1.0"
+    "@runic-artifex/mvvm": "0.1.0"
   },
   "devDependencies": {
     "typescript": "7.0.2"

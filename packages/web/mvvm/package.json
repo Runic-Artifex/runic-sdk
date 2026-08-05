@@ -1,8 +1,16 @@
 {
-  "name": "@webuitoolkit/mvvm",
+  "name": "@runic-artifex/mvvm",
   "version": "0.1.0",
-  "private": true,
-  "description": "Framework-neutral TypeScript client for the webuitoolkit.mvvm/1 protocol.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/mvvm"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "description": "Framework-neutral TypeScript client for the runic.toolkit.mvvm/1 protocol.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

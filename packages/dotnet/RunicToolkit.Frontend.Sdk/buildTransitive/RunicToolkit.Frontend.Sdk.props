@@ -1,0 +1,48 @@
+<Project>
+  <PropertyGroup>
+    <RunicToolkitFrontendEnabled Condition="'$(RunicToolkitFrontendEnabled)' == ''">true</RunicToolkitFrontendEnabled>
+    <RunicToolkitFrontendNodeEnabled
+      Condition="'$(RunicToolkitFrontendNodeEnabled)' == ''">true</RunicToolkitFrontendNodeEnabled>
+    <RunicToolkitFrontendCompilerEnabled
+      Condition="'$(RunicToolkitFrontendCompilerEnabled)' == ''">false</RunicToolkitFrontendCompilerEnabled>
+    <RunicToolkitFrontendCompilerDevelopmentHotReload
+      Condition="'$(RunicToolkitFrontendCompilerDevelopmentHotReload)' == ''">false</RunicToolkitFrontendCompilerDevelopmentHotReload>
+    <RunicToolkitFrontendCompilerGeneratedPattern
+      Condition="'$(RunicToolkitFrontendCompilerGeneratedPattern)' == ''">*.g.cs</RunicToolkitFrontendCompilerGeneratedPattern>
+    <RunicToolkitFrontendInstall Condition="'$(RunicToolkitFrontendInstall)' == ''">true</RunicToolkitFrontendInstall>
+    <RunicToolkitFrontendBuild Condition="'$(RunicToolkitFrontendBuild)' == ''">true</RunicToolkitFrontendBuild>
+    <RunicToolkitFrontendContractCSharpFirst
+      Condition="'$(RunicToolkitFrontendContractCSharpFirst)' == ''">false</RunicToolkitFrontendContractCSharpFirst>
+    <RunicToolkitFrontendPackageManager
+      Condition="'$(RunicToolkitFrontendPackageManager)' == ''">npm</RunicToolkitFrontendPackageManager>
+    <RunicToolkitFrontendInstallCommand
+      Condition="'$(RunicToolkitFrontendInstallCommand)' == ''">npm ci</RunicToolkitFrontendInstallCommand>
+    <RunicToolkitFrontendWorkspaceRoot Condition="'$(RunicToolkitFrontendWorkspaceRoot)' == ''">$(MSBuildProjectDirectory)</RunicToolkitFrontendWorkspaceRoot>
+    <RunicToolkitFrontendInstallCoordinator
+      Condition="'$(RunicToolkitFrontendInstallCoordinator)' == ''">$(MSBuildThisFileDirectory)../tools/install-frontend.mjs</RunicToolkitFrontendInstallCoordinator>
+    <RunicToolkitFrontendWebRoot Condition="'$(RunicToolkitFrontendWebRoot)' == ''">www</RunicToolkitFrontendWebRoot>
+    <RunicToolkitFrontendBuildArguments Condition="'$(Configuration)' == 'Release'">-- --production</RunicToolkitFrontendBuildArguments>
+    <RunicToolkitFrontendBuildArguments Condition="'$(RunicToolkitFrontendBuildArguments)' == ''"></RunicToolkitFrontendBuildArguments>
+    <RunicToolkitFrontendBridgeAsset Condition="'$(RunicToolkitFrontendBridgeAsset)' == ''">$(MSBuildThisFileDirectory)../assets/runic-toolkit-mvvm-cswebui.mjs</RunicToolkitFrontendBridgeAsset>
+    <RunicToolkitFrontendContractTool Condition="'$(RunicToolkitFrontendContractTool)' == ''">$(MSBuildThisFileDirectory)../tools/generate-contracts.mjs</RunicToolkitFrontendContractTool>
+    <RunicToolkitDevProject Condition="'$(RunicToolkitDevProject)' == ''">$(MSBuildProjectFullPath)</RunicToolkitDevProject>
+    <RunicToolkitDevRunArguments Condition="'$(RunicToolkitDevRunArguments)' == ''"></RunicToolkitDevRunArguments>
+    <RunicToolkitFrontendDevWatchTarget
+      Condition="'$(RunicToolkitFrontendDevWatchTarget)' == '' and '$(RunicToolkitFrontendNodeEnabled)' == 'true'">RunicToolkitFrontendWatchAssets</RunicToolkitFrontendDevWatchTarget>
+    <RunicToolkitFrontendViteDevServerEnabled
+      Condition="'$(RunicToolkitFrontendViteDevServerEnabled)' == ''">false</RunicToolkitFrontendViteDevServerEnabled>
+    <RunicToolkitFrontendViteDevServerEntry
+      Condition="'$(RunicToolkitFrontendViteDevServerEntry)' == ''">/src/main.js</RunicToolkitFrontendViteDevServerEntry>
+    <RunicToolkitFrontendDevServerKind
+      Condition="'$(RunicToolkitFrontendDevServerKind)' == '' and
+                 '$(RunicToolkitFrontendViteDevServerEnabled)' == 'true'">vite</RunicToolkitFrontendDevServerKind>
+    <RunicToolkitFrontendDevServerDocument
+      Condition="'$(RunicToolkitFrontendDevServerDocument)' == ''">index.html</RunicToolkitFrontendDevServerDocument>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="RunicToolkitFrontendContractCSharpFirst" />
+    <CompilerVisibleProperty Include="RunicToolkitFrontendContractArtifact" />
+    <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+  </ItemGroup>
+</Project>

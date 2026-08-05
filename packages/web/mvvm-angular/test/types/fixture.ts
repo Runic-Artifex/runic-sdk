@@ -3,7 +3,7 @@ import {
   MvvmCommandWithArgument,
   MvvmReadonlyProperty,
   type MvvmProjection,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import type { Signal } from "@angular/core";
 import {
   ANGULAR_MVVM_STORE,

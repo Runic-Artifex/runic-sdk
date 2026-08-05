@@ -1,8 +1,16 @@
 {
-  "name": "@webuitoolkit/mvvm-react",
+  "name": "@runic-artifex/mvvm-react",
   "version": "0.1.0",
-  "private": true,
-  "description": "React external-store bindings for @webuitoolkit/mvvm.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/mvvm-react"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "description": "React external-store bindings for @runic-artifex/mvvm.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -34,7 +42,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@webuitoolkit/mvvm": "0.1.0"
+    "@runic-artifex/mvvm": "0.1.0"
   },
   "peerDependencies": {
     "react": ">=18.3.1 <20",

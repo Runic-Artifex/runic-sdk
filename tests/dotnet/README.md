@@ -1,10 +1,10 @@
-# Test ownership
+# Tests
 
-Tests follow their production project family. Shared conformance corpora are versioned contracts and require orchestrator review.
+The solution contains executable contract-test projects rather than a single
+test framework runner. `eng/run-contract-tests.ps1` discovers and runs the
+managed suite after one solution build.
 
-The default solution contains the primary cumulative executable suites. The
-build-only HTML/CommunityToolkit adapter and dedicated CommunityToolkit,
-compiled-template, Flow, and HTMX package consumers run from
-`eng/verify-wave-c.ps1`. `eng/verify-wave-d.ps1` adds the shared G4 vertical,
-repository Native-AOT smokes, packed Native-AOT consumers, offline packaging,
-hardening, and performance gates.
+NativeAOT, real-browser, package-consumer, and template-acceptance projects are
+separate gates because they require additional runtime or published-package
+inputs. `tests/RunicToolkit.PackageCanary` is the release workflow’s isolated
+NuGet consumer.

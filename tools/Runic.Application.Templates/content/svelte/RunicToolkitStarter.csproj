@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RunicToolkitStarter</RootNamespace>
+    <RunicToolkitFrontendWorkspace>@runic-artifex/runic-toolkitstarter-svelte</RunicToolkitFrontendWorkspace>
+    <RunicToolkitFrontendPackageDirectory>$(MSBuildProjectDirectory)/Frontend</RunicToolkitFrontendPackageDirectory>
+    <RunicToolkitFrontendOutputDirectory>$(MSBuildProjectDirectory)/Frontend/dist</RunicToolkitFrontendOutputDirectory>
+    <RunicToolkitFrontendWorkspaceRoot>$(MSBuildProjectDirectory)</RunicToolkitFrontendWorkspaceRoot>
+    <RunicToolkitFrontendViteDevServerEnabled>true</RunicToolkitFrontendViteDevServerEnabled>
+    <RunicToolkitFrontendViteDevServerEntry>/src/main.ts</RunicToolkitFrontendViteDevServerEntry>
+    <RunicToolkitFrontendBuildArguments>-- --mode production</RunicToolkitFrontendBuildArguments>
+    <RunicToolkitFrontendContractCSharpFirst>true</RunicToolkitFrontendContractCSharpFirst>
+    <RunicToolkitFrontendContractTypeScriptOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-contract.g.ts</RunicToolkitFrontendContractTypeScriptOutput>
+    <RunicToolkitFrontendContractSvelteOutput>$(MSBuildProjectDirectory)/Frontend/src/counter-bindings.g.ts</RunicToolkitFrontendContractSvelteOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="RunicToolkit.Frontend.Sdk" Version="1.0.0" PrivateAssets="all" />
+    <PackageReference Include="RunicToolkit.Hosting.Build" Version="1.0.0" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App" Version="1.0.0-beta.1" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.Mvvm" Version="1.0.0-beta.1" />
+    <PackageReference Include="RunicToolkit.MVVM.CommunityToolkit" Version="1.0.0" />
+  </ItemGroup>
+</Project>

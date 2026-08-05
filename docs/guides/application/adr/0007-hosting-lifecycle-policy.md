@@ -5,7 +5,7 @@
 
 ## Context
 
-Hosting adapters compose command-line, MVVM, browser, Generic Host,
+Hosting adapters compose MVVM, browser, Generic Host,
 and external `cs-webui` implementations. Their dependency-neutral lifecycle behavior
 must be fixed before those adapters introduce framework-specific assumptions.
 

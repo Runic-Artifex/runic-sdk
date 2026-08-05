@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>RunicToolkit.MVVM.AotSmoke</AssemblyName>
+    <RootNamespace>RunicToolkit.MVVM.AotSmoke</RootNamespace>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishAot Condition="'$(MvvmNativeAot)' == 'true'">true</PublishAot>
+    <TrimMode>full</TrimMode>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>
+    <MvvmUsePackage Condition="'$(MvvmUsePackage)' == ''">false</MvvmUsePackage>
+    <ManagePackageVersionsCentrally Condition="'$(MvvmUsePackage)' == 'true'">false</ManagePackageVersionsCentrally>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)/obj/**;$(MSBuildProjectDirectory)/bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(MvvmUsePackage)' != 'true'">
+    <ProjectReference Include="../../src/RunicToolkit.MVVM/RunicToolkit.MVVM.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MvvmUsePackage)' == 'true'">
+    <PackageReference Include="RunicToolkit.MVVM" Version="$(MvvmPackageVersion)" />
+  </ItemGroup>
+</Project>

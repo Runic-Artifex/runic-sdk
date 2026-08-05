@@ -6,7 +6,7 @@ import {
   MvvmCollection,
   MvvmCommandWithArgument,
   MvvmReadonlyProperty,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import {
   AngularMvvmStore,
   AngularMvvmStoreDirective,

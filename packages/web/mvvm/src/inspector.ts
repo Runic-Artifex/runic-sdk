@@ -231,13 +231,13 @@ export function mountMvvmInspectorOverlay(
     throw new Error("The inspector overlay requires a browser document.");
   }
   const details = owner.createElement("details");
-  details.dataset.webuitoolkitInspector = "";
+  details.dataset.runicToolkitInspector = "";
   details.style.cssText =
     "position:fixed;right:1rem;bottom:1rem;z-index:2147483647;width:min(42rem,calc(100vw - 2rem));" +
     "max-height:50vh;overflow:auto;color:#e9ecef;background:#161b22;border:1px solid #495057;" +
     "border-radius:.5rem;box-shadow:0 .5rem 2rem #0008;font:12px/1.45 ui-monospace,monospace";
   const summary = owner.createElement("summary");
-  summary.textContent = options.title ?? "WebUIToolkit MVVM inspector";
+  summary.textContent = options.title ?? "RunicToolkit MVVM inspector";
   summary.style.cssText = "cursor:pointer;padding:.65rem .8rem;font-weight:700";
   const list = owner.createElement("ol");
   list.style.cssText = "list-style:none;margin:0;padding:0 .8rem .8rem";
@@ -303,9 +303,9 @@ export function createInjectedMvvmDevelopmentTools(
 ): InjectedMvvmDevelopmentTools | undefined {
   const injected = (
     globalThis as typeof globalThis & {
-      __webuitoolkitMvvmDevelopment?: unknown;
+      __runicToolkitMvvmDevelopment?: unknown;
     }
-  ).__webuitoolkitMvvmDevelopment;
+  ).__runicToolkitMvvmDevelopment;
   if (injected === null || typeof injected !== "object") return undefined;
   const endpointValue = Reflect.get(injected, "endpoint");
   if (typeof endpointValue !== "string") return undefined;
@@ -334,7 +334,7 @@ export function createInjectedMvvmDevelopmentTools(
 
 /**
  * Streams the same bounded, sanitized events to the loopback development
- * coordinator. The endpoint is injected only by `dotnet webuitoolkit dev`.
+ * coordinator. The endpoint is injected only by `dotnet runic-toolkit dev`.
  */
 export function reportMvvmInspectorToEndpoint(
   inspector: MvvmDevelopmentInspector,

@@ -1,0 +1,56 @@
+# RunicToolkit.Collections public API — Wave A
+
+namespace RunicToolkit.Collections;
+
+public sealed class ObservableRangeCollection<T> : System.Collections.ObjectModel.ObservableCollection<T>
+{
+    public ObservableRangeCollection();
+    public ObservableRangeCollection(System.Collections.Generic.IEnumerable<T> items);
+    public ObservableRangeCollection(ObservableRangeCollectionOptions options);
+    public ObservableRangeCollection(System.Collections.Generic.IEnumerable<T> items, ObservableRangeCollectionOptions options);
+    public void AddRange(System.Collections.Generic.IEnumerable<T> items);
+    public void InsertRange(int index, System.Collections.Generic.IEnumerable<T> items);
+    public void RemoveRange(int index, int count);
+    public void ReplaceRange(int index, int count, System.Collections.Generic.IEnumerable<T> replacement);
+    public void MoveRange(int oldIndex, int count, int newIndex);
+    public CollectionUpdateResult UpdateTo(System.Collections.Generic.IEnumerable<T> target, System.Collections.Generic.IEqualityComparer<T>? comparer = null, System.Func<T, T, T>? resolveMatch = null, CollectionUpdateOptions? options = null);
+    public CollectionUpdateResult UpdateTo<TKey>(System.Collections.Generic.IEnumerable<T> target, System.Func<T, TKey> keySelector, System.Collections.Generic.IEqualityComparer<TKey>? keyComparer = null, System.Func<T, T, T>? resolveMatch = null, CollectionUpdateOptions? options = null) where TKey : notnull;
+    public T[] ToSnapshot();
+}
+
+public sealed record ObservableRangeCollectionOptions
+{
+    public RangeNotificationMode RangeNotifications { get; init; } = RangeNotificationMode.Range;
+}
+
+public enum RangeNotificationMode
+{
+    Range = 0,
+    Reset = 1,
+}
+
+public enum UpdateNotificationMode
+{
+    Auto = 0,
+    Granular = 1,
+    Reset = 2,
+}
+
+public sealed record CollectionUpdateOptions
+{
+    public UpdateNotificationMode Notifications { get; init; } = UpdateNotificationMode.Auto;
+    public int MaxGranularEvents { get; init; } = 64;
+    public int ResetRatioMinimumCount { get; init; } = 64;
+    public double ResetChangeRatio { get; init; } = 0.35;
+}
+
+public readonly record struct CollectionUpdateResult(
+    int Added,
+    int Removed,
+    int Moved,
+    int Replaced,
+    int NotificationCount,
+    bool UsedReset)
+{
+    public bool Changed { get; }
+}

@@ -1,8 +1,16 @@
 {
-  "name": "@webuitoolkit/mvvm-angular",
+  "name": "@runic-artifex/mvvm-angular",
   "version": "0.1.0",
-  "private": true,
-  "description": "Angular signals and directive bindings for @webuitoolkit/mvvm.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/mvvm-angular"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "description": "Angular signals and directive bindings for @runic-artifex/mvvm.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -38,7 +46,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@webuitoolkit/mvvm": "0.1.0"
+    "@runic-artifex/mvvm": "0.1.0"
   },
   "peerDependencies": {
     "@angular/core": ">=20.3.26 <23",

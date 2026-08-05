@@ -1,8 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <WebUIToolkitGenerateFrontendAssets Condition="'$(WebUIToolkitGenerateFrontendAssets)' == ''">false</WebUIToolkitGenerateFrontendAssets>
-    <WebUIToolkitVerifyFrontendManifest Condition="'$(WebUIToolkitVerifyFrontendManifest)' == ''">false</WebUIToolkitVerifyFrontendManifest>
-    <WebUIToolkitFrontendAssetMode Condition="'$(WebUIToolkitFrontendAssetMode)' == ''">Directory</WebUIToolkitFrontendAssetMode>
-    <WebUIToolkitFrontendManifestPath Condition="'$(WebUIToolkitFrontendManifestPath)' == ''">$(IntermediateOutputPath)webuitoolkit.frontend-assets.json</WebUIToolkitFrontendManifestPath>
-  </PropertyGroup>
-</Project>

@@ -22,8 +22,8 @@ import type {
   MvvmProjectionSnapshot,
   MvvmReadonlyProperty,
   CancelResult,
-} from "@webuitoolkit/mvvm";
-import { createMvvmCommandExecution } from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
+import { createMvvmCommandExecution } from "@runic-artifex/mvvm";
 
 export interface AngularMvvmStoreOptions {
   /** Dispose the framework-neutral projection with this store. */
@@ -281,7 +281,7 @@ export class AngularMvvmCommandFacade<
 
 /** Angular injection token for a caller-scoped MVVM store. */
 export const ANGULAR_MVVM_STORE =
-  new InjectionToken<AngularMvvmStore>("webuitoolkit.mvvm.angular.store");
+  new InjectionToken<AngularMvvmStore>("runic.toolkit.mvvm.angular.store");
 
 /** Provides a caller-owned store without transferring its lifetime. */
 export function provideAngularMvvmStore(store: AngularMvvmStore): Provider {

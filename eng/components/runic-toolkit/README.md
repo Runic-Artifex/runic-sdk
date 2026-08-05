@@ -1,142 +1,64 @@
-# WebUIToolkit
+# Runic Toolkit
 
-WebUIToolkit is Native-AOT-first infrastructure for building desktop
-applications on [CsWebUi](https://github.com/ViktorJannicke/cs-webui) and for
-moving WPF applications to a modern browser-based frontend.
+Runic Toolkit is a NativeAOT-first application toolbelt for composing the same
+application model across desktop windows, browser frontends, Generic Host, and
+framework-specific UI adapters. It owns application lifecycle, frontend-neutral
+desktop contracts, MVVM transport contracts, frontend build integration, and the
+developer CLI. It does not own a markup language, workflow engine, command-line
+framework, localization system, or asset model.
 
-The intended model remains familiar to desktop MVVM developers: a C# ViewModel
-is the application-facing state and behavior, a compiled HTML or framework
-component is the View, and generated bindings connect properties, collections,
-validation, commands, and lifecycle without handwritten transport code.
+This repository is the clean-break successor to WebUIToolkit. Package,
+assembly, namespace, MSBuild, protocol, npm, diagnostic, and tool identities use
+`RunicToolkit.*`, `runic.toolkit.*`, `@runic-artifex/*`, `RTK*`, and
+`dotnet-runic-toolkit`; no compatibility aliases are provided for the retired
+identity.
 
-CsWebUi—not ASP.NET Core—owns the native window, embedded browser, and private
-JavaScript bindings.
+## Package families
 
-## Frontend tracks
+| Family | Purpose |
+| --- | --- |
+| `RunicToolkit.Hosting.*` | Deterministic lifecycle, Generic Host, WebUi, CsWebUi, build, and generator contracts |
+| `RunicToolkit.MVVM*` | NativeAOT-safe wire/session contracts plus CommunityToolkit and ReactiveUI adapters |
+| `RunicToolkit.Frontend.Sdk` | Framework-neutral frontend contracts, builds, manifests, and development metadata |
+| `RunicToolkit.Desktop` | Frontend-neutral desktop capabilities and close contracts |
+| `RunicToolkit.Collections` | Observable range collection primitives |
+| `RunicToolkit.DotNet.RunicToolkit` | `dotnet runic-toolkit` development and diagnostic tool |
 
-| Track | Authoring model | Native transport |
-| --- | --- | --- |
-| C# markup / cwhtml + HTMX | TSX-shaped mixed C# (`.cwuix`) or declarative typed HTML views and fragments | One private HTMX binding per window |
-| React, Vue, Svelte, Angular | Framework components over generated TypeScript contracts | Binary MVVM FrameChannel |
+The web clients live under `web/packages` and use the GitHub-compatible npm
+scope `@runic-artifex`.
 
-Both tracks share C# models and ViewModels, CommunityToolkit integration,
-commands, validation, collections, application Flow, hosting, and desktop
-capability services. Vite is an optional development and asset-build tool; it
-does not become the application host.
+## Independent products and integrations
 
-## Start
+Independent RunicArtifex products own their official Toolkit adapters:
 
-On NixOS, use the checked-in flake and direnv environment:
+- [Runic Markup](https://github.com/Runic-Artifex/runic-markup) owns
+  `RunicMarkup.RunicToolkit.*`;
+- [Runic Flow](https://github.com/Runic-Artifex/runic-flow) owns
+  `RunicFlow.RunicToolkit`;
+- [Runic Assets](https://github.com/Runic-Artifex/runic-assets) owns
+  `RunicAssets.RunicToolkit`;
+- [Runic Command Line](https://github.com/Runic-Artifex/runic-command-line)
+  will own `RunicCommandLine.RunicToolkit`.
+
+Runic Text Resources is independently consumable and needs no Toolkit
+dependency. Examples and cross-repository package canaries live in
+[runic-toolkit-examples](https://github.com/Runic-Artifex/runic-toolkit-examples),
+not in this library repository.
+
+## Development
+
+On NixOS, enter the checked-in environment and run the standalone verification:
 
 ```bash
-direnv allow
-pwsh ./eng/setup-development.ps1
-dotnet build WebUIToolkit.slnx
-dotnet run --project samples/SimpleTodo
+nix develop
+./eng/verify.sh
 ```
 
-Run the repository-local coordinated development tool with:
+The pipeline verifies clean identities, restores and builds the filtered
+solution, runs the managed contract suites, verifies the npm workspaces, packs
+the NuGet surface, and consumes it from an isolated local feed.
 
-```bash
-dotnet webuitoolkit doctor samples/SimpleTodo/SimpleTodo.csproj
-dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
-```
+## License
 
-The development loop coordinates .NET, CsWebUi, Vite, generated contracts,
-browser diagnostics, CSS/JavaScript HMR, state-preserving compatible compiled-markup
-renderer replacement, and safe restart fallback.
-
-See [Getting started](./docs/getting-started/README.md) for the complete first
-run and framework examples.
-
-## Documentation
-
-- [Documentation index](./docs/README.md)
-- [Getting started](./docs/getting-started/README.md)
-- [cwhtml development guide](./docs/guides/cwhtml.md)
-- [C# markup 1.0 language contract](./spec/csharp-markup/language/1.0/README.md)
-- [Frontend framework integration](./docs/guides/frontend-frameworks.md)
-- [WPF migration guide](./docs/guides/wpf-migration.md)
-- [Architecture](./docs/architecture/README.md)
-- [Reference](./docs/reference/README.md)
-- [Current product roadmap](./docs/roadmap/README.md)
-- [Contributing and verification](./docs/contributing/README.md)
-
-[ADR 0011](./docs/adr/0011-cs-webui-host-boundary.md) defines the CsWebUi host
-boundary. [ADR 0012](./docs/adr/0012-native-html-and-frontend-direction.md)
-defines the current compiled-HTML and frontend-framework direction.
-
-## Samples
-
-The [`samples`](./samples) directory is an ordered learning path:
-
-1. application lifecycle and Generic Host composition;
-2. typed command-line execution;
-3. framework-neutral MVVM projection;
-4. the production native binary FrameChannel;
-5. SimpleTodo and AdvancedTodo through compiled C# markup and cwhtml/HTMX; and
-6. both Todo levels through React, Vue, Svelte, and Angular.
-
-The Todo variants share their C# model/ViewModel layer and use locally pinned
-Bootstrap 5.3 and Font Awesome assets. Those libraries are sample and
-customer-migration defaults, not toolkit dependencies. Tailwind, shadcn, raw
-CSS, and other design systems remain valid consumer choices.
-
-Executable release and acceptance harnesses live under
-[`tests/Fixtures`](./tests/Fixtures), not in the teaching sequence.
-
-## Build and verification
-
-The repository pins .NET SDK 10.0.302 and Node.js 24.18 or newer. Every
-first-party .NET runtime, tool, build task, generator, sample, and test targets
-`net10.0`.
-
-Use the fast managed inner loop while editing:
-
-```powershell
-./eng/dev.ps1
-```
-
-Run strict release-facing verification explicitly:
-
-```powershell
-./eng/verify.ps1
-```
-
-Refresh and commit dependency lock files when dependencies change:
-
-```powershell
-./eng/update-locks.ps1
-```
-
-The [development modes](./docs/contributing/development.md) and
-[quality gates](./docs/contributing/quality-gates.md) explain the difference.
-
-## Current direction
-
-The native transports, shared ViewModels, frontend integrations, Vite pipeline,
-browser diagnostics, three live-feedback tiers, high-level application
-composition, project templates, and environment doctor are implemented. The
-WPF migration capability layer, generated aggregate framework façades,
-reusable sample components, and framework-neutral asset/VFS boundary are also
-implemented. The cs-webui organization transfer remains external maintainer
-coordination.
-
-Developer-experience parity across C# markup/cwhtml/HTMX, React, Vue, Svelte, and Angular
-is implemented. The production compiler backs a Language Server Protocol host
-and a packaged first-party VS Code extension with project-aware C# semantics,
-safe cross-language rename, generated-artifact inspection, and inspection of
-the live fragment rendered in the native window. All roadmap work controlled
-by this repository is complete; the [roadmap](./docs/roadmap/README.md) retains
-the external cs-webui organization transfer for maintainer coordination.
-
-Earlier wave plans and release evidence remain available under
-[`docs/roadmap/archive`](./docs/roadmap/archive) and
-[`docs/release`](./docs/release), but they do not describe current priorities.
-
-## License and publication
-
-Runic Toolkit is licensed under the [MIT License](./LICENSE), as recorded by
-[ADR 0014](./docs/adr/0014-mit-license.md). Third-party components retain their
-own licenses and notices. Public package releases still require package identity,
-dependency, notice, SBOM, security, and release-readiness review.
+Runic Toolkit is licensed under the [MIT License](LICENSE). Third-party
+components retain their own licenses and notices.

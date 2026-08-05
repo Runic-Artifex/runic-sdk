@@ -1,26 +1,19 @@
-# ADR 0002: Dependency direction and integration boundaries
+# ADR 0002: Dependency direction and integration ownership
 
 - Status: Accepted
-- Date: 2026-07-22
+- Updated: 2026-08-05
 
 ## Decision
 
-Dependencies point from composition and adapters toward neutral contracts and kernels. Feature packages never reference the application host.
+Dependencies point from adapters and composition toward neutral contracts.
+Toolkit core does not reference an independent RunicArtifex product.
 
-The initial rules are:
+The product owns its official Toolkit adapter. Therefore packages such as
+`RunicFlow.RunicToolkit`, `RunicAssets.RunicToolkit`, and
+`RunicMarkup.RunicToolkit.*` live and release with their product, depend on the
+public Toolkit package boundary, and may evolve without adding product history
+or implementation details to this repository.
 
-1. `WebUIToolkit.MVVM` owns protocol/session/runtime contracts and has no dependency on Hosting, Flow, or a frontend framework.
-2. `WebUIToolkit.MVVM.Flow` depends on minimal MVVM abstractions plus Microsoft.Extensions.DependencyInjection.Abstractions, Logging.Abstractions, and Options; it never depends on Hosting.
-3. `WebUIToolkit.Hosting` composes MVVM, command-line, assets, and upstream `cs-webui` through explicit adapters.
-4. `WebUIToolkit.CommandLine`, `WebUIToolkit.TextResources`, and `WebUIToolkit.Collections` remain independently usable.
-5. Observable collection bridge code belongs to MVVM or frontend adapters, not the BCL-only collection package.
-6. Text Resources owns text/template/asset metadata; Hosting.Build may aggregate it but does not redefine it.
-7. There is one HTMX implementation package: `WebUIToolkit.MVVM.Html.Htmx`.
-
-Cross-domain integration occurs through versioned packages, schemas, manifests, conformance corpora, and approved public APIs. Direct project references across worktrees are not accepted as a handoff.
-
-The integrated source solution may declare an explicitly allowlisted development-only
-`ProjectReference` when a clean checkout otherwise cannot bootstrap a package edge.
-The allowlist lives in `eng/ownership.json`, is enforced by the architecture gate, and
-does not replace package-only consumer verification. Wave B initially permits only the
-MVVM compiler/build owner to reference MVVM protocol/core for this purpose.
+Inside Toolkit, framework adapters depend on MVVM core; hosting adapters depend
+on hosting abstractions; CsWebUi packages are the only packages that may depend
+on CsWebUi. `eng/verify-architecture.ps1` enforces the allowed source graph.

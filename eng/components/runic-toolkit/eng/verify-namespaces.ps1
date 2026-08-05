@@ -3,31 +3,29 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$ownedRoots = @('src', 'tests', 'samples', 'web', 'protocol', 'spec')
+$ownedRoots = @('src', 'tests', 'tools', 'templates', 'web', 'protocol')
 $sourceExtensions = @(
     '.cs', '.csproj', '.props', '.targets', '.json', '.ts', '.tsx', '.js', '.mjs',
-    '.md', '.cwhtml', '.cshtml', '.razor', '.nuspec', '.xml', '.yaml', '.yml'
+    '.svelte', '.md', '.cwhtml', '.cwuix', '.nuspec', '.xml', '.yaml', '.yml'
 )
 $retiredPatterns = @(
-    # Reject the former owned root identity without rejecting the external
-    # CsWebUi package, namespace, types, or an explicitly named adapter.
-    '\bnamespace\s+CsWebUi(?:[.;])',
-    '<(?:AssemblyName|RootNamespace|PackageId)>CsWebUi(?:[.<])',
-    '\bCsWebUi\.(?:Collections|CommandLine|Hosting|MVVM|TextResources)\b',
-    '\bCSWEBUI_',
-    # Lower-cased NuGet lock identities retain the explicit
-    # WebUIToolkit.Hosting.CsWebUi.Mvvm adapter name.
-    '(?<!webuitoolkit\.hosting\.)\bcswebui\.(?:cli|mvvm)',
-    '\bcs-webui-mvvm(?:-[a-z]+)?\b',
-    '@cswebui/'
+    '\bWebUIToolkit\b',
+    '\bWEBUITOOLKIT\b',
+    '\bwebuitoolkit\b',
+    '\bWUT(?:MVVM|HOST|DEV|FE)\b',
+    '\bwut(?:mvvm|-bindings)\b',
+    '\bdata-wut\b',
+    '\bRunicToolkit\.(?:Assets|CommandLine|Flow|TextResources|Cwhtml)\b',
+    '\bRunicToolkit\.MVVM\.Html\b',
+    '\bRunicToolkit\.CsharpMarkup\b',
+    '\brunic-toolkit\.csharp-markup\b',
+    '__runic-toolkit'
 )
 $violations = @()
 
 foreach ($ownedRoot in $ownedRoots) {
     $path = Join-Path $repositoryRoot $ownedRoot
-    if (-not (Test-Path -LiteralPath $path)) {
-        continue
-    }
+    if (-not (Test-Path -LiteralPath $path)) { continue }
 
     $sourceFiles = Get-ChildItem -LiteralPath $path -Recurse -File |
         Where-Object {
@@ -42,7 +40,13 @@ foreach ($ownedRoot in $ownedRoots) {
 
 if ($violations.Count -gt 0) {
     $violations | ForEach-Object { Write-Error $_.ToString() }
-    throw 'Owned implementation paths contain the retired CsWebUi identity.'
+    throw 'Owned implementation paths contain a retired Toolkit identity.'
 }
 
-Write-Host 'Namespace identity check passed.'
+$lockFiles = @(Get-ChildItem -LiteralPath $repositoryRoot -Recurse -File -Filter packages.lock.json |
+    Where-Object { $_.FullName -notmatch '[\\/](?:node_modules|bin|obj)[\\/]' })
+if ($lockFiles.Count -gt 0) {
+    throw "Product repositories do not commit NuGet lock files: $($lockFiles.FullName -join ', ')"
+}
+
+Write-Host 'Toolkit identity and NuGet policy checks passed.'

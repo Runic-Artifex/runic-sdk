@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>RunicToolkit.MVVM.BindingCompiler</AssemblyName>
+    <RootNamespace>RunicToolkit.MVVM.BindingCompiler</RootNamespace>
+    <PackageId>RunicToolkit.MVVM.BindingCompiler</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Deterministic command-line compiler for RunicToolkit MVVM binding contracts.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>runic-toolkit-bindings</ToolCommandName>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RunicToolkitUsePackedDependencies Condition="'$(RunicToolkitUsePackedDependencies)' == ''">false</RunicToolkitUsePackedDependencies>
+    <RunicToolkitMvvmBindingEnabled>false</RunicToolkitMvvmBindingEnabled>
+    <RestoreAdditionalProjectSources Condition="'$(RunicToolkitLocalPackageSource)' != ''">$(RestoreAdditionalProjectSources);$(RunicToolkitLocalPackageSource)</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RunicToolkitUsePackedDependencies)' != 'true'">
+    <ProjectReference Include="..\..\src\RunicToolkit.MVVM.Build\RunicToolkit.MVVM.Build.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RunicToolkitUsePackedDependencies)' == 'true'">
+    <PackageReference Include="RunicToolkit.MVVM.Build" Version="[1.0.0]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

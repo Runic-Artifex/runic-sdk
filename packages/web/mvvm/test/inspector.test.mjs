@@ -125,7 +125,7 @@ test("endpoint reporter emits sanitized bigint-safe events", async () => {
 });
 
 test("injected development tools accept only a loopback coordinator", () => {
-  globalThis.__webuitoolkitMvvmDevelopment = {
+  globalThis.__runicToolkitMvvmDevelopment = {
     endpoint: "http://127.0.0.1:43123/token/events",
     projectDirectory: "/repo",
   };
@@ -135,11 +135,11 @@ test("injected development tools accept only a loopback coordinator", () => {
   development.dispose();
   development.dispose();
 
-  globalThis.__webuitoolkitMvvmDevelopment = {
+  globalThis.__runicToolkitMvvmDevelopment = {
     endpoint: "https://example.com/events",
   };
   assert.throws(() => createInjectedMvvmDevelopmentTools([]), /loopback HTTP/);
-  delete globalThis.__webuitoolkitMvvmDevelopment;
+  delete globalThis.__runicToolkitMvvmDevelopment;
 });
 
 test("inspector rejects unbounded retention", () => {

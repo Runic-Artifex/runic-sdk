@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>RunicToolkit.Collections</AssemblyName>
+    <RootNamespace>RunicToolkit.Collections</RootNamespace>
+    <PackageId>RunicToolkit.Collections</PackageId>
+    <Description>Dependency-free observable collection primitives with deterministic range mutations.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

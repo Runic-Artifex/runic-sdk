@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using WebUIToolkit.Hosting;
+using RunicToolkit.Hosting;
 
-var builder = new GenericHostWebUIToolkitApplicationBuilder();
+var builder = new GenericHostRunicToolkitApplicationBuilder();
 builder.Configuration["sample"] = "custom";
 builder.Application.AddValidator(new RequiredConfigurationValidator(
     () => builder.Configuration["sample"]));
@@ -15,7 +15,7 @@ builder.Application.ConfigureTimeouts(options =>
     options.TotalShutdownTimeout = TimeSpan.FromSeconds(5);
 });
 
-await using WebUIToolkitApplication application = builder.Build();
+await using RunicToolkitApplication application = builder.Build();
 ApplicationRunResult result = await application.RunAsync();
 return result.ExitCode ?? 1;
 

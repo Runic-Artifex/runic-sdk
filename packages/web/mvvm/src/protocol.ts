@@ -1,4 +1,4 @@
-export const PROTOCOL_IDENTITY = "webuitoolkit.mvvm/1" as const;
+export const PROTOCOL_IDENTITY = "runic.toolkit.mvvm/1" as const;
 export const PROTOCOL_VERSION = 1 as const;
 
 export const CAPABILITIES = Object.freeze([

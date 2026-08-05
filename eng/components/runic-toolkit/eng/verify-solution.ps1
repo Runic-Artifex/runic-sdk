@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$solutionPath = Join-Path $repositoryRoot 'WebUIToolkit.slnx'
+$solutionPath = Join-Path $repositoryRoot 'RunicToolkit.slnx'
 $exclusionsPath = Join-Path $PSScriptRoot 'solution-exclusions.txt'
 
 function ConvertTo-RepositoryPath([string]$path) {
@@ -46,7 +46,7 @@ foreach ($node in $solution.SelectNodes('//Project')) {
 $missing = @($expected | Where-Object { -not $actual.Contains($_) } | Sort-Object)
 $extra = @($actual | Where-Object { -not $expected.Contains($_) } | Sort-Object)
 if ($missing.Count -gt 0 -or $extra.Count -gt 0) {
-    $message = @('WebUIToolkit.slnx does not match the canonical project set.')
+    $message = @('RunicToolkit.slnx does not match the canonical project set.')
     if ($missing.Count -gt 0) { $message += "Missing: $($missing -join ', ')" }
     if ($extra.Count -gt 0) { $message += "Unexpected: $($extra -join ', ')" }
     throw ($message -join [Environment]::NewLine)

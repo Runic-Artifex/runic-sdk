@@ -1,8 +1,8 @@
-import { PROTOCOL_IDENTITY } from "@webuitoolkit/mvvm";
+import { PROTOCOL_IDENTITY } from "@runic-artifex/mvvm";
 import {
   provideVueMvvm,
   type VueMvvmAdapter,
-} from "@webuitoolkit/mvvm-vue";
+} from "@runic-artifex/mvvm-vue";
 import { createApp, h, nextTick } from "vue";
 
 import { G5Projection } from "./fake-projection.js";
@@ -11,7 +11,7 @@ import { assert, commandSubmissions, mandatoryFixtures, report } from "./report.
 const hostile = "<img src=x onerror=\"globalThis.__g5Xss = true\">";
 
 async function main(): Promise<void> {
-  assert(PROTOCOL_IDENTITY === "webuitoolkit.mvvm/1", "The G4 protocol identity changed.");
+  assert(PROTOCOL_IDENTITY === "runic.toolkit.mvvm/1", "The G4 protocol identity changed.");
   const projection = new G5Projection();
   let adapter: VueMvvmAdapter | undefined;
   let isolatedDeliveries = 0;

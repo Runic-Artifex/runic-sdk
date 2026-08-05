@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "WebUIToolkit MVVM protocol v1 common definitions",
+  "title": "RunicToolkit MVVM protocol v1 common definitions",
   "$defs": {
     "version": {
       "const": 1

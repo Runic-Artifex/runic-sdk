@@ -2,7 +2,7 @@ import {
   startNativeMvvmApplication,
   type NativeMvvmApplication,
   type NativeMvvmApplicationOptions,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 
 import {
   createReactMvvmStore,

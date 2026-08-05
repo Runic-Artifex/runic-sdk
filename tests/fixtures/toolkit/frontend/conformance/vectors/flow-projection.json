@@ -1,6 +1,6 @@
 {
-  "format": "webuitoolkit.mvvm.conformance-scenarios/1",
-  "protocolIdentity": "webuitoolkit.mvvm/1",
+  "format": "runic.toolkit.mvvm.conformance-scenarios/1",
+  "protocolIdentity": "runic.toolkit.mvvm/1",
   "category": "flow-projection",
   "mapping": "The fixture IDs are reserved Flow projection identifiers. They exercise member IDs and SDK observations only; no CommunityToolkit runtime is loaded.",
   "scenarios": [

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-04
-- Supersedes: [ADR 0004](./0004-license-pending.md)
+- Supersedes the monorepo publication hold recorded in Git history.
 
 ## Context
 

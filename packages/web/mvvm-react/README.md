@@ -1,6 +1,6 @@
-# `@webuitoolkit/mvvm-react`
+# `@runic-artifex/mvvm-react`
 
-React 18.3/19 bindings for the public `@webuitoolkit/mvvm` projection.
+React 18.3/19 bindings for the public `@runic-artifex/mvvm` projection.
 The adapter uses `useSyncExternalStore`; it does not reinterpret protocol
 members or introduce a second state model.
 

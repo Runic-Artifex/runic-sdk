@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>RunicToolkit.MVVM.Build</AssemblyName>
+    <RootNamespace>RunicToolkit.MVVM.Build</RootNamespace>
+    <PackageId>RunicToolkit.MVVM.Build</PackageId>
+    <Description>Deterministic binding compiler and build integration for RunicToolkit MVVM.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RunicToolkitUsePackedDependencies Condition="'$(RunicToolkitUsePackedDependencies)' == ''">false</RunicToolkitUsePackedDependencies>
+    <RestoreAdditionalProjectSources Condition="'$(RunicToolkitLocalPackageSource)' != ''">$(RestoreAdditionalProjectSources);$(RunicToolkitLocalPackageSource)</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RunicToolkitUsePackedDependencies)' != 'true'">
+    <ProjectReference Include="..\RunicToolkit.MVVM\RunicToolkit.MVVM.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RunicToolkitUsePackedDependencies)' == 'true'">
+    <PackageReference Include="RunicToolkit.MVVM" Version="[1.0.0]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="/" />
+    <None Update="buildTransitive\RunicToolkit.MVVM.Build.props" Pack="true" PackagePath="buildTransitive\RunicToolkit.MVVM.Build.props" />
+    <None Update="buildTransitive\RunicToolkit.MVVM.Build.targets" Pack="true" PackagePath="buildTransitive\RunicToolkit.MVVM.Build.targets" />
+    <None Include="$(TargetDir)$(AssemblyName).dll" Pack="true" PackagePath="tools\net10.0\any\" Visible="false" />
+    <None Include="$(TargetDir)$(AssemblyName).deps.json" Pack="true" PackagePath="tools\net10.0\any\" Visible="false" />
+    <None Include="$(TargetDir)$(AssemblyName).runtimeconfig.json" Pack="true" PackagePath="tools\net10.0\any\" Visible="false" />
+  </ItemGroup>
+</Project>

@@ -127,27 +127,6 @@ export async function loadFixtureManifest(
   return value as unknown as ConformanceFixtureManifest;
 }
 
-/** Validates every manifest-listed fixture against its committed SHA-256 bytes. */
-export async function validateFixtureIntegrity(
-  source: FixtureSource,
-  manifest: ConformanceFixtureManifest,
-): Promise<void> {
-  if (manifest.files === undefined) return;
-  const paths = new Set<string>();
-  for (const entry of manifest.files) {
-    assertFixturePath(entry.path);
-    if (!Number.isSafeInteger(entry.bytes) || entry.bytes < 0 || !/^[0-9a-f]{64}$/u.test(entry.sha256)) {
-      throw new TypeError("Fixture integrity entry is invalid.");
-    }
-    if (paths.has(entry.path)) throw new TypeError(`Duplicate fixture integrity path: ${entry.path}.`);
-    paths.add(entry.path);
-    const bytes = await readFixtureBytes(source, entry.path);
-    if (bytes.byteLength !== entry.bytes || await sha256(bytes) !== entry.sha256) {
-      throw new TypeError(`Fixture integrity mismatch: ${entry.path}.`);
-    }
-  }
-}
-
 export function validateProtocolManifest(value: unknown): ProtocolCorpusManifest {
   assertRecord(value, "protocol manifest");
   assertProtocolIdentity(value.protocolIdentity);
@@ -181,7 +160,7 @@ export function validateProtocolManifest(value: unknown): ProtocolCorpusManifest
 
 export function validateScenarioDocument(value: unknown): ScenarioDocument {
   assertRecord(value, "scenario document");
-  if (value.format !== "webuitoolkit.mvvm.conformance-scenarios/1") {
+  if (value.format !== "runic.toolkit.mvvm.conformance-scenarios/1") {
     throw new TypeError("Unsupported scenario document format.");
   }
   assertProtocolIdentity(value.protocolIdentity);
@@ -322,16 +301,9 @@ function assertNonemptyString(value: unknown, label: string): asserts value is s
   if (typeof value !== "string" || value.length === 0) throw new TypeError(`${label} must be a non-empty string.`);
 }
 
-async function sha256(bytes: Uint8Array): Promise<string> {
-  if (globalThis.crypto?.subtle === undefined) throw new TypeError("Web Crypto SHA-256 is required to validate fixture integrity.");
-  const input = new Uint8Array(bytes.byteLength);
-  input.set(bytes);
-  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", input.buffer));
-  return Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
-}
 
-function assertProtocolIdentity(value: unknown): asserts value is "webuitoolkit.mvvm/1" {
-  if (value !== "webuitoolkit.mvvm/1") throw new TypeError("Fixture protocol identity is not webuitoolkit.mvvm/1.");
+function assertProtocolIdentity(value: unknown): asserts value is "runic.toolkit.mvvm/1" {
+  if (value !== "runic.toolkit.mvvm/1") throw new TypeError("Fixture protocol identity is not runic.toolkit.mvvm/1.");
 }
 
 function assertFixtureByteLength(length: number): void {

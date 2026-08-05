@@ -26,7 +26,7 @@
       "sha256": "5954D96895ED3F2614DDD17DA9CE5A34B8FC22F70EB854CCBF7B833EBFB33AAA"
     },
     "highLevelProbe": {
-      "fileName": "WebUIToolkit.MVVM.UpstreamAotProbe.exe",
+      "fileName": "RunicToolkit.MVVM.UpstreamAotProbe.exe",
       "size": 1410560,
       "sha256": "C19BB8EE4FC30BE1D323E839C52DBC1652FFB4EA17DBF86B21A91AF4140E9D68"
     }

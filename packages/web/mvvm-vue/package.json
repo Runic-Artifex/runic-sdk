@@ -1,8 +1,16 @@
 {
-  "name": "@webuitoolkit/mvvm-vue",
+  "name": "@runic-artifex/mvvm-vue",
   "version": "0.1.0",
-  "private": true,
-  "description": "Vue 3 adapter for the WebUIToolkit MVVM projection.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/mvvm-vue"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "description": "Vue 3 adapter for the RunicToolkit MVVM projection.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -34,7 +42,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@webuitoolkit/mvvm": "0.1.0"
+    "@runic-artifex/mvvm": "0.1.0"
   },
   "peerDependencies": {
     "vue": ">=3.4.38 <4"

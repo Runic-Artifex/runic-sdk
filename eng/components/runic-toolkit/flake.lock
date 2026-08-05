@@ -8,13 +8,13 @@
       "locked": {
         "lastModified": 1784880696,
         "narHash": "sha256-dIHGA8Ix4HooFB+Pwt9bE0vi7RSzTiZNqXdRnvQQFbo=",
-        "owner": "ViktorJannicke",
+        "owner": "Runic-Artifex",
         "repo": "cs-webui",
         "rev": "99951f50bc6388248c15afe4518334e6a3ea54f5",
         "type": "github"
       },
       "original": {
-        "owner": "ViktorJannicke",
+        "owner": "Runic-Artifex",
         "repo": "cs-webui",
         "type": "github"
       }

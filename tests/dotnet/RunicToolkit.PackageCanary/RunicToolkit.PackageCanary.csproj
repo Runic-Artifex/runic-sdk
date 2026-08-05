@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RunicToolkitFrontendEnabled>false</RunicToolkitFrontendEnabled>
+    <RestoreAdditionalProjectSources>$(PackageDirectory);https://api.nuget.org/v3/index.json</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <Target Name="ValidatePackageCanaryProperties" BeforeTargets="Restore">
+    <Error Condition="'$(PackageVersion)' == ''" Text="PackageVersion is required." />
+    <Error Condition="'$(PackageDirectory)' == ''" Text="PackageDirectory is required." />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="RunicToolkit.Collections" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.Desktop" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.Frontend.Sdk" Version="$(PackageVersion)" PrivateAssets="all" />
+    <PackageReference Include="RunicToolkit.Hosting.Build" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.Mvvm" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.Hosting.Generators" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.MVVM.Build" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.MVVM.CommunityToolkit" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.MVVM.ReactiveUI" Version="$(PackageVersion)" />
+  </ItemGroup>
+</Project>

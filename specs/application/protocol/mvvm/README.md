@@ -1,8 +1,8 @@
-# WebUIToolkit MVVM wire contract
+# RunicToolkit MVVM wire contract
 
 This directory is the hand-reviewed, language-neutral source of truth for the
-`webuitoolkit.mvvm/1` protocol identity. The integer `v` field in every v1
-envelope is `1`. WebUIToolkit owns this protocol; lowercase `cs-webui` is the
+`runic.toolkit.mvvm/1` protocol identity. The integer `v` field in every v1
+envelope is `1`. RunicToolkit owns this protocol; lowercase `cs-webui` is the
 external transport dependency and is not renamed or specified here.
 
 ## Contents
@@ -17,7 +17,6 @@ external transport dependency and is not renamed or specified here.
   the closed host-to-client message union.
 - [`corpus/v1/manifest.json`](corpus/v1/manifest.json) declares valid, invalid,
   and semantic conformance cases with expected outcomes and reasons.
-- [`g3/first-party-consumer-matrix.json`](g3/first-party-consumer-matrix.json)
   maps existing corpus cases to the mandatory CommunityToolkit, compiled HTMX,
   Hosting, and Flow consumption evidence. It is not a fixture registry and does
   not change the frozen protocol surface.

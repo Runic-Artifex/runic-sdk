@@ -7,7 +7,7 @@ import type {
   MvvmProjectionEvent,
   MvvmProjectionSnapshot,
   MvvmProjectedCommandState,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 
 const request = "00000000-0000-4000-8000-000000000501";
 

@@ -3,7 +3,7 @@
 All mutable work happened outside the repository at:
 
 ```text
-C:\Users\vja\AppData\Local\Temp\webuitoolkit-cs-webui-aot-20260722-main
+C:\Users\vja\AppData\Local\Temp\runic-toolkit-cs-webui-aot-20260722-main
 ```
 
 The path is included for auditability of this run only. Reproduction should use a new temporary directory and the immutable SHAs below.
@@ -12,8 +12,8 @@ The path is included for auditability of this run only. Reproduction should use 
 
 ```powershell
 git ls-remote https://github.com/ViktorJannicke/cs-webui.git HEAD
-git clone --no-tags https://github.com/ViktorJannicke/cs-webui.git "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\cs-webui"
-git -C "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\cs-webui" rev-parse HEAD
+git clone --no-tags https://github.com/ViktorJannicke/cs-webui.git "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\cs-webui"
+git -C "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\cs-webui" rev-parse HEAD
 ```
 
 Key output:
@@ -65,12 +65,12 @@ This run is recorded as a managed baseline, not native proof.
 Read `nodes.webui.locked.rev` from the wrapper's `flake.lock`, then:
 
 ```powershell
-git clone --no-tags https://github.com/webui-dev/webui.git "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-source"
-git -C "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-source" checkout --detach 6c561ed739ce415e1e48ed17cb67c880aff1dc9d
+git clone --no-tags https://github.com/webui-dev/webui.git "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-source"
+git -C "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-source" checkout --detach 6c561ed739ce415e1e48ed17cb67c880aff1dc9d
 
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' `
-  -S "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-source" `
-  -B "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-build" `
+  -S "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-source" `
+  -B "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-build" `
   -G 'Visual Studio 18 2026' -A x64 `
   -DBUILD_SHARED_LIBS=ON `
   -DWEBUI_BUILD_EXAMPLES=OFF `
@@ -79,11 +79,11 @@ git -C "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-source" c
   -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' `
-  --build "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-build" --config Release --parallel
+  --build "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-build" --config Release --parallel
 
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' `
-  --install "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-build" `
-  --prefix "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-install" --config Release
+  --install "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-build" `
+  --prefix "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-install" --config Release
 ```
 
 Selected output:
@@ -100,8 +100,8 @@ Validate the binding surface against the exact pinned header:
 
 ```powershell
 & 'C:\Program Files\Git\bin\bash.exe' `
-  "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\cs-webui\eng\validate-webui-abi.sh" `
-  "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-source\include\webui.h"
+  "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\cs-webui\eng\validate-webui-abi.sh" `
+  "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-source\include\webui.h"
 ```
 
 Output:
@@ -127,7 +127,7 @@ No dynamic MSVC/UCRT library matched upstream's rejection pattern.
 ## 4. Run the upstream native tests and upstream Native-AOT sample
 
 ```powershell
-$env:CSWEBUI_NATIVE_LIBRARY = "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\webui-native-install\bin\webui-2.dll"
+$env:CSWEBUI_NATIVE_LIBRARY = "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\webui-native-install\bin\webui-2.dll"
 
 dotnet test CsWebUi.sln --configuration Release --no-build --logger "console;verbosity=normal"
 
@@ -160,10 +160,10 @@ The upstream sample output contained only the native executable, PDBs, and XML d
 Copy the preserved [probe project](probe/README.md) to a temporary directory or build it in place. Point `UpstreamRepositoryRoot` at the immutable wrapper checkout:
 
 ```powershell
-dotnet publish protocol/mvvm/feasibility/cs-webui-native-aot/probe/WebUIToolkit.MVVM.UpstreamAotProbe.csproj `
+dotnet publish protocol/mvvm/feasibility/cs-webui-native-aot/probe/RunicToolkit.MVVM.UpstreamAotProbe.csproj `
   --configuration Release --runtime win-x64 --self-contained true `
-  --output "$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\high-level-roundtrip\publish" `
-  -p:UpstreamRepositoryRoot="$env:TEMP\webuitoolkit-cs-webui-aot-20260722-main\cs-webui"
+  --output "$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\high-level-roundtrip\publish" `
+  -p:UpstreamRepositoryRoot="$env:TEMP\runic-toolkit-cs-webui-aot-20260722-main\cs-webui"
 ```
 
 Selected output:
@@ -171,7 +171,7 @@ Selected output:
 ```text
 CsWebUi.Native -> ...\CsWebUi.Native.dll
 CsWebUi -> ...\CsWebUi.dll
-WebUIToolkit.MVVM.UpstreamAotProbe -> ...\win-x64\WebUIToolkit.MVVM.UpstreamAotProbe.dll
+RunicToolkit.MVVM.UpstreamAotProbe -> ...\win-x64\RunicToolkit.MVVM.UpstreamAotProbe.dll
 Generating native code
 publish exit 0
 ```

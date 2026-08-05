@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>RunicToolkit.Hosting.CsWebUi.App</AssemblyName>
+    <RootNamespace>RunicToolkit.Hosting.CsWebUi</RootNamespace>
+    <PackageId>RunicToolkit.Hosting.CsWebUi.App</PackageId>
+    <Version>1.0.0-beta.1</Version>
+    <Description>High-level WebUiApp composition for native CsWebUi frontends.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RunicToolkit.Desktop\RunicToolkit.Desktop.csproj" />
+    <ProjectReference Include="..\RunicToolkit.Hosting\RunicToolkit.Hosting.csproj" />
+    <ProjectReference Include="..\RunicToolkit.Hosting.CsWebUi\RunicToolkit.Hosting.CsWebUi.csproj" />
+    <ProjectReference Include="..\RunicToolkit.Hosting.GenericHost\RunicToolkit.Hosting.GenericHost.csproj" />
+    <ProjectReference Include="..\RunicToolkit.Hosting.WebUi\RunicToolkit.Hosting.WebUi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="PUBLIC-API.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

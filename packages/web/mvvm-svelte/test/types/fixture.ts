@@ -5,7 +5,7 @@ import {
   type JsonValue,
   type MvvmProjection,
   type MvvmProjectionSnapshot,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import {
   createSvelteMvvmStore,
   createSvelteMvvmCommandFacade,
@@ -16,8 +16,8 @@ import {
   disposeSvelteMvvmStoreOnDestroy,
   type SvelteDestroyRegistrar,
   type SvelteMvvmStore,
-} from "@webuitoolkit/mvvm-svelte";
-import { toSvelteMvvmRune } from "@webuitoolkit/mvvm-svelte/runes";
+} from "@runic-artifex/mvvm-svelte";
+import { toSvelteMvvmRune } from "@runic-artifex/mvvm-svelte/runes";
 import type { Readable } from "svelte/store";
 
 declare const projection: MvvmProjection;

@@ -22,7 +22,7 @@ import { parseClientMessage } from "./validation.js";
 
 const mockSession = "00000000-0000-4000-8000-000000000101";
 const mockCapability = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const persistentSession = Symbol("webuitoolkit.mvvm.mock.session");
+const persistentSession = Symbol("runic.toolkit.mvvm.mock.session");
 
 interface MvvmMockSessionState {
   revision: Revision;

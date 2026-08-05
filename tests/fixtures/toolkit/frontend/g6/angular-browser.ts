@@ -1,8 +1,8 @@
-import { PROTOCOL_IDENTITY } from "@webuitoolkit/mvvm";
+import { PROTOCOL_IDENTITY } from "@runic-artifex/mvvm";
 import {
   AngularMvvmDirectiveLifetime,
   AngularMvvmStore,
-} from "@webuitoolkit/mvvm-angular/store";
+} from "@runic-artifex/mvvm-angular/store";
 
 import { G5Projection } from "../g5/fake-projection.js";
 import { assert, commandSubmissions, mandatoryFixtures, report } from "./report.js";
@@ -10,7 +10,7 @@ import { assert, commandSubmissions, mandatoryFixtures, report } from "./report.
 const hostile = "<img src=x onerror=\"globalThis.__g6Xss = true\">";
 
 async function main(): Promise<void> {
-  assert(PROTOCOL_IDENTITY === "webuitoolkit.mvvm/1", "The G4 protocol identity changed.");
+  assert(PROTOCOL_IDENTITY === "runic.toolkit.mvvm/1", "The G4 protocol identity changed.");
   const projection = new G5Projection();
   const store = new AngularMvvmStore(projection);
   const amount = store.property(1);

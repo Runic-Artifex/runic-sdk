@@ -1,67 +1,18 @@
-# Contract and identifier registry
+# Contract registry
 
-This file is owned by the orchestrator. Domain tasks reserve identifiers here before making fixtures or diagnostics stable. ADR 0005 defines the migration from draft plan IDs.
+| Contract | Identity | Owner |
+| --- | --- | --- |
+| MVVM wire protocol | `runic.toolkit.mvvm/1` | `RunicToolkit.MVVM` |
+| Frontend asset manifest | `runic-toolkit.frontend-assets/1` | `RunicToolkit.Hosting.Build` |
+| Frontend SDK artifact | `runic-toolkit.frontend/1` | `RunicToolkit.Frontend.Sdk` |
+| External compiler diagnostics | `runic-toolkit.frontend-compiler.diagnostics/1.0` | Frontend SDK integration seam |
+| External compiler hot reload | `runic-toolkit.frontend-compiler.hot-reload/1.0` | Frontend SDK integration seam |
+| Rendered fragment inspection | `runic-toolkit.frontend-compiler.rendered-fragments/1.0` | Developer CLI |
+| MVVM diagnostics | `RTKMVVM0001`–`RTKMVVM9999` | MVVM build/compiler |
+| Hosting diagnostics | `RTKHOST0001`–`RTKHOST9999` | Hosting |
+| Frontend SDK diagnostics | `RTKFE0001`–`RTKFE9999` | Frontend SDK |
+| Developer CLI diagnostics | `RTKDEV1000`–`RTKDEV1999` | `dotnet-runic-toolkit` |
 
-| Family | Owner | Initial identity | Status |
-|---|---|---|---|
-| MVVM protocol | mvvm-protocol-core | `webuitoolkit.mvvm/1` | Reserved |
-| Release rehearsal | release-rehearsal | `webuitoolkit.release-rehearsal-matrix/1` | G7 allocated |
-| CLI protocol | command-line | `webuitoolkit.cli/1` | Reserved |
-| MVVM compiler diagnostics | mvvm-compiler-build | `WUTMVVM0001`–`WUTMVVM0003`, `WUTMVVM0901`–`WUTMVVM0903`, `WUTMVVM1001`–`WUTMVVM1006`, `WUTMVVM2001`–`WUTMVVM2013` | Allocated; remainder reserved |
-| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2014=AssemblyNotFound` | Allocated |
-| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2015=TypeNotFound` | Allocated |
-| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2016=MemberMissing` | Allocated |
-| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2017=MemberInaccessibleOrIncompatible` | Allocated |
-| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2018=MemberAmbiguousOrDuplicate` | Allocated |
-| MVVM compiler diagnostic | mvvm-compiler-build | `WUTMVVM2019=PostGeneratorSemanticContractUnsupported` | Allocated |
-| Remediation fixture | communitytoolkit | `communitytoolkit.generated-member.title.v1` | Reserved |
-| Remediation fixture | communitytoolkit | `communitytoolkit.generated-member.submit-command.v1` | Reserved |
-| G3 fixture | communitytoolkit | `communitytoolkit.observable-property.v1` | Allocated |
-| G3 fixture | communitytoolkit | `communitytoolkit.relay-command.v1` | Allocated |
-| G3 fixture | communitytoolkit | `communitytoolkit.async-command-cancellation.v1` | Allocated |
-| G3 fixture | communitytoolkit | `communitytoolkit.validation-metadata.v1` | Allocated |
-| G3 fixture | communitytoolkit | `communitytoolkit.generated-metadata.v1` | Allocated |
-| G3 projection | template-engine | `webuitoolkit.cwhtml.communitytoolkit/1` | Allocated |
-| G3 projection | htmx | `webuitoolkit.mvvm.htmx/1` | Allocated |
-| G3 projection | flow | `flow.projection.communitytoolkit.contract.v1` | Allocated |
-| Remediation fixture | flow | `flow.projection.communitytoolkit.title.v1` | Reserved |
-| Remediation fixture | flow | `flow.projection.communitytoolkit.submit-command.v1` | Reserved |
-| G3 fixture | flow | `flow.projection.communitytoolkit.async-command.v1` | Allocated |
-| Flow diagnostics | flow | `WUTFLOW0001`–`WUTFLOW0999` | ADR 0005 reserved |
-| Template diagnostics | template-engine | `WUTHTML0001`–`WUTHTML7999` | ADR 0005 reserved |
-| C# markup language | template-engine | `csharp-markup/1.0` | Stable |
-| C# markup build artifacts | template-engine | `webuitoolkit.csharp-markup.manifest/1.0`, `webuitoolkit.csharp-markup.diagnostics/1.0`, `webuitoolkit.csharp-markup.hot-reload/1.0`, `webuitoolkit.csharp-markup.build-metadata/1.0` | Stable |
-| C# markup diagnostics | template-engine | `WUTUIX0001`–`WUTUIX4999` | Allocated; remainder reserved |
-| Text diagnostics | text-resources | `WUTTEXT0001`–`WUTTEXT0999` | ADR 0005 reserved |
-| CLI diagnostics | command-line | `WUTCLI0001`–`WUTCLI9999` | ADR 0005 reserved |
-| Hosting diagnostics | hosting | `WUTHOST0001`–`WUTHOST0007`, `WUTHOST1001`, `WUTHOST1101`–`WUTHOST1103`, `WUTHOST1201`–`WUTHOST1202`, `WUTHOST1301`, `WUTHOST1401`–`WUTHOST1405` | Allocated; remainder reserved by ADR 0005 |
-
-## Package identities
-
-| Owner | Reserved IDs | External reservation |
-|---|---|---|
-| mvvm-protocol-core | `WebUIToolkit.MVVM` | NuGet pending |
-| communitytoolkit | `WebUIToolkit.MVVM.CommunityToolkit` | NuGet pending |
-| template-engine | `WebUIToolkit.MVVM.Html`, `WebUIToolkit.MVVM.Html.Testing`, `WebUIToolkit.MVVM.Html.CommunityToolkit` | NuGet pending |
-| htmx | `WebUIToolkit.MVVM.Html.Htmx`, `WebUIToolkit.MVVM.Html.Htmx.Js`, `WebUIToolkit.MVVM.Html.Htmx.CsWebUi`, `WebUIToolkit.MVVM.Html.Htmx.CsWebUi.App` | NuGet pending |
-| hosting | `WebUIToolkit.Hosting.*`, including `WebUIToolkit.Hosting.CsWebUi.Mvvm` | NuGet pending |
-| flow | `WebUIToolkit.MVVM.Flow*` | NuGet pending |
-| text-resources | `WebUIToolkit.TextResources.*` | NuGet pending |
-| command-line | `WebUIToolkit.CommandLine.*` | NuGet pending |
-| collections | `WebUIToolkit.Collections`, `.Collections.Observable` | NuGet pending |
-| web-sdk-conformance | `@webuitoolkit/mvvm`, `@webuitoolkit/conformance` | npm scope pending |
-| Wave E framework adapters | `@webuitoolkit/mvvm-react`, `@webuitoolkit/mvvm-vue`, `@webuitoolkit/mvvm-svelte` | G5 technically approved; npm publication blocked by ADR 0004 |
-| Wave F framework adapters | `@webuitoolkit/mvvm-angular`, `WebUIToolkit.MVVM.ReactiveUI` | G6 technically approved; publication blocked by ADR 0004 |
-| Wave G release rehearsal | Ten NuGet packages plus `@webuitoolkit/mvvm` and `@webuitoolkit/mvvm-angular` | G7 technically approved as an isolated package set; publication blocked by ADR 0004 |
-
-## Runtime identity ranges
-
-| Family | ActivitySource/Meter prefix | Structured event range |
-|---|---|---|
-| MVVM | `WebUIToolkit.MVVM` | `10000`–`10999` |
-| Hosting | `WebUIToolkit.Hosting` | `11000`–`11006` allocated; `11007`–`11999` reserved |
-| Flow | `WebUIToolkit.MVVM.Flow` | `12000`–`12999` |
-| CommandLine | `WebUIToolkit.CommandLine` | `13000`–`13999` |
-| TextResources | `WebUIToolkit.TextResources` | `14000`–`14999` |
-
-Schema `$id` values remain unset until an owned schema domain is available. File-format versions are independent from package versions.
+Integration-owned protocols and diagnostics are registered in the repository
+that owns the integration. This registry must not reserve ranges for independent
+products.

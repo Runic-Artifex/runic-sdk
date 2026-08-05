@@ -6,7 +6,7 @@ import {
   type MvvmProjectedCommandInvocation,
   type MvvmProjection,
   type MvvmProjectionSnapshot,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import type { ComputedRef, ShallowRef } from "vue";
 import {
   createVueMvvmAdapter,

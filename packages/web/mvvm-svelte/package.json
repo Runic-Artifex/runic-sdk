@@ -1,8 +1,16 @@
 {
-  "name": "@webuitoolkit/mvvm-svelte",
+  "name": "@runic-artifex/mvvm-svelte",
   "version": "0.1.0",
-  "private": true,
-  "description": "Svelte readable-store adapter for the WebUIToolkit MVVM projection.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/mvvm-svelte"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "description": "Svelte readable-store adapter for the RunicToolkit MVVM projection.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -39,7 +47,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@webuitoolkit/mvvm": "0.1.0"
+    "@runic-artifex/mvvm": "0.1.0"
   },
   "peerDependencies": {
     "svelte": ">=4.2.20 <6"

@@ -1,18 +1,16 @@
-# ADR 0005: First-party diagnostic identities
+# ADR 0005: Toolkit diagnostic identities
 
 - Status: Accepted
-- Date: 2026-07-22
+- Updated: 2026-08-05
 
 ## Decision
 
-The draft plans reuse short diagnostic prefixes and collide on `CWH`. Because no implementation has shipped, first-party diagnostics move atomically to globally distinguishable `WebUIToolkit` ranges.
+Toolkit-owned diagnostics use distinct ranges:
 
-| Draft plan identity | Implementation identity |
-|---|---|
-| `FLOW001`–`FLOW010` | `WUTFLOW0001`–`WUTFLOW0010` |
-| `TR0001`–`TR0024`, `TR0099` | `WUTTEXT0001`–`WUTTEXT0024`, `WUTTEXT0099` |
-| `CLI####` | `WUTCLI####` with the numeric portion preserved |
-| Hosting `CWH####` | `WUTHOST####` with the numeric portion preserved |
-| Template/compiler `CWH0001`, `CWH1###`–`CWH7###` | `WUTHTML0001`, `WUTHTML1###`–`WUTHTML7###` |
+- `RTKMVVM0001`–`RTKMVVM9999` for MVVM build/compiler diagnostics;
+- `RTKHOST0001`–`RTKHOST9999` for hosting;
+- `RTKFE0001`–`RTKFE9999` for the frontend SDK; and
+- `RTKDEV1000`–`RTKDEV1999` for `dotnet-runic-toolkit`.
 
-Every public diagnostic keeps a stable severity, message arguments, source span policy, remediation page, and snapshot test. Domain tasks must reserve exact IDs in the contract registry before accepting fixtures.
+Independent products reserve and publish their own diagnostics. Toolkit does not
+allocate aliases for their former monorepo ranges.

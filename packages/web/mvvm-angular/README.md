@@ -1,7 +1,7 @@
-# @webuitoolkit/mvvm-angular
+# @runic-artifex/mvvm-angular
 
 Angular signals and a standalone DataContext-style directive over the frozen
-`@webuitoolkit/mvvm` projection contract.
+`@runic-artifex/mvvm` projection contract.
 
 `AngularMvvmStore` replaces one signal for each accepted protocol snapshot and
 caches computed member signals. `AngularMvvmStoreDirective` can own that store

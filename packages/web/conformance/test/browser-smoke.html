@@ -2,20 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>WebUIToolkit MVVM browser conformance smoke</title>
+  <title>RunicToolkit MVVM browser conformance smoke</title>
   <script type="importmap">
-    { "imports": { "@webuitoolkit/mvvm": "../../mvvm/dist/esm/index.js" } }
+    { "imports": { "@runic-artifex/mvvm": "../../mvvm/dist/esm/index.js" } }
   </script>
 </head>
 <body>
   <pre id="result">running</pre>
   <script type="module">
-    import * as WebUIToolkit from "../../mvvm/dist/esm/index.js";
+    import * as RunicToolkit from "../../mvvm/dist/esm/index.js";
     import { createFetchFixtureSource, createSdkConformanceRuntime, loadFixtureManifest, runConformance } from "../dist/esm/index.js";
 
     const result = document.querySelector("#result");
     try {
-      const parsed = WebUIToolkit.parseClientMessage(
+      const parsed = RunicToolkit.parseClientMessage(
         '{"v":1,"kind":"setProperty","session":"00000000-0000-4000-8000-000000000004","view":"00000000-0000-4000-8000-000000000002","request":"00000000-0000-4000-8000-000000000005","baseRevision":-0,"capability":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","payload":{"member":1,"value":null}}',
       );
       const source = createFetchFixtureSource("../../../fixtures/conformance/");
@@ -26,9 +26,9 @@
         throw new Error("The SDK conformance report did not pass every mandatory fixture.");
       }
       result.textContent = JSON.stringify({
-        protocolIdentity: WebUIToolkit.PROTOCOL_IDENTITY,
+        protocolIdentity: RunicToolkit.PROTOCOL_IDENTITY,
         normalizedRevision: parsed.baseRevision.toString(),
-        exportsPresent: typeof WebUIToolkit.MvvmClient === "function" && typeof runConformance === "function",
+        exportsPresent: typeof RunicToolkit.MvvmClient === "function" && typeof runConformance === "function",
         totals: report.totals,
       });
       result.dataset.status = "passed";

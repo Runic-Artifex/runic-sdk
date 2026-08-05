@@ -1,12 +1,9 @@
-# `@webuitoolkit/mvvm-conformance`
+# `@runic-artifex/mvvm-conformance`
 
 Runtime-neutral conformance support for TypeScript implementations of the
-`webuitoolkit.mvvm/1` protocol. The package executes deterministic protocol and
-session cases against `@webuitoolkit/mvvm`; it does not provide a UI adapter or
+`runic.toolkit.mvvm/1` protocol. The package executes deterministic protocol and
+session cases against `@runic-artifex/mvvm`; it does not provide a UI adapter or
 choose a transport.
-
-> **Publication status:** this package is MIT licensed and remains marked
-> `private` until package identity and release-readiness review is complete.
 
 ## What the suite covers
 
@@ -39,11 +36,11 @@ Node.js 24.18 or newer is the repository's reference build and test runtime.
 The package is emitted as ESM with TypeScript declarations:
 
 ```ts
-import * as WebUIToolkitConformance from "@webuitoolkit/mvvm-conformance";
+import * as RunicToolkitConformance from "@runic-artifex/mvvm-conformance";
 ```
 
-`WebUIToolkit` remains the parent product namespace. The lowercase
-`webuitoolkit.mvvm/1` value is the fixed, case-sensitive wire protocol
+`RunicToolkit` remains the parent product namespace. The lowercase
+`runic.toolkit.mvvm/1` value is the fixed, case-sensitive wire protocol
 identity, not a JavaScript namespace.
 
 ## Deterministic fixture corpus
@@ -71,11 +68,11 @@ package.
 ## Development
 
 Install dependencies from the repository root so npm links the sibling
-`@webuitoolkit/mvvm` workspace at the exact `0.1.0` package version. Then run:
+`@runic-artifex/mvvm` workspace at the exact `0.1.0` package version. Then run:
 
 ```sh
-npm run build --workspace @webuitoolkit/mvvm-conformance
-npm test --workspace @webuitoolkit/mvvm-conformance
+npm run build --workspace @runic-artifex/mvvm-conformance
+npm test --workspace @runic-artifex/mvvm-conformance
 ```
 
 From this package directory, the equivalent commands are `npm run build` and

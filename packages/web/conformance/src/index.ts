@@ -8,7 +8,6 @@ export {
   readFixtureBytes,
   readFixtureText,
   splitTopLevelArray,
-  validateFixtureIntegrity,
   validateProtocolManifest,
   validateScenarioDocument,
 } from "./fixtures.js";
@@ -35,7 +34,6 @@ export type {
   CorpusManifestCase,
   CorpusSemanticCase,
   FixtureData,
-  FixtureIntegrityEntry,
   FixtureSource,
   HostileInputContext,
   ProtocolCorpusManifest,

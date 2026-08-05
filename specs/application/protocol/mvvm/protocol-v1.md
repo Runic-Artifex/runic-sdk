@@ -1,9 +1,9 @@
-# WebUIToolkit MVVM protocol v1
+# RunicToolkit MVVM protocol v1
 
 ## 1. Status and identity
 
 This document defines the normative wire and session behavior for registered
-protocol identity `webuitoolkit.mvvm/1`. The envelope field `v` is the JSON
+protocol identity `runic.toolkit.mvvm/1`. The envelope field `v` is the JSON
 integer `1`. Every requirement using **MUST**, **MUST NOT**, **SHOULD**, or
 **MAY** is normative.
 

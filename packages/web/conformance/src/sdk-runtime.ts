@@ -1,4 +1,4 @@
-import * as sdk from "@webuitoolkit/mvvm";
+import * as sdk from "@runic-artifex/mvvm";
 
 import type {
   ConformanceRuntimeAdapter,
@@ -25,7 +25,7 @@ const BOOTSTRAP_IDS = [
  */
 export function createSdkConformanceRuntime(): ConformanceRuntimeAdapter {
   return Object.freeze({
-    name: "webuitoolkit-mvvm-sdk",
+    name: "runic-toolkit-mvvm-sdk",
     createScenarioDriver: (context: ScenarioContext) => SdkScenarioDriver.create(context),
     runSemanticCase: runSdkSemanticCase,
   });

@@ -6,7 +6,7 @@ import type { MvvmProjection } from "./projection.js";
 import type { FrameChannel } from "./transport.js";
 import type { MvvmDevelopmentInspector } from "./inspector.js";
 
-const defaultBridgeAsset = "vendor/webuitoolkit-mvvm-cswebui.mjs";
+const defaultBridgeAsset = "vendor/runic-toolkit-mvvm-cswebui.mjs";
 
 /** A generated contract class that can be opened over an MVVM projection. */
 export interface MvvmContractConstructor<TContract> {
@@ -43,7 +43,7 @@ export interface NativeMvvmApplicationOptions<TContract> {
   readonly channelFactory?: () => FrameChannel | Promise<FrameChannel>;
   /**
    * URL of the published CsWebUi bridge. The default resolves the standard
-   * `vendor/webuitoolkit-mvvm-cswebui.mjs` asset against `document.baseURI`.
+   * `vendor/runic-toolkit-mvvm-cswebui.mjs` asset against `document.baseURI`.
    */
   readonly bridgeUrl?: string | URL;
   /** Test/custom-host seam. Normal applications use the published bridge URL. */

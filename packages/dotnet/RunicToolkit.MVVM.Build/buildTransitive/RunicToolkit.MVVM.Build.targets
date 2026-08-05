@@ -1,0 +1,85 @@
+<Project>
+  <PropertyGroup>
+    <RunicToolkitMvvmBindingGeneratedDirectory Condition="'$(RunicToolkitMvvmBindingGeneratedDirectory)' == ''">$(IntermediateOutputPath)RunicToolkit.MVVM.Bindings</RunicToolkitMvvmBindingGeneratedDirectory>
+    <RunicToolkitMvvmBindingInputList>$([System.IO.Path]::Combine('$(RunicToolkitMvvmBindingGeneratedDirectory)', 'inputs.rsp'))</RunicToolkitMvvmBindingInputList>
+    <RunicToolkitMvvmBindingStamp>$([System.IO.Path]::Combine('$(RunicToolkitMvvmBindingGeneratedDirectory)', 'bindings.stamp'))</RunicToolkitMvvmBindingStamp>
+    <RunicToolkitMvvmBindingGeneratedFiles>$([System.IO.Path]::Combine('$(RunicToolkitMvvmBindingGeneratedDirectory)', 'generated-files.list'))</RunicToolkitMvvmBindingGeneratedFiles>
+    <RunicToolkitMvvmBindingGeneratedArtifacts>$([System.IO.Path]::Combine('$(RunicToolkitMvvmBindingGeneratedDirectory)', 'generated-artifacts.list'))</RunicToolkitMvvmBindingGeneratedArtifacts>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RunicToolkitMvvmBindingEnabled)' == 'true'">
+    <RunicToolkitMvvmBinding Include="@(None->WithMetadataValue('Extension', '$(RunicToolkitMvvmBindingExtension)'))" />
+    <AdditionalFiles Include="@(RunicToolkitMvvmBinding)" />
+  </ItemGroup>
+
+  <Target Name="RunicToolkitMvvmValidateBuildPaths"
+          BeforeTargets="RunicToolkitMvvmPrepareBindings"
+          Condition="'$(RunicToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and ('@(RunicToolkitMvvmBinding)' != '' or Exists('$(RunicToolkitMvvmBindingGeneratedDirectory)'))">
+    <PropertyGroup>
+      <_RunicToolkitMvvmIntermediateRootWithSeparator>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)', '$(MSBuildProjectDirectory)'))</_RunicToolkitMvvmIntermediateRootWithSeparator>
+      <_RunicToolkitMvvmIntermediateRoot>$([System.IO.Path]::TrimEndingDirectorySeparator('$(_RunicToolkitMvvmIntermediateRootWithSeparator)'))</_RunicToolkitMvvmIntermediateRoot>
+      <_RunicToolkitMvvmGeneratedRoot>$([System.IO.Path]::GetFullPath('$(RunicToolkitMvvmBindingGeneratedDirectory)', '$(MSBuildProjectDirectory)'))</_RunicToolkitMvvmGeneratedRoot>
+      <_RunicToolkitMvvmGeneratedRelative>$([System.IO.Path]::GetRelativePath('$(_RunicToolkitMvvmIntermediateRoot)', '$(_RunicToolkitMvvmGeneratedRoot)'))</_RunicToolkitMvvmGeneratedRelative>
+      <RunicToolkitMvvmBindingGeneratedDirectory>$(_RunicToolkitMvvmGeneratedRoot)</RunicToolkitMvvmBindingGeneratedDirectory>
+    </PropertyGroup>
+    <Error Condition="$([System.IO.Path]::IsPathRooted('$(_RunicToolkitMvvmGeneratedRelative)')) or '$(_RunicToolkitMvvmGeneratedRelative)' == '..' or $([System.String]::Copy('$(_RunicToolkitMvvmGeneratedRelative)').StartsWith('..\')) or $([System.String]::Copy('$(_RunicToolkitMvvmGeneratedRelative)').StartsWith('../'))"
+           Code="RTKMVVM0902"
+           Text="RunicToolkitMvvmBindingGeneratedDirectory must be contained by IntermediateOutputPath." />
+  </Target>
+
+  <Target Name="RunicToolkitMvvmPrepareBindings"
+          BeforeTargets="RunicToolkitMvvmCompileBindings"
+          DependsOnTargets="RunicToolkitMvvmValidateBuildPaths"
+          Condition="'$(RunicToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(RunicToolkitMvvmBinding)' != ''">
+    <MakeDir Directories="$(RunicToolkitMvvmBindingGeneratedDirectory)" />
+    <WriteLinesToFile File="$(RunicToolkitMvvmBindingInputList)"
+                      Lines="@(RunicToolkitMvvmBinding->'%(FullPath)')"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true"
+                      Encoding="UTF-8" />
+  </Target>
+
+  <Target Name="RunicToolkitMvvmCompileBindings"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicToolkitMvvmPrepareBindings"
+          Condition="'$(RunicToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(RunicToolkitMvvmBinding)' != ''">
+    <Error Condition="!Exists('$(RunicToolkitMvvmBindingHostPath)')"
+           Code="RTKMVVM0901"
+           Text="The RunicToolkit MVVM binding compiler host was not found at '$(RunicToolkitMvvmBindingHostPath)'." />
+    <Exec Command="&quot;$(RunicToolkitMvvmDotNetHost)&quot; exec &quot;$(RunicToolkitMvvmBindingHostPath)&quot; --project-directory &quot;$(MSBuildProjectDirectory)&quot; --intermediate-directory &quot;$(_RunicToolkitMvvmIntermediateRoot)&quot; --output-directory &quot;$(RunicToolkitMvvmBindingGeneratedDirectory)&quot; --input-list &quot;$(RunicToolkitMvvmBindingInputList)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="RunicToolkitMvvmCollectGeneratedBindings"
+          BeforeTargets="CoreCompile"
+          AfterTargets="RunicToolkitMvvmCompileBindings"
+          Condition="'$(RunicToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(RunicToolkitMvvmBinding)' != ''">
+    <ReadLinesFromFile File="$(RunicToolkitMvvmBindingGeneratedFiles)">
+      <Output TaskParameter="Lines" ItemName="_RunicToolkitMvvmGeneratedCompile" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(RunicToolkitMvvmBindingGeneratedArtifacts)">
+      <Output TaskParameter="Lines" ItemName="_RunicToolkitMvvmGeneratedArtifact" />
+    </ReadLinesFromFile>
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicToolkitMvvmGeneratedCompile.Identity)', '^RunicToolkit\.MVVM\.[0-9a-f]{64}\.g\.cs$'))"
+           Code="RTKMVVM0903"
+           Text="The generated source inventory contains an unsafe file name." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicToolkitMvvmGeneratedArtifact.Identity)', '^(RunicToolkit\.MVVM\.[0-9a-f]{64}\.g\.cs|runic-toolkit\.mvvm\.[0-9a-f]{64}\.contract\.json)$'))"
+           Code="RTKMVVM0903"
+           Text="The generated artifact inventory contains an unsafe file name." />
+    <ItemGroup>
+      <Compile Include="@(_RunicToolkitMvvmGeneratedCompile->'$(RunicToolkitMvvmBindingGeneratedDirectory)\%(Identity)')" />
+      <FileWrites Include="@(_RunicToolkitMvvmGeneratedArtifact->'$(RunicToolkitMvvmBindingGeneratedDirectory)\%(Identity)');$(RunicToolkitMvvmBindingGeneratedFiles);$(RunicToolkitMvvmBindingGeneratedArtifacts);$(RunicToolkitMvvmBindingStamp);$(RunicToolkitMvvmBindingInputList)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RunicToolkitMvvmCleanRemovedBindings"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicToolkitMvvmValidateBuildPaths"
+          Condition="'$(RunicToolkitMvvmBindingEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '@(RunicToolkitMvvmBinding)' == '' and Exists('$(RunicToolkitMvvmBindingGeneratedDirectory)')">
+    <Error Condition="!Exists('$(RunicToolkitMvvmBindingHostPath)')"
+           Code="RTKMVVM0901"
+           Text="The RunicToolkit MVVM binding compiler host was not found at '$(RunicToolkitMvvmBindingHostPath)'." />
+    <Exec Command="&quot;$(RunicToolkitMvvmDotNetHost)&quot; exec &quot;$(RunicToolkitMvvmBindingHostPath)&quot; --clean --project-directory &quot;$(MSBuildProjectDirectory)&quot; --intermediate-directory &quot;$(_RunicToolkitMvvmIntermediateRoot)&quot; --output-directory &quot;$(RunicToolkitMvvmBindingGeneratedDirectory)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+</Project>

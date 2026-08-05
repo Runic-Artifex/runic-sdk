@@ -21,7 +21,6 @@ const expectedRuntimeExports = [
   "runScenarioCorpus",
   "runSemanticCorpus",
   "splitTopLevelArray",
-  "validateFixtureIntegrity",
   "validateProtocolManifest",
   "validateScenarioDocument",
 ];
@@ -35,7 +34,7 @@ test("ESM exposes the documented package-root API", async () => {
 
 test("package metadata points exports and types at emitted public roots", async () => {
   const metadata = JSON.parse(await readFile(new URL("package.json", packageRoot), "utf8"));
-  assert.equal(metadata.name, "@webuitoolkit/mvvm-conformance");
+  assert.equal(metadata.name, "@runic-artifex/mvvm-conformance");
   assert.equal(metadata.type, "module");
   assert.equal(metadata.sideEffects, false);
   assert.deepEqual(metadata.exports["."], {

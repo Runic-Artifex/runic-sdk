@@ -114,7 +114,7 @@ export class ProtocolTransport {
     } catch (cause) {
       throw new ProtocolTransportError(
         "invalid-client-message",
-        "The client message does not conform to webuitoolkit.mvvm/1.",
+        "The client message does not conform to runic.toolkit.mvvm/1.",
         cause,
       );
     }
@@ -129,7 +129,7 @@ export class ProtocolTransport {
     } catch (cause) {
       throw new ProtocolTransportError(
         "invalid-client-message",
-        "The client message does not conform to the negotiated webuitoolkit.mvvm/1 limits.",
+        "The client message does not conform to the negotiated runic.toolkit.mvvm/1 limits.",
         cause,
       );
     }
@@ -178,7 +178,7 @@ export class ProtocolTransport {
     } catch (cause) {
       this.failProtocol(
         "invalid-host-message",
-        "The received frame does not conform to webuitoolkit.mvvm/1.",
+        "The received frame does not conform to runic.toolkit.mvvm/1.",
         cause,
       );
     }

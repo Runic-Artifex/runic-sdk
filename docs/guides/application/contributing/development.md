@@ -1,103 +1,25 @@
-# Development and verification modes
+# Development
 
-WebUIToolkit has two deliberately different build modes.
+Use the pinned Nix environment:
 
-## Development
-
-`Development` is the default outside CI. It is intended for editing, debugging,
-running samples, and ordinary pull-request work:
-
-- package lock files may be refreshed by a normal restore;
-- NuGet vulnerability auditing is deferred to verification;
-- warnings remain visible but do not fail the build;
-- trim and Native AOT analyzers do not run during every inner-loop build; and
-- samples use source project references and run with ordinary `dotnet run`.
-
-Run the complete managed inner loop with:
-
-```powershell
-./eng/dev.ps1
+```bash
+nix develop
+./eng/verify.sh
 ```
 
-Or use the normal .NET commands directly:
+The verification script checks identities, solution completeness, ownership,
+npm lock restoration, TypeScript packages, .NET compilation, and executable
+contract suites. It deliberately excludes the real-browser native canary and
+templates acceptance test: the former needs the pinned cs-webui native library
+and Chromium, while the latter activates only after external integration
+packages are published.
 
-```powershell
-dotnet restore WebUIToolkit.slnx
-dotnet build WebUIToolkit.slnx
-dotnet test WebUIToolkit.slnx
+To validate release artifacts locally:
+
+```bash
+./eng/pack.sh 0.1.0-preview.local.1 /tmp/runic-toolkit-packages
+./tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh \
+  0.1.0-preview.local.1 /tmp/runic-toolkit-packages
+node eng/pack-npm.mjs 0.1.0-preview.local.1 /tmp/runic-toolkit-packages
+node eng/verify-npm-artifacts.mjs 0.1.0-preview.local.1 /tmp/runic-toolkit-packages
 ```
-
-## Verification
-
-`Verification` is selected automatically in CI and explicitly by
-`eng/verify.ps1`. It keeps the release-facing controls:
-
-- locked NuGet restore and vulnerability auditing;
-- warnings as errors;
-- trim and Native AOT compatibility analysis for shipping projects;
-- architecture, namespace, and contract checks; and
-- the dedicated deterministic package, isolated-feed, offline, and Native AOT
-  rehearsals under `eng/verify-wave-*.ps1`.
-
-Run it with:
-
-```powershell
-./eng/verify.ps1
-```
-
-For an individual command, opt in with:
-
-```powershell
-dotnet build -p:WebUIToolkitBuildMode=Verification
-```
-
-Release verification remains strict without turning its package feeds, caches,
-or publication checks into prerequisites for running a sample.
-
-## Frontend and cwhtml development loop
-
-`WebUIToolkit.Frontend.Sdk` now owns frontend workspace installation, generated
-contract verification, Vite builds, the native bridge asset, manifests, and
-build/publish copying for the React, Vue, Svelte, Angular, and compiled
-cwhtml/HTMX Todo projects.
-For example:
-
-```powershell
-dotnet build samples/Todo.Svelte/Todo.Svelte.csproj
-dotnet msbuild samples/Todo.Svelte/Todo.Svelte.csproj -t:WebUIToolkitFrontendWatch
-dotnet run --project samples/Todo.Svelte -- --advanced
-```
-
-Debug builds retain readable frontend output and source maps. Release builds
-use Vite minification and content hashing and emit `vite.manifest.json` plus
-`webuitoolkit.assets.json` with byte sizes and SHA-256 hashes. Vite is never the
-application host and does not carry native UI requests; CsWebUi serves the
-produced local files and owns the binary MVVM channel.
-
-The `dotnet-webuitoolkit` tool discovers SDK metadata and provides one
-coordinated command for contract generation, the initial Vite/.NET build,
-loopback Vite HMR, `dotnet watch`, CsWebUi startup, source-mapped cwhtml
-diagnostics in Vite's browser overlay, compatible renderer replacement with
-affected-fragment refresh, and clean process-tree shutdown:
-
-```powershell
-dotnet webuitoolkit dev samples/SimpleTodo/SimpleTodo.csproj
-```
-
-The repository does not currently install that tool into its local manifest.
-Run the project directly when the packaged tool is not installed:
-
-```powershell
-dotnet run --project tools/dotnet-webuitoolkit -- dev samples/SimpleTodo/SimpleTodo.csproj
-```
-
-SimpleTodo and AdvancedTodo now import shared cwhtml and frontend SDK targets;
-their npm workspace owns HTMX, Bootstrap 5.3, Font Awesome, source maps,
-minification, content hashing, and the asset manifest. Both now generate their
-action/field/command/fragment registration from build-time cwhtml metadata and
-use the high-level native application builder. Their development documents
-load Vite's client and source entry directly from the supervised loopback
-server, while HTMX requests, including development fragment refreshes, stay on
-the private CsWebUi binding. The remaining editor work is documented in the
-[cwhtml development guide](../guides/cwhtml.md) and deliberately follows the
-non-editor product priorities.

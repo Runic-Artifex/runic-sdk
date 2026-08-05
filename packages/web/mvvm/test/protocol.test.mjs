@@ -65,8 +65,8 @@ function expectProtocolError(action) {
   });
 }
 
-test("exports the frozen webuitoolkit.mvvm/1 protocol contract", () => {
-  assert.equal(PROTOCOL_IDENTITY, "webuitoolkit.mvvm/1");
+test("exports the frozen runic.toolkit.mvvm/1 protocol contract", () => {
+  assert.equal(PROTOCOL_IDENTITY, "runic.toolkit.mvvm/1");
   assert.equal(PROTOCOL_VERSION, 1);
   assert.deepEqual([...CAPABILITIES], [
     "cancellation",

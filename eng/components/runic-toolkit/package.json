@@ -1,5 +1,5 @@
 {
-  "name": "@webuitoolkit/workspace",
+  "name": "@runic-artifex/runic-toolkit-workspace",
   "private": true,
   "version": "0.0.0-private",
   "license": "MIT",
@@ -9,18 +9,13 @@
     "npm": "11.16.x"
   },
   "workspaces": [
-    "editors/*",
-    "web/packages/*",
-    "samples/Todo.Frontends/*",
-    "samples/Todo.Cwhtml.Frontend"
+    "web/packages/*"
   ],
   "scripts": {
     "build": "node eng/run-workspaces.mjs build",
     "test": "node eng/run-workspaces.mjs test",
-    "verify:frontend-production": "node eng/verify-frontend-production.mjs",
     "verify:frontend-parity": "node eng/verify-frontend-parity.mjs",
-    "verify:todo-mocks": "node eng/verify-todo-mocks.mjs",
-    "verify": "npm run build && npm run test && npm run verify:frontend-parity && npm run verify:todo-mocks"
+    "verify": "npm run build && npm run test && npm run verify:frontend-parity"
   },
   "devDependencies": {
     "esbuild": "0.28.1",

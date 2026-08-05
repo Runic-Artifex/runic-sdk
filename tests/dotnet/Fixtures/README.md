@@ -1,17 +1,6 @@
-# Executable verification fixtures
+# Test fixtures
 
-These projects are test inputs and acceptance harnesses, not usage samples.
-They exercise package-consumer boundaries, deterministic lifecycle behavior,
-protocol edge cases, isolated feeds, and release-rehearsal scenarios.
-
-Most fixtures are intentionally excluded from the main solution because their
-own verification scripts control restore sources, package caches, runtime
-identifiers, or execution order:
-
-- `CommandLine.Kernel` validates the complete typed command pipeline.
-- `Hosting.*` validate lifecycle and composition contracts.
-- `Htmx` validates mutation, validation, cancellation, stale requests, and OOB
-  rendering in one vertical slice.
-- `ReferenceApplication` is the Wave G package-only release consumer.
-
-Approachable, project-reference examples live under [`../../samples`](../../samples).
+The remaining fixtures exercise Hosting composition and UI boundaries from
+source. Package-only release behavior is exercised by
+`tests/RunicToolkit.PackageCanary`; application-level composition belongs in
+`runic-toolkit-examples`.

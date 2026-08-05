@@ -8,7 +8,7 @@ import {
   decodeUtf8,
   encodeUtf8,
   serializeJson,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import { createVueMvvmAdapter } from "../dist/esm/index.js";
 
 const view = "abcdef00-0000-4000-8000-000000000102";

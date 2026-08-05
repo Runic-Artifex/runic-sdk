@@ -7,7 +7,7 @@ import {
   startNativeMvvmApplication,
   type NativeMvvmApplication,
   type NativeMvvmApplicationOptions,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 
 import { AngularMvvmStore } from "./store.js";
 
@@ -21,7 +21,7 @@ export interface AngularMvvmApplication<TContract>
 /** Injection token for the framework-neutral typed Angular application owner. */
 export const ANGULAR_MVVM_APPLICATION =
   new InjectionToken<AngularMvvmApplication<unknown>>(
-    "webuitoolkit.mvvm.angular.application",
+    "runic.toolkit.mvvm.angular.application",
   );
 
 /** Opens the native application and owns its Angular signal store. */

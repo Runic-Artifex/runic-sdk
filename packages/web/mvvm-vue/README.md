@@ -1,17 +1,17 @@
-# `@webuitoolkit/mvvm-vue`
+# `@runic-artifex/mvvm-vue`
 
-Vue 3 bindings for the public `MvvmProjection` from `@webuitoolkit/mvvm`.
+Vue 3 bindings for the public `MvvmProjection` from `@runic-artifex/mvvm`.
 The adapter keeps protocol behavior in the framework-neutral SDK and exposes
 each immutable projection snapshot through one shallow, read-only Vue ref.
 
 ```ts
 import { computed } from "vue";
-import { createMvvmProjection } from "@webuitoolkit/mvvm";
+import { createMvvmProjection } from "@runic-artifex/mvvm";
 import {
   provideVueMvvm,
   useVueMvvmCommand,
   useVueMvvmProperty,
-} from "@webuitoolkit/mvvm-vue";
+} from "@runic-artifex/mvvm-vue";
 
 // In a providing component's setup:
 provideVueMvvm(createMvvmProjection(client), { ownsProjection: true });

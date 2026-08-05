@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>RunicToolkit.Hosting.CsWebUi.NativeE2E</AssemblyName>
+    <RootNamespace>RunicToolkit.Hosting.CsWebUi.NativeE2E</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsWebUi" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <ProjectReference Include="../../src/RunicToolkit.Hosting.CsWebUi.Mvvm/RunicToolkit.Hosting.CsWebUi.Mvvm.csproj" />
+    <ProjectReference Include="../../src/RunicToolkit.MVVM.CommunityToolkit/RunicToolkit.MVVM.CommunityToolkit.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="www/**/*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/RunicToolkit.Hosting.CsWebUi.Mvvm/assets/runic-toolkit-mvvm-cswebui.mjs"
+             Link="www/runic-toolkit-mvvm-cswebui.mjs"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../web/packages/mvvm/dist/esm/**/*"
+             Link="www/mvvm/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

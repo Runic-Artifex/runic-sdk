@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>RunicToolkit.Hosting.CsWebUi.Mvvm</AssemblyName>
+    <RootNamespace>RunicToolkit.Hosting.CsWebUi.Mvvm</RootNamespace>
+    <PackageId>RunicToolkit.Hosting.CsWebUi.Mvvm</PackageId>
+    <Version>1.0.0-beta.1</Version>
+    <Description>Binary CsWebUi transport bridge for the RunicToolkit MVVM protocol.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RunicToolkit.Hosting.CsWebUi\RunicToolkit.Hosting.CsWebUi.csproj" />
+    <ProjectReference Include="..\RunicToolkit.Hosting.CsWebUi.App\RunicToolkit.Hosting.CsWebUi.App.csproj" />
+    <ProjectReference Include="..\RunicToolkit.Hosting.WebUi\RunicToolkit.Hosting.WebUi.csproj" />
+    <ProjectReference Include="..\RunicToolkit.MVVM\RunicToolkit.MVVM.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsWebUi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="PUBLIC-API.md" Pack="true" PackagePath="\" />
+    <None Include="assets\runic-toolkit-mvvm-cswebui.mjs"
+          Pack="true"
+          PackagePath="contentFiles\any\any\wwwroot" />
+  </ItemGroup>
+</Project>

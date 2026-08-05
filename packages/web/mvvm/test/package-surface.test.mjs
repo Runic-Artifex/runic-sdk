@@ -6,7 +6,7 @@ const packageRoot = new URL("../", import.meta.url);
 const manifest = JSON.parse(await readFile(new URL("package.json", packageRoot), "utf8"));
 
 test("package metadata exposes ESM, browser, and declaration entry points", () => {
-  assert.equal(manifest.name, "@webuitoolkit/mvvm");
+  assert.equal(manifest.name, "@runic-artifex/mvvm");
   assert.equal(manifest.type, "module");
   assert.equal(manifest.sideEffects, false);
   assert.equal(manifest.main, "./dist/esm/index.js");

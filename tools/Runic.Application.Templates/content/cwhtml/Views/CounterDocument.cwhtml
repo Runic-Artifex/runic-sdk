@@ -1,0 +1,22 @@
+@namespace RunicToolkitStarter
+@view CounterDocumentView(RunicToolkitStarter.CounterDocumentModel model)
+html lang="en" {
+    head {
+        meta charset="utf-8";
+        meta name="viewport" content="width=device-width, initial-scale=1";
+        title { "RunicToolkitStarter" }
+        @if (!model.Assets.IsViteDevelopment) {
+            link rel="stylesheet" href="cwhtml.css";
+        }
+    }
+    body {
+        @render(model.Application);
+        script src="webui.js" {}
+        script src="_content/RunicMarkup.RunicToolkit.Htmx.CsWebUi/runic-toolkit-htmx-cswebui-1.0.0.js" {}
+        @if (model.Assets.IsViteDevelopment) {
+            @render(model.Assets);
+        } @else {
+            script src="cwhtml.js" {}
+        }
+    }
+}

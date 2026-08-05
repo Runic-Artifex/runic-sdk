@@ -1,4 +1,4 @@
-export const CONFORMANCE_FORMAT = "webuitoolkit.mvvm.conformance/1" as const;
+export const CONFORMANCE_FORMAT = "runic.toolkit.mvvm.conformance/1" as const;
 
 export type FixtureData = string | Uint8Array;
 
@@ -32,7 +32,7 @@ export interface ConformanceTotals {
 
 export interface ConformanceReport {
   readonly format: typeof CONFORMANCE_FORMAT;
-  readonly protocolIdentity: "webuitoolkit.mvvm/1";
+  readonly protocolIdentity: "runic.toolkit.mvvm/1";
   readonly runtime: string;
   readonly success: boolean;
   readonly totals: ConformanceTotals;
@@ -55,7 +55,7 @@ export interface CorpusSemanticCase {
 }
 
 export interface ProtocolCorpusManifest {
-  readonly protocolIdentity: "webuitoolkit.mvvm/1";
+  readonly protocolIdentity: "runic.toolkit.mvvm/1";
   readonly cases: readonly CorpusManifestCase[];
   readonly semanticCases: readonly CorpusSemanticCase[];
 }
@@ -67,17 +67,10 @@ export interface ConformanceSuiteManifestEntry {
   readonly caseCount: number;
 }
 
-export interface FixtureIntegrityEntry {
-  readonly path: string;
-  readonly sha256: string;
-  readonly bytes: number;
-}
-
 export interface ConformanceFixtureManifest {
   readonly formatVersion: number;
-  readonly protocolIdentity: "webuitoolkit.mvvm/1";
+  readonly protocolIdentity: "runic.toolkit.mvvm/1";
   readonly suites: readonly ConformanceSuiteManifestEntry[];
-  readonly files?: readonly FixtureIntegrityEntry[];
 }
 
 export interface ScenarioStep {
@@ -93,8 +86,8 @@ export interface ConformanceScenario {
 }
 
 export interface ScenarioDocument {
-  readonly format: "webuitoolkit.mvvm.conformance-scenarios/1";
-  readonly protocolIdentity: "webuitoolkit.mvvm/1";
+  readonly format: "runic.toolkit.mvvm.conformance-scenarios/1";
+  readonly protocolIdentity: "runic.toolkit.mvvm/1";
   readonly category: string;
   readonly scenarios: readonly ConformanceScenario[];
 }

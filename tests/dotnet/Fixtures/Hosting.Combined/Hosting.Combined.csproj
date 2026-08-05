@@ -5,7 +5,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
-    <ProjectReference Include="../../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
+    <ProjectReference Include="../../../src/RunicToolkit.Hosting/RunicToolkit.Hosting.csproj" />
+    <ProjectReference Include="../../../src/RunicToolkit.Hosting.GenericHost/RunicToolkit.Hosting.GenericHost.csproj" />
   </ItemGroup>
 </Project>

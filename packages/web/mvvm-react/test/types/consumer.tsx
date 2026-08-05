@@ -4,7 +4,7 @@ import {
   MvvmProperty,
   MvvmReadonlyProperty,
   type MvvmProjection,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import {
   ReactMvvmProvider,
   createReactMvvmStore,
@@ -14,7 +14,7 @@ import {
   useMvvmProperty,
   useMvvmSnapshot,
   useMvvmValidation,
-} from "@webuitoolkit/mvvm-react";
+} from "@runic-artifex/mvvm-react";
 
 declare const projection: MvvmProjection;
 const store = createReactMvvmStore(projection);

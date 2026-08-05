@@ -6,9 +6,9 @@
     <NoWarn>$(NoWarn);CA1812</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/WebUIToolkit.Hosting/WebUIToolkit.Hosting.csproj" />
-    <ProjectReference Include="../../../src/WebUIToolkit.Hosting.GenericHost/WebUIToolkit.Hosting.GenericHost.csproj" />
-    <ProjectReference Include="../../../src/WebUIToolkit.Hosting.WebUi/WebUIToolkit.Hosting.WebUi.csproj" />
-    <ProjectReference Include="../../../src/WebUIToolkit.Hosting.Build/WebUIToolkit.Hosting.Build.csproj" />
+    <ProjectReference Include="../../../src/RunicToolkit.Hosting/RunicToolkit.Hosting.csproj" />
+    <ProjectReference Include="../../../src/RunicToolkit.Hosting.GenericHost/RunicToolkit.Hosting.GenericHost.csproj" />
+    <ProjectReference Include="../../../src/RunicToolkit.Hosting.WebUi/RunicToolkit.Hosting.WebUi.csproj" />
+    <ProjectReference Include="../../../src/RunicToolkit.Hosting.Build/RunicToolkit.Hosting.Build.csproj" />
   </ItemGroup>
 </Project>

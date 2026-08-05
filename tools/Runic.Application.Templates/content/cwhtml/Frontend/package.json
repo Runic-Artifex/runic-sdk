@@ -1,0 +1,13 @@
+{
+  "name": "@runic-artifex/runic-toolkitstarter-cwhtml",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "build": "vite build", "dev": "vite" },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "7.3.1",
+    "bootstrap": "5.3.8",
+    "htmx.org": "2.0.10"
+  },
+  "devDependencies": { "vite": "8.1.5" }
+}

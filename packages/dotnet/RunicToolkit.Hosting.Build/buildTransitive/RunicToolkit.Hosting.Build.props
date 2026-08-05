@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <RunicToolkitGenerateFrontendAssets Condition="'$(RunicToolkitGenerateFrontendAssets)' == ''">false</RunicToolkitGenerateFrontendAssets>
+    <RunicToolkitVerifyFrontendManifest Condition="'$(RunicToolkitVerifyFrontendManifest)' == ''">false</RunicToolkitVerifyFrontendManifest>
+    <RunicToolkitFrontendAssetMode Condition="'$(RunicToolkitFrontendAssetMode)' == ''">Directory</RunicToolkitFrontendAssetMode>
+    <RunicToolkitFrontendManifestPath Condition="'$(RunicToolkitFrontendManifestPath)' == ''">$(IntermediateOutputPath)runic-toolkit.frontend-assets.json</RunicToolkitFrontendManifestPath>
+  </PropertyGroup>
+</Project>

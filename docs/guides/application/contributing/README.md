@@ -1,12 +1,9 @@
 # Contributing
 
-- [Development and verification modes](./development.md) explains the fast
-  inner loop, frontend development, and strict release verification.
-- [Quality gates](./quality-gates.md) records executable acceptance evidence
-  and release-facing checks.
-- [Parallel implementation orchestration](./orchestration.md) documents the
-  repository's workflow conventions.
+- [Development](development.md)
+- [Quality gates](quality-gates.md)
+- [Architecture ownership](../architecture/README.md)
 
-Use the [current roadmap](../roadmap/README.md) to choose product work. Historical
-wave documents and release evidence do not activate or reprioritize work.
-
+Use issues and pull requests in this repository only for Toolkit-owned code.
+Changes to an independent product or its Toolkit adapter belong in that
+product’s repository.

@@ -1,7 +1,7 @@
-# `@webuitoolkit/mvvm-svelte`
+# `@runic-artifex/mvvm-svelte`
 
 Svelte readable-store bindings for the frozen public projection exported by
-`@webuitoolkit/mvvm`. The adapter does not decode protocol frames, duplicate
+`@runic-artifex/mvvm`. The adapter does not decode protocol frames, duplicate
 the client revision machine, or depend on another UI adapter.
 
 ```svelte
@@ -11,7 +11,7 @@ the client revision machine, or depend on another UI adapter.
     createSvelteMvvmCommandFacade,
     derivedMvvmProperty,
     disposeSvelteMvvmStoreOnDestroy,
-  } from "@webuitoolkit/mvvm-svelte";
+  } from "@runic-artifex/mvvm-svelte";
 
   const model = createSvelteMvvmStore(projection);
   disposeSvelteMvvmStoreOnDestroy(model);

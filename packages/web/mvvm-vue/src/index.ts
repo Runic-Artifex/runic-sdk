@@ -30,11 +30,11 @@ import type {
   NativeMvvmApplication,
   NativeMvvmApplicationOptions,
   CancelResult,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import {
   createMvvmCommandExecution,
   startNativeMvvmApplication,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 
 export interface VueMvvmAdapterOptions {
   /**
@@ -65,7 +65,7 @@ export interface VueMvvmAdapter {
 }
 
 /** Stable key used by {@link provideVueMvvmAdapter} and {@link useVueMvvm}. */
-export const vueMvvmKey: InjectionKey<VueMvvmAdapter> = Symbol("webuitoolkit.mvvm.vue");
+export const vueMvvmKey: InjectionKey<VueMvvmAdapter> = Symbol("runic.toolkit.mvvm.vue");
 
 /**
  * Creates a Vue adapter over the public framework-neutral projection.

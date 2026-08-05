@@ -11,7 +11,7 @@ import {
   MvvmCollection,
   MvvmCommandWithArgument,
   MvvmProperty,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import {
   createScopedVueMvvmAdapter,
   createVueMvvmAdapter,

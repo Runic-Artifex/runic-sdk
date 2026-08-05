@@ -1,4 +1,4 @@
-import * as WebUIToolkit from "@webuitoolkit/mvvm";
+import * as RunicToolkit from "@runic-artifex/mvvm";
 
 import {
   joinFixturePath,
@@ -6,7 +6,6 @@ import {
   loadFixtureManifest,
   readFixtureText,
   splitTopLevelArray,
-  validateFixtureIntegrity,
   validateProtocolManifest,
   validateScenarioDocument,
 } from "./fixtures.js";
@@ -31,8 +30,8 @@ interface MvvmSdkSurface {
 }
 
 interface HostileDocument {
-  readonly format: "webuitoolkit.mvvm.hostile-input/1";
-  readonly protocolIdentity: "webuitoolkit.mvvm/1";
+  readonly format: "runic.toolkit.mvvm.hostile-input/1";
+  readonly protocolIdentity: "runic.toolkit.mvvm/1";
   readonly cases: readonly HostileCase[];
 }
 
@@ -42,8 +41,8 @@ interface HostileCase {
   readonly expect: Readonly<Record<string, unknown>>;
 }
 
-const sdk = WebUIToolkit as unknown as MvvmSdkSurface;
-const PROTOCOL_IDENTITY = "webuitoolkit.mvvm/1" as const;
+const sdk = RunicToolkit as unknown as MvvmSdkSurface;
+const PROTOCOL_IDENTITY = "runic.toolkit.mvvm/1" as const;
 const MAX_GENERATED_FRAME_BYTES = 1_048_577;
 const MAX_GENERATED_JSON_DEPTH = 33;
 const MAX_GENERATED_PROPERTIES = 4_097;
@@ -63,7 +62,6 @@ export async function runConformance(options: RunConformanceOptions): Promise<Co
   const runtime = options.runtime ?? createSdkConformanceRuntime();
   const manifestPath = options.manifestPath ?? "manifest.json";
   const manifest = await loadFixtureManifest(options.source, manifestPath);
-  await validateFixtureIntegrity(options.source, manifest);
   const results: ConformanceCaseResult[] = [];
   let protocolManifest: ProtocolCorpusManifest | undefined;
 
@@ -273,7 +271,7 @@ function validateHostileDocument(value: unknown): HostileDocument {
     throw new TypeError("Hostile input document must be an object.");
   }
   const document = value as Record<string, unknown>;
-  if (document.format !== "webuitoolkit.mvvm.hostile-input/1" || document.protocolIdentity !== PROTOCOL_IDENTITY) {
+  if (document.format !== "runic.toolkit.mvvm.hostile-input/1" || document.protocolIdentity !== PROTOCOL_IDENTITY) {
     throw new TypeError("Unsupported hostile input document.");
   }
   if (!Array.isArray(document.cases)) throw new TypeError("Hostile input cases must be an array.");

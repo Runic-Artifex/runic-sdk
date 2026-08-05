@@ -5,7 +5,7 @@ import {
   MvvmCollection,
   MvvmCommandWithArgument,
   MvvmReadonlyProperty,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import {
   createSvelteMvvmStore,
   derivedMvvmCollection,

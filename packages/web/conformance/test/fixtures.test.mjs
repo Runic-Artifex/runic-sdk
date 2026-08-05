@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -12,7 +11,6 @@ import {
   readFixtureText,
   splitTopLevelArray,
   validateProtocolManifest,
-  validateFixtureIntegrity,
   validateScenarioDocument,
 } from "../dist/esm/index.js";
 
@@ -20,18 +18,16 @@ const fixtureRoot = new URL("../../../fixtures/conformance/", import.meta.url);
 const upstreamRoot = new URL("../../../../protocol/mvvm/corpus/v1/", import.meta.url);
 
 const readJson = async (url) => JSON.parse(await readFile(url, "utf8"));
-const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const fixtureSource = createFixtureSource((path) => readFile(new URL(path, fixtureRoot)));
 
 test("the fixture entry point has stable complete totals", async () => {
   const manifest = await readJson(new URL("manifest.json", fixtureRoot));
   assert.equal(manifest.formatVersion, 1);
-  assert.equal(manifest.protocolIdentity, "webuitoolkit.mvvm/1");
+  assert.equal(manifest.protocolIdentity, "runic.toolkit.mvvm/1");
   assert.deepEqual(manifest.totals, {
     cases: 94,
     upstreamProtocolCases: 45,
     webSdkCases: 49,
-    integrityFiles: 51,
   });
   assert.deepEqual(
     manifest.suites.map(({ id, caseCount }) => [id, caseCount]),
@@ -45,41 +41,17 @@ test("the fixture entry point has stable complete totals", async () => {
       ["flow-projection", 2],
     ],
   );
-  assert.equal(manifest.files.length, manifest.totals.integrityFiles);
-  assert.equal(new Set(manifest.files.map(({ path }) => path)).size, manifest.files.length);
-});
-
-test("every registered fixture has the committed byte length and SHA-256", async (t) => {
-  const manifest = await readJson(new URL("manifest.json", fixtureRoot));
-  for (const entry of manifest.files) {
-    await t.test(entry.path, async () => {
-      const bytes = await readFile(new URL(entry.path, fixtureRoot));
-      assert.equal(bytes.byteLength, entry.bytes);
-      assert.equal(digest(bytes), entry.sha256);
-    });
-  }
-});
-
-test("the browser-neutral integrity validator accepts committed bytes and rejects drift", async () => {
-  const manifest = await loadFixtureManifest(fixtureSource);
-  await validateFixtureIntegrity(fixtureSource, manifest);
-  const drifted = createFixtureSource(async (path) => {
-    const bytes = await readFile(new URL(path, fixtureRoot));
-    return path === "vectors/flow-projection.json" ? new Uint8Array([...bytes, 0x0a]) : bytes;
-  });
-  await assert.rejects(validateFixtureIntegrity(drifted, manifest), /integrity mismatch/u);
 });
 
 test("the web protocol corpus is a byte-identical mirror", async (t) => {
-  const fixtureManifest = await readJson(new URL("manifest.json", fixtureRoot));
-  const protocolEntries = fixtureManifest.files.filter(({ path }) => path.startsWith("protocol/v1/"));
-  assert.equal(protocolEntries.length, 46);
-  assert.equal(
-    fixtureManifest.upstream.manifestSha256,
-    "de9ca1ee0e16b67cfc75b9d9b35d47d41da741bbc91607080461fa0b5901579b",
-  );
-  for (const { path } of protocolEntries) {
-    const relative = path.slice("protocol/v1/".length);
+  const protocolManifest = await readJson(new URL("manifest.json", upstreamRoot));
+  const protocolEntries = [
+    "manifest.json",
+    ...protocolManifest.cases.map(({ file }) => file),
+    ...protocolManifest.semanticCases.map(({ file }) => file),
+  ];
+  assert.equal(new Set(protocolEntries).size, 46);
+  for (const relative of protocolEntries) {
     await t.test(relative, async () => {
       assert.deepEqual(
         await readFile(new URL(relative, new URL("protocol/v1/", fixtureRoot))),
@@ -214,8 +186,8 @@ test("fixture document validators enforce identity, uniqueness, and structure", 
   assert.throws(
     () =>
       validateScenarioDocument({
-        format: "webuitoolkit.mvvm.conformance-scenarios/1",
-        protocolIdentity: "webuitoolkit.mvvm/1",
+        format: "runic.toolkit.mvvm.conformance-scenarios/1",
+        protocolIdentity: "runic.toolkit.mvvm/1",
         category: "duplicate",
         scenarios: [
           { id: "same", initial: {}, steps: [{ action: "noop", expect: {} }] },

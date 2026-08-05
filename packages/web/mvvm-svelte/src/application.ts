@@ -2,7 +2,7 @@ import {
   startNativeMvvmApplication,
   type NativeMvvmApplication,
   type NativeMvvmApplicationOptions,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 import { getContext, onDestroy, setContext } from "svelte";
 
 import {
@@ -10,7 +10,7 @@ import {
   type SvelteMvvmStore,
 } from "./store.js";
 
-const applicationContext = Symbol("webuitoolkit.mvvm.svelte.application");
+const applicationContext = Symbol("runic.toolkit.mvvm.svelte.application");
 
 /** A typed native application with its Svelte-readable projection store. */
 export interface SvelteMvvmApplication<TContract>

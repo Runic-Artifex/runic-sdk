@@ -6,21 +6,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$developmentProperties = @('-p:WebUIToolkitBuildMode=Development')
+$developmentProperties = @('-p:RunicToolkitBuildMode=Development')
 
 Push-Location $repositoryRoot
 try {
     if (-not $NoRestore) {
-        dotnet restore WebUIToolkit.slnx @developmentProperties
+        dotnet restore RunicToolkit.slnx @developmentProperties
         if ($LASTEXITCODE -ne 0) { throw 'Development restore failed.' }
     }
 
-    dotnet build WebUIToolkit.slnx --no-restore @developmentProperties
+    dotnet build RunicToolkit.slnx --no-restore @developmentProperties
     if ($LASTEXITCODE -ne 0) { throw 'Development build failed.' }
 
     if (-not $NoTest) {
-        dotnet test WebUIToolkit.slnx --no-build --no-restore @developmentProperties
-        if ($LASTEXITCODE -ne 0) { throw 'Development tests failed.' }
+        & (Join-Path $PSScriptRoot 'run-contract-tests.ps1') -Configuration Debug
+        if ($LASTEXITCODE -ne 0) { throw 'Development contract tests failed.' }
     }
 }
 finally {

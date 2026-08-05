@@ -6,7 +6,7 @@ import type {
   MvvmProjection,
   MvvmProjectionSnapshot,
   Revision,
-} from "@webuitoolkit/mvvm";
+} from "@runic-artifex/mvvm";
 
 export interface ReactMvvmStoreOptions {
   /**

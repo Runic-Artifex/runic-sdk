@@ -49,7 +49,7 @@ test("the protocol runner executes every valid and invalid manifest case", async
 test("eachItem protocol cases validate every item and reject empty collections", async () => {
   const files = new Map([
     ["manifest.json", JSON.stringify({
-      protocolIdentity: "webuitoolkit.mvvm/1",
+      protocolIdentity: "runic.toolkit.mvvm/1",
       cases: [
         { id: "mixed-invalid", file: "mixed.json", schema: "client", documentMode: "eachItem", valid: false, reason: "mixed" },
         { id: "empty-valid", file: "empty.json", schema: "client", documentMode: "eachItem", valid: true, reason: "empty" },
@@ -93,8 +93,8 @@ test("the SDK runtime executes every state, command, reconnect, semantic, and ho
 test("the aggregate SDK report has no skipped mandatory cases", async () => {
   const report = await runConformance({ source, runtime: createSdkConformanceRuntime() });
   assert.equal(report.format, CONFORMANCE_FORMAT);
-  assert.equal(report.protocolIdentity, "webuitoolkit.mvvm/1");
-  assert.equal(report.runtime, "webuitoolkit-mvvm-sdk");
+  assert.equal(report.protocolIdentity, "runic.toolkit.mvvm/1");
+  assert.equal(report.runtime, "runic-toolkit-mvvm-sdk");
   assert.equal(report.success, true);
   assert.deepEqual(report.totals, { total: 94, passed: 94, failed: 0, skipped: 0 });
   assert.equal(new Set(report.cases.map(({ id, suite }) => `${suite}:${id}`)).size, 94);
@@ -116,8 +116,8 @@ test("the aggregate runner defaults to the SDK runtime", async () => {
 
 test("hostile generators reject excessive allocation requests deterministically", async () => {
   const hostileSource = createFixtureSource(() => JSON.stringify({
-    format: "webuitoolkit.mvvm.hostile-input/1",
-    protocolIdentity: "webuitoolkit.mvvm/1",
+    format: "runic.toolkit.mvvm.hostile-input/1",
+    protocolIdentity: "runic.toolkit.mvvm/1",
     cases: [
       {
         id: "excessive-array-allocation",

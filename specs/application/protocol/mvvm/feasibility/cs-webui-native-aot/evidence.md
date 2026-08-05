@@ -2,7 +2,7 @@
 
 The complete immutable pins, exact commands, actual external solution/project/API identifiers, selected logs, exit codes, and the two failed browser-driver attempts are preserved in [commands-and-results.txt](commands-and-results.txt).
 
-The raw transcript uses a `.txt` extension deliberately: external `cs-webui` retains its real upstream identifiers in reproducible commands without presenting those identifiers as first-party WebUIToolkit names to the repository namespace scanner.
+The raw transcript uses a `.txt` extension deliberately: external `cs-webui` retains its real upstream identifiers in reproducible commands without presenting those identifiers as first-party RunicToolkit names to the repository namespace scanner.
 
 The reusable high-level scenario is preserved as inert source transcripts under [probe](probe/README.md). Reproduction copies those transcripts to a temporary directory, supplies the pinned external checkout, publishes a Windows x64 native executable, and keeps a headless browser alive until the WebUI JavaScript bridge completes its managed callback.
 
