@@ -9,3 +9,6 @@ source-level project references.
 - `RunicCommandLine.Canary` restores all four Command Line packages from GitHub
   Packages, exercises their protocol, catalog, hosting, and process surfaces, and
   runs both managed and NativeAOT builds.
+- `RunicFlow.Canary` restores all three Flow packages from GitHub Packages,
+  exercises the framework-neutral operation kernel, generator contracts, and
+  CommunityToolkit projection adapter, and runs both managed and NativeAOT builds.

@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.10, )",
+        "resolved": "10.0.10",
+        "contentHash": "f5VCIE7AJpd5YvzNTeMGVzQIgyE9tX+AreTYwQF+REbu+DZo/2Ae+jNSwhPEYrVz6RRkd7y8ubXjk6Nn6Ka+Cg=="
+      },
+      "RunicFlow": {
+        "type": "Direct",
+        "requested": "[0.1.0-preview.2.1, )",
+        "resolved": "0.1.0-preview.2.1",
+        "contentHash": "GOjZdN1gZ8tHSX2hdWRUXjWYanKjUD/OCI8mpMdDx1Y0yGD7UrdFOQLgJ9bQxf9tqOdr6llXKgUMoZagM+frxg=="
+      },
+      "RunicFlow.CommunityToolkit": {
+        "type": "Direct",
+        "requested": "[0.1.0-preview.2.1, )",
+        "resolved": "0.1.0-preview.2.1",
+        "contentHash": "zpWOHMvB8VaQRBRc814NwWfs64RwWTP/vROUn13Nedp3EQ2DWaTuB/+XKUun+/VTm/+7TCyD8+Hq8iSPJCnAFQ==",
+        "dependencies": {
+          "CommunityToolkit.Mvvm": "[8.4.2]",
+          "RunicFlow": "0.1.0-preview.2.1"
+        }
+      },
+      "RunicFlow.Generators": {
+        "type": "Direct",
+        "requested": "[0.1.0-preview.2.1, )",
+        "resolved": "0.1.0-preview.2.1",
+        "contentHash": "9okqRC8ulQh846FIPGXjFJFsUlX8u59h9WVZD9bc6EjC3bZ0y05oJixDc4jFKQ+0wayTyaIOEw3cJ3T0fUYurA=="
+      },
+      "CommunityToolkit.Mvvm": {
+        "type": "CentralTransitive",
+        "requested": "[8.4.2, )",
+        "resolved": "8.4.2",
+        "contentHash": "WadCzGEc2U+3e20avRLng4qNtt4zoOGWrdUISqJWrHe3/FSnrYjuM5Sb4yQb09LhkBXrrI4Zt3dLKgRMbItsrg=="
+      }
+    }
+  }
+}
