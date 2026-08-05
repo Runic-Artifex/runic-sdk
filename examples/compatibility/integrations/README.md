@@ -9,12 +9,13 @@ source-level project references.
 - `RunicCommandLine.Canary` restores all four Command Line packages from GitHub
   Packages, exercises their protocol, catalog, hosting, and process surfaces, and
   runs both managed and NativeAOT builds.
-- `RunicFlow.Canary` restores all three Flow packages from GitHub Packages,
+- `RunicFlow.Canary` restores all four Flow packages from GitHub Packages,
   exercises the framework-neutral operation kernel, generator contracts, and
-  CommunityToolkit projection adapter, and runs both managed and NativeAOT builds.
-- `RunicAssets.Canary` restores the core, CsWebUi, and ASP.NET Core packages,
-  round-trips the neutral archive, verifies both host adapters, and runs managed
-  and NativeAOT builds.
+  CommunityToolkit plus Runic Toolkit adapters, and runs both managed and
+  NativeAOT builds.
+- `RunicAssets.Canary` restores the core, CsWebUi, ASP.NET Core, and Runic Toolkit
+  packages, round-trips the neutral archive, verifies all three host adapters,
+  and runs managed and NativeAOT builds.
 - `RunicMarkup.Canary` restores the core language plus every published,
   Markup-owned Runic Toolkit integration package and exercises managed and
   NativeAOT consumption from GitHub Packages.

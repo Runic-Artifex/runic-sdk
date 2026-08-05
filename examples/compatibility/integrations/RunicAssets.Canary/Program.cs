@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using RunicAssets;
 using RunicAssets.AspNetCore;
 using RunicAssets.CsWebUi;
+using RunicAssets.RunicToolkit;
 
 var source = new EmbeddedAssetSource(
     Assembly.GetExecutingAssembly(),
@@ -23,6 +24,17 @@ await AssetArchive.WriteAsync(source, archive);
 archive.Position = 0;
 AssetArchiveSource restored = AssetArchive.Read(archive);
 await restored.ValidateAsync();
+
+var toolkitAssets = new RunicToolkitAssetBoundary(
+    restored,
+    new Uri("app://runic-assets-canary/application"));
+await toolkitAssets.ValidateAsync();
+if (toolkitAssets.Manifest.ManifestVersion != "runic-toolkit.frontend-assets/1"
+    || toolkitAssets.EntryPoint.AbsoluteUri !=
+        "app://runic-assets-canary/application/index.html")
+{
+    throw new InvalidOperationException("Runic Toolkit did not receive the translated asset contract.");
+}
 
 var fileSystem = await restored.ToWebUiVirtualFileSystemAsync();
 if (!fileSystem.TryGetFile("/", out ReadOnlyMemory<byte> entryPoint)

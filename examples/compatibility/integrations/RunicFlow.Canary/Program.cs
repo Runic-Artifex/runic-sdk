@@ -6,6 +6,7 @@ using RunicFlow;
 using RunicFlow.CommunityToolkit;
 using RunicFlow.Generators;
 using RunicFlow.Operations;
+using RunicFlow.RunicToolkit.Navigation;
 
 namespace RunicArtifex.Examples.Flow;
 
@@ -46,7 +47,9 @@ internal static partial class Program
             && CommunityToolkitProjectionHandoff.ProjectionAdapterIdentity ==
                 CommunityToolkitFlowProjectionContract.AdapterIdentity
             && CommunityToolkitProjectionHandoff.FixtureMappings.Count ==
-                CommunityToolkitFlowProjectionContract.Members.Count;
+                CommunityToolkitFlowProjectionContract.Members.Count
+            && typeof(NavigationDesktopCloseGuard).Assembly.GetName().Name ==
+                "RunicFlow.RunicToolkit";
         if (!valid)
         {
             Console.Error.WriteLine("FAIL: published Runic Flow package canary.");

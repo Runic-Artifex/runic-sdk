@@ -12,6 +12,7 @@
     <PackageReference Include="RunicAssets" />
     <PackageReference Include="RunicAssets.CsWebUi" />
     <PackageReference Include="RunicAssets.AspNetCore" />
+    <PackageReference Include="RunicAssets.RunicToolkit" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

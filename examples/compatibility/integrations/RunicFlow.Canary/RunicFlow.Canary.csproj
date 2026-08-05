@@ -12,5 +12,6 @@
     <PackageReference Include="RunicFlow" />
     <PackageReference Include="RunicFlow.Generators" />
     <PackageReference Include="RunicFlow.CommunityToolkit" />
+    <PackageReference Include="RunicFlow.RunicToolkit" />
   </ItemGroup>
 </Project>

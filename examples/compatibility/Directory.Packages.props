@@ -16,12 +16,14 @@
     <PackageVersion Include="RunicCommandLine.Abstractions" Version="0.1.0-preview.3.1" />
     <PackageVersion Include="RunicCommandLine.Hosting" Version="0.1.0-preview.3.1" />
     <PackageVersion Include="RunicCommandLine.Processes" Version="0.1.0-preview.3.1" />
-    <PackageVersion Include="RunicFlow" Version="0.1.0-preview.2.1" />
-    <PackageVersion Include="RunicFlow.Generators" Version="0.1.0-preview.2.1" />
-    <PackageVersion Include="RunicFlow.CommunityToolkit" Version="0.1.0-preview.2.1" />
-    <PackageVersion Include="RunicAssets" Version="0.1.0-preview.2.1" />
-    <PackageVersion Include="RunicAssets.CsWebUi" Version="0.1.0-preview.2.1" />
-    <PackageVersion Include="RunicAssets.AspNetCore" Version="0.1.0-preview.2.1" />
+    <PackageVersion Include="RunicFlow" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicFlow.Generators" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicFlow.CommunityToolkit" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicFlow.RunicToolkit" Version="0.1.0-preview.4.1" />
+    <PackageVersion Include="RunicAssets" Version="0.1.0-preview.5.1" />
+    <PackageVersion Include="RunicAssets.CsWebUi" Version="0.1.0-preview.5.1" />
+    <PackageVersion Include="RunicAssets.AspNetCore" Version="0.1.0-preview.5.1" />
+    <PackageVersion Include="RunicAssets.RunicToolkit" Version="0.1.0-preview.5.1" />
     <PackageVersion Include="RunicMarkup" Version="0.1.0-preview.9.1" />
     <PackageVersion Include="RunicMarkup.Compiler" Version="0.1.0-preview.9.1" />
     <PackageVersion Include="RunicMarkup.Build" Version="0.1.0-preview.9.1" />
