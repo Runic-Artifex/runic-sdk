@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="RunicAssets" Version="$(RunicAssetsPackageVersion)" />
+    <PackageReference Include="RunicAssets.RunicToolkit" Version="$(RunicAssetsPackageVersion)" />
     <EmbeddedResource Include="index.html" LogicalName="PackageConsumer.index.html" />
   </ItemGroup>
 </Project>

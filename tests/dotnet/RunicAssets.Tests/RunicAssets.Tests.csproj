@@ -10,6 +10,7 @@
     <ProjectReference Include="../../src/RunicAssets/RunicAssets.csproj" />
     <ProjectReference Include="../../src/RunicAssets.AspNetCore/RunicAssets.AspNetCore.csproj" />
     <ProjectReference Include="../../src/RunicAssets.CsWebUi/RunicAssets.CsWebUi.csproj" />
+    <ProjectReference Include="../../integrations/RunicAssets.RunicToolkit/RunicAssets.RunicToolkit.csproj" />
     <EmbeddedResource Include="TestAssets/index.html" LogicalName="RunicAssets.Tests.index.html" />
     <EmbeddedResource Include="TestAssets/app.css" LogicalName="RunicAssets.Tests.app.css" />
   </ItemGroup>

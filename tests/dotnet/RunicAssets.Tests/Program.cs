@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using RunicAssets.AspNetCore;
 using RunicAssets.CsWebUi;
+using RunicAssets.RunicToolkit;
 
 namespace RunicAssets.Tests;
 
@@ -19,6 +20,7 @@ internal static class Program
         new("paths reject traversal and ambiguous syntax", SafePaths),
         new("manifest metadata and ordering are deterministic", DeterministicManifest),
         new("embedded assets validate and open offline", EmbeddedAssets),
+        new("Runic Toolkit integration projects exact frontend assets", RunicToolkitIntegration),
         new("portable archives round-trip deterministic metadata", ArchiveRoundTrip),
         new("CsWebUi integration preloads exact assets", CsWebUiIntegration),
         new("ASP.NET Core integration preserves response metadata", AspNetCoreIntegration),
@@ -112,6 +114,26 @@ internal static class Program
         True((await reader.ReadToEndAsync().ConfigureAwait(false)).Contains("Asset boundary", StringComparison.Ordinal));
         await ThrowsAsync<FileNotFoundException>(
             async () => await source.OpenReadAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
+    }
+
+    private static async Task RunicToolkitIntegration()
+    {
+        EmbeddedAssetSource source = NewEmbeddedSource();
+        var boundary = new RunicToolkitAssetBoundary(
+            source,
+            new Uri("app://runic-assets/application"));
+
+        await boundary.ValidateAsync().ConfigureAwait(false);
+        Equal("runic-toolkit.frontend-assets/1", boundary.Manifest.ManifestVersion);
+        Equal(source.Manifest.Assets.Count, boundary.Manifest.Assets.Count);
+        Equal("app://runic-assets/application/index.html", boundary.EntryPoint.AbsoluteUri);
+        True(boundary.Manifest.Assets.Single(static asset => asset.IsEntryPoint).RelativePath == "index.html");
+        await using Stream content = await boundary
+            .OpenReadAsync("index.html", CancellationToken.None)
+            .ConfigureAwait(false);
+        using var reader = new StreamReader(content);
+        True((await reader.ReadToEndAsync().ConfigureAwait(false))
+            .Contains("Asset boundary", StringComparison.Ordinal));
     }
 
     private static async Task ArchiveRoundTrip()

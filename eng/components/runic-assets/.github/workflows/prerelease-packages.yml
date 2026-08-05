@@ -10,6 +10,8 @@ on:
       - eng/pack.sh
       - eng/verify-package-artifacts.ps1
       - src/**/*.csproj
+      - integrations/**/*.csproj
+      - integrations/**/README.md
       - tests/RunicAssets.PackageConsumer/**
   workflow_dispatch:
     inputs:
@@ -21,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: prerelease-packages-${{ github.ref }}
@@ -30,6 +33,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
   PACKAGE_VERSION: 0.1.0-preview.${{ github.run_number }}.${{ github.run_attempt }}
+  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   package:
@@ -56,7 +60,7 @@ jobs:
       - name: Create and validate prerelease packages
         run: ./eng/pack.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
 
-      - name: Consume packaged core with NativeAOT
+      - name: Consume packaged core and Runic Toolkit integration with NativeAOT
         run: >-
           ./tests/RunicAssets.PackageConsumer/Test-PackageConsumer.sh
           "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"

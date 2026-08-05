@@ -22,6 +22,7 @@ package_projects=(
   "$repository_root/src/RunicAssets/RunicAssets.csproj"
   "$repository_root/src/RunicAssets.CsWebUi/RunicAssets.CsWebUi.csproj"
   "$repository_root/src/RunicAssets.AspNetCore/RunicAssets.AspNetCore.csproj"
+  "$repository_root/integrations/RunicAssets.RunicToolkit/RunicAssets.RunicToolkit.csproj"
 )
 
 for project in "${package_projects[@]}"; do

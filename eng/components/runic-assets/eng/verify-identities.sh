@@ -26,6 +26,11 @@ for project in RunicAssets RunicAssets.CsWebUi RunicAssets.AspNetCore; do
   grep -Fq "<PackageId>$project</PackageId>" "$project_file"
 done
 
+integration_project="integrations/RunicAssets.RunicToolkit/RunicAssets.RunicToolkit.csproj"
+grep -Fq '<AssemblyName>RunicAssets.RunicToolkit</AssemblyName>' "$integration_project"
+grep -Fq '<RootNamespace>RunicAssets.RunicToolkit</RootNamespace>' "$integration_project"
+grep -Fq '<PackageId>RunicAssets.RunicToolkit</PackageId>' "$integration_project"
+
 grep -Fq 'runic.assets/1' src/RunicAssets/AssetContracts.cs
 grep -Fq 'runic.assets.archive/1' src/RunicAssets/AssetArchive.cs
 

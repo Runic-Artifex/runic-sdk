@@ -2,17 +2,16 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+fixture_root="$repository_root/tests/RunicAssets.PackageConsumer"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
-package_version="${1:-1.0.0}"
+package_version="${1:-0.1.0-preview.local.1}"
 package_feed="${2:-$test_root/feed}"
 consumer_root="$test_root/consumer"
+nuget_config="$test_root/NuGet.config"
 
 if [[ $# -lt 2 ]]; then
-  dotnet pack "$repository_root/src/RunicAssets/RunicAssets.csproj" \
-    --configuration Release \
-    --output "$package_feed" \
-    -p:PackageVersion="$package_version"
+  "$repository_root/eng/pack.sh" "$package_version" "$package_feed"
 fi
 
 export NUGET_PACKAGES="$test_root/packages"
@@ -21,10 +20,11 @@ cp "$repository_root/tests/RunicAssets.PackageConsumer/Program.cs" "$consumer_ro
 cp "$repository_root/tests/RunicAssets.PackageConsumer/index.html" "$consumer_root/index.html"
 cp "$repository_root/tests/RunicAssets.PackageConsumer/RunicAssets.PackageConsumer.csproj" \
   "$consumer_root/RunicAssets.PackageConsumer.csproj"
+sed "s|__LOCAL_FEED__|$package_feed|g" \
+  "$fixture_root/NuGet.config.template" > "$nuget_config"
 
 dotnet restore "$consumer_root/RunicAssets.PackageConsumer.csproj" \
-  --source "$package_feed" \
-  --source "https://api.nuget.org/v3/index.json" \
+  --configfile "$nuget_config" \
   -p:RunicAssetsPackageVersion="$package_version" \
   --no-cache
 dotnet publish "$consumer_root/RunicAssets.PackageConsumer.csproj" \

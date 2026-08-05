@@ -17,6 +17,10 @@ $expectedPackages = [ordered]@{
     "RunicAssets.AspNetCore" = @{
         "RunicAssets" = $PackageVersion
     }
+    "RunicAssets.RunicToolkit" = @{
+        "RunicAssets" = $PackageVersion
+        "RunicToolkit.Hosting.Abstractions" = "[0.1.0-preview.4.1]"
+    }
 }
 
 function Read-Nuspec {

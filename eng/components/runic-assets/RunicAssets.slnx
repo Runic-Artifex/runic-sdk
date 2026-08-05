@@ -4,6 +4,9 @@
     <Project Path="src/RunicAssets.AspNetCore/RunicAssets.AspNetCore.csproj" />
     <Project Path="src/RunicAssets.CsWebUi/RunicAssets.CsWebUi.csproj" />
   </Folder>
+  <Folder Name="/integrations/">
+    <Project Path="integrations/RunicAssets.RunicToolkit/RunicAssets.RunicToolkit.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RunicAssets.Tests/RunicAssets.Tests.csproj" />
   </Folder>

@@ -17,12 +17,11 @@ identity.
 | `RunicAssets` | Transport-neutral contracts, sources, validation, media types, and portable archives |
 | `RunicAssets.CsWebUi` | Assets-owned adapter to CsWebUi's in-memory VFS |
 | `RunicAssets.AspNetCore` | Exact ASP.NET Core endpoints with cache and entity-tag metadata |
-| `integrations/RunicAssets.RunicToolkit` | Staged Toolkit integration boundary owned by Runic Assets |
+| `integrations/RunicAssets.RunicToolkit` | Published Toolkit frontend-asset integration owned by Runic Assets |
 
-The Toolkit adapter source remains outside the standalone solution until Runic
-Toolkit contracts are available as packages. This preserves the dependency
-direction: adapters depend on both products; neither core depends on an
-integration.
+The Toolkit adapter is part of the standalone solution and consumes Toolkit
+contracts as exact packages. This preserves the dependency direction: adapters
+depend on both products; neither core depends on an integration.
 
 ## Archives
 
