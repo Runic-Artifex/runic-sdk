@@ -15,3 +15,6 @@ source-level project references.
 - `RunicAssets.Canary` restores the core, CsWebUi, and ASP.NET Core packages,
   round-trips the neutral archive, verifies both host adapters, and runs managed
   and NativeAOT builds.
+- `RunicMarkup.Canary` restores the core language plus every published,
+  Markup-owned Runic Toolkit integration package and exercises managed and
+  NativeAOT consumption from GitHub Packages.

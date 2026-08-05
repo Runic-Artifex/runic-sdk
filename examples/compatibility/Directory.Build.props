@@ -28,10 +28,6 @@
     <RepositoryUrl>https://github.com/Runic-Artifex/runic-toolkit-examples</RepositoryUrl>
     <PackageProjectUrl>https://github.com/Runic-Artifex/runic-toolkit-examples</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <!-- Repository projects keep updateable lock files; only Verification locks them. -->
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <RestoreLockedMode Condition="'$(WebUIToolkitVerificationBuild)' == 'true'">true</RestoreLockedMode>
-    <RestoreLockedMode Condition="'$(RestoreLockedMode)' == ''">false</RestoreLockedMode>
     <NuGetAudit Condition="'$(WebUIToolkitVerificationBuild)' == 'true'">true</NuGetAudit>
     <NuGetAudit Condition="'$(NuGetAudit)' == ''">false</NuGetAudit>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>

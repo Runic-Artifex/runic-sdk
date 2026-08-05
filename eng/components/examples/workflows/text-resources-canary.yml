@@ -37,7 +37,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore package-only canary
-        run: dotnet restore integrations/RunicTextResources.Canary/RunicTextResources.Canary.csproj --locked-mode
+        run: dotnet restore integrations/RunicTextResources.Canary/RunicTextResources.Canary.csproj
 
       - name: Build package-only canary
         run: dotnet build integrations/RunicTextResources.Canary/RunicTextResources.Canary.csproj --no-restore --configuration Release

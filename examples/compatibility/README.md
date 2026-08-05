@@ -16,11 +16,11 @@ personal access token with `read:packages` exposed to NuGet without committing i
 
 ```bash
 export NuGetPackageSourceCredentials_github="Username=YOUR_GITHUB_USER;Password=YOUR_TOKEN;ValidAuthenticationTypes=Basic"
-dotnet restore integrations/RunicTextResources.Canary/RunicTextResources.Canary.csproj --locked-mode
-dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --locked-mode
-dotnet restore integrations/RunicFlow.Canary/RunicFlow.Canary.csproj --locked-mode
-dotnet restore integrations/RunicAssets.Canary/RunicAssets.Canary.csproj --locked-mode
-dotnet restore integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj --locked-mode
+dotnet restore integrations/RunicTextResources.Canary/RunicTextResources.Canary.csproj
+dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj
+dotnet restore integrations/RunicFlow.Canary/RunicFlow.Canary.csproj
+dotnet restore integrations/RunicAssets.Canary/RunicAssets.Canary.csproj
+dotnet restore integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj
 ```
 
 GitHub Actions uses its repository `GITHUB_TOKEN` with `packages: read`. Each

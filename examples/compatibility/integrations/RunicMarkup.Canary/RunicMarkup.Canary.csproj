@@ -14,5 +14,11 @@
   <ItemGroup>
     <PackageReference Include="RunicMarkup" />
     <PackageReference Include="RunicMarkup.Build" PrivateAssets="all" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx.Js" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx.CsWebUi" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.Htmx.CsWebUi.App" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.CommunityToolkit" />
+    <PackageReference Include="RunicMarkup.RunicToolkit.FrontendCompiler" PrivateAssets="all" />
   </ItemGroup>
 </Project>

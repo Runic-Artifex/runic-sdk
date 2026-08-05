@@ -37,7 +37,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore package-only canary
-        run: dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --locked-mode
+        run: dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj
 
       - name: Build package-only canary
         run: dotnet build integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --no-restore --configuration Release
@@ -56,8 +56,6 @@ jobs:
           -p:PublishTrimmed=true
           -p:TrimMode=full
           -p:IlcTreatWarningsAsErrors=true
-          -p:NuGetLockFilePath="$RUNNER_TEMP/aot.packages.lock.json"
-          -p:RestoreLockedMode=false
 
       - name: Run NativeAOT canary
         run: "$RUNNER_TEMP/native/RunicCommandLine.Canary"
