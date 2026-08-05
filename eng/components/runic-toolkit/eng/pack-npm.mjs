@@ -5,18 +5,28 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const [, , version, suppliedOutput] = process.argv;
+const [, , version, suppliedOutput, suppliedRegistry = "github"] = process.argv;
 if (version === undefined || suppliedOutput === undefined) {
-  console.error("Usage: node eng/pack-npm.mjs <package-version> <output-directory>");
+  console.error("Usage: node eng/pack-npm.mjs <package-version> <output-directory> [github|public]");
   process.exit(2);
 }
 if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u.test(version)) {
   console.error("Package version must be SemVer-compatible.");
   process.exit(2);
 }
+if (!new Set(["github", "public"]).has(suppliedRegistry)) {
+  console.error("Registry target must be 'github' or 'public'.");
+  process.exit(2);
+}
 
 const root = resolve(import.meta.dirname, "..");
 const output = resolve(suppliedOutput);
+const commitResult = spawnSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
+if (commitResult.status !== 0 || !/^[0-9a-f]{40}$/iu.test(commitResult.stdout.trim())) {
+  console.error("Could not resolve the source Git commit.");
+  process.exit(1);
+}
+const repositoryCommit = commitResult.stdout.trim();
 const packages = ["mvvm", "conformance", "mvvm-react", "mvvm-vue", "mvvm-svelte", "mvvm-angular"];
 const staging = mkdtempSync(join(tmpdir(), "runic-toolkit-npm-pack."));
 mkdirSync(output, { recursive: true });
@@ -33,6 +43,13 @@ try {
     const packagePath = join(target, "package.json");
     const manifest = JSON.parse(readFileSync(packagePath, "utf8"));
     manifest.version = version;
+    manifest.gitHead = repositoryCommit;
+    if (suppliedRegistry === "public") {
+      manifest.publishConfig = {
+        access: "public",
+        registry: "https://registry.npmjs.org",
+      };
+    }
     for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
       if (manifest[field]?.["@runic-artifex/mvvm"] !== undefined) {
         manifest[field]["@runic-artifex/mvvm"] = version;
@@ -50,7 +67,9 @@ try {
       process.stderr.write(result.stderr);
       process.exit(result.status ?? 1);
     }
-    process.stdout.write(`Packed ${manifest.name}@${version} as ${basename(result.stdout.trim())}.\n`);
+    process.stdout.write(
+      `Packed ${manifest.name}@${version} for ${suppliedRegistry} as ${basename(result.stdout.trim())}.\n`,
+    );
   }
 } finally {
   rmSync(staging, { recursive: true, force: true });

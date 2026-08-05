@@ -11,6 +11,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "description": "React external-store bindings for @runic-artifex/mvvm.",
+  "homepage": "https://github.com/Runic-Artifex/runic-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
+  },
+  "keywords": ["runic-artifex", "mvvm", "react", "webui"],
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

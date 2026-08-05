@@ -11,6 +11,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "description": "Framework-neutral TypeScript client for the runic.toolkit.mvvm/1 protocol.",
+  "homepage": "https://github.com/Runic-Artifex/runic-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
+  },
+  "keywords": ["runic-artifex", "mvvm", "webui", "typescript"],
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

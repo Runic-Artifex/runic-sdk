@@ -1,0 +1,198 @@
+name: Public release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/public-release.yml
+      - Directory.Build.props
+      - Directory.Build.targets
+      - Directory.Packages.props
+      - eng/pack.sh
+      - eng/pack-npm.mjs
+      - eng/publish-npm.sh
+      - eng/verify-package-artifacts.ps1
+      - eng/verify-npm-artifacts.mjs
+      - src/**/*.csproj
+      - tools/**/*.csproj
+      - web/packages/**
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact SemVer package version
+        required: true
+        default: 0.1.0-preview.4.1
+        type: string
+      publish_public:
+        description: Publish verified NuGet and npm artifacts publicly
+        required: true
+        default: false
+        type: boolean
+      npm_bootstrap:
+        description: Use the one-time npm bootstrap token for packages not yet created
+        required: true
+        default: false
+        type: boolean
+      confirmation:
+        description: Type PUBLISH PUBLIC when publication is enabled
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: public-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  PACKAGE_VERSION: ${{ inputs.version || format('0.1.0-preview.{0}.{1}', github.run_number, github.run_attempt) }}
+
+jobs:
+  package:
+    name: Verify public artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Validate request
+        shell: bash
+        env:
+          PUBLISH_PUBLIC: ${{ inputs.publish_public }}
+          NPM_BOOTSTRAP: ${{ inputs.npm_bootstrap }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Version must be SemVer-compatible." >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH_PUBLIC" == "true" && "$CONFIRMATION" != "PUBLISH PUBLIC" ]]; then
+            echo "Public publication requires the exact confirmation PUBLISH PUBLIC." >&2
+            exit 1
+          fi
+          if [[ "$NPM_BOOTSTRAP" == "true" && "$PUBLISH_PUBLIC" != "true" ]]; then
+            echo "npm bootstrap is meaningful only for public publication." >&2
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Run verification pipeline
+        run: ./eng/verify.sh
+
+      - name: Ensure verification is reproducible
+        run: git diff --exit-code
+
+      - name: Create NuGet packages
+        run: ./eng/pack.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
+      - name: Consume NuGet packages in isolation
+        run: >-
+          ./tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh
+          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
+      - name: Create public npm packages
+        run: |
+          node eng/pack-npm.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages" public
+          node eng/verify-npm-artifacts.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
+      - name: Validate public package contract
+        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
+        with:
+          version: ${{ env.PACKAGE_VERSION }}
+          artifact-directory: ${{ runner.temp }}/packages
+          repository-url: https://github.com/Runic-Artifex/runic-toolkit
+          repository-commit: ${{ github.sha }}
+          expected-nuget-count: "18"
+          expected-npm-count: "6"
+
+      - name: Record package digests
+        working-directory: ${{ runner.temp }}/packages
+        run: sha256sum ./*.nupkg ./*.tgz > SHA256SUMS
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: runic-toolkit-${{ env.PACKAGE_VERSION }}
+          path: ${{ runner.temp }}/packages/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish to nuget.org and npm
+    if: ${{ inputs.publish_public && inputs.confirmation == 'PUBLISH PUBLIC' && github.ref == 'refs/heads/main' }}
+    needs: package
+    runs-on: ubuntu-24.04
+    environment: public-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          registry-url: https://registry.npmjs.org
+          scope: "@runic-artifex"
+
+      - name: Download release candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: runic-toolkit-${{ env.PACKAGE_VERSION }}
+          path: ${{ runner.temp }}/packages
+
+      - name: Verify package digests
+        working-directory: ${{ runner.temp }}/packages
+        run: sha256sum --check SHA256SUMS
+
+      - name: Sign in to nuget.org with trusted publishing
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish NuGet packages
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+          for package in "$RUNNER_TEMP"/packages/*.nupkg; do
+            dotnet nuget push "$package" \
+              --source https://api.nuget.org/v3/index.json \
+              --api-key "$NUGET_API_KEY"
+          done
+
+      - name: Bootstrap npm packages
+        if: ${{ inputs.npm_bootstrap }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: ./eng/publish-npm.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
+      - name: Publish npm packages with trusted publishing
+        if: ${{ !inputs.npm_bootstrap }}
+        run: ./eng/publish-npm.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"

@@ -11,6 +11,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "description": "Vue 3 adapter for the RunicToolkit MVVM projection.",
+  "homepage": "https://github.com/Runic-Artifex/runic-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
+  },
+  "keywords": ["runic-artifex", "mvvm", "vue", "webui"],
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
