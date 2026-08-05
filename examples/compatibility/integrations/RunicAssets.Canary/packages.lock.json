@@ -1,0 +1,52 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.10, )",
+        "resolved": "10.0.10",
+        "contentHash": "f5VCIE7AJpd5YvzNTeMGVzQIgyE9tX+AreTYwQF+REbu+DZo/2Ae+jNSwhPEYrVz6RRkd7y8ubXjk6Nn6Ka+Cg=="
+      },
+      "RunicAssets": {
+        "type": "Direct",
+        "requested": "[0.1.0-preview.2.1, )",
+        "resolved": "0.1.0-preview.2.1",
+        "contentHash": "KKLGjYv3UI3km9z6FTFMNUcXiTVZPSrOfzjW9izuI9ITqqYl4GVEe4dGKNT7FHv9Fi8mU2s8HMEwKU1URD17VQ=="
+      },
+      "RunicAssets.AspNetCore": {
+        "type": "Direct",
+        "requested": "[0.1.0-preview.2.1, )",
+        "resolved": "0.1.0-preview.2.1",
+        "contentHash": "tKlyIIFDe36kP7jJ9Axgf838yh6eBB42vSCMN5QIhSEgXSac+QKxB7PN4fpjIQgT+p3sg07BhvLOE7T0v28+Pg==",
+        "dependencies": {
+          "RunicAssets": "0.1.0-preview.2.1"
+        }
+      },
+      "RunicAssets.CsWebUi": {
+        "type": "Direct",
+        "requested": "[0.1.0-preview.2.1, )",
+        "resolved": "0.1.0-preview.2.1",
+        "contentHash": "E1uxwHxCrI16r+MXgQBDrA4pSdv1ds8FxKFFtVwyvLW6rbEmFZJhkpj59Li2Hat3Q7nPUmmYpYuvqq3xHLCLCg==",
+        "dependencies": {
+          "CsWebUi": "2.5.0-beta.4.3",
+          "RunicAssets": "0.1.0-preview.2.1"
+        }
+      },
+      "CsWebUi.Native": {
+        "type": "Transitive",
+        "resolved": "2.5.0-beta.4.3",
+        "contentHash": "8HVNW6Eh+Ht8iMS+vJ3jpvRTXOBg9sk4IQb7AnMs2lWPKudu5awkW/+Q/4X8EGqW//uJMfKYTUaz0Hyap8QV2Q=="
+      },
+      "CsWebUi": {
+        "type": "CentralTransitive",
+        "requested": "[2.5.0-beta.4.3, )",
+        "resolved": "2.5.0-beta.4.3",
+        "contentHash": "MUErvHlHse7m8l6I8GIxDrrMzo+gHvPuqLE2/VoR2QcCY9G9fGLhV4TKNU/mwEvx/7y6kKfeCr3wzvnxHIGgYA==",
+        "dependencies": {
+          "CsWebUi.Native": "2.5.0-beta.4.3"
+        }
+      }
+    }
+  }
+}
