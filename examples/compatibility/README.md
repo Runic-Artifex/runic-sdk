@@ -20,6 +20,7 @@ dotnet restore integrations/RunicTextResources.Canary/RunicTextResources.Canary.
 dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --locked-mode
 dotnet restore integrations/RunicFlow.Canary/RunicFlow.Canary.csproj --locked-mode
 dotnet restore integrations/RunicAssets.Canary/RunicAssets.Canary.csproj --locked-mode
+dotnet restore integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj --locked-mode
 ```
 
 GitHub Actions uses its repository `GITHUB_TOKEN` with `packages: read`. Each
