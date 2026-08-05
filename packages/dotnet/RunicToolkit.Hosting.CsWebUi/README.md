@@ -1,6 +1,6 @@
 # RunicToolkit.Hosting.CsWebUi
 
-This package adapts [CsWebUi](https://github.com/ViktorJannicke/cs-webui) to the
+This package adapts [CsWebUi](https://github.com/Runic-Artifex/cs-webui) to the
 browser-neutral contracts in `RunicToolkit.Hosting.Abstractions`. It serves a
 local frontend directory without ASP.NET Core and supports CsWebUi's automatic
 browser selection, an explicitly selected installed browser, or an embedded
