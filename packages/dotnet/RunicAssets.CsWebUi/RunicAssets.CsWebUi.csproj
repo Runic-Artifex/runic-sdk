@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
+    <RunicAssetsShippingProject>true</RunicAssetsShippingProject>
+    <AssemblyName>RunicAssets.CsWebUi</AssemblyName>
+    <RootNamespace>RunicAssets.CsWebUi</RootNamespace>
+    <PackageId>RunicAssets.CsWebUi</PackageId>
+    <Description>Runic Assets integration for CsWebUi's in-memory virtual file system.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../RunicAssets/RunicAssets.csproj" />
+    <PackageReference Include="CsWebUi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

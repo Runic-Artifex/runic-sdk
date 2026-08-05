@@ -20,8 +20,7 @@ Native AOT.
 
 ## Decision
 
-Introduce the dependency-free `WebUIToolkit.Assets` package and the
-`WebUIToolkit.Assets` namespace.
+Introduce the dependency-free `RunicAssets` package and namespace.
 
 - `AssetManifest` is an immutable, ordinally sorted catalog with exactly one
   entry point.
@@ -42,10 +41,8 @@ Media type resolution is a deterministic package-owned table and never uses
 an operating-system registry. The package has no third-party or other
 WebUIToolkit package dependency.
 
-Existing Hosting asset contracts remain temporarily available. Hosting and
-CsWebUi adapters can migrate to `IAssetSource` separately, using compatibility
-adapters where necessary. They must not create another general-purpose asset
-model.
+Host-specific adapters depend on `RunicAssets`; the core package never depends
+on CsWebUi, ASP.NET Core, Runic Toolkit, or another UI framework.
 
 ## Consequences
 
@@ -65,8 +62,6 @@ model.
 
 ## External coordination
 
-Moving `cs-webui` into a WebUIToolkit GitHub organization and changing its
-repository or NuGet ownership cannot be completed inside this repository.
-That work requires maintainer coordination and is deliberately not performed
-by this decision. Once coordinated, cs-webui should adapt this package rather
-than copy its contracts.
+CsWebUi now lives in the Runic Artifex organization. Its integration is owned
+here so CsWebUi remains independently useful while Runic Assets controls how
+its transport-neutral contract maps to WebUI delivery.
