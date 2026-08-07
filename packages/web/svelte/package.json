@@ -22,7 +22,8 @@
   },
   "peerDependencies": {
     "@runic-artifex/application-bridge": ">=0.1.0-preview <1",
-    "svelte": ">=5.7.0 <6"
+    "effect": ">=3.22.1 <4",
+    "svelte": ">=5.40.0 <6"
   },
   "peerDependenciesMeta": {
     "@runic-artifex/application-bridge": {
