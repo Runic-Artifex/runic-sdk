@@ -36,7 +36,6 @@ test("renders every primary documentation route", async () => {
     ["/packages", "One owner for every public package"],
     ["/releases", "Verify once"],
     ["/products/runic-toolkit", "Runic Toolkit"],
-    ["/products/runic-markup", "Runic Markup"],
     ["/products/runic-flow", "Runic Flow"],
     ["/products/runic-assets", "Runic Assets"],
     ["/products/runic-text-resources", "Runic Text Resources"],
@@ -59,6 +58,6 @@ test("documents the exact first preview train and package ownership", async () =
 
   const packageHtml = await (await render("/packages")).text();
   assert.match(packageHtml, /RunicFlow\.RunicToolkit/);
-  assert.match(packageHtml, /@runic-artifex\/mvvm-svelte/);
+  assert.doesNotMatch(packageHtml, /@runic-artifex\/mvvm/);
   assert.match(packageHtml, /RunicTextResources\.Generator/);
 });
