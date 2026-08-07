@@ -71,13 +71,6 @@ jobs:
               -p:RunicToolkitFrontendInstall=false
           done < <(find samples tests -name '*.csproj' -type f | sort)
 
-      - name: Run compiled Markup component checks
-        run: >-
-          dotnet run
-          --project tests/RunicToolkit.Samples.Cwhtml.Components.Tests/RunicToolkit.Samples.Cwhtml.Components.Tests.csproj
-          --no-build
-          --configuration Release
-
       - name: Run headless sample checks
         shell: bash
         run: |

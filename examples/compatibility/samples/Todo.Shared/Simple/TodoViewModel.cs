@@ -18,7 +18,7 @@ internal sealed partial class TodoViewModel : ObservableObject
         [
             new TodoItem("Read the SimpleTodo guided tour"),
             new TodoItem("Add a task of my own"),
-            new TodoItem("Inspect the compiled cwhtml view"),
+            new TodoItem("Inspect the generated application contract"),
         ];
     }
 

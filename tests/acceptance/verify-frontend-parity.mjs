@@ -9,9 +9,9 @@ if (matrix.schema !== "runic-toolkit.examples.frontend-support-matrix/1") {
   fail("Unsupported frontend support matrix schema.");
 }
 
-const expected = ["cwhtml", "react", "vue", "svelte", "angular"];
+const expected = ["react", "vue", "svelte", "angular"];
 if (JSON.stringify(Object.keys(matrix.frontends)) !== JSON.stringify(expected)) {
-  fail("The support matrix must list cwhtml, React, Vue, Svelte, and Angular in policy order.");
+  fail("The support matrix must list React, Vue, Svelte, and Angular in policy order.");
 }
 if (!Array.isArray(matrix.requiredCapabilities) ||
     matrix.requiredCapabilities.length !== 12) {
@@ -93,7 +93,7 @@ for (const path of ["samples", "tests", "package.json"]) {
   doesNotContain(textTree(path), "../../web/packages/", "source-tree npm dependency");
 }
 
-console.log("Package-only frontend parity passed for cwhtml, React, Vue, Svelte, and Angular.");
+console.log("Package-only frontend parity passed for React, Vue, Svelte, and Angular.");
 
 function json(path) {
   return JSON.parse(text(path));
@@ -111,7 +111,7 @@ function textTree(path) {
   if (!statSync(absolute).isDirectory()) return readFileSync(absolute, "utf8");
   const extensions = new Set([
     ".cs", ".csproj", ".props", ".targets", ".json", ".js", ".mjs",
-    ".ts", ".tsx", ".svelte", ".vue", ".cwhtml", ".cwuix",
+    ".ts", ".tsx", ".svelte", ".vue",
   ]);
   const files = [];
   const pending = [absolute];

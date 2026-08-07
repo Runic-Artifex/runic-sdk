@@ -24,15 +24,6 @@
     <PackageVersion Include="RunicAssets.CsWebUi" Version="0.1.0-preview.5.1" />
     <PackageVersion Include="RunicAssets.AspNetCore" Version="0.1.0-preview.5.1" />
     <PackageVersion Include="RunicAssets.RunicToolkit" Version="0.1.0-preview.5.1" />
-    <PackageVersion Include="RunicMarkup" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.Compiler" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.Build" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.RunicToolkit.Htmx" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.RunicToolkit.Htmx.Js" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.RunicToolkit.Htmx.CsWebUi" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.RunicToolkit.Htmx.CsWebUi.App" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.RunicToolkit.CommunityToolkit" Version="0.1.0-preview.9.1" />
-    <PackageVersion Include="RunicMarkup.RunicToolkit.FrontendCompiler" Version="0.1.0-preview.9.1" />
     <PackageVersion Include="RunicToolkit.Collections" Version="0.1.0-preview.4.1" />
     <PackageVersion Include="RunicToolkit.Frontend.Sdk" Version="0.1.0-preview.4.1" />
     <PackageVersion Include="RunicToolkit.Hosting" Version="0.1.0-preview.4.1" />

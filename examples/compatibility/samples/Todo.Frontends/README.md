@@ -25,9 +25,8 @@ and Svelte use Vite; Angular uses its supported application builder. The
 sample projects add the locally pinned Bootstrap 5.3 and Font Awesome assets.
 
 `Todo.Shared` owns the framework-independent models, ViewModels, persistence,
-validation, and workflow. The original cwhtml SimpleTodo and AdvancedTodo
-projects consume that same assembly. `Todo.FrontendHost` owns the one native
-CsWebUi binary channel. A single `todo.frontend.json` symbol model generates
+validation, and workflow. `Todo.FrontendHost` owns the one native CsWebUi binary
+channel. A single `todo.frontend.json` symbol model generates
 its C# projection vocabulary and direct CommunityToolkit adapter factory, plus
 the typed TypeScript contract used by all four browser applications.
 
@@ -68,5 +67,5 @@ application-builder entrypoint.
 
 Release builds invoke Vite minification and content hashing and emit both
 Vite's manifest and a SHA-256 asset manifest. The package-only parity and
-production gates under `eng/` keep these five frontends aligned without
+production gates under `eng/` keep these four frontends aligned without
 reaching back into the Toolkit source repository.

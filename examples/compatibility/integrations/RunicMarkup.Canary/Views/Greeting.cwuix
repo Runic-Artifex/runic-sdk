@@ -1,9 +1,0 @@
-using RunicMarkup.Csharp;
-
-namespace RunicArtifex.Examples.Markup;
-
-public static class GreetingCsharpMarkup
-{
-    public static HtmlContent Render(string name) =>
-        <aside class="csharp-markup">Package-only hello, {name}</aside>;
-}

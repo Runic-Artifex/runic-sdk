@@ -1,9 +1,0 @@
-@namespace RunicToolkit.Samples.Cwhtml.Components.Tests
-@view StylingNeutralExampleView(RunicToolkit.Samples.Cwhtml.Components.Tests.StylingNeutralExampleModel model)
-article .paper-panel {
-    header .paper-heading {
-        h1 { "Styling-neutral cwhtml" }
-        p { "No CSS toolkit, icon font, or frontend framework is required." }
-    }
-    @render(model.Status);
-}

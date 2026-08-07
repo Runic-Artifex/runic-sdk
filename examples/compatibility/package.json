@@ -8,10 +8,7 @@
     "node": "24.18.x",
     "npm": "11.16.x"
   },
-  "workspaces": [
-    "samples/Todo.Frontends/*",
-    "samples/Todo.Cwhtml.Frontend"
-  ],
+  "workspaces": ["samples/Todo.Frontends/*"],
   "scripts": {
     "build": "node eng/run-workspaces.mjs build",
     "test": "node eng/run-workspaces.mjs test",

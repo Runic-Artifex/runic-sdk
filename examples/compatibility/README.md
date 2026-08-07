@@ -18,7 +18,6 @@ dotnet restore integrations/RunicTextResources.Canary/RunicTextResources.Canary.
 dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj
 dotnet restore integrations/RunicFlow.Canary/RunicFlow.Canary.csproj
 dotnet restore integrations/RunicAssets.Canary/RunicAssets.Canary.csproj
-dotnet restore integrations/RunicMarkup.Canary/RunicMarkup.Canary.csproj
 ```
 
 The frontend packages use GitHub's npm registry through the committed `.npmrc`:

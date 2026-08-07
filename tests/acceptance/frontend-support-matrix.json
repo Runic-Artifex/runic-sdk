@@ -8,15 +8,6 @@
     "mockProtocol": "eng/verify-todo-mocks.mjs"
   },
   "frontends": {
-    "cwhtml": {
-      "starter": "runic-toolkit-cwhtml",
-      "todo": ["samples/SimpleTodo", "samples/AdvancedTodo"],
-      "developmentServer": "vite",
-      "authoring": "compiled cwhtml components and HTMX",
-      "owner": "CwhtmlHtmxAppBuilder",
-      "hmr": "compatible renderer and fragment refresh",
-      "mock": "not frontend-only: cwhtml rendering and actions are compiled C#; use the retained native development host"
-    },
     "react": {
       "starter": "runic-toolkit-react",
       "todo": ["samples/Todo.React"],
