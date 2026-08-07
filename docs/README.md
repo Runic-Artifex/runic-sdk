@@ -7,6 +7,9 @@ The repository is private while the first public preview train is prepared. A
 successful build is not authorization to publish packages or make the portal
 public.
 
+The portal is repository-native and has no ChatGPT Sites binding. Hosting is a
+separate launch decision.
+
 ## Develop locally
 
 Use Node.js 24 and npm:
