@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
@@ -34,6 +35,7 @@ internal static class Program
         Task<string>? browserDiagnostics = null;
         bool browserStarted = false;
         List<Exception>? cleanupErrors = null;
+        string diagnosticText = string.Empty;
         int exitCode = 1;
 
         try
@@ -48,6 +50,7 @@ internal static class Program
                 if (webUiEvent.ArgumentCount == 1) desktopMessages.Writer.TryWrite(webUiEvent.GetString());
             });
             string url = window.StartServer("index.html");
+            await WaitForServerAsync(new Uri(url), TimeSpan.FromSeconds(10));
 
             Directory.CreateDirectory(browserProfile);
             browser = new Process { StartInfo = { FileName = chromium, RedirectStandardError = true, UseShellExecute = false } };
@@ -60,13 +63,24 @@ internal static class Program
             browserStarted = browser.Start();
             if (!browserStarted) throw new InvalidOperationException("Chromium did not start.");
             browserDiagnostics = browser.StandardError.ReadToEndAsync();
+            FileVersionInfo browserVersion = FileVersionInfo.GetVersionInfo(chromium);
+            Console.WriteLine(
+                $"Browser: {browserVersion.ProductName ?? Path.GetFileName(chromium)} " +
+                $"{browserVersion.ProductVersion ?? "unknown"} ({chromium})");
 
             string result = string.Empty;
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            WebUiException? lastScriptFailure = null;
+            using var bridgeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             try
             {
-                while (!timeout.IsCancellationRequested)
+                while (!bridgeTimeout.IsCancellationRequested)
                 {
+                    if (browser.HasExited)
+                    {
+                        throw new InvalidOperationException(
+                            $"Chromium exited before the Application Bridge connected (exit code {browser.ExitCode}).");
+                    }
+
                     try
                     {
                         result = window.ExecuteJavaScript(
@@ -74,21 +88,30 @@ internal static class Program
                             TimeSpan.FromSeconds(1), 512);
                         if (result.StartsWith("pass|", StringComparison.Ordinal) || result.StartsWith("fail|", StringComparison.Ordinal) || result.StartsWith("error|", StringComparison.Ordinal)) break;
                     }
-                    catch (WebUiException) { }
-                    await Task.Delay(100, timeout.Token);
+                    catch (WebUiException exception)
+                    {
+                        lastScriptFailure = exception;
+                    }
+                    await Task.Delay(100, bridgeTimeout.Token);
                 }
             }
             catch (OperationCanceledException) { }
+
+            if (string.IsNullOrEmpty(result) && lastScriptFailure is not null)
+            {
+                Console.Error.WriteLine($"Last bridge probe error: {lastScriptFailure.Message}");
+            }
 
             bool bridgePassed = result.StartsWith("pass|1|", StringComparison.Ordinal);
             bool desktopPassed = false;
             if (bridgePassed)
             {
+                using var desktopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 window.RunJavaScript(CsWebUiDesktopBridgeScript.Bootstrap);
                 window.RunJavaScript("""globalThis.__runicToolkitDesktop.invoke("native-write","storage.write",{"key":"native-e2e","value":"stored"});""");
-                string write = await desktopMessages.Reader.ReadAsync(timeout.Token);
+                string write = await desktopMessages.Reader.ReadAsync(desktopTimeout.Token);
                 window.RunJavaScript("""globalThis.__runicToolkitDesktop.invoke("native-read","storage.read",{"key":"native-e2e"});""");
-                string read = await desktopMessages.Reader.ReadAsync(timeout.Token);
+                string read = await desktopMessages.Reader.ReadAsync(desktopTimeout.Token);
                 desktopPassed = IsDesktopResult(write, "native-write", null) && IsDesktopResult(read, "native-read", "stored");
             }
             bool passed = bridgePassed && desktopPassed;
@@ -96,39 +119,33 @@ internal static class Program
                 ? "PASS: real CsWebUi + Chromium exercised Application Bridge and desktop storage."
                 : $"FAIL: native bridge result '{result}', desktop passed: {desktopPassed}, host identity: {bridge.ConnectionIdentity?.ToString() ?? "none"}.");
             exitCode = passed ? 0 : 1;
-
-            if (passed && OperatingSystem.IsWindows())
-            {
-                // WebUI's process-wide Windows shutdown can replace a completed test result while
-                // its native callback threads are being torn down. Stop the child browser, publish
-                // the authoritative result, and let the isolated test process own that boundary.
-                try
-                {
-                    if (browserStarted && browser is not null && !browser.HasExited)
-                    {
-                        browser.Kill(true);
-                        await browser.WaitForExitAsync();
-                    }
-                }
-                catch (Exception exception)
-                {
-                    Console.Error.WriteLine(
-                        $"WARN: Chromium cleanup was deferred to the hosted runner: {exception.Message}");
-                }
-
-                Console.Out.Flush();
-                Console.Error.Flush();
-                Environment.Exit(0);
-            }
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"FAIL: native browser roundtrip threw {exception.GetType().Name}: {exception.Message}");
         }
         finally
         {
-            if (browserStarted && browser is not null) try { if (!browser.HasExited) { browser.Kill(true); await browser.WaitForExitAsync(); } } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
-            if (browserDiagnostics is not null) try { _ = await browserDiagnostics; } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
-            Capture(ref cleanupErrors, () => browser?.Dispose());
             if (bridge is not null) try { await bridge.DisposeAsync(); } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
             Capture(ref cleanupErrors, () => desktopBinding?.Dispose());
+            if (window is not null)
+            {
+                try
+                {
+                    WebUiApplication.Exit();
+                    using var shutdownTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await WebUiApplication.WaitAsync(shutdownTimeout.Token);
+                }
+                catch (Exception exception)
+                {
+                    (cleanupErrors ??= []).Add(exception);
+                }
+            }
+            if (browserStarted && browser is not null) try { if (!browser.HasExited) { browser.Kill(true); await browser.WaitForExitAsync(); } } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
+            if (browserDiagnostics is not null) try { diagnosticText = await browserDiagnostics; } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
+            Capture(ref cleanupErrors, () => browser?.Dispose());
             Capture(ref cleanupErrors, () => window?.Dispose());
+            if (window is not null) Capture(ref cleanupErrors, WebUiApplication.Clean);
             if (Directory.Exists(browserProfile))
             {
                 try
@@ -144,6 +161,16 @@ internal static class Program
             }
         }
 
+        if (exitCode != 0 && !string.IsNullOrWhiteSpace(diagnosticText))
+        {
+            const int maximumDiagnosticCharacters = 4000;
+            string tail = diagnosticText.Length <= maximumDiagnosticCharacters
+                ? diagnosticText
+                : diagnosticText[^maximumDiagnosticCharacters..];
+            Console.Error.WriteLine("Chromium stderr (tail):");
+            Console.Error.WriteLine(tail.TrimEnd());
+        }
+
         if (cleanupErrors is not null)
         {
             foreach (Exception error in cleanupErrors)
@@ -151,11 +178,36 @@ internal static class Program
                 Console.Error.WriteLine(
                     $"WARN: native test teardown was deferred to the hosted runner: {error.GetType().Name}: {error.Message}");
             }
+            exitCode = 1;
         }
 
-        // The isolated hosted runner owns any process or profile resources that native cleanup
-        // could not release immediately. Preserve the observed functional result after teardown.
         return exitCode;
+    }
+
+    private static async Task WaitForServerAsync(Uri uri, TimeSpan timeout)
+    {
+        var timer = Stopwatch.StartNew();
+        Exception? lastFailure = null;
+        while (timer.Elapsed < timeout)
+        {
+            using var client = new TcpClient();
+            using var attempt = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            try
+            {
+                await client.ConnectAsync(uri.Host, uri.Port, attempt.Token);
+                return;
+            }
+            catch (Exception exception) when (exception is SocketException or OperationCanceledException)
+            {
+                lastFailure = exception;
+            }
+
+            await Task.Delay(50);
+        }
+
+        throw new TimeoutException(
+            $"The native WebUI server at '{uri}' did not accept connections within {timeout.TotalSeconds:F0} seconds.",
+            lastFailure);
     }
 
     private static bool IsDesktopResult(string json, string id, string? expected)

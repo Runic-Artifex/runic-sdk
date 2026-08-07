@@ -67,6 +67,12 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
+      - name: Install pinned Chrome for Testing
+        id: chrome
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
+        with:
+          chrome-version: 151.0.7922.77
+
       - name: Verify Effect contract and managed bridge suites
         shell: pwsh
         run: |
@@ -77,13 +83,10 @@ jobs:
 
       - name: Run real Windows browser and native host roundtrip
         shell: pwsh
+        env:
+          WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: |
-          $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
-          if (-not (Test-Path $chrome)) {
-            $chrome = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-          }
-          if (-not (Test-Path $chrome)) { throw 'No supported browser executable was found.' }
-          $env:WEBUI_BROWSER_PATH = $chrome
+          & $env:WEBUI_BROWSER_PATH --version
           dotnet run --project tests/RunicToolkit.Hosting.CsWebUi.NativeE2E -c Release
 
       - name: Publish and execute Windows NativeAOT consumer
