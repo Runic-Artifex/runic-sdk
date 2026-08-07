@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="webui.js"></script>
+    <script>
+      globalThis.__runicBootError = "";
+      addEventListener("error", (event) => { globalThis.__runicBootError = event.message; });
+      addEventListener("unhandledrejection", (event) => {
+        globalThis.__runicBootError = String(event.reason?.message ?? event.reason);
+      });
+    </script>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

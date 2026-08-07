@@ -4,6 +4,8 @@
 **/TestResults/
 **/coverage/
 node_modules/
+**/.svelte-kit/
+**/Frontend/build/
 **/dist/
 *.vsix
 .direnv/

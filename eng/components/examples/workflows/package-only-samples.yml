@@ -74,6 +74,7 @@ jobs:
           dotnet run --project samples/01-HelloLifecycle/HelloLifecycle.csproj --no-build --configuration Release
           dotnet run --project samples/02-GreetingCommandLine/GreetingCommandLine.csproj --no-build --configuration Release -- greet Runic
           dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --smoke-test
+          dotnet run --project samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-build --configuration Release -- --smoke-test
 
       - name: Ensure package-only inputs are unchanged
         run: git diff --exit-code
@@ -121,6 +122,22 @@ jobs:
       - name: Run NativeAOT smoke test
         run: "${{ runner.temp }}/native-setup/SetupApplication --smoke-test"
 
+      - name: Publish NativeAOT SvelteKit Setup application
+        run: >-
+          dotnet publish samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj
+          --configuration Release
+          --runtime linux-x64
+          --self-contained true
+          --output "${{ runner.temp }}/native-sveltekit-setup"
+          -p:PublishAot=true
+          -p:PublishTrimmed=true
+          -p:TrimMode=full
+          -p:IlcTreatWarningsAsErrors=true
+          -p:RunicToolkitFrontendBuildCommand=
+
+      - name: Run NativeAOT SvelteKit smoke test
+        run: "${{ runner.temp }}/native-sveltekit-setup/SvelteKitSetupApplication --smoke-test"
+
   windows-native:
     name: Setup · Windows native host
     runs-on: windows-2025
@@ -153,6 +170,8 @@ jobs:
         run: |
           dotnet restore samples/03-SetupApplication/SetupApplication.csproj
           dotnet build samples/03-SetupApplication/SetupApplication.csproj --no-restore --configuration Release -p:RunicToolkitFrontendBuildCommand=
+          dotnet restore samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj
+          dotnet build samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-restore --configuration Release -p:RunicToolkitFrontendBuildCommand=
 
       - name: Run real browser and native Setup roundtrip
         shell: pwsh
@@ -164,3 +183,4 @@ jobs:
           if (-not (Test-Path $browser)) { throw 'No supported browser executable was found.' }
           $env:WEBUI_BROWSER_PATH = $browser
           dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --native-e2e
+          dotnet run --project samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-build --configuration Release -- --native-e2e

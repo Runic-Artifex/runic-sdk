@@ -1,0 +1,31 @@
+{
+  "name": "@runic-artifex/sveltekit-setup-application",
+  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite dev",
+    "dev:mock": "vite dev --mode mock",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "verify:production": "node test/verify-production.mjs"
+  },
+  "dependencies": {
+    "@runic-artifex/application-bridge": "0.1.0-preview.21.1",
+    "@runic-artifex/svelte": "0.1.0-preview.7.1",
+    "effect": "3.22.1",
+    "svelte": "5.56.8"
+  },
+  "devDependencies": {
+    "@runic-artifex/sveltekit": "0.1.0-preview.7.1",
+    "@runic-artifex/vite-plugin-runic-toolkit": "0.1.0-preview.7.1",
+    "@sveltejs/kit": "2.70.2",
+    "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "@vitejs/devtools": "0.4.12",
+    "svelte-check": "4.7.5",
+    "typescript": "5.9.3",
+    "vite": "8.2.1"
+  }
+}

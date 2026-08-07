@@ -43,6 +43,10 @@ workflow can restore it.
 The neutral Setup wizard is the reference application boundary. It uses named
 commands, an Effect-owned frontend runtime, generated C# dispatch from committed
 schemas, opaque host-owned destination selections, and explicit operations.
+The React sample consumes the controller directly. The SvelteKit sample uses the
+official Svelte-5-only rune lifecycle, static/native SvelteKit adapter, Runic
+Vite plugin, and official Vite DevTools extension point. Both drive the same
+native contract and backend handler.
 
 ## License
 

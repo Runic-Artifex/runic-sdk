@@ -9,6 +9,7 @@ product source checkout.
 | 1 | `01-HelloLifecycle` | Application startup, mode selection, shutdown, and Generic Host composition |
 | 2 | `02-GreetingCommandLine` | Typed command catalog, parsing, execution, and human/JSON output |
 | 3 | `03-SetupApplication` | The official Effect Schema-first Application Bridge through React and a native CsWebUi host |
+| 4 | `04-SvelteKitSetupApplication` | Svelte 5 runes, SvelteKit SPA output, Vite 8 HMR/DevTools, and the same native bridge contract |
 
 Start anywhere:
 
@@ -17,11 +18,14 @@ dotnet run --project samples/01-HelloLifecycle
 dotnet run --project samples/02-GreetingCommandLine -- greet Ada
 dotnet run --project samples/03-SetupApplication
 dotnet run --project samples/03-SetupApplication -- --smoke-test
+dotnet run --project samples/04-SvelteKitSetupApplication
+dotnet run --project samples/04-SvelteKitSetupApplication -- --smoke-test
 ```
 
-The Setup application keeps React state in React. The transport, validation,
-session, revisions, event sequence, operations, and reconnect recovery belong
-to the framework-neutral Application Bridge runtime.
+The React Setup application keeps state in React. The SvelteKit variant projects
+the same authoritative state into Svelte 5 runes. In both cases transport,
+validation, session, revisions, event sequence, operations, and reconnect
+recovery belong to the framework-neutral Application Bridge runtime.
 
 Bootstrap 5.3 and Font Awesome are the default visual baseline for desktop
 samples. Assets must be pinned and served locally. Samples should prefer

@@ -5,8 +5,13 @@ let sessionId;
 let revision = 0;
 await waitForBinding("__runicToolkit_applicationBridge_send");
 
-globalThis.__runicToolkit_applicationBridge_receiveHostEvent = (bytes) => {
+const receiveHostEvent = (bytes) => {
   const message = JSON.parse(decoder.decode(new Uint8Array(bytes)));
+  receiveMessage(message);
+};
+globalThis.__runicToolkit_applicationBridge_receiveHostEvent = receiveHostEvent;
+
+function receiveMessage(message) {
   sessionId = message.sessionId;
   revision = message.revision;
   if (message.kind === "event") {
@@ -27,7 +32,7 @@ globalThis.__runicToolkit_applicationBridge_receiveHostEvent = (bytes) => {
     pending.delete(message.commandId);
     resolve(message);
   }
-};
+}
 
 try {
   const initialized = await send("initialize", { _tag: "InitializeApplication" });
@@ -45,7 +50,7 @@ try {
   document.body.dataset.message = error instanceof Error ? error.message : "unknown";
 }
 
-function send(kind, payload) {
+async function send(kind, payload) {
   const commandId = crypto.randomUUID();
   const response = new Promise((resolve) => pending.set(commandId, resolve));
   const envelope = {
@@ -57,8 +62,14 @@ function send(kind, payload) {
     ...(kind === "initialize" ? {} : { expectedRevision: revision }),
     payload,
   };
-  void globalThis.__runicToolkit_applicationBridge_send(encoder.encode(JSON.stringify(envelope)));
-  return response;
+  const returned = globalThis.__runicToolkit_applicationBridge_send(
+    encoder.encode(JSON.stringify(envelope)),
+  );
+  globalThis.__runicToolkit_applicationBridge_receiveHostEvent = receiveHostEvent;
+  const decoded = JSON.parse(String(await returned));
+  globalThis.__runicToolkit_applicationBridge_receiveHostEvent = receiveHostEvent;
+  for (const message of Array.isArray(decoded) ? decoded : [decoded]) receiveMessage(message);
+  return await response;
 }
 
 async function waitForBinding(name) {
