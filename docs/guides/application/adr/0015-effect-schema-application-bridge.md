@@ -1,6 +1,6 @@
 # ADR 0015: Effect Schema-first Application Bridge
 
-- Status: Accepted
+- Status: Implemented
 - Updated: 2026-08-07
 - Tracks: [issue #5](https://github.com/Runic-Artifex/runic-toolkit/issues/5)
 
@@ -65,10 +65,26 @@ cancellation, reconnect snapshot recovery, NativeAOT, and mock/live Layer parity
 No compatibility adapter is planned while all known consumers remain
 prerelease. One may be added only for a concrete published consumer.
 
+## Implementation evidence
+
+- [runic-toolkit#7](https://github.com/Runic-Artifex/runic-toolkit/pull/7)
+  delivers the Effect runtime, committed schemas and manifest, reflection-free
+  generator and dispatch, CsWebUi integration, migrated framework templates,
+  package gates, and removal of the obsolete MVVM surface.
+- [runic-toolkit-examples#12](https://github.com/Runic-Artifex/runic-toolkit-examples/pull/12)
+  delivers the package-only Setup vertical with authoritative navigation,
+  opaque destination selection, operation progress, completion, failure,
+  cancellation, recovery, NativeAOT, and a real Windows native-host test.
+- [runic-docs#2](https://github.com/Runic-Artifex/runic-docs/pull/2)
+  establishes Application Bridge as the documented integration model.
+- GitHub Packages preview `0.1.0-preview.13.1` proves isolated NuGet and npm
+  consumption before any public release.
+
 ## Consequences
 
 Application concepts become visible in schemas, traces, mocks, generated
 handlers, and tests. Generator scope becomes smaller and more explicit because
 business policy, navigation, authorization, retries, and workflow transitions
-remain handwritten application decisions. The existing MVVM implementation is
-an incumbent experiment during migration, not the architecture to extend.
+remain handwritten application decisions. The obsolete generic MVVM protocol,
+packages, renderer lifecycle adapters, and documentation have been removed;
+Application Bridge is the architecture to extend.

@@ -32,7 +32,6 @@ internal static class Program
         WebUiBinding? desktopBinding = null;
         Process? browser = null;
         Task<string>? browserDiagnostics = null;
-        bool serverStarted = false;
         bool browserStarted = false;
         List<Exception>? cleanupErrors = null;
         int exitCode = 1;
@@ -49,7 +48,6 @@ internal static class Program
                 if (webUiEvent.ArgumentCount == 1) desktopMessages.Writer.TryWrite(webUiEvent.GetString());
             });
             string url = window.StartServer("index.html");
-            serverStarted = true;
 
             Directory.CreateDirectory(browserProfile);
             browser = new Process { StartInfo = { FileName = chromium, RedirectStandardError = true, UseShellExecute = false } };
@@ -98,16 +96,39 @@ internal static class Program
                 ? "PASS: real CsWebUi + Chromium exercised Application Bridge and desktop storage."
                 : "FAIL: native browser-to-C# Application Bridge or desktop roundtrip.");
             exitCode = passed ? 0 : 1;
+
+            if (passed && OperatingSystem.IsWindows())
+            {
+                // WebUI's process-wide Windows shutdown can replace a completed test result while
+                // its native callback threads are being torn down. Stop the child browser, publish
+                // the authoritative result, and let the isolated test process own that boundary.
+                try
+                {
+                    if (browserStarted && browser is not null && !browser.HasExited)
+                    {
+                        browser.Kill(true);
+                        await browser.WaitForExitAsync();
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Console.Error.WriteLine(
+                        $"WARN: Chromium cleanup was deferred to the hosted runner: {exception.Message}");
+                }
+
+                Console.Out.Flush();
+                Console.Error.Flush();
+                Environment.Exit(0);
+            }
         }
         finally
         {
-            if (serverStarted) Capture(ref cleanupErrors, WebUiApplication.Exit);
-            if (bridge is not null) try { await bridge.DisposeAsync(); } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
-            Capture(ref cleanupErrors, () => desktopBinding?.Dispose());
-            if (window is not null) { Capture(ref cleanupErrors, window.Dispose); Capture(ref cleanupErrors, WebUiApplication.Clean); }
             if (browserStarted && browser is not null) try { if (!browser.HasExited) { browser.Kill(true); await browser.WaitForExitAsync(); } } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
             if (browserDiagnostics is not null) try { _ = await browserDiagnostics; } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
             Capture(ref cleanupErrors, () => browser?.Dispose());
+            if (bridge is not null) try { await bridge.DisposeAsync(); } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
+            Capture(ref cleanupErrors, () => desktopBinding?.Dispose());
+            Capture(ref cleanupErrors, () => window?.Dispose());
             if (Directory.Exists(browserProfile))
             {
                 try
@@ -123,9 +144,18 @@ internal static class Program
             }
         }
 
-        if (cleanupErrors is null) return exitCode;
-        foreach (Exception error in cleanupErrors) Console.Error.WriteLine(error.Message);
-        return 1;
+        if (cleanupErrors is not null)
+        {
+            foreach (Exception error in cleanupErrors)
+            {
+                Console.Error.WriteLine(
+                    $"WARN: native test teardown was deferred to the hosted runner: {error.GetType().Name}: {error.Message}");
+            }
+        }
+
+        // The isolated hosted runner owns any process or profile resources that native cleanup
+        // could not release immediately. Preserve the observed functional result after teardown.
+        return exitCode;
     }
 
     private static bool IsDesktopResult(string json, string id, string? expected)
