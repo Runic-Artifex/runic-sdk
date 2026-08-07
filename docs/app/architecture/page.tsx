@@ -9,5 +9,6 @@ export default function ArchitecturePage() {
     <article className="info-card"><p className="eyebrow">Stable seams</p><h2>Explicit compatibility</h2><p>Integrations pin exact cross-product versions during the preview. Compatibility is evidence recorded by package consumers, frontend builds, and applicable NativeAOT runs—not implied by synchronized versions.</p></article>
     <article className="info-card"><p className="eyebrow">Framework neutrality</p><h2>Cores stay portable</h2><p>Runic Flow has no UI dependency. Runic Assets has no host dependency. Runic Text Resources begins with .NET but defines language-neutral contracts.</p></article>
     <article className="info-card"><p className="eyebrow">Integration ownership</p><h2>Behavior lives with its author</h2><p><code>RunicAssets.RunicToolkit</code> and <code>RunicFlow.RunicToolkit</code> live and release with Assets and Flow respectively.</p></article>
+    <article className="info-card full"><p className="eyebrow">Application boundary</p><h2>Schema first, renderer last</h2><p>Effect Schema is the authority for Application Bridge wire values. Deterministic JSON Schema and a canonical manifest feed the reflection-free C# generator. React, Vue, Svelte, or Angular then project validated application events into their own state systems without owning transport lifecycle.</p></article>
   </section></main>;
 }

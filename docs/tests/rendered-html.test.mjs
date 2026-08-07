@@ -36,6 +36,7 @@ test("renders every primary documentation route", async () => {
     ["/packages", "One owner for every public package"],
     ["/releases", "Verify once"],
     ["/products/runic-toolkit", "Runic Toolkit"],
+    ["/application-bridge", "Named application concepts"],
     ["/products/runic-flow", "Runic Flow"],
     ["/products/runic-assets", "Runic Assets"],
     ["/products/runic-text-resources", "Runic Text Resources"],
@@ -52,12 +53,14 @@ test("renders every primary documentation route", async () => {
 
 test("documents the exact first preview train and package ownership", async () => {
   const releaseHtml = await (await render("/releases")).text();
-  assert.match(releaseHtml, /0\.1\.0-preview\.4\.1/);
+  assert.match(releaseHtml, /0\.1\.0-preview\.13\.1/);
   assert.match(releaseHtml, /After Runic Toolkit/);
   assert.match(releaseHtml, /documentation gate/i);
 
   const packageHtml = await (await render("/packages")).text();
   assert.match(packageHtml, /RunicFlow\.RunicToolkit/);
   assert.doesNotMatch(packageHtml, /@runic-artifex\/mvvm/);
+  assert.match(packageHtml, /@runic-artifex\/application-bridge/);
+  assert.match(packageHtml, /RunicToolkit\.ApplicationBridge\.Generators/);
   assert.match(packageHtml, /RunicTextResources\.Generator/);
 });
