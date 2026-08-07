@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { DevTools } from "@vitejs/devtools";
-import { createServer } from "vite";
+import { build, createServer } from "vite";
 import { runicToolkit } from "../dist/index.js";
 
 test("exposes a real virtual client and bounded diagnostics endpoint", () => {
@@ -76,6 +79,40 @@ test("starts with the official Vite DevTools server and validated JSON renderer"
     assert.equal((await response.json()).contract.identity, "sample");
   } finally {
     await server.close();
+  }
+});
+
+test("excludes the official DevTools client from production output", async () => {
+  const plugin = runicToolkit();
+  plugin.configResolved({ command: "build", mode: "production", root: process.cwd() });
+  assert.doesNotMatch(
+    plugin.load("\0virtual:runic-toolkit/client"),
+    /@vitejs\/devtools\/client/,
+  );
+
+  const root = await mkdtemp(join(tmpdir(), "runic-vite-production-"));
+  try {
+    await writeFile(
+      join(root, "index.html"),
+      '<!doctype html><script type="module" src="/src.js"></script>',
+      "utf8",
+    );
+    await writeFile(join(root, "src.js"), 'import "virtual:runic-toolkit/client";', "utf8");
+    await build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [DevTools({ visibility: "passive" }), runicToolkit()],
+      build: { outDir: "dist", minify: false },
+    });
+    const assets = await readdir(join(root, "dist", "assets"));
+    const scripts = await Promise.all(
+      assets.filter((file) => file.endsWith(".js"))
+        .map((file) => readFile(join(root, "dist", "assets", file), "utf8")),
+    );
+    assert.doesNotMatch(scripts.join("\n"), /vite-devtools|@vitejs\/devtools/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 

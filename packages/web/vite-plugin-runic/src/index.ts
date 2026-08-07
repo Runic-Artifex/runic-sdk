@@ -110,7 +110,8 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
     enforce: "pre",
     configResolved(resolved) {
       config = resolved;
-      injectDevtoolsClient = resolveDevtoolsAvailability(resolved.root, options.devtools ?? "auto");
+      injectDevtoolsClient = resolved.command === "serve" &&
+        resolveDevtoolsAvailability(resolved.root, options.devtools ?? "auto");
       state = {
         ...state,
         vite: { command: resolved.command, mode: resolved.mode, root: resolved.root },
