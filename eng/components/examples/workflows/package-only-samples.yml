@@ -50,16 +50,13 @@ jobs:
         run: |
           while IFS= read -r project; do
             dotnet restore "$project"
-          done < <(find samples tests -name '*.csproj' -type f | sort)
+          done < <(find samples -name '*.csproj' -type f | sort)
 
       - name: Restore published npm packages
         run: npm ci
 
       - name: Verify frontend package consumers
         run: npm run verify
-
-      - name: Verify production frontend output
-        run: npm run verify:frontend-production
 
       - name: Build every .NET sample
         shell: bash
@@ -68,16 +65,15 @@ jobs:
             dotnet build "$project" \
               --no-restore \
               --configuration Release \
-              -p:RunicToolkitFrontendInstall=false
-          done < <(find samples tests -name '*.csproj' -type f | sort)
+              -p:RunicToolkitFrontendBuildCommand=
+          done < <(find samples -name '*.csproj' -type f | sort)
 
       - name: Run headless sample checks
         shell: bash
         run: |
           dotnet run --project samples/01-HelloLifecycle/HelloLifecycle.csproj --no-build --configuration Release
           dotnet run --project samples/02-GreetingCommandLine/GreetingCommandLine.csproj --no-build --configuration Release -- greet Runic
-          dotnet run --project samples/03-MvvmCounterProjection/MvvmCounterProjection.csproj --no-build --configuration Release
-          dotnet run --project samples/04-NativeMvvmCounter/NativeMvvmCounter.csproj --no-build --configuration Release -- --smoke-test
+          dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --smoke-test
 
       - name: Ensure package-only inputs are unchanged
         run: git diff --exit-code
@@ -106,17 +102,65 @@ jobs:
       - name: Restore browser packages
         run: npm ci
 
-      - name: Publish NativeAOT counter
+      - name: Verify and build frontend
+        run: npm run verify
+
+      - name: Publish NativeAOT Setup application
         run: >-
-          dotnet publish samples/04-NativeMvvmCounter/NativeMvvmCounter.csproj
+          dotnet publish samples/03-SetupApplication/SetupApplication.csproj
           --configuration Release
           --runtime linux-x64
           --self-contained true
-          --output "${{ runner.temp }}/native-counter"
+          --output "${{ runner.temp }}/native-setup"
           -p:PublishAot=true
           -p:PublishTrimmed=true
           -p:TrimMode=full
           -p:IlcTreatWarningsAsErrors=true
+          -p:RunicToolkitFrontendBuildCommand=
 
       - name: Run NativeAOT smoke test
-        run: "${{ runner.temp }}/native-counter/RunicToolkit.Samples.NativeMvvmCounter --smoke-test"
+        run: "${{ runner.temp }}/native-setup/SetupApplication --smoke-test"
+
+  windows-native:
+    name: Setup · Windows native host
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@runic-artifex"
+
+      - name: Restore package-only frontend
+        run: npm ci
+
+      - name: Verify and build frontend
+        run: npm run verify
+
+      - name: Build package-only Setup host
+        shell: pwsh
+        run: |
+          dotnet restore samples/03-SetupApplication/SetupApplication.csproj
+          dotnet build samples/03-SetupApplication/SetupApplication.csproj --no-restore --configuration Release -p:RunicToolkitFrontendBuildCommand=
+
+      - name: Run real browser and native Setup roundtrip
+        shell: pwsh
+        run: |
+          $browser = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+          if (-not (Test-Path $browser)) {
+            $browser = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+          }
+          if (-not (Test-Path $browser)) { throw 'No supported browser executable was found.' }
+          $env:WEBUI_BROWSER_PATH = $browser
+          dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --native-e2e

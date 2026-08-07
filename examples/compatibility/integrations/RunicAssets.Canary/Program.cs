@@ -36,9 +36,10 @@ if (toolkitAssets.Manifest.ManifestVersion != "runic-toolkit.frontend-assets/1"
     throw new InvalidOperationException("Runic Toolkit did not receive the translated asset contract.");
 }
 
-var fileSystem = await restored.ToWebUiVirtualFileSystemAsync();
-if (!fileSystem.TryGetFile("/", out ReadOnlyMemory<byte> entryPoint)
-    || !Encoding.UTF8.GetString(entryPoint.Span).Contains("Runic Assets canary", StringComparison.Ordinal))
+global::CsWebUi.WebUiFileHandlerResult webUiResponse = restored.ToWebUiFileHandler()("/");
+if (!webUiResponse.IsHandled
+    || !Encoding.UTF8.GetString(webUiResponse.Response.Span)
+        .Contains("Runic Assets canary", StringComparison.Ordinal))
 {
     throw new InvalidOperationException("CsWebUi did not resolve the archived entry point.");
 }

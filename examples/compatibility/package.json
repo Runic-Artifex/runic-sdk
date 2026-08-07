@@ -8,18 +8,16 @@
     "node": "24.18.x",
     "npm": "11.16.x"
   },
-  "workspaces": ["samples/Todo.Frontends/*"],
+  "workspaces": ["samples/03-SetupApplication/Frontend"],
   "scripts": {
-    "build": "node eng/run-workspaces.mjs build",
-    "test": "node eng/run-workspaces.mjs test",
-    "verify:frontend-production": "node eng/verify-frontend-production.mjs",
-    "verify:frontend-parity": "node eng/verify-frontend-parity.mjs",
-    "verify:todo-mocks": "node eng/verify-todo-mocks.mjs",
-    "verify": "npm run build && npm run test && npm run verify:frontend-parity && npm run verify:todo-mocks"
+    "generate:setup-contract": "node eng/generate-setup-contract.mjs",
+    "verify:setup-contract": "node eng/generate-setup-contract.mjs --check",
+    "build": "npm run build --workspace @runic-artifex/setup-application",
+    "typecheck": "npm run typecheck --workspace @runic-artifex/setup-application",
+    "test": "npm run test --workspace @runic-artifex/setup-application",
+    "verify": "npm run verify:setup-contract && npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
-    "esbuild": "0.28.1",
-    "typescript": "5.9.3",
-    "vite": "8.1.5"
+    "effect": "3.22.1"
   }
 }

@@ -8,29 +8,20 @@ product source checkout.
 | --- | --- | --- |
 | 1 | `01-HelloLifecycle` | Application startup, mode selection, shutdown, and Generic Host composition |
 | 2 | `02-GreetingCommandLine` | Typed command catalog, parsing, execution, and human/JSON output |
-| 3 | `03-MvvmCounterProjection` | CommunityToolkit.MVVM projected through the revisioned Runic Toolkit protocol |
-| 4 | `04-NativeMvvmCounter` | The production binary CsWebUi FrameChannel driving the framework-neutral browser client |
-| 5 | `Todo.React` | Both Todo levels through React hooks and the native binary channel |
-| 5 | `Todo.Vue` | Both Todo levels through Vue computed refs and the same C# application models |
-| 5 | `Todo.Svelte` | Both Todo levels through a Svelte readable store |
-| 5 | `Todo.Angular` | Both Todo levels through Angular signals |
+| 3 | `03-SetupApplication` | The official Effect Schema-first Application Bridge through React and a native CsWebUi host |
 
 Start anywhere:
 
 ```bash
 dotnet run --project samples/01-HelloLifecycle
 dotnet run --project samples/02-GreetingCommandLine -- greet Ada
-dotnet run --project samples/03-MvvmCounterProjection
-dotnet run --project samples/04-NativeMvvmCounter
-dotnet run --project samples/Todo.React
-dotnet run --project samples/Todo.React -- --advanced
+dotnet run --project samples/03-SetupApplication
+dotnet run --project samples/03-SetupApplication -- --smoke-test
 ```
 
-Replace `React` with `Vue`, `Svelte`, or `Angular` to inspect the other
-framework adapters. The framework projects share [`Todo.Shared`](./Todo.Shared)
-and one native host and projection map in
-[`Todo.FrontendHost`](./Todo.FrontendHost). See the
-[framework sample guide](./Todo.Frontends/README.md).
+The Setup application keeps React state in React. The transport, validation,
+session, revisions, event sequence, operations, and reconnect recovery belong
+to the framework-neutral Application Bridge runtime.
 
 Bootstrap 5.3 and Font Awesome are the default visual baseline for desktop
 samples. Assets must be pinned and served locally. Samples should prefer

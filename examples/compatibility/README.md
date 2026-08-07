@@ -20,7 +20,7 @@ dotnet restore integrations/RunicFlow.Canary/RunicFlow.Canary.csproj
 dotnet restore integrations/RunicAssets.Canary/RunicAssets.Canary.csproj
 ```
 
-The frontend packages use GitHub's npm registry through the committed `.npmrc`:
+The Setup frontend uses GitHub's npm registry through the committed `.npmrc`:
 
 ```bash
 export NODE_AUTH_TOKEN="YOUR_TOKEN"
@@ -30,14 +30,19 @@ npm ci
 After both package managers are authenticated, the full package-only check is:
 
 ```bash
-dotnet restore samples/Todo.React/Todo.React.csproj
+dotnet restore samples/03-SetupApplication/SetupApplication.csproj
 npm run verify
-dotnet build samples/Todo.React/Todo.React.csproj --configuration Release
+dotnet build samples/03-SetupApplication/SetupApplication.csproj --configuration Release
+dotnet run --project samples/03-SetupApplication/SetupApplication.csproj -- --smoke-test
 ```
 
 GitHub Actions uses its repository `GITHUB_TOKEN` with `packages: read`. Each
 private NuGet or npm package must grant this repository Actions access before its
 workflow can restore it.
+
+The neutral Setup wizard is the reference application boundary. It uses named
+commands, an Effect-owned frontend runtime, generated C# dispatch from committed
+schemas, opaque host-owned destination selections, and explicit operations.
 
 ## License
 

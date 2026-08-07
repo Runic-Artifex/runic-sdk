@@ -1,8 +1,0 @@
-import { reportStartupFailure } from "../../shared/runtime";
-import { bootstrapTodoApplication } from "./application";
-
-try {
-  await bootstrapTodoApplication();
-} catch (error) {
-  reportStartupFailure(error);
-}

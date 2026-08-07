@@ -13,6 +13,7 @@
     <PackageReference Include="RunicAssets.CsWebUi" />
     <PackageReference Include="RunicAssets.AspNetCore" />
     <PackageReference Include="RunicAssets.RunicToolkit" />
+    <PackageReference Include="RunicToolkit.Hosting.Abstractions" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

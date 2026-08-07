@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <AssemblyName>RunicToolkit.Samples.Todo.Svelte</AssemblyName>
-    <RootNamespace>RunicToolkit.Samples.Todo.Svelte</RootNamespace>
-    <TodoFrontendWorkspace>@runic-artifex/sample-todo-svelte</TodoFrontendWorkspace>
-    <TodoFrontendDirectory>svelte</TodoFrontendDirectory>
-  </PropertyGroup>
-  <Import Project="../Todo.Frontends/TodoFrontendSample.props" />
-</Project>

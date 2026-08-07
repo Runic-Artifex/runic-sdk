@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RunicToolkit.Examples.Setup</RootNamespace>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <RunicToolkitGenerateFrontendAssets>true</RunicToolkitGenerateFrontendAssets>
+    <RunicToolkitFrontendOutputDirectory>$(MSBuildProjectDirectory)/Frontend/dist</RunicToolkitFrontendOutputDirectory>
+    <RunicToolkitFrontendEntryPoint>index.html</RunicToolkitFrontendEntryPoint>
+    <RunicToolkitFrontendAssetMode>Copy</RunicToolkitFrontendAssetMode>
+    <RunicToolkitFrontendBuildCommand>npm install --ignore-scripts &amp;&amp; npm --prefix Frontend run build</RunicToolkitFrontendBuildCommand>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RunicToolkit.ApplicationBridge" />
+    <PackageReference Include="RunicToolkit.ApplicationBridge.Generators" PrivateAssets="all" />
+    <PackageReference Include="RunicToolkit.Hosting.Build" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" />
+  </ItemGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="Contract/generated/bridge.manifest.json" />
+    <AdditionalFiles Include="Contract/generated/schemas/**/*.schema.json" />
+    <Content Include="NativeE2E/**/*" CopyToOutputDirectory="PreserveNewest" Link="native-e2e/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>
