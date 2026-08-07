@@ -26,13 +26,15 @@ export interface ApplicationBridgeOptions {
 }
 
 interface Pending {
-  readonly kind: "initialize" | "dispatch" | "cancel" | "signal";
+  readonly kind: "initialize" | "dispatch" | "cancel" | "uiReady" | "uiRendered";
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: BridgeError) => void;
 }
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
+const UiReadyReceiptSchema = Schema.TaggedStruct("UiReadyAccepted", {});
+const UiRenderedReceiptSchema = Schema.TaggedStruct("UiRenderedAccepted", {});
 
 export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
   contract: ApplicationContract<Command, Receipt, HostEvent, Snapshot>,
@@ -103,13 +105,30 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           item.reject(error);
           return;
         }
-        const value: unknown = envelope.kind === "snapshot"
-          ? yield* Schema.decodeUnknown(contract.snapshot, { onExcessProperty: "error" })(envelope.payload).pipe(
-            Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
-          )
-          : yield* Schema.decodeUnknown(contract.receipt, { onExcessProperty: "error" })(envelope.payload).pipe(
+        if (item.kind === "initialize") {
+          if (envelope.kind !== "snapshot") {
+            return yield* failAll(bridgeError("ProtocolDecodeError", "The host initialization response was not a snapshot."));
+          }
+          const snapshot = yield* Schema.decodeUnknown(contract.snapshot, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
           );
+          item.resolve(snapshot);
+          return;
+        }
+        if (envelope.kind !== "receipt") {
+          return yield* failAll(bridgeError("ProtocolDecodeError", "The host command response was not a receipt."));
+        }
+        const value: unknown = item.kind === "uiReady"
+          ? yield* Schema.decodeUnknown(UiReadyReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
+            Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host UI-ready acknowledgement was invalid.")),
+          )
+          : item.kind === "uiRendered"
+            ? yield* Schema.decodeUnknown(UiRenderedReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
+              Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host UI-rendered acknowledgement was invalid.")),
+            )
+            : yield* Schema.decodeUnknown(contract.receipt, { onExcessProperty: "error" })(envelope.payload).pipe(
+              Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
+            );
         item.resolve(value);
       }).pipe(Effect.catchAll((error) => failAll(error)));
 
@@ -173,7 +192,13 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           while (seenCommands.has(commandId)) commandId = crypto.randomUUID();
           seenCommands.add(commandId);
           const item: Pending = {
-            kind: kind === "initialize" ? "initialize" : kind === "dispatch" ? "dispatch" : kind === "cancelOperation" ? "cancel" : "signal",
+            kind: kind === "initialize"
+              ? "initialize"
+              : kind === "dispatch"
+                ? "dispatch"
+                : kind === "cancelOperation"
+                  ? "cancel"
+                  : kind,
             resolve: (value) => resume(Effect.succeed(value as A)),
             reject: (error) => resume(Effect.fail(error)),
           };

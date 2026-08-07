@@ -91,6 +91,18 @@ test("one ManagedRuntime owns and disposes the bridge layer", async () => {
   assert.equal(channel.state, "closed");
 });
 
+test("protocol lifecycle acknowledgements do not have to be application receipts", async () => {
+  const channel = new LoopbackChannel();
+  const runtime = createApplicationBridgeRuntime(CsWebUiApplicationBridgeLive(contract, channel));
+  try {
+    await runtime.runPromise(ApplicationBridge.pipe(Effect.flatMap((bridge) => bridge.initialize)));
+    await runtime.runPromise(ApplicationBridge.pipe(Effect.flatMap((bridge) => bridge.uiReady)));
+    await runtime.runPromise(ApplicationBridge.pipe(Effect.flatMap((bridge) => bridge.uiRendered)));
+  } finally {
+    await runtime.dispose();
+  }
+});
+
 test("fault injection remains a Layer and returns typed errors", async () => {
   const mock = MockApplicationBridge({
     initialize: () => Effect.succeed({ revision: 0, view: "Welcome" }),
@@ -181,6 +193,10 @@ class LoopbackChannel implements FrameChannel {
       this.revision++;
       this.emit(this.envelope("event", undefined, { _tag: "NavigationChanged", revision: this.revision, view: "Complete" }));
       response = this.envelope("receipt", commandId, { _tag: "NavigationAccepted", revision: this.revision });
+    } else if (kind === "uiReady") {
+      response = this.envelope("receipt", commandId, { _tag: "UiReadyAccepted" });
+    } else if (kind === "uiRendered") {
+      response = this.envelope("receipt", commandId, { _tag: "UiRenderedAccepted" });
     } else {
       response = this.envelope("receipt", commandId, { _tag: "NavigationAccepted", revision: this.revision });
     }
