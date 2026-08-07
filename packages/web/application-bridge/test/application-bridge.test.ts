@@ -185,6 +185,29 @@ test("one ManagedRuntime owns and disposes the bridge layer", async () => {
   assert.equal(channel.state, "closed");
 });
 
+test("the controller composes and forks Effect programs in its owned runtime", async () => {
+  const channel = new LoopbackChannel();
+  const controller = createApplicationBridgeController(
+    contract,
+    CsWebUiApplicationBridgeLive(contract, channel),
+  );
+  try {
+    const receipt = await controller.run(Effect.gen(function*() {
+      const snapshot = yield* controller.effects.initialize;
+      assert.equal(snapshot.view, "Welcome");
+      return yield* controller.effects.dispatch({ _tag: "Navigate", target: "Complete" });
+    }));
+    assert.deepEqual(receipt, { _tag: "NavigationAccepted", revision: 1 });
+
+    const fiber = controller.fork(Effect.never);
+    const interrupted = await controller.interrupt(fiber);
+    assert.equal(interrupted._tag, "Failure");
+    assert.equal((await controller.await(fiber))._tag, "Failure");
+  } finally {
+    await controller.dispose();
+  }
+});
+
 test("the Effect runtime validates every envelope in a returned host batch", async () => {
   const channel = createCsWebUiFrameChannel(createReturnedBatchTarget(), { bindingSettleDelayMs: 0 });
   const controller = createApplicationBridgeController(

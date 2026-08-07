@@ -1,5 +1,6 @@
 import {
   Effect,
+  Exit,
   Fiber,
   Layer,
   ManagedRuntime,
@@ -27,6 +28,49 @@ export interface ApplicationBridgeOptions {
   readonly maxBufferedFrames?: number;
   readonly maxBufferedEvents?: number;
   readonly maxBatchFrames?: number;
+}
+
+/** Effect programs backed by the controller's single owned ManagedRuntime. */
+export interface ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot> {
+  readonly initialize: Effect.Effect<Snapshot, BridgeError, ApplicationBridgeService>;
+  readonly dispatch: (
+    command: Command,
+  ) => Effect.Effect<Receipt, BridgeError, ApplicationBridgeService>;
+  readonly cancel: (
+    operationId: string,
+  ) => Effect.Effect<void, BridgeError, ApplicationBridgeService>;
+  readonly reconnect: Effect.Effect<Snapshot, BridgeError, ApplicationBridgeService>;
+  readonly uiReady: Effect.Effect<void, BridgeError, ApplicationBridgeService>;
+  readonly uiRendered: Effect.Effect<void, BridgeError, ApplicationBridgeService>;
+  readonly events: Stream.Stream<HostEvent, BridgeError, ApplicationBridgeService>;
+}
+
+/**
+ * Promise convenience methods plus an opt-in Effect surface. All programs run
+ * in the same ManagedRuntime; adapters must not construct a renderer runtime.
+ */
+export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot> {
+  readonly effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot>;
+  initialize(): Promise<Snapshot>;
+  dispatch(command: Command): Promise<Receipt>;
+  cancel(operationId: string): Promise<void>;
+  reconnect(): Promise<Snapshot>;
+  uiReady(): Promise<void>;
+  uiRendered(): Promise<void>;
+  subscribe(
+    onEvent: (event: HostEvent) => void,
+    onError?: (error: BridgeError) => void,
+  ): () => void;
+  run<A, E>(program: Effect.Effect<A, E, ApplicationBridgeService>): Promise<A>;
+  runExit<A, E>(
+    program: Effect.Effect<A, E, ApplicationBridgeService>,
+  ): Promise<Exit.Exit<A, E>>;
+  fork<A, E>(
+    program: Effect.Effect<A, E, ApplicationBridgeService>,
+  ): Fiber.RuntimeFiber<A, E>;
+  await<A, E>(fiber: Fiber.RuntimeFiber<A, E>): Promise<Exit.Exit<A, E>>;
+  interrupt<A, E>(fiber: Fiber.RuntimeFiber<A, E>): Promise<Exit.Exit<A, E>>;
+  dispose(): Promise<void>;
 }
 
 interface Pending {
@@ -318,23 +362,33 @@ export function createApplicationBridgeRuntime(layer: Layer.Layer<ApplicationBri
 export function createApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>(
   contract: ApplicationContract<Command, Receipt, HostEvent, Snapshot>,
   layer: Layer.Layer<ApplicationBridgeService>,
-) {
+): ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot> {
   void contract;
   const runtime = createApplicationBridgeRuntime(layer);
   const service = Effect.map(
     ApplicationBridge,
     (value) => value as ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot>,
   );
-  const run = <A>(select: (bridge: ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot>) => Effect.Effect<A, BridgeError>) =>
-    runtime.runPromise(Effect.flatMap(service, select));
+  const effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot> = {
+    initialize: Effect.flatMap(service, (bridge) => bridge.initialize),
+    dispatch: (command) => Effect.flatMap(service, (bridge) => bridge.dispatch(command)),
+    cancel: (operationId) => Effect.flatMap(service, (bridge) => bridge.cancel(operationId)),
+    reconnect: Effect.flatMap(service, (bridge) => bridge.reconnect),
+    uiReady: Effect.flatMap(service, (bridge) => bridge.uiReady),
+    uiRendered: Effect.flatMap(service, (bridge) => bridge.uiRendered),
+    events: Stream.unwrap(Effect.map(service, (bridge) => bridge.events)),
+  };
+  const run = <A, E>(program: Effect.Effect<A, E, ApplicationBridgeService>) =>
+    runtime.runPromise(program);
 
   return {
-    initialize: () => run((bridge) => bridge.initialize),
-    dispatch: (command: Command) => run((bridge) => bridge.dispatch(command)),
-    cancel: (operationId: string) => run((bridge) => bridge.cancel(operationId)),
-    reconnect: () => run((bridge) => bridge.reconnect),
-    uiReady: () => run((bridge) => bridge.uiReady),
-    uiRendered: () => run((bridge) => bridge.uiRendered),
+    effects,
+    initialize: () => run(effects.initialize),
+    dispatch: (command: Command) => run(effects.dispatch(command)),
+    cancel: (operationId: string) => run(effects.cancel(operationId)),
+    reconnect: () => run(effects.reconnect),
+    uiReady: () => run(effects.uiReady),
+    uiRendered: () => run(effects.uiRendered),
     subscribe: (
       onEvent: (event: HostEvent) => void,
       onError: (error: BridgeError) => void = () => undefined,
@@ -351,6 +405,11 @@ export function createApplicationBridgeController<Command, Receipt, HostEvent, S
         runtime.runFork(Fiber.interrupt(fiber));
       };
     },
+    run,
+    runExit: (program) => run(Effect.exit(program)),
+    fork: (program) => runtime.runFork(program),
+    await: (fiber) => run(Fiber.await(fiber)),
+    interrupt: (fiber) => run(Fiber.interrupt(fiber)),
     dispose: runtime.dispose,
   };
 }

@@ -31,6 +31,9 @@ DevTools experience.
 4. Integration packages may own presentation state and framework lifecycle.
    They may not own transport, reconnect, schema validation, revision,
    cancellation, or command semantics.
+   They may expose opt-in Effect programs and Svelte-native action state only
+   through Application Bridge's existing `ManagedRuntime`; renderer-owned
+   Effect runtimes are not permitted.
 5. `dotnet runic-toolkit dev` launches the project's normal Vite configuration.
    The CLI does not generate or inject a replacement configuration.
 6. Svelte 4 and pre-Svelte-5 compatibility are out of scope.
