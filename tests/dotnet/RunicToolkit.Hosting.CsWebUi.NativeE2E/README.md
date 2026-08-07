@@ -8,14 +8,16 @@ updated DOM emitted by Chromium.
 It requires the repository direnv shell so the native WebUI library and
 `WEBUI_BROWSER_PATH` point at the pinned library and browser.
 
-Run the complete, Native-AOT-published gate with:
+Run the real native-browser gate with:
 
 ```console
-./eng/verify-cswebui-native-e2e.ps1
+nix develop --command dotnet run \
+  --project tests/RunicToolkit.Hosting.CsWebUi.NativeE2E \
+  --configuration Release
 ```
 
-The script keeps RID-specific restore state under `obj`, publishes with full
-trimming and Native AOT, and executes the binary-transport gate against
-Chromium. The main `eng/verify.sh` pipeline runs managed contract tests; invoke
-this native gate explicitly when the pinned browser and WebUI library are
-available.
+The main `eng/verify.sh` pipeline runs managed contract tests; invoke this gate
+explicitly when the pinned browser and WebUI library are available. NativeAOT
+compatibility is verified separately by
+`RunicToolkit.ApplicationBridge.AotSmoke` and the isolated package-consumer
+publication gate.

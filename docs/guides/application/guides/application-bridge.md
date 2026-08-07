@@ -21,3 +21,17 @@ operation ID promptly and publish progress through the Effect Stream.
 The committed Setup contract under `protocol/application-bridge/setup` is the
 reference contract. The package-only runnable Setup application lives in
 `runic-toolkit-examples`.
+
+## Performance and boundedness
+
+The TypeScript core owns one Effect `ManagedRuntime`, processes raw frames in a
+scoped Fiber, and exposes validated events through a bounded Effect PubSub.
+Correlated native batches cross the transport as one owned byte frame and are
+decoded once by the Effect runtime. Buffer overflow is a typed recovery
+condition; the bridge never silently drops an event and continues speculative
+state.
+
+Use `npm run benchmark:application-bridge` to record transport-batch and full
+Effect round-trip observations. CI runs the benchmark's deterministic
+structural gate. Wall-clock and retained-heap values are evidence, not portable
+release thresholds.

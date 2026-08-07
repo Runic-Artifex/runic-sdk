@@ -20,15 +20,24 @@ import { ApplicationBridge, type ApplicationBridgeService } from "./service.js";
 import type { FrameChannel, FrameChannelEvent } from "./transport.js";
 
 export interface ApplicationBridgeOptions {
+  /** Produces a candidate command identifier. Intended primarily for deterministic tests. */
   readonly commandIdFactory?: () => string;
   readonly maxFrameBytes?: number;
   readonly maxPendingCommands?: number;
+  readonly maxBufferedFrames?: number;
+  readonly maxBufferedEvents?: number;
+  readonly maxBatchFrames?: number;
 }
 
 interface Pending {
   readonly kind: "initialize" | "dispatch" | "cancel" | "uiReady" | "uiRendered";
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: BridgeError) => void;
+}
+
+interface BufferedFrame {
+  readonly generation: number;
+  readonly event: FrameChannelEvent;
 }
 
 const encoder = new TextEncoder();
@@ -44,18 +53,22 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
   return Layer.scoped(
     ApplicationBridge,
     Effect.gen(function*() {
-      const events = yield* PubSub.unbounded<HostEvent>();
+      const maxFrameBytes = positiveInteger(options.maxFrameBytes ?? 262_144, "maxFrameBytes");
+      const maxPending = positiveInteger(options.maxPendingCommands ?? 64, "maxPendingCommands");
+      const maxBufferedFrames = positiveInteger(options.maxBufferedFrames ?? 256, "maxBufferedFrames");
+      const maxBufferedEvents = positiveInteger(options.maxBufferedEvents ?? 1_024, "maxBufferedEvents");
+      const maxBatchFrames = positiveInteger(options.maxBatchFrames ?? 4_096, "maxBatchFrames");
+      const events = yield* PubSub.dropping<HostEvent>(maxBufferedEvents);
       const failures = yield* PubSub.unbounded<BridgeError>();
-      const rawFrames = yield* PubSub.unbounded<FrameChannelEvent>();
+      const rawFrames = yield* PubSub.dropping<BufferedFrame>(maxBufferedFrames);
       const pending = new Map<string, Pending>();
-      const seenCommands = new Set<string>();
-      const maxFrameBytes = options.maxFrameBytes ?? 262_144;
-      const maxPending = options.maxPendingCommands ?? 64;
       const nextCommandId = options.commandIdFactory ?? (() => crypto.randomUUID());
       let sessionId: string | undefined;
       let revision = 0;
       let sequence = 0;
       let stopped = false;
+      let recoveryRequired = false;
+      let ingressGeneration = 0;
       const effectRuntime = yield* Effect.runtime<never>();
       const runPromise = Runtime.runPromise(effectRuntime);
       const runSync = Runtime.runSync(effectRuntime);
@@ -68,17 +81,22 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
         Effect.asVoid,
       );
 
-      const onEnvelope = (envelope: HostEnvelope): Effect.Effect<void> => Effect.gen(function*() {
+      const requireRecovery = (error: BridgeError): Effect.Effect<void> => Effect.sync(() => {
+        if (!recoveryRequired) ingressGeneration++;
+        recoveryRequired = true;
+        sessionId = undefined;
+        sequence = 0;
+      }).pipe(Effect.zipRight(failAll(error)));
+
+      const onEnvelope = (envelope: HostEnvelope): Effect.Effect<void, BridgeError> => Effect.gen(function*() {
         if (envelope.protocol !== contract.identity || envelope.version !== contract.version) {
-          return yield* failAll(bridgeError("ProtocolVersionMismatch", "The host uses an incompatible Application Bridge contract."));
+          return yield* Effect.fail(bridgeError("ProtocolVersionMismatch", "The host uses an incompatible Application Bridge contract."));
         }
         if (sessionId !== undefined && envelope.sessionId !== sessionId) {
-          return yield* failAll(bridgeError("ProtocolDecodeError", "The host response belongs to a stale session."));
+          return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host response belongs to a stale session."));
         }
         if (envelope.sequence !== sequence + 1) {
-          sequence = 0;
-          sessionId = undefined;
-          return yield* failAll(bridgeError("ProtocolDecodeError", "A host event sequence gap requires authoritative recovery.", true));
+          return yield* Effect.fail(bridgeError("ProtocolDecodeError", "A host event sequence gap requires authoritative recovery.", true));
         }
         sequence = envelope.sequence;
         revision = envelope.revision;
@@ -88,12 +106,19 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           const event = yield* Schema.decodeUnknown(contract.event, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host event was invalid.")),
           );
-          yield* PubSub.publish(events, event);
+          const published = yield* PubSub.publish(events, event);
+          if (!published) {
+            return yield* Effect.fail(bridgeError(
+              "ProtocolDecodeError",
+              "The validated host event buffer overflowed; authoritative recovery is required.",
+              true,
+            ));
+          }
           return;
         }
         const commandId = envelope.commandId;
         if (commandId === undefined) {
-          return yield* failAll(bridgeError("ProtocolDecodeError", "A correlated host response omitted its command identifier."));
+          return yield* Effect.fail(bridgeError("ProtocolDecodeError", "A correlated host response omitted its command identifier."));
         }
         const item = pending.get(commandId);
         if (item === undefined) return;
@@ -107,7 +132,7 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
         }
         if (item.kind === "initialize") {
           if (envelope.kind !== "snapshot") {
-            return yield* failAll(bridgeError("ProtocolDecodeError", "The host initialization response was not a snapshot."));
+            return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host initialization response was not a snapshot."));
           }
           const snapshot = yield* Schema.decodeUnknown(contract.snapshot, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
@@ -116,7 +141,7 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           return;
         }
         if (envelope.kind !== "receipt") {
-          return yield* failAll(bridgeError("ProtocolDecodeError", "The host command response was not a receipt."));
+          return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host command response was not a receipt."));
         }
         const value: unknown = item.kind === "uiReady"
           ? yield* Schema.decodeUnknown(UiReadyReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
@@ -130,9 +155,11 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
               Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
             );
         item.resolve(value);
-      }).pipe(Effect.catchAll((error) => failAll(error)));
+      });
 
-      const onChannelEvent = (event: FrameChannelEvent): Effect.Effect<void> => Effect.gen(function*() {
+      const onChannelEvent = (buffered: BufferedFrame): Effect.Effect<void> => Effect.gen(function*() {
+        if (buffered.generation !== ingressGeneration || recoveryRequired) return;
+        const event = buffered.event;
         if (event._tag === "State") {
           if (event.state !== "connected") {
             yield* failAll(bridgeError("TransportClosed", "The Application Bridge transport closed.", true));
@@ -140,25 +167,38 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           return;
         }
         if (event.bytes.byteLength > maxFrameBytes) {
-          return yield* failAll(bridgeError("ProtocolDecodeError", "The host frame exceeded the configured byte limit."));
+          return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host frame exceeded the configured byte limit."));
         }
         let json: unknown;
         try {
           json = JSON.parse(decoder.decode(event.bytes));
         } catch {
-          return yield* failAll(bridgeError("ProtocolDecodeError", "The host frame was not valid UTF-8 JSON."));
+          return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host frame was not valid UTF-8 JSON."));
         }
-        const envelope = yield* Schema.decodeUnknown(HostEnvelopeSchema, { onExcessProperty: "error" })(json).pipe(
-          Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host frame was invalid.")),
-        );
-        yield* onEnvelope(envelope);
-      }).pipe(Effect.catchAll((error) => failAll(error)));
+        const encodedEnvelopes = Array.isArray(json) ? json : [json];
+        if (encodedEnvelopes.length === 0 || encodedEnvelopes.length > maxBatchFrames) {
+          return yield* Effect.fail(bridgeError(
+            "ProtocolDecodeError",
+            "The correlated host frame batch exceeded the configured item limit.",
+          ));
+        }
+        for (const encodedEnvelope of encodedEnvelopes) {
+          const envelope = yield* Schema.decodeUnknown(HostEnvelopeSchema, { onExcessProperty: "error" })(encodedEnvelope).pipe(
+            Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host frame was invalid.")),
+          );
+          yield* onEnvelope(envelope);
+        }
+      }).pipe(Effect.catchAll(requireRecovery));
 
       const unsubscribe = channel.subscribe((event) => {
-        const copied = event._tag === "Frame"
-          ? { _tag: "Frame" as const, bytes: new Uint8Array(event.bytes) }
-          : { ...event };
-        runSync(PubSub.publish(rawFrames, copied));
+        const published = runSync(PubSub.publish(rawFrames, { generation: ingressGeneration, event }));
+        if (!published && !recoveryRequired) {
+          runSync(requireRecovery(bridgeError(
+            "ProtocolDecodeError",
+            "The host frame ingress buffer overflowed; authoritative recovery is required.",
+            true,
+          )));
+        }
       });
       yield* Stream.fromPubSub(rawFrames).pipe(
         Stream.runForEach(onChannelEvent),
@@ -188,9 +228,16 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
             resume(Effect.fail(bridgeError("CommandRejected", "The pending command limit was exceeded.", true)));
             return;
           }
+          if (recoveryRequired) {
+            resume(Effect.fail(bridgeError(
+              "ProtocolDecodeError",
+              "The Application Bridge requires authoritative recovery before accepting requests.",
+              true,
+            )));
+            return;
+          }
           let commandId = nextCommandId();
-          while (seenCommands.has(commandId)) commandId = crypto.randomUUID();
-          seenCommands.add(commandId);
+          while (pending.has(commandId)) commandId = crypto.randomUUID();
           const item: Pending = {
             kind: kind === "initialize"
               ? "initialize"
@@ -229,6 +276,8 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
         ),
         cancel: (operationId) => request<unknown>("cancelOperation", { operationId }, revision).pipe(Effect.asVoid),
         reconnect: Effect.sync(() => {
+          ingressGeneration++;
+          recoveryRequired = false;
           sessionId = undefined;
           sequence = 0;
           revision = 0;
@@ -243,6 +292,13 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
       return service as ApplicationBridgeService;
     }),
   );
+}
+
+function positiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer.`);
+  }
+  return value;
 }
 
 export function createApplicationBridgeRuntime(layer: Layer.Layer<ApplicationBridgeService>) {
@@ -283,11 +339,14 @@ export function createApplicationBridgeController<Command, Receipt, HostEvent, S
       onEvent: (event: HostEvent) => void,
       onError: (error: BridgeError) => void = () => undefined,
     ) => {
-      const fiber = runtime.runFork(
+      const consume = (): Effect.Effect<void, never, ApplicationBridgeService> =>
         Effect.flatMap(service, (bridge) =>
           Stream.runForEach(bridge.events, (event) => Effect.sync(() => onEvent(event))),
-        ).pipe(Effect.catchAll((error) => Effect.sync(() => onError(error)))),
-      );
+        ).pipe(Effect.catchAll((error) =>
+          Effect.sync(() => onError(error)).pipe(
+            Effect.zipRight(Effect.suspend(consume)),
+          )));
+      const fiber = runtime.runFork(consume());
       return () => {
         runtime.runFork(Fiber.interrupt(fiber));
       };

@@ -182,10 +182,8 @@ public sealed class CsWebUiApplicationBridge : IAsyncDisposable
             writer.WriteStartArray();
             foreach (BridgeHostEnvelope frame in frames)
             {
-                writer.WriteRawValue(
-                    ApplicationBridgeCodec.EncodeHost(frame, _options.Limits),
-                    skipInputValidation: true);
-                if (output.WrittenCount > _options.Limits.MaxFrameBytes)
+                ApplicationBridgeCodec.WriteHost(writer, frame, _options.Limits);
+                if (writer.BytesCommitted + writer.BytesPending > _options.Limits.MaxFrameBytes)
                     throw new InvalidOperationException("The correlated host frame batch exceeded its configured byte limit.");
             }
             writer.WriteEndArray();

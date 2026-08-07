@@ -16,8 +16,10 @@
     "verify:application-bridge-artifacts": "node eng/generate-application-bridge-contract.mjs --check && node eng/generate-application-bridge-contract.mjs protocol/application-bridge/counter/contract.mjs protocol/application-bridge/counter/generated --check",
     "build": "node eng/run-workspaces.mjs build",
     "test": "node eng/run-workspaces.mjs test",
+    "benchmark:application-bridge": "npm --workspace @runic-artifex/application-bridge run build && node --expose-gc benchmarks/RunicToolkit.ApplicationBridge.Benchmarks/benchmark.mjs --quick",
+    "verify:application-bridge-performance": "node --expose-gc benchmarks/RunicToolkit.ApplicationBridge.Benchmarks/benchmark.mjs --gate",
     "verify:frontend-parity": "node eng/verify-frontend-parity.mjs",
-    "verify": "npm run verify:application-bridge-artifacts && npm run build && npm run test && npm run verify:frontend-parity"
+    "verify": "npm run verify:application-bridge-artifacts && npm run build && npm run test && npm run verify:application-bridge-performance && npm run verify:frontend-parity"
   },
   "devDependencies": {
     "esbuild": "0.28.1",

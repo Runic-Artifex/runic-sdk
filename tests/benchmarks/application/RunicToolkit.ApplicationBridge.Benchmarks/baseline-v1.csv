@@ -1,0 +1,9 @@
+scenario,batch_size,repetitions,elapsed_us,retained_heap_delta_bytes,transport_frames,validated_events
+transport-returned-batch,1,20,96,-10000,20,20
+effect-returned-batch,1,20,8705,214824,21,20
+transport-returned-batch,32,20,174,-39248,20,640
+effect-returned-batch,32,20,23571,173640,21,640
+transport-returned-batch,256,20,386,-34864,20,5120
+effect-returned-batch,256,20,59277,121536,21,5120
+transport-returned-batch,1024,20,1334,-259248,20,20480
+effect-returned-batch,1024,20,191515,210256,21,20480

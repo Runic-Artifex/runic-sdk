@@ -122,7 +122,7 @@ test("the CsWebUi channel publishes a correlated response returned by the bindin
   await channel.close("test complete");
 });
 
-test("the CsWebUi channel preserves ordered host batches returned by the binding", async () => {
+test("the CsWebUi channel forwards an ordered host batch as one owned frame", async () => {
   const target: CsWebUiGlobal = {
     __runicToolkit_applicationBridge_send: async () => JSON.stringify([
       { kind: "event", sequence: 1 },
@@ -130,19 +130,19 @@ test("the CsWebUi channel preserves ordered host batches returned by the binding
     ]),
   };
   const channel = createCsWebUiFrameChannel(target, { bindingSettleDelayMs: 0 });
-  const received: Array<{ kind: string; sequence: number }> = [];
+  const received: unknown[] = [];
   channel.subscribe((event) => {
     if (event._tag === "Frame") {
-      received.push(JSON.parse(new TextDecoder().decode(event.bytes)) as { kind: string; sequence: number });
+      received.push(JSON.parse(new TextDecoder().decode(event.bytes)));
     }
   });
 
   await channel.send(Uint8Array.of(1));
 
-  assert.deepEqual(received, [
+  assert.deepEqual(received, [[
     { kind: "event", sequence: 1 },
     { kind: "receipt", sequence: 2 },
-  ]);
+  ]]);
   await channel.close("test complete");
 });
 
@@ -185,6 +185,89 @@ test("one ManagedRuntime owns and disposes the bridge layer", async () => {
   assert.equal(channel.state, "closed");
 });
 
+test("the Effect runtime validates every envelope in a returned host batch", async () => {
+  const channel = createCsWebUiFrameChannel(createReturnedBatchTarget(), { bindingSettleDelayMs: 0 });
+  const controller = createApplicationBridgeController(
+    contract,
+    CsWebUiApplicationBridgeLive(contract, channel),
+  );
+  const event = new Promise<{ _tag: string; revision: number; view: string }>((resolve, reject) => {
+    controller.subscribe(resolve, reject);
+  });
+  try {
+    assert.deepEqual(await controller.initialize(), { revision: 0, view: "Welcome" });
+    assert.deepEqual(
+      await controller.dispatch({ _tag: "Navigate", target: "Complete" }),
+      { _tag: "NavigationAccepted", revision: 1 },
+    );
+    assert.deepEqual(await event, { _tag: "NavigationChanged", revision: 1, view: "Complete" });
+  } finally {
+    await controller.dispose();
+  }
+});
+
+test("returned host batches enforce the browser item limit", async () => {
+  const channel = createCsWebUiFrameChannel(createReturnedBatchTarget(), { bindingSettleDelayMs: 0 });
+  const controller = createApplicationBridgeController(
+    contract,
+    CsWebUiApplicationBridgeLive(contract, channel, { maxBatchFrames: 1 }),
+  );
+  try {
+    await controller.initialize();
+    await assert.rejects(
+      controller.dispatch({ _tag: "Navigate", target: "Complete" }),
+      /batch exceeded the configured item limit/,
+    );
+  } finally {
+    await controller.dispose();
+  }
+});
+
+test("validated event overflow fails pending work and requires recovery", async () => {
+  const channel = createCsWebUiFrameChannel(createReturnedBatchTarget(4), { bindingSettleDelayMs: 0 });
+  const runtime = createApplicationBridgeRuntime(
+    CsWebUiApplicationBridgeLive(contract, channel, { maxBufferedEvents: 1 }),
+  );
+  runtime.runFork(ApplicationBridge.pipe(Effect.flatMap((bridge) =>
+    Stream.runForEach(bridge.events, () => Effect.sleep("1 second")),
+  )));
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await runtime.runPromise(ApplicationBridge.pipe(Effect.flatMap((bridge) => bridge.initialize)));
+    await assert.rejects(
+      runtime.runPromise(ApplicationBridge.pipe(Effect.flatMap((bridge) =>
+        bridge.dispatch({ _tag: "Navigate", target: "Complete" }),
+      ))),
+      /validated host event buffer overflowed/,
+    );
+    await assert.rejects(
+      runtime.runPromise(ApplicationBridge.pipe(Effect.flatMap((bridge) => bridge.initialize))),
+      /requires authoritative recovery/,
+    );
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("the browser retains command identifiers only while requests are pending", async () => {
+  const channel = new LoopbackChannel();
+  const controller = createApplicationBridgeController(
+    contract,
+    CsWebUiApplicationBridgeLive(contract, channel, {
+      commandIdFactory: () => "22222222-2222-4222-8222-222222222222",
+      maxPendingCommands: 1,
+    }),
+  );
+  try {
+    await controller.initialize();
+    await controller.dispatch({ _tag: "Navigate", target: "Complete" });
+    await controller.dispatch({ _tag: "Navigate", target: "Welcome" });
+    assert.equal(channel.sentFrames, 3);
+  } finally {
+    await controller.dispose();
+  }
+});
+
 test("protocol lifecycle acknowledgements do not have to be application receipts", async () => {
   const channel = new LoopbackChannel();
   const runtime = createApplicationBridgeRuntime(CsWebUiApplicationBridgeLive(contract, channel));
@@ -220,10 +303,14 @@ test("a sequence gap rejects speculative state until authoritative reconnect", a
   );
   try {
     assert.equal((await controller.initialize()).view, "Welcome");
+    let resolveRecoveredEvent: ((event: { _tag: string; revision: number; view: string }) => void) | undefined;
+    const recoveredEvent = new Promise<{ _tag: string; revision: number; view: string }>((resolve) => {
+      resolveRecoveredEvent = resolve;
+    });
     const failure = new Promise<string>((resolve) => {
-      const unsubscribe = controller.subscribe(
-        () => undefined,
-        (error) => { unsubscribe(); resolve(error._tag); },
+      controller.subscribe(
+        (event) => resolveRecoveredEvent?.(event),
+        (error) => resolve(error._tag),
       );
     });
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -231,6 +318,8 @@ test("a sequence gap rejects speculative state until authoritative reconnect", a
     assert.equal(await failure, "ProtocolDecodeError");
     channel.resetPhysicalConnection();
     assert.equal((await controller.reconnect()).view, "Welcome");
+    await controller.dispatch({ _tag: "Navigate", target: "Complete" });
+    assert.equal((await recoveredEvent).view, "Complete");
   } finally {
     await controller.dispose();
   }
@@ -257,6 +346,7 @@ async function semanticSuite(layer: Layer.Layer<unknown>): Promise<void> {
 
 class LoopbackChannel implements FrameChannel {
   public state: "connected" | "closed" = "connected";
+  public sentFrames = 0;
   private readonly listeners = new Set<(event: FrameChannelEvent) => void>();
   private sequence = 0;
   private revision = 0;
@@ -277,6 +367,7 @@ class LoopbackChannel implements FrameChannel {
   }
 
   public async send(bytes: Uint8Array): Promise<void> {
+    this.sentFrames++;
     const request = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
     const commandId = String(request.commandId);
     const kind = String(request.kind);
@@ -323,4 +414,36 @@ class LoopbackChannel implements FrameChannel {
     const bytes = new TextEncoder().encode(JSON.stringify(message));
     for (const listener of this.listeners) listener({ _tag: "Frame", bytes });
   }
+}
+
+function createReturnedBatchTarget(eventCount = 1): CsWebUiGlobal {
+  let sequence = 0;
+  let revision = 0;
+  const sessionId = "11111111-1111-4111-8111-111111111111";
+  const envelope = (kind: string, commandId: string, payload: unknown) => ({
+    protocol: "runic.test",
+    version: 1,
+    kind,
+    sessionId,
+    sequence: ++sequence,
+    revision,
+    commandId,
+    payload,
+  });
+  return {
+    __runicToolkit_applicationBridge_send: async (bytes) => {
+      const request = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+      const commandId = String(request.commandId);
+      if (request.kind === "initialize") {
+        return JSON.stringify([envelope("snapshot", commandId, { revision: 0, view: "Welcome" })]);
+      }
+      revision++;
+      const events = Array.from({ length: eventCount }, () =>
+        envelope("event", commandId, { _tag: "NavigationChanged", revision, view: "Complete" }));
+      return JSON.stringify([
+        ...events,
+        envelope("receipt", commandId, { _tag: "NavigationAccepted", revision }),
+      ]);
+    },
+  };
 }
