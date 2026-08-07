@@ -13,6 +13,11 @@ Create one `CsWebUiApplicationBridgeLive`, `MockApplicationBridge`, or
 `createApplicationBridgeController`. The controller owns one `ManagedRuntime`
 and exposes promises plus a validated event subscription at the UI edge.
 
+The controller also exposes the same operations under `effects`, together with
+`run`, `runExit`, `fork`, `await`, and `interrupt`. Framework integrations can
+therefore offer opt-in Effect workflows and scoped actions without constructing
+a renderer-owned runtime. Promise methods remain the default convenience edge.
+
 `createCsWebUiFrameChannel` can be created as soon as the application module
 loads. It waits up to ten seconds for CsWebUi to install its native send binding
 and reads the settled sender again before use. Correlated responses return
