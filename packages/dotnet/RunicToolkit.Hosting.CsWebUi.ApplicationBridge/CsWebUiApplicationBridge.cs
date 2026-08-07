@@ -1,3 +1,6 @@
+using System.Buffers;
+using System.Collections.Generic;
+using System.Text.Json;
 using CsWebUi;
 using RunicToolkit.ApplicationBridge;
 
@@ -11,6 +14,9 @@ public sealed class CsWebUiApplicationBridge : IAsyncDisposable
     private readonly CsWebUiApplicationBridgeOptions _options;
     private readonly SemaphoreSlim _dispatch = new(1, 1);
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly object _eventGate = new();
+    private List<BridgeHostEnvelope>? _inFlightFrames;
+    private bool _inFlightOverflow;
     private IDisposable? _binding;
     private ulong? _clientId;
     private ulong? _connectionId;
@@ -75,38 +81,52 @@ public sealed class CsWebUiApplicationBridge : IAsyncDisposable
         }
     }
 
-    private async ValueTask OnFrameAsync(IApplicationBridgeEvent webUiEvent, CancellationToken cancellationToken)
+    private async ValueTask<byte[]?> OnFrameAsync(
+        IApplicationBridgeEvent webUiEvent,
+        CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _disposed) != 0 || webUiEvent.ArgumentCount != 1)
         {
             webUiEvent.CloseClient();
-            return;
+            return null;
         }
         byte[] frame = webUiEvent.GetBytes(0);
         if (!ApplicationBridgeCodec.TryDecodeClient(frame, out BridgeClientEnvelope? envelope, _options.Limits) ||
             !AcceptIdentity(webUiEvent, envelope!))
         {
             webUiEvent.CloseClient();
-            return;
+            return null;
         }
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
         await _dispatch.WaitAsync(linked.Token).ConfigureAwait(false);
+        lock (_eventGate)
+        {
+            _inFlightFrames = [];
+            _inFlightOverflow = false;
+        }
         try
         {
             BridgeHostEnvelope response = await _session.DispatchAsync(envelope!, linked.Token).ConfigureAwait(false);
-            webUiEvent.SendRaw(_options.ReceiverName, ApplicationBridgeCodec.EncodeHost(response, _options.Limits));
+            return CompleteResponseBatch(response);
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
             // Native callback or bridge teardown owns cancellation.
+            return null;
         }
         catch (Exception)
         {
             webUiEvent.CloseClient();
+            return null;
         }
         finally
         {
+            lock (_eventGate)
+            {
+                _inFlightFrames = null;
+                _inFlightOverflow = false;
+            }
             _dispatch.Release();
         }
     }
@@ -129,9 +149,49 @@ public sealed class CsWebUiApplicationBridge : IAsyncDisposable
 
     private void OnEventProduced(object? sender, BridgeHostEnvelope message)
     {
-        if (Volatile.Read(ref _disposed) == 0)
+        if (Volatile.Read(ref _disposed) != 0) return;
+        lock (_eventGate)
         {
-            _window.SendRaw(_options.ReceiverName, ApplicationBridgeCodec.EncodeHost(message, _options.Limits));
+            if (_inFlightFrames is not null)
+            {
+                if (_inFlightFrames.Count >= _options.Limits.MaxCollectionItems - 1)
+                    _inFlightOverflow = true;
+                else
+                    _inFlightFrames.Add(message);
+                return;
+            }
         }
+        _window.SendRaw(_options.ReceiverName, ApplicationBridgeCodec.EncodeHost(message, _options.Limits));
+    }
+
+    private byte[] CompleteResponseBatch(BridgeHostEnvelope response)
+    {
+        List<BridgeHostEnvelope> frames;
+        lock (_eventGate)
+        {
+            if (_inFlightOverflow)
+                throw new InvalidOperationException("The correlated host frame batch exceeded its configured item limit.");
+            frames = _inFlightFrames ?? [];
+            frames.Add(response);
+            frames.Sort(static (left, right) => left.Sequence.CompareTo(right.Sequence));
+            _inFlightFrames = null;
+        }
+        var output = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(output))
+        {
+            writer.WriteStartArray();
+            foreach (BridgeHostEnvelope frame in frames)
+            {
+                writer.WriteRawValue(
+                    ApplicationBridgeCodec.EncodeHost(frame, _options.Limits),
+                    skipInputValidation: true);
+                if (output.WrittenCount > _options.Limits.MaxFrameBytes)
+                    throw new InvalidOperationException("The correlated host frame batch exceeded its configured byte limit.");
+            }
+            writer.WriteEndArray();
+        }
+        if (output.WrittenCount > _options.Limits.MaxFrameBytes)
+            throw new InvalidOperationException("The correlated host frame batch exceeded its configured byte limit.");
+        return output.WrittenSpan.ToArray();
     }
 }

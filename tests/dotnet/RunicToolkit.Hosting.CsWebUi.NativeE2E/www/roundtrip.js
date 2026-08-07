@@ -3,15 +3,12 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 await waitForBinding("__runicToolkit_applicationBridge_send");
 
-const responses = new Map();
-globalThis.__runicToolkit_applicationBridge_receiveHostEvent = (bytes) => {
+const hostEvents = [];
+const receiveHostEvent = (bytes) => {
   const message = JSON.parse(decoder.decode(new Uint8Array(bytes)));
-  const pending = responses.get(message.commandId);
-  if (pending !== undefined) {
-    responses.delete(message.commandId);
-    pending(message);
-  }
+  if (message.kind === "event") hostEvents.push(message);
 };
+globalThis.__runicToolkit_applicationBridge_receiveHostEvent = receiveHostEvent;
 
 try {
   const initialized = await send("initialize", { _tag: "InitializeApplication" });
@@ -24,9 +21,8 @@ try {
   document.body.dataset.message = error instanceof Error ? error.message : "unknown";
 }
 
-function send(kind, payload, sessionId, expectedRevision) {
+async function send(kind, payload, sessionId, expectedRevision) {
   const commandId = crypto.randomUUID();
-  const response = new Promise((resolve) => responses.set(commandId, resolve));
   const envelope = {
     protocol: "runic.artifex.native-e2e",
     version: 1,
@@ -36,8 +32,20 @@ function send(kind, payload, sessionId, expectedRevision) {
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
     payload,
   };
-  void globalThis.__runicToolkit_applicationBridge_send(encoder.encode(JSON.stringify(envelope)));
-  return response;
+  const pending = globalThis.__runicToolkit_applicationBridge_send(
+    encoder.encode(JSON.stringify(envelope)),
+  );
+  globalThis.__runicToolkit_applicationBridge_receiveHostEvent = receiveHostEvent;
+  const response = await pending;
+  globalThis.__runicToolkit_applicationBridge_receiveHostEvent = receiveHostEvent;
+  const decoded = JSON.parse(String(response));
+  const frames = Array.isArray(decoded) ? decoded : [decoded];
+  for (const frame of frames) {
+    if (frame.kind === "event") hostEvents.push(frame);
+  }
+  const correlated = frames.find((frame) => frame.commandId === commandId);
+  if (correlated === undefined) throw new Error("The host response omitted its correlated frame.");
+  return correlated;
 }
 
 async function waitForBinding(name) {

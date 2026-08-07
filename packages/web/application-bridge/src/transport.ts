@@ -12,7 +12,7 @@ export interface FrameChannel {
 }
 
 export interface CsWebUiGlobal {
-  readonly __runicToolkit_applicationBridge_send?: (frame: Uint8Array) => Promise<void>;
+  readonly __runicToolkit_applicationBridge_send?: (frame: Uint8Array) => Promise<unknown>;
   __runicToolkit_applicationBridge_receiveHostEvent?: (frame: Uint8Array) => void;
 }
 
@@ -46,11 +46,27 @@ export function createCsWebUiFrameChannel(
   );
   const listeners = new Set<(event: FrameChannelEvent) => void>();
   let state: FrameChannelState = "connected";
-  let senderPromise: Promise<(frame: Uint8Array) => Promise<void>> | undefined;
+  let senderPromise: Promise<(frame: Uint8Array) => Promise<unknown>> | undefined;
 
   const receiveHostEvent = (bytes: Uint8Array): void => {
     const frame = new Uint8Array(bytes);
     for (const listener of listeners) listener({ _tag: "Frame", bytes: frame });
+  };
+  const receiveBindingResponse = (response: string | Uint8Array): void => {
+    const text = typeof response === "string"
+      ? response
+      : new TextDecoder("utf-8", { fatal: true }).decode(response);
+    try {
+      const decoded: unknown = JSON.parse(text);
+      if (Array.isArray(decoded)) {
+        const encoder = new TextEncoder();
+        for (const frame of decoded) receiveHostEvent(encoder.encode(JSON.stringify(frame)));
+        return;
+      }
+    } catch {
+      // The protocol runtime reports malformed returned frames through its typed error path.
+    }
+    receiveHostEvent(new TextEncoder().encode(text));
   };
   const installReceiver = (): void => {
     if (state === "connected") {
@@ -58,16 +74,21 @@ export function createCsWebUiFrameChannel(
     }
   };
 
-  const resolveSender = (): Promise<(frame: Uint8Array) => Promise<void>> => {
+  const resolveSender = (): Promise<(frame: Uint8Array) => Promise<unknown>> => {
     senderPromise ??= waitForSender(
       target,
       () => state,
       bindingTimeoutMs,
       bindingPollIntervalMs,
-    ).then(async (resolved) => {
+    ).then(async () => {
       if (bindingSettleDelayMs > 0) await delay(bindingSettleDelayMs);
       installReceiver();
-      return resolved;
+      return waitForSender(
+        target,
+        () => state,
+        bindingTimeoutMs,
+        bindingPollIntervalMs,
+      );
     }).catch((error: unknown) => {
       senderPromise = undefined;
       throw error;
@@ -82,7 +103,15 @@ export function createCsWebUiFrameChannel(
       if (state !== "connected") throw new Error("The Application Bridge channel is not connected.");
       const sender = await resolveSender();
       if (state !== "connected") throw new Error("The Application Bridge channel is not connected.");
-      await sender(new Uint8Array(bytes));
+      const result = sender(new Uint8Array(bytes));
+      installReceiver();
+      const response = await result;
+      installReceiver();
+      if (typeof response === "string" && response.length > 0) {
+        receiveBindingResponse(response);
+      } else if (response instanceof Uint8Array && response.byteLength > 0) {
+        receiveBindingResponse(response);
+      }
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -103,7 +132,7 @@ async function waitForSender(
   currentState: () => FrameChannelState,
   bindingTimeoutMs: number,
   bindingPollIntervalMs: number,
-): Promise<(frame: Uint8Array) => Promise<void>> {
+): Promise<(frame: Uint8Array) => Promise<unknown>> {
   const deadline = Date.now() + bindingTimeoutMs;
   while (currentState() === "connected") {
     const sender = target.__runicToolkit_applicationBridge_send;

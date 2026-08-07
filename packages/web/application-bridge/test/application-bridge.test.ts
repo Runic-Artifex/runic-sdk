@@ -52,6 +52,100 @@ test("the CsWebUi channel reports a missing native binding after its timeout", a
   await channel.close("test complete");
 });
 
+test("the CsWebUi channel uses the sender installed after its settle window", async () => {
+  let staleCalls = 0;
+  const frames: Uint8Array[] = [];
+  const target: CsWebUiGlobal = {
+    __runicToolkit_applicationBridge_send: async () => {
+      staleCalls++;
+      throw new Error("stale bootstrap sender");
+    },
+  };
+  const channel = createCsWebUiFrameChannel(target, {
+    bindingTimeoutMs: 100,
+    bindingPollIntervalMs: 1,
+    bindingSettleDelayMs: 10,
+  });
+  const send = channel.send(Uint8Array.of(4, 5, 6));
+
+  setTimeout(() => {
+    Object.defineProperty(target, "__runicToolkit_applicationBridge_send", {
+      configurable: true,
+      value: async (frame: Uint8Array) => { frames.push(frame); },
+    });
+  }, 2);
+
+  await send;
+  assert.equal(staleCalls, 0);
+  assert.deepEqual(frames, [Uint8Array.of(4, 5, 6)]);
+  await channel.close("test complete");
+});
+
+test("the CsWebUi channel restores its receiver after native binding invocation", async () => {
+  const received: Uint8Array[] = [];
+  const target: CsWebUiGlobal = {};
+  Object.defineProperty(target, "__runicToolkit_applicationBridge_send", {
+    configurable: true,
+    value: async () => {
+      delete target.__runicToolkit_applicationBridge_receiveHostEvent;
+      await new Promise<void>((resolve) => setTimeout(resolve, 1));
+      target.__runicToolkit_applicationBridge_receiveHostEvent?.(Uint8Array.of(7, 8, 9));
+    },
+  });
+  const channel = createCsWebUiFrameChannel(target, { bindingSettleDelayMs: 0 });
+  channel.subscribe((event) => {
+    if (event._tag === "Frame") received.push(event.bytes);
+  });
+
+  await channel.send(Uint8Array.of(1));
+
+  assert.deepEqual(received, [Uint8Array.of(7, 8, 9)]);
+  assert.equal(typeof target.__runicToolkit_applicationBridge_receiveHostEvent, "function");
+  await channel.close("test complete");
+});
+
+test("the CsWebUi channel publishes a correlated response returned by the binding", async () => {
+  const response = JSON.stringify({ kind: "snapshot" });
+  const target: CsWebUiGlobal = {
+    __runicToolkit_applicationBridge_send: async () => response,
+  };
+  const channel = createCsWebUiFrameChannel(target, { bindingSettleDelayMs: 0 });
+  const received = new Promise<string>((resolve) => {
+    channel.subscribe((event) => {
+      if (event._tag === "Frame") resolve(new TextDecoder().decode(event.bytes));
+    });
+  });
+
+  await channel.send(Uint8Array.of(1));
+
+  assert.equal(await received, response);
+  await channel.close("test complete");
+});
+
+test("the CsWebUi channel preserves ordered host batches returned by the binding", async () => {
+  const target: CsWebUiGlobal = {
+    __runicToolkit_applicationBridge_send: async () => JSON.stringify([
+      { kind: "event", sequence: 1 },
+      { kind: "receipt", sequence: 2 },
+    ]),
+  };
+  const channel = createCsWebUiFrameChannel(target, { bindingSettleDelayMs: 0 });
+  const received: Array<{ kind: string; sequence: number }> = [];
+  channel.subscribe((event) => {
+    if (event._tag === "Frame") {
+      received.push(JSON.parse(new TextDecoder().decode(event.bytes)) as { kind: string; sequence: number });
+    }
+  });
+
+  await channel.send(Uint8Array.of(1));
+
+  assert.deepEqual(received, [
+    { kind: "event", sequence: 1 },
+    { kind: "receipt", sequence: 2 },
+  ]);
+  await channel.close("test complete");
+});
+
 const Snapshot = Schema.Struct({ revision: Schema.Int, view: Schema.String });
 const Command = Schema.Union(
   Schema.TaggedStruct("InitializeApplication", {}),

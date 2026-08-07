@@ -19,6 +19,7 @@ internal static class Program
             ("one binding carries named domain commands and host events", RoundTrip),
             ("native identity is pinned and reconnect requires initialization", Identity),
             ("invalid frames close the untrusted client before dispatch", InvalidFrames),
+            ("correlated response batches enforce bridge limits", BatchLimits),
             ("bridge disposal owns exact session teardown", Disposal),
         ];
         foreach ((string name, Func<Task> run) in tests)
@@ -37,12 +38,22 @@ internal static class Program
         Equal(1, window.BindCount);
         Equal("__runicToolkit_applicationBridge_send", window.BindingName);
         FakeEvent initialized = await window.InvokeAsync(Initialize(), 7, 11);
-        JsonElement snapshot = Decode(initialized.Sent.Single().Frame);
+        JsonElement[] initialization = DecodeBatch(initialized.Response!);
+        Equal(1, initialization.Length);
+        JsonElement snapshot = initialization[0];
         Equal("snapshot", snapshot.GetProperty("kind").GetString());
         string sessionId = snapshot.GetProperty("sessionId").GetString()!;
 
         FakeEvent dispatched = await window.InvokeAsync(Dispatch(sessionId), 7, 11);
-        Equal("receipt", Decode(dispatched.Sent.Single().Frame).GetProperty("kind").GetString());
+        JsonElement[] dispatch = DecodeBatch(dispatched.Response!);
+        Equal(2, dispatch.Length);
+        Equal("event", dispatch[0].GetProperty("kind").GetString());
+        Equal("receipt", dispatch[1].GetProperty("kind").GetString());
+        Equal(0, window.Sent.Count);
+
+        await session.PublishAsync(new(
+            JsonDocument.Parse("""{"_tag":"NavigationChanged","revision":2,"view":"Welcome"}""").RootElement.Clone(),
+            AdvancesRevision: true));
         Equal(1, window.Sent.Count);
         Equal("event", Decode(window.Sent.Single().Frame).GetProperty("kind").GetString());
     }
@@ -88,6 +99,23 @@ internal static class Program
         True(disposed);
     }
 
+    private static async Task BatchLimits()
+    {
+        var window = new FakeWindow();
+        await using var session = new ApplicationBridgeSession(new FakeDispatcher(eventsPerDispatch: 16));
+        await using var bridge = CsWebUiApplicationBridge.Attach(
+            window,
+            session,
+            new() { Limits = new BridgeLimits { MaxCollectionItems = 16 } });
+        FakeEvent initialized = await window.InvokeAsync(Initialize(), 7, 11);
+        string sessionId = DecodeBatch(initialized.Response!)[0].GetProperty("sessionId").GetString()!;
+
+        FakeEvent dispatched = await window.InvokeAsync(Dispatch(sessionId), 7, 11);
+
+        True(dispatched.Closed);
+        True(dispatched.Response is null);
+    }
+
     private static byte[] Initialize(Guid? command = null) => Encoding.UTF8.GetBytes($$$"""
         {"protocol":"runic.test","version":1,"kind":"initialize","commandId":"{{{command ?? Guid.Parse("00000000-0000-4000-8000-000000000001")}}}","payload":{"_tag":"InitializeApplication"}}
         """);
@@ -104,12 +132,16 @@ internal static class Program
     };
 
     private static JsonElement Decode(byte[] frame) => JsonDocument.Parse(frame).RootElement.Clone();
+    private static JsonElement[] DecodeBatch(byte[] frame) => JsonDocument.Parse(frame).RootElement
+        .EnumerateArray()
+        .Select(static item => item.Clone())
+        .ToArray();
     private static void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new InvalidOperationException($"Expected {expected}, received {actual}."); }
     private static void True(bool value) { if (!value) throw new InvalidOperationException("Expected true."); }
     private static void False(bool value) { if (value) throw new InvalidOperationException("Expected false."); }
 }
 
-internal sealed class FakeDispatcher : IApplicationBridgeDispatcher
+internal sealed class FakeDispatcher(int eventsPerDispatch = 1) : IApplicationBridgeDispatcher
 {
     public string ProtocolIdentity => "runic.test";
     public int ProtocolVersion => 1;
@@ -122,22 +154,25 @@ internal sealed class FakeDispatcher : IApplicationBridgeDispatcher
         {
             return new(JsonDocument.Parse("""{"_tag":"ApplicationInitialized","snapshot":{"revision":0,"view":"Welcome"}}""").RootElement.Clone());
         }
-        await context.Events.PublishAsync(new(
-            JsonDocument.Parse("""{"_tag":"NavigationChanged","revision":1,"view":"Complete"}""").RootElement.Clone(),
-            AdvancesRevision: true), cancellationToken);
+        for (int index = 0; index < eventsPerDispatch; index++)
+        {
+            await context.Events.PublishAsync(new(
+                JsonDocument.Parse("""{"_tag":"NavigationChanged","revision":1,"view":"Complete"}""").RootElement.Clone(),
+                AdvancesRevision: true), cancellationToken);
+        }
         return new(JsonDocument.Parse("""{"_tag":"NavigationAccepted","revision":1}""").RootElement.Clone());
     }
 }
 
 internal sealed class FakeWindow : IApplicationBridgeWindow
 {
-    private Func<IApplicationBridgeEvent, CancellationToken, ValueTask>? _callback;
+    private Func<IApplicationBridgeEvent, CancellationToken, ValueTask<byte[]?>>? _callback;
     public int BindCount { get; private set; }
     public int BindingDisposeCount { get; private set; }
     public string? BindingName { get; private set; }
     public List<SentFrame> Sent { get; } = [];
 
-    public IDisposable Bind(string name, Func<IApplicationBridgeEvent, CancellationToken, ValueTask> callback)
+    public IDisposable Bind(string name, Func<IApplicationBridgeEvent, CancellationToken, ValueTask<byte[]?>> callback)
     {
         BindCount++; BindingName = name; _callback = callback;
         return new ActionDisposable(() => BindingDisposeCount++);
@@ -146,7 +181,7 @@ internal sealed class FakeWindow : IApplicationBridgeWindow
     public async Task<FakeEvent> InvokeAsync(byte[] frame, ulong client = 1, ulong connection = 1)
     {
         var value = new FakeEvent(frame, client, connection);
-        await _callback!(value, CancellationToken.None);
+        value.Response = await _callback!(value, CancellationToken.None);
         return value;
     }
 }
@@ -157,9 +192,8 @@ internal sealed class FakeEvent(byte[] frame, ulong client, ulong connection) : 
     public ulong ConnectionId => connection;
     public int ArgumentCount => 1;
     public bool Closed { get; private set; }
-    public List<SentFrame> Sent { get; } = [];
+    public byte[]? Response { get; set; }
     public byte[] GetBytes(int index) => index == 0 ? frame : throw new ArgumentOutOfRangeException(nameof(index));
-    public void SendRaw(string functionName, ReadOnlySpan<byte> data) => Sent.Add(new(functionName, data.ToArray()));
     public void CloseClient() => Closed = true;
 }
 

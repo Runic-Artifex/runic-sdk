@@ -14,9 +14,10 @@ Create one `CsWebUiApplicationBridgeLive`, `MockApplicationBridge`, or
 and exposes promises plus a validated event subscription at the UI edge.
 
 `createCsWebUiFrameChannel` can be created as soon as the application module
-loads. It keeps the host-event receiver ready and waits up to ten seconds for
-CsWebUi to install its native send binding, then reasserts the host-event
-receiver immediately before the first send. Fast Vite and SvelteKit startup
-therefore cannot race or be overwritten by the host bootstrap. The timeout and
-polling interval, plus the one-time 25 ms response-channel stabilization delay,
-can be overridden for unusual hosts or tests.
+loads. It waits up to ten seconds for CsWebUi to install its native send binding
+and reads the settled sender again before use. Correlated responses return
+through that binding promise as a sequence-ordered host-frame batch; the named
+receiver remains available for later unsolicited events. Fast Vite and
+SvelteKit startup therefore cannot lose initialization while CsWebUi completes
+its bootstrap. The timeout, polling interval, and one-time 25 ms stabilization
+delay can be overridden for unusual hosts or tests.
