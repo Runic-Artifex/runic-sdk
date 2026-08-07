@@ -19,9 +19,8 @@ return await builder.RunAsync();
 ```
 
 Framework integrations normally wrap `UseCsWebUi` with their own extension
-members, such as `UseReact`. Compiled cwhtml/HTMX composition lives in the
-separate `RunicMarkup.RunicToolkit.Htmx.CsWebUi.App` package so other frontends
-do not acquire cwhtml runtime dependencies.
+members, such as `UseReact`. Toolkit hosting stays renderer-neutral so frontend
+integrations do not acquire unrelated runtime dependencies.
 
 Registration also contributes the frontend-neutral `RunicToolkit.Desktop`
 services. Applications can inject typed lifetime, window, focus, dispatcher,

@@ -11,8 +11,6 @@ tests/RunicToolkit.PackageCanary/RunicToolkit.PackageCanary.csproj
 
 # Source projects embedded in the template package and instantiated by its acceptance test.
 templates/RunicToolkit.Templates/content/angular/RunicToolkitStarter.csproj
-templates/RunicToolkit.Templates/content/csharp-markup/RunicToolkitStarter.csproj
-templates/RunicToolkit.Templates/content/cwhtml/RunicToolkitStarter.csproj
 templates/RunicToolkit.Templates/content/react/RunicToolkitStarter.csproj
 templates/RunicToolkit.Templates/content/svelte/RunicToolkitStarter.csproj
 templates/RunicToolkit.Templates/content/vue/RunicToolkitStarter.csproj

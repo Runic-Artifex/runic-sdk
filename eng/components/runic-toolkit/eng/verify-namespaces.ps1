@@ -6,7 +6,7 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $ownedRoots = @('src', 'tests', 'tools', 'templates', 'web', 'protocol')
 $sourceExtensions = @(
     '.cs', '.csproj', '.props', '.targets', '.json', '.ts', '.tsx', '.js', '.mjs',
-    '.svelte', '.md', '.cwhtml', '.cwuix', '.nuspec', '.xml', '.yaml', '.yml'
+    '.svelte', '.md', '.nuspec', '.xml', '.yaml', '.yml'
 )
 $retiredPatterns = @(
     '\bWebUIToolkit\b',
@@ -15,10 +15,7 @@ $retiredPatterns = @(
     '\bWUT(?:MVVM|HOST|DEV|FE)\b',
     '\bwut(?:mvvm|-bindings)\b',
     '\bdata-wut\b',
-    '\bRunicToolkit\.(?:Assets|CommandLine|Flow|TextResources|Cwhtml)\b',
-    '\bRunicToolkit\.MVVM\.Html\b',
-    '\bRunicToolkit\.CsharpMarkup\b',
-    '\brunic-toolkit\.csharp-markup\b',
+    '\bRunicToolkit\.(?:Assets|CommandLine|Flow|TextResources)\b',
     '__runic-toolkit'
 )
 $violations = @()

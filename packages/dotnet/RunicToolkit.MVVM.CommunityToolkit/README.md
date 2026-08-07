@@ -29,7 +29,7 @@ IMvvmBindingAdapter adapter = new CommunityToolkitMvvmAdapterBuilder<MyViewModel
 Typed references derive deterministic, kind-separated protocol identifiers
 from compile-time-checked generated member names. The integer-and-name
 overloads remain available for generated contracts and compatibility code.
-Generated cwhtml adapter factories may pass a source-generated
+Generated application adapter factories may pass a source-generated
 `JsonSerializerContext` directly. The builder resolves the exact closed
 `JsonTypeInfo<T>` and fails during adapter creation when the context does not
 contain a declared projected type; no reflection fallback is used.
@@ -40,9 +40,3 @@ the collection supplies one, and emits an authoritative collection reset after
 successful commands. This is the stable WPF/`ObservableCollection<T>` bridge;
 granular unsolicited host-push patches can be added without changing binding
 declarations.
-
-The build-only `RunicMarkup.RunicToolkit.CommunityToolkit` package can validate
-compiled observable and read-only observable collection properties and emit the
-closed getter, snapshot, and subscription declarations consumed by
-`BindCollection`. Application-owned source-generated `JsonTypeInfo<TItem>`
-metadata remains explicit.

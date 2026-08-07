@@ -20,5 +20,5 @@ NuGet packages and these npm packages:
 - `@runic-artifex/mvvm-conformance`
 
 Use [`runic-toolkit-examples`](https://github.com/Runic-Artifex/runic-toolkit-examples)
-for runnable, package-only applications. Templates remain staged until the
-independently owned Runic Markup integration packages have been published.
+for runnable, package-only applications. The React, Vue, Svelte, and Angular
+templates exercise the supported browser-framework boundary.

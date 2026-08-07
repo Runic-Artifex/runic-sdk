@@ -3,9 +3,9 @@
 Runic Toolkit is a NativeAOT-first application toolbelt for composing the same
 application model across desktop windows, browser frontends, Generic Host, and
 framework-specific UI adapters. It owns application lifecycle, frontend-neutral
-desktop contracts, MVVM transport contracts, frontend build integration, and the
-developer CLI. It does not own a markup language, workflow engine, command-line
-framework, localization system, or asset model.
+desktop contracts, application-bridge contracts, frontend build integration,
+and the developer CLI. It does not own a UI language, workflow engine,
+command-line framework, localization system, or asset model.
 
 This repository is the clean-break successor to WebUIToolkit. Package,
 assembly, namespace, MSBuild, protocol, npm, diagnostic, and tool identities use
@@ -18,7 +18,7 @@ identity.
 | Family | Purpose |
 | --- | --- |
 | `RunicToolkit.Hosting.*` | Deterministic lifecycle, Generic Host, WebUi, CsWebUi, build, and generator contracts |
-| `RunicToolkit.MVVM*` | NativeAOT-safe wire/session contracts plus CommunityToolkit and ReactiveUI adapters |
+| `RunicToolkit.MVVM*` | Prerelease ViewModel projection experiment retained while the domain-oriented Application Bridge is proven |
 | `RunicToolkit.Frontend.Sdk` | Framework-neutral frontend contracts, builds, manifests, and development metadata |
 | `RunicToolkit.Desktop` | Frontend-neutral desktop capabilities and close contracts |
 | `RunicToolkit.Collections` | Observable range collection primitives |
@@ -31,8 +31,6 @@ scope `@runic-artifex`.
 
 Independent RunicArtifex products own their official Toolkit adapters:
 
-- [Runic Markup](https://github.com/Runic-Artifex/runic-markup) owns
-  `RunicMarkup.RunicToolkit.*`;
 - [Runic Flow](https://github.com/Runic-Artifex/runic-flow) owns
   `RunicFlow.RunicToolkit`;
 - [Runic Assets](https://github.com/Runic-Artifex/runic-assets) owns
@@ -44,6 +42,16 @@ Runic Text Resources is independently consumable and needs no Toolkit
 dependency. Examples and cross-repository package canaries live in
 [runic-toolkit-examples](https://github.com/Runic-Artifex/runic-toolkit-examples),
 not in this library repository.
+
+## Application Bridge direction
+
+The generic MVVM protocol is not the long-term public application boundary.
+[Issue #5](https://github.com/Runic-Artifex/runic-toolkit/issues/5) and
+[ADR 0015](docs/adr/0015-effect-schema-application-bridge.md) define its
+replacement: named domain commands and events, Effect Schema as the TypeScript
+wire authority, deterministic committed contract artifacts, and reflection-free
+C# dispatch. Existing prerelease MVVM packages remain available only while a
+production Setup vertical proves the replacement.
 
 ## Development
 
