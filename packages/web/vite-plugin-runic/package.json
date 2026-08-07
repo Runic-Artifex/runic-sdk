@@ -1,0 +1,68 @@
+{
+  "name": "@runic-artifex/vite-plugin-runic-toolkit",
+  "version": "0.0.0-private",
+  "description": "Vite 8 development and DevTools integration for Runic Toolkit applications",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist",
+    "virtual.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./virtual": "./virtual.d.ts"
+  },
+  "scripts": {
+    "clean": "node -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "verify": "npm run typecheck && npm test && npm pack --dry-run",
+    "pack:preview": "npm pack"
+  },
+  "peerDependencies": {
+    "@vitejs/devtools": "^0.4.12",
+    "vite": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@vitejs/devtools": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "24.10.12",
+    "@vitejs/devtools": "0.4.12",
+    "@vitejs/devtools-kit": "0.4.12",
+    "typescript": "5.9.3",
+    "vite": "8.2.1"
+  },
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-vite.git"
+  },
+  "keywords": [
+    "runic-artifex",
+    "runic-toolkit",
+    "vite",
+    "vite-plugin",
+    "devtools"
+  ]
+}
+

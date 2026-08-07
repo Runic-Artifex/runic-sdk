@@ -1,0 +1,59 @@
+name: Prerelease packages
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified preview to GitHub Packages
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_VERSION: 0.1.0-preview.${{ github.run_number }}.${{ github.run_attempt }}
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - name: Pack preview
+        run: |
+          npm version "$PACKAGE_VERSION" --no-git-tag-version
+          npm pack --pack-destination "$RUNNER_TEMP"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runic-vite-${{ env.PACKAGE_VERSION }}
+          path: ${{ runner.temp }}/*.tgz
+
+  publish:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          registry-url: https://npm.pkg.github.com
+          scope: "@runic-artifex"
+      - uses: actions/download-artifact@v8
+        with:
+          name: runic-vite-${{ env.PACKAGE_VERSION }}
+          path: ${{ runner.temp }}/packages
+      - run: npm publish "$RUNNER_TEMP"/packages/*.tgz --registry https://npm.pkg.github.com --tag preview
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
