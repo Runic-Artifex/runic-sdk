@@ -31,7 +31,6 @@ internal static class Program
             ("development bootstrap preserves private binding and remote assets", DevelopmentBootstrapIsNativeSafe),
             ("Application Bridge inspector stays bounded and source-aware", InspectorTerminalSinkIsSafe),
             ("compiler rendered-fragment snapshots stay bounded and private", RenderedFragmentSnapshotsAreSafe),
-            ("Vite bridge forwards compiler diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
             ("compiler reload comparison separates renderer edits from shape edits", FrontendCompilerReloadComparisonIsSafe),
             ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
             ("phase timings are concise and stable", PhaseTimingsAreConcise),
@@ -159,8 +158,7 @@ internal static class Program
             TargetDirectory: "/repo/bin/Debug/net10.0");
         IReadOnlyList<string> arguments = ViteDevelopmentServer.CreateArguments(
             configuration,
-            43123,
-            "/tmp/runic-toolkit/vite.config.mjs");
+            43123);
         SequenceEqual(
             [
                 "run",
@@ -168,8 +166,6 @@ internal static class Program
                 "--workspace",
                 "@example/app",
                 "--",
-                "--config",
-                "/tmp/runic-toolkit/vite.config.mjs",
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -412,48 +408,6 @@ internal static class Program
             DevelopmentServerKind = kind,
             DevelopmentServerDocument = documents,
         };
-
-    private static void ViteBridgeForwardsDiagnostics()
-    {
-        var configuration = new DevProjectConfiguration(
-            ProjectPath: "/repo/App.csproj",
-            ProjectDirectory: "/repo",
-            NodeEnabled: true,
-            FrontendCompilerEnabled: true,
-            WorkspaceRoot: "/repo",
-            Workspace: "@example/app",
-            FrontendPackageDirectory: "/repo/frontend",
-            FrontendOutputDirectory: "/repo/frontend/dist",
-            FrontendWebRoot: "www",
-            ContractSource: "",
-            ContractCSharpOutput: "",
-            ContractTypeScriptOutput: "",
-            ContractTool: "",
-            FrontendWatchTarget: "RunicToolkitFrontendWatchAssets",
-            ViteDevServerEnabled: true,
-            ViteDevServerEntry: "/src/main.js",
-            ViteConfigurationPath: "/repo/frontend/vite.config.mjs",
-            FrontendCompilerDiagnosticsPath: "/repo/obj/Debug/net10.0/frontend-compiler/diagnostics.json",
-            FrontendCompilerHotReloadPath: "/repo/obj/Debug/net10.0/frontend-compiler/hot-reload.json",
-            TargetDirectory: "/repo/bin/Debug/net10.0");
-        var renderedFragmentsEndpoint =
-            new Uri("http://127.0.0.1:43126/token/rendered-fragments");
-        string source = ViteConfigurationBridge.CreateSource(
-            configuration,
-            renderedFragmentsEndpoint);
-        Contains(source, "runic-toolkit.frontend-compiler.diagnostics/1.0");
-        Contains(source, "runic-toolkit:frontend-compiler-diagnostics");
-        Contains(source, "server.ws.send({ type: \"error\"");
-        Contains(source, "document.querySelector(\"vite-error-overlay\")?.remove()");
-        Contains(source, "/repo/obj/Debug/net10.0/frontend-compiler/diagnostics.json");
-        Contains(source, "runic-toolkit.frontend-compiler.hot-reload/1.0");
-        Contains(source, "runic-toolkit:frontend-compiler-fragments");
-        Contains(source, "runic-toolkit:frontend-compiler-fragment-handles");
-        Contains(source, "runic-toolkit.frontend-compiler.rendered-fragments/1.0");
-        Contains(source, renderedFragmentsEndpoint.AbsoluteUri);
-        Contains(source, "runic-toolkit:frontend-compiler-refresh");
-        Contains(source, "/repo/frontend/src/main.js");
-    }
 
     private static void FrontendCompilerReloadComparisonIsSafe()
     {

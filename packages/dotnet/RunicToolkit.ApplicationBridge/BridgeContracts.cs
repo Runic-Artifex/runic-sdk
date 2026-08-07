@@ -136,6 +136,7 @@ internal sealed record BridgeSignalReceipt(
 
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(BridgeClientEnvelope))]

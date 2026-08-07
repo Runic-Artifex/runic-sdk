@@ -1,6 +1,6 @@
 {
-  "schema": "runic-toolkit.frontend-support-matrix/3",
-  "policy": "Effect owns the application protocol and lifetime once; renderers project validated domain state without protocol adapters.",
+  "schema": "runic-toolkit.frontend-support-matrix/4",
+  "policy": "Effect owns the application protocol and lifetime once; renderer-owned integration packages project validated domain state and own only framework lifecycle concerns.",
   "protocolOwner": "@runic-artifex/application-bridge",
   "sharedGates": {
     "contract": "protocol/application-bridge/setup/contract.mjs",
@@ -13,7 +13,20 @@
   "renderers": {
     "react": { "ownsProtocolState": false },
     "vue": { "ownsProtocolState": false },
-    "svelte": { "ownsProtocolState": false },
+    "svelte": {
+      "ownsProtocolState": false,
+      "integrationPackage": "@runic-artifex/svelte",
+      "integrationRepository": "https://github.com/Runic-Artifex/runic-svelte",
+      "supportedMajor": 5
+    },
     "angular": { "ownsProtocolState": false }
+  },
+  "developmentIntegrations": {
+    "vite": {
+      "package": "@runic-artifex/vite-plugin-runic-toolkit",
+      "repository": "https://github.com/Runic-Artifex/runic-vite",
+      "supportedMajor": 8,
+      "officialDevToolsPackage": "@vitejs/devtools"
+    }
   }
 }

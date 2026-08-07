@@ -6,7 +6,7 @@
     "strict": true,
     "skipLibCheck": true,
     "allowJs": true,
-    "types": ["svelte", "vite/client"]
+    "types": ["svelte", "vite/client", "@runic-artifex/vite-plugin-runic-toolkit/virtual"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte.ts", "src/**/*.svelte", "vite.config.ts"]
 }

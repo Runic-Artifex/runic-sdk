@@ -1,29 +1,16 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { counterBridge } from "./counter-bridge";
-  import type { CounterSnapshot } from "./counter-contract";
+  import { counterBridgeContext } from "./counter-context.svelte";
 
-  let snapshot = $state.raw<CounterSnapshot>({ count: 0, history: [0], revision: 0 });
+  const bridge = counterBridgeContext.provide(counterBridge);
+  let snapshot = $derived(bridge.snapshot ?? { count: 0, history: [0], revision: 0 });
   let step = $state(1);
-  let error = $state<string>();
-  onMount(() => {
-    const unsubscribe = counterBridge.subscribe(
-      (event) => { snapshot = event.snapshot; },
-      (failure) => { error = failure.message; },
-    );
-    void counterBridge.initialize().then(
-      (value) => { snapshot = value; },
-      (failure) => { error = failure.message; },
-    );
-    return unsubscribe;
-  });
   async function increment(): Promise<void> {
-    const receipt = await counterBridge.dispatch({ _tag: "IncrementCounter", step });
-    if (receipt && typeof receipt === "object" && "snapshot" in receipt) {
-      snapshot = receipt.snapshot as CounterSnapshot;
-    }
+    await bridge.dispatch({ _tag: "IncrementCounter", step });
   }
 </script>
+
+<svelte:window onpagehide={() => void bridge.dispose()} />
 
 <main class="container py-5" style="max-width: 720px">
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -38,7 +25,7 @@
     <label class="form-label" for="step">Increment step</label>
     <input id="step" type="number" min="1" max="10"
       class="form-control" bind:value={step}>
-    {#if error}<div class="text-danger mt-2">{error}</div>{/if}
+    {#if bridge.error}<div class="text-danger mt-2">Application Bridge command failed.</div>{/if}
     <button class="btn btn-primary w-100 mt-3"
       onclick={() => void increment()}>
       <i class="fa-solid fa-plus me-2" aria-hidden="true"></i>Increment in C#

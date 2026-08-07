@@ -140,6 +140,20 @@ internal static class Program
                 .Replace("VALUE", new string('x', 65), StringComparison.Ordinal));
         False(ApplicationBridgeCodec.TryDecodeClient(longString, out _, new BridgeLimits { MaxStringBytes = 64 }));
         False(ApplicationBridgeCodec.TryDecodeClient(new byte[2048], out _, new BridgeLimits { MaxFrameBytes = 1024 }));
+
+        byte[] hostFrame = ApplicationBridgeCodec.EncodeHost(new BridgeHostEnvelope
+        {
+            Protocol = "runic.artifex.setup",
+            Version = 1,
+            Kind = "event",
+            SessionId = Guid.Parse("11111111-1111-4111-8111-111111111111"),
+            Sequence = 1,
+            Revision = 0,
+            Payload = JsonDocument.Parse("""{"_tag":"NavigationChanged","revision":0,"view":"Welcome"}""").RootElement.Clone(),
+        });
+        string encodedHostFrame = Encoding.UTF8.GetString(hostFrame);
+        False(encodedHostFrame.Contains("\"commandId\"", StringComparison.Ordinal));
+        False(encodedHostFrame.Contains("\"operationId\"", StringComparison.Ordinal));
         return Task.CompletedTask;
     }
 

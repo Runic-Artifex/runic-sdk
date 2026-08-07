@@ -5,6 +5,11 @@ import {
   createApplicationBridgeController,
   createCsWebUiFrameChannel,
 } from "@runic-artifex/application-bridge";
+import { createSvelteApplicationBridge } from "@runic-artifex/svelte";
+import {
+  createRunicToolkitDevtoolsObserver,
+  preserveRunicToolkitHmrResource,
+} from "virtual:runic-toolkit/client";
 import {
   CounterContract,
   type CounterCommand,
@@ -35,9 +40,17 @@ const mock = MockApplicationBridge<CounterCommand, CounterReceipt, CounterEvent,
   },
 });
 
-export const counterBridge = createApplicationBridgeController(
-  CounterContract,
-  import.meta.env.MODE === "mock"
-    ? mock
-    : CsWebUiApplicationBridgeLive(CounterContract, createCsWebUiFrameChannel()),
-);
+export const counterBridge = preserveRunicToolkitHmrResource("counter-bridge", () =>
+  createSvelteApplicationBridge(
+    createApplicationBridgeController(
+      CounterContract,
+      import.meta.env.MODE === "mock"
+        ? mock
+        : CsWebUiApplicationBridgeLive(CounterContract, createCsWebUiFrameChannel()),
+    ),
+    {
+      reduce: (_snapshot, event) => event.snapshot,
+      observer: createRunicToolkitDevtoolsObserver(),
+      inspectSnapshot: (snapshot) => ({ revision: snapshot.revision }),
+    },
+  ));

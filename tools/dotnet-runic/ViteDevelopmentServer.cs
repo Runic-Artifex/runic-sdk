@@ -22,11 +22,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         "RUNIC_TOOLKIT_DEV_PROJECT";
 
     private readonly RunningProcess _process;
-    private readonly ViteConfigurationBridge _configurationBridge;
 
     private ViteDevelopmentServer(
         RunningProcess process,
-        ViteConfigurationBridge configurationBridge,
         Uri origin,
         string entry,
         string packageDirectory,
@@ -35,7 +33,6 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         string projectPath)
     {
         _process = process;
-        _configurationBridge = configurationBridge;
         Origin = origin;
         HostEnvironment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -57,24 +54,19 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     internal static async Task<ViteDevelopmentServer> StartAsync(
         DevProjectConfiguration configuration,
         Uri inspectorEndpoint,
-        Uri renderedFragmentsEndpoint,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(inspectorEndpoint);
-        ArgumentNullException.ThrowIfNull(renderedFragmentsEndpoint);
         using PhaseTimer phase = PhaseTimer.Start("Starting Vite development server");
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
-        ViteConfigurationBridge configurationBridge =
-            ViteConfigurationBridge.Create(configuration, renderedFragmentsEndpoint);
         RunningProcess process;
         try
         {
             IReadOnlyList<string> arguments = CreateArguments(
                 configuration,
-                port,
-                configurationBridge.ConfigurationPath);
+                port);
             process = RunningProcess.Start(
                 "vite",
                 "npm",
@@ -83,16 +75,16 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 new Dictionary<string, string?>(StringComparer.Ordinal)
                 {
                     ["BROWSER"] = "none",
+                    ["RUNIC_TOOLKIT_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
+                    ["RUNIC_TOOLKIT_DEV_PROJECT"] = configuration.ProjectPath,
                 });
         }
         catch
         {
-            configurationBridge.Dispose();
             throw;
         }
         var server = new ViteDevelopmentServer(
             process,
-            configurationBridge,
             origin,
             configuration.ViteDevServerEntry,
             configuration.FrontendPackageDirectory,
@@ -139,16 +131,13 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 
     internal static IReadOnlyList<string> CreateArguments(
         DevProjectConfiguration configuration,
-        int port,
-        string configurationPath) =>
+        int port) =>
         [
             "run",
             "dev",
             "--workspace",
             configuration.Workspace,
             "--",
-            "--config",
-            configurationPath,
             "--host",
             "127.0.0.1",
             "--port",
@@ -231,14 +220,5 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     }
 
     public async ValueTask DisposeAsync()
-    {
-        try
-        {
-            await _process.DisposeAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            _configurationBridge.Dispose();
-        }
-    }
+        => await _process.DisposeAsync().ConfigureAwait(false);
 }

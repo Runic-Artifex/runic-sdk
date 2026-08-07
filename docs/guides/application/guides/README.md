@@ -1,7 +1,8 @@
 # Guides
 
 - [Frontend contract generation](frontend-contracts.md)
-- [React, Vue, Svelte, and Angular adapters](frontend-frameworks.md)
+- [Frontend frameworks, Svelte 5, and Vite DevTools](frontend-frameworks.md)
 
-Language-specific authoring belongs outside Toolkit. The frontend SDK and host
-contracts remain renderer- and language-neutral.
+Language-specific authoring belongs outside Toolkit. Framework-owned
+integrations may provide native lifecycle and development ergonomics while the
+frontend SDK and host contracts remain renderer- and language-neutral.

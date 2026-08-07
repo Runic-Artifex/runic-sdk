@@ -70,8 +70,8 @@ internal static class Program
                     try
                     {
                         result = window.ExecuteJavaScript(
-                            "return document.body.dataset.result + '|' + document.querySelector('#count').textContent;",
-                            TimeSpan.FromSeconds(1), 128);
+                            "return document.body.dataset.result + '|' + document.querySelector('#count').textContent + '|' + (document.body.dataset.message || '');",
+                            TimeSpan.FromSeconds(1), 512);
                         if (result.StartsWith("pass|", StringComparison.Ordinal) || result.StartsWith("fail|", StringComparison.Ordinal) || result.StartsWith("error|", StringComparison.Ordinal)) break;
                     }
                     catch (WebUiException) { }
@@ -80,7 +80,7 @@ internal static class Program
             }
             catch (OperationCanceledException) { }
 
-            bool bridgePassed = result == "pass|1";
+            bool bridgePassed = result.StartsWith("pass|1|", StringComparison.Ordinal);
             bool desktopPassed = false;
             if (bridgePassed)
             {
@@ -94,7 +94,7 @@ internal static class Program
             bool passed = bridgePassed && desktopPassed;
             Console.WriteLine(passed
                 ? "PASS: real CsWebUi + Chromium exercised Application Bridge and desktop storage."
-                : "FAIL: native browser-to-C# Application Bridge or desktop roundtrip.");
+                : $"FAIL: native bridge result '{result}', desktop passed: {desktopPassed}, host identity: {bridge.ConnectionIdentity?.ToString() ?? "none"}.");
             exitCode = passed ? 0 : 1;
 
             if (passed && OperatingSystem.IsWindows())

@@ -8,10 +8,49 @@ import {
   TestApplicationBridge,
   createApplicationBridgeRuntime,
   createApplicationBridgeController,
+  createCsWebUiFrameChannel,
   defineApplicationContract,
+  type CsWebUiGlobal,
   type FrameChannel,
   type FrameChannelEvent,
 } from "../dist/esm/index.js";
+
+test("the CsWebUi channel waits for its asynchronously installed native binding", async () => {
+  const target: CsWebUiGlobal = {};
+  const frames: Uint8Array[] = [];
+  const channel = createCsWebUiFrameChannel(target, {
+    bindingTimeoutMs: 100,
+    bindingPollIntervalMs: 1,
+    bindingSettleDelayMs: 1,
+  });
+  const send = channel.send(Uint8Array.of(1, 2, 3));
+
+  setTimeout(() => {
+    delete target.__runicToolkit_applicationBridge_receiveHostEvent;
+    Object.defineProperty(target, "__runicToolkit_applicationBridge_send", {
+      configurable: true,
+      value: async (frame: Uint8Array) => { frames.push(frame); },
+    });
+  }, 5);
+
+  await send;
+  assert.deepEqual(frames, [Uint8Array.of(1, 2, 3)]);
+  assert.equal(typeof target.__runicToolkit_applicationBridge_receiveHostEvent, "function");
+  await channel.close("test complete");
+});
+
+test("the CsWebUi channel reports a missing native binding after its timeout", async () => {
+  const channel = createCsWebUiFrameChannel({}, {
+    bindingTimeoutMs: 5,
+    bindingPollIntervalMs: 1,
+    bindingSettleDelayMs: 0,
+  });
+  await assert.rejects(
+    channel.send(Uint8Array.of(1)),
+    /native binding was unavailable after 5ms/,
+  );
+  await channel.close("test complete");
+});
 
 const Snapshot = Schema.Struct({ revision: Schema.Int, view: Schema.String });
 const Command = Schema.Union(

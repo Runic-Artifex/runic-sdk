@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  echo "Usage: $0 <package-version> <package-directory> <application-bridge-tgz>" >&2
+if [[ $# -ne 5 ]]; then
+  echo "Usage: $0 <package-version> <package-directory> <application-bridge-tgz> <runic-svelte-tgz> <runic-vite-tgz>" >&2
   exit 2
 fi
 
 package_version="$1"
 package_directory="$(cd "$2" && pwd)"
 npm_archive="$(realpath "$3")"
+svelte_archive="$(realpath "$4")"
+vite_archive="$(realpath "$5")"
 template_package="$package_directory/RunicToolkit.Templates.$package_version.nupkg"
 template_tmp="$(mktemp -d /tmp/runic-toolkit-templates.XXXXXXXXXX)"
 
@@ -20,8 +22,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ ! -f "$template_package" || ! -f "$npm_archive" ]]; then
-  echo "The template package or Application Bridge npm archive is missing." >&2
+if [[ ! -f "$template_package" || ! -f "$npm_archive" || ! -f "$svelte_archive" || ! -f "$vite_archive" ]]; then
+  echo "One or more template npm archives are missing." >&2
   exit 1
 fi
 
@@ -32,11 +34,20 @@ dotnet new install "$template_package" --force
 for framework in react vue svelte angular; do
   project_name="Acceptance${framework^}"
   output="$template_tmp/$framework"
-  dotnet new "runic-toolkit-$framework" \
-    --name "$project_name" \
-    --output "$output" \
-    --runicToolkitVersion "$package_version" \
+  template_arguments=(
+    --name "$project_name"
+    --output "$output"
+    --runicToolkitVersion "$package_version"
     --applicationBridgeNpm "file:$npm_archive"
+  )
+  if [[ "$framework" == "svelte" ]]; then
+    template_arguments+=(
+      --runicSvelteNpm "file:$svelte_archive"
+      --runicViteNpm "file:$vite_archive"
+    )
+  fi
+  dotnet new "runic-toolkit-$framework" \
+    "${template_arguments[@]}"
   dotnet restore "$output/$project_name.csproj" \
     --source "$package_directory" \
     --source https://api.nuget.org/v3/index.json

@@ -16,8 +16,11 @@ NuGet packages and the framework-neutral npm runtime:
 - `RunicToolkit.ApplicationBridge.Generators`
 - `RunicToolkit.Hosting.CsWebUi.ApplicationBridge`
 - `@runic-artifex/application-bridge`
+- `@runic-artifex/svelte` for Svelte 5 projects
+- `@runic-artifex/sveltekit` for native-hosted SvelteKit projects
+- `@runic-artifex/vite-plugin-runic-toolkit` for Vite 8 development and DevTools
 
 Use [`runic-toolkit-examples`](https://github.com/Runic-Artifex/runic-toolkit-examples)
-for runnable, package-only applications. The React, Vue, Svelte, and Angular
-templates exercise the same bridge through each renderer without a
-renderer-specific Toolkit adapter.
+for runnable, package-only applications. React, Vue, and Angular exercise the
+controller directly. Svelte uses the official Svelte-owned lifecycle projection
+while retaining the same single Application Bridge runtime.

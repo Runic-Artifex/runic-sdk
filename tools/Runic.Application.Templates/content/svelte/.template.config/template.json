@@ -20,6 +20,18 @@
       "datatype": "text",
       "defaultValue": "0.1.0",
       "replaces": "__APPLICATION_BRIDGE_NPM__"
+    },
+    "runicSvelteNpm": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "0.1.0-preview.7.1",
+      "replaces": "__RUNIC_SVELTE_NPM__"
+    },
+    "runicViteNpm": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "0.1.0-preview.7.1",
+      "replaces": "__RUNIC_VITE_NPM__"
     }
   },
   "primaryOutputs": [{ "path": "RunicToolkitStarter.csproj" }]

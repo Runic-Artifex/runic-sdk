@@ -19,6 +19,8 @@ dotnet run -- --smoke-test
 
 Each template authors an Effect Schema contract, commits its generated C#
 artifacts, uses the shared one-binding Application Bridge, and builds its
-production frontend through `RunicToolkit.Hosting.Build`. The project has no
-renderer-specific Toolkit adapter and creates its dependency lock after the
-first `npm install`.
+production frontend through `RunicToolkit.Hosting.Build`. React, Vue, and
+Angular consume the framework-neutral controller directly. The Svelte template
+uses the Svelte-5-only `@runic-artifex/svelte` lifecycle projection and the
+official `@runic-artifex/vite-plugin-runic-toolkit` DevTools integration. Each
+project creates its dependency lock after the first `npm install`.

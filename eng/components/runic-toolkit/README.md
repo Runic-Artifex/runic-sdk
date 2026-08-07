@@ -38,6 +38,12 @@ Independent RunicArtifex products own their official Toolkit adapters:
   `RunicAssets.RunicToolkit`;
 - [Runic Command Line](https://github.com/Runic-Artifex/runic-command-line)
   will own `RunicCommandLine.RunicToolkit`.
+- [Runic Svelte](https://github.com/Runic-Artifex/runic-svelte) owns the
+  Svelte-5-only `@runic-artifex/svelte` and `@runic-artifex/sveltekit`
+  integrations;
+- [Runic Vite](https://github.com/Runic-Artifex/runic-vite) owns
+  `@runic-artifex/vite-plugin-runic-toolkit` and the official Vite DevTools
+  surface.
 
 Runic Text Resources is independently consumable and needs no Toolkit
 dependency. Examples and cross-repository package canaries live in

@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: prerelease-packages-${{ github.ref }}
@@ -36,6 +37,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
   PACKAGE_VERSION: 0.1.0-preview.${{ github.run_number }}.${{ github.run_attempt }}
+  RUNIC_SVELTE_VERSION: 0.1.0-preview.7.1
+  RUNIC_VITE_VERSION: 0.1.0-preview.7.1
 
 jobs:
   package:
@@ -58,6 +61,8 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@runic-artifex"
 
       - name: Run verification pipeline
         run: ./eng/verify.sh
@@ -83,12 +88,24 @@ jobs:
           node eng/pack-npm.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
           node eng/verify-npm-artifacts.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
 
+      - name: Download official Svelte and Vite integrations
+        run: |
+          mkdir -p "$RUNNER_TEMP/integrations"
+          npm pack "@runic-artifex/svelte@$RUNIC_SVELTE_VERSION" \
+            --pack-destination "$RUNNER_TEMP/integrations"
+          npm pack "@runic-artifex/vite-plugin-runic-toolkit@$RUNIC_VITE_VERSION" \
+            --pack-destination "$RUNNER_TEMP/integrations"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build all published project templates
         run: >-
           ./tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh
           "$PACKAGE_VERSION"
           "$RUNNER_TEMP/packages"
           "$RUNNER_TEMP/packages/runic-artifex-application-bridge-$PACKAGE_VERSION.tgz"
+          "$RUNNER_TEMP/integrations/runic-artifex-svelte-$RUNIC_SVELTE_VERSION.tgz"
+          "$RUNNER_TEMP/integrations/runic-artifex-vite-plugin-runic-toolkit-$RUNIC_VITE_VERSION.tgz"
 
       - name: Record package digests
         working-directory: ${{ runner.temp }}/packages

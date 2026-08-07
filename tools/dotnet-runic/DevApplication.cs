@@ -220,7 +220,6 @@ internal static class DevApplication
                 .StartAsync(
                     configuration,
                     inspectorServer.Endpoint,
-                    inspectorServer.RenderedFragmentsEndpoint,
                     cancellationToken)
                 .ConfigureAwait(false),
             "angular" => await AngularDevelopmentServer
