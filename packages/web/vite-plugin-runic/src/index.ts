@@ -262,7 +262,7 @@ function createDevtoolsSpec(current: RunicToolkitDevelopmentState): JsonRenderSp
     elements: {
       root: {
         type: "Stack",
-        props: { direction: "vertical", gap: 12 },
+        props: { direction: "column", gap: 12 },
         children: ["heading", "connection", "contract", "operations", "timeline"],
       },
       heading: { type: "Text", props: { content: "Runic Toolkit", variant: "heading" } },
