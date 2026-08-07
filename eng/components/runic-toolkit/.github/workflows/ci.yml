@@ -86,7 +86,6 @@ jobs:
         env:
           WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: |
-          & $env:WEBUI_BROWSER_PATH --version
           dotnet run --project tests/RunicToolkit.Hosting.CsWebUi.NativeE2E -c Release
 
       - name: Publish and execute Windows NativeAOT consumer

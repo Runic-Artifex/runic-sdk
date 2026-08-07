@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading;
@@ -194,7 +195,10 @@ internal static class Program
             using var attempt = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             try
             {
-                await client.ConnectAsync(uri.Host, uri.Port, attempt.Token);
+                IPAddress address = uri.IsLoopback
+                    ? IPAddress.Loopback
+                    : (await Dns.GetHostAddressesAsync(uri.Host, attempt.Token))[0];
+                await client.ConnectAsync(address, uri.Port, attempt.Token);
                 return;
             }
             catch (Exception exception) when (exception is SocketException or OperationCanceledException)
