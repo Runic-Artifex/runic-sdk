@@ -19,7 +19,7 @@ $expectedPackages = [ordered]@{
     }
     "RunicAssets.RunicToolkit" = @{
         "RunicAssets" = $PackageVersion
-        "RunicToolkit.Hosting.Abstractions" = "[0.1.0-preview.13.1]"
+        "RunicToolkit.Hosting.Abstractions" = "[0.1.0-preview.21.1]"
     }
 }
 

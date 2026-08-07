@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/RunicAssets/RunicAssets.csproj" />
-    <PackageReference Include="RunicToolkit.Hosting.Abstractions" Version="[0.1.0-preview.13.1]" />
+    <PackageReference Include="RunicToolkit.Hosting.Abstractions" Version="[0.1.0-preview.21.1]" />
   </ItemGroup>
 
   <ItemGroup>
