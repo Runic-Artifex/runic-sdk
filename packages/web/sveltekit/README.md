@@ -18,6 +18,15 @@ default and records that entrypoint in `runic-toolkit.sveltekit.json`. The
 prerendered mode keeps SvelteKit SSR/prerendering available and initializes the
 native bridge only after hydration.
 
+Import route constants from the browser-safe subpath so client compilation does
+not traverse the Node-only adapter implementation:
+
+```ts
+import { runicToolkitSpaPageOptions } from "@runic-artifex/sveltekit/page-options";
+
+export const ssr = runicToolkitSpaPageOptions.ssr;
+export const prerender = runicToolkitSpaPageOptions.prerender;
+```
+
 Add `runicToolkit()` and the official `DevTools()` plugin to `vite.config.ts`.
 The SvelteKit package does not duplicate their development runtime.
-

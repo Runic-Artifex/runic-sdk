@@ -43,19 +43,21 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
       },
       (failure) => this.#fail(failure),
     );
-    this.#start = this.#controller.initialize().then(
-      (snapshot) => {
+    this.#start = this.#controller.initialize()
+      .then(async (snapshot) => {
         this.snapshot = snapshot;
         this.status = "connected";
         this.#reportSnapshot(snapshot, "connected");
+        await this.#controller.uiReady();
+        await this.#controller.uiRendered();
+        this.#observer?.trace({ kind: "connection", label: "ui-rendered" });
         return snapshot;
-      },
-      (failure) => {
+      })
+      .catch((failure) => {
         this.#start = undefined;
         this.#fail(failure);
         throw failure;
-      },
-    );
+      });
     return this.#start;
   }
 
@@ -162,4 +164,3 @@ function errorLabel(failure: unknown): string {
   if (typeof failure === "object" && failure !== null && "_tag" in failure) return tagOf(failure);
   return failure instanceof Error ? failure.name.slice(0, 128) : "ApplicationBridgeError";
 }
-

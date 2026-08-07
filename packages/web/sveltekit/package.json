@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./page-options": {
+      "types": "./dist/page-options.d.ts",
+      "import": "./dist/page-options.js"
     }
   },
   "files": ["dist", "README.md", "LICENSE"],

@@ -9,6 +9,8 @@ type Snapshot = { count: number; revision: number };
 function controller() {
   let event: ((value: Event) => void) | undefined;
   const dispose = vi.fn(async () => undefined);
+  const uiReady = vi.fn(async () => undefined);
+  const uiRendered = vi.fn(async () => undefined);
   return {
     value: {
       initialize: async () => ({ count: 0, revision: 0 }),
@@ -18,8 +20,8 @@ function controller() {
       }),
       cancel: async () => undefined,
       reconnect: async () => ({ count: 2, revision: 2 }),
-      uiReady: async () => undefined,
-      uiRendered: async () => undefined,
+      uiReady,
+      uiRendered,
       subscribe: (next: (value: Event) => void) => {
         event = next;
         return () => { event = undefined; };
@@ -28,6 +30,8 @@ function controller() {
     },
     emit: (value: Event) => event?.(value),
     dispose,
+    uiReady,
+    uiRendered,
   };
 }
 
@@ -46,6 +50,11 @@ describe("SvelteApplicationBridge", () => {
     await bridge.start();
     expect(bridge.status).toBe("connected");
     expect(bridge.snapshot?.count).toBe(0);
+    expect(host.uiReady).toHaveBeenCalledOnce();
+    expect(host.uiRendered).toHaveBeenCalledOnce();
+    await bridge.start();
+    expect(host.uiReady).toHaveBeenCalledOnce();
+    expect(host.uiRendered).toHaveBeenCalledOnce();
     host.emit({ _tag: "Changed", snapshot: { count: 1, revision: 1 } });
     expect(bridge.snapshot?.count).toBe(1);
     const receipt = await bridge.dispatch({ _tag: "Increment", step: 3 });
@@ -57,6 +66,6 @@ describe("SvelteApplicationBridge", () => {
     expect(host.dispose).toHaveBeenCalledOnce();
     expect(traces).toContain("command:Increment");
     expect(traces).toContain("event:Changed");
+    expect(traces).toContain("connection:ui-rendered");
   });
 });
-
