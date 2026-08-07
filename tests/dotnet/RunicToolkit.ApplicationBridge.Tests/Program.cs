@@ -19,6 +19,7 @@ internal static class Program
         [
             ("generated named commands initialize and mutate an authoritative session", SessionRoundTrip),
             ("duplicates, stale revisions, and stale sessions are rejected", Rejections),
+            ("the duplicate-command ledger remains bounded at capacity", CommandLedgerCapacity),
             ("operations publish progress and support explicit cancellation", OperationLifecycle),
             ("the strict codec rejects unknown and oversized input", CodecLimits),
             ("generated contract readers reject unknown and duplicate fields", GeneratedStrictness),
@@ -124,6 +125,35 @@ internal static class Program
             $$"""{"operationId":"{{operationId}}"}"""));
         True(cancelled.Payload.GetProperty("accepted").GetBoolean());
         await handler.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+    }
+
+    private static async Task CommandLedgerCapacity()
+    {
+        var limits = new BridgeLimits { MaxPendingCommands = 1, MaxCommandLedgerEntries = 2 };
+        await using var session = new ApplicationBridgeSession(new SetupBridgeDispatcher(new SetupHandler()), limits);
+        Guid first = Guid.Parse("00000000-0000-4000-8000-000000000061");
+        _ = await session.DispatchAsync(Envelope(
+            "initialize", first, null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope(
+            "uiReady",
+            Guid.Parse("00000000-0000-4000-8000-000000000062"),
+            session.Id.Value,
+            null,
+            """{}"""));
+
+        BridgeHostEnvelope full = await session.DispatchAsync(Envelope(
+            "uiRendered",
+            Guid.Parse("00000000-0000-4000-8000-000000000063"),
+            session.Id.Value,
+            null,
+            """{}"""));
+        Equal("CommandRejected", full.Payload.GetProperty("_tag").GetString());
+        True(full.Payload.GetProperty("message").GetString()!.Contains("ledger is full", StringComparison.Ordinal));
+
+        BridgeHostEnvelope duplicate = await session.DispatchAsync(Envelope(
+            "initialize", first, null, null, """{"_tag":"InitializeApplication"}"""));
+        Equal("CommandRejected", duplicate.Payload.GetProperty("_tag").GetString());
+        True(duplicate.Payload.GetProperty("message").GetString()!.Contains("already been processed", StringComparison.Ordinal));
     }
 
     private static Task CodecLimits()

@@ -59,14 +59,15 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
         }
         lock (_gate)
         {
-            if (!_commandLedger.Add(commandId))
+            if (_commandLedger.Contains(commandId))
             {
                 return Error(commandId, "CommandRejected", "The command identifier has already been processed.");
             }
-            if (_commandLedger.Count > _limits.MaxCommandLedgerEntries)
+            if (_commandLedger.Count >= _limits.MaxCommandLedgerEntries)
             {
-                return Error(commandId, "CommandRejected", "The command ledger is full; reconnect to establish a new session.");
+                return Error(commandId, "CommandRejected", "The command ledger is full; establish a new application session.");
             }
+            _commandLedger.Add(commandId);
         }
         if (envelope.ExpectedRevision is long expected && expected != Revision)
         {

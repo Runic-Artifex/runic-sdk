@@ -1,5 +1,5 @@
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 
 namespace RunicToolkit.ApplicationBridge;
 
@@ -60,6 +60,25 @@ public static class ApplicationBridgeCodec
             throw new InvalidOperationException("The encoded Application Bridge frame exceeds its configured limit.");
         }
         return frame;
+    }
+
+    /// <summary>Writes one validated host envelope into an existing bounded JSON frame.</summary>
+    public static void WriteHost(
+        Utf8JsonWriter writer,
+        BridgeHostEnvelope envelope,
+        BridgeLimits? limits = null)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(envelope);
+        BridgeLimits selected = limits ?? BridgeLimits.Default;
+        selected.Validate();
+        long before = writer.BytesCommitted + writer.BytesPending;
+        JsonSerializer.Serialize(writer, envelope, ApplicationBridgeJsonContext.Default.BridgeHostEnvelope);
+        long encodedBytes = writer.BytesCommitted + writer.BytesPending - before;
+        if (encodedBytes > selected.MaxFrameBytes)
+        {
+            throw new InvalidOperationException("The encoded Application Bridge frame exceeds its configured limit.");
+        }
     }
 
     private static bool Validate(BridgeClientEnvelope envelope)

@@ -1,6 +1,7 @@
 export type FrameChannelState = "connected" | "disconnected" | "closed";
 
 export type FrameChannelEvent =
+  /** The channel owns a stable frame buffer and will not mutate it after publication. */
   | { readonly _tag: "Frame"; readonly bytes: Uint8Array }
   | { readonly _tag: "State"; readonly state: FrameChannelState };
 
@@ -28,6 +29,7 @@ export interface CsWebUiFrameChannelOptions {
 const defaultBindingTimeoutMs = 10_000;
 const defaultBindingPollIntervalMs = 10;
 const defaultBindingSettleDelayMs = 25;
+const encoder = new TextEncoder();
 
 export function createCsWebUiFrameChannel(
   target: CsWebUiGlobal = globalThis as CsWebUiGlobal,
@@ -48,25 +50,17 @@ export function createCsWebUiFrameChannel(
   let state: FrameChannelState = "connected";
   let senderPromise: Promise<(frame: Uint8Array) => Promise<unknown>> | undefined;
 
+  const publishOwnedFrame = (bytes: Uint8Array): void => {
+    for (const listener of listeners) listener({ _tag: "Frame", bytes });
+  };
   const receiveHostEvent = (bytes: Uint8Array): void => {
-    const frame = new Uint8Array(bytes);
-    for (const listener of listeners) listener({ _tag: "Frame", bytes: frame });
+    publishOwnedFrame(new Uint8Array(bytes));
   };
   const receiveBindingResponse = (response: string | Uint8Array): void => {
-    const text = typeof response === "string"
-      ? response
-      : new TextDecoder("utf-8", { fatal: true }).decode(response);
-    try {
-      const decoded: unknown = JSON.parse(text);
-      if (Array.isArray(decoded)) {
-        const encoder = new TextEncoder();
-        for (const frame of decoded) receiveHostEvent(encoder.encode(JSON.stringify(frame)));
-        return;
-      }
-    } catch {
-      // The protocol runtime reports malformed returned frames through its typed error path.
-    }
-    receiveHostEvent(new TextEncoder().encode(text));
+    // Forward the native result as one owned frame. The Effect runtime recognizes
+    // correlated batches and validates every envelope without a parse/stringify pass here.
+    if (typeof response === "string") publishOwnedFrame(encoder.encode(response));
+    else receiveHostEvent(response);
   };
   const installReceiver = (): void => {
     if (state === "connected") {
