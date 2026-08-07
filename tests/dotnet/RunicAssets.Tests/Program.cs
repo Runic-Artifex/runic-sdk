@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,7 +23,8 @@ internal static class Program
         new("embedded assets validate and open offline", EmbeddedAssets),
         new("Runic Toolkit integration projects exact frontend assets", RunicToolkitIntegration),
         new("portable archives round-trip deterministic metadata", ArchiveRoundTrip),
-        new("CsWebUi integration preloads exact assets", CsWebUiIntegration),
+        new("CsWebUi integration serves direct metadata-rich responses", CsWebUiIntegration),
+        new("CsWebUi integration observes development refresh", CsWebUiDevelopmentRefresh),
         new("ASP.NET Core integration preserves response metadata", AspNetCoreIntegration),
         new("development directory refresh preserves immutable snapshots", DirectoryRefresh),
         new("development directory detects content drift", DirectoryDrift),
@@ -160,15 +162,62 @@ internal static class Program
             new AssetArchiveReadOptions { MaxArchiveBytes = 1 }));
     }
 
-    private static async Task CsWebUiIntegration()
+    private static Task CsWebUiIntegration()
     {
-        var source = NewEmbeddedSource();
-        global::CsWebUi.WebUiVirtualFileSystem fileSystem = await source
-            .ToWebUiVirtualFileSystemAsync()
-            .ConfigureAwait(false);
-        True(fileSystem.TryGetFile("/", out ReadOnlyMemory<byte> entry));
-        True(Encoding.UTF8.GetString(entry.Span).Contains("Asset boundary", StringComparison.Ordinal));
-        True(fileSystem.TryGetFile("/assets/app.css", out _));
+        var source = new InMemoryAssetSource(
+            ("index.html", "<h1>entry</h1>", "text/html; charset=utf-8", true, AssetCacheMode.NoStore),
+            ("assets/app.css", "body{}", "text/css; charset=utf-8", false, AssetCacheMode.Immutable),
+            ("assets/hello world.txt", "space", "text/plain; charset=utf-8", false, AssetCacheMode.Revalidate),
+            ("日本語.txt", "unicode", "text/plain; charset=utf-8", false, AssetCacheMode.Revalidate));
+        global::CsWebUi.WebUiFileHandler handler = source.ToWebUiFileHandler();
+
+        string root = ResponseText(handler("/"));
+        StartsWith("HTTP/1.1 200 OK\r\n", root);
+        Contains("Content-Type: text/html; charset=utf-8\r\n", root);
+        Contains("Content-Length: 14\r\n", root);
+        Contains("Cache-Control: no-store\r\n", root);
+        Contains($"ETag: {source.Manifest.EntryPoint.EntityTag}\r\n", root);
+        Contains("X-Content-Type-Options: nosniff\r\n", root);
+        Equal("<h1>entry</h1>", ResponseBody(root));
+
+        string nested = ResponseText(handler("/assets/app.css"));
+        Contains("Cache-Control: public, max-age=31536000, immutable\r\n", nested);
+        Equal("body{}", ResponseBody(nested));
+        Equal("space", ResponseBody(ResponseText(handler("/assets/hello world.txt"))));
+        Equal("unicode", ResponseBody(ResponseText(handler("/日本語.txt"))));
+
+        StartsWith("HTTP/1.1 404 Not Found\r\n", ResponseText(handler("/Assets/app.css")));
+        StartsWith("HTTP/1.1 404 Not Found\r\n", ResponseText(handler("/../secret.txt")));
+        StartsWith("HTTP/1.1 404 Not Found\r\n", ResponseText(handler("/client/route")));
+
+        global::CsWebUi.WebUiFileHandler spaHandler = source.ToWebUiFileHandler(
+            new RunicAssetsCsWebUiOptions { EnableSinglePageApplicationFallback = true });
+        Equal("<h1>entry</h1>", ResponseBody(ResponseText(spaHandler("/client/route"))));
+        StartsWith("HTTP/1.1 404 Not Found\r\n", ResponseText(spaHandler("/missing.js")));
+
+        var failing = new ThrowingAssetSource(source.Manifest);
+        StartsWith(
+            "HTTP/1.1 500 Internal Server Error\r\n",
+            ResponseText(failing.ToWebUiFileHandler()("/")));
+        StartsWith(
+            "HTTP/1.1 500 Internal Server Error\r\n",
+            ResponseText(source.ToWebUiFileHandler(
+                new RunicAssetsCsWebUiOptions { MaxResponseBytes = 1 })("/")));
+        return Task.CompletedTask;
+    }
+
+    private static Task CsWebUiDevelopmentRefresh()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.Write("index.html", "one");
+        var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
+        global::CsWebUi.WebUiFileHandler handler = source.ToWebUiFileHandler();
+
+        Equal("one", ResponseBody(ResponseText(handler("/"))));
+        directory.Write("index.html", "two");
+        source.Refresh();
+        Equal("two", ResponseBody(ResponseText(handler("/"))));
+        return Task.CompletedTask;
     }
 
     private static async Task AspNetCoreIntegration()
@@ -296,6 +345,35 @@ internal static class Program
         }
     }
 
+    private static void StartsWith(string expected, string actual)
+    {
+        if (!actual.StartsWith(expected, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected response to start with '{expected}'.");
+        }
+    }
+
+    private static void Contains(string expected, string actual)
+    {
+        if (!actual.Contains(expected, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected response to contain '{expected}'.");
+        }
+    }
+
+    private static string ResponseText(global::CsWebUi.WebUiFileHandlerResult result)
+    {
+        True(result.IsHandled);
+        return Encoding.UTF8.GetString(result.Response.Span);
+    }
+
+    private static string ResponseBody(string response)
+    {
+        int separator = response.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        True(separator >= 0);
+        return response[(separator + 4)..];
+    }
+
     private static void SequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actual)
     {
         if (!expected.SequenceEqual(actual))
@@ -335,6 +413,68 @@ internal static class Program
     }
 
     private sealed record TestCase(string Name, Func<Task> Body);
+
+    private sealed class InMemoryAssetSource : IAssetSource
+    {
+        private readonly Dictionary<string, byte[]> _contents = new(StringComparer.Ordinal);
+
+        public InMemoryAssetSource(
+            params (string Path, string Content, string MediaType, bool EntryPoint, AssetCacheMode CacheMode)[] assets)
+        {
+            var descriptors = new List<AssetDescriptor>();
+            foreach (var asset in assets)
+            {
+                byte[] content = Encoding.UTF8.GetBytes(asset.Content);
+                _contents.Add(asset.Path, content);
+                descriptors.Add(new AssetDescriptor(
+                    asset.Path,
+                    asset.MediaType,
+                    content.Length,
+                    Convert.ToHexString(SHA256.HashData(content)),
+                    asset.EntryPoint,
+                    asset.CacheMode));
+            }
+
+            Manifest = new AssetManifest(descriptors);
+        }
+
+        public AssetManifest Manifest { get; }
+
+        public ValueTask ValidateAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<Stream> OpenReadAsync(
+            string relativePath,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string normalized = AssetPath.Normalize(relativePath);
+            if (!_contents.TryGetValue(normalized, out byte[]? content))
+            {
+                throw new FileNotFoundException("Missing test asset.", normalized);
+            }
+
+            return ValueTask.FromResult<Stream>(new MemoryStream(content, writable: false));
+        }
+    }
+
+    private sealed class ThrowingAssetSource : IAssetSource
+    {
+        public ThrowingAssetSource(AssetManifest manifest) => Manifest = manifest;
+
+        public AssetManifest Manifest { get; }
+
+        public ValueTask ValidateAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromException(new IOException("Test failure."));
+
+        public ValueTask<Stream> OpenReadAsync(
+            string relativePath,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromException<Stream>(new IOException("Test failure."));
+    }
 
     private sealed class TemporaryDirectory : IDisposable
     {

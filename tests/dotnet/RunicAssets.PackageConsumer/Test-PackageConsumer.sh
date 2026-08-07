@@ -17,7 +17,7 @@ fi
 export NUGET_PACKAGES="$test_root/packages"
 mkdir -p "$consumer_root"
 cp "$repository_root/tests/RunicAssets.PackageConsumer/Program.cs" "$consumer_root/Program.cs"
-cp "$repository_root/tests/RunicAssets.PackageConsumer/index.html" "$consumer_root/index.html"
+cp -R "$repository_root/tests/RunicAssets.PackageConsumer/vite-dist" "$consumer_root/vite-dist"
 cp "$repository_root/tests/RunicAssets.PackageConsumer/RunicAssets.PackageConsumer.csproj" \
   "$consumer_root/RunicAssets.PackageConsumer.csproj"
 sed "s|__LOCAL_FEED__|$package_feed|g" \

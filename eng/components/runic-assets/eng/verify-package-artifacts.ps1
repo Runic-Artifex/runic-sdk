@@ -11,7 +11,7 @@ $repositoryUrl = "https://github.com/Runic-Artifex/runic-assets"
 $expectedPackages = [ordered]@{
     "RunicAssets" = @{}
     "RunicAssets.CsWebUi" = @{
-        "CsWebUi" = "2.5.0-beta.4.3"
+        "CsWebUi" = "2.5.0-beta.4.4"
         "RunicAssets" = $PackageVersion
     }
     "RunicAssets.AspNetCore" = @{
@@ -19,7 +19,7 @@ $expectedPackages = [ordered]@{
     }
     "RunicAssets.RunicToolkit" = @{
         "RunicAssets" = $PackageVersion
-        "RunicToolkit.Hosting.Abstractions" = "[0.1.0-preview.4.1]"
+        "RunicToolkit.Hosting.Abstractions" = "[0.1.0-preview.13.1]"
     }
 }
 
@@ -100,6 +100,26 @@ foreach ($packageId in $expectedPackages.Keys) {
             $expectedDependencies[$dependencyId] -ne $dependencyVersion) {
             throw "Unexpected dependency '$dependencyId' version '$dependencyVersion' in '$packagePath'."
         }
+    }
+
+    if ($packageId -eq "RunicAssets") {
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($packagePath)
+        try {
+            $entryNames = @($archive.Entries | ForEach-Object { $_.FullName })
+            $requiredEntries = @(
+                "buildTransitive/RunicAssets.targets",
+                "tools/net10.0/RunicAssets.Packer.dll",
+                "tools/net10.0/RunicAssets.Packer.deps.json",
+                "tools/net10.0/RunicAssets.Packer.runtimeconfig.json"
+            )
+
+            foreach ($entryName in $requiredEntries) {
+                if ($entryNames -notcontains $entryName) {
+                    throw "Package '$packagePath' is missing required build asset '$entryName'."
+                }
+            }
+        }
+        finally { $archive.Dispose() }
     }
 }
 

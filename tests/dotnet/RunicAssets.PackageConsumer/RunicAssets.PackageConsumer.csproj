@@ -5,11 +5,12 @@
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <RunicAssetsDist>$(MSBuildProjectDirectory)/vite-dist</RunicAssetsDist>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="RunicAssets" Version="$(RunicAssetsPackageVersion)" />
+    <PackageReference Include="RunicAssets.CsWebUi" Version="$(RunicAssetsPackageVersion)" />
     <PackageReference Include="RunicAssets.RunicToolkit" Version="$(RunicAssetsPackageVersion)" />
-    <EmbeddedResource Include="index.html" LogicalName="PackageConsumer.index.html" />
   </ItemGroup>
 </Project>

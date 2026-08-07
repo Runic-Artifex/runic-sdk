@@ -12,6 +12,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../RunicAssets.Packer/RunicAssets.Packer.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
     <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="buildTransitive/RunicAssets.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="../RunicAssets.Packer/bin/$(Configuration)/net10.0/RunicAssets.Packer.dll"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
+    <None Include="../RunicAssets.Packer/bin/$(Configuration)/net10.0/RunicAssets.Packer.deps.json"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
+    <None Include="../RunicAssets.Packer/bin/$(Configuration)/net10.0/RunicAssets.Packer.runtimeconfig.json"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
   </ItemGroup>
 </Project>

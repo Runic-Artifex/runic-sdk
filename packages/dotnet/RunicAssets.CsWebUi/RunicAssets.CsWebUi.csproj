@@ -5,7 +5,7 @@
     <AssemblyName>RunicAssets.CsWebUi</AssemblyName>
     <RootNamespace>RunicAssets.CsWebUi</RootNamespace>
     <PackageId>RunicAssets.CsWebUi</PackageId>
-    <Description>Runic Assets integration for CsWebUi's in-memory virtual file system.</Description>
+    <Description>Direct Runic Assets HTTP response integration for CsWebUi.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

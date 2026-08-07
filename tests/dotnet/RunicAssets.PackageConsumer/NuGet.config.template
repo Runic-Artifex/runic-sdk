@@ -10,8 +10,12 @@
     <packageSource key="local-assets">
       <package pattern="RunicAssets" />
       <package pattern="RunicAssets.*" />
+      <package pattern="CsWebUi" />
+      <package pattern="CsWebUi.*" />
     </packageSource>
     <packageSource key="nuget.org">
+      <package pattern="CsWebUi" />
+      <package pattern="CsWebUi.*" />
       <package pattern="Microsoft.*" />
       <package pattern="runtime.*" />
       <package pattern="System.*" />

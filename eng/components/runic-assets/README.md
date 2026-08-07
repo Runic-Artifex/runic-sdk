@@ -14,8 +14,8 @@ identity.
 
 | Project | Purpose |
 | --- | --- |
-| `RunicAssets` | Transport-neutral contracts, sources, validation, media types, and portable archives |
-| `RunicAssets.CsWebUi` | Assets-owned adapter to CsWebUi's in-memory VFS |
+| `RunicAssets` | Transport-neutral contracts, sources, validation, media types, portable archives, and incremental `dist` embedding |
+| `RunicAssets.CsWebUi` | Assets-owned direct HTTP response adapter over CsWebUi's custom file handler |
 | `RunicAssets.AspNetCore` | Exact ASP.NET Core endpoints with cache and entity-tag metadata |
 | `integrations/RunicAssets.RunicToolkit` | Published Toolkit frontend-asset integration owned by Runic Assets |
 
@@ -29,6 +29,50 @@ depend on both products; neither core depends on an integration.
 `runic-assets.json` manifest and declared files below `assets/`. Paths and
 metadata are validated on read, undeclared content is rejected, and no private
 host-specific archive format is required.
+
+## Embed a Vite build
+
+The `RunicAssets` package can turn a complete Vite `dist` directory into a
+canonical metadata-bearing archive and embed it during the application build:
+
+```xml
+<PropertyGroup>
+  <RunicAssetsDist>..\Client.Web\dist</RunicAssetsDist>
+</PropertyGroup>
+```
+
+Load the archive without extraction. It remains embedded in single-file and
+NativeAOT applications:
+
+```csharp
+using System.Reflection;
+using RunicAssets;
+
+AssetArchiveSource assets = AssetArchive.ReadEmbedded(
+    Assembly.GetExecutingAssembly());
+```
+
+Packing is incremental and reruns when the project, target, packer, or a file
+below `RunicAssetsDist` changes. HTML files use revalidation caching; built
+non-HTML assets use immutable caching, matching the conventional Vite output
+model. Every file receives deterministic media type, length, SHA-256, ETag,
+and cache metadata in the archive manifest.
+
+The entry point defaults to `index.html`. Configure it and exact exclusions
+when needed:
+
+```xml
+<PropertyGroup>
+  <RunicAssetsEntryPoint>app.html</RunicAssetsEntryPoint>
+  <RunicAssetsDistExclude>runic-assets.zip;stats.html</RunicAssetsDistExclude>
+</PropertyGroup>
+```
+
+`RunicAssetsEmbeddedArchive` embeds an externally produced canonical Runic
+Assets archive instead of packing a directory. `RunicAssetsEmbeddedResourceName`
+changes the default `RunicAssets.StaticFiles` resource name; pass the same name
+to `AssetArchive.ReadEmbedded`. `AssetArchiveReadOptions` bounds compressed
+size, file count, and total uncompressed size.
 
 ## Development
 

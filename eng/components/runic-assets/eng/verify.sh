@@ -17,4 +17,13 @@ dotnet run \
   --configuration "$configuration" \
   --no-build
 
+aot_publish_root="$(mktemp -d)"
+trap 'rm -rf "$aot_publish_root"' EXIT
+dotnet publish \
+  tests/RunicAssets.CsWebUiAotSmoke/RunicAssets.CsWebUiAotSmoke.csproj \
+  --configuration "$configuration" \
+  --no-restore \
+  --output "$aot_publish_root"
+"$aot_publish_root/RunicAssets.CsWebUiAotSmoke"
+
 ./tests/RunicAssets.PackageConsumer/Test-PackageConsumer.sh
