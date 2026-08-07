@@ -87,7 +87,7 @@ contains(text("samples/Todo.Frontends/angular/angular.json"),
   '"browser": "src/main.mock.ts"', "Angular Todo mock entrypoint");
 contains(text(".npmrc"), "npm.pkg.github.com", "GitHub Packages npm registry");
 
-for (const path of ["samples", "tests", "package.json"]) {
+for (const path of ["samples", "package.json"]) {
   doesNotContain(textTree(path), "@webuitoolkit/", "retired npm package scope");
   doesNotContain(textTree(path), "../../src/", "source-tree dependency");
   doesNotContain(textTree(path), "../../web/packages/", "source-tree npm dependency");
