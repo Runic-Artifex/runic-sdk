@@ -48,7 +48,7 @@ on CsWebUi, ASP.NET Core, Runic Toolkit, or another UI framework.
 
 - Asset packages can be embedded in application assemblies and read directly
   after trimming or single-file publication.
-- Vite output, checked-in static files, cwhtml assets, and framework bundles
+- Vite output, checked-in static files, generated assets, and framework bundles
   can all become the same manifest/source input without framework coupling.
 - Development files are treated as mutable and uncacheable; production
   embedded content has digest-based validators and may opt into immutable
