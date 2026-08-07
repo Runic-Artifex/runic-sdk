@@ -2,24 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Text.Json.Serialization;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using CsWebUi;
-using RunicToolkit.Hosting.CsWebUi.Mvvm;
+using RunicToolkit.ApplicationBridge;
 using RunicToolkit.Hosting.CsWebUi;
-using RunicToolkit.MVVM;
-using RunicToolkit.MVVM.CommunityToolkit;
+using RunicToolkit.Hosting.CsWebUi.ApplicationBridge;
 
 namespace RunicToolkit.Hosting.CsWebUi.NativeE2E;
 
 internal static class Program
 {
-    private static readonly MvvmContract Contract = new("tests.native-cswebui-roundtrip");
-
     public static async Task<int> Main()
     {
         string? chromium = Environment.GetEnvironmentVariable("WEBUI_BROWSER_PATH");
@@ -30,93 +25,44 @@ internal static class Program
         }
 
         string webRoot = Path.Combine(AppContext.BaseDirectory, "www");
-        var registry = new MvvmSessionRegistry();
-        registry.Map(Contract, static _ =>
-        {
-            var model = new CounterViewModel();
-            CommunityToolkitMvvmBindingAdapter<CounterViewModel> adapter =
-                new CommunityToolkitMvvmAdapterBuilder<CounterViewModel>(model)
-                    .BindProperty(
-                        1,
-                        nameof(CounterViewModel.Count),
-                        static state => state.Count,
-                        static (state, value) => state.Count = value,
-                        NativeE2EJsonContext.Default.Int32)
-                    .BindCommand(
-                        2,
-                        nameof(CounterViewModel.IncrementCommand),
-                        static state => state.IncrementCommand)
-                    .Build();
-            return ValueTask.FromResult(new MvvmSessionActivation(adapter));
-        });
-
-        await using IMvvmSessionFactory sessions = registry.Build();
-        IMvvmSession session = await sessions.OpenAsync(Contract);
-        string browserProfile = Path.Combine(
-            Path.GetTempPath(),
-            "runic-toolkit-native-e2e-" + Guid.NewGuid().ToString("N"));
+        await using var session = new ApplicationBridgeSession(new NativeDispatcher());
+        string browserProfile = Path.Combine(Path.GetTempPath(), "runic-toolkit-native-e2e-" + Guid.NewGuid().ToString("N"));
         WebUiWindow? window = null;
-        CsWebUiMvvmBridge? bridge = null;
+        CsWebUiApplicationBridge? bridge = null;
         WebUiBinding? desktopBinding = null;
         Process? browser = null;
         Task<string>? browserDiagnostics = null;
         bool serverStarted = false;
         bool browserStarted = false;
-        int exitCode = 1;
         List<Exception>? cleanupErrors = null;
+        int exitCode = 1;
 
         try
         {
             window = new WebUiWindow();
             window.SetPublic(false);
             window.SetRootFolder(webRoot);
-            bridge = CsWebUiMvvmBridge.Attach(window, session);
-            var desktopMessages = Channel.CreateUnbounded<string>(
-                new UnboundedChannelOptions
-                {
-                    SingleReader = true,
-                    SingleWriter = false,
-                });
-            desktopBinding = window.Bind(
-                "__runicToolkit_desktop_result",
-                webUiEvent =>
-                {
-                    if (webUiEvent.ArgumentCount == 1)
-                    {
-                        desktopMessages.Writer.TryWrite(webUiEvent.GetString());
-                    }
-                });
+            bridge = CsWebUiApplicationBridge.Attach(window, session);
+            var desktopMessages = Channel.CreateUnbounded<string>();
+            desktopBinding = window.Bind("__runicToolkit_desktop_result", webUiEvent =>
+            {
+                if (webUiEvent.ArgumentCount == 1) desktopMessages.Writer.TryWrite(webUiEvent.GetString());
+            });
             string url = window.StartServer("index.html");
             serverStarted = true;
 
             Directory.CreateDirectory(browserProfile);
-            browser = new Process
+            browser = new Process { StartInfo = { FileName = chromium, RedirectStandardError = true, UseShellExecute = false } };
+            foreach (string argument in new[]
             {
-                StartInfo =
-                {
-                    FileName = chromium,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                },
-            };
-            browser.StartInfo.ArgumentList.Add("--headless=new");
-            browser.StartInfo.ArgumentList.Add("--no-sandbox");
-            browser.StartInfo.ArgumentList.Add("--disable-gpu");
-            browser.StartInfo.ArgumentList.Add("--disable-dev-shm-usage");
-            browser.StartInfo.ArgumentList.Add("--disable-background-networking");
-            browser.StartInfo.ArgumentList.Add("--disable-component-update");
-            browser.StartInfo.ArgumentList.Add("--no-first-run");
-            browser.StartInfo.ArgumentList.Add("--remote-debugging-port=0");
-            browser.StartInfo.ArgumentList.Add("--user-data-dir=" + browserProfile);
-            browser.StartInfo.ArgumentList.Add(url);
-
+                "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+                "--disable-background-networking", "--disable-component-update", "--no-first-run",
+                "--remote-debugging-port=0", "--user-data-dir=" + browserProfile, url,
+            }) browser.StartInfo.ArgumentList.Add(argument);
             browserStarted = browser.Start();
-            if (!browserStarted)
-            {
-                throw new InvalidOperationException("Chromium did not start.");
-            }
-
+            if (!browserStarted) throw new InvalidOperationException("Chromium did not start.");
             browserDiagnostics = browser.StandardError.ReadToEndAsync();
+
             string result = string.Empty;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             try
@@ -127,184 +73,109 @@ internal static class Program
                     {
                         result = window.ExecuteJavaScript(
                             "return document.body.dataset.result + '|' + document.querySelector('#count').textContent;",
-                            TimeSpan.FromSeconds(1),
-                            responseBufferSize: 128);
-                        if (result.StartsWith("pass|", StringComparison.Ordinal) ||
-                            result.StartsWith("fail|", StringComparison.Ordinal) ||
-                            result.StartsWith("error|", StringComparison.Ordinal))
-                        {
-                            break;
-                        }
+                            TimeSpan.FromSeconds(1), 128);
+                        if (result.StartsWith("pass|", StringComparison.Ordinal) || result.StartsWith("fail|", StringComparison.Ordinal) || result.StartsWith("error|", StringComparison.Ordinal)) break;
                     }
-                    catch (WebUiException)
-                    {
-                        // The browser has not completed its native connection yet.
-                    }
-
+                    catch (WebUiException) { }
                     await Task.Delay(100, timeout.Token);
                 }
             }
-            catch (OperationCanceledException)
-            {
-            }
+            catch (OperationCanceledException) { }
 
-            bool mvvmPassed = string.Equals(result, "pass|1", StringComparison.Ordinal);
+            bool bridgePassed = result == "pass|1";
             bool desktopPassed = false;
-            if (mvvmPassed)
+            if (bridgePassed)
             {
                 window.RunJavaScript(CsWebUiDesktopBridgeScript.Bootstrap);
-                window.RunJavaScript(
-                    """globalThis.__runicToolkitDesktop.invoke("native-write","storage.write",{"key":"native-e2e","value":"stored"});""");
-                string writeResult = await desktopMessages.Reader
-                    .ReadAsync(timeout.Token)
-                    .ConfigureAwait(false);
-                window.RunJavaScript(
-                    """globalThis.__runicToolkitDesktop.invoke("native-read","storage.read",{"key":"native-e2e"});""");
-                string readResult = await desktopMessages.Reader
-                    .ReadAsync(timeout.Token)
-                    .ConfigureAwait(false);
-                desktopPassed =
-                    IsDesktopResult(writeResult, "native-write", expectedValue: null)
-                    && IsDesktopResult(readResult, "native-read", "stored");
+                window.RunJavaScript("""globalThis.__runicToolkitDesktop.invoke("native-write","storage.write",{"key":"native-e2e","value":"stored"});""");
+                string write = await desktopMessages.Reader.ReadAsync(timeout.Token);
+                window.RunJavaScript("""globalThis.__runicToolkitDesktop.invoke("native-read","storage.read",{"key":"native-e2e"});""");
+                string read = await desktopMessages.Reader.ReadAsync(timeout.Token);
+                desktopPassed = IsDesktopResult(write, "native-write", null) && IsDesktopResult(read, "native-read", "stored");
             }
-
-            bool passed = mvvmPassed && desktopPassed;
+            bool passed = bridgePassed && desktopPassed;
             Console.WriteLine(passed
-                ? "PASS: real CsWebUi + Chromium exercised binary MVVM and desktop storage."
-                : "FAIL: native browser-to-C# MVVM or desktop bridge roundtrip.");
-            if (!passed)
-            {
-                Console.Error.WriteLine(result.Length == 0 ? "(no DOM result)" : result);
-            }
-
+                ? "PASS: real CsWebUi + Chromium exercised Application Bridge and desktop storage."
+                : "FAIL: native browser-to-C# Application Bridge or desktop roundtrip.");
             exitCode = passed ? 0 : 1;
         }
         finally
         {
-            if (serverStarted)
-            {
-                CaptureCleanupError(ref cleanupErrors, WebUiApplication.Exit);
-            }
-
-            if (bridge is not null)
-            {
-                try
-                {
-                    await bridge.DisposeAsync();
-                }
-                catch (Exception exception)
-                {
-                    (cleanupErrors ??= []).Add(exception);
-                }
-            }
-
-            CaptureCleanupError(ref cleanupErrors, () => desktopBinding?.Dispose());
-
-            if (window is not null)
-            {
-                CaptureCleanupError(ref cleanupErrors, window.Dispose);
-                CaptureCleanupError(ref cleanupErrors, WebUiApplication.Clean);
-            }
-
-            if (browserStarted && browser is not null)
-            {
-                try
-                {
-                    if (!browser.HasExited)
-                    {
-                        browser.Kill(entireProcessTree: true);
-                        await browser.WaitForExitAsync();
-                    }
-                }
-                catch (Exception exception)
-                {
-                    (cleanupErrors ??= []).Add(exception);
-                }
-            }
-
-            if (browserDiagnostics is not null)
-            {
-                try
-                {
-                    _ = await browserDiagnostics;
-                }
-                catch (Exception exception)
-                {
-                    (cleanupErrors ??= []).Add(exception);
-                }
-            }
-
-            if (browser is not null)
-            {
-                CaptureCleanupError(ref cleanupErrors, browser.Dispose);
-            }
-
+            if (serverStarted) Capture(ref cleanupErrors, WebUiApplication.Exit);
+            if (bridge is not null) try { await bridge.DisposeAsync(); } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
+            Capture(ref cleanupErrors, () => desktopBinding?.Dispose());
+            if (window is not null) { Capture(ref cleanupErrors, window.Dispose); Capture(ref cleanupErrors, WebUiApplication.Clean); }
+            if (browserStarted && browser is not null) try { if (!browser.HasExited) { browser.Kill(true); await browser.WaitForExitAsync(); } } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
+            if (browserDiagnostics is not null) try { _ = await browserDiagnostics; } catch (Exception exception) { (cleanupErrors ??= []).Add(exception); }
+            Capture(ref cleanupErrors, () => browser?.Dispose());
             if (Directory.Exists(browserProfile))
             {
-                CaptureCleanupError(
-                    ref cleanupErrors,
-                    () => Directory.Delete(browserProfile, recursive: true));
+                try
+                {
+                    await DeleteBrowserProfileAsync(browserProfile).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // Chrome crash helpers can briefly retain profile files on Windows.
+                    // The hosted runner owns the temporary directory and will remove it.
+                    Console.Error.WriteLine($"WARN: temporary browser profile cleanup was deferred: {exception.Message}");
+                }
             }
-
         }
 
-        if (cleanupErrors is not null)
+        if (cleanupErrors is null) return exitCode;
+        foreach (Exception error in cleanupErrors) Console.Error.WriteLine(error.Message);
+        return 1;
+    }
+
+    private static bool IsDesktopResult(string json, string id, string? expected)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        if (root.GetProperty("kind").GetString() != "result" || root.GetProperty("id").GetString() != id || !root.GetProperty("ok").GetBoolean()) return false;
+        JsonElement value = root.GetProperty("value");
+        return expected is null ? value.ValueKind == JsonValueKind.Null : value.GetString() == expected;
+    }
+
+    private static void Capture(ref List<Exception>? errors, Action cleanup)
+    {
+        try { cleanup(); } catch (Exception exception) { (errors ??= []).Add(exception); }
+    }
+
+    private static async Task DeleteBrowserProfileAsync(string path)
+    {
+        for (int attempt = 0; ; attempt++)
         {
-            Console.Error.WriteLine("FAIL: native end-to-end cleanup failed.");
-            foreach (Exception error in cleanupErrors)
+            try
             {
-                Console.Error.WriteLine(error.Message);
+                Directory.Delete(path, true);
+                return;
             }
-
-            return 1;
-        }
-
-        return exitCode;
-    }
-
-    private static bool IsDesktopResult(
-        string json,
-        string expectedId,
-        string? expectedValue)
-    {
-        using var document = System.Text.Json.JsonDocument.Parse(json);
-        System.Text.Json.JsonElement root = document.RootElement;
-        if (root.GetProperty("kind").GetString() != "result"
-            || root.GetProperty("id").GetString() != expectedId
-            || !root.GetProperty("ok").GetBoolean())
-        {
-            return false;
-        }
-
-        System.Text.Json.JsonElement value = root.GetProperty("value");
-        return expectedValue is null
-            ? value.ValueKind == System.Text.Json.JsonValueKind.Null
-            : value.GetString() == expectedValue;
-    }
-
-    private static void CaptureCleanupError(
-        ref List<Exception>? errors,
-        Action cleanup)
-    {
-        try
-        {
-            cleanup();
-        }
-        catch (Exception exception)
-        {
-            (errors ??= []).Add(exception);
+            catch (Exception exception) when (
+                attempt < 9 && exception is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(200).ConfigureAwait(false);
+            }
         }
     }
 }
 
-internal sealed partial class CounterViewModel : ObservableObject
+internal sealed class NativeDispatcher : IApplicationBridgeDispatcher
 {
-    [ObservableProperty]
-    private int count;
+    private int _count;
+    public string ProtocolIdentity => "runic.artifex.native-e2e";
+    public int ProtocolVersion => 1;
+    public string ManifestFingerprint => new('a', 64);
 
-    [RelayCommand]
-    private void Increment() => Count++;
+    public ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
+    {
+        string tag = command.GetProperty("_tag").GetString()!;
+        JsonElement receipt = tag switch
+        {
+            "InitializeApplication" => JsonDocument.Parse($"{{\"_tag\":\"ApplicationInitialized\",\"snapshot\":{{\"count\":{_count},\"revision\":{context.CurrentRevision}}}}}").RootElement.Clone(),
+            "Increment" => JsonDocument.Parse($"{{\"_tag\":\"Incremented\",\"count\":{++_count},\"revision\":{context.CurrentRevision + 1}}}").RootElement.Clone(),
+            _ => throw new JsonException("Unknown command."),
+        };
+        return ValueTask.FromResult(new BridgeDispatchResult(receipt, tag == "Increment"));
+    }
 }
-
-[JsonSerializable(typeof(int))]
-internal sealed partial class NativeE2EJsonContext : JsonSerializerContext;

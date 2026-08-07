@@ -1,8 +1,4 @@
-import { bootstrapCounterApplication } from "./application";
-import { createCounterMockChannel } from "./counter.mock";
-import { CounterContract } from "./counter-contract.g";
-
-await bootstrapCounterApplication({
-  contract: CounterContract,
-  channelFactory: createCounterMockChannel,
-});
+(globalThis as { __runicToolkitMock?: boolean }).__runicToolkitMock = true;
+const { bootstrapCounterApplication } = await import("./application");
+await bootstrapCounterApplication();
+export {};

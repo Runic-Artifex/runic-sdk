@@ -1,32 +1,19 @@
 {
-  "schema": "runic-toolkit.frontend-support-matrix/2",
-  "policy": "Every first-party TypeScript adapter owns an application lifecycle, typed projection, executable tests, and an explicit peer dependency on its UI framework.",
+  "schema": "runic-toolkit.frontend-support-matrix/3",
+  "policy": "Effect owns the application protocol and lifetime once; renderers project validated domain state without protocol adapters.",
+  "protocolOwner": "@runic-artifex/application-bridge",
   "sharedGates": {
-    "protocol": "protocol/mvvm/protocol-v1.md",
-    "conformance": "web/packages/conformance",
-    "core": "web/packages/mvvm",
-    "coordinator": "tests/RunicToolkit.DotNet.RunicToolkit.Tests"
+    "contract": "protocol/application-bridge/setup/contract.mjs",
+    "manifest": "protocol/application-bridge/setup/generated/bridge.manifest.json",
+    "runtime": "web/packages/application-bridge",
+    "dotnet": "src/RunicToolkit.ApplicationBridge",
+    "generator": "src/RunicToolkit.ApplicationBridge.Generators",
+    "transport": "src/RunicToolkit.Hosting.CsWebUi.ApplicationBridge"
   },
-  "frontends": {
-    "react": {
-      "package": "@runic-artifex/mvvm-react",
-      "owner": "startReactMvvmApplication",
-      "authoring": "React providers, hooks, and external stores"
-    },
-    "vue": {
-      "package": "@runic-artifex/mvvm-vue",
-      "owner": "startVueMvvmApplication",
-      "authoring": "Vue composables, computed refs, and effect scopes"
-    },
-    "svelte": {
-      "package": "@runic-artifex/mvvm-svelte",
-      "owner": "startSvelteMvvmApplication",
-      "authoring": "Svelte 5 readables, runes, and component lifecycle"
-    },
-    "angular": {
-      "package": "@runic-artifex/mvvm-angular",
-      "owner": "startAngularMvvmApplication",
-      "authoring": "Angular signals, providers, and standalone directives"
-    }
+  "renderers": {
+    "react": { "ownsProtocolState": false },
+    "vue": { "ownsProtocolState": false },
+    "svelte": { "ownsProtocolState": false },
+    "angular": { "ownsProtocolState": false }
   }
 }

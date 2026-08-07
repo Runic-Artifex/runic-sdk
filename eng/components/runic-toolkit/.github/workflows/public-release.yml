@@ -14,6 +14,8 @@ on:
       - eng/verify-package-artifacts.ps1
       - eng/verify-npm-artifacts.mjs
       - src/**/*.csproj
+      - templates/**
+      - protocol/application-bridge/**
       - tools/**/*.csproj
       - web/packages/**
   workflow_dispatch:
@@ -108,10 +110,22 @@ jobs:
           ./tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh
           "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
 
+      - name: Publish NativeAOT package consumer
+        run: >-
+          ./tests/RunicToolkit.ApplicationBridge.AotSmoke/Test-PackageAot.sh
+          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
       - name: Create public npm packages
         run: |
           node eng/pack-npm.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages" public
           node eng/verify-npm-artifacts.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
+      - name: Build all published project templates
+        run: >-
+          ./tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh
+          "$PACKAGE_VERSION"
+          "$RUNNER_TEMP/packages"
+          "$RUNNER_TEMP/packages/runic-artifex-application-bridge-$PACKAGE_VERSION.tgz"
 
       - name: Validate public package contract
         uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
@@ -120,8 +134,8 @@ jobs:
           artifact-directory: ${{ runner.temp }}/packages
           repository-url: https://github.com/Runic-Artifex/runic-toolkit
           repository-commit: ${{ github.sha }}
-          expected-nuget-count: "18"
-          expected-npm-count: "6"
+          expected-nuget-count: "15"
+          expected-npm-count: "1"
 
       - name: Record package digests
         working-directory: ${{ runner.temp }}/packages

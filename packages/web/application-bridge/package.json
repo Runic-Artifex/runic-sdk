@@ -1,0 +1,48 @@
+{
+  "name": "@runic-artifex/application-bridge",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/application-bridge"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Effect-based, schema-first application bridge for RunicToolkit hosts.",
+  "homepage": "https://github.com/Runic-Artifex/runic-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
+  },
+  "keywords": ["runic-artifex", "effect", "application-bridge", "webui", "typescript"],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/esm/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "default": "./dist/esm/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "scripts": {
+    "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });\"",
+    "build": "npm run clean && tsc --project tsconfig.json",
+    "test": "npm run build && node --test --experimental-strip-types \"test/**/*.test.ts\"",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "effect": "3.22.1"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

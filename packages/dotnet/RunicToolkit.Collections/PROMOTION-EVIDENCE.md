@@ -8,8 +8,8 @@ handoff records all mandatory commands below passing from a clean worktree based
 main `374a1c5` or newer. This is a technical promotion from the Wave A contract
 freeze, not a public release, reuse grant, or claim of external adoption.
 
-Public source and package publication remain blocked by ADR 0004. The MVVM bridge
-and framework-specific adapters remain deferred to Wave C and are outside the
+Public source and package publication remain blocked by ADR 0004. The Application Bridge
+and framework-specific adapters are outside the
 Collections ownership boundary.
 
 ## Evidence map
@@ -22,7 +22,7 @@ Collections ownership boundary.
 | Reproducible benchmark baseline | `benchmarks/RunicToolkit.Collections.Benchmarks/baseline-v1.csv` and `--full` | CSV covers range policies and reconciliation strategies through size 10,000; handoff records the run without presenting timings as a universal guarantee. |
 | Package structure and API consumption | `tests/RunicToolkit.Collections.PackageConsumer` | A temporary local-only feed/cache restores the packed package, validates nuspec/assets, builds, and runs the managed consumer. |
 | Trim/Native-AOT safety | package consumer `--aot` and `tests/RunicToolkit.Collections.AotSmoke/run-native-smoke.ps1` | Current-host native executables publish with zero owned trim/AOT warnings, run, print PASS, and exit zero. |
-| Architecture and identity | repository namespace/architecture/ownership gates | `RunicToolkit.Collections` is preserved and no dependency or edit crosses into MVVM or another task's paths. |
+| Architecture and identity | repository namespace/architecture/ownership gates | `RunicToolkit.Collections` is preserved and no dependency or edit crosses into Application Bridge or another task's paths. |
 
 The package consumer is maintained by this repository. It proves package-boundary
 compatibility but is not an independent external consumer. A current-host AOT run is
@@ -51,7 +51,7 @@ commit do not satisfy promotion.
 
 ## Deferred integration edges
 
-- Wave C MVVM binding/dispatcher integration.
+- Application Bridge dispatch integration.
 - Framework adapter behavior in Waves E and F.
 - Cross-package compatibility with the later
   `RunicToolkit.Collections.Observable` identity, if that reserved package is used.

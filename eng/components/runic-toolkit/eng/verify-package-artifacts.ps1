@@ -11,22 +11,19 @@ $repositoryUrl = 'https://github.com/Runic-Artifex/runic-toolkit'
 $expectedPackages = @(
     'RunicToolkit.Collections',
     'RunicToolkit.Desktop',
-    'RunicToolkit.Frontend.Sdk',
+    'RunicToolkit.ApplicationBridge',
+    'RunicToolkit.ApplicationBridge.Generators',
     'RunicToolkit.Hosting.Abstractions',
     'RunicToolkit.Hosting.Build',
     'RunicToolkit.Hosting.CsWebUi',
     'RunicToolkit.Hosting.CsWebUi.App',
-    'RunicToolkit.Hosting.CsWebUi.Mvvm',
+    'RunicToolkit.Hosting.CsWebUi.ApplicationBridge',
     'RunicToolkit.Hosting.Generators',
     'RunicToolkit.Hosting.GenericHost',
     'RunicToolkit.Hosting.WebUi',
     'RunicToolkit.Hosting',
-    'RunicToolkit.MVVM.Build',
-    'RunicToolkit.MVVM.CommunityToolkit',
-    'RunicToolkit.MVVM.ReactiveUI',
-    'RunicToolkit.MVVM',
-    'RunicToolkit.MVVM.BindingCompiler',
-    'RunicToolkit.DotNet.RunicToolkit'
+    'RunicToolkit.DotNet.RunicToolkit',
+    'RunicToolkit.Templates'
 )
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem

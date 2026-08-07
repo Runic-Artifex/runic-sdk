@@ -385,7 +385,7 @@ internal static class ScenarioCatalog
         string[] forbiddenFragments =
         [
             "Microsoft.Extensions", "Microsoft.CodeAnalysis",
-            "RunicToolkit.MVVM", "RunicCommandLine", "cs-webui"
+            "RunicToolkit.ApplicationBridge", "RunicCommandLine", "cs-webui"
         ];
         string[] references = buildAssembly.GetReferencedAssemblies()
             .Select(name => name.Name ?? string.Empty)

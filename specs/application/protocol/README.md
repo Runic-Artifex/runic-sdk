@@ -1,3 +1,4 @@
 # Protocol contracts
 
-Wire schemas, language-neutral corpora, and compatibility fixtures are owned by the MVVM protocol task and versioned independently from packages.
+Effect Schema sources, deterministic JSON Schemas, canonical bridge manifests,
+and language-neutral fixtures are versioned independently from packages here.

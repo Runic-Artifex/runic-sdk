@@ -287,22 +287,24 @@ internal static class Program
             webRoot.Path,
             disconnectedRuntime);
         await using IBrowserWindow disconnectedWindow = await CreateShownWindow(disconnectedHost);
-        int closeRequests = 0;
-        disconnectedWindow.CloseRequested += (_, _) => closeRequests++;
+        var disconnectRequested = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        disconnectedWindow.CloseRequested += (_, _) => disconnectRequested.TrySetResult();
         disconnectedRuntime.Windows.Single().Raise(WebUiEventType.Disconnected);
         await disconnectedWindow.WaitForCloseAsync(CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(1));
-        Equal(1, closeRequests);
+        await disconnectRequested.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         var exitRuntime = new FakeRuntime();
         await using IBrowserHost exitHost = await CreateHost(webRoot.Path, exitRuntime);
         await using IBrowserWindow exitWindow = await CreateShownWindow(exitHost);
-        int exitCloseRequests = 0;
-        exitWindow.CloseRequested += (_, _) => exitCloseRequests++;
+        var exitRequested = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        exitWindow.CloseRequested += (_, _) => exitRequested.TrySetResult();
         exitRuntime.SignalApplicationExit();
         await exitWindow.WaitForCloseAsync(CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(1));
-        Equal(1, exitCloseRequests);
+        await exitRequested.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
     private static async Task CloseAndDisposalAreIdempotent()

@@ -1,21 +1,16 @@
 # Frontend contracts
 
-`RunicToolkit.Frontend.Sdk` can generate matching C# and TypeScript contract
-artifacts from one declared source. It also coordinates a Node workspace and
-copies its production output into the application web root.
+Application Bridge contracts begin as Effect Schemas containing named domain
+commands, receipts, snapshots, events, and sanitized errors. Run
+`eng/generate-application-bridge-contract.mjs` to emit deterministic JSON Schema
+files and `bridge.manifest.json`, then commit those artifacts.
 
-Language compilers integrate through generic MSBuild properties:
+Reference `RunicToolkit.ApplicationBridge.Generators` as an analyzer and pass
+the manifest and schemas as `AdditionalFiles`. C# compilation reads only those
+files; it never starts Node. The generator emits closed wire records, a typed
+handler interface, exhaustive reflection-free dispatch, typed event publisher
+extensions, and embedded fingerprints. Unsupported schema constructs fail with
+an `RTKAB` diagnostic.
 
-- `RunicToolkitFrontendCompilerEnabled`
-- `RunicToolkitFrontendCompilerManifestPath`
-- `RunicToolkitFrontendCompilerDiagnosticsPath`
-- `RunicToolkitFrontendCompilerHotReloadPath`
-- `RunicToolkitFrontendCompilerGeneratedFilesPath`
-- `RunicToolkitFrontendCompilerGeneratedPattern`
-- `RunicToolkitFrontendCompilerWatchPattern`
-- `RunicToolkitFrontendCompilerHotReloadTarget`
-
-`dotnet-runic-toolkit` reads only this seam. A product-owned integration maps
-its native compiler artifacts and targets to these properties. Browser refresh
-is requested with the `runic-toolkit:frontend-compiler-refresh` custom event;
-the integration’s frontend runtime decides how rendering is performed.
+Application handlers remain handwritten because navigation, authorization,
+operations, persistence, and destructive actions are domain policy.

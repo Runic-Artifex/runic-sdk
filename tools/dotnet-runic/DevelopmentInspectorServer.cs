@@ -283,14 +283,14 @@ internal sealed partial class DevelopmentInspectorServer : IAsyncDisposable
             return false;
         }
 
-        var output = new StringBuilder("[mvvm] #")
+        var output = new StringBuilder("[bridge] #")
             .Append(sequence.ToString(CultureInfo.InvariantCulture))
             .Append(' ')
             .Append(direction)
             .Append(' ')
             .Append(kind);
-        Append(root, output, "memberName", 128, " ");
-        Append(root, output, "sourceMember", 512, " \u2190 ");
+        Append(root, output, "commandTag", 128, " ");
+        Append(root, output, "handler", 512, " \u2190 ");
         Append(root, output, "revision", 32, " r");
         Append(root, output, "bytes", 32, " ", "B");
         Append(root, output, "durationMilliseconds", 32, " ", "ms");

@@ -6,14 +6,14 @@ The dependency direction is deliberately inward:
    Bridge contract kernel define framework-neutral contracts.
 2. Effect Schema and the canonical bridge manifest define encoded wire data;
    generators consume committed artifacts and never start Node during C# builds.
-3. Presentation-framework adapters project validated application state without
-   owning transport lifecycle or protocol parsing.
+3. Presentation frameworks consume one framework-neutral controller. Toolkit
+   does not publish renderer-specific protocol or lifecycle adapters.
 4. Hosting core depends on abstractions; Generic Host, WebUi, and CsWebUi are
    explicit adapters layered above it.
-5. `RunicToolkit.Frontend.Sdk` coordinates Node workspaces without assuming an
-   authoring language.
-6. TypeScript React, Vue, Svelte, and Angular adapters depend on the neutral
-   Application Bridge service and treat their UI frameworks as peers.
+5. `RunicToolkit.Hosting.Build` turns an explicitly built frontend directory
+   into a verified application asset manifest.
+6. React, Vue, Svelte, Angular, Avalonia, or future renderers own only their
+   presentation state; the bridge owns validation, transport, and teardown.
 
 Independent products own outward integration packages. Flow, Assets, Command
 Line, Text Resources, and future integrations may depend on Toolkit packages,

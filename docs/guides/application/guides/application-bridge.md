@@ -1,0 +1,23 @@
+# Application Bridge
+
+The Application Bridge is RunicToolkit’s official boundary between a browser UI
+and an application host.
+
+1. Author the encoded wire contract with Effect Schema.
+2. Generate and commit JSON Schema plus the canonical bridge manifest.
+3. Let the C# analyzer generate wire records, handler interfaces, typed event
+   publishers, and exhaustive dispatch.
+4. Implement the generated handler with domain services.
+5. Host a fresh `ApplicationBridgeSession` through
+   `UseApplicationBridge(...)` and the CsWebUi adapter.
+6. Bootstrap one `CsWebUiApplicationBridgeLive` or `MockApplicationBridge`
+   `Layer`, then expose one `createApplicationBridgeController(...)` to the UI.
+
+The host owns sessions, authoritative revisions, operation lifetimes,
+cancellation, privileged resources, and sanitized failures. The frontend owns
+presentation and transient interaction state. Long-running commands return an
+operation ID promptly and publish progress through the Effect Stream.
+
+The committed Setup contract under `protocol/application-bridge/setup` is the
+reference contract. The package-only runnable Setup application lives in
+`runic-toolkit-examples`.

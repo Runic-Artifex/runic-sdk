@@ -118,7 +118,7 @@ that shared registry.
 
 The companion Abstractions package defines validated frontend-asset metadata and
 provider contracts plus browser host, window, and dispatcher contracts. These types do
-not expose native handles, an HTTP implementation, an MVVM session, or `cs-webui`.
+not expose native handles, an HTTP implementation, an application session, or `cs-webui`.
 `RunicToolkit.Hosting.Build` constructs deterministic manifests against those asset
 contracts; runtime asset serving remains an adapter responsibility.
 
@@ -133,14 +133,14 @@ contracts; runtime asset serving remains an adapter responsibility.
 | `RunicToolkit.Hosting.Generators` | .NET BCL only | Non-packable dependency-neutral generation contract/diagnostic model; no runtime-project dependency |
 
 All projects target a repository-selected framework. SDK-supplied ILLink build tooling
-is not a runtime package dependency. The core kernel does not reference MVVM,
+is not a runtime package dependency. The core kernel does not reference Application Bridge,
 CommandLine, Microsoft.Extensions Hosting, a native runtime, or external lowercase
 `cs-webui`; framework integrations remain in inward-depending adapter packages.
 
 ## Wave C adapters
 
 `RunicToolkit.Hosting.GenericHost` owns the Generic Host lifetime bridge and structured
-logging sink. The other Wave C packages own the concrete MVVM/root-session, WebUi/browser,
+logging sink. The other packages own the concrete Application Bridge/root-session, WebUi/browser,
 CommandLine parser/runner, and runtime asset integrations. Every adapter depends inward
 on this kernel and preserves its frozen classification, validation, event,
 failure-precedence, timeout, and teardown behavior.

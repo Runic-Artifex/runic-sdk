@@ -33,14 +33,9 @@ dotnet run \
   -p:PackageVersion="$package_version" \
   -p:PackageDirectory="$package_directory"
 
-dotnet tool install RunicToolkit.MVVM.BindingCompiler \
-  --tool-path "$canary_tmp/tools" \
-  --version "$package_version" \
-  --add-source "$package_directory"
 dotnet tool install RunicToolkit.DotNet.RunicToolkit \
   --tool-path "$canary_tmp/tools" \
   --version "$package_version" \
   --add-source "$package_directory"
 
-"$canary_tmp/tools/runic-toolkit-bindings" --help >/dev/null
 "$canary_tmp/tools/dotnet-runic-toolkit" --help >/dev/null

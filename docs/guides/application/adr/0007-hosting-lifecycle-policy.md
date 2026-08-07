@@ -5,7 +5,7 @@
 
 ## Context
 
-Hosting adapters compose MVVM, browser, Generic Host,
+The frontend examples are superseded by ADR 0015. Hosting adapters compose Application Bridge, browser, Generic Host,
 and external `cs-webui` implementations. Their dependency-neutral lifecycle behavior
 must be fixed before those adapters introduce framework-specific assumptions.
 
@@ -21,7 +21,7 @@ must be fixed before those adapters introduce framework-specific assumptions.
   initiate stop for an active lifecycle.
 - Every bounded wait uses an injected `TimeProvider`. Aggregate startup and shutdown
   deadlines cap individual waits, including mode execution and teardown.
-- Core Hosting contracts remain independent of MVVM, command-line, Generic Host, and
+- Core Hosting contracts remain independent of Application Bridge, command-line, Generic Host, and
   the external lowercase `cs-webui` package. Adapters depend inward on these contracts.
 
 ## Consequences

@@ -13,10 +13,12 @@ The available short names are `runic-toolkit-react`, `runic-toolkit-vue`,
 Every generated project has the same local development flow:
 
 ```console
-dotnet tool restore
-dotnet runic-toolkit dev
+dotnet build
+dotnet run -- --smoke-test
 ```
 
-The development command installs locked frontend dependencies when needed.
-Framework templates use the binary application transport package's shared
-high-level native-window builder surface.
+Each template authors an Effect Schema contract, commits its generated C#
+artifacts, uses the shared one-binding Application Bridge, and builds its
+production frontend through `RunicToolkit.Hosting.Build`. The project has no
+renderer-specific Toolkit adapter and creates its dependency lock after the
+first `npm install`.

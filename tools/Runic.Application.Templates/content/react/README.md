@@ -3,20 +3,14 @@
 This is a .NET 10 native CsWebUi application with a React/Vite frontend.
 
 ```console
-dotnet tool restore
-dotnet runic-toolkit doctor
-dotnet runic-toolkit dev
+dotnet build
+dotnet run
+dotnet run -- --smoke-test
 ```
 
-The counter is a real native MVVM roundtrip: `CounterViewModel.cs` owns
-validation, history, derived state, the command, and its C#-first contract
-attributes, which generate the trim-safe adapter and typed React contract; and
-`Frontend/src/main.tsx` uses the generated provider, hooks, and command façade.
+`CounterBridgeHandler.cs` implements named generated C# commands.
+`Frontend/src/counter-contract.ts` defines the matching Effect Schema contract,
+and `counter-bridge.ts` selects the production CsWebUi or frontend-only mock
+Layer. React owns only component state; one controller owns the Effect runtime.
 
-The development command installs the locked frontend dependencies and runs
-React Fast Refresh without replacing the native window or C# ViewModel.
-For frontend-only work, `cd Frontend && npm run dev:mock` runs the generated
-contract against the development-only production-protocol fixture in
-`src/counter.mock.ts`; its summary is visibly marked `MOCK`.
-`dotnet build --configuration Release` tests the optimized asset pipeline;
-`dotnet publish --configuration Release` produces the publish layout.
+Run `npm --prefix Frontend run dev:mock` for browser-only development.

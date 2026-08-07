@@ -17,9 +17,10 @@ identity.
 
 | Family | Purpose |
 | --- | --- |
-| `RunicToolkit.Hosting.*` | Deterministic lifecycle, Generic Host, WebUi, CsWebUi, build, and generator contracts |
-| `RunicToolkit.MVVM*` | Prerelease ViewModel projection experiment retained while the domain-oriented Application Bridge is proven |
-| `RunicToolkit.Frontend.Sdk` | Framework-neutral frontend contracts, builds, manifests, and development metadata |
+| `RunicToolkit.ApplicationBridge` | Session, revision, operation, cancellation, and bounded wire runtime |
+| `RunicToolkit.ApplicationBridge.Generators` | Reflection-free C# contracts and dispatch from committed schema artifacts |
+| `RunicToolkit.Hosting.*` | Deterministic lifecycle, Generic Host, WebUi, CsWebUi, build, and adapter contracts |
+| `RunicToolkit.Hosting.CsWebUi.ApplicationBridge` | One-binding native transport and high-level application composition |
 | `RunicToolkit.Desktop` | Frontend-neutral desktop capabilities and close contracts |
 | `RunicToolkit.Collections` | Observable range collection primitives |
 | `RunicToolkit.DotNet.RunicToolkit` | `dotnet runic-toolkit` development and diagnostic tool |
@@ -43,15 +44,15 @@ dependency. Examples and cross-repository package canaries live in
 [runic-toolkit-examples](https://github.com/Runic-Artifex/runic-toolkit-examples),
 not in this library repository.
 
-## Application Bridge direction
+## Application Bridge
 
-The generic MVVM protocol is not the long-term public application boundary.
-[Issue #5](https://github.com/Runic-Artifex/runic-toolkit/issues/5) and
-[ADR 0015](docs/adr/0015-effect-schema-application-bridge.md) define its
-replacement: named domain commands and events, Effect Schema as the TypeScript
-wire authority, deterministic committed contract artifacts, and reflection-free
-C# dispatch. Existing prerelease MVVM packages remain available only while a
-production Setup vertical proves the replacement.
+The Application Bridge is the official browser application boundary. It uses
+named domain commands and events, Effect Schema as the TypeScript wire
+authority, deterministic committed JSON Schema and manifest artifacts, and
+reflection-free C# dispatch. The earlier numeric-member MVVM experiment has
+been removed; there is no compatibility protocol or generic `setProperty` /
+`execute` surface. See the [Application Bridge guide](docs/guides/application-bridge.md)
+and [ADR 0015](docs/adr/0015-effect-schema-application-bridge.md).
 
 ## Development
 

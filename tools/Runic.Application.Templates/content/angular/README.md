@@ -1,24 +1,16 @@
 # RunicToolkitStarter
 
-This is a .NET 10 native CsWebUi application using Angular's application
-builder for production and its supported development-server builder for HMR.
+This is a .NET 10 native CsWebUi application with an Angular frontend.
 
 ```console
-dotnet tool restore
-dotnet runic-toolkit doctor
-dotnet runic-toolkit dev
+dotnet build
+dotnet run
+dotnet run -- --smoke-test
 ```
 
-The counter is a real native MVVM roundtrip: `CounterViewModel.cs` owns
-validation, history, derived state, the command, and its C#-first contract
-attributes, which generate the trim-safe adapter and typed Angular contract; and
-`Frontend/src/main.ts` plus `app.html` use a standalone component, dependency
-injection, signals, and generated providers.
+`CounterBridgeHandler.cs` implements named generated C# commands.
+`Frontend/src/counter-contract.ts` defines the matching Effect Schema contract,
+and `counter-bridge.ts` selects the production CsWebUi or frontend-only mock
+Layer. Angular owns only signal state; one controller owns the Effect runtime.
 
-The development command installs the locked dependencies and supervises
-`ng serve` without replacing the native window or C# ViewModel.
-For frontend-only work, `cd Frontend && npm run dev:mock` selects Angular's
-dedicated mock application entrypoint and runs the generated contract against
-`src/counter.mock.ts`; its summary is visibly marked `MOCK`.
-`dotnet build --configuration Release` tests the optimized AOT asset pipeline;
-`dotnet publish --configuration Release` produces the publish layout.
+Run `npm --prefix Frontend run dev:mock` for browser-only development.

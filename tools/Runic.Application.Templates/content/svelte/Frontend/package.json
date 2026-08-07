@@ -7,9 +7,9 @@
   "scripts": { "build": "vite build", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "svelte-check --tsconfig ./tsconfig.json" },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
-    "@runic-artifex/mvvm": "0.1.0",
-    "@runic-artifex/mvvm-svelte": "0.1.0",
+    "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
     "bootstrap": "5.3.8",
+    "effect": "3.22.1",
     "svelte": "5.56.8"
   },
   "devDependencies": {

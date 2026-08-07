@@ -12,6 +12,9 @@ on:
       - eng/pack.sh
       - eng/verify-package-artifacts.ps1
       - src/**/*.csproj
+      - templates/**
+      - protocol/application-bridge/**
+      - web/packages/**
       - tools/**/*.csproj
       - tests/RunicToolkit.PackageCanary/**
   workflow_dispatch:
@@ -70,10 +73,22 @@ jobs:
           ./tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh
           "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
 
+      - name: Publish NativeAOT package consumer
+        run: >-
+          ./tests/RunicToolkit.ApplicationBridge.AotSmoke/Test-PackageAot.sh
+          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
       - name: Create and validate npm packages
         run: |
           node eng/pack-npm.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
           node eng/verify-npm-artifacts.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
+      - name: Build all published project templates
+        run: >-
+          ./tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh
+          "$PACKAGE_VERSION"
+          "$RUNNER_TEMP/packages"
+          "$RUNNER_TEMP/packages/runic-artifex-application-bridge-$PACKAGE_VERSION.tgz"
 
       - name: Record package digests
         working-directory: ${{ runner.temp }}/packages

@@ -47,3 +47,48 @@ jobs:
 
       - name: Ensure verification is reproducible
         run: git diff --exit-code
+
+  application-bridge-windows:
+    name: Application Bridge · Windows native host
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Verify Effect contract and managed bridge suites
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts
+          npm run verify
+          dotnet run --project tests/RunicToolkit.ApplicationBridge.Tests -c Release
+          dotnet run --project tests/RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Tests -c Release
+
+      - name: Run real Windows browser and native host roundtrip
+        shell: pwsh
+        run: |
+          $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+          if (-not (Test-Path $chrome)) {
+            $chrome = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+          }
+          if (-not (Test-Path $chrome)) { throw 'No supported browser executable was found.' }
+          $env:WEBUI_BROWSER_PATH = $chrome
+          dotnet run --project tests/RunicToolkit.Hosting.CsWebUi.NativeE2E -c Release
+
+      - name: Publish and execute Windows NativeAOT consumer
+        shell: pwsh
+        run: |
+          dotnet publish tests/RunicToolkit.ApplicationBridge.AotSmoke -c Release -r win-x64 `
+            -p:ApplicationBridgeNativeAot=true -o "$env:RUNNER_TEMP\application-bridge-aot"
+          & "$env:RUNNER_TEMP\application-bridge-aot\RunicToolkit.ApplicationBridge.AotSmoke.exe"

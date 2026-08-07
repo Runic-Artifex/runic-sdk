@@ -12,10 +12,12 @@
     "web/packages/*"
   ],
   "scripts": {
+    "generate:application-bridge": "node eng/generate-application-bridge-contract.mjs && node eng/generate-application-bridge-contract.mjs protocol/application-bridge/counter/contract.mjs protocol/application-bridge/counter/generated",
+    "verify:application-bridge-artifacts": "node eng/generate-application-bridge-contract.mjs --check && node eng/generate-application-bridge-contract.mjs protocol/application-bridge/counter/contract.mjs protocol/application-bridge/counter/generated --check",
     "build": "node eng/run-workspaces.mjs build",
     "test": "node eng/run-workspaces.mjs test",
     "verify:frontend-parity": "node eng/verify-frontend-parity.mjs",
-    "verify": "npm run build && npm run test && npm run verify:frontend-parity"
+    "verify": "npm run verify:application-bridge-artifacts && npm run build && npm run test && npm run verify:frontend-parity"
   },
   "devDependencies": {
     "esbuild": "0.28.1",

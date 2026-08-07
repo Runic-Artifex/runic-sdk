@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { readFileSync, readdirSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const [, , version, suppliedDirectory] = process.argv;
@@ -12,12 +13,7 @@ if (version === undefined || suppliedDirectory === undefined) {
 
 const directory = resolve(suppliedDirectory);
 const expected = new Set([
-  "@runic-artifex/mvvm",
-  "@runic-artifex/mvvm-conformance",
-  "@runic-artifex/mvvm-react",
-  "@runic-artifex/mvvm-vue",
-  "@runic-artifex/mvvm-svelte",
-  "@runic-artifex/mvvm-angular",
+  "@runic-artifex/application-bridge",
 ]);
 const archives = readdirSync(directory).filter((file) => file.endsWith(".tgz"));
 if (archives.length !== expected.size) throw new Error(`Expected ${expected.size} npm archives, found ${archives.length}.`);
@@ -34,10 +30,35 @@ for (const archive of archives) {
   if (manifest.repository?.url !== "git+https://github.com/Runic-Artifex/runic-toolkit.git") {
     throw new Error(`${manifest.name} has invalid repository provenance.`);
   }
-  if (manifest.dependencies?.["@runic-artifex/mvvm"] !== undefined &&
-      manifest.dependencies["@runic-artifex/mvvm"] !== version) {
-    throw new Error(`${manifest.name} does not pin the matching MVVM core.`);
-  }
 }
 if (expected.size !== 0) throw new Error(`Missing npm packages: ${[...expected].join(", ")}.`);
-console.log(`Verified six Runic Toolkit npm artifacts for ${version}.`);
+
+const consumer = mkdtempSync(join(tmpdir(), "runic-toolkit-npm-consumer."));
+try {
+  writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
+  const archive = resolve(directory, archives[0]);
+  const install = spawnSync("npm", ["install", "--ignore-scripts", "--no-package-lock", archive], {
+    cwd: consumer,
+    encoding: "utf8",
+  });
+  if (install.status !== 0) throw new Error(`Could not install the npm artifact in isolation:\n${install.stderr}`);
+  writeFileSync(join(consumer, "verify.mjs"), `
+import { Effect, Schema } from "effect";
+import { MockApplicationBridge, createApplicationBridgeController, defineApplicationContract } from "@runic-artifex/application-bridge";
+const Command = Schema.TaggedStruct("InitializeApplication", {});
+const Snapshot = Schema.Struct({ ready: Schema.Boolean });
+const Receipt = Schema.TaggedStruct("Accepted", {});
+const Event = Schema.TaggedStruct("Changed", {});
+const contract = defineApplicationContract({ identity: "runic.consumer", version: 1, command: Command, receipt: Receipt, event: Event, snapshot: Snapshot, initialize: { _tag: "InitializeApplication" } });
+const layer = MockApplicationBridge({ initialize: () => Effect.succeed({ ready: true }), dispatch: () => Effect.succeed({ _tag: "Accepted" }) });
+const bridge = createApplicationBridgeController(contract, layer);
+const snapshot = await bridge.initialize();
+await bridge.dispose();
+if (snapshot.ready !== true) throw new Error("The installed Application Bridge package did not execute.");
+`, "utf8");
+  const execute = spawnSync(process.execPath, [join(consumer, "verify.mjs")], { cwd: consumer, encoding: "utf8" });
+  if (execute.status !== 0) throw new Error(`The isolated npm consumer failed:\n${execute.stderr}`);
+} finally {
+  rmSync(consumer, { recursive: true, force: true });
+}
+console.log(`Verified the Runic Toolkit Application Bridge npm artifact for ${version}.`);

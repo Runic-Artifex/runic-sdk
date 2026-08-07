@@ -1,20 +1,14 @@
-# Frontend framework adapters
+# Frontend frameworks
 
-`@runic-artifex/mvvm` owns transport validation, reconnect behavior, snapshots,
-patches, commands, and the immutable projection. The framework adapters expose
-that projection through native framework primitives without creating another
-state machine:
+All browser renderers consume `@runic-artifex/application-bridge` directly.
+There are no Toolkit-owned React, Vue, Svelte, or Angular protocol adapters.
 
-| Framework | Package | Primary primitive |
-| --- | --- | --- |
-| React | `@runic-artifex/mvvm-react` | external store, provider, hooks |
-| Vue | `@runic-artifex/mvvm-vue` | shallow refs, computed refs, effect scopes |
-| Svelte | `@runic-artifex/mvvm-svelte` | readable stores and Svelte 5 lifecycle |
-| Angular | `@runic-artifex/mvvm-angular` | signals, providers, directives |
+Create one bridge `Layer` and one controller at application bootstrap. A
+component subscribes to validated domain events, projects them into its native
+state primitive, and calls named commands through the controller. The
+controller owns the single `ManagedRuntime`; components never call
+`Effect.runPromise`.
 
-Each adapter declares its framework as a peer dependency and pins the matching
-MVVM core package version. `npm run verify` builds and runs the core,
-conformance, type-level, lifecycle, and adapter suites.
-
-Application examples and framework build configuration live in
-[`runic-toolkit-examples`](https://github.com/Runic-Artifex/runic-toolkit-examples).
+Use `CsWebUiApplicationBridgeLive` in the native application and
+`MockApplicationBridge` for frontend-only development. Both implement the same
+semantic service. The four packaged project templates are executable examples.

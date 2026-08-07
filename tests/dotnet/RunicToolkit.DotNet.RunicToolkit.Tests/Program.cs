@@ -29,7 +29,7 @@ internal static class Program
             ("Vite startup skips the production frontend build", ViteStartupSkipsProductionBuild),
             ("Angular server arguments use the supported development builder", AngularArgumentsAreExplicit),
             ("development bootstrap preserves private binding and remote assets", DevelopmentBootstrapIsNativeSafe),
-            ("MVVM inspector terminal sink stays bounded and source-aware", InspectorTerminalSinkIsSafe),
+            ("Application Bridge inspector stays bounded and source-aware", InspectorTerminalSinkIsSafe),
             ("compiler rendered-fragment snapshots stay bounded and private", RenderedFragmentSnapshotsAreSafe),
             ("Vite bridge forwards compiler diagnostics through the native overlay", ViteBridgeForwardsDiagnostics),
             ("compiler reload comparison separates renderer edits from shape edits", FrontendCompilerReloadComparisonIsSafe),
@@ -286,7 +286,7 @@ internal static class Program
         Contains(simple, "http://127.0.0.1:43125/src/main.ts");
         Contains(simple, "<base href=\"/\">");
         Contains(simple, "from \"http://127.0.0.1:43125/@react-refresh\"");
-        Contains(simple, "__runicToolkitMvvmDevelopment");
+        Contains(simple, "__runicToolkitApplicationBridgeDevelopment");
         Contains(simple, "http://127.0.0.1:43126/token/events");
         Contains(simple, configuration.ProjectDirectory);
         Equal(simple, advanced);
@@ -303,14 +303,14 @@ internal static class Program
                     {
                       "sequence": 7,
                       "direction": "client",
-                      "kind": "setProperty",
-                      "memberName": "step",
-                      "sourceMember": "Example.CounterViewModel.Step",
+                      "kind": "dispatch",
+                      "commandTag": "IncrementCounter",
+                      "handler": "Example.CounterBridgeHandler.IncrementCounterAsync",
                       "revision": "4",
                       "bytes": 128,
                       "payload": "must never reach the terminal",
                       "source": {
-                        "file": "CounterViewModel.cs",
+                        "file": "CounterBridgeHandler.cs",
                         "line": 12,
                         "column": 6
                       }
@@ -322,9 +322,9 @@ internal static class Program
                     "A valid sanitized inspector event was rejected.");
             }
 
-            Contains(formatted!, "[mvvm] #7 client setProperty");
-            Contains(formatted!, "Example.CounterViewModel.Step");
-            Contains(formatted!, "/repo/CounterViewModel.cs:12:6");
+            Contains(formatted!, "[bridge] #7 client dispatch IncrementCounter");
+            Contains(formatted!, "Example.CounterBridgeHandler.IncrementCounterAsync");
+            Contains(formatted!, "/repo/CounterBridgeHandler.cs:12:6");
             DoesNotContain(formatted!, "must never reach the terminal");
         }
         finally

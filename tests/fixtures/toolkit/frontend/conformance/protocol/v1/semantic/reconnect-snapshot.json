@@ -1,9 +1,0 @@
-{
-  "clientRevision": 12,
-  "hostRevision": 14,
-  "inputKind": "requestSnapshot",
-  "expectedOutputKind": "snapshot",
-  "expectedRevision": 14,
-  "replaceLocalState": true,
-  "patchReplayRequired": false
-}

@@ -1,39 +1,43 @@
-import {
-  MvvmClient,
-  ProtocolTransport,
-  createMvvmProjection,
-} from "./mvvm/index.js";
-import { CsWebUiFrameChannel } from "./runic-toolkit-mvvm-cswebui.mjs";
-
 const output = document.querySelector("#count");
-await waitForBinding("__runicToolkit_mvvm_send");
-const channel = new CsWebUiFrameChannel();
-const transport = new ProtocolTransport(channel);
-const client = new MvvmClient(transport);
-const projection = createMvvmProjection(client);
+const encoder = new TextEncoder();
+const decoder = new TextDecoder("utf-8", { fatal: true });
+await waitForBinding("__runicToolkit_applicationBridge_send");
 
-transport.subscribe((event) => {
-  if (event.type !== "protocolError") return;
-  document.body.dataset.transportError = event.error.message;
-  document.body.dataset.transportCause =
-    event.error.cause instanceof Error
-      ? event.error.cause.message
-      : String(event.error.cause ?? "");
-});
-
-projection.subscribe((event) => {
-  if (event.type !== "state") return;
-  const count = event.snapshot.properties.get(1);
-  if (typeof count === "number") output.textContent = String(count);
-});
+const responses = new Map();
+globalThis.__runicToolkit_applicationBridge_receiveHostEvent = (bytes) => {
+  const message = JSON.parse(decoder.decode(new Uint8Array(bytes)));
+  const pending = responses.get(message.commandId);
+  if (pending !== undefined) {
+    responses.delete(message.commandId);
+    pending(message);
+  }
+};
 
 try {
-  await client.start("tests.native-cswebui-roundtrip", crypto.randomUUID());
-  await projection.execute(2).completion;
+  const initialized = await send("initialize", { _tag: "InitializeApplication" });
+  output.textContent = String(initialized.payload.count);
+  const incremented = await send("dispatch", { _tag: "Increment" }, initialized.sessionId, initialized.revision);
+  output.textContent = String(incremented.payload.count);
   document.body.dataset.result = output.textContent === "1" ? "pass" : "fail";
 } catch (error) {
   document.body.dataset.result = "error";
-  document.body.dataset.message = error instanceof Error ? error.name : "unknown";
+  document.body.dataset.message = error instanceof Error ? error.message : "unknown";
+}
+
+function send(kind, payload, sessionId, expectedRevision) {
+  const commandId = crypto.randomUUID();
+  const response = new Promise((resolve) => responses.set(commandId, resolve));
+  const envelope = {
+    protocol: "runic.artifex.native-e2e",
+    version: 1,
+    kind,
+    commandId,
+    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    payload,
+  };
+  void globalThis.__runicToolkit_applicationBridge_send(encoder.encode(JSON.stringify(envelope)));
+  return response;
 }
 
 async function waitForBinding(name) {

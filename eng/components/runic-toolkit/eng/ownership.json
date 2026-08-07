@@ -3,23 +3,13 @@
   "allowedProjectReferences": [
     { "from": "desktop", "to": "hosting", "reason": "Desktop contract tests exercise the production CsWebUi application adapter." },
     { "from": "hosting", "to": "desktop", "reason": "Hosting abstractions and the CsWebUi application adapter consume framework-neutral desktop contracts." },
-    { "from": "hosting", "to": "mvvm-core", "reason": "WebUi and CsWebUi MVVM hosting compose the frozen MVVM protocol seam." },
-    { "from": "hosting", "to": "communitytoolkit", "reason": "The native end-to-end canary composes the first-party CommunityToolkit adapter." },
-    { "from": "mvvm-build", "to": "mvvm-core", "reason": "The binding compiler targets the MVVM runtime protocol." },
-    { "from": "mvvm-build", "to": "communitytoolkit", "reason": "Compiler tests prove generated bindings against the first-party CommunityToolkit adapter." },
-    { "from": "communitytoolkit", "to": "mvvm-core", "reason": "The CommunityToolkit adapter implements the framework-neutral MVVM runtime seam." },
-    { "from": "reactiveui", "to": "mvvm-core", "reason": "The ReactiveUI adapter implements the framework-neutral MVVM runtime seam." },
-    { "from": "reactiveui", "to": "mvvm-build", "reason": "Adapter tests prove generated bindings through the shared compiler seam." }
+    { "from": "hosting", "to": "application-bridge", "reason": "The CsWebUi transport hosts framework-neutral Application Bridge sessions." }
   ],
   "tasks": [
     { "name": "collections", "branch": "work/collections", "paths": ["src/RunicToolkit.Collections/*", "tests/RunicToolkit.Collections.*/*", "benchmarks/RunicToolkit.Collections.*/*"] },
     { "name": "desktop", "branch": "work/desktop", "paths": ["src/RunicToolkit.Desktop/*", "tests/RunicToolkit.Desktop.*/*"] },
-    { "name": "frontend", "branch": "work/frontend", "paths": ["src/RunicToolkit.Frontend.*/*", "tests/RunicToolkit.Frontend.*/*"] },
+    { "name": "application-bridge", "branch": "work/application-bridge", "paths": ["protocol/application-bridge/*", "src/RunicToolkit.ApplicationBridge*/*", "tests/RunicToolkit.ApplicationBridge.*/*"] },
     { "name": "hosting", "branch": "work/hosting", "paths": ["src/RunicToolkit.Hosting*/*", "tests/RunicToolkit.Hosting.*/*", "tests/Fixtures/Hosting.*/*", "tools/dotnet-runic-toolkit/*", "tests/RunicToolkit.DotNet.RunicToolkit.Tests/*", "tests/RunicToolkit.PackageCanary/*"] },
-    { "name": "mvvm-core", "branch": "work/mvvm-core", "paths": ["protocol/mvvm/*", "src/RunicToolkit.MVVM/*", "tests/RunicToolkit.MVVM.Tests/*", "tests/RunicToolkit.MVVM.Protocol.Tests/*", "tests/RunicToolkit.MVVM.AotSmoke/*"] },
-    { "name": "mvvm-build", "branch": "work/mvvm-build", "paths": ["src/RunicToolkit.MVVM.Build/*", "tools/RunicToolkit.MVVM.BindingCompiler/*", "tests/RunicToolkit.MVVM.Build.Tests/*", "tests/RunicToolkit.MVVM.BindingCompiler.Tests/*"] },
-    { "name": "communitytoolkit", "branch": "work/communitytoolkit", "paths": ["src/RunicToolkit.MVVM.CommunityToolkit/*", "tests/RunicToolkit.MVVM.CommunityToolkit.Tests/*"] },
-    { "name": "reactiveui", "branch": "work/reactiveui", "paths": ["src/RunicToolkit.MVVM.ReactiveUI/*", "tests/RunicToolkit.MVVM.ReactiveUI.Tests/*"] },
     { "name": "templates", "branch": "work/templates", "paths": ["templates/RunicToolkit.Templates/*"] }
   ]
 }

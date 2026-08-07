@@ -219,8 +219,8 @@ internal static class DoctorChecks
         {
             checks.Add(Fail(
                 "frontend-sdk",
-                "RunicToolkit.Frontend.Sdk is not enabled for the selected project.",
-                "Reference/import RunicToolkit.Frontend.Sdk and set RunicToolkitFrontendEnabled=true."));
+                "RunicToolkit frontend development is not enabled for the selected project.",
+                "Set RunicToolkitFrontendEnabled=true only when using the optional development host."));
             return;
         }
 
@@ -539,7 +539,7 @@ internal static class DoctorChecks
             checks.Add(Fail(
                 "contract-source",
                 $"Contract generator '{project.ContractTool}' does not exist.",
-                "Restore RunicToolkit.Frontend.Sdk or correct RunicToolkitFrontendContractTool."));
+                "Restore the application-owned contract tool or correct RunicToolkitFrontendContractTool."));
         }
         else
         {

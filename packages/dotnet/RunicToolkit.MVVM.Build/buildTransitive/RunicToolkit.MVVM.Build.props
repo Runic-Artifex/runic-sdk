@@ -1,9 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <RunicToolkitMvvmBindingEnabled Condition="'$(RunicToolkitMvvmBindingEnabled)' == ''">true</RunicToolkitMvvmBindingEnabled>
-    <RunicToolkitMvvmBindingExtension Condition="'$(RunicToolkitMvvmBindingExtension)' == ''">.rtkmvvm</RunicToolkitMvvmBindingExtension>
-    <RunicToolkitMvvmBindingHostPath Condition="'$(RunicToolkitMvvmBindingHostPath)' == ''">$(MSBuildThisFileDirectory)..\tools\net10.0\any\RunicToolkit.MVVM.Build.dll</RunicToolkitMvvmBindingHostPath>
-    <RunicToolkitMvvmDotNetHost Condition="'$(RunicToolkitMvvmDotNetHost)' == '' and '$(DotNetHostPath)' != ''">$(DotNetHostPath)</RunicToolkitMvvmDotNetHost>
-    <RunicToolkitMvvmDotNetHost Condition="'$(RunicToolkitMvvmDotNetHost)' == ''">dotnet</RunicToolkitMvvmDotNetHost>
-  </PropertyGroup>
-</Project>

@@ -1,7 +1,7 @@
 # Native CsWebUi end-to-end gate
 
 This executable starts the real native CsWebUi server without launching a
-desktop window, attaches the production binary MVVM bridge, opens the page in
+desktop window, attaches the production binary Application Bridge, opens the page in
 the Nix-pinned headless Chromium, executes a C# command, and verifies the
 updated DOM emitted by Chromium.
 

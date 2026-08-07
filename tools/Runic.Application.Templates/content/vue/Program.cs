@@ -5,26 +5,26 @@ using RunicToolkitStarter;
 using RunicToolkit.Hosting;
 using RunicToolkit.Hosting.Build;
 using RunicToolkit.Hosting.CsWebUi;
-using RunicToolkit.Hosting.CsWebUi.Mvvm;
+using RunicToolkit.Hosting.CsWebUi.ApplicationBridge;
 using RunicToolkit.Hosting.WebUi;
-using RunicToolkit.MVVM;
+using RunicToolkit.ApplicationBridge;
+using RunicToolkitStarter.Contract;
 
 if (Array.Exists(args, static argument => argument == "--smoke-test"))
     return await CounterSmokeTest.RunAsync();
 
-string webRoot = Path.Combine(AppContext.BaseDirectory, "www");
+string webRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
 FrontendAssetManifest manifest = new FrontendAssetManifestBuilder()
     .BuildFromDirectory(webRoot, "index.html");
 var assets = new DirectoryFrontendAssetProvider(webRoot, manifest);
 var builder = WebUiApp.CreateBuilder(args);
-var options = new MvvmFrontendApplicationOptions<CounterViewModel>(
+var options = new ApplicationBridgeFrontendApplicationOptions(
     assets,
     new CsWebUiAdapterOptions(webRoot),
     new BrowserHostOptions("runic-toolkitstarter-vue"),
     new BrowserWindowOptions("main", "RunicToolkit Counter · Vue", 760, 680),
-    new MvvmContract(CounterContracts.Counter.Name),
-    static _ => ValueTask.FromResult(new CounterViewModel()),
-    CounterContracts.Counter.CreateAdapter);
-await using MvvmFrontendApplication frontend =
-    builder.Vue.CreateApplication(options);
+    static () => new ApplicationBridgeSession(
+        new CounterBridgeDispatcher(new CounterBridgeHandler())));
+await using ApplicationBridgeFrontendApplication frontend =
+    builder.UseApplicationBridge("Vue", options);
 return await builder.RunAsync();

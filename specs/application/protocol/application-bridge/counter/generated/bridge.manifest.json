@@ -1,0 +1,219 @@
+{
+  "commands": [
+    {
+      "advancesRevision": true,
+      "cancellable": false,
+      "receipt": "CounterIncremented",
+      "startsOperation": false,
+      "tag": "IncrementCounter"
+    },
+    {
+      "advancesRevision": false,
+      "cancellable": false,
+      "receipt": "ApplicationInitialized",
+      "startsOperation": false,
+      "tag": "InitializeApplication"
+    },
+    {
+      "advancesRevision": true,
+      "cancellable": false,
+      "receipt": "CounterReset",
+      "startsOperation": false,
+      "tag": "ResetCounter"
+    }
+  ],
+  "csharp": {
+    "contractName": "Counter",
+    "namespace": "RunicToolkitStarter.Contract"
+  },
+  "envelope": {
+    "client": {
+      "fields": [
+        "protocol",
+        "version",
+        "kind",
+        "commandId",
+        "sessionId",
+        "expectedRevision",
+        "payload"
+      ],
+      "kinds": [
+        "initialize",
+        "dispatch",
+        "cancelOperation",
+        "uiReady",
+        "uiRendered"
+      ]
+    },
+    "host": {
+      "fields": [
+        "protocol",
+        "version",
+        "kind",
+        "sessionId",
+        "sequence",
+        "revision",
+        "commandId",
+        "operationId",
+        "payload"
+      ],
+      "kinds": [
+        "snapshot",
+        "receipt",
+        "event",
+        "error"
+      ]
+    }
+  },
+  "errors": [
+    "CommandRejected",
+    "OperationCancelled",
+    "OperationFailed",
+    "OperationTimedOut",
+    "ProtocolDecodeError",
+    "ProtocolVersionMismatch",
+    "StaleRevision",
+    "TransportClosed",
+    "TransportUnavailable"
+  ],
+  "events": [
+    "CounterChanged"
+  ],
+  "generatorFormatVersion": 1,
+  "limits": {
+    "maxCollectionItems": 4096,
+    "maxDepth": 32,
+    "maxFrameBytes": 262144,
+    "maxPendingCommands": 64,
+    "maxStringBytes": 65536
+  },
+  "protocol": {
+    "identity": "runic.artifex.counter",
+    "version": 1
+  },
+  "receipts": [
+    "ApplicationInitialized",
+    "CounterIncremented",
+    "CounterReset"
+  ],
+  "schemas": [
+    {
+      "direction": "host-to-client",
+      "file": "schemas/receipt/ApplicationInitialized.schema.json",
+      "kind": "receipt",
+      "name": "ApplicationInitialized",
+      "sha256": "39d3315710b0a9c8272439c854cd31606bc1fef12e7daf3b575c8a678ce52dcf"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/CommandRejected.schema.json",
+      "kind": "error",
+      "name": "CommandRejected",
+      "sha256": "27690d5688463792685adbc2316104e741a1d051dcf2452013f28369ed2f2b3b"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/event/CounterChanged.schema.json",
+      "kind": "event",
+      "name": "CounterChanged",
+      "sha256": "3c02faf94ac33c15f80267586563513bd0fa635b6bf22a941e9c13e2809e6a76"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/receipt/CounterIncremented.schema.json",
+      "kind": "receipt",
+      "name": "CounterIncremented",
+      "sha256": "5bce39539f9d85f5b8e3fc5f3d8d30b3daa0655f2bba144519149419f4f26aad"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/receipt/CounterReset.schema.json",
+      "kind": "receipt",
+      "name": "CounterReset",
+      "sha256": "a70a7127ee2649c3c674c950de7f8ee66f1f0dc601a5c8124ae59c38c18cf22b"
+    },
+    {
+      "file": "schemas/type/CounterSnapshot.schema.json",
+      "kind": "type",
+      "name": "CounterSnapshot",
+      "sha256": "e4a343a1d9c235166b600519f114b3b77844b8abc675e90e9e21e20d444401bb"
+    },
+    {
+      "direction": "client-to-host",
+      "file": "schemas/command/IncrementCounter.schema.json",
+      "kind": "command",
+      "name": "IncrementCounter",
+      "sha256": "a42cd8cc6157aacbd4866d04639eef2d86cfb3c9aa6d4ec6020b70b9bb28ac4d"
+    },
+    {
+      "direction": "client-to-host",
+      "file": "schemas/command/InitializeApplication.schema.json",
+      "kind": "command",
+      "name": "InitializeApplication",
+      "sha256": "8da48932b3e07781fef046a6cb9528cbc29a41fbc15ef07c0506aa0ee12aab97"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/OperationCancelled.schema.json",
+      "kind": "error",
+      "name": "OperationCancelled",
+      "sha256": "e87656bfbfb9621ce5e61f9b7340706f062b1458336d938654784e8295447a51"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/OperationFailed.schema.json",
+      "kind": "error",
+      "name": "OperationFailed",
+      "sha256": "bff31b9d88dfb544fd31c2486b88aa6d0b3d5e556e7394abe1195126748755fe"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/OperationTimedOut.schema.json",
+      "kind": "error",
+      "name": "OperationTimedOut",
+      "sha256": "9381f37d8796a0d3cfd4a00e6530d8bfb6153c9abc622dfa31d693ff8725fafd"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/ProtocolDecodeError.schema.json",
+      "kind": "error",
+      "name": "ProtocolDecodeError",
+      "sha256": "9ab81d01780e2da32e556e4d85298ed3c88a92d9feb529dad5513a9534405994"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/ProtocolVersionMismatch.schema.json",
+      "kind": "error",
+      "name": "ProtocolVersionMismatch",
+      "sha256": "54168140af302046f687e28de449c50c20b84cfff4b1595ac7639b7635d1ec1e"
+    },
+    {
+      "direction": "client-to-host",
+      "file": "schemas/command/ResetCounter.schema.json",
+      "kind": "command",
+      "name": "ResetCounter",
+      "sha256": "5586e38276d878868129b0c08f025188f8b0950c8b7b022f61ed33e0aeebcad3"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/StaleRevision.schema.json",
+      "kind": "error",
+      "name": "StaleRevision",
+      "sha256": "48604e46ef9958465fe8fe1f73a8db0fcba4ae8560bddefdb8dd19d6cf804320"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/TransportClosed.schema.json",
+      "kind": "error",
+      "name": "TransportClosed",
+      "sha256": "0d619915bc7005690d7cc527a5166c14fd11b111f17f9a52f92c11818229fe7d"
+    },
+    {
+      "direction": "host-to-client",
+      "file": "schemas/error/TransportUnavailable.schema.json",
+      "kind": "error",
+      "name": "TransportUnavailable",
+      "sha256": "6da4ea690354be2f76161a0071d6ec6de08c1c7eae7b2e118aadcc6dc6257cfe"
+    }
+  ]
+}

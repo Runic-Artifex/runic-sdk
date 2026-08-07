@@ -16,13 +16,11 @@
   <ItemGroup>
     <PackageReference Include="RunicToolkit.Collections" Version="$(PackageVersion)" />
     <PackageReference Include="RunicToolkit.Desktop" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.Frontend.Sdk" Version="$(PackageVersion)" PrivateAssets="all" />
+    <PackageReference Include="RunicToolkit.ApplicationBridge" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.ApplicationBridge.Generators" Version="$(PackageVersion)" PrivateAssets="all" />
     <PackageReference Include="RunicToolkit.Hosting.Build" Version="$(PackageVersion)" />
     <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.Mvvm" Version="$(PackageVersion)" />
+    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" Version="$(PackageVersion)" />
     <PackageReference Include="RunicToolkit.Hosting.Generators" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.MVVM.Build" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.MVVM.CommunityToolkit" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.MVVM.ReactiveUI" Version="$(PackageVersion)" />
   </ItemGroup>
 </Project>

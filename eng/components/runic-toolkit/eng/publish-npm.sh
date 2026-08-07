@@ -14,12 +14,7 @@ if [[ "$package_version" == *-* ]]; then
 fi
 
 archives=(
-  "runic-artifex-mvvm-$package_version.tgz"
-  "runic-artifex-mvvm-conformance-$package_version.tgz"
-  "runic-artifex-mvvm-angular-$package_version.tgz"
-  "runic-artifex-mvvm-react-$package_version.tgz"
-  "runic-artifex-mvvm-svelte-$package_version.tgz"
-  "runic-artifex-mvvm-vue-$package_version.tgz"
+  "runic-artifex-application-bridge-$package_version.tgz"
 )
 
 for archive in "${archives[@]}"; do

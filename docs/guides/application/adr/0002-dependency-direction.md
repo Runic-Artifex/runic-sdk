@@ -13,6 +13,7 @@ The product owns its official Toolkit adapter. Therefore packages such as
 their product, depend on the public Toolkit package boundary, and may evolve
 without adding product history or implementation details to this repository.
 
-Inside Toolkit, framework adapters depend on MVVM core; hosting adapters depend
+The frontend portion of this ADR is superseded by ADR 0015. Framework renderers
+consume Application Bridge without Toolkit-owned protocol adapters; hosting adapters depend
 on hosting abstractions; CsWebUi packages are the only packages that may depend
 on CsWebUi. `eng/verify-architecture.ps1` enforces the allowed source graph.

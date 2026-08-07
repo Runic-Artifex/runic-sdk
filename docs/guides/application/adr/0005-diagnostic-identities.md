@@ -7,7 +7,7 @@
 
 Toolkit-owned diagnostics use distinct ranges:
 
-- `RTKMVVM0001`–`RTKMVVM9999` for MVVM build/compiler diagnostics;
+- `RTKAB0001`–`RTKAB9999` for Application Bridge generator diagnostics;
 - `RTKHOST0001`–`RTKHOST9999` for hosting;
 - `RTKFE0001`–`RTKFE9999` for the frontend SDK; and
 - `RTKDEV1000`–`RTKDEV1999` for `dotnet-runic-toolkit`.

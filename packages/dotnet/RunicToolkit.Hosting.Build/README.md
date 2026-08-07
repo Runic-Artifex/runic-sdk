@@ -35,7 +35,7 @@ risk; untrusted writers must not have access to the frontend output tree during 
 
 ## Deferred tooling edges
 
-- Wave C owns runtime asset providers and concrete browser/MVVM/command-line adapters.
+- Runtime packages own concrete browser, Application Bridge, and command-line adapters.
 - Wave D owns opt-in frontend build targets, MSBuild task packaging, tracked-manifest
   verification, incremental build behavior, and any policy that safely permits links.
 - Generator/analyzer packaging remains separate and must not introduce Roslyn or MSBuild

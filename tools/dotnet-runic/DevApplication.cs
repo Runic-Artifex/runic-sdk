@@ -496,7 +496,7 @@ internal static class DevApplication
               -h, --help              Show this help.
 
             The selected project supplies frontend paths through
-            RunicToolkit.Frontend.Sdk MSBuild properties. The command generates and
+            optional RunicToolkit frontend-development MSBuild properties. The command generates and
             verifies contracts, performs the initial build, starts the native CsWebUi
             host and frontend tooling. Projects that opt into Vite development-server
             mode receive native-window CSS/JavaScript HMR without restarting .NET;

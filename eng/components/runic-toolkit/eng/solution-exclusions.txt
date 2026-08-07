@@ -3,10 +3,6 @@ tests/Fixtures/Hosting.Combined/Hosting.Combined.csproj
 tests/Fixtures/Hosting.CustomComposition/Hosting.CustomComposition.csproj
 tests/Fixtures/Hosting.UI/Hosting.UI.csproj
 tests/RunicToolkit.Collections.AotSmoke/RunicToolkit.Collections.AotSmoke.csproj
-tests/RunicToolkit.MVVM.AotSmoke/RunicToolkit.MVVM.AotSmoke.csproj
-tests/RunicToolkit.MVVM.CommunityToolkit.Tests/AotSmoke/RunicToolkit.MVVM.CommunityToolkit.AotSmoke.csproj
-tests/RunicToolkit.MVVM.CommunityToolkit.Tests/PackageConsumer/Consumer/PackageConsumer.csproj
-tests/RunicToolkit.MVVM.ReactiveUI.Tests/AotSmoke/RunicToolkit.MVVM.ReactiveUI.AotSmoke.csproj
 tests/RunicToolkit.PackageCanary/RunicToolkit.PackageCanary.csproj
 
 # Source projects embedded in the template package and instantiated by its acceptance test.

@@ -1,29 +1,26 @@
 <main class="container py-5" style="max-width: 720px">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <span class="badge text-bg-danger">Angular + native C#</span>
-    <span class="badge" [class.text-bg-success]="connected()"
-      [class.text-bg-secondary]="!connected()">
-      {{ connected() ? "Connected · r" + snapshot().revision : snapshot().phase }}
+    <span class="badge text-bg-success">
+      Connected · r{{ snapshot().revision }}
     </span>
   </div>
   <section class="card border-0 shadow"><div class="card-body p-5">
-    <p class="display-2 fw-semibold mb-2">{{ bindings.count() ?? 0 }}</p>
-    <p class="lead text-secondary">{{ bindings.summary() }}</p>
+    <p class="display-2 fw-semibold mb-2">{{ snapshot().count }}</p>
+    <p class="lead text-secondary">{{ snapshot().history.length - 1 }} named command(s)</p>
     <label class="form-label" for="step">Increment step</label>
     <input id="step" type="number" min="1" max="10" class="form-control"
-      [class.is-invalid]="(bindings.stepErrors() ?? []).length > 0"
-      [value]="bindings.step() ?? 1" (input)="setStep($event)">
-    @if ((bindings.stepErrors() ?? []).length > 0) {
-      <div class="invalid-feedback">{{ bindings.stepErrors()!.join(" ") }}</div>
+      [value]="step()" (input)="setStep($event)">
+    @if (error()) {
+      <div class="text-danger mt-2">{{ error() }}</div>
     }
     <button class="btn btn-primary w-100 mt-3"
-      [disabled]="!bindings.increment.canExecute() || bindings.increment.isRunning()"
-      (click)="bindings.increment.execute()">
+      (click)="increment()">
       <i class="fa-solid fa-plus me-2" aria-hidden="true"></i>Increment in C#
     </button>
     <h2 class="h6 mt-4">History</h2>
     <div class="d-flex flex-wrap gap-2">
-      @for (value of bindings.history(); track $index) {
+      @for (value of snapshot().history; track $index + '-' + value) {
         <span class="badge text-bg-light">{{ value }}</span>
       }
     </div>

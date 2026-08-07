@@ -1,0 +1,63 @@
+{
+  "$defs": {
+    "Int": {
+      "description": "an integer",
+      "title": "int",
+      "type": "integer"
+    },
+    "Revision": {
+      "description": "a non-negative number",
+      "minimum": 0,
+      "title": "nonNegative",
+      "type": "integer"
+    },
+    "Uuid": {
+      "description": "a string matching the pattern ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    }
+  },
+  "$id": "runic.artifex.setup/1/DestinationSelected",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "DestinationSelected"
+      ],
+      "type": "string"
+    },
+    "destination": {
+      "additionalProperties": false,
+      "properties": {
+        "availableBytes": {
+          "$ref": "#/$defs/Int",
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "nonNegative"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "selectionId": {
+          "$ref": "#/$defs/Uuid"
+        }
+      },
+      "required": [
+        "selectionId",
+        "displayName",
+        "availableBytes"
+      ],
+      "type": "object"
+    },
+    "revision": {
+      "$ref": "#/$defs/Revision"
+    }
+  },
+  "required": [
+    "_tag",
+    "destination",
+    "revision"
+  ],
+  "type": "object"
+}

@@ -27,7 +27,7 @@ if (commitResult.status !== 0 || !/^[0-9a-f]{40}$/iu.test(commitResult.stdout.tr
   process.exit(1);
 }
 const repositoryCommit = commitResult.stdout.trim();
-const packages = ["mvvm", "conformance", "mvvm-react", "mvvm-vue", "mvvm-svelte", "mvvm-angular"];
+const packages = ["application-bridge"];
 const staging = mkdtempSync(join(tmpdir(), "runic-toolkit-npm-pack."));
 mkdirSync(output, { recursive: true });
 
@@ -49,11 +49,6 @@ try {
         access: "public",
         registry: "https://registry.npmjs.org",
       };
-    }
-    for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
-      if (manifest[field]?.["@runic-artifex/mvvm"] !== undefined) {
-        manifest[field]["@runic-artifex/mvvm"] = version;
-      }
     }
     delete manifest.scripts;
     writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}\n`);

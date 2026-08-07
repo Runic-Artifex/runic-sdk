@@ -123,7 +123,7 @@ internal sealed record DevProjectConfiguration(
         {
             throw new DevUsageException(
                 "RTKDEV1005",
-                "The selected project does not enable RunicToolkit.Frontend.Sdk.");
+                "The selected project does not enable the RunicToolkit frontend development properties.");
         }
 
         string evaluatedProject = Normalize(Value("MSBuildProjectFullPath"), projectDirectory);

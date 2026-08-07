@@ -10,18 +10,10 @@
 
   <ItemGroup>
     <PackageReference Include="CsWebUi" />
-    <PackageReference Include="CommunityToolkit.Mvvm" />
-    <ProjectReference Include="../../src/RunicToolkit.Hosting.CsWebUi.Mvvm/RunicToolkit.Hosting.CsWebUi.Mvvm.csproj" />
-    <ProjectReference Include="../../src/RunicToolkit.MVVM.CommunityToolkit/RunicToolkit.MVVM.CommunityToolkit.csproj" />
+    <ProjectReference Include="../../src/RunicToolkit.Hosting.CsWebUi.ApplicationBridge/RunicToolkit.Hosting.CsWebUi.ApplicationBridge.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="www/**/*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="../../src/RunicToolkit.Hosting.CsWebUi.Mvvm/assets/runic-toolkit-mvvm-cswebui.mjs"
-             Link="www/runic-toolkit-mvvm-cswebui.mjs"
-             CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="../../web/packages/mvvm/dist/esm/**/*"
-             Link="www/mvvm/%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

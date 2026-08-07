@@ -1,24 +1,37 @@
-using System;
 using System.Text.Json;
-using System.Threading.Tasks;
-using RunicToolkit.MVVM;
+using RunicToolkit.ApplicationBridge;
+using RunicToolkitStarter.Contract;
+
 namespace RunicToolkitStarter;
+
 internal static class CounterSmokeTest
 {
     internal static async Task<int> RunAsync()
     {
-        var model = new CounterViewModel();
-        var registry = new MvvmSessionRegistry();
-        var contract = new MvvmContract(CounterContracts.Counter.Name);
-        registry.Map(contract, _ => ValueTask.FromResult(new MvvmSessionActivation(CounterContracts.Counter.CreateAdapter(model))));
-        await using IMvvmSessionFactory sessions = registry.Build();
-        await using IMvvmSession session = await sessions.OpenAsync(contract);
-        MvvmResponse snapshot = await session.DispatchAsync(new MvvmSnapshotRequest(new MvvmRequestId(Guid.NewGuid())));
-        MvvmResponse changed = await session.DispatchAsync(new MvvmMutationRequest(new MvvmRequestId(Guid.NewGuid()), MvvmMutationKind.SetProperty, session.Revision, CounterContracts.Counter.Members.Step, JsonSerializer.SerializeToElement(2, CounterJsonContext.Default.Int32)));
-        using JsonDocument none = JsonDocument.Parse("null");
-        MvvmResponse incremented = await session.DispatchAsync(new MvvmMutationRequest(new MvvmRequestId(Guid.NewGuid()), MvvmMutationKind.ExecuteCommand, session.Revision, CounterContracts.Counter.Members.Increment, none.RootElement));
-        bool passed = snapshot.Succeeded && changed.Succeeded && incremented.Succeeded && model.Count == 2 && model.History.Count == 2;
-        Console.WriteLine(passed ? "Native counter property, validation, collection, and command smoke test passed." : "Native counter smoke test failed.");
+        await using var session = new ApplicationBridgeSession(
+            new CounterBridgeDispatcher(new CounterBridgeHandler()));
+        BridgeHostEnvelope snapshot = await session.DispatchAsync(Envelope(
+            "initialize", null, null, """{"_tag":"InitializeApplication"}"""));
+        BridgeHostEnvelope incremented = await session.DispatchAsync(Envelope(
+            "dispatch", session.Id.Value, 0, """{"_tag":"IncrementCounter","step":2}"""));
+        bool passed = snapshot.Kind == "snapshot" &&
+            incremented.Kind == "receipt" &&
+            incremented.Payload.GetProperty("snapshot").GetProperty("count").GetInt64() == 2 &&
+            incremented.Revision == 1;
+        Console.WriteLine(passed
+            ? "Named Application Bridge command and authoritative snapshot smoke test passed."
+            : "Native counter smoke test failed.");
         return passed ? 0 : 1;
     }
+
+    private static BridgeClientEnvelope Envelope(string kind, Guid? sessionId, long? revision, string payload) => new()
+    {
+        Protocol = "runic.artifex.counter",
+        Version = 1,
+        Kind = kind,
+        CommandId = Guid.NewGuid(),
+        SessionId = sessionId,
+        ExpectedRevision = revision,
+        Payload = JsonDocument.Parse(payload).RootElement.Clone(),
+    };
 }

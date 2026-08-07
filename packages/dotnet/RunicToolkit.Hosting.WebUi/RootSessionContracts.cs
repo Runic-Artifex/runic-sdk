@@ -40,19 +40,3 @@ public interface IWebUiNativeCloseNotification
     /// <summary>Signals forced close so application-scoped cancellation starts immediately.</summary>
     ValueTask NativeWindowClosedAsync(CancellationToken cancellationToken);
 }
-
-/// <summary>
-/// Optional, explicitly registered activation callback for a scoped MVVM root.
-/// </summary>
-public interface IMvvmRootActivation
-{
-    /// <summary>Activates an opened MVVM session.</summary>
-    ValueTask ActivateAsync(
-        global::RunicToolkit.MVVM.IMvvmSession session,
-        CancellationToken cancellationToken);
-
-    /// <summary>Deactivates an opened MVVM session.</summary>
-    ValueTask DeactivateAsync(
-        global::RunicToolkit.MVVM.IMvvmSession session,
-        CancellationToken cancellationToken);
-}

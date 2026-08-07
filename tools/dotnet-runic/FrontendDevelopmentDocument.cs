@@ -61,7 +61,7 @@ internal static partial class FrontendDevelopmentDocument
                 1);
         }
         string inspectorBootstrap =
-            "<script>globalThis.__runicToolkitMvvmDevelopment=Object.freeze({" +
+            "<script>globalThis.__runicToolkitApplicationBridgeDevelopment=Object.freeze({" +
             "endpoint:" + JsonString(inspectorEndpoint.AbsoluteUri) + "," +
             "projectDirectory:" + JsonString(configuration.ProjectDirectory) +
             "});</script>";

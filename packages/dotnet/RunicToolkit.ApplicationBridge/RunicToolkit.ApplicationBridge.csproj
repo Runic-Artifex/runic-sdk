@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>RunicToolkit.ApplicationBridge</AssemblyName>
+    <RootNamespace>RunicToolkit.ApplicationBridge</RootNamespace>
+    <PackageId>RunicToolkit.ApplicationBridge</PackageId>
+    <Description>Schema-first, reflection-free application protocol and session runtime for RunicToolkit.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="PUBLIC-API.md" Pack="true" PackagePath="docs/" />
+  </ItemGroup>
+</Project>

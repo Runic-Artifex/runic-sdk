@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
-    "@runic-artifex/mvvm": "0.1.0",
-    "@runic-artifex/mvvm-react": "0.1.0",
+    "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
     "bootstrap": "5.3.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "effect": "3.22.1"
   },
   "devDependencies": {
     "@types/react": "19.2.17",

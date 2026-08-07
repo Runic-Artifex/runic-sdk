@@ -3,7 +3,7 @@
 `RunicToolkit.Hosting.Abstractions` contains the dependency-neutral vocabulary shared
 by the Hosting lifecycle, composition kernel, build tooling, and adapters. The
 assembly targets the repository's `net10.0` policy and references only the BCL plus
-the frontend-neutral `RunicToolkit.Desktop` contracts. It does not reference MVVM,
+the frontend-neutral `RunicToolkit.Desktop` contracts. It does not reference Application Bridge,
 CommandLine, Microsoft.Extensions Hosting/DI/logging, a native runtime, or external
 lowercase `cs-webui`.
 
@@ -119,8 +119,8 @@ are SDK-supplied ILLink build tooling. The runtime kernel and deterministic mani
 builder depend inward on it; generator/build tooling is not a runtime dependency of
 this assembly.
 
-Wave C supplies the Generic Host, MVVM/root-session, WebUi/external `cs-webui`,
+Integration packages supply the Generic Host, Application Bridge/root-session, WebUi/external `cs-webui`,
 CommandLine, structured logging, and runtime asset-provider implementations. No
-concrete adapter type belongs in this package, and lower-level MVVM/CommandLine/native
+concrete adapter type belongs in this package, and lower-level Application Bridge/CommandLine/native
 packages must not reference Hosting abstractions merely to participate in Hosting;
 their adapter packages translate into these seams.

@@ -22,7 +22,7 @@ callbacks, navigation, and process-wide wait/cleanup lifecycle.
 - `RunicToolkit.Hosting.CsWebUi` is the first-party desktop host adapter. It
   translates the dependency-neutral browser contracts into `WebUiWindow` and
   `WebUiApplication` operations.
-- `RunicToolkit.Hosting.WebUi` owns toolkit session, static-asset, and MVVM
+- `RunicToolkit.Hosting.WebUi` owns toolkit session and static-asset
   transport composition. Its name describes the toolkit's UI mode, not an
   ASP.NET Core server.
 - `RunicToolkit.Hosting.GenericHost` may compose
@@ -32,7 +32,7 @@ callbacks, navigation, and process-wide wait/cleanup lifecycle.
 - Desktop samples use local HTML, CSS, and JavaScript served by CsWebUi. Early
   samples bind browser events directly to C# application state; ADR 0012
   supersedes that transitional integration with native compiled-HTML and
-  TypeScript MVVM transports. An HTTP or ASP.NET Core adapter, if introduced
+  TypeScript Application Bridge transports. An HTTP or ASP.NET Core adapter, if introduced
   later, is optional and separately named.
 - The Nix development shell supplies the native WebUI library and Linux browser
   and webview runtime dependencies required by CsWebUi.
