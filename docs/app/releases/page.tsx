@@ -3,12 +3,12 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Releases", description: "Initial public preview order and registry safety model for Runic Artifex." };
 
 const train = [
-  ["CsWebUi", "2.5.0-beta.4.3", "Already available on nuget.org"],
+  ["CsWebUi", "2.5.0-beta.4.4", "Already available on nuget.org"],
   ["Runic Command Line", "0.1.0-preview.3.1", "Independent"],
   ["Runic Text Resources", "0.1.0-preview.2.1", "Independent"],
-  ["Runic Toolkit", "0.1.0-preview.13.1", "Before Toolkit integrations"],
+  ["Runic Toolkit", "0.1.0-preview.21.1", "Before Toolkit integrations"],
   ["Runic Flow", "0.1.0-preview.4.1", "After Runic Toolkit"],
-  ["Runic Assets", "0.1.0-preview.5.1", "After Runic Toolkit"],
+  ["Runic Assets", "0.1.0-preview.16.1", "After Runic Toolkit"],
 ];
 
 export default function ReleasesPage() {
