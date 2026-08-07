@@ -5,13 +5,13 @@ import type {
   SvelteApplicationBridgeOptions,
 } from "./types.js";
 
-export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
+export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure = unknown> {
   snapshot = $state.raw<Snapshot | undefined>(undefined);
   lastEvent = $state.raw<HostEvent | undefined>(undefined);
-  error = $state.raw<unknown>(undefined);
+  error = $state.raw<Failure | undefined>(undefined);
   status = $state<ApplicationBridgeStatus>("idle");
 
-  readonly #controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>;
+  readonly #controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot, Failure>;
   readonly #reduce: ((snapshot: Snapshot | undefined, event: HostEvent) => Snapshot | undefined) | undefined;
   readonly #observer: ApplicationBridgeObserver | undefined;
   readonly #inspectSnapshot: SvelteApplicationBridgeOptions<HostEvent, Snapshot>["inspectSnapshot"];
@@ -19,7 +19,7 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
   #start: Promise<Snapshot> | undefined;
 
   constructor(
-    controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>,
+    controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot, Failure>,
     options: SvelteApplicationBridgeOptions<HostEvent, Snapshot> = {},
   ) {
     this.#controller = controller;
@@ -53,7 +53,7 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
         this.#observer?.trace({ kind: "connection", label: "ui-rendered" });
         return snapshot;
       })
-      .catch((failure) => {
+      .catch((failure: Failure) => {
         this.#start = undefined;
         this.#fail(failure);
         throw failure;
@@ -68,7 +68,7 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
       this.#observer?.trace({ kind: "receipt", label: tagOf(receipt) });
       return receipt;
     } catch (failure) {
-      this.#fail(failure);
+      this.#failUnknown(failure);
       throw failure;
     }
   }
@@ -78,7 +78,7 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
     try {
       await this.#controller.cancel(operationId);
     } catch (failure) {
-      this.#fail(failure);
+      this.#failUnknown(failure);
       throw failure;
     }
   }
@@ -94,7 +94,7 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
       this.#reportSnapshot(snapshot, "connected");
       return snapshot;
     } catch (failure) {
-      this.#fail(failure);
+      this.#failUnknown(failure);
       throw failure;
     }
   }
@@ -121,11 +121,16 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
     this.#reportConnection("closed");
   }
 
-  #fail(failure: unknown): void {
+  #fail(failure: Failure): void {
     this.error = failure;
     this.status = "error";
     this.#observer?.trace({ kind: "error", label: errorLabel(failure) });
     this.#reportConnection("disconnected");
+  }
+
+  #failUnknown(failure: unknown): void {
+    // Promise does not encode its rejection type; the controller contract does.
+    this.#fail(failure as Failure);
   }
 
   #reportSnapshot(snapshot: Snapshot, state: string): void {
@@ -145,10 +150,10 @@ export class SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
   }
 }
 
-export function createSvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot>(
-  controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>,
+export function createSvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure = unknown>(
+  controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot, Failure>,
   options: SvelteApplicationBridgeOptions<HostEvent, Snapshot> = {},
-): SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
+): SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure> {
   return new SvelteApplicationBridge(controller, options);
 }
 
