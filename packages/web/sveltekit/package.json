@@ -1,0 +1,39 @@
+{
+  "name": "@runic-artifex/sveltekit",
+  "version": "0.1.0-preview.0",
+  "description": "Static/native SvelteKit adapter for Runic Toolkit applications",
+  "license": "MIT",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && vitest run",
+    "pack:check": "npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "@runic-artifex/svelte": ">=0.1.0-preview.0 <1",
+    "@runic-artifex/vite-plugin-runic-toolkit": ">=0.1.0-preview.0 <1",
+    "@sveltejs/adapter-static": ">=3 <4",
+    "@sveltejs/kit": ">=2 <3",
+    "svelte": ">=5.7.0 <6",
+    "vite": ">=8 <9"
+  },
+  "peerDependenciesMeta": {
+    "@runic-artifex/svelte": { "optional": true },
+    "@runic-artifex/vite-plugin-runic-toolkit": { "optional": true }
+  },
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-svelte.git",
+    "directory": "packages/sveltekit"
+  }
+}
