@@ -56,3 +56,7 @@ await bridge.dispatch({ _tag: "Navigate", target: "Summary" });
 Keep transient presentation state in Svelte runes. Put substantial Effect
 programs in framework-neutral TypeScript modules and use actions only to project
 their lifecycle into the component tree.
+
+If the host uses Runic Flow, embed the relevant process state in the application's
+named snapshot and project it with `reduce`. Flow remains backend-only; this
+package neither imports Flow vocabulary nor creates a competing state runtime.
