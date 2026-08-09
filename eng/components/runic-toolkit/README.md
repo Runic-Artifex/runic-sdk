@@ -1,3 +1,5 @@
+![Runic Toolkit banner](.github/assets/brand/banner.png)
+
 # Runic Toolkit
 
 Runic Toolkit is a NativeAOT-first application toolbelt for composing the same

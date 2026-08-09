@@ -29,6 +29,7 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <PackageProjectUrl>https://github.com/Runic-Artifex/runic-toolkit</PackageProjectUrl>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags Condition="'$(PackageTags)' == ''">runic-artifex;toolkit;webui;desktop;dotnet;nativeaot</PackageTags>
     <!-- Libraries leave dependency resolution to their consuming applications. -->
@@ -40,4 +41,8 @@
     <RunicToolkitCompatibilityTargetFramework>net10.0</RunicToolkitCompatibilityTargetFramework>
     <RunicToolkitGeneratorTargetFramework>net10.0</RunicToolkitGeneratorTargetFramework>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory).github/assets/brand/icon.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 </Project>
