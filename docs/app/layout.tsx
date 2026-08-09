@@ -27,6 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase,
     title: { default: "Runic Artifex Documentation", template: "%s · Runic Artifex" },
     description,
+    icons: { icon: "/icon.png" },
     openGraph: {
       type: "website",
       siteName: "Runic Artifex Documentation",
@@ -51,7 +52,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <header className="site-header">
           <div className="shell header-inner">
             <Link className="brand" href="/" aria-label="Runic Artifex documentation home">
-              <span className="brand-mark" aria-hidden="true">ᚱ</span>
+              <span className="brand-mark" aria-hidden="true" />
               <span><strong>Runic Artifex</strong><small>Documentation</small></span>
             </Link>
             <nav aria-label="Primary navigation">
@@ -68,7 +69,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <footer className="site-footer">
           <div className="shell footer-grid">
             <div>
-              <div className="brand footer-brand"><span className="brand-mark" aria-hidden="true">ᚱ</span><span><strong>Runic Artifex</strong><small>Independent tools. Explicit seams.</small></span></div>
+              <div className="brand footer-brand"><span className="brand-mark" aria-hidden="true" /><span><strong>Runic Artifex</strong><small>Independent tools. Explicit seams.</small></span></div>
               <p>NativeAOT-minded building blocks for modern .NET applications.</p>
             </div>
             <div><strong>Explore</strong><Link href="/products">Products</Link><Link href="/packages">Package catalog</Link><Link href="/architecture">Architecture</Link></div>

@@ -1,3 +1,5 @@
+![Runic Artifex Documentation banner](.github/assets/brand/banner.png)
+
 # Runic Artifex Documentation
 
 The documentation portal for the independent Runic Artifex projects and the

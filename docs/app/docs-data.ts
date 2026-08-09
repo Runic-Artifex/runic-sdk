@@ -2,7 +2,7 @@ export type Product = {
   slug: string;
   name: string;
   shortName: string;
-  mark: string;
+  icon: string;
   kicker: string;
   summary: string;
   description: string;
@@ -20,7 +20,7 @@ export type Product = {
 
 export const products: Product[] = [
   {
-    slug: "runic-toolkit", name: "Runic Toolkit", shortName: "Toolkit", mark: "RT",
+    slug: "runic-toolkit", name: "Runic Toolkit", shortName: "Toolkit", icon: "/products/runic-toolkit.png",
     kicker: "Application composition",
     summary: "A NativeAOT-first toolbelt for lifecycle, hosting, desktop contracts, frontend builds, and explicit application bridges.",
     description: "Runic Toolkit composes the same application model across desktop windows, browser frontends, Generic Host, and framework-owned UI state. Its official Application Bridge carries named domain commands and validated events through one NativeAOT-safe host boundary.",
@@ -32,7 +32,7 @@ export const products: Product[] = [
     install: ["dotnet add package RunicToolkit.Hosting.CsWebUi.ApplicationBridge --version 0.1.0-preview.21.1", "npm install @runic-artifex/application-bridge@0.1.0-preview.21.1 effect@3.22.1"],
   },
   {
-    slug: "cs-webui", name: "CsWebUi", shortName: "CsWebUi", mark: "CW",
+    slug: "cs-webui", name: "CsWebUi", shortName: "CsWebUi", icon: "/products/cs-webui.png",
     kicker: "Native host",
     summary: "Modern .NET bindings for WebUI with safe window ownership, callbacks, embedded assets, and NativeAOT support.",
     description: "CsWebUi uses an installed browser or supported WebView as a lightweight cross-platform desktop UI. The raw package mirrors WebUI's C ABI; the high-level package adds deterministic managed ownership and safer application APIs.",
@@ -42,7 +42,7 @@ export const products: Product[] = [
     packages: ["CsWebUi.Native", "CsWebUi"], install: ["dotnet add package CsWebUi --version 2.5.0-beta.4.4"],
   },
   {
-    slug: "runic-flow", name: "Runic Flow", shortName: "Flow", mark: "RF",
+    slug: "runic-flow", name: "Runic Flow", shortName: "Flow", icon: "/products/runic-flow.png",
     kicker: "Application mechanics",
     summary: "Typed navigation, dialogs, coordinated operations, workflows, presentation contracts, and official UI integrations.",
     description: "Runic Flow provides framework-neutral application mechanics. Its core targets trimming and NativeAOT; adapters translate Flow concepts into CommunityToolkit or Runic Toolkit without reversing the dependency direction.",
@@ -52,7 +52,7 @@ export const products: Product[] = [
     packages: ["RunicFlow", "RunicFlow.Generators", "RunicFlow.CommunityToolkit", "RunicFlow.RunicToolkit"], install: ["dotnet add package RunicFlow --version 0.1.0-preview.4.1"],
   },
   {
-    slug: "runic-assets", name: "Runic Assets", shortName: "Assets", mark: "RA",
+    slug: "runic-assets", name: "Runic Assets", shortName: "Assets", icon: "/products/runic-assets.png",
     kicker: "Shared infrastructure",
     summary: "Safe paths, immutable manifests, portable archives, development sources, and adapters for ASP.NET Core, CsWebUi, and Toolkit.",
     description: "Runic Assets defines a transport-neutral static-asset model. A canonical standard-ZIP format and strict path validation let the same manifest move through embedded, development, browser, and server hosts.",
@@ -62,7 +62,7 @@ export const products: Product[] = [
     packages: ["RunicAssets", "RunicAssets.CsWebUi", "RunicAssets.AspNetCore", "RunicAssets.RunicToolkit"], install: ["dotnet add package RunicAssets --version 0.1.0-preview.16.1"],
   },
   {
-    slug: "runic-translations", name: "Runic Translations", shortName: "Translations", mark: "RT",
+    slug: "runic-translations", name: "Runic Translations", shortName: "Translations", icon: "/products/runic-translations.png",
     kicker: "Localization",
     summary: "Language-neutral localization contracts with a deterministic compiler, NativeAOT runtime, authoring API, generators, build integration, and CLI.",
     description: "Runic Translations treats source schemas, message grammar, generated artifacts, and runtime ABI as portable contracts. The .NET implementation is the first runtime, not the boundary of the framework; established package and protocol identifiers remain stable across the product rename.",
@@ -75,7 +75,7 @@ export const products: Product[] = [
     related: { href: "/products/runic-translations-editor", label: "Open the editor product" },
   },
   {
-    slug: "runic-translations-editor", name: "Runic Translations Editor", shortName: "Translations Editor", mark: "TE",
+    slug: "runic-translations-editor", name: "Runic Translations Editor", shortName: "Translations Editor", icon: "/products/runic-translations-editor.png",
     kicker: "Translation authoring",
     summary: "A focused desktop editor for creating, translating, reviewing, and validating Runic Translations workspaces.",
     description: "Runic Translations Editor is the human-facing authoring environment for Runic Translations. Translators work with natural text, variables, variants, workflow status, and validation while the application preserves the deterministic resource model underneath.",
@@ -88,7 +88,7 @@ export const products: Product[] = [
     related: { href: "/products/runic-translations", label: "Explore the underlying translation system" },
   },
   {
-    slug: "runic-command-line", name: "Runic Command Line", shortName: "Command Line", mark: "CL",
+    slug: "runic-command-line", name: "Runic Command Line", shortName: "Command Line", icon: "/products/runic-command-line.png",
     kicker: "Command applications",
     summary: "A parser-neutral, reflection-free framework for command catalogs, execution, deterministic output, hosting, and bounded processes.",
     description: "Runic Command Line exists because NativeAOT-focused applications need a smaller and more explicit command surface. Portable contracts stay separate from execution, hosting classification, and child-process support.",

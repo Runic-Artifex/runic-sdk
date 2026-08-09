@@ -23,6 +23,8 @@ test("renders the documentation home without starter metadata", async () => {
   assert.match(html, /<small>Documentation<\/small>/);
   assert.match(html, /property="og:image" content="http:\/\/localhost:3000\/og\.png"/);
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
+  assert.match(html, /rel="icon" href="(?:http:\/\/localhost:3000)?\/icon\.png"/);
+  assert.match(html, /background-image:url\(\/products\/runic-toolkit\.png\)/);
   assert.match(html, /Runic Toolkit/);
   assert.match(html, /CsWebUi/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|Your site is taking shape/);

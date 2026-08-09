@@ -53,7 +53,7 @@ export default function Home() {
         <div className="product-grid">
           {products.map((product) => (
             <Link className="product-card" href={`/products/${product.slug}`} key={product.slug}>
-              <span className="product-mark" aria-hidden="true">{product.mark}</span>
+              <span className="product-mark product-logo" style={{ backgroundImage: `url(${product.icon})` }} aria-hidden="true" />
               <p className="kicker">{product.kicker}</p>
               <h3>{product.name}</h3>
               <p>{product.summary}</p>

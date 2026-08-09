@@ -9,7 +9,7 @@ export function ProductPage({ product }: { product: Product }) {
       <section className="doc-hero shell">
         <div className="breadcrumb"><Link href="/products">Products</Link><span>/</span><span>{product.name}</span></div>
         <div className="product-title-row">
-          <span className="product-mark large" aria-hidden="true">{product.mark}</span>
+          <span className="product-mark product-logo large" style={{ backgroundImage: `url(${product.icon})` }} aria-hidden="true" />
           <div><p className="eyebrow">{product.kicker}</p><h1>{product.name}</h1></div>
         </div>
         <p className="lede">{product.description}</p>
