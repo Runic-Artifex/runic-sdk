@@ -1,3 +1,5 @@
+![Runic Command Line banner](.github/assets/brand/banner.png)
+
 # Runic Command Line
 
 Runic Command Line is a parser-neutral, NativeAOT-friendly command-line framework.
