@@ -1,3 +1,5 @@
+![Runic Toolkit banner](.github/assets/brand/banner.png)
+
 # Runic Toolkit Examples
 
 This repository preserves the filtered history of the examples extracted from
