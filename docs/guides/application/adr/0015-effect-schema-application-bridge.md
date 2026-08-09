@@ -84,7 +84,9 @@ prerelease. One may be added only for a concrete published consumer.
 
 Application concepts become visible in schemas, traces, mocks, generated
 handlers, and tests. Generator scope becomes smaller and more explicit because
-business policy, navigation, authorization, retries, and workflow transitions
-remain handwritten application decisions. The obsolete generic MVVM protocol,
+business policy, navigation, authorization, retries, and process transitions
+remain application-authored decisions. Applications may implement those
+decisions directly or use the optional headless `RunicFlow` process runtime;
+neither choice changes Application Bridge protocol ownership. The obsolete generic MVVM protocol,
 packages, renderer lifecycle adapters, and documentation have been removed;
 Application Bridge is the architecture to extend.
