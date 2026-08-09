@@ -1,3 +1,5 @@
+![Runic Artifex banner](.github/assets/brand/banner.png)
+
 # Runic Vite
 
 First-class Vite 8 development integration for Runic Toolkit applications.
@@ -30,4 +32,3 @@ The plugin contributes an official Vite DevTools dock with Application Bridge
 connection, contract, operation, and sanitized timeline state. Runtime payloads
 are bounded and discard secrets, capabilities, native paths, raw frames, and
 stack traces. No DevTools client is included in production output.
-
