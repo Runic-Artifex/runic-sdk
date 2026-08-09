@@ -18,6 +18,18 @@ cancellation, privileged resources, and sanitized failures. The frontend owns
 presentation and transient interaction state. Long-running commands return an
 operation ID promptly and publish progress through the Effect Stream.
 
+## Optional Runic Flow orchestration
+
+Applications with non-trivial process policy can use the headless `RunicFlow`
+runtime behind generated handlers. `RunicFlow.ApplicationBridge` reuses the
+bridge operation identifier while adding concurrency slots, timeout, monitoring,
+and typed outcomes. Flow process versions remain process-local; this bridge still
+owns wire sessions, revisions, sequences, reconnect, and cancellation.
+
+Keep contracts application-specific. Expose `StartInstallation`,
+`DestinationSelected`, and `OperationProgress`, for example—not generic Flow
+commands or internal process snapshots.
+
 The committed Setup contract under `protocol/application-bridge/setup` is the
 reference contract. The package-only runnable Setup application lives in
 `runic-toolkit-examples`.
