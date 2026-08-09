@@ -10,3 +10,9 @@ Artifex ecosystem.
 
 Only Svelte 5 is supported. There is no Svelte 4 build, legacy-store adapter,
 or renderer-owned protocol runtime.
+
+Runic Flow, when an application uses it, remains a headless host implementation
+detail. Its state is exposed through the application's named Application Bridge
+snapshot and events, so these Svelte packages do not create a Flow runtime or a
+second protocol. Svelte owns rune projection and component-tree lifecycle;
+SvelteKit continues to own URLs, browser history, routing, and page state.

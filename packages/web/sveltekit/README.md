@@ -30,3 +30,8 @@ export const prerender = runicToolkitSpaPageOptions.prerender;
 
 Add `runicToolkit()` and the official `DevTools()` plugin to `vite.config.ts`.
 The SvelteKit package does not duplicate their development runtime.
+
+SvelteKit remains authoritative for URLs, history, and page state even when the
+host uses Runic Flow. Map routes to named application commands in application
+code; do not mirror a Flow process graph into a second router owned by this
+adapter.
