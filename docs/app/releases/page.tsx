@@ -5,7 +5,8 @@ export const metadata: Metadata = { title: "Releases", description: "Initial pub
 const train = [
   ["CsWebUi", "2.5.0-beta.4.4", "Already available on nuget.org"],
   ["Runic Command Line", "0.1.0-preview.3.1", "Independent"],
-  ["Runic Text Resources", "0.1.0-preview.2.1", "Independent"],
+  ["Runic Translations", "0.1.0-preview.3.2", "Independent"],
+  ["Runic Translations Editor", "Pending", "After Runic Translations"],
   ["Runic Toolkit", "0.1.0-preview.21.1", "Before Toolkit integrations"],
   ["Runic Flow", "0.1.0-preview.4.1", "After Runic Toolkit"],
   ["Runic Assets", "0.1.0-preview.16.1", "After Runic Toolkit"],

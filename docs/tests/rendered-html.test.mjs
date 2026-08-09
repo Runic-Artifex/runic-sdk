@@ -39,7 +39,8 @@ test("renders every primary documentation route", async () => {
     ["/application-bridge", "Named application concepts"],
     ["/products/runic-flow", "Runic Flow"],
     ["/products/runic-assets", "Runic Assets"],
-    ["/products/runic-text-resources", "Runic Text Resources"],
+    ["/products/runic-translations", "Runic Translations"],
+    ["/products/runic-translations-editor", "Runic Translations Editor"],
     ["/products/runic-command-line", "Runic Command Line"],
     ["/products/cs-webui", "CsWebUi"],
   ];
@@ -51,12 +52,29 @@ test("renders every primary documentation route", async () => {
   }
 });
 
+test("redirects the retired Text Resources route to Runic Translations", async () => {
+  const response = await render("/products/runic-text-resources");
+  assert.equal(response.status, 307);
+  assert.equal(new URL(response.headers.get("location")).pathname, "/products/runic-translations");
+});
+
+test("presents the editor as a downstream application with its own artifacts", async () => {
+  const html = await (await render("/products/runic-translations-editor")).text();
+  assert.match(html, /Release artifacts/);
+  assert.match(html, /Linux x64 self-contained archive/);
+  assert.match(html, /First release pending/);
+  assert.match(html, /Does not own the compiler, schemas, runtime ABI/);
+  assert.doesNotMatch(html, /Install the verified candidate/);
+});
+
 test("documents the exact first preview train and package ownership", async () => {
   const releaseHtml = await (await render("/releases")).text();
   assert.match(releaseHtml, /0\.1\.0-preview\.21\.1/);
   assert.match(releaseHtml, /0\.1\.0-preview\.16\.1/);
   assert.match(releaseHtml, /2\.5\.0-beta\.4\.4/);
   assert.match(releaseHtml, /After Runic Toolkit/);
+  assert.match(releaseHtml, /Runic Translations Editor/);
+  assert.match(releaseHtml, /After Runic Translations/);
   assert.match(releaseHtml, /documentation gate/i);
 
   const packageHtml = await (await render("/packages")).text();
@@ -65,4 +83,7 @@ test("documents the exact first preview train and package ownership", async () =
   assert.match(packageHtml, /@runic-artifex\/application-bridge/);
   assert.match(packageHtml, /RunicToolkit\.ApplicationBridge\.Generators/);
   assert.match(packageHtml, /RunicTextResources\.Generator/);
+  assert.match(packageHtml, /RunicTextResources\.Authoring/);
+  assert.match(packageHtml, /@runic-artifex\/vite-plugin-text-resources/);
+  assert.doesNotMatch(packageHtml, />Runic Translations Editor<\/a><\/td><td><code>/);
 });

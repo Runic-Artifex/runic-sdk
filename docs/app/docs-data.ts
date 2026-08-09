@@ -13,6 +13,9 @@ export type Product = {
   packages: string[];
   npmPackages?: string[];
   install?: string[];
+  kind?: "package-family" | "application";
+  artifacts?: string[];
+  related?: { href: string; label: string };
 };
 
 export const products: Product[] = [
@@ -59,14 +62,30 @@ export const products: Product[] = [
     packages: ["RunicAssets", "RunicAssets.CsWebUi", "RunicAssets.AspNetCore", "RunicAssets.RunicToolkit"], install: ["dotnet add package RunicAssets --version 0.1.0-preview.16.1"],
   },
   {
-    slug: "runic-text-resources", name: "Runic Text Resources", shortName: "Text Resources", mark: "TR",
+    slug: "runic-translations", name: "Runic Translations", shortName: "Translations", mark: "RT",
     kicker: "Localization",
-    summary: "Language-neutral localization contracts with a deterministic compiler, NativeAOT runtime, source generator, MSBuild integration, and CLI.",
-    description: "Runic Text Resources treats source schemas, message grammar, generated artifacts, and runtime ABI as portable contracts. The .NET implementation is the first runtime, not the boundary of the framework.",
-    version: "0.1.0-preview.2.1", source: "https://github.com/Runic-Artifex/runic-text-resources",
-    bestFor: ["Deterministic localization builds", "Generated strongly typed accessors", "Cross-language resource contracts"],
-    boundaries: ["Independent of every UI framework", "Portable protocol family is runic.textresources/1", "Schema compatibility evolves separately from package versions"],
-    packages: ["RunicTextResources", "RunicTextResources.Compiler", "RunicTextResources.Generator", "RunicTextResources.Build", "RunicTextResources.Tool"], install: ["dotnet add package RunicTextResources --version 0.1.0-preview.2.1"],
+    summary: "Language-neutral localization contracts with a deterministic compiler, NativeAOT runtime, authoring API, generators, build integration, and CLI.",
+    description: "Runic Translations treats source schemas, message grammar, generated artifacts, and runtime ABI as portable contracts. The .NET implementation is the first runtime, not the boundary of the framework; established package and protocol identifiers remain stable across the product rename.",
+    version: "0.1.0-preview.3.2", source: "https://github.com/Runic-Artifex/runic-translations",
+    bestFor: ["Deterministic localization builds", "Generated strongly typed accessors", "Cross-language resource contracts", "Supported translation workspace tooling"],
+    boundaries: ["Independent of every UI framework", "Portable protocol family remains runic.textresources/1", "Schema compatibility evolves separately from package versions", "The desktop authoring experience and its releases belong to Runic Translations Editor"],
+    packages: ["RunicTextResources", "RunicTextResources.Compiler", "RunicTextResources.Authoring", "RunicTextResources.Generator", "RunicTextResources.Build", "RunicTextResources.Tool", "RunicTextResources.Templates"],
+    npmPackages: ["@runic-artifex/vite-plugin-text-resources"],
+    install: ["dotnet add package RunicTextResources --version 0.1.0-preview.3.2", "npm install -D @runic-artifex/vite-plugin-text-resources@0.1.0-preview.3.2"],
+    related: { href: "/products/runic-translations-editor", label: "Open the editor product" },
+  },
+  {
+    slug: "runic-translations-editor", name: "Runic Translations Editor", shortName: "Translations Editor", mark: "TE",
+    kicker: "Translation authoring",
+    summary: "A focused desktop editor for creating, translating, reviewing, and validating Runic Translations workspaces.",
+    description: "Runic Translations Editor is the human-facing authoring environment for Runic Translations. Translators work with natural text, variables, variants, workflow status, and validation while the application preserves the deterministic resource model underneath.",
+    version: "First preview pending", source: "https://github.com/Runic-Artifex/runic-translations-editor",
+    bestFor: ["Translating and reviewing messages without editing JSON directly", "Managing locales, message structure, variables, and plural variants", "Validating a workspace before application builds consume it"],
+    boundaries: ["Consumes Runic Translations packages as an ordinary downstream application", "Owns the desktop UX, application packaging, and release cadence", "Does not own the compiler, schemas, runtime ABI, generators, or package releases"],
+    packages: [],
+    kind: "application",
+    artifacts: ["Linux x64 self-contained archive", "macOS arm64 self-contained archive", "Windows x64 self-contained archive"],
+    related: { href: "/products/runic-translations", label: "Explore the underlying translation system" },
   },
   {
     slug: "runic-command-line", name: "Runic Command Line", shortName: "Command Line", mark: "CL",

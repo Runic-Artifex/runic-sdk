@@ -36,7 +36,7 @@ export default function Home() {
           </div>
           <div className="map-ring">
             <span>Bridge</span><span>Flow</span><span>Assets</span>
-            <span>Text</span><span>CLI</span><span>CsWebUi</span>
+            <span>Translations</span><span>Editor</span><span>CLI</span><span>CsWebUi</span>
           </div>
           <p>Products own their cores and official integrations.</p>
         </div>
