@@ -1,3 +1,5 @@
+![Runic Assets banner](.github/assets/brand/banner.png)
+
 # Runic Assets
 
 Runic Assets is a framework-neutral static-asset model for .NET applications.
