@@ -1,3 +1,5 @@
+![Runic Artifex banner](.github/assets/brand/banner.png)
+
 # Runic Svelte
 
 Svelte 5 and SvelteKit integrations owned by the Svelte side of the Runic
