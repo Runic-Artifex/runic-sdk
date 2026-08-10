@@ -1,44 +1,55 @@
 <script lang="ts">
+  import ContentCard from '$lib/components/ContentCard.svelte';
+  import * as Table from '$lib/components/ui/table';
+
   const train = [
-    ['CsWebUi', '2.5.0-beta.4.4', 'Available on nuget.org'],
+    ['CsWebUi', '2.5.0-beta.4.4', 'Available on NuGet', 'Available now'],
     [
       'Runic Command Line',
-      '0.1.0-preview.4.1 · verified, unpublished',
-      'Independent',
+      '0.1.0-preview.4.1',
+      'Verified candidate · not yet published',
+      'Can publish independently',
     ],
     [
       'Runic Translations',
-      '0.1.0-preview.4.3 · verified, unpublished',
-      'Independent; NuGet and npm paths',
+      '0.1.0-preview.4.3',
+      'Verified candidate · not yet published',
+      'Can publish independently to NuGet and npm',
     ],
     [
       'Runic Translations Editor',
+      null,
       'First preview pending',
-      'After Runic Translations publication',
+      'After Runic Translations',
     ],
     [
       'Runic Svelte integrations',
-      '0.1.0-preview.8.1 · verified, unpublished',
-      'Before the Toolkit public template gate',
+      '0.1.0-preview.8.1',
+      'Verified candidate · not yet published',
+      'Before Runic Toolkit',
     ],
     [
       'Runic Vite integration',
-      '0.1.0-preview.8.1 · verified, unpublished',
-      'Before the Toolkit public template gate',
+      '0.1.0-preview.8.1',
+      'Verified candidate · not yet published',
+      'Before Runic Toolkit',
     ],
     [
       'Runic Toolkit',
-      '0.1.0-preview.22.1 · verified, unpublished',
+      '0.1.0-preview.22.1',
+      'Verified candidate · not yet published',
       'After Svelte and Vite integrations',
     ],
     [
       'Runic Assets',
-      '0.1.0-preview.17.1 · verified, unpublished',
+      '0.1.0-preview.17.1',
+      'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
     [
       'Runic Flow',
-      '0.1.0-preview.5.1 · verified, unpublished',
+      '0.1.0-preview.5.1',
+      'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
   ] as const;
@@ -48,77 +59,89 @@
   <title>Releases · Runic Artifex</title>
   <meta
     name="description"
-    content="Current public preview readiness and registry safety model for Runic Artifex."
+    content="See which Runic Artifex packages are available now and which verified preview candidates are waiting for publication."
+  />
+  <meta
+    property="og:title"
+    content="See what you can install today. · Runic Artifex"
+  />
+  <meta
+    property="og:description"
+    content="See which Runic Artifex packages are available now and which verified preview candidates are waiting for publication."
+  />
+  <meta
+    name="twitter:title"
+    content="See what you can install today. · Runic Artifex"
+  />
+  <meta
+    name="twitter:description"
+    content="See which Runic Artifex packages are available now and which verified preview candidates are waiting for publication."
   />
 </svelte:head>
 
-<main>
+<div>
   <section class="page-hero shell">
-    <p class="eyebrow">Release policy</p>
-    <h1>Verify once. Publish the same artifacts.</h1>
+    <p class="eyebrow">Release status</p>
+    <h1>See what you can install today.</h1>
     <p class="lede">
-      Source repositories are public and exact candidates are verified. Registry
-      jobs remain gated on protected environments, trusted publishers, and final
-      registry acceptance.
+      CsWebUi is available on NuGet. Toolkit, Command Line, Translations,
+      Assets, Flow, Svelte, and Vite have verified candidates awaiting their
+      first registry publication. Translations Editor’s first preview is still
+      pending.
     </p>
   </section>
   <section class="content-grid shell">
-    <div class="release-steps">
-      <article class="release-step">
-        <div>
-          <h3>Freeze exact source commits</h3>
-          <p>
-            Finish product changes and select immutable release inputs from
-            green main branches.
-          </p>
-          <span class="status-pill">Complete</span>
-        </div>
-      </article>
-      <article class="release-step">
-        <div>
-          <h3>Build fresh candidates</h3>
-          <p>
-            Restore, test, pack, and run frontend, downstream-consumer, and
-            applicable NativeAOT gates without sibling source dependencies.
-          </p>
-          <span class="status-pill">Complete</span>
-        </div>
-      </article>
-      <article class="release-step">
-        <div>
-          <h3>Cross the documentation gate</h3>
-          <p>
-            Review the portal against those exact artifacts and remove stale
-            product or version claims.
-          </p>
-          <span class="status-pill">In progress</span>
-        </div>
-      </article>
-      <article class="release-step">
-        <div>
-          <h3>Enable trusted publishing</h3>
-          <p>
-            Use protected environments and OIDC for NuGet and npm. Use a
-            short-lived bootstrap token only where npm requires a first package
-            record.
-          </p>
-          <span class="status-pill">Launch setup</span>
-        </div>
-      </article>
-    </div>
+    <p class="eyebrow">Current availability</p>
     <div class="package-table">
-      <table>
-        <thead
-          ><tr
-            ><th>Product</th><th>Public status</th><th>Order constraint</th></tr
-          ></thead
-        >
-        <tbody>
-          {#each train as [name, status, constraint] (name)}
-            <tr><td>{name}</td><td>{status}</td><td>{constraint}</td></tr>
+      <Table.Root>
+        <Table.Caption class="sr-only">
+          Runic Artifex release candidates and publication order
+        </Table.Caption>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head scope="col">Product</Table.Head>
+            <Table.Head scope="col">Current availability</Table.Head>
+            <Table.Head scope="col">Publication order</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each train as [name, version, availability, constraint] (name)}
+            <Table.Row>
+              <Table.Cell>{name}</Table.Cell>
+              <Table.Cell>
+                <span class="grid gap-1">
+                  {#if version}<code>{version}</code>{/if}
+                  <span>{availability}</span>
+                </span>
+              </Table.Cell>
+              <Table.Cell>{constraint}</Table.Cell>
+            </Table.Row>
           {/each}
-        </tbody>
-      </table>
+        </Table.Body>
+      </Table.Root>
     </div>
+    <ContentCard
+      eyebrow="Release integrity"
+      title="Verify once. Publish the same artifacts."
+      full
+    >
+      <p>
+        Candidates are built and tested from exact public source commits.
+        Registry publishing uses the same verified artifacts and remains
+        protected by trusted-publisher configuration and final registry
+        acceptance.
+      </p>
+    </ContentCard>
+    <ContentCard
+      eyebrow="Preview policy"
+      title="Expect exact versions and independent releases"
+      full
+    >
+      <p>
+        Products keep separate repositories and release cycles. Cross-product
+        integrations pin exact versions during preview, and applications choose
+        when to update.
+      </p>
+    </ContentCard>
   </section>
-</main>
+</div>

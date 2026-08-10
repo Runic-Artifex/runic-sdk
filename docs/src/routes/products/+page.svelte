@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
+  import ProductCard from '$lib/components/ProductCard.svelte';
   import { products } from '$lib/docs-data';
 </script>
 
@@ -9,37 +9,34 @@
     name="description"
     content="Choose the independent Runic Artifex product that owns the capability you need."
   />
+  <meta property="og:title" content="Products · Runic Artifex" />
+  <meta
+    property="og:description"
+    content="Choose the independent Runic Artifex product that owns the capability you need."
+  />
+  <meta name="twitter:title" content="Products · Runic Artifex" />
+  <meta
+    name="twitter:description"
+    content="Choose the independent Runic Artifex product that owns the capability you need."
+  />
 </svelte:head>
 
-<main>
+<div>
   <section class="page-hero shell">
-    <p class="eyebrow">Product map</p>
-    <h1>Independent products. Designed to compose.</h1>
+    <p class="eyebrow">Products</p>
+    <h1>Seven products, each with a clear job.</h1>
     <p class="lede">
-      Start at the narrowest boundary that solves your problem. Add Runic
-      Toolkit only when you need the shared application-composition experience.
+      Every Runic product solves a focused job and can be used on its own. Add
+      integrations when your application needs products to work together.
     </p>
   </section>
   <section class="shell product-grid section">
     {#each products as product (product.slug)}
-      <a
-        class="product-card"
-        href={resolve('/products/[slug]', { slug: product.slug })}
-      >
-        <span
-          class="product-mark product-logo"
-          style:background-image={`url(${product.icon})`}
-          aria-hidden="true"
-        ></span>
-        <p class="kicker">{product.kicker}</p>
-        <h3>{product.name}</h3>
-        <p>{product.summary}</p>
-        <span class="card-link"
-          >{product.kind === 'application'
-            ? 'Editor and boundaries'
-            : 'Packages and boundaries'} →</span
-        >
-      </a>
+      <ProductCard
+        {product}
+        label={`Explore ${product.shortName}`}
+        headingLevel={2}
+      />
     {/each}
   </section>
-</main>
+</div>

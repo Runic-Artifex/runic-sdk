@@ -1,37 +1,57 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import ActionLink from '$lib/components/ActionLink.svelte';
+  import ProductCard from '$lib/components/ProductCard.svelte';
+  import { Badge } from '$lib/components/ui/badge';
+  import * as Card from '$lib/components/ui/card';
+  import { Separator } from '$lib/components/ui/separator';
   import { products } from '$lib/docs-data';
 </script>
 
 <svelte:head>
-  <title>Build one application model across .NET surfaces · Runic Artifex</title
-  >
+  <title>Open-source .NET tools that work independently · Runic Artifex</title>
   <meta
     name="description"
-    content="Runic Artifex is a family of independent, NativeAOT-minded tools for application architecture, UI, orchestration, assets, localization, and command lines."
+    content="Open-source .NET tools for UI, hosting, workflows, assets, localization, and command-line applications."
+  />
+  <meta
+    property="og:title"
+    content="Open-source .NET tools that work independently · Runic Artifex"
+  />
+  <meta
+    property="og:description"
+    content="Open-source .NET tools for UI, hosting, workflows, assets, localization, and command-line applications."
+  />
+  <meta
+    name="twitter:title"
+    content="Open-source .NET tools that work independently · Runic Artifex"
+  />
+  <meta
+    name="twitter:description"
+    content="Open-source .NET tools for UI, hosting, workflows, assets, localization, and command-line applications."
   />
 </svelte:head>
 
-<main>
+<div>
   <section class="hero shell">
     <div class="hero-copy">
-      <p class="eyebrow">Runic Artifex ecosystem</p>
-      <h1>Build one application model across .NET surfaces.</h1>
+      <p class="eyebrow">Open-source tools for .NET applications</p>
+      <h1>Build with only the tools you need.</h1>
       <p class="lede">
-        Independent tools for WebUI, desktop, application bridges, headless
-        orchestration, assets, localization, and command lines—designed to
-        compose without sharing one release train.
+        Runic Artifex is a family of open-source .NET tools for desktop and
+        browser UI, application hosting, workflows, assets, localization, and
+        command-line apps. Each product works independently and connects through
+        documented integrations when needed.
       </p>
       <div class="actions">
-        <a class="button primary" href={resolve('/getting-started')}
-          >Start with the preview</a
+        <ActionLink href={resolve('/products')}>Explore the products</ActionLink
         >
-        <a class="button secondary" href={resolve('/architecture')}
-          >Understand the boundaries</a
+        <ActionLink href={resolve('/architecture')} variant="outline"
+          >See how they fit together</ActionLink
         >
       </div>
     </div>
-    <div
+    <Card.Root
       class="hero-map"
       aria-label="Runic Artifex product relationship summary"
     >
@@ -44,44 +64,41 @@
         ><span>Editor</span><span>CLI</span><span>CsWebUi</span>
       </div>
       <p>Products own their cores and official integrations.</p>
-    </div>
+    </Card.Root>
   </section>
 
   <section class="section shell">
     <div class="section-heading split-heading">
       <div>
-        <p class="eyebrow">Choose your layer</p>
-        <h2>Use one product or compose the ecosystem.</h2>
+        <p class="eyebrow">Find your starting point</p>
+        <h2>Start with one focused product.</h2>
+        <p>
+          Begin with the problem you need to solve. Add another Runic product
+          only when your application needs it.
+        </p>
       </div>
       <a class="text-link" href={resolve('/products')}>Compare all products →</a
       >
     </div>
     <div class="product-grid">
       {#each products as product (product.slug)}
-        <a
-          class="product-card"
-          href={resolve('/products/[slug]', { slug: product.slug })}
-        >
-          <span
-            class="product-mark product-logo"
-            style:background-image={`url(${product.icon})`}
-            aria-hidden="true"
-          ></span>
-          <p class="kicker">{product.kicker}</p>
-          <h3>{product.name}</h3>
-          <p>{product.summary}</p>
-          <span class="card-link">Explore {product.shortName} →</span>
-        </a>
+        <ProductCard {product} label={`Explore ${product.shortName}`} />
       {/each}
     </div>
   </section>
 
   <section class="section shell">
-    <div class="principle-panel">
+    <Card.Root class="principle-panel">
       <div>
-        <p class="eyebrow">The ownership rule</p>
-        <h2>Integrations belong to the product doing the integrating.</h2>
+        <p class="eyebrow">Made to compose</p>
+        <h2>Connect products without coupling their cores.</h2>
       </div>
+      <p>
+        Each product has its own repository and release cycle. Package-based
+        products own their package families. Official integrations can connect a
+        product to another product, framework, or tool; the product cores do not
+        depend back on those integrations.
+      </p>
       <div
         class="mini-flow"
         aria-label="Runic Flow integration dependency direction"
@@ -91,25 +108,30 @@
         ><b>←</b><span>RunicToolkit.ApplicationBridge</span>
       </div>
       <p>
-        Cores remain portable. Adapters depend on both sides. Git history,
-        versioning, and release decisions stay with the product that owns the
-        behavior.
+        Runic Flow owns its Toolkit adapter because Flow defines the behavior.
+        The adapter depends on both products; neither core depends back on it.
       </p>
-    </div>
+      <ActionLink href={resolve('/architecture')} variant="outline"
+        >Read the architecture guide</ActionLink
+      >
+    </Card.Root>
   </section>
 
+  <Separator class="shell" />
   <section class="section shell launch-strip">
     <div>
-      <p class="eyebrow">First public preview</p>
-      <h2>The source is public; the first package previews are next.</h2>
+      <Badge variant="outline" class="mb-4 border-primary/30 text-primary"
+        >Public preview</Badge
+      >
+      <h2>The source is ready to explore.</h2>
       <p>
-        Current main branches and exact candidate artifacts are green. Public
-        registry publication remains gated on trusted publishers and final
-        registry acceptance checks.
+        The repositories are public. CsWebUi 2.5.0-beta.4.4 is available on
+        NuGet. Exact preview candidates for the remaining package families have
+        passed verification but are not yet published to NuGet or npm.
       </p>
     </div>
-    <a class="button secondary" href={resolve('/releases')}
-      >See current release status</a
+    <ActionLink href={resolve('/releases')} variant="outline"
+      >Check release status</ActionLink
     >
   </section>
-</main>
+</div>

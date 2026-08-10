@@ -1,8 +1,33 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark" data-theme="runic">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      (() => {
+        document.documentElement.classList.add('js');
+        try {
+          const modes = ['system', 'light', 'dark'];
+          const palettes = ['runic', 'moss', 'fjord', 'ember'];
+          const storedMode = localStorage.getItem('runic-docs.theme-mode');
+          const storedPalette = localStorage.getItem(
+            'runic-docs.theme-palette',
+          );
+          const mode = modes.includes(storedMode) ? storedMode : 'dark';
+          const palette = palettes.includes(storedPalette)
+            ? storedPalette
+            : 'runic';
+          const dark =
+            mode === 'dark' ||
+            (mode === 'system' &&
+              matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+          document.documentElement.dataset.theme = palette;
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        } catch {}
+      })();
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

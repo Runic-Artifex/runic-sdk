@@ -65,6 +65,37 @@ Packages may go public only after:
    registries; and
 5. the launch is explicitly approved.
 
+## Maintainer release workflow
+
+The public release page summarizes availability. Maintainers use the following
+runbook to prepare and publish the artifacts behind that status:
+
+1. Finish product changes and select immutable release inputs from green
+   `main` branches.
+2. Restore, test, and pack from those exact commits without sibling-source
+   dependencies. Run frontend checks, isolated downstream-consumer tests, and
+   applicable NativeAOT publication and execution gates.
+3. Review the documentation against the exact artifacts, including identifiers,
+   versions, links, and install commands.
+4. Publish those same verified artifacts through protected GitHub environments
+   and OIDC trusted publishers for NuGet and npm. If npm requires a first
+   package record before trusted publishing can be configured, use a
+   short-lived bootstrap token and revoke it immediately afterward.
+
+Committed npm lockfiles are release inputs. Dependency changes update them in a
+reviewed source change. `npm ci` consumes those lockfiles, so release jobs do not
+re-resolve dependencies. Ephemeral `npm version` stamping may update manifest
+and lockfile metadata for the candidate version.
+
+The first-preview order is intentionally narrow:
+
+- Runic Command Line can publish independently.
+- Runic Translations can publish its NuGet and npm artifacts independently.
+- Runic Translations Editor follows Runic Translations.
+- The Svelte and Vite integrations precede the Toolkit public-template gate.
+- Runic Toolkit follows both integrations.
+- Runic Assets and Runic Flow follow Runic Toolkit.
+
 ## License
 
 The portal source and documentation are licensed under the MIT License.

@@ -17,6 +17,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/lib/components/ui/**/*.svelte'],
+    rules: {
+      'svelte/no-navigation-without-resolve': 'off',
+    },
+  },
+  {
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
 );

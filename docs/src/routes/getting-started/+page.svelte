@@ -1,119 +1,125 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import ContentCard from '$lib/components/ContentCard.svelte';
 </script>
 
 <svelte:head>
   <title>Getting started · Runic Artifex</title>
   <meta
     name="description"
-    content="Choose a Runic Artifex product and prepare for the first public preview."
+    content="Choose the focused Runic Artifex product that solves your next application problem."
+  />
+  <meta property="og:title" content="Getting started · Runic Artifex" />
+  <meta
+    property="og:description"
+    content="Choose the focused Runic Artifex product that solves your next application problem."
+  />
+  <meta name="twitter:title" content="Getting started · Runic Artifex" />
+  <meta
+    name="twitter:description"
+    content="Choose the focused Runic Artifex product that solves your next application problem."
   />
 </svelte:head>
 
-<main>
+<div>
   <section class="page-hero shell">
     <p class="eyebrow">Getting started</p>
-    <h1>Begin at the capability boundary.</h1>
+    <h1>Start from what you’re building.</h1>
     <p class="lede">
-      Runic Artifex is not one mandatory stack. Choose an independent product,
-      then add integrations owned by that product when your application needs
-      them.
+      Runic Artifex is not one mandatory stack. Start with one product, then add
+      an official integration when it needs to work with another product.
     </p>
   </section>
   <section class="content-grid shell">
-    <article class="info-card">
-      <p class="eyebrow">01 · Choose</p>
-      <h2>Pick the owner</h2>
+    <ContentCard eyebrow="Getting started" title="What are you building?" full>
       <ul>
         <li>
-          Need a desktop browser host? Start with <a
+          A lightweight desktop window? Start with <a
             href={resolve('/products/[slug]', { slug: 'cs-webui' })}>CsWebUi</a
           >.
         </li>
         <li>
-          Need application composition? Start with <a
+          One application across desktop and browser? Start with <a
             href={resolve('/products/[slug]', { slug: 'runic-toolkit' })}
             >Runic Toolkit</a
           >.
         </li>
         <li>
-          Need deterministic backend operations? Start with <a
+          Long-running or coordinated work? Start with <a
             href={resolve('/products/[slug]', { slug: 'runic-flow' })}
             >Runic Flow</a
           >.
         </li>
         <li>
-          Need localization contracts and builds? Start with <a
+          Portable static assets? Start with <a
+            href={resolve('/products/[slug]', { slug: 'runic-assets' })}
+            >Runic Assets</a
+          >.
+        </li>
+        <li>
+          Localization contracts and builds? Start with <a
             href={resolve('/products/[slug]', { slug: 'runic-translations' })}
             >Runic Translations</a
           >.
         </li>
         <li>
-          Need a translator-facing workspace? Use <a
+          A translator-facing workspace? Use <a
             href={resolve('/products/[slug]', {
               slug: 'runic-translations-editor',
             })}>Runic Translations Editor</a
           >.
         </li>
-      </ul>
-    </article>
-    <article class="info-card">
-      <p class="eyebrow">02 · Inspect</p>
-      <h2>Use the candidate status, not an old version list</h2>
-      <p>
-        CsWebUi is already public. Other package families are refreshing
-        candidates from their final source commits. The catalog names package
-        ownership now and will show installable versions only after matching
-        public artifacts are ready.
-      </p>
-    </article>
-    <article class="info-card">
-      <p class="eyebrow">03 · Integrate</p>
-      <h2>Let adapters point inward</h2>
-      <p>
-        Runic Flow remains headless and frontend-neutral. <code
-          >RunicFlow.ApplicationBridge</code
-        >
-        depends on Flow and Toolkit Application Bridge and is released by Flow.
-      </p>
-    </article>
-    <article class="info-card">
-      <p class="eyebrow">04 · Verify</p>
-      <h2>Keep the application in control</h2>
-      <ul>
-        <li>Pin exact product versions during the preview.</li>
         <li>
-          Publish the final application with trimming and NativeAOT when
-          supported.
-        </li>
-        <li>
-          Do not add NuGet <code>packages.lock.json</code>; application package
-          managers own resolution.
-        </li>
-        <li>
-          Keep ordinary npm <code>package-lock.json</code> files for applications.
+          A NativeAOT command-line application? Start with <a
+            href={resolve('/products/[slug]', { slug: 'runic-command-line' })}
+            >Runic Command Line</a
+          >.
         </li>
       </ul>
-    </article>
-    <article class="info-card full">
-      <div class="notice">
-        <strong>Public launch is gated</strong>
-        <p>
-          Source visibility can precede registry publication. Package commands
-          will be published only after fresh candidates, downstream consumers,
-          trusted publishers, and the documentation review all pass.
-        </p>
-      </div>
+    </ContentCard>
+    <ContentCard eyebrow="Available today" title="Try CsWebUi">
       <p>
-        Continue with the <a
-          class="text-link"
-          href={resolve('/application-bridge')}>Application Bridge guide</a
-        >, the
-        <a class="text-link" href={resolve('/packages')}>package catalog</a>, or
-        the
-        <a class="text-link" href={resolve('/architecture')}>dependency rules</a
+        CsWebUi is the only Runic package family currently available on NuGet.
+        It includes <code>CsWebUi</code> and <code>CsWebUi.Native</code>.
+      </p>
+      <pre><code>dotnet add package CsWebUi --version 2.5.0-beta.4.4</code
+        ></pre>
+    </ContentCard>
+    <ContentCard
+      eyebrow="Other products"
+      title="Browse the source while packages are pending"
+    >
+      <p>
+        The remaining package families have exact verified candidates, and their
+        source is public. Install commands will appear after matching registry
+        artifacts are published and accepted. Runic Translations Editor is a
+        separate application; its first preview is still pending.
+      </p>
+    </ContentCard>
+    <ContentCard eyebrow="Composition" title="Connect only when needed">
+      <p>
+        Runic Flow stays headless and frontend-neutral. When Flow needs to
+        connect to Runic Toolkit, Flow owns that adapter. The package is named
+        <code>RunicFlow.ApplicationBridge</code>; it depends on both products
+        while neither core depends back on it.
+      </p>
+    </ContentCard>
+    <ContentCard eyebrow="During preview" title="Keep versions explicit">
+      <p>
+        Pin exact preview versions. Products release independently, so update
+        each one on the cadence your application needs.
+      </p>
+    </ContentCard>
+    <ContentCard eyebrow="Continue" title="Go deeper" full>
+      <p>
+        <a class="text-link" href={resolve('/products')}>Compare products</a>,
+        read the
+        <a class="text-link" href={resolve('/application-bridge')}
+          >Application Bridge guide</a
+        >, or check
+        <a class="text-link" href={resolve('/packages')}>package availability</a
         >.
       </p>
-    </article>
+    </ContentCard>
   </section>
-</main>
+</div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
+  import ErrorState from '$lib/components/ErrorState.svelte';
 </script>
 
 <svelte:head>
@@ -11,17 +11,8 @@
   <meta name="robots" content="noindex" />
 </svelte:head>
 
-<main>
-  <section class="page-hero shell">
-    <p class="eyebrow">404</p>
-    <h1>That rune is not in the catalog.</h1>
-    <p class="lede">
-      The page may have moved as the preview documentation evolves.
-    </p>
-    <div class="actions">
-      <a class="button primary" href={resolve('/')}>Return home</a>
-      <a class="button secondary" href={resolve('/products')}>Browse products</a
-      >
-    </div>
-  </section>
-</main>
+<ErrorState
+  status="404"
+  title="That rune is not in the catalog."
+  description="The page may have moved as the preview documentation evolves."
+/>

@@ -1,24 +1,52 @@
+<script lang="ts">
+  import ContentCard from '$lib/components/ContentCard.svelte';
+</script>
+
 <svelte:head>
   <title>Architecture · Runic Artifex</title>
   <meta
     name="description"
-    content="The ownership and dependency rules that keep Runic Artifex products independent."
+    content="How Runic products stay useful on their own while official integrations let you connect only the pieces your project needs."
+  />
+  <meta property="og:title" content="Architecture · Runic Artifex" />
+  <meta
+    property="og:description"
+    content="How Runic products stay useful on their own while official integrations let you connect only the pieces your project needs."
+  />
+  <meta name="twitter:title" content="Architecture · Runic Artifex" />
+  <meta
+    name="twitter:description"
+    content="How Runic products stay useful on their own while official integrations let you connect only the pieces your project needs."
   />
 </svelte:head>
 
-<main>
+<div>
   <section class="page-hero shell">
     <p class="eyebrow">Architecture</p>
-    <h1>Ownership and dependency direction are separate decisions.</h1>
+    <h1>Use products independently. Connect them deliberately.</h1>
     <p class="lede">
-      A product owns the behavior it contributes. An integration depends on both
-      cores. Neither core depends back on the integration.
+      Each Runic tool works on its own. Integrations connect products, external
+      frameworks, or tooling without making a core depend back on them. Those
+      integrations stay in separate packages and are released with the product
+      that owns their behavior.
     </p>
   </section>
   <section class="content-grid shell">
-    <article class="info-card full">
-      <p class="eyebrow">Canonical seam</p>
-      <h2>Flow controls its Toolkit integration</h2>
+    <ContentCard
+      eyebrow="Why this matters"
+      title="Add an integration without adopting a stack"
+      full
+    >
+      <p>
+        Choose one product first. When two products need to meet, add the
+        integration that owns that behavior; neither core changes direction.
+      </p>
+    </ContentCard>
+    <ContentCard
+      eyebrow="A concrete example"
+      title="Flow owns its Toolkit connection"
+      full
+    >
       <div class="mini-flow">
         <span>RunicFlow<br /><small>Headless core</small></span><b>→</b><strong
           >RunicFlow.ApplicationBridge<br /><small>Owned by Flow</small></strong
@@ -28,54 +56,64 @@
           ></span
         >
       </div>
-    </article>
-    <article class="info-card">
-      <p class="eyebrow">Product autonomy</p>
-      <h2>Independent histories</h2>
       <p>
-        Flow, Assets, Translations, Translations Editor, Command Line, Toolkit,
-        and CsWebUi each version and release from their own repository.
+        <code>RunicFlow.ApplicationBridge</code> depends on Runic Flow and Toolkit
+        Application Bridge, but both cores remain usable without it.
       </p>
-    </article>
-    <article class="info-card">
-      <p class="eyebrow">Stable seams</p>
-      <h2>Explicit compatibility</h2>
-      <p>
-        Integrations pin exact cross-product versions during the preview.
-        Compatibility is evidence recorded by consumers, frontend builds, and
-        applicable NativeAOT runs.
-      </p>
-    </article>
-    <article class="info-card">
-      <p class="eyebrow">Framework neutrality</p>
-      <h2>Cores stay portable</h2>
+    </ContentCard>
+    <ContentCard eyebrow="Portable cores" title="Cores stay portable">
       <p>
         Runic Flow owns no UI state. Runic Assets owns no host. Runic
         Translations begins with .NET but defines language-neutral contracts.
       </p>
-    </article>
-    <article class="info-card full">
-      <p class="eyebrow">Application boundary</p>
-      <h2>The editor consumes the translation system</h2>
+    </ContentCard>
+    <ContentCard
+      eyebrow="Independent releases"
+      title="Products move at their own pace"
+    >
       <p>
-        Runic Translations owns schemas, compiler behavior, runtime contracts,
-        generators, and authoring APIs. Runic Translations Editor consumes those
-        surfaces as a downstream desktop application and owns translator UX,
-        packaging, and releases.
+        Flow, Assets, Translations, Translations Editor, Command Line, Toolkit,
+        and CsWebUi each keep an independent release history. Package families
+        release registry artifacts; Translations Editor releases desktop
+        archives from its own repository.
       </p>
-    </article>
-    <article class="info-card">
-      <p class="eyebrow">Integration ownership</p>
-      <h2>Behavior lives with its author</h2>
+    </ContentCard>
+    <ContentCard
+      eyebrow="Integration ownership"
+      title="Behavior stays with the product that defines it"
+    >
       <p>
         <code>RunicAssets.RunicToolkit</code> and
         <code>RunicFlow.ApplicationBridge</code> live and release with Assets and
-        Flow respectively.
+        Flow respectively. The same rule applies when a product connects to an external
+        framework or development tool.
       </p>
-    </article>
-    <article class="info-card full">
-      <p class="eyebrow">Application boundary</p>
-      <h2>Schema first, renderer last</h2>
+    </ContentCard>
+    <ContentCard
+      eyebrow="Application boundary"
+      title="The editor uses the translation system"
+      full
+    >
+      <p>
+        Runic Translations owns schemas, compiler behavior, runtime contracts,
+        generators, and authoring APIs. Runic Translations Editor uses its
+        packages and APIs as a downstream desktop application and owns
+        translator UX, packaging, and releases.
+      </p>
+    </ContentCard>
+    <ContentCard eyebrow="Preview compatibility" title="Pin the exact versions">
+      <p>
+        Integrations pin exact cross-product versions during the preview.
+        Compatibility is verified in the applications that consume the
+        integrations, in frontend builds, and, where applicable, in NativeAOT
+        runs.
+      </p>
+    </ContentCard>
+    <ContentCard
+      eyebrow="UI-independent contracts"
+      title="Define the schema before choosing the renderer"
+      full
+    >
       <p>
         Effect Schema is the authority for Application Bridge wire values.
         Deterministic JSON Schema and a canonical manifest feed the
@@ -83,6 +121,6 @@
         application events into their own state systems without owning transport
         lifecycle.
       </p>
-    </article>
+    </ContentCard>
   </section>
-</main>
+</div>

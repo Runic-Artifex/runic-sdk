@@ -1,104 +1,167 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import ContentCard from '$lib/components/ContentCard.svelte';
+  import * as Table from '$lib/components/ui/table';
   import { products } from '$lib/docs-data';
 
   const frontendIntegrations = [
     {
       name: '@runic-artifex/svelte',
-      owner: 'runic-svelte',
-      source: 'https://github.com/Runic-Artifex/runic-svelte',
-      version: '0.1.0-preview.8.1 · verified, unpublished',
+      project: 'Runic Svelte',
+      version: '0.1.0-preview.8.1',
     },
     {
       name: '@runic-artifex/sveltekit',
-      owner: 'runic-svelte',
-      source: 'https://github.com/Runic-Artifex/runic-svelte',
-      version: '0.1.0-preview.8.1 · verified, unpublished',
+      project: 'Runic Svelte',
+      version: '0.1.0-preview.8.1',
     },
     {
       name: '@runic-artifex/vite-plugin-runic-toolkit',
-      owner: 'runic-vite',
-      source: 'https://github.com/Runic-Artifex/runic-vite',
-      version: '0.1.0-preview.8.1 · verified, unpublished',
+      project: 'Runic Vite',
+      version: '0.1.0-preview.8.1',
     },
   ] as const;
 
-  const rows = products.flatMap((product) => [
-    ...product.packages.map((name) => ({ name, registry: 'NuGet', product })),
-    ...(product.npmPackages ?? []).map((name) => ({
-      name,
+  const rows = [
+    ...products.flatMap((product) => [
+      ...product.packages.map((name) => ({
+        name,
+        registry: 'NuGet',
+        project: product.name,
+        projectSlug: product.slug,
+        version: product.version,
+        availability: product.install?.length
+          ? 'Available on NuGet'
+          : 'Verified candidate · not yet published',
+      })),
+      ...(product.npmPackages ?? []).map((name) => ({
+        name,
+        registry: 'npm',
+        project: product.name,
+        projectSlug: product.slug,
+        version: product.version,
+        availability: 'Verified candidate · not yet published',
+      })),
+    ]),
+    ...frontendIntegrations.map((integration) => ({
+      name: integration.name,
       registry: 'npm',
-      product,
+      project: integration.project,
+      projectSlug: null,
+      version: integration.version,
+      availability: 'Verified candidate · not yet published',
     })),
-  ]);
+  ].sort((left, right) =>
+    left.availability === right.availability
+      ? 0
+      : left.availability === 'Available on NuGet'
+        ? -1
+        : 1,
+  );
 </script>
 
 <svelte:head>
   <title>Package catalog · Runic Artifex</title>
   <meta
     name="description"
-    content="The NuGet and npm packages owned by each Runic Artifex product."
+    content="Browse Runic Artifex packages by registry, product, candidate version, and publication status."
+  />
+  <meta
+    property="og:title"
+    content="Find packages by product and registry · Runic Artifex"
+  />
+  <meta
+    property="og:description"
+    content="Browse Runic Artifex packages by registry, product, candidate version, and publication status."
+  />
+  <meta
+    name="twitter:title"
+    content="Find packages by product and registry · Runic Artifex"
+  />
+  <meta
+    name="twitter:description"
+    content="Browse Runic Artifex packages by registry, product, candidate version, and publication status."
   />
 </svelte:head>
 
-<main>
+<div>
   <section class="page-hero shell">
-    <p class="eyebrow">Package catalog</p>
-    <h1>One owner for every public package.</h1>
+    <p class="eyebrow">Packages</p>
+    <h1>Find packages by product and registry.</h1>
     <p class="lede">
-      Package families release independently. Exact candidates are verified;
-      versions marked unpublished are not public install promises.
+      See which packages are available now, which version has been verified, and
+      which product owns each one.
     </p>
   </section>
   <section class="content-grid shell">
     <div class="package-table">
-      <table>
-        <thead
-          ><tr
-            ><th>Package</th><th>Registry</th><th>Owner</th><th
-              >Public status</th
-            ></tr
-          ></thead
-        >
-        <tbody>
-          {#each rows as { name, registry, product } (`${registry}:${name}`)}
-            <tr>
-              <td>{name}</td><td>{registry}</td><td
-                ><a href={resolve('/products/[slug]', { slug: product.slug })}
-                  >{product.name}</a
-                ></td
-              ><td><code>{product.version}</code></td>
-            </tr>
+      <Table.Root>
+        <Table.Caption class="sr-only">
+          Runic Artifex package projects, candidate versions, and current
+          availability
+        </Table.Caption>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head scope="col">Package</Table.Head>
+            <Table.Head scope="col">Registry</Table.Head>
+            <Table.Head scope="col">Project</Table.Head>
+            <Table.Head scope="col">Current availability</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each rows as row (`${row.registry}:${row.name}`)}
+            <Table.Row>
+              <Table.Cell>{row.name}</Table.Cell>
+              <Table.Cell>{row.registry}</Table.Cell>
+              <Table.Cell>
+                {#if row.projectSlug}
+                  <a
+                    href={resolve('/products/[slug]', {
+                      slug: row.projectSlug,
+                    })}>{row.project}</a
+                  >
+                {:else if row.project === 'Runic Svelte'}
+                  <a href="https://github.com/Runic-Artifex/runic-svelte"
+                    >Runic Svelte</a
+                  >
+                {:else}
+                  <a href="https://github.com/Runic-Artifex/runic-vite"
+                    >Runic Vite</a
+                  >
+                {/if}
+              </Table.Cell>
+              <Table.Cell>
+                <span class="grid gap-1">
+                  <code>{row.version}</code>
+                  <span>{row.availability}</span>
+                </span>
+              </Table.Cell>
+            </Table.Row>
           {/each}
-          {#each frontendIntegrations as integration (integration.name)}
-            <tr>
-              <td>{integration.name}</td><td>npm</td><td>{integration.owner}</td
-              ><td><code>{integration.version}</code></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+        </Table.Body>
+      </Table.Root>
     </div>
-    <article class="info-card full">
-      <p class="eyebrow">Canonical names</p>
-      <h2>Product and package identifiers agree</h2>
+    <ContentCard
+      eyebrow="Version policy"
+      title="Preview versions stay exact"
+      full
+    >
       <p>
-        Runic Translations is the product and repository name. <code
-          >RunicTranslations.*</code
-        >,
-        <code>runic.translations/1</code>, and
+        Each repository releases one version across its package family.
+        Cross-product dependencies remain exact while contracts settle;
+        applications choose their own update cadence.
+      </p>
+    </ContentCard>
+    <ContentCard
+      eyebrow="Compatibility"
+      title="Runic Translations identifiers"
+      full
+    >
+      <p>
+        <code>RunicTranslations.*</code>, <code>runic.translations/1</code>, and
         <code>@runic-artifex/vite-plugin-runic-translations</code> are the canonical
         identifiers.
       </p>
-    </article>
-    <article class="info-card full">
-      <p class="eyebrow">Version policy</p>
-      <h2>Exact during preview, explicit afterward</h2>
-      <p>
-        Each repository releases one version across its owned package family.
-        Cross-product dependencies remain exact while contracts settle.
-        Applications decide their own update cadence.
-      </p>
-    </article>
+    </ContentCard>
   </section>
-</main>
+</div>

@@ -30,10 +30,10 @@ export const products: Product[] = [
     icon: '/products/runic-toolkit.png',
     kicker: 'Application composition',
     summary:
-      'A NativeAOT-first toolbelt for lifecycle, hosting, desktop contracts, frontend builds, and explicit application bridges.',
+      'Compose desktop windows, browser frontends, and .NET hosting around one application model with NativeAOT-safe application contracts.',
     description:
-      'Runic Toolkit composes the same application model across desktop windows, browser frontends, Generic Host, and framework-owned UI state. Its official Application Bridge carries named domain commands and validated events through one NativeAOT-safe host boundary.',
-    version: '0.1.0-preview.22.1 · verified, unpublished',
+      'Runic Toolkit connects desktop windows, browser frontends, and .NET hosting around one application model. Its Application Bridge carries named commands and validated events between a frontend and a NativeAOT-safe .NET host.',
+    version: '0.1.0-preview.22.1',
     source: 'https://github.com/Runic-Artifex/runic-toolkit',
     bestFor: [
       'Composing .NET desktop and browser applications',
@@ -71,9 +71,9 @@ export const products: Product[] = [
     icon: '/products/cs-webui.png',
     kicker: 'Native host',
     summary:
-      'Modern .NET bindings for WebUI with safe window ownership, callbacks, embedded assets, and NativeAOT support.',
+      'Host a web-powered cross-platform desktop UI in a native window using an installed browser or supported WebView.',
     description:
-      "CsWebUi uses an installed browser or supported WebView as a lightweight cross-platform desktop UI. The raw package mirrors WebUI's C ABI; the high-level package adds deterministic managed ownership and safer application APIs.",
+      'CsWebUi provides .NET bindings for WebUI. The raw package follows the WebUI C ABI, while the high-level package adds deterministic managed ownership, safer callbacks and window APIs, custom HTTP responses for asset integrations, and NativeAOT support.',
     version: '2.5.0-beta.4.4',
     source: 'https://github.com/Runic-Artifex/cs-webui',
     bestFor: [
@@ -96,10 +96,10 @@ export const products: Product[] = [
     icon: '/products/runic-flow.png',
     kicker: 'Headless orchestration',
     summary:
-      'A deterministic, headless runtime for application processes and coordinated backend operations.',
+      'Coordinate predictable, UI-independent work with typed decisions, progress, cancellation, and deterministic state commits.',
     description:
-      'Runic Flow provides typed command decisions, serialized state commits, process-local versions, opaque checkpoints, concurrency slots, timeouts, progress, cancellation, and terminal outcomes without owning UI state.',
-    version: '0.1.0-preview.5.1 · verified, unpublished',
+      'Runic Flow coordinates headless application work through typed command decisions and serialized state commits. It tracks process-local versions, opaque checkpoints, concurrency slots, timeouts, progress, cancellation, and terminal outcomes without taking ownership of UI state.',
+    version: '0.1.0-preview.5.1',
     source: 'https://github.com/Runic-Artifex/runic-flow',
     bestFor: [
       'Deterministic application processes',
@@ -120,10 +120,10 @@ export const products: Product[] = [
     icon: '/products/runic-assets.png',
     kicker: 'Shared infrastructure',
     summary:
-      'Safe paths, immutable manifests, portable archives, development sources, and adapters for ASP.NET Core, CsWebUi, and Toolkit.',
+      'Package static assets once and serve the same validated manifest from embedded, development, browser, or server hosts.',
     description:
-      'Runic Assets defines a transport-neutral static-asset model. A canonical standard-ZIP format and strict path validation let the same manifest move through embedded, development, browser, and server hosts.',
-    version: '0.1.0-preview.17.1 · verified, unpublished',
+      'Runic Assets lets one validated asset manifest travel through embedded, development, browser, and server hosts. Safe paths, immutable manifests, portable standard-ZIP archives, development sources, and host adapters stay separate from the transport-neutral core.',
+    version: '0.1.0-preview.17.1',
     source: 'https://github.com/Runic-Artifex/runic-assets',
     bestFor: [
       'Sharing static assets across hosts',
@@ -149,10 +149,10 @@ export const products: Product[] = [
     icon: '/products/runic-translations.png',
     kicker: 'Localization',
     summary:
-      'Language-neutral localization contracts with a deterministic compiler, NativeAOT runtime, authoring API, generators, build integration, and CLI.',
+      'Turn portable translation resources into strongly typed, NativeAOT-ready .NET APIs.',
     description:
-      'Runic Translations treats source schemas, message grammar, generated artifacts, and runtime ABI as portable contracts. The .NET implementation is the first runtime, not the boundary of the framework; package and protocol identifiers now use the canonical Translations naming.',
-    version: '0.1.0-preview.4.3 · verified, unpublished',
+      'Runic Translations defines source schemas, message grammar, generated artifacts, and its runtime ABI as portable contracts. Its deterministic compiler, authoring API, generators, build integration, CLI, and NativeAOT runtime begin with .NET without making .NET the boundary of the system.',
+    version: '0.1.0-preview.4.3',
     source: 'https://github.com/Runic-Artifex/runic-translations',
     bestFor: [
       'Deterministic localization builds',
@@ -178,7 +178,7 @@ export const products: Product[] = [
     npmPackages: ['@runic-artifex/vite-plugin-runic-translations'],
     related: {
       href: '/products/runic-translations-editor/',
-      label: 'Open the editor product',
+      label: 'Explore Translations Editor',
     },
   },
   {
@@ -188,9 +188,9 @@ export const products: Product[] = [
     icon: '/products/runic-translations-editor.png',
     kicker: 'Translation authoring',
     summary:
-      'A focused desktop editor for creating, translating, reviewing, and validating Runic Translations workspaces.',
+      'Create, translate, review, and validate Runic Translations workspaces in a focused desktop editor.',
     description:
-      'Runic Translations Editor is the human-facing authoring environment for Runic Translations. Translators work with natural text, variables, variants, workflow status, and validation while the application preserves the deterministic resource model underneath.',
+      'Runic Translations Editor gives translators a focused workspace for natural text, variables, variants, workflow status, and validation. It preserves the deterministic Runic Translations resource model without requiring people to edit resource files directly.',
     version: 'First preview pending',
     source: 'https://github.com/Runic-Artifex/runic-translations-editor',
     bestFor: [
@@ -212,7 +212,7 @@ export const products: Product[] = [
     ],
     related: {
       href: '/products/runic-translations/',
-      label: 'Explore the underlying translation system',
+      label: 'Explore Runic Translations',
     },
   },
   {
@@ -222,10 +222,10 @@ export const products: Product[] = [
     icon: '/products/runic-command-line.png',
     kicker: 'Command applications',
     summary:
-      'A parser-neutral, reflection-free framework for command catalogs, execution, deterministic output, hosting, and bounded processes.',
+      'Build reflection-free NativeAOT command applications with parser-neutral contracts and predictable human and machine output.',
     description:
-      'Runic Command Line exists because NativeAOT-focused applications need a smaller and more explicit command surface. Portable contracts stay separate from execution, hosting classification, and child-process support.',
-    version: '0.1.0-preview.4.1 · verified, unpublished',
+      'Runic Command Line separates portable command contracts from execution, hosting, and child-process support. It provides command catalogs and predictable output without requiring reflection or committing applications to one parser.',
+    version: '0.1.0-preview.4.1',
     source: 'https://github.com/Runic-Artifex/runic-command-line',
     bestFor: [
       'NativeAOT command applications',
