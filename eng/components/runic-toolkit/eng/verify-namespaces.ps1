@@ -15,7 +15,7 @@ $retiredPatterns = @(
     '\bWUT(?:MVVM|HOST|DEV|FE)\b',
     '\bwut(?:mvvm|-bindings)\b',
     '\bdata-wut\b',
-    '\bRunicToolkit\.(?:Assets|CommandLine|Flow|TextResources|Translations)\b',
+    '\bRunicToolkit\.(?:Assets|CommandLine|Flow|Translations)\b',
     '__runic-toolkit'
 )
 $violations = @()
