@@ -7,8 +7,8 @@ Artifex ecosystem.
 
 | Package | Purpose |
 |---|---|
-| `@runic-artifex/svelte` | Runes-based Application Bridge state, typed context, and opt-in Effect workflows |
-| `@runic-artifex/sveltekit` | Static/native SvelteKit adapter and deterministic host manifest |
+| `@runic-artifex/svelte` | Runes-based Application Bridge state, typed locale context, and opt-in Effect workflows |
+| `@runic-artifex/sveltekit` | Static/native adapter plus request-scoped translation routing and navigation |
 
 Only Svelte 5 is supported. There is no Svelte 4 build, legacy-store adapter,
 or renderer-owned protocol runtime.

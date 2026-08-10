@@ -13,6 +13,15 @@
     "./page-options": {
       "types": "./dist/page-options.d.ts",
       "import": "./dist/page-options.js"
+    },
+    "./translations": {
+      "types": "./dist/translations/index.d.ts",
+      "import": "./dist/translations/index.js"
+    },
+    "./translations/navigation": {
+      "types": "./dist/translations/navigation.d.ts",
+      "svelte": "./dist/translations/navigation.js",
+      "import": "./dist/translations/navigation.js"
     }
   },
   "files": ["dist", "README.md", "LICENSE"],

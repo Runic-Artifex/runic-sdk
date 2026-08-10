@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "svelte": "./dist/index.js",
       "import": "./dist/index.js"
+    },
+    "./translations": {
+      "types": "./dist/translations/index.d.ts",
+      "svelte": "./dist/translations/index.js",
+      "import": "./dist/translations/index.js"
     }
   },
   "files": ["dist", "README.md", "LICENSE"],
