@@ -8,7 +8,6 @@ on:
       version:
         description: Exact SemVer package version
         required: true
-        default: 0.1.0
         type: string
       publish_public:
         description: Publish verified npm artifacts publicly
@@ -29,11 +28,16 @@ permissions:
   contents: read
 
 env:
-  PACKAGE_VERSION: ${{ inputs.version || '0.1.0-preview.0' }}
+  PACKAGE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '0.0.0-pr-validation' }}
+
+concurrency:
+  group: public-release-${{ inputs.version || github.sha }}
+  cancel-in-progress: false
 
 jobs:
   package:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Validate request
         env:
@@ -52,35 +56,43 @@ jobs:
       - run: npm run verify
       - name: Pack public candidates
         run: |
+          mkdir -p "$RUNNER_TEMP/packages"
           npm version "$PACKAGE_VERSION" --no-git-tag-version --allow-same-version --workspace @runic-artifex/svelte
           npm version "$PACKAGE_VERSION" --no-git-tag-version --allow-same-version --workspace @runic-artifex/sveltekit
           npm pkg set "gitHead=$GITHUB_SHA" --workspace @runic-artifex/svelte
           npm pkg set "gitHead=$GITHUB_SHA" --workspace @runic-artifex/sveltekit
           npm pkg set "publishConfig.registry=https://registry.npmjs.org" --workspace @runic-artifex/svelte
           npm pkg set "publishConfig.registry=https://registry.npmjs.org" --workspace @runic-artifex/sveltekit
-          npm pack --workspace @runic-artifex/svelte --pack-destination "$RUNNER_TEMP"
-          npm pack --workspace @runic-artifex/sveltekit --pack-destination "$RUNNER_TEMP"
+          npm pack --workspace @runic-artifex/svelte --pack-destination "$RUNNER_TEMP/packages"
+          npm pack --workspace @runic-artifex/sveltekit --pack-destination "$RUNNER_TEMP/packages"
       - uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
         with:
           version: ${{ env.PACKAGE_VERSION }}
-          artifact-directory: ${{ runner.temp }}
+          artifact-directory: ${{ runner.temp }}/packages
           repository-url: https://github.com/Runic-Artifex/runic-svelte
           repository-commit: ${{ github.sha }}
           expected-npm-count: "2"
+      - name: Record package digests
+        working-directory: ${{ runner.temp }}/packages
+        run: sha256sum ./*.tgz > SHA256SUMS
       - uses: actions/upload-artifact@v7
         with:
           name: runic-svelte-${{ env.PACKAGE_VERSION }}
-          path: ${{ runner.temp }}/*.tgz
+          path: ${{ runner.temp }}/packages/
+          if-no-files-found: error
+          retention-days: 14
 
   publish:
     if: ${{ inputs.publish_public && inputs.confirmation == 'PUBLISH PUBLIC' && github.ref == 'refs/heads/main' }}
     needs: package
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment: public-release
     permissions:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 24.18.0
@@ -90,11 +102,21 @@ jobs:
         with:
           name: runic-svelte-${{ env.PACKAGE_VERSION }}
           path: ${{ runner.temp }}/packages
+      - name: Verify package digests
+        working-directory: ${{ runner.temp }}/packages
+        run: sha256sum --check SHA256SUMS
+      - name: Preflight npm publication state
+        run: ./eng/publish-public-npm.sh "$RUNNER_TEMP/packages" "$PACKAGE_VERSION" --preflight-only
+      - name: Validate npm bootstrap credential
+        if: ${{ inputs.npm_bootstrap }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: test -n "$NODE_AUTH_TOKEN"
       - name: Publish with bootstrap token
         if: ${{ inputs.npm_bootstrap }}
-        run: for package in "$RUNNER_TEMP"/packages/*.tgz; do npm publish "$package" --access public; done
+        run: ./eng/publish-public-npm.sh "$RUNNER_TEMP/packages" "$PACKAGE_VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
       - name: Publish with trusted publishing
         if: ${{ !inputs.npm_bootstrap }}
-        run: for package in "$RUNNER_TEMP"/packages/*.tgz; do npm publish "$package" --access public; done
+        run: ./eng/publish-public-npm.sh "$RUNNER_TEMP/packages" "$PACKAGE_VERSION"
