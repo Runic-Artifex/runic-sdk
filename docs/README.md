@@ -15,6 +15,10 @@ The portal is built with SvelteKit and Svelte 5. It is fully prerendered with
 page served at `https://runic-artifex.eu`; `https://www.runic-artifex.eu`
 redirects to the apex.
 
+Versioned Runic Translations JSON Schemas are published as static assets under
+`/schemas/translations/`. Their canonical identifiers use the owned apex origin;
+the apex redirects those requests to the same files on the documentation host.
+
 ## Develop locally
 
 Use Node.js 24 and npm:

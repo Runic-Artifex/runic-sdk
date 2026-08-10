@@ -3,5 +3,6 @@ build
 dist
 node_modules
 package-lock.json
+public/schemas/translations
 src/lib/components/ui/dropdown-menu
 static
