@@ -15,7 +15,6 @@ on:
       version:
         description: Exact SemVer package version
         required: true
-        default: 0.1.0-preview.5.1
         type: string
       publish_public:
         description: Publish the verified artifacts to nuget.org
@@ -133,6 +132,28 @@ jobs:
         working-directory: ${{ runner.temp }}/packages
         run: sha256sum --check SHA256SUMS
 
+      - name: Refuse version reuse on a new dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in "$RUNNER_TEMP"/packages/*.nupkg; do
+            filename="$(basename "$package")"
+            package_id="${filename%."$PACKAGE_VERSION".nupkg}"
+            if [[ "$package_id" == "$filename" ]]; then
+              echo "Cannot derive a package ID from '$filename'." >&2
+              exit 1
+            fi
+            package_id="${package_id,,}"
+            url="https://api.nuget.org/v3-flatcontainer/$package_id/$PACKAGE_VERSION/$package_id.$PACKAGE_VERSION.nupkg"
+            if curl --fail --silent --show-error --output /dev/null "$url"; then
+              if [[ "$GITHUB_RUN_ATTEMPT" == "1" ]]; then
+                echo "$package_id $PACKAGE_VERSION already exists on nuget.org; choose a new version." >&2
+                exit 1
+              fi
+              echo "$package_id $PACKAGE_VERSION already exists; retry will skip it."
+            fi
+          done
+
       - name: Sign in to nuget.org with trusted publishing
         id: nuget-login
         uses: NuGet/login@v1
@@ -147,5 +168,19 @@ jobs:
           for package in "$RUNNER_TEMP"/packages/*.nupkg; do
             dotnet nuget push "$package" \
               --source https://api.nuget.org/v3/index.json \
-              --api-key "$NUGET_API_KEY"
+              --api-key "$NUGET_API_KEY" \
+              --skip-duplicate
+          done
+
+      - name: Verify NuGet publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in "$RUNNER_TEMP"/packages/*.nupkg; do
+            filename="$(basename "$package")"
+            package_id="${filename%."$PACKAGE_VERSION".nupkg}"
+            package_id="${package_id,,}"
+            url="https://api.nuget.org/v3-flatcontainer/$package_id/$PACKAGE_VERSION/$package_id.$PACKAGE_VERSION.nupkg"
+            curl --fail --silent --show-error --output /dev/null \
+              --retry 8 --retry-delay 5 --retry-all-errors "$url"
           done
