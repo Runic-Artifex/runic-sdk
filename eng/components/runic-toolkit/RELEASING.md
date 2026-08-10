@@ -1,24 +1,38 @@
 # Releasing Runic Toolkit
 
-The `Public release` workflow builds, consumes, and validates the eighteen
-NuGet packages and six npm packages as one independently versioned family.
-Verify-only dispatches are safe on any branch. Publication is accepted only
-from `main`, after the exact `PUBLISH PUBLIC` confirmation and the
-`public-release` environment's `main` deployment policy. Add a required reviewer
-when the repository becomes public.
+The `Public release` workflow builds one versioned family containing 15 NuGet
+packages and `@runic-artifex/application-bridge` on npm. Every dispatch requires
+an explicit exact version. The next planned private candidate is
+`0.1.0-preview.22.1`; this is a planning value, not a claim that the candidate
+has been verified or published.
 
-Before the first public release:
+The candidate build also consumes the planned Runic Svelte and Vite candidates
+(`0.1.0-preview.8.1`) through the template acceptance gate. Publish those private
+candidates first, then retain the Toolkit artifact and `SHA256SUMS` file from a
+verify-only dispatch on the final `main` commit.
 
-1. complete and publish the product documentation, then make this repository public;
-2. create NuGet trusted-publisher policies for owner `Runic-Artifex`, repository
-   `runic-toolkit`, workflow `public-release.yml`, and environment `public-release`;
-3. set the environment variable `NUGET_USER` to the nuget.org account;
-4. verify control of the npm scope `@runic-artifex`;
-5. add a narrowly scoped, short-lived `NPM_BOOTSTRAP_TOKEN` environment secret and
-   run the first publication with `npm_bootstrap` enabled;
-6. configure npm trusted publishing for all six packages using this repository,
-   `public-release.yml`, and environment `public-release`; disable token publishing
-   for each package and remove the bootstrap secret.
+Publication is accepted only from `main`, after the exact `PUBLISH PUBLIC`
+confirmation and approval from the `public-release` environment. Before the
+first public release:
 
-Every later npm release must leave `npm_bootstrap` disabled so npm uses OIDC and
-generates provenance from the public GitHub repository.
+1. complete and publish the product documentation, make the repository public,
+   and add a required reviewer plus a `main` deployment policy to the
+   `public-release` environment;
+2. configure NuGet trusted publishers for owner `Runic-Artifex`, repository
+   `runic-toolkit`, workflow `public-release.yml`, and environment
+   `public-release`, then set `NUGET_USER` to the matching nuget.org account;
+3. add a short-lived npm granular access token as environment secret
+   `NPM_BOOTSTRAP_TOKEN`, limited to the `@runic-artifex` scope, and publish the
+   first version with `npm_bootstrap` enabled;
+4. configure npm trusted publishing for `@runic-artifex/application-bridge`
+   using this repository, `.github/workflows/public-release.yml`, and environment
+   `public-release`; and
+5. delete `NPM_BOOTSTRAP_TOKEN`; all later releases use OIDC with
+   `npm_bootstrap` disabled.
+
+The workflow verifies artifact digests after download, rejects a new dispatch
+that reuses an existing NuGet version, and permits a rerun of the same workflow
+artifact to skip a partial NuGet push. npm retries skip an existing package only
+when its registry integrity matches the verified candidate.
+
+Do not create a release tag until publication has passed for that exact version.

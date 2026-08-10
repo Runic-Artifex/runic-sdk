@@ -18,7 +18,7 @@ The dependency direction is deliberately inward:
    transport, revisions, reconnects, cancellation, and command semantics.
 
 Independent products own outward integration packages. Flow, Assets, Command
-Line, Text Resources, and future integrations may depend on Toolkit packages,
+Line, Runic Translations, and future integrations may depend on Toolkit packages,
 while Toolkit core does not depend on those products.
 
 Cross-domain source references inside this repository are declared in

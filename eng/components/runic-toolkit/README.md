@@ -35,7 +35,7 @@ scope `@runic-artifex`.
 Independent RunicArtifex products own their official Toolkit adapters:
 
 - [Runic Flow](https://github.com/Runic-Artifex/runic-flow) owns
-  `RunicFlow.RunicToolkit`;
+  the headless `RunicFlow.ApplicationBridge` operation integration;
 - [Runic Assets](https://github.com/Runic-Artifex/runic-assets) owns
   `RunicAssets.RunicToolkit`;
 - [Runic Command Line](https://github.com/Runic-Artifex/runic-command-line)
@@ -47,7 +47,8 @@ Independent RunicArtifex products own their official Toolkit adapters:
   `@runic-artifex/vite-plugin-runic-toolkit` and the official Vite DevTools
   surface.
 
-Runic Text Resources is independently consumable and needs no Toolkit
+[Runic Translations](https://github.com/Runic-Artifex/runic-translations) is
+independently consumable and needs no Toolkit
 dependency. Examples and cross-repository package canaries live in
 [runic-toolkit-examples](https://github.com/Runic-Artifex/runic-toolkit-examples),
 not in this library repository.

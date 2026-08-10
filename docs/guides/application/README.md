@@ -16,5 +16,5 @@ framework adapters, and Toolkit-specific developer tools.
 
 Runnable applications live in
 [`runic-toolkit-examples`](https://github.com/Runic-Artifex/runic-toolkit-examples).
-Flow, Text Resources, Command Line, and Assets each evolve in their own
+Flow, Runic Translations, Command Line, and Assets each evolve in their own
 repository and own any Toolkit integration package they publish.
