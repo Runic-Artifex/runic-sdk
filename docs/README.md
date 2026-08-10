@@ -5,9 +5,9 @@
 The documentation portal for the independent Runic Artifex projects and the
 explicit integration seams between them.
 
-The portal source may become public while the first package preview train is
-still being prepared. A successful build is not authorization to publish
-packages or claim that registry candidates are ready.
+The portal source and live site are public while the first package preview train
+awaits registry publication. A successful documentation deployment is not
+authorization to publish packages or claim that registry artifacts are live.
 
 The portal is built with SvelteKit and Svelte 5. It is fully prerendered with
 `@sveltejs/adapter-static` and served by the Runic Artifex NixOS VPS at
@@ -54,9 +54,9 @@ deployments are reproducible and do not install Node.js dependencies at runtime.
 - `/packages` is the NuGet/npm catalog.
 - `/releases` describes the coordinated first preview train.
 
-## Publication gate
+## Package publication gate
 
-The portal and packages may go public only after:
+Packages may go public only after:
 
 1. every product's exact release workflow succeeds on `main`;
 2. NuGet and npm trusted publishers are configured;
