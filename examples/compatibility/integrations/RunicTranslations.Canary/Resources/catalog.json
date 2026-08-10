@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "catalog": "canary",
   "code": {
-    "namespace": "RunicArtifex.Examples.TextResources.Generated",
+    "namespace": "RunicArtifex.Examples.Translations.Generated",
     "className": "CanaryText"
   },
   "defaultLocale": "en",

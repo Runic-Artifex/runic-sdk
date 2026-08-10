@@ -1,6 +1,6 @@
 using System;
-using RunicArtifex.Examples.TextResources.Generated;
-using RunicTextResources;
+using RunicArtifex.Examples.Translations.Generated;
+using RunicTranslations;
 
 ITextResourceManager manager = await CanaryTextCatalog.CreateManagerAsync();
 var text = new CanaryText(manager);

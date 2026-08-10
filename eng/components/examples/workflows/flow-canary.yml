@@ -58,7 +58,7 @@ jobs:
           -p:IlcTreatWarningsAsErrors=true
 
       - name: Run NativeAOT canary
-        run: "$RUNNER_TEMP/native/RunicFlow.Canary"
+        run: '"$RUNNER_TEMP/native/RunicFlow.Canary"'
 
       - name: Ensure portable inputs are unchanged
         run: git diff --exit-code
