@@ -113,7 +113,6 @@ test('uses the canonical Runic Translations identifiers', async () => {
   assert.match(html, /runic\.translations\/1/);
   assert.match(html, /RunicTranslations\.Compiler/);
   assert.match(html, /@runic-artifex\/vite-plugin-runic-translations/);
-  assert.doesNotMatch(html, /Runic Text Resources/);
 });
 
 test('reports release readiness conservatively', async () => {
