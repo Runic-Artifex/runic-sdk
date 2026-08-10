@@ -15,6 +15,7 @@
 
 # SvelteKit
 /.svelte-kit/
+/build/
 /.vinext/
 /out/
 

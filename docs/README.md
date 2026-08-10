@@ -9,9 +9,9 @@ The portal source may become public while the first package preview train is
 still being prepared. A successful build is not authorization to publish
 packages or claim that registry candidates are ready.
 
-The portal is built with SvelteKit and Svelte 5. It targets Cloudflare through
-`@sveltejs/adapter-cloudflare`; hosting identity remains a separate launch
-decision.
+The portal is built with SvelteKit and Svelte 5. It is fully prerendered with
+`@sveltejs/adapter-static` and served by the Runic Artifex NixOS VPS at
+`https://runic-artifex.eu`.
 
 ## Develop locally
 
@@ -36,14 +36,13 @@ npm test
 `npm test` creates the production build and verifies important rendered routes
 and release information.
 
-## Deploy to Cloudflare
+## Build for the VPS
 
-The production build is emitted to `.svelte-kit/cloudflare` and works with
-Cloudflare Pages or Workers. The repository intentionally does not commit a
-Wrangler deployment file yet: a Pages/Worker project name, Cloudflare account,
-and final hostname have not been selected. For Pages Git integration, use the
-SvelteKit preset, `npm run build`, and `.svelte-kit/cloudflare` as the output
-directory, then enable the `nodejs_als` compatibility flag.
+The production build is emitted to `build/`. Every documentation route is
+prerendered as an `index.html`, and gzip/Brotli variants are produced for nginx.
+The server flake builds this repository as a pinned Nix input, so production
+deployments are reproducible and do not install Node.js dependencies at
+runtime.
 
 ## Content model
 

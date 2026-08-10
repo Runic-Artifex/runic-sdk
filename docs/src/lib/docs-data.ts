@@ -17,7 +17,7 @@ export type Product = {
   artifacts?: string[];
   related?: {
     href:
-      '/products/runic-translations' | '/products/runic-translations-editor';
+      '/products/runic-translations/' | '/products/runic-translations-editor/';
     label: string;
   };
 };
@@ -177,7 +177,7 @@ export const products: Product[] = [
     ],
     npmPackages: ['@runic-artifex/vite-plugin-runic-translations'],
     related: {
-      href: '/products/runic-translations-editor',
+      href: '/products/runic-translations-editor/',
       label: 'Open the editor product',
     },
   },
@@ -211,7 +211,7 @@ export const products: Product[] = [
       'Windows x64 self-contained archive',
     ],
     related: {
-      href: '/products/runic-translations',
+      href: '/products/runic-translations/',
       label: 'Explore the underlying translation system',
     },
   },

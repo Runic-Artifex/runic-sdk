@@ -1,27 +1,19 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import test from 'node:test';
-import { Server } from '../.svelte-kit/output/server/index.js';
-import { manifest } from '../.svelte-kit/output/server/manifest-full.js';
 
-const server = new Server(manifest);
-await server.init({ env: {} });
+const buildDirectory = fileURLToPath(new URL('../build/', import.meta.url));
 
 function render(path = '/') {
-  return server.respond(
-    new Request(`http://localhost${path}`, {
-      headers: { accept: 'text/html' },
-    }),
-    {
-      getClientAddress: () => '127.0.0.1',
-    },
-  );
+  const relativePath =
+    path === '/' ? 'index.html' : `${path.slice(1)}/index.html`;
+  return readFile(join(buildDirectory, relativePath), 'utf8');
 }
 
 test('renders the documentation home with complete metadata and branding', async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get('content-type') ?? '', /^text\/html\b/i);
-  const html = await response.text();
+  const html = await render();
   assert.match(html, /Build one application model across \.NET surfaces/);
   assert.match(
     html,
@@ -30,7 +22,7 @@ test('renders the documentation home with complete metadata and branding', async
   assert.match(html, /<small>Documentation<\/small>/);
   assert.match(
     html,
-    /property="og:image" content="http:\/\/localhost\/og\.png"/,
+    /property="og:image" content="https:\/\/runic-artifex\.eu\/og\.png"/,
   );
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
   assert.match(html, /rel="icon" href="\/icon\.png"/);
@@ -64,25 +56,19 @@ test('renders every primary documentation route', async () => {
   ];
 
   for (const [path, expected] of routes) {
-    const response = await render(path);
-    assert.equal(response.status, 200, path);
-    assert.match(await response.text(), new RegExp(expected), path);
+    assert.match(await render(path), new RegExp(expected), path);
   }
 });
 
-test('renders an accessible branded not-found page', async () => {
-  const response = await render('/missing-rune');
-  assert.equal(response.status, 404);
-  const html = await response.text();
+test('builds an accessible branded page for nginx 404 responses', async () => {
+  const html = await render('/404');
   assert.match(html, /That rune is not in the catalog/);
   assert.match(html, /<title>Page not found · Runic Artifex<\/title>/);
   assert.match(html, /Skip to content/);
 });
 
 test('presents the editor as a downstream application with its own artifacts', async () => {
-  const html = await (
-    await render('/products/runic-translations-editor')
-  ).text();
+  const html = await render('/products/runic-translations-editor');
   assert.match(html, /Release artifacts/);
   assert.match(html, /Linux x64 self-contained archive/);
   assert.match(html, /First release pending/);
@@ -91,7 +77,7 @@ test('presents the editor as a downstream application with its own artifacts', a
 });
 
 test('documents the headless Flow surface and package ownership', async () => {
-  const flowHtml = await (await render('/products/runic-flow')).text();
+  const flowHtml = await render('/products/runic-flow');
   assert.match(flowHtml, /deterministic application processes/i);
   assert.match(flowHtml, /RunicFlow\.ApplicationBridge/);
   assert.doesNotMatch(
@@ -99,7 +85,7 @@ test('documents the headless Flow surface and package ownership', async () => {
     /RunicFlow\.(?:Generators|CommunityToolkit|RunicToolkit)/,
   );
 
-  const packageHtml = await (await render('/packages')).text();
+  const packageHtml = await render('/packages');
   assert.match(packageHtml, /@runic-artifex\/application-bridge/);
   assert.match(packageHtml, /RunicToolkit\.ApplicationBridge\.Generators/);
   assert.match(packageHtml, /RunicTranslations\.Generator/);
@@ -108,7 +94,7 @@ test('documents the headless Flow surface and package ownership', async () => {
 });
 
 test('uses the canonical Runic Translations identifiers', async () => {
-  const html = await (await render('/products/runic-translations')).text();
+  const html = await render('/products/runic-translations');
   assert.match(html, /<h1>Runic Translations<\/h1>/);
   assert.match(html, /runic\.translations\/1/);
   assert.match(html, /RunicTranslations\.Compiler/);
@@ -116,8 +102,8 @@ test('uses the canonical Runic Translations identifiers', async () => {
 });
 
 test('reports release readiness conservatively', async () => {
-  const homeHtml = await (await render('/')).text();
-  const releaseHtml = await (await render('/releases')).text();
+  const homeHtml = await render('/');
+  const releaseHtml = await render('/releases');
   assert.match(homeHtml, /package candidates are still being\s+refreshed/i);
   assert.match(releaseHtml, /First headless candidate required/);
   assert.match(releaseHtml, /Candidate refresh required/);
