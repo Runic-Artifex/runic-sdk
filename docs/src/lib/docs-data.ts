@@ -33,7 +33,7 @@ export const products: Product[] = [
       'A NativeAOT-first toolbelt for lifecycle, hosting, desktop contracts, frontend builds, and explicit application bridges.',
     description:
       'Runic Toolkit composes the same application model across desktop windows, browser frontends, Generic Host, and framework-owned UI state. Its official Application Bridge carries named domain commands and validated events through one NativeAOT-safe host boundary.',
-    version: 'Candidate refresh pending',
+    version: '0.1.0-preview.22.1 · verified, unpublished',
     source: 'https://github.com/Runic-Artifex/runic-toolkit',
     bestFor: [
       'Composing .NET desktop and browser applications',
@@ -99,7 +99,7 @@ export const products: Product[] = [
       'A deterministic, headless runtime for application processes and coordinated backend operations.',
     description:
       'Runic Flow provides typed command decisions, serialized state commits, process-local versions, opaque checkpoints, concurrency slots, timeouts, progress, cancellation, and terminal outcomes without owning UI state.',
-    version: 'First headless candidate pending',
+    version: '0.1.0-preview.5.1 · verified, unpublished',
     source: 'https://github.com/Runic-Artifex/runic-flow',
     bestFor: [
       'Deterministic application processes',
@@ -123,7 +123,7 @@ export const products: Product[] = [
       'Safe paths, immutable manifests, portable archives, development sources, and adapters for ASP.NET Core, CsWebUi, and Toolkit.',
     description:
       'Runic Assets defines a transport-neutral static-asset model. A canonical standard-ZIP format and strict path validation let the same manifest move through embedded, development, browser, and server hosts.',
-    version: 'Candidate refresh pending',
+    version: '0.1.0-preview.17.1 · verified, unpublished',
     source: 'https://github.com/Runic-Artifex/runic-assets',
     bestFor: [
       'Sharing static assets across hosts',
@@ -152,7 +152,7 @@ export const products: Product[] = [
       'Language-neutral localization contracts with a deterministic compiler, NativeAOT runtime, authoring API, generators, build integration, and CLI.',
     description:
       'Runic Translations treats source schemas, message grammar, generated artifacts, and runtime ABI as portable contracts. The .NET implementation is the first runtime, not the boundary of the framework; package and protocol identifiers now use the canonical Translations naming.',
-    version: 'Candidate refresh pending',
+    version: '0.1.0-preview.4.3 · verified, unpublished',
     source: 'https://github.com/Runic-Artifex/runic-translations',
     bestFor: [
       'Deterministic localization builds',
@@ -225,7 +225,7 @@ export const products: Product[] = [
       'A parser-neutral, reflection-free framework for command catalogs, execution, deterministic output, hosting, and bounded processes.',
     description:
       'Runic Command Line exists because NativeAOT-focused applications need a smaller and more explicit command surface. Portable contracts stay separate from execution, hosting classification, and child-process support.',
-    version: '0.1.0-preview.4.1',
+    version: '0.1.0-preview.4.1 · verified, unpublished',
     source: 'https://github.com/Runic-Artifex/runic-command-line',
     bestFor: [
       'NativeAOT command applications',
@@ -242,9 +242,6 @@ export const products: Product[] = [
       'RunicCommandLine',
       'RunicCommandLine.Hosting',
       'RunicCommandLine.Processes',
-    ],
-    install: [
-      'dotnet add package RunicCommandLine --version 0.1.0-preview.4.1',
     ],
   },
 ];

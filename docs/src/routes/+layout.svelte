@@ -12,7 +12,9 @@
 
 <svelte:head>
   <link rel="icon" href="/icon.png" />
+  <link rel="canonical" href={`${page.url.origin}${page.url.pathname}`} />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content={`${page.url.origin}${page.url.pathname}`} />
   <meta property="og:site_name" content="Runic Artifex Documentation" />
   <meta property="og:title" content="Runic Artifex Documentation" />
   <meta property="og:description" content={description} />

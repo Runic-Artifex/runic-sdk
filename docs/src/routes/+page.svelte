@@ -101,14 +101,11 @@
   <section class="section shell launch-strip">
     <div>
       <p class="eyebrow">First public preview</p>
-      <h2>
-        Source publication is being prepared; package candidates are still being
-        refreshed.
-      </h2>
+      <h2>The source is public; the first package previews are next.</h2>
       <p>
-        Current main branches are green, but public registry publication remains
-        gated on final candidate builds, downstream consumption, trusted
-        publishers, and accurate documentation.
+        Current main branches and exact candidate artifacts are green. Public
+        registry publication remains gated on trusted publishers and final
+        registry acceptance checks.
       </p>
     </div>
     <a class="button secondary" href={resolve('/releases')}

@@ -1,37 +1,45 @@
 <script lang="ts">
   const train = [
     ['CsWebUi', '2.5.0-beta.4.4', 'Available on nuget.org'],
-    ['Runic Command Line', 'Candidate review required', 'Independent'],
+    [
+      'Runic Command Line',
+      '0.1.0-preview.4.1 · verified, unpublished',
+      'Independent',
+    ],
     [
       'Runic Translations',
-      'Candidate refresh required',
+      '0.1.0-preview.4.3 · verified, unpublished',
       'Independent; NuGet and npm paths',
     ],
     [
       'Runic Translations Editor',
       'First preview pending',
-      'After Runic Translations',
-    ],
-    [
-      'Runic Toolkit',
-      'Candidate refresh required',
-      'Before Toolkit integrations',
+      'After Runic Translations publication',
     ],
     [
       'Runic Svelte integrations',
-      'Candidate refresh required',
-      'After Runic Toolkit',
+      '0.1.0-preview.8.1 · verified, unpublished',
+      'Before the Toolkit public template gate',
     ],
     [
       'Runic Vite integration',
-      'Candidate refresh required',
+      '0.1.0-preview.8.1 · verified, unpublished',
+      'Before the Toolkit public template gate',
+    ],
+    [
+      'Runic Toolkit',
+      '0.1.0-preview.22.1 · verified, unpublished',
+      'After Svelte and Vite integrations',
+    ],
+    [
+      'Runic Assets',
+      '0.1.0-preview.17.1 · verified, unpublished',
       'After Runic Toolkit',
     ],
-    ['Runic Assets', 'Candidate refresh required', 'After Runic Toolkit'],
     [
       'Runic Flow',
-      'First headless candidate required',
-      'After Toolkit and downstream migration',
+      '0.1.0-preview.5.1 · verified, unpublished',
+      'After Runic Toolkit',
     ],
   ] as const;
 </script>
@@ -49,9 +57,9 @@
     <p class="eyebrow">Release policy</p>
     <h1>Verify once. Publish the same artifacts.</h1>
     <p class="lede">
-      Source repositories may become public before packages. Registry jobs
-      remain gated on clean candidates, package consumption, metadata
-      validation, digest recording, and accurate docs.
+      Source repositories are public and exact candidates are verified. Registry
+      jobs remain gated on protected environments, trusted publishers, and final
+      registry acceptance.
     </p>
   </section>
   <section class="content-grid shell">
@@ -63,7 +71,7 @@
             Finish product changes and select immutable release inputs from
             green main branches.
           </p>
-          <span class="status-pill">In progress</span>
+          <span class="status-pill">Complete</span>
         </div>
       </article>
       <article class="release-step">
@@ -73,7 +81,7 @@
             Restore, test, pack, and run frontend, downstream-consumer, and
             applicable NativeAOT gates without sibling source dependencies.
           </p>
-          <span class="status-pill">Required</span>
+          <span class="status-pill">Complete</span>
         </div>
       </article>
       <article class="release-step">

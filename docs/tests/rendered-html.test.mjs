@@ -22,8 +22,13 @@ test('renders the documentation home with complete metadata and branding', async
   assert.match(html, /<small>Documentation<\/small>/);
   assert.match(
     html,
-    /property="og:image" content="https:\/\/runic-artifex\.eu\/og\.png"/,
+    /property="og:image" content="https:\/\/docs\.runic-artifex\.eu\/og\.png"/,
   );
+  assert.match(
+    html,
+    /rel="canonical" href="https:\/\/docs\.runic-artifex\.eu\/"/,
+  );
+  assert.match(html, /href="\.\/getting-started"/);
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
   assert.match(html, /rel="icon" href="\/icon\.png"/);
   assert.match(
@@ -104,9 +109,13 @@ test('uses the canonical Runic Translations identifiers', async () => {
 test('reports release readiness conservatively', async () => {
   const homeHtml = await render('/');
   const releaseHtml = await render('/releases');
-  assert.match(homeHtml, /package candidates are still being\s+refreshed/i);
-  assert.match(releaseHtml, /First headless candidate required/);
-  assert.match(releaseHtml, /Candidate refresh required/);
-  assert.doesNotMatch(homeHtml, /ready for launch/i);
-  assert.doesNotMatch(releaseHtml, /<span class="status-pill">Ready<\/span>/);
+  assert.match(homeHtml, /The source is public/i);
+  assert.match(homeHtml, /registry publication remains gated/i);
+  assert.match(releaseHtml, /0\.1\.0-preview\.22\.1 · verified, unpublished/);
+  assert.match(releaseHtml, /0\.1\.0-preview\.4\.3 · verified, unpublished/);
+  assert.doesNotMatch(homeHtml, /packages? (?:are|is) public/i);
+  assert.doesNotMatch(
+    releaseHtml,
+    /<span class="status-pill">Published<\/span>/,
+  );
 });

@@ -7,16 +7,19 @@
       name: '@runic-artifex/svelte',
       owner: 'runic-svelte',
       source: 'https://github.com/Runic-Artifex/runic-svelte',
+      version: '0.1.0-preview.8.1 · verified, unpublished',
     },
     {
       name: '@runic-artifex/sveltekit',
       owner: 'runic-svelte',
       source: 'https://github.com/Runic-Artifex/runic-svelte',
+      version: '0.1.0-preview.8.1 · verified, unpublished',
     },
     {
       name: '@runic-artifex/vite-plugin-runic-toolkit',
       owner: 'runic-vite',
       source: 'https://github.com/Runic-Artifex/runic-vite',
+      version: '0.1.0-preview.8.1 · verified, unpublished',
     },
   ] as const;
 
@@ -43,8 +46,8 @@
     <p class="eyebrow">Package catalog</p>
     <h1>One owner for every public package.</h1>
     <p class="lede">
-      Package families release independently. Candidate refreshes are in
-      progress; versions marked pending are not yet public install promises.
+      Package families release independently. Exact candidates are verified;
+      versions marked unpublished are not public install promises.
     </p>
   </section>
   <section class="content-grid shell">
@@ -70,7 +73,7 @@
           {#each frontendIntegrations as integration (integration.name)}
             <tr>
               <td>{integration.name}</td><td>npm</td><td>{integration.owner}</td
-              ><td><code>Candidate refresh pending</code></td>
+              ><td><code>{integration.version}</code></td>
             </tr>
           {/each}
         </tbody>

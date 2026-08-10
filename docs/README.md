@@ -11,7 +11,9 @@ packages or claim that registry candidates are ready.
 
 The portal is built with SvelteKit and Svelte 5. It is fully prerendered with
 `@sveltejs/adapter-static` and served by the Runic Artifex NixOS VPS at
-`https://runic-artifex.eu`.
+`https://docs.runic-artifex.eu`. The same source produces the canonical landing
+page served at `https://runic-artifex.eu`; `https://www.runic-artifex.eu`
+redirects to the apex.
 
 ## Develop locally
 
@@ -40,9 +42,9 @@ and release information.
 
 The production build is emitted to `build/`. Every documentation route is
 prerendered as an `index.html`, and gzip/Brotli variants are produced for nginx.
-The server flake builds this repository as a pinned Nix input, so production
-deployments are reproducible and do not install Node.js dependencies at
-runtime.
+The server flake builds this repository twice with `RUNIC_SITE_ORIGIN`: once for
+the apex landing page and once for the documentation origin. Production
+deployments are reproducible and do not install Node.js dependencies at runtime.
 
 ## Content model
 

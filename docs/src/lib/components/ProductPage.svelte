@@ -4,6 +4,7 @@
 
   let { product }: { product: Product } = $props();
   let isApplication = $derived(product.kind === 'application');
+  let isPublished = $derived((product.install?.length ?? 0) > 0);
 </script>
 
 <svelte:head>
@@ -90,12 +91,16 @@
           <strong
             >{isApplication
               ? 'First release pending'
-              : 'Publication pending'}</strong
+              : isPublished
+                ? 'Available on the public registry'
+                : 'Publication pending'}</strong
           >
           <p>
             {isApplication
               ? 'The editor packaging pipeline produces self-contained desktop archives. Signed public downloads will appear in the editor repository without coupling its release cadence to the translation package family.'
-              : 'Candidate versions are being refreshed and verified from the final public source commits. Install commands will be added when the matching registry artifacts are ready.'}
+              : isPublished
+                ? 'This version is available from its public registry. Keep exact preview versions in reproducible applications.'
+                : 'Exact candidate artifacts have passed their public-source verification workflows. Install commands will be added only after the matching registry artifacts are published and accepted.'}
           </p>
         </div>
         {#each product.install ?? [] as command (command)}<pre><code
