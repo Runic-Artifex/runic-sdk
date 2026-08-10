@@ -21,7 +21,7 @@
     "verify": "npm run verify:setup-contract && npm run typecheck && npm run test && npm run build && npm run verify:production --workspaces --if-present"
   },
   "devDependencies": {
-    "@runic-artifex/vite-plugin-runic-toolkit": "0.1.0-preview.7.1",
+    "@runic-artifex/vite-plugin-runic-toolkit": "0.1.0-preview.8.1",
     "@vitejs/devtools": "0.4.12",
     "effect": "3.22.1",
     "vite": "8.2.1"
