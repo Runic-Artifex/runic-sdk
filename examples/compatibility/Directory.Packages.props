@@ -8,9 +8,9 @@
   <ItemGroup>
     <!-- Package versions are added here only after their owning ADR/evaluation gate. -->
     <PackageVersion Include="CsWebUi" Version="2.5.0-beta.4.4" />
-    <PackageVersion Include="RunicTranslations" Version="0.1.0-preview.4.2" />
-    <PackageVersion Include="RunicTranslations.Build" Version="0.1.0-preview.4.2" />
-    <PackageVersion Include="RunicTranslations.Generator" Version="0.1.0-preview.4.2" />
+    <PackageVersion Include="RunicTranslations" Version="0.1.0-preview.4.3" />
+    <PackageVersion Include="RunicTranslations.Build" Version="0.1.0-preview.4.3" />
+    <PackageVersion Include="RunicTranslations.Generator" Version="0.1.0-preview.4.3" />
     <PackageVersion Include="RunicCommandLine" Version="0.1.0-preview.4.1" />
     <PackageVersion Include="RunicCommandLine.Abstractions" Version="0.1.0-preview.4.1" />
     <PackageVersion Include="RunicCommandLine.Hosting" Version="0.1.0-preview.4.1" />

@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <TextResourceCatalog Include="Resources/catalog.json" />
-    <TextResourceDocument Include="Resources/en.json" />
+    <TranslationCatalog Include="Resources/catalog.json" />
+    <TranslationDocument Include="Resources/en.json" />
   </ItemGroup>
 </Project>
