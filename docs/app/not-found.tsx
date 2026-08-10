@@ -1,2 +1,0 @@
-import Link from "next/link";
-export default function NotFound() { return <main><section className="page-hero shell"><p className="eyebrow">404</p><h1>That rune is not in the catalog.</h1><p className="lede">The page may have moved as the preview documentation evolves.</p><div className="actions"><Link className="button primary" href="/">Return home</Link><Link className="button secondary" href="/products">Browse products</Link></div></section></main>; }

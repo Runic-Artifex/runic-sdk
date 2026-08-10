@@ -13,8 +13,8 @@
 # testing
 /coverage
 
-# next.js
-/.next/
+# SvelteKit
+/.svelte-kit/
 /.vinext/
 /out/
 
@@ -35,7 +35,6 @@ yarn-error.log*
 .vercel
 
 # typescript
-next-env.d.ts
 /dist/
 /.wrangler/
 /outputs/

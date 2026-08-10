@@ -31,5 +31,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check Svelte and TypeScript
+        run: npm run check
+
       - name: Build and test
         run: npm test

@@ -5,12 +5,13 @@
 The documentation portal for the independent Runic Artifex projects and the
 explicit integration seams between them.
 
-The repository is private while the first public preview train is prepared. A
-successful build is not authorization to publish packages or make the portal
-public.
+The portal source may become public while the first package preview train is
+still being prepared. A successful build is not authorization to publish
+packages or claim that registry candidates are ready.
 
-The portal is repository-native and has no ChatGPT Sites binding. Hosting is a
-separate launch decision.
+The portal is built with SvelteKit and Svelte 5. It targets Cloudflare through
+`@sveltejs/adapter-cloudflare`; hosting identity remains a separate launch
+decision.
 
 ## Develop locally
 
@@ -21,18 +22,28 @@ npm ci
 npm run dev
 ```
 
-The local portal is served at `http://localhost:3000`.
+The terminal prints the local portal URL (normally `http://localhost:5173`).
 
 ## Verify
 
 ```bash
 npm audit --omit=dev --audit-level=high
 npm run lint
+npm run check
 npm test
 ```
 
 `npm test` creates the production build and verifies important rendered routes
 and release information.
+
+## Deploy to Cloudflare
+
+The production build is emitted to `.svelte-kit/cloudflare` and works with
+Cloudflare Pages or Workers. The repository intentionally does not commit a
+Wrangler deployment file yet: a Pages/Worker project name, Cloudflare account,
+and final hostname have not been selected. For Pages Git integration, use the
+SvelteKit preset, `npm run build`, and `.svelte-kit/cloudflare` as the output
+directory, then enable the `nodejs_als` compatibility flag.
 
 ## Content model
 
