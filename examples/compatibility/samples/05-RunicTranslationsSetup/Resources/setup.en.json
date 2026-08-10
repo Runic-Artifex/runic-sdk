@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "catalog": "setup",
+  "locale": "en",
+  "layer": "base",
+  "resources": {
+    "Application": {
+      "Title": "Runic Translations setup",
+      "Lead": "One catalog, typed on .NET and in the browser."
+    },
+    "Locale": {
+      "English": "English",
+      "German": "German"
+    },
+    "Validation": {
+      "Required": {
+        "$value": {
+          "inputs": { "field": { "type": "string" } },
+          "selectors": [],
+          "variants": [
+            {
+              "match": {},
+              "value": ["The field ", { "input": "field" }, " is required."]
+            }
+          ]
+        }
+      }
+    },
+    "Diagnostics": {
+      "TreeShakingSentinel": "RUNICTRANSLATIONS_UNUSED_MESSAGE_MUST_NOT_SHIP"
+    }
+  }
+}

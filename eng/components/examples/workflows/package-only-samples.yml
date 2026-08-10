@@ -52,11 +52,45 @@ jobs:
             dotnet restore "$project"
           done < <(find samples -name '*.csproj' -type f | sort)
 
+      - name: Restore pinned Runic Translations tool
+        run: dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
+
       - name: Restore published npm packages
         run: npm ci
 
+      - name: Generate cross-runtime translation artifacts
+        run: >-
+          dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
+          --no-restore
+          --configuration Release
+
+      - name: Generate editor and CLI output contract
+        working-directory: samples/05-RunicTranslationsSetup
+        run: >-
+          dotnet tool run runic-translations generate
+          --catalog Resources/setup.catalog.json
+          --documents Resources/setup.en.json Resources/setup.de.json
+          --output obj/cli-verification
+          --emit-esm
+
+      - name: Verify editor and CLI output contract
+        working-directory: samples/05-RunicTranslationsSetup
+        run: >-
+          dotnet tool run runic-translations verify
+          --catalog Resources/setup.catalog.json
+          --documents Resources/setup.en.json Resources/setup.de.json
+          --output obj/cli-verification
+          --emit-esm
+
       - name: Verify frontend package consumers
         run: npm run verify
+
+      - name: Upload translation bundle measurements
+        uses: actions/upload-artifact@v7
+        with:
+          name: runic-translations-bundle-metrics
+          path: samples/05-RunicTranslationsSetup/Frontend/artifacts/bundle-metrics.json
+          if-no-files-found: error
 
       - name: Build every .NET sample
         shell: bash
@@ -75,6 +109,7 @@ jobs:
           dotnet run --project samples/02-GreetingCommandLine/GreetingCommandLine.csproj --no-build --configuration Release -- greet Runic
           dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --smoke-test
           dotnet run --project samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-build --configuration Release -- --smoke-test
+          dotnet run --project samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --no-build --configuration Release -- --smoke-test
 
       - name: Ensure package-only inputs are unchanged
         run: git diff --exit-code
@@ -102,6 +137,12 @@ jobs:
 
       - name: Restore browser packages
         run: npm ci
+
+      - name: Generate translation frontend artifacts
+        shell: bash
+        run: |
+          dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
+          dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --configuration Release
 
       - name: Verify and build frontend
         run: npm run verify
@@ -161,6 +202,12 @@ jobs:
 
       - name: Restore package-only frontend
         run: npm ci
+
+      - name: Generate translation frontend artifacts
+        shell: pwsh
+        run: |
+          dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
+          dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --configuration Release
 
       - name: Verify and build frontend
         run: npm run verify

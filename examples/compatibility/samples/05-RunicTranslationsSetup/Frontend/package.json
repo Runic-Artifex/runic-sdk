@@ -1,0 +1,25 @@
+{
+  "name": "@runic-artifex/translations-setup-application",
+  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite dev",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "verify:production": "node test/verify-ssr.mjs && node test/verify-production.mjs"
+  },
+  "dependencies": {
+    "svelte": "5.56.8"
+  },
+  "devDependencies": {
+    "@runic-artifex/vite-plugin-runic-translations": "0.1.0-preview.4.3",
+    "@sveltejs/kit": "2.70.2",
+    "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "svelte-check": "4.7.5",
+    "typescript": "5.9.3",
+    "vite": "8.2.1"
+  }
+}

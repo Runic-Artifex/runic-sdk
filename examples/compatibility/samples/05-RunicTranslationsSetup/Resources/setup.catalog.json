@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "catalog": "setup",
+  "code": {
+    "namespace": "RunicArtifex.Examples.Translations.Generated",
+    "className": "SetupText",
+    "visibility": "public"
+  },
+  "defaultLocale": "en",
+  "locales": [
+    { "tag": "en" },
+    { "tag": "de", "fallback": "en" }
+  ],
+  "layers": [{ "name": "base", "priority": 0 }],
+  "validation": {
+    "translationCompleteness": "error",
+    "extraLocaleKeys": "error",
+    "emptyValues": "error"
+  },
+  "runtime": {
+    "unsupportedLocale": "parentsThenDefault",
+    "missingKey": "returnMarker"
+  },
+  "outputs": {
+    "typescript": {
+      "enabled": true,
+      "moduleName": "setup"
+    }
+  }
+}

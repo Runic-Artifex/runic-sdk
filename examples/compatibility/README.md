@@ -33,9 +33,13 @@ After both package managers are authenticated, the full package-only check is:
 
 ```bash
 dotnet restore samples/03-SetupApplication/SetupApplication.csproj
+dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
+dotnet restore samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
+dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
 npm run verify
 dotnet build samples/03-SetupApplication/SetupApplication.csproj --configuration Release
 dotnet run --project samples/03-SetupApplication/SetupApplication.csproj -- --smoke-test
+dotnet run --project samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --no-build -- --smoke-test
 ```
 
 GitHub Actions uses its repository `GITHUB_TOKEN` with `packages: read`. Each
@@ -49,6 +53,12 @@ The React sample consumes the controller directly. The SvelteKit sample uses the
 official Svelte-5-only rune lifecycle, static/native SvelteKit adapter, Runic
 Vite plugin, and official Vite DevTools extension point. Both drive the same
 native contract and backend handler.
+
+The [Runic Translations Setup reference](samples/05-RunicTranslationsSetup/) is
+the package-only cross-runtime localization fixture. It compiles one English and
+German catalog into C# and ESM, validates typed backend text references, proves
+request-scoped locale isolation, and records production tree-shaking
+measurements. Its scenario table also records the current dynamic-pack blocker.
 
 ## License
 

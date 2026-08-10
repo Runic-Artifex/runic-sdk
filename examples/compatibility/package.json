@@ -10,7 +10,8 @@
   },
   "workspaces": [
     "samples/03-SetupApplication/Frontend",
-    "samples/04-SvelteKitSetupApplication/Frontend"
+    "samples/04-SvelteKitSetupApplication/Frontend",
+    "samples/05-RunicTranslationsSetup/Frontend"
   ],
   "scripts": {
     "generate:setup-contract": "node eng/generate-setup-contract.mjs",

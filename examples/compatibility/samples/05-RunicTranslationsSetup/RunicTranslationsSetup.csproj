@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>RunicArtifex.Examples.Translations</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IntermediateOutputPath>obj/</IntermediateOutputPath>
+    <TranslationsEmitEsm>true</TranslationsEmitEsm>
+    <TranslationsOutputPath>obj/$(TargetFramework)/translations</TranslationsOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RunicTranslations" />
+    <PackageReference Include="RunicTranslations.Build" PrivateAssets="all" />
+    <PackageReference Include="RunicTranslations.Generator"
+                      PrivateAssets="all"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TranslationCatalog Include="Resources/setup.catalog.json" />
+    <TranslationDocument Include="Resources/setup.en.json" />
+    <TranslationDocument Include="Resources/setup.de.json" />
+    <TranslationsToolInput Include=".config/dotnet-tools.json" />
+  </ItemGroup>
+</Project>

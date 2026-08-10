@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "runictranslations.tool": {
+      "version": "0.1.0-preview.4.3",
+      "commands": ["runic-translations"]
+    }
+  }
+}
