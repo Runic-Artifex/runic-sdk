@@ -225,7 +225,7 @@ export const products: Product[] = [
       'A parser-neutral, reflection-free framework for command catalogs, execution, deterministic output, hosting, and bounded processes.',
     description:
       'Runic Command Line exists because NativeAOT-focused applications need a smaller and more explicit command surface. Portable contracts stay separate from execution, hosting classification, and child-process support.',
-    version: '0.1.0-preview.3.1',
+    version: '0.1.0-preview.4.1',
     source: 'https://github.com/Runic-Artifex/runic-command-line',
     bestFor: [
       'NativeAOT command applications',
@@ -244,7 +244,7 @@ export const products: Product[] = [
       'RunicCommandLine.Processes',
     ],
     install: [
-      'dotnet add package RunicCommandLine --version 0.1.0-preview.3.1',
+      'dotnet add package RunicCommandLine --version 0.1.0-preview.4.1',
     ],
   },
 ];
