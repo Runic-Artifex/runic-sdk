@@ -355,7 +355,7 @@ test('shows the exact release publication order without treating the Editor as a
     ],
     [
       'Runic Translations',
-      '0.1.0-preview.4.3 Verified candidate · not yet published',
+      '0.1.0-preview.8.1 Verified candidate · not yet published',
       'Can publish independently to NuGet and npm',
     ],
     [
@@ -365,7 +365,7 @@ test('shows the exact release publication order without treating the Editor as a
     ],
     [
       'Runic Svelte integrations',
-      '0.1.0-preview.8.1 Verified candidate · not yet published',
+      '0.1.0-preview.14.1 Verified candidate · not yet published',
       'Before Runic Toolkit',
     ],
     [
@@ -375,17 +375,17 @@ test('shows the exact release publication order without treating the Editor as a
     ],
     [
       'Runic Toolkit',
-      '0.1.0-preview.22.1 Verified candidate · not yet published',
+      '0.1.0-preview.27.1 Verified candidate · not yet published',
       'After Svelte and Vite integrations',
     ],
     [
       'Runic Assets',
-      '0.1.0-preview.17.1 Verified candidate · not yet published',
+      '0.1.0-preview.20.1 Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
     [
       'Runic Flow',
-      '0.1.0-preview.5.1 Verified candidate · not yet published',
+      '0.1.0-preview.15.1 Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
   ]);
@@ -409,8 +409,8 @@ test('reports release readiness conservatively', async () => {
     homeHtml,
     /The repositories are public\. CsWebUi 2\.5\.0-beta\.4\.4 is available on\s+NuGet\. Exact preview candidates for the remaining package families have\s+passed verification but are not yet published to NuGet or npm\./,
   );
-  assert.match(releaseHtml, /0\.1\.0-preview\.22\.1/);
-  assert.match(releaseHtml, /0\.1\.0-preview\.4\.3/);
+  assert.match(releaseHtml, /0\.1\.0-preview\.27\.1/);
+  assert.match(releaseHtml, /0\.1\.0-preview\.8\.1/);
   assert.match(releaseHtml, /Verified candidate · not yet published/);
   assert.doesNotMatch(homeHtml, /packages? (?:are|is) public/i);
   assert.doesNotMatch(
@@ -429,7 +429,7 @@ test('reports release readiness conservatively', async () => {
     gettingStartedHtml,
     /dotnet add package CsWebUi --version 2\.5\.0-beta\.4\.4/,
   );
-  for (const version of ['0.1.0-preview.22.1', '0.1.0-preview.8.1']) {
+  for (const version of ['0.1.0-preview.27.1', '0.1.0-preview.14.1']) {
     assert.match(bridgeHtml, new RegExp(version.replaceAll('.', '\\.')));
   }
   const bridgeText = stripMarkup(bridgeHtml);
@@ -450,10 +450,10 @@ test('reports release readiness conservatively', async () => {
 
 test('uses canonical availability vocabulary and raw exact candidate versions', async () => {
   const candidateProducts = [
-    ['/products/runic-toolkit', '0.1.0-preview.22.1'],
-    ['/products/runic-flow', '0.1.0-preview.5.1'],
-    ['/products/runic-assets', '0.1.0-preview.17.1'],
-    ['/products/runic-translations', '0.1.0-preview.4.3'],
+    ['/products/runic-toolkit', '0.1.0-preview.27.1'],
+    ['/products/runic-flow', '0.1.0-preview.15.1'],
+    ['/products/runic-assets', '0.1.0-preview.20.1'],
+    ['/products/runic-translations', '0.1.0-preview.8.1'],
     ['/products/runic-command-line', '0.1.0-preview.4.1'],
   ];
   const packageHtml = await render('/packages');
@@ -476,11 +476,11 @@ test('uses canonical availability vocabulary and raw exact candidate versions', 
   }
   for (const version of [
     '0.1.0-preview.4.1',
-    '0.1.0-preview.4.3',
     '0.1.0-preview.8.1',
-    '0.1.0-preview.22.1',
-    '0.1.0-preview.17.1',
-    '0.1.0-preview.5.1',
+    '0.1.0-preview.14.1',
+    '0.1.0-preview.27.1',
+    '0.1.0-preview.20.1',
+    '0.1.0-preview.15.1',
   ]) {
     const exactCode = new RegExp(
       `<code>${version.replaceAll('.', '\\.')}<\\/code>`,

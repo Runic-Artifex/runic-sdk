@@ -160,11 +160,11 @@
         </p>
         <ul>
           <li>
-            Runic Toolkit <code>0.1.0-preview.22.1</code> — Verified candidate · not
+            Runic Toolkit <code>0.1.0-preview.27.1</code> — Verified candidate · not
             yet published
           </li>
           <li>
-            Runic Svelte <code>0.1.0-preview.8.1</code> — Verified candidate · not
+            Runic Svelte <code>0.1.0-preview.14.1</code> — Verified candidate · not
             yet published
           </li>
           <li>

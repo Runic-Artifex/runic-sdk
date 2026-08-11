@@ -12,7 +12,7 @@
     ],
     [
       'Runic Translations',
-      '0.1.0-preview.4.3',
+      '0.1.0-preview.8.1',
       'Verified candidate · not yet published',
       'Can publish independently to NuGet and npm',
     ],
@@ -24,7 +24,7 @@
     ],
     [
       'Runic Svelte integrations',
-      '0.1.0-preview.8.1',
+      '0.1.0-preview.14.1',
       'Verified candidate · not yet published',
       'Before Runic Toolkit',
     ],
@@ -36,19 +36,19 @@
     ],
     [
       'Runic Toolkit',
-      '0.1.0-preview.22.1',
+      '0.1.0-preview.27.1',
       'Verified candidate · not yet published',
       'After Svelte and Vite integrations',
     ],
     [
       'Runic Assets',
-      '0.1.0-preview.17.1',
+      '0.1.0-preview.20.1',
       'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
     [
       'Runic Flow',
-      '0.1.0-preview.5.1',
+      '0.1.0-preview.15.1',
       'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],

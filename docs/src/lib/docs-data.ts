@@ -33,7 +33,7 @@ export const products: Product[] = [
       'Compose desktop windows, browser frontends, and .NET hosting around one application model with NativeAOT-safe application contracts.',
     description:
       'Runic Toolkit connects desktop windows, browser frontends, and .NET hosting around one application model. Its Application Bridge carries named commands and validated events between a frontend and a NativeAOT-safe .NET host.',
-    version: '0.1.0-preview.22.1',
+    version: '0.1.0-preview.27.1',
     source: 'https://github.com/Runic-Artifex/runic-toolkit',
     bestFor: [
       'Composing .NET desktop and browser applications',
@@ -99,7 +99,7 @@ export const products: Product[] = [
       'Coordinate predictable, UI-independent work with typed decisions, progress, cancellation, and deterministic state commits.',
     description:
       'Runic Flow coordinates headless application work through typed command decisions and serialized state commits. It tracks process-local versions, opaque checkpoints, concurrency slots, timeouts, progress, cancellation, and terminal outcomes without taking ownership of UI state.',
-    version: '0.1.0-preview.5.1',
+    version: '0.1.0-preview.15.1',
     source: 'https://github.com/Runic-Artifex/runic-flow',
     bestFor: [
       'Deterministic application processes',
@@ -123,7 +123,7 @@ export const products: Product[] = [
       'Package static assets once and serve the same validated manifest from embedded, development, browser, or server hosts.',
     description:
       'Runic Assets lets one validated asset manifest travel through embedded, development, browser, and server hosts. Safe paths, immutable manifests, portable standard-ZIP archives, development sources, and host adapters stay separate from the transport-neutral core.',
-    version: '0.1.0-preview.17.1',
+    version: '0.1.0-preview.20.1',
     source: 'https://github.com/Runic-Artifex/runic-assets',
     bestFor: [
       'Sharing static assets across hosts',
@@ -152,7 +152,7 @@ export const products: Product[] = [
       'Turn portable translation resources into strongly typed, NativeAOT-ready .NET APIs.',
     description:
       'Runic Translations defines source schemas, message grammar, generated artifacts, and its runtime ABI as portable contracts. Its deterministic compiler, authoring API, generators, build integration, CLI, and NativeAOT runtime begin with .NET without making .NET the boundary of the system.',
-    version: '0.1.0-preview.4.3',
+    version: '0.1.0-preview.8.1',
     source: 'https://github.com/Runic-Artifex/runic-translations',
     bestFor: [
       'Deterministic localization builds',

@@ -8,12 +8,12 @@
     {
       name: '@runic-artifex/svelte',
       project: 'Runic Svelte',
-      version: '0.1.0-preview.8.1',
+      version: '0.1.0-preview.14.1',
     },
     {
       name: '@runic-artifex/sveltekit',
       project: 'Runic Svelte',
-      version: '0.1.0-preview.8.1',
+      version: '0.1.0-preview.14.1',
     },
     {
       name: '@runic-artifex/vite-plugin-runic-toolkit',
