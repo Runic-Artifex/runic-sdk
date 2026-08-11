@@ -117,6 +117,9 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Check out release plumbing
+        uses: actions/checkout@v7
+
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
         with:
