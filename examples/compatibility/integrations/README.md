@@ -13,6 +13,6 @@ source-level project references.
 - `RunicFlow.Canary` restores the two headless Flow packages from GitHub Packages,
   exercises serialized process decisions and the Application Bridge operation
   identity boundary, and runs both managed and NativeAOT builds.
-- `RunicAssets.Canary` restores the core, CsWebUi, ASP.NET Core, and Runic Toolkit
+- `RunicAssets.Canary` restores the core, CS-WebUI, ASP.NET Core, and Runic Toolkit
   packages, round-trips the neutral archive, verifies all three host adapters,
   and runs managed and NativeAOT builds.

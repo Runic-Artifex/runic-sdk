@@ -41,7 +41,7 @@ if (!webUiResponse.IsHandled
     || !Encoding.UTF8.GetString(webUiResponse.Response.Span)
         .Contains("Runic Assets canary", StringComparison.Ordinal))
 {
-    throw new InvalidOperationException("CsWebUi did not resolve the archived entry point.");
+    throw new InvalidOperationException("CS-WebUI did not resolve the archived entry point.");
 }
 
 AssetDescriptor stylesheet = restored.Manifest.Assets[0];

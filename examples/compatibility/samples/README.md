@@ -8,7 +8,7 @@ product source checkout.
 | --- | --- | --- |
 | 1 | `01-HelloLifecycle` | Application startup, mode selection, shutdown, and Generic Host composition |
 | 2 | `02-GreetingCommandLine` | Typed command catalog, parsing, execution, and human/JSON output |
-| 3 | `03-SetupApplication` | The official Effect Schema-first Application Bridge through React and a native CsWebUi host |
+| 3 | `03-SetupApplication` | The official Effect Schema-first Application Bridge through React and a native CS-WebUI host |
 | 4 | `04-SvelteKitSetupApplication` | Svelte 5 runes, SvelteKit SPA output, Vite 8 HMR/DevTools, and the same native bridge contract |
 
 Start anywhere:

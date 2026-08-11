@@ -1,6 +1,6 @@
 # Shared desktop sample assets
 
-These assets are copied into each CsWebUi sample at build and publish time.
+These assets are copied into each CS-WebUI sample at build and publish time.
 They are served by the local virtual file system; the applications do not
 depend on a CDN.
 
