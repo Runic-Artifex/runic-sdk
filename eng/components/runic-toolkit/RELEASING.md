@@ -3,11 +3,11 @@
 The `Public release` workflow builds one versioned family containing 15 NuGet
 packages and `@runic-artifex/application-bridge` on npm. Every dispatch requires
 an explicit exact version. The next planned private candidate is
-`0.1.0-preview.22.1`; this is a planning value, not a claim that the candidate
+`0.1.0-preview.27.1`; this is a planning value, not a claim that the candidate
 has been verified or published.
 
 The candidate build also consumes the planned Runic Svelte and Vite candidates
-(`0.1.0-preview.8.1`) through the template acceptance gate. Publish those private
+(`0.1.0-preview.14.1`) through the template acceptance gate. Publish those private
 candidates first, then retain the Toolkit artifact and `SHA256SUMS` file from a
 verify-only dispatch on the final `main` commit.
 
