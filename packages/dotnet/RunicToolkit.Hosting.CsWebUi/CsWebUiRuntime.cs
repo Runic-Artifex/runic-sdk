@@ -140,7 +140,7 @@ internal sealed class NativeCsWebUiWindow : ICsWebUiWindow
     public void Navigate(string relativePath)
     {
         string serverUrl = _window.Url ??
-            throw new InvalidOperationException("The CsWebUi local server is not running.");
+            throw new InvalidOperationException("The CS-WebUI local server is not running.");
         _window.Navigate(CsWebUiEntryPointPath.BuildNavigationUrl(serverUrl, relativePath));
     }
 

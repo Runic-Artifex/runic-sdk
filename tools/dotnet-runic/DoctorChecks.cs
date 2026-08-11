@@ -354,7 +354,7 @@ internal static class DoctorChecks
             {
                 checks.Add(Pass(
                     "native-library",
-                    $"CsWebUi native library is pinned by CSWEBUI_NATIVE_LIBRARY: '{path}'."));
+                    $"CS-WebUI native library is pinned by CSWEBUI_NATIVE_LIBRARY: '{path}'."));
             }
             else
             {
@@ -372,7 +372,7 @@ internal static class DoctorChecks
         {
             checks.Add(Pass(
                 "native-library",
-                $"CsWebUi native asset for {project.RuntimeIdentifier} is restored at '{native.Path}'."));
+                $"CS-WebUI native asset for {project.RuntimeIdentifier} is restored at '{native.Path}'."));
         }
         else
         {
@@ -623,7 +623,7 @@ internal static class DoctorChecks
         {
             return new(
                 null,
-                $"NuGet assets file '{project.ProjectAssetsFile}' is missing, so the CsWebUi native library cannot be resolved.");
+                $"NuGet assets file '{project.ProjectAssetsFile}' is missing, so the CS-WebUI native library cannot be resolved.");
         }
 
         try
@@ -697,7 +697,7 @@ internal static class DoctorChecks
                     relativeNative.Replace('/', Path.DirectorySeparatorChar)));
             return File.Exists(nativePath)
                 ? new(nativePath, string.Empty)
-                : new(null, $"Restored CsWebUi native asset '{nativePath}' is missing.");
+                : new(null, $"Restored CS-WebUI native asset '{nativePath}' is missing.");
         }
         catch (JsonException exception)
         {

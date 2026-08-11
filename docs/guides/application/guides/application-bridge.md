@@ -9,7 +9,7 @@ and an application host.
    publishers, and exhaustive dispatch.
 4. Implement the generated handler with domain services.
 5. Host a fresh `ApplicationBridgeSession` through
-   `UseApplicationBridge(...)` and the CsWebUi adapter.
+   `UseApplicationBridge(...)` and the CS-WebUI adapter.
 6. Bootstrap one `CsWebUiApplicationBridgeLive` or `MockApplicationBridge`
    `Layer`, then expose one `createApplicationBridgeController(...)` to the UI.
 

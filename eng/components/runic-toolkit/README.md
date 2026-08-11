@@ -21,7 +21,7 @@ identity.
 | --- | --- |
 | `RunicToolkit.ApplicationBridge` | Session, revision, operation, cancellation, and bounded wire runtime |
 | `RunicToolkit.ApplicationBridge.Generators` | Reflection-free C# contracts and dispatch from committed schema artifacts |
-| `RunicToolkit.Hosting.*` | Deterministic lifecycle, Generic Host, WebUi, CsWebUi, build, and adapter contracts |
+| `RunicToolkit.Hosting.*` | Deterministic lifecycle, Generic Host, WebUi, CS-WebUI, build, and adapter contracts |
 | `RunicToolkit.Hosting.CsWebUi.ApplicationBridge` | One-binding native transport and high-level application composition |
 | `RunicToolkit.Desktop` | Frontend-neutral desktop capabilities and close contracts |
 | `RunicToolkit.Collections` | Observable range collection primitives |

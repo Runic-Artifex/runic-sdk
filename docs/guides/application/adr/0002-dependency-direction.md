@@ -16,5 +16,5 @@ or implementation details to this repository.
 
 The frontend portion of this ADR is superseded by ADR 0015. Framework renderers
 consume Application Bridge without Toolkit-owned protocol adapters; hosting adapters depend
-on hosting abstractions; CsWebUi packages are the only packages that may depend
-on CsWebUi. `eng/verify-architecture.ps1` enforces the allowed source graph.
+on hosting abstractions; CS-WebUI packages are the only packages that may depend
+on the `CsWebUi` package. `eng/verify-architecture.ps1` enforces the allowed source graph.

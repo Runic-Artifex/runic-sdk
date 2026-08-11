@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "allowedProjectReferences": [
-    { "from": "desktop", "to": "hosting", "reason": "Desktop contract tests exercise the production CsWebUi application adapter." },
-    { "from": "hosting", "to": "desktop", "reason": "Hosting abstractions and the CsWebUi application adapter consume framework-neutral desktop contracts." },
-    { "from": "hosting", "to": "application-bridge", "reason": "The CsWebUi transport hosts framework-neutral Application Bridge sessions." }
+    { "from": "desktop", "to": "hosting", "reason": "Desktop contract tests exercise the production CS-WebUI application adapter." },
+    { "from": "hosting", "to": "desktop", "reason": "Hosting abstractions and the CS-WebUI application adapter consume framework-neutral desktop contracts." },
+    { "from": "hosting", "to": "application-bridge", "reason": "The CS-WebUI transport hosts framework-neutral Application Bridge sessions." }
   ],
   "tasks": [
     { "name": "collections", "branch": "work/collections", "paths": ["src/RunicToolkit.Collections/*", "tests/RunicToolkit.Collections.*/*", "benchmarks/RunicToolkit.Collections.*/*"] },

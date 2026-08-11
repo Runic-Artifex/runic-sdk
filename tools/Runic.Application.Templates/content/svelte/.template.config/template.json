@@ -1,7 +1,7 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Runic Artifex",
-  "classifications": ["Desktop", "CsWebUi", "Svelte"],
+  "classifications": ["Desktop", "CS-WebUI", "Svelte"],
   "identity": "RunicToolkit.Templates.Svelte",
   "name": "RunicToolkit Svelte application",
   "shortName": "runic-toolkit-svelte",

@@ -4,10 +4,10 @@ using CsWebUi;
 
 namespace RunicToolkit.Hosting.CsWebUi;
 
-/// <summary>Selects how CsWebUi presents a hosted application.</summary>
+/// <summary>Selects how CS-WebUI presents a hosted application.</summary>
 public enum CsWebUiPresentationMode
 {
-    /// <summary>Lets CsWebUi select its recommended installed browser.</summary>
+    /// <summary>Lets CS-WebUI select its recommended installed browser.</summary>
     Auto,
 
     /// <summary>Launches a selected installed browser.</summary>
@@ -17,15 +17,15 @@ public enum CsWebUiPresentationMode
     WebView,
 }
 
-/// <summary>Contains immutable configuration for the CsWebUi browser-host adapter.</summary>
+/// <summary>Contains immutable configuration for the CS-WebUI browser-host adapter.</summary>
 public sealed record CsWebUiAdapterOptions
 {
-    /// <summary>Initializes CsWebUi adapter configuration.</summary>
-    /// <param name="webRoot">The local directory from which CsWebUi serves frontend files.</param>
+    /// <summary>Initializes CS-WebUI adapter configuration.</summary>
+    /// <param name="webRoot">The local directory from which CS-WebUI serves frontend files.</param>
     /// <param name="presentationMode">How the native window is presented.</param>
     /// <param name="browser">The browser selected when <paramref name="presentationMode"/> is Browser.</param>
     /// <param name="configureWindow">
-    /// An optional callback that can bind CsWebUi callbacks before the window is shown.
+    /// An optional callback that can bind CS-WebUI callbacks before the window is shown.
     /// </param>
     public CsWebUiAdapterOptions(
         string webRoot,

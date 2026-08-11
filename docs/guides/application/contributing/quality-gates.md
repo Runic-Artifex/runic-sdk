@@ -13,7 +13,7 @@ The prerelease package workflow additionally:
 
 NativeAOT smoke projects remain registered in `eng/solution-exclusions.txt` and
 can be executed with `eng/verify-native-aot.ps1` in an environment containing
-the appropriate runtime packs. The real CsWebUi browser canary is run from the
+the appropriate runtime packs. The real CS-WebUI browser canary is run from the
 pinned Nix environment when native/browser behavior changes.
 
 No product repository commits `packages.lock.json` or a custom package hash

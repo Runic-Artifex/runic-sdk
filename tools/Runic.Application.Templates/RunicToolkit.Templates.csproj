@@ -4,7 +4,7 @@
     <PackageId>RunicToolkit.Templates</PackageId>
     <PackageVersion>1.0.0-beta.1</PackageVersion>
     <Title>RunicToolkit project templates</Title>
-    <Description>dotnet new templates for native CsWebUi applications using React, Vue, Svelte, or Angular.</Description>
+    <Description>dotnet new templates for native CS-WebUI applications using React, Vue, Svelte, or Angular.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageType>Template</PackageType>
     <IncludeContentInPack>true</IncludeContentInPack>

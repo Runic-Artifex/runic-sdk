@@ -15,7 +15,7 @@ internal static class Program
         (string Name, Func<Task> Run)[] tests =
         [
             ("capability reports are complete and defensive", CapabilityReports),
-            ("CsWebUi services project browser bridge operations", BrowserBridgeServices),
+            ("CS-WebUI services project browser bridge operations", BrowserBridgeServices),
             ("guarded close cancels only after acceptance", GuardedClose),
             ("secondary windows are owned and deterministically released", OwnedWindows),
         ];

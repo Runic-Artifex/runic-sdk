@@ -7,7 +7,7 @@ using RunicToolkit.Hosting.WebUi;
 
 namespace RunicToolkit.Hosting.CsWebUi;
 
-/// <summary>Shared high-level configuration for one CsWebUi frontend.</summary>
+/// <summary>Shared high-level configuration for one CS-WebUI frontend.</summary>
 public sealed record CsWebUiAppOptions
 {
     /// <summary>Creates complete native-window frontend options.</summary>
@@ -41,7 +41,7 @@ public sealed record CsWebUiAppOptions
     /// <summary>Gets the root session activated after native-window creation.</summary>
     public IRootSessionFactory RootSessionFactory { get; }
 
-    /// <summary>Gets native CsWebUi adapter configuration.</summary>
+    /// <summary>Gets native CS-WebUI adapter configuration.</summary>
     public CsWebUiAdapterOptions Adapter { get; }
 
     /// <summary>Gets browser-host identity.</summary>
@@ -58,7 +58,7 @@ public sealed record CsWebUiAppOptions
 }
 
 /// <summary>
-/// CsWebUi-specific surface projected from the shared <see cref="WebUiAppBuilder"/>.
+/// CS-WebUI-specific surface projected from the shared <see cref="WebUiAppBuilder"/>.
 /// </summary>
 public sealed class CsWebUiAppFrontendBuilder
 {
@@ -144,12 +144,12 @@ internal sealed class CsWebUiAppFeature
     internal string? FrontendName { get; set; }
 }
 
-/// <summary>Contributes CsWebUi members to the common high-level builder.</summary>
+/// <summary>Contributes CS-WebUI members to the common high-level builder.</summary>
 public static class CsWebUiAppBuilderExtensions
 {
     extension(WebUiAppBuilder builder)
     {
-        /// <summary>Gets the CsWebUi-specific builder surface.</summary>
+        /// <summary>Gets the CS-WebUI-specific builder surface.</summary>
         public CsWebUiAppFrontendBuilder CsWebUi => new(builder);
 
         /// <summary>Registers one closed native-window frontend.</summary>

@@ -81,7 +81,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine("[dev] Reloading the native CsWebUi host.");
+            Console.WriteLine("[dev] Reloading the native CS-WebUI host.");
             _host = Start();
             ObserveExit(_host);
         }

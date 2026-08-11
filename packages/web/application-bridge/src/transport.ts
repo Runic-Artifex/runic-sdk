@@ -18,11 +18,11 @@ export interface CsWebUiGlobal {
 }
 
 export interface CsWebUiFrameChannelOptions {
-  /** Maximum time to wait for CsWebUi to install its asynchronous native binding. */
+  /** Maximum time to wait for CS-WebUI to install its asynchronous native binding. */
   readonly bindingTimeoutMs?: number;
   /** How frequently to check for the binding while the page is booting. */
   readonly bindingPollIntervalMs?: number;
-  /** One-time grace period after the binding appears while CsWebUi finishes its response channel. */
+  /** One-time grace period after the binding appears while CS-WebUI finishes its response channel. */
   readonly bindingSettleDelayMs?: number;
 }
 

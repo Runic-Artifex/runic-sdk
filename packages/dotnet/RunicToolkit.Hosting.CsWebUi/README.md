@@ -1,8 +1,8 @@
 # RunicToolkit.Hosting.CsWebUi
 
-This package adapts [CsWebUi](https://github.com/Runic-Artifex/cs-webui) to the
+This package adapts [CS-WebUI](https://github.com/Runic-Artifex/cs-webui) to the
 browser-neutral contracts in `RunicToolkit.Hosting.Abstractions`. It serves a
-local frontend directory without ASP.NET Core and supports CsWebUi's automatic
+local frontend directory without ASP.NET Core and supports CS-WebUI's automatic
 browser selection, an explicitly selected installed browser, or an embedded
 WebView.
 
@@ -27,21 +27,21 @@ var factory = new CsWebUiBrowserHostFactory(
 Pass `factory` to `WebUiModeRunner`. The runner supplies an `app://` entry URI;
 the adapter accepts only the current application host, rejects credentials,
 ports, queries, fragments, traversal, encoded separators, and control
-characters, and translates the URI to a relative CsWebUi root path.
+characters, and translates the URI to a relative CS-WebUI root path.
 
 `BrowserWindowOptions` size and resizability are applied before show. The title
-is set after CsWebUi establishes the client connection. The server is kept
+is set after CS-WebUI establishes the client connection. The server is kept
 private to the local machine. A disconnected client raises `CloseRequested`
 and completes `WaitForCloseAsync`.
 
 The native configuration callback runs after `WebUiWindow` creation and before
-the window can be shown. It is intended for CsWebUi `Bind`/`BindAsync`
+the window can be shown. It is intended for CS-WebUI `Bind`/`BindAsync`
 registration; do not show or dispose the window from that callback.
 
-CsWebUi owns process-wide native state, so adapter dispatchers serialize native
+CS-WebUI owns process-wide native state, so adapter dispatchers serialize native
 work across hosts. Disposing a host closes only its owned windows; it does not
 call the process-wide `WebUiApplication.Exit` or `Clean` methods.
 
 Applications that want the shared high-level builder add the separate
 `RunicToolkit.Hosting.CsWebUi.App` composition package. Keeping that dependency
-out of this adapter allows custom hosts to use CsWebUi without Generic Host.
+out of this adapter allows custom hosts to use CS-WebUI without Generic Host.

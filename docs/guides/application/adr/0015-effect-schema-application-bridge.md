@@ -6,7 +6,7 @@
 
 ## Context
 
-The prerelease MVVM bridge proved bounded binary CsWebUi transport,
+The prerelease MVVM bridge proved bounded binary CS-WebUI transport,
 NativeAOT-safe hosting, deterministic generation, reconnect, revisions,
 cancellation, fixtures, and mock/production parity. Its public contract is too
 generic: applications appear as numeric properties and commands instead of
@@ -26,7 +26,7 @@ schema-backed tagged errors.
   during compilation and emit reflection-free, NativeAOT-compatible dispatch.
 - The TypeScript runtime exposes one Effect service and owns its resources in
   one `ManagedRuntime`. Host events are a scoped Stream.
-- CsWebUi retains one bounded binary channel and explicit session, sequence,
+- CS-WebUI retains one bounded binary channel and explicit session, sequence,
   revision, cancellation, reconnect, and teardown behavior.
 - Rendering-framework adapters project validated application state. They do not
   parse frames or own connection, retry, revision, or cancellation state.
@@ -35,7 +35,7 @@ schema-backed tagged errors.
 
 - NuGet contract kernel: `RunicToolkit.ApplicationBridge`.
 - Generator: `RunicToolkit.ApplicationBridge.Generators`.
-- CsWebUi adapter: `RunicToolkit.Hosting.CsWebUi.ApplicationBridge`.
+- CS-WebUI adapter: `RunicToolkit.Hosting.CsWebUi.ApplicationBridge`.
 - npm runtime: `@runic-artifex/application-bridge`.
 - The first schema subset is deliberately bounded to null, Boolean, string,
   finite number, bounded integer, readonly arrays and objects, explicit optional
@@ -56,7 +56,7 @@ cancellation, reconnect snapshot recovery, NativeAOT, and mock/live Layer parity
 1. Build the contract kernel, schemas, manifest, and cross-language fixtures.
 2. Generate C# wire types, handler surfaces, dispatch, JSON metadata, and stable
    diagnostics from committed artifacts.
-3. Adapt the proven CsWebUi channel to the new envelopes and implement the
+3. Adapt the proven CS-WebUI channel to the new envelopes and implement the
    Effect live, mock, and fault-injection Layers.
 4. Prove the design through the Setup vertical.
 5. Remove obsolete numeric-member MVVM packages, renderer lifecycle adapters,
@@ -69,7 +69,7 @@ prerelease. One may be added only for a concrete published consumer.
 
 - [runic-toolkit#7](https://github.com/Runic-Artifex/runic-toolkit/pull/7)
   delivers the Effect runtime, committed schemas and manifest, reflection-free
-  generator and dispatch, CsWebUi integration, migrated framework templates,
+  generator and dispatch, CS-WebUI integration, migrated framework templates,
   package gates, and removal of the obsolete MVVM surface.
 - [runic-toolkit-examples#12](https://github.com/Runic-Artifex/runic-toolkit-examples/pull/12)
   delivers the package-only Setup vertical with authoritative navigation,

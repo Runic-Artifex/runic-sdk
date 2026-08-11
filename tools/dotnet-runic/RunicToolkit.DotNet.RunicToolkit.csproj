@@ -5,7 +5,7 @@
     <AssemblyName>RunicToolkit.DotNet.RunicToolkit</AssemblyName>
     <RootNamespace>RunicToolkit.DotNet.RunicToolkit</RootNamespace>
     <PackageId>RunicToolkit.DotNet.RunicToolkit</PackageId>
-    <Description>Coordinated development loop for native CsWebUi RunicToolkit applications.</Description>
+    <Description>Coordinated development loop for native CS-WebUI RunicToolkit applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>dotnet-runic-toolkit</ToolCommandName>

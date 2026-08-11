@@ -100,7 +100,7 @@ internal sealed class ApplicationBridgeFrontendRoot : IRootSessionFactory, IAsyn
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         WebUiWindow window = _window ?? throw new InvalidOperationException(
-            "CsWebUi must create the native window before opening the Application Bridge root session.");
+            "CS-WebUI must create the native window before opening the Application Bridge root session.");
         ApplicationBridgeSession session = _createSession() ?? throw new InvalidOperationException(
             "The Application Bridge session factory returned null.");
         try

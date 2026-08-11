@@ -202,7 +202,7 @@ internal static class DevApplication
         Program.WriteError(
             "RTKDEV1007",
             completed == host.Completion
-                ? $"The CsWebUi host watcher exited unexpectedly with code {exitCode}."
+                ? $"The CS-WebUI host watcher exited unexpectedly with code {exitCode}."
                 : completed == developmentServer?.Completion
                     ? $"The {configuration.DevelopmentServerKind} development server " +
                       $"exited unexpectedly with code {exitCode}."
@@ -457,7 +457,7 @@ internal static class DevApplication
         {
             Console.WriteLine($"[dev] Assets: {configuration.FrontendOutputDirectory}");
         }
-        Console.WriteLine($"[dev] CsWebUi root: {configuration.RuntimeWebRoot}");
+        Console.WriteLine($"[dev] CS-WebUI root: {configuration.RuntimeWebRoot}");
         if (configuration.HasContracts)
         {
             Console.WriteLine($"[dev] Contract: {configuration.ContractSource}");
@@ -496,10 +496,10 @@ internal static class DevApplication
 
             The selected project supplies frontend paths through
             optional RunicToolkit frontend-development MSBuild properties. The command generates and
-            verifies contracts, performs the initial build, starts the native CsWebUi
+            verifies contracts, performs the initial build, starts the native CS-WebUI
             host and frontend tooling. Projects that opt into Vite development-server
             mode receive native-window CSS/JavaScript HMR without restarting .NET;
-            their private CsWebUi bindings remain the application transport.
+            their private CS-WebUI bindings remain the application transport.
             """);
     }
 }

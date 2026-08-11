@@ -10,13 +10,13 @@ using RunicToolkit.Desktop;
 
 namespace RunicToolkit.Hosting.CsWebUi;
 
-/// <summary>Creates browser hosts backed by CsWebUi.</summary>
+/// <summary>Creates browser hosts backed by CS-WebUI.</summary>
 public sealed class CsWebUiBrowserHostFactory : IBrowserHostFactory
 {
     private readonly CsWebUiAdapterOptions _options;
     private readonly ICsWebUiRuntime _runtime;
 
-    /// <summary>Initializes a CsWebUi browser-host factory.</summary>
+    /// <summary>Initializes a CS-WebUI browser-host factory.</summary>
     public CsWebUiBrowserHostFactory(CsWebUiAdapterOptions options)
         : this(options, NativeCsWebUiRuntime.Instance)
     {
@@ -74,7 +74,7 @@ internal sealed class CsWebUiBrowserHost : IBrowserHost
             if (!Directory.Exists(_options.WebRoot))
             {
                 throw new DirectoryNotFoundException(
-                    "The configured CsWebUi web root does not exist.");
+                    "The configured CS-WebUI web root does not exist.");
             }
 
             _initialized = true;
@@ -95,7 +95,7 @@ internal sealed class CsWebUiBrowserHost : IBrowserHost
             if (!_initialized)
             {
                 throw new InvalidOperationException(
-                    "The CsWebUi browser host must be initialized before creating a window.");
+                    "The CS-WebUI browser host must be initialized before creating a window.");
             }
         }
 
@@ -222,7 +222,7 @@ internal sealed class CsWebUiBrowserWindow : IBrowserWindow, IBrowserWindowDeskt
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_closedSignaled)
             {
-                throw new InvalidOperationException("The CsWebUi window is closed.");
+                throw new InvalidOperationException("The CS-WebUI window is closed.");
             }
 
             _entryPath = relativePath;
@@ -246,7 +246,7 @@ internal sealed class CsWebUiBrowserWindow : IBrowserWindow, IBrowserWindowDeskt
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_closedSignaled)
             {
-                throw new InvalidOperationException("The CsWebUi window is closed.");
+                throw new InvalidOperationException("The CS-WebUI window is closed.");
             }
 
             if (_shown)
@@ -256,7 +256,7 @@ internal sealed class CsWebUiBrowserWindow : IBrowserWindow, IBrowserWindowDeskt
 
             entryPath = _entryPath ??
                 throw new InvalidOperationException(
-                    "NavigateAsync must supply an entry point before the CsWebUi window is shown.");
+                    "NavigateAsync must supply an entry point before the CS-WebUI window is shown.");
             _shown = true;
         }
 
@@ -420,7 +420,7 @@ internal sealed class CsWebUiBrowserWindow : IBrowserWindow, IBrowserWindowDeskt
             if (!_shown || _closedSignaled)
             {
                 throw new InvalidOperationException(
-                    "The CsWebUi browser bridge requires a shown, connected window.");
+                    "The CS-WebUI browser bridge requires a shown, connected window.");
             }
 
             _desktopRequests.Add(id, completion);
@@ -612,7 +612,7 @@ internal sealed class CsWebUiBrowserWindow : IBrowserWindow, IBrowserWindowDeskt
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_closedSignaled)
             {
-                throw new InvalidOperationException("The CsWebUi window is closed.");
+                throw new InvalidOperationException("The CS-WebUI window is closed.");
             }
         }
     }
@@ -699,7 +699,7 @@ internal sealed class CsWebUiBrowserWindow : IBrowserWindow, IBrowserWindowDeskt
             }
             catch (Exception)
             {
-                // A consumer event handler cannot escape CsWebUi's native callback boundary.
+                // A consumer event handler cannot escape CS-WebUI's native callback boundary.
             }
         }
     }

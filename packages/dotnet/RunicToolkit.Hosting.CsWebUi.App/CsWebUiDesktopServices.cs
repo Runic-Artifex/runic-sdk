@@ -147,7 +147,7 @@ internal sealed class CsWebUiDesktopServices :
             if (_window is not null)
             {
                 throw new InvalidOperationException(
-                    "CsWebUi desktop services are already attached to a native window.");
+                    "CS-WebUI desktop services are already attached to a native window.");
             }
 
             _host = browserHost;
@@ -177,7 +177,7 @@ internal sealed class CsWebUiDesktopServices :
             if (!ReferenceEquals(_window, window))
             {
                 throw new InvalidOperationException(
-                    "CsWebUi desktop services cannot detach a different native window.");
+                    "CS-WebUI desktop services cannot detach a different native window.");
             }
 
             if (_adapter is not null)
@@ -563,7 +563,7 @@ internal sealed class CsWebUiDesktopServices :
                 if (!ReferenceEquals(_host, host))
                 {
                     throw new InvalidOperationException(
-                        "The CsWebUi application stopped while opening a secondary window.");
+                        "The CS-WebUI application stopped while opening a secondary window.");
                 }
 
                 _ownedWindows.Add(options.WindowId, owned);
@@ -851,7 +851,7 @@ internal sealed class CsWebUiDesktopServices :
             capabilities.Add(new(
                 capability,
                 DesktopCapabilityStatus.Unavailable,
-                "The CsWebUi native window is not active."));
+                "The CS-WebUI native window is not active."));
         }
 
         return new DesktopCapabilityReport("cswebui", GetPlatform(), capabilities);

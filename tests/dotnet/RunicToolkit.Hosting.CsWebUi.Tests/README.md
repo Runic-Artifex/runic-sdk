@@ -1,6 +1,6 @@
 # RunicToolkit.Hosting.CsWebUi tests
 
-These focused executable tests exercise the CsWebUi adapter without opening a
+These focused executable tests exercise the CS-WebUI adapter without opening a
 native browser or WebView. A runtime seam records native operations while the
 tests cover:
 

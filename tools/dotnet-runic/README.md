@@ -11,7 +11,7 @@ dotnet runic-toolkit inspect path/to/App.csproj --artifact diagnostics
 `dev` evaluates optional frontend-development MSBuild properties, builds the
 managed host, optionally starts a loopback-only Vite or Angular development
 server, coordinates contract generation, mirrors production assets, and
-restarts the CsWebUi host when required.
+restarts the CS-WebUI host when required.
 
 External compilers integrate without a Toolkit source dependency. The CLI reads
 these properties:

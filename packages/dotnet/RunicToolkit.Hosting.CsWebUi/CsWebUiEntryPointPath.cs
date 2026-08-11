@@ -75,7 +75,7 @@ internal static class CsWebUiEntryPointPath
             server.Scheme is not ("http" or "https"))
         {
             throw new InvalidOperationException(
-                "CsWebUi did not expose a valid local server URL.");
+                "CS-WebUI did not expose a valid local server URL.");
         }
 
         string[] segments = relativePath.Split('/');

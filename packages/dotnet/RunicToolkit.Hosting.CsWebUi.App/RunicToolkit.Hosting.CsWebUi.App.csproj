@@ -6,7 +6,7 @@
     <RootNamespace>RunicToolkit.Hosting.CsWebUi</RootNamespace>
     <PackageId>RunicToolkit.Hosting.CsWebUi.App</PackageId>
     <Version>1.0.0-beta.1</Version>
-    <Description>High-level WebUiApp composition for native CsWebUi frontends.</Description>
+    <Description>High-level WebUiApp composition for native CS-WebUI frontends.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

@@ -21,7 +21,7 @@ internal static class Program
             ("entry points translate only safe app paths", EntryPointsValidate),
             ("dispatcher serializes and permits reentrancy", DispatcherSerializes),
             ("host applies window configuration headlessly", HostAppliesConfiguration),
-            ("all presentation modes map to CsWebUi", PresentationModesMap),
+            ("all presentation modes map to CS-WebUI", PresentationModesMap),
             ("disconnect and application exit complete window lifetime", WindowCloseSignals),
             ("close and disposal are idempotent", CloseAndDisposalAreIdempotent),
         ];

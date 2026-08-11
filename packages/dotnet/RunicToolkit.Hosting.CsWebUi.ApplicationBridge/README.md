@@ -1,6 +1,6 @@
 # RunicToolkit.Hosting.CsWebUi.ApplicationBridge
 
-Carries all application commands through one bounded binary CsWebUi binding.
+Carries all application commands through one bounded binary CS-WebUI binding.
 Correlated receipts and any events produced during their dispatch return as one
 sequence-ordered binding result; later unsolicited host events use the single
 receiver. The adapter pins native client identity, permits explicit

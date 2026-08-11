@@ -53,5 +53,5 @@ async function waitForBinding(name) {
     if (typeof globalThis[name] === "function") return;
     await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
   }
-  throw new Error(`The CsWebUi binding '${name}' was not installed.`);
+  throw new Error(`The CS-WebUI binding '${name}' was not installed.`);
 }

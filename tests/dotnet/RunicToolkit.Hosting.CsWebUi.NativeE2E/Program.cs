@@ -117,7 +117,7 @@ internal static class Program
             }
             bool passed = bridgePassed && desktopPassed;
             Console.WriteLine(passed
-                ? "PASS: real CsWebUi + Chromium exercised Application Bridge and desktop storage."
+                ? "PASS: real CS-WebUI + Chromium exercised Application Bridge and desktop storage."
                 : $"FAIL: native bridge result '{result}', desktop passed: {desktopPassed}, host identity: {bridge.ConnectionIdentity?.ToString() ?? "none"}.");
             exitCode = passed ? 0 : 1;
         }

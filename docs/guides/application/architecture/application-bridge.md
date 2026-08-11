@@ -8,7 +8,7 @@ not ViewModel shape.
 Application UI
     -> generated or inferred typed client
     -> Effect ApplicationBridge service
-    -> one bounded CsWebUi binary channel
+    -> one bounded CS-WebUI binary channel
     -> generated C# decoder and dispatcher
     -> explicit application handlers
     -> domain services and workflows

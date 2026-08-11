@@ -1,7 +1,7 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Runic Artifex",
-  "classifications": ["Desktop", "CsWebUi", "React"],
+  "classifications": ["Desktop", "CS-WebUI", "React"],
   "identity": "RunicToolkit.Templates.React",
   "name": "RunicToolkit React application",
   "shortName": "runic-toolkit-react",

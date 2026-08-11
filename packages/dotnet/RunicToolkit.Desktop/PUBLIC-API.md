@@ -11,4 +11,4 @@ The package exposes:
 - deterministic application-owned secondary windows.
 
 The contracts are frontend-neutral and Native-AOT-safe. They do not expose WPF,
-CsWebUi, browser, DOM, or operating-system handle types.
+CS-WebUI, browser, DOM, or operating-system handle types.

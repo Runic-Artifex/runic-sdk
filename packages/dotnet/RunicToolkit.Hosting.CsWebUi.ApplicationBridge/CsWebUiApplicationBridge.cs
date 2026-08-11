@@ -6,7 +6,7 @@ using RunicToolkit.ApplicationBridge;
 
 namespace RunicToolkit.Hosting.CsWebUi.ApplicationBridge;
 
-/// <summary>Owns one Application Bridge session on one fixed binary CsWebUi channel.</summary>
+/// <summary>Owns one Application Bridge session on one fixed binary CS-WebUI channel.</summary>
 public sealed class CsWebUiApplicationBridge : IAsyncDisposable
 {
     private readonly IApplicationBridgeWindow _window;

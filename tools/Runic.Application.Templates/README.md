@@ -1,6 +1,6 @@
 # RunicToolkit templates
 
-Install the package and create one native CsWebUi application:
+Install the package and create one native CS-WebUI application:
 
 ```console
 dotnet new install RunicToolkit.Templates

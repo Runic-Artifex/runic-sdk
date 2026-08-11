@@ -9,7 +9,7 @@ The dependency direction is deliberately inward:
 3. Presentation frameworks consume one framework-neutral controller.
    Framework-owned integration repositories may publish idiomatic lifecycle
    projections without owning protocol state.
-4. Hosting core depends on abstractions; Generic Host, WebUi, and CsWebUi are
+4. Hosting core depends on abstractions; Generic Host, WebUi, and CS-WebUI are
    explicit adapters layered above it.
 5. `RunicToolkit.Hosting.Build` turns an explicitly built frontend directory
    into a verified application asset manifest.

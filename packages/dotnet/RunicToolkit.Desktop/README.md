@@ -1,8 +1,8 @@
 # RunicToolkit.Desktop
 
-Frontend-neutral desktop capability contracts for CsWebUi applications and
+Frontend-neutral desktop capability contracts for CS-WebUI applications and
 WPF migrations. ViewModels depend on small typed services rather than WPF,
-CsWebUi, browser, DOM, or operating-system objects.
+CS-WebUI, browser, DOM, or operating-system objects.
 
 Every host publishes a complete `IDesktopCapabilities` report. Calling an
 unsupported, unavailable, or permission-gated service produces a stable
@@ -12,7 +12,7 @@ before invoking a feature.
 The contracts intentionally use file contents rather than platform paths and
 semantic element identifiers rather than DOM nodes.
 
-The high-level CsWebUi application builder registers:
+The high-level CS-WebUI application builder registers:
 
 - `IDesktopApplicationLifetime`, `IDesktopWindow`, `IDesktopFocus`, and
   `IDesktopDispatcher`;

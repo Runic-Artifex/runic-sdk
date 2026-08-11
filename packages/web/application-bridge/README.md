@@ -19,11 +19,11 @@ therefore offer opt-in Effect workflows and scoped actions without constructing
 a renderer-owned runtime. Promise methods remain the default convenience edge.
 
 `createCsWebUiFrameChannel` can be created as soon as the application module
-loads. It waits up to ten seconds for CsWebUi to install its native send binding
+loads. It waits up to ten seconds for CS-WebUI to install its native send binding
 and reads the settled sender again before use. Correlated responses return
 through that binding promise as a sequence-ordered host-frame batch; the named
 receiver remains available for later unsolicited events. Fast Vite and
-SvelteKit startup therefore cannot lose initialization while CsWebUi completes
+SvelteKit startup therefore cannot lose initialization while CS-WebUI completes
 its bootstrap. The timeout, polling interval, and one-time 25 ms stabilization
 delay can be overridden for unusual hosts or tests.
 

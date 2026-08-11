@@ -15,7 +15,7 @@ import {
   type FrameChannelEvent,
 } from "../dist/esm/index.js";
 
-test("the CsWebUi channel waits for its asynchronously installed native binding", async () => {
+test("the CS-WebUI channel waits for its asynchronously installed native binding", async () => {
   const target: CsWebUiGlobal = {};
   const frames: Uint8Array[] = [];
   const channel = createCsWebUiFrameChannel(target, {
@@ -39,7 +39,7 @@ test("the CsWebUi channel waits for its asynchronously installed native binding"
   await channel.close("test complete");
 });
 
-test("the CsWebUi channel reports a missing native binding after its timeout", async () => {
+test("the CS-WebUI channel reports a missing native binding after its timeout", async () => {
   const channel = createCsWebUiFrameChannel({}, {
     bindingTimeoutMs: 5,
     bindingPollIntervalMs: 1,
@@ -52,7 +52,7 @@ test("the CsWebUi channel reports a missing native binding after its timeout", a
   await channel.close("test complete");
 });
 
-test("the CsWebUi channel uses the sender installed after its settle window", async () => {
+test("the CS-WebUI channel uses the sender installed after its settle window", async () => {
   let staleCalls = 0;
   const frames: Uint8Array[] = [];
   const target: CsWebUiGlobal = {
@@ -81,7 +81,7 @@ test("the CsWebUi channel uses the sender installed after its settle window", as
   await channel.close("test complete");
 });
 
-test("the CsWebUi channel restores its receiver after native binding invocation", async () => {
+test("the CS-WebUI channel restores its receiver after native binding invocation", async () => {
   const received: Uint8Array[] = [];
   const target: CsWebUiGlobal = {};
   Object.defineProperty(target, "__runicToolkit_applicationBridge_send", {
@@ -104,7 +104,7 @@ test("the CsWebUi channel restores its receiver after native binding invocation"
   await channel.close("test complete");
 });
 
-test("the CsWebUi channel publishes a correlated response returned by the binding", async () => {
+test("the CS-WebUI channel publishes a correlated response returned by the binding", async () => {
   const response = JSON.stringify({ kind: "snapshot" });
   const target: CsWebUiGlobal = {
     __runicToolkit_applicationBridge_send: async () => response,
@@ -122,7 +122,7 @@ test("the CsWebUi channel publishes a correlated response returned by the bindin
   await channel.close("test complete");
 });
 
-test("the CsWebUi channel forwards an ordered host batch as one owned frame", async () => {
+test("the CS-WebUI channel forwards an ordered host batch as one owned frame", async () => {
   const target: CsWebUiGlobal = {
     __runicToolkit_applicationBridge_send: async () => JSON.stringify([
       { kind: "event", sequence: 1 },

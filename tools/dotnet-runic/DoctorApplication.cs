@@ -84,7 +84,7 @@ internal static class DoctorApplication
 
             Doctor evaluates the selected application and reports actionable PASS,
             WARN, and FAIL checks for the .NET SDK, optional Node/package-manager
-            toolchain, native CsWebUi library, browser, lock file, Vite entry/config,
+            toolchain, native CS-WebUI library, browser, lock file, Vite entry/config,
             and generated contracts. A report with any FAIL result exits with code 1.
             """);
     }
