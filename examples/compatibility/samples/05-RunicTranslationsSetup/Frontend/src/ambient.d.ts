@@ -3,14 +3,16 @@ declare module "virtual:runic-translations/setup" {
     readonly locale?: "en" | "de" | string;
   }
 
-  export function m$Application$Title(options?: MessageOptions): string;
-  export function m$Application$Lead(options?: MessageOptions): string;
-  export function m$Locale$English(options?: MessageOptions): string;
-  export function m$Locale$German(options?: MessageOptions): string;
-  export function m$Validation$Required(
-    inputs: Readonly<{ field: string }>,
-    options?: MessageOptions,
-  ): string;
+  export const m: Readonly<{
+    "Application.Title": (options?: MessageOptions) => string;
+    "Application.Lead": (options?: MessageOptions) => string;
+    "Locale.English": (options?: MessageOptions) => string;
+    "Locale.German": (options?: MessageOptions) => string;
+    "Validation.Required": (
+      inputs: Readonly<{ field: string }>,
+      options?: MessageOptions,
+    ) => string;
+  }>;
 }
 
 declare module "virtual:runic-translations/setup/runtime" {

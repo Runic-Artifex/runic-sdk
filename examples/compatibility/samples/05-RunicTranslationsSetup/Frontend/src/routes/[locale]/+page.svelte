@@ -1,13 +1,13 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
-  import { localizeReference, m$Application$Lead, m$Application$Title, m$Locale$English, m$Locale$German } from "$lib/messages";
+  import { localizeReference, m } from "$lib/messages";
 
   let { data }: import("./$types").PageProps = $props();
   let validationMessage = $state("");
   let pending = $state(false);
   const locale = $derived(data.locale);
-  const title = $derived(m$Application$Title({ locale }));
-  const lead = $derived(m$Application$Lead({ locale }));
+  const title = $derived(m["Application.Title"]({ locale }));
+  const lead = $derived(m["Application.Lead"]({ locale }));
 
   async function submitInvalidRegistration() {
     pending = true;
@@ -36,10 +36,10 @@
 
   <nav aria-label="Language">
     <a href={resolve("/en")} aria-current={locale === "en" ? "page" : undefined}>
-      {m$Locale$English({ locale })}
+      {m["Locale.English"]({ locale })}
     </a>
     <a href={resolve("/de")} aria-current={locale === "de" ? "page" : undefined}>
-      {m$Locale$German({ locale })}
+      {m["Locale.German"]({ locale })}
     </a>
   </nav>
 

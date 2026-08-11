@@ -15,7 +15,7 @@
     "svelte": "5.56.8"
   },
   "devDependencies": {
-    "@runic-artifex/vite-plugin-runic-translations": "0.1.0-preview.4.3",
+    "@runic-artifex/vite-plugin-runic-translations": "0.1.0-preview.8.1",
     "@sveltejs/kit": "2.70.2",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
     "svelte-check": "4.7.5",

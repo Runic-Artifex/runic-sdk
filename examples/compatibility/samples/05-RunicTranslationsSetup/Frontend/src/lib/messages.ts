@@ -1,29 +1,17 @@
-import {
-  m$Application$Lead,
-  m$Application$Title,
-  m$Locale$English,
-  m$Locale$German,
-  m$Validation$Required,
-} from "virtual:runic-translations/setup";
+import { m } from "virtual:runic-translations/setup";
 import {
   decodeTextReference,
   formatTextReference,
   type DecodedTextReference,
 } from "virtual:runic-translations/setup/transport";
 
-export {
-  m$Application$Lead,
-  m$Application$Title,
-  m$Locale$English,
-  m$Locale$German,
-  m$Validation$Required,
-};
+export { m };
 
 const transportHandlers = {
   "Validation.Required": (
     inputs: Readonly<Record<string, unknown>>,
     options?: { locale?: string },
-  ) => m$Validation$Required({ field: String(inputs.field) }, options),
+  ) => m["Validation.Required"]({ field: String(inputs.field) }, options),
 };
 
 export function localizeReference(value: unknown, locale: string): string {
