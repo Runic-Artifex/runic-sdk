@@ -350,7 +350,7 @@ test('shows the exact release publication order without treating the Editor as a
     ['CS-WebUI', '2.5.0-beta.4.4 Available on NuGet', 'Available now'],
     [
       'Runic Command Line',
-      '0.1.0-preview.4.1 Verified candidate · not yet published',
+      '0.1.0-preview.5.1 Verified candidate · not yet published',
       'Can publish independently',
     ],
     [
@@ -380,12 +380,12 @@ test('shows the exact release publication order without treating the Editor as a
     ],
     [
       'Runic Assets',
-      '0.1.0-preview.23.1 Verified candidate · not yet published',
+      '0.1.0-preview.24.1 Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
     [
       'Runic Flow',
-      '0.1.0-preview.18.1 Verified candidate · not yet published',
+      '0.1.0-preview.19.1 Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
   ]);
@@ -451,10 +451,10 @@ test('reports release readiness conservatively', async () => {
 test('uses canonical availability vocabulary and raw exact candidate versions', async () => {
   const candidateProducts = [
     ['/products/runic-toolkit', '0.1.0-preview.30.1'],
-    ['/products/runic-flow', '0.1.0-preview.18.1'],
-    ['/products/runic-assets', '0.1.0-preview.23.1'],
+    ['/products/runic-flow', '0.1.0-preview.19.1'],
+    ['/products/runic-assets', '0.1.0-preview.24.1'],
     ['/products/runic-translations', '0.1.0-preview.8.1'],
-    ['/products/runic-command-line', '0.1.0-preview.4.1'],
+    ['/products/runic-command-line', '0.1.0-preview.5.1'],
   ];
   const packageHtml = await render('/packages');
   const releaseHtml = await render('/releases');
@@ -475,12 +475,12 @@ test('uses canonical availability vocabulary and raw exact candidate versions', 
     assert.doesNotMatch(html, /verified, unpublished/i, path);
   }
   for (const version of [
-    '0.1.0-preview.4.1',
+    '0.1.0-preview.5.1',
     '0.1.0-preview.8.1',
     '0.1.0-preview.14.1',
     '0.1.0-preview.30.1',
-    '0.1.0-preview.23.1',
-    '0.1.0-preview.18.1',
+    '0.1.0-preview.24.1',
+    '0.1.0-preview.19.1',
   ]) {
     const exactCode = new RegExp(
       `<code>${version.replaceAll('.', '\\.')}<\\/code>`,

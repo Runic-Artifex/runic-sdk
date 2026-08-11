@@ -99,7 +99,7 @@ export const products: Product[] = [
       'Coordinate predictable, UI-independent work with typed decisions, progress, cancellation, and deterministic state commits.',
     description:
       'Runic Flow coordinates headless application work through typed command decisions and serialized state commits. It tracks process-local versions, opaque checkpoints, concurrency slots, timeouts, progress, cancellation, and terminal outcomes without taking ownership of UI state.',
-    version: '0.1.0-preview.18.1',
+    version: '0.1.0-preview.19.1',
     source: 'https://github.com/Runic-Artifex/runic-flow',
     bestFor: [
       'Deterministic application processes',
@@ -123,7 +123,7 @@ export const products: Product[] = [
       'Package static assets once and serve the same validated manifest from embedded, development, browser, or server hosts.',
     description:
       'Runic Assets lets one validated asset manifest travel through embedded, development, browser, and server hosts. Safe paths, immutable manifests, portable standard-ZIP archives, development sources, and host adapters stay separate from the transport-neutral core.',
-    version: '0.1.0-preview.23.1',
+    version: '0.1.0-preview.24.1',
     source: 'https://github.com/Runic-Artifex/runic-assets',
     bestFor: [
       'Sharing static assets across hosts',
@@ -225,7 +225,7 @@ export const products: Product[] = [
       'Build reflection-free NativeAOT command applications with parser-neutral contracts and predictable human and machine output.',
     description:
       'Runic Command Line separates portable command contracts from execution, hosting, and child-process support. It provides command catalogs and predictable output without requiring reflection or committing applications to one parser.',
-    version: '0.1.0-preview.4.1',
+    version: '0.1.0-preview.5.1',
     source: 'https://github.com/Runic-Artifex/runic-command-line',
     bestFor: [
       'NativeAOT command applications',

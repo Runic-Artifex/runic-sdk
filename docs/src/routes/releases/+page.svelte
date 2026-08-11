@@ -6,7 +6,7 @@
     ['CS-WebUI', '2.5.0-beta.4.4', 'Available on NuGet', 'Available now'],
     [
       'Runic Command Line',
-      '0.1.0-preview.4.1',
+      '0.1.0-preview.5.1',
       'Verified candidate · not yet published',
       'Can publish independently',
     ],
@@ -42,13 +42,13 @@
     ],
     [
       'Runic Assets',
-      '0.1.0-preview.23.1',
+      '0.1.0-preview.24.1',
       'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
     [
       'Runic Flow',
-      '0.1.0-preview.18.1',
+      '0.1.0-preview.19.1',
       'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
