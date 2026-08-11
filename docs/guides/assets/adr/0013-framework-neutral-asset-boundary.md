@@ -9,11 +9,11 @@ Static application assets currently cross several repository layers:
 `WebUIToolkit.Hosting.Abstractions` defines manifest/provider contracts,
 `WebUIToolkit.Hosting.Build` creates production manifests, and
 `WebUIToolkit.Hosting.WebUi` opens local files and maps them to an endpoint.
-CsWebUi also has a customer-derived virtual filesystem implementation.
+CS-WebUI also has a customer-derived virtual filesystem implementation.
 
 The product needs one reusable boundary for deterministic production assets
 and local development directories. That boundary must work for compiled HTML
-and every browser framework without making HTMX, MVVM, Bootstrap, CsWebUi, or
+and every browser framework without making HTMX, MVVM, Bootstrap, CS-WebUI, or
 ASP.NET Core part of the asset model. Published desktop applications must
 remain offline and compatible with trimming, single-file publication, and
 Native AOT.
@@ -42,18 +42,18 @@ an operating-system registry. The package has no third-party or other
 WebUIToolkit package dependency.
 
 Host-specific adapters depend on `RunicAssets`; the core package never depends
-on CsWebUi, ASP.NET Core, Runic Toolkit, or another UI framework.
+on CS-WebUI, ASP.NET Core, Runic Toolkit, or another UI framework.
 
-The CsWebUi adapter uses CsWebUi's public, policy-free custom file-handler API.
+The CS-WebUI adapter uses CS-WebUI's public, policy-free custom file-handler API.
 It constructs complete HTTP responses directly from the current Runic Assets
-manifest and source; it does not project assets through CsWebUi's virtual file
-system or ask CsWebUi to infer media and cache policy. This preserves live
+manifest and source; it does not project assets through CS-WebUI's virtual file
+system or ask CS-WebUI to infer media and cache policy. This preserves live
 development refresh and keeps native callback and buffer-lifetime mechanics
-inside CsWebUi.
+inside CS-WebUI.
 
 Runic Assets also owns the incremental `dist` packer and embedded archive build
 target. The target emits the canonical metadata-bearing Runic Assets archive;
-CsWebUi does not ship an overlapping Vite packer, virtual filesystem, or asset
+CS-WebUI does not ship an overlapping Vite packer, virtual filesystem, or asset
 policy layer.
 
 ## Consequences
@@ -65,7 +65,7 @@ policy layer.
 - Development files are treated as mutable and uncacheable; production
   embedded content has digest-based validators and may opt into immutable
   caching for content-addressed paths.
-- Runtime adapters decide how cache metadata maps onto CsWebUi, HTTP, or a
+- Runtime adapters decide how cache metadata maps onto CS-WebUI, HTTP, or a
   future transport.
 - The package tests cover hostile paths, deterministic manifests, embedded
   content, refresh/drift behavior, links, cancellation, and dependency
@@ -74,6 +74,6 @@ policy layer.
 
 ## External coordination
 
-CsWebUi now lives in the Runic Artifex organization. Its integration is owned
-here so CsWebUi remains independently useful while Runic Assets controls how
+CS-WebUI now lives in the Runic Artifex organization. Its integration is owned
+here so CS-WebUI remains independently useful while Runic Assets controls how
 its transport-neutral contract maps to WebUI delivery.

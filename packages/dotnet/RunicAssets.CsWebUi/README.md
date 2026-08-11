@@ -1,7 +1,7 @@
 # RunicAssets.CsWebUi
 
 This integration is owned by Runic Assets and maps an `IAssetSource` directly
-to CsWebUi's policy-free managed custom file handler. CsWebUi remains
+to CS-WebUI's policy-free managed custom file handler. CS-WebUI remains
 independent and does not depend on Runic Assets.
 
 ```csharp
@@ -72,6 +72,6 @@ process-wide. This adapter assumes a private, loopback-only desktop deployment.
 Do not expose the window with `SetPublic(true)` without an upstream
 authentication layer.
 
-CsWebUi owns callback retention, native buffer ownership, exception containment,
+CS-WebUI owns callback retention, native buffer ownership, exception containment,
 replacement, and disposal. The window retains the handler—and therefore the
 asset source—until another handler replaces it or the window is disposed.

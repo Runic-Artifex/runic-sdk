@@ -2,7 +2,7 @@ using System;
 
 namespace RunicAssets.CsWebUi;
 
-/// <summary>Configures Runic Assets routing through a CsWebUi custom file handler.</summary>
+/// <summary>Configures Runic Assets routing through a CS-WebUI custom file handler.</summary>
 public sealed class RunicAssetsCsWebUiOptions
 {
     /// <summary>

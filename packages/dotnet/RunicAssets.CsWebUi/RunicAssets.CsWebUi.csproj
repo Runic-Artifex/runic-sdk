@@ -5,7 +5,7 @@
     <AssemblyName>RunicAssets.CsWebUi</AssemblyName>
     <RootNamespace>RunicAssets.CsWebUi</RootNamespace>
     <PackageId>RunicAssets.CsWebUi</PackageId>
-    <Description>Direct Runic Assets HTTP response integration for CsWebUi.</Description>
+    <Description>Direct Runic Assets HTTP response integration for CS-WebUI.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

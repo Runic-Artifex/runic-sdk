@@ -1,6 +1,6 @@
 # RunicAssets
 
-`RunicAssets` is a framework-neutral static-asset boundary. It has no dependency on hosting, CsWebUi, HTMX,
+`RunicAssets` is a framework-neutral static-asset boundary. It has no dependency on hosting, CS-WebUI, HTMX,
 MVVM, a CSS system, or a browser framework.
 
 - `EmbeddedAssetSource` serves explicitly mapped assembly resources directly,
@@ -45,5 +45,5 @@ and accepts `RunicAssetsEntryPoint`, `RunicAssetsDistExclude`,
 The generated archive is the portable `runic.assets.archive/1` format rather
 than a host-specific virtual-filesystem image.
 
-The package deliberately does not define HTTP endpoints or a CsWebUi adapter.
+The package deliberately does not define HTTP endpoints or a CS-WebUI adapter.
 Those layers translate `IAssetSource` into their own transport contracts.

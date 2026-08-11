@@ -6,7 +6,7 @@ using CsWebUi;
 
 namespace RunicAssets.CsWebUi;
 
-/// <summary>Adapts transport-neutral Runic assets to CsWebUi delivery.</summary>
+/// <summary>Adapts transport-neutral Runic assets to CS-WebUI delivery.</summary>
 public static class CsWebUiAssetExtensions
 {
     private static readonly byte[] NotFoundResponse = CreateErrorResponse(
@@ -17,7 +17,7 @@ public static class CsWebUiAssetExtensions
         "500 Internal Server Error",
         "Internal Server Error");
 
-    /// <summary>Creates a direct, closed-fallback CsWebUi handler over the current asset source.</summary>
+    /// <summary>Creates a direct, closed-fallback CS-WebUI handler over the current asset source.</summary>
     /// <remarks>
     /// The handler resolves the source's current manifest on every request. Stable and live assets
     /// are read directly without response caching, so a refreshed development source becomes visible
@@ -41,7 +41,7 @@ public static class CsWebUiAssetExtensions
             maxResponseBytes);
     }
 
-    /// <summary>Attaches a direct Runic Assets HTTP response adapter to a CsWebUi window.</summary>
+    /// <summary>Attaches a direct Runic Assets HTTP response adapter to a CS-WebUI window.</summary>
     /// <remarks>
     /// Installing a WebUI custom file handler disables WebUI's authentication-cookie check
     /// process-wide. Keep the window private and loopback-only unless the application supplies an
@@ -120,7 +120,7 @@ public static class CsWebUiAssetExtensions
     {
         if (descriptor.Length > int.MaxValue)
         {
-            throw new InvalidDataException("CsWebUi cannot serve an asset larger than 2 GiB.");
+            throw new InvalidDataException("CS-WebUI cannot serve an asset larger than 2 GiB.");
         }
 
         Stream stream = source

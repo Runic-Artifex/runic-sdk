@@ -17,6 +17,6 @@ configured file/archive/uncompressed-size limit violations. Writers use the ZIP
 epoch timestamp and deterministic entry ordering. Already-compressed media is
 stored; other content uses ZIP deflate compression.
 
-The format deliberately uses standard ZIP rather than CsWebUi's historical
+The format deliberately uses standard ZIP rather than CS-WebUI's historical
 private optimized VFS format. Host adapters consume the same manifest and source
 contracts without becoming part of the archive.
