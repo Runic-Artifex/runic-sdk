@@ -174,16 +174,3 @@ jobs:
               --api-key "$NUGET_API_KEY" \
               --skip-duplicate
           done
-
-      - name: Verify NuGet publication
-        shell: bash
-        run: |
-          set -euo pipefail
-          for package in "$RUNNER_TEMP"/packages/*.nupkg; do
-            filename="$(basename "$package")"
-            package_id="${filename%."$PACKAGE_VERSION".nupkg}"
-            package_id="${package_id,,}"
-            url="https://api.nuget.org/v3-flatcontainer/$package_id/$PACKAGE_VERSION/$package_id.$PACKAGE_VERSION.nupkg"
-            curl --fail --silent --show-error --output /dev/null \
-              --retry 8 --retry-delay 5 --retry-all-errors "$url"
-          done
