@@ -61,7 +61,7 @@
       <div class="map-ring">
         <span>Bridge</span><span>Flow</span><span>Assets</span><span
           >Translations</span
-        ><span>Editor</span><span>CLI</span><span>CsWebUi</span>
+        ><span>Editor</span><span>CLI</span><span>CS-WebUI</span>
       </div>
       <p>Products own their cores and official integrations.</p>
     </Card.Root>
@@ -125,7 +125,7 @@
       >
       <h2>The source is ready to explore.</h2>
       <p>
-        The repositories are public. CsWebUi 2.5.0-beta.4.4 is available on
+        The repositories are public. CS-WebUI 2.5.0-beta.4.4 is available on
         NuGet. Exact preview candidates for the remaining package families have
         passed verification but are not yet published to NuGet or npm.
       </p>

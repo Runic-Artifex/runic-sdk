@@ -3,7 +3,7 @@
   import * as Table from '$lib/components/ui/table';
 
   const train = [
-    ['CsWebUi', '2.5.0-beta.4.4', 'Available on NuGet', 'Available now'],
+    ['CS-WebUI', '2.5.0-beta.4.4', 'Available on NuGet', 'Available now'],
     [
       'Runic Command Line',
       '0.1.0-preview.4.1',
@@ -84,7 +84,7 @@
     <p class="eyebrow">Release status</p>
     <h1>See what you can install today.</h1>
     <p class="lede">
-      CsWebUi is available on NuGet. Toolkit, Command Line, Translations,
+      CS-WebUI is available on NuGet. Toolkit, Command Line, Translations,
       Assets, Flow, Svelte, and Vite have verified candidates awaiting their
       first registry publication. Translations Editor’s first preview is still
       pending.

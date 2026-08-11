@@ -66,14 +66,14 @@ export const products: Product[] = [
   },
   {
     slug: 'cs-webui',
-    name: 'CsWebUi',
-    shortName: 'CsWebUi',
+    name: 'CS-WebUI',
+    shortName: 'CS-WebUI',
     icon: '/products/cs-webui.png',
     kicker: 'Native host',
     summary:
       'Host a web-powered cross-platform desktop UI in a native window using an installed browser or supported WebView.',
     description:
-      'CsWebUi provides .NET bindings for WebUI. The raw package follows the WebUI C ABI, while the high-level package adds deterministic managed ownership, safer callbacks and window APIs, custom HTTP responses for asset integrations, and NativeAOT support.',
+      'CS-WebUI provides .NET bindings for WebUI. The raw package follows the WebUI C ABI, while the high-level package adds deterministic managed ownership, safer callbacks and window APIs, custom HTTP responses for asset integrations, and NativeAOT support.',
     version: '2.5.0-beta.4.4',
     source: 'https://github.com/Runic-Artifex/cs-webui',
     bestFor: [

@@ -35,7 +35,7 @@
       <ul>
         <li>
           A lightweight desktop window? Start with <a
-            href={resolve('/products/[slug]', { slug: 'cs-webui' })}>CsWebUi</a
+            href={resolve('/products/[slug]', { slug: 'cs-webui' })}>CS-WebUI</a
           >.
         </li>
         <li>
@@ -77,9 +77,9 @@
         </li>
       </ul>
     </ContentCard>
-    <ContentCard eyebrow="Available today" title="Try CsWebUi">
+    <ContentCard eyebrow="Available today" title="Try CS-WebUI">
       <p>
-        CsWebUi is the only Runic package family currently available on NuGet.
+        CS-WebUI is the only Runic package family currently available on NuGet.
         It includes <code>CsWebUi</code> and <code>CsWebUi.Native</code>.
       </p>
       <pre><code>dotnet add package CsWebUi --version 2.5.0-beta.4.4</code

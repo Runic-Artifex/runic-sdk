@@ -73,7 +73,7 @@
     >
       <p>
         Flow, Assets, Translations, Translations Editor, Command Line, Toolkit,
-        and CsWebUi each keep an independent release history. Package families
+        and CS-WebUI each keep an independent release history. Package families
         release registry artifacts; Translations Editor releases desktop
         archives from its own repository.
       </p>

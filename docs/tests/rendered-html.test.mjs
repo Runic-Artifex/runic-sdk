@@ -102,7 +102,7 @@ test('renders the documentation home with complete metadata and branding', async
     /background-image:\s*url\(\/products\/runic-toolkit\.png\)/,
   );
   assert.match(html, /Runic Toolkit/);
-  assert.match(html, /CsWebUi/);
+  assert.match(html, /CS-WebUI/);
   assert.doesNotMatch(
     html,
     /codex-preview|SkeletonPreview|Your site is taking shape/,
@@ -154,7 +154,7 @@ test('renders every primary documentation route', async () => {
     ['/products/runic-translations', 'Runic Translations'],
     ['/products/runic-translations-editor', 'Runic Translations Editor'],
     ['/products/runic-command-line', 'Runic Command Line'],
-    ['/products/cs-webui', 'CsWebUi'],
+    ['/products/cs-webui', 'CS-WebUI'],
   ];
 
   for (const [path, expected] of routes) {
@@ -263,7 +263,7 @@ test('uses one page h1 followed by h2 product-card headings', async () => {
   assert.deepEqual(headings, [
     [1, 'Seven products, each with a clear job.'],
     [2, 'Runic Toolkit'],
-    [2, 'CsWebUi'],
+    [2, 'CS-WebUI'],
     [2, 'Runic Flow'],
     [2, 'Runic Assets'],
     [2, 'Runic Translations'],
@@ -316,7 +316,7 @@ test('renders package and release tables with captions, scoped heads, and overfl
 test('keeps release status public-facing and summarizes release integrity', async () => {
   const html = await render('/releases');
 
-  assert.match(html, /CsWebUi is available on NuGet/);
+  assert.match(html, /CS-WebUI is available on NuGet/);
   assert.match(html, /Verified candidate · not yet published/);
   assert.match(html, /First preview pending/);
   assert.match(html, /Verify once\. Publish the same artifacts\./);
@@ -336,7 +336,7 @@ test('shows the exact release publication order without treating the Editor as a
   assert.ok(lede, 'expected the release lede');
   assert.match(
     stripMarkup(lede),
-    /^CsWebUi is available on NuGet\. Toolkit, Command Line, Translations, Assets, Flow, Svelte, and Vite have verified candidates awaiting their first registry publication\. Translations Editor’s first preview is still pending\.$/,
+    /^CS-WebUI is available on NuGet\. Toolkit, Command Line, Translations, Assets, Flow, Svelte, and Vite have verified candidates awaiting their first registry publication\. Translations Editor’s first preview is still pending\.$/,
   );
   assert.doesNotMatch(
     stripMarkup(lede),
@@ -347,7 +347,7 @@ test('shows the exact release publication order without treating the Editor as a
     /<th[^>]*scope="col">[\s\S]*?Publication order[\s\S]*?<\/th>/,
   );
   assert.deepEqual(tableRows(html), [
-    ['CsWebUi', '2.5.0-beta.4.4 Available on NuGet', 'Available now'],
+    ['CS-WebUI', '2.5.0-beta.4.4 Available on NuGet', 'Available now'],
     [
       'Runic Command Line',
       '0.1.0-preview.4.1 Verified candidate · not yet published',
@@ -407,7 +407,7 @@ test('reports release readiness conservatively', async () => {
   assert.match(homeHtml, /<h2>The source is ready to explore\.<\/h2>/);
   assert.match(
     homeHtml,
-    /The repositories are public\. CsWebUi 2\.5\.0-beta\.4\.4 is available on\s+NuGet\. Exact preview candidates for the remaining package families have\s+passed verification but are not yet published to NuGet or npm\./,
+    /The repositories are public\. CS-WebUI 2\.5\.0-beta\.4\.4 is available on\s+NuGet\. Exact preview candidates for the remaining package families have\s+passed verification but are not yet published to NuGet or npm\./,
   );
   assert.match(releaseHtml, /0\.1\.0-preview\.27\.1/);
   assert.match(releaseHtml, /0\.1\.0-preview\.8\.1/);
@@ -494,12 +494,12 @@ test('uses canonical availability vocabulary and raw exact candidate versions', 
   }
 });
 
-test('describes the published CsWebUi family and registry version precisely', async () => {
+test('describes the published CS-WebUI family and registry version precisely', async () => {
   const html = await render('/products/cs-webui');
 
-  assert.match(html, /CsWebUi provides \.NET bindings for WebUI/);
+  assert.match(html, /CS-WebUI provides \.NET bindings for WebUI/);
   assert.match(html, /The raw package follows the WebUI C ABI/);
-  assert.match(html, /<h2>Install CsWebUi<\/h2>/);
+  assert.match(html, /<h2>Install CS-WebUI<\/h2>/);
   assert.match(html, /Available on NuGet/);
   assert.match(html, /Version 2\.5\.0-beta\.4\.4 is available on NuGet/);
   assert.match(
