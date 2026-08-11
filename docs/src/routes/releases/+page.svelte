@@ -36,19 +36,19 @@
     ],
     [
       'Runic Toolkit',
-      '0.1.0-preview.27.1',
+      '0.1.0-preview.30.1',
       'Verified candidate · not yet published',
       'After Svelte and Vite integrations',
     ],
     [
       'Runic Assets',
-      '0.1.0-preview.20.1',
+      '0.1.0-preview.23.1',
       'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
     [
       'Runic Flow',
-      '0.1.0-preview.15.1',
+      '0.1.0-preview.18.1',
       'Verified candidate · not yet published',
       'After Runic Toolkit',
     ],
