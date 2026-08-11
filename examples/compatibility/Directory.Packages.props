@@ -15,23 +15,23 @@
     <PackageVersion Include="RunicCommandLine.Abstractions" Version="0.1.0-preview.4.1" />
     <PackageVersion Include="RunicCommandLine.Hosting" Version="0.1.0-preview.4.1" />
     <PackageVersion Include="RunicCommandLine.Processes" Version="0.1.0-preview.4.1" />
-    <PackageVersion Include="RunicFlow" Version="0.1.0-preview.15.1" />
-    <PackageVersion Include="RunicFlow.ApplicationBridge" Version="0.1.0-preview.15.1" />
-    <PackageVersion Include="RunicAssets" Version="0.1.0-preview.20.1" />
-    <PackageVersion Include="RunicAssets.CsWebUi" Version="0.1.0-preview.20.1" />
-    <PackageVersion Include="RunicAssets.AspNetCore" Version="0.1.0-preview.20.1" />
-    <PackageVersion Include="RunicAssets.RunicToolkit" Version="0.1.0-preview.20.1" />
-    <PackageVersion Include="RunicToolkit.ApplicationBridge" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.ApplicationBridge.Generators" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Collections" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting.Abstractions" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting.Build" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi.App" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting.GenericHost" Version="0.1.0-preview.27.1" />
-    <PackageVersion Include="RunicToolkit.Hosting.WebUi" Version="0.1.0-preview.27.1" />
+    <PackageVersion Include="RunicFlow" Version="0.1.0-preview.18.1" />
+    <PackageVersion Include="RunicFlow.ApplicationBridge" Version="0.1.0-preview.18.1" />
+    <PackageVersion Include="RunicAssets" Version="0.1.0-preview.23.1" />
+    <PackageVersion Include="RunicAssets.CsWebUi" Version="0.1.0-preview.23.1" />
+    <PackageVersion Include="RunicAssets.AspNetCore" Version="0.1.0-preview.23.1" />
+    <PackageVersion Include="RunicAssets.RunicToolkit" Version="0.1.0-preview.23.1" />
+    <PackageVersion Include="RunicToolkit.ApplicationBridge" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.ApplicationBridge.Generators" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Collections" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.Abstractions" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.Build" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi.App" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.GenericHost" Version="0.1.0-preview.30.1" />
+    <PackageVersion Include="RunicToolkit.Hosting.WebUi" Version="0.1.0-preview.30.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />
