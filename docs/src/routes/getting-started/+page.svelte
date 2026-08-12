@@ -77,23 +77,23 @@
         </li>
       </ul>
     </ContentCard>
-    <ContentCard eyebrow="Available today" title="Try CS-WebUI">
+    <ContentCard eyebrow="Available today" title="Install a public preview">
       <p>
-        CS-WebUI is the only Runic package family currently available on NuGet.
-        It includes <code>CsWebUi</code> and <code>CsWebUi.Native</code>.
+        The first package preview train is available from NuGet and npm. Start
+        with the package family that owns the capability you need and pin its
+        exact preview version.
       </p>
       <pre><code>dotnet add package CsWebUi --version 2.5.0-beta.4.4</code
         ></pre>
     </ContentCard>
     <ContentCard
-      eyebrow="Other products"
-      title="Browse the source while packages are pending"
+      eyebrow="Application preview"
+      title="Translations Editor remains pending"
     >
       <p>
-        The remaining package families have exact verified candidates, and their
-        source is public. Install commands will appear after matching registry
-        artifacts are published and accepted. Runic Translations Editor is a
-        separate application; its first preview is still pending.
+        Runic Translations Editor is a separate downstream application. Its
+        source is public, but its first downloadable desktop preview is still
+        pending.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Composition" title="Connect only when needed">

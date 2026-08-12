@@ -185,6 +185,13 @@
                 onpalettechange={changeThemePalette}
               />
               <Button
+                href="https://runic-artifex.eu/"
+                variant="outline"
+                class="w-full"
+              >
+                Runic Artifex website
+              </Button>
+              <Button
                 href="https://github.com/Runic-Artifex"
                 variant="outline"
                 class="w-full"
@@ -205,14 +212,18 @@
   <footer class="site-footer">
     <div class="shell footer-grid">
       <div>
-        <div class="brand footer-brand">
+        <a
+          class="brand footer-brand"
+          href="https://runic-artifex.eu/"
+          aria-label="Visit the Runic Artifex project website"
+        >
           <span class="brand-mark" aria-hidden="true"></span>
           <span
             ><strong>Runic Artifex</strong><small
-              >Independent tools. Explicit seams.</small
+              >The map of independent tools and explicit seams.</small
             ></span
           >
-        </div>
+        </a>
         <p>NativeAOT-minded building blocks for modern .NET applications.</p>
       </div>
       <div>
@@ -221,9 +232,11 @@
         ><a href={resolve('/architecture')}>Architecture</a>
       </div>
       <div>
-        <strong>Project</strong><a href="https://github.com/Runic-Artifex"
-          >GitHub organization</a
-        ><a href={resolve('/releases')}>Release status</a><a
+        <strong>Project</strong><a href="https://runic-artifex.eu/"
+          >Runic Artifex website</a
+        ><a href="https://github.com/Runic-Artifex">GitHub organization</a><a
+          href={resolve('/releases')}>Release status</a
+        ><a
           href="https://github.com/Runic-Artifex/.github/blob/main/SECURITY.md"
           >Security</a
         >

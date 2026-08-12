@@ -10,11 +10,11 @@
 
   let { product }: { product: Product } = $props();
   let isApplication = $derived(product.kind === 'application');
-  let isPublished = $derived((product.install?.length ?? 0) > 0);
+  let isPublished = $derived(!isApplication);
   let hasNpmPackages = $derived((product.npmPackages?.length ?? 0) > 0);
-  let candidateRegistry = $derived(
+  let registryLabel = $derived(
     hasNpmPackages && product.packages.length > 0
-      ? 'public registries'
+      ? 'NuGet and npm'
       : hasNpmPackages
         ? 'npm'
         : 'NuGet',
@@ -146,16 +146,12 @@
         <Notice
           title={isApplication
             ? 'First preview pending'
-            : isPublished
-              ? 'Available on NuGet'
-              : 'Verified candidate · not yet published'}
+            : `Available on ${registryLabel}`}
         >
           <p>
             {isApplication
               ? 'The first desktop preview is pending. Downloads will appear in GitHub Releases for the editor repository.'
-              : isPublished
-                ? `Version ${product.version} is available on NuGet. Pin the exact preview version in reproducible applications.`
-                : `Candidate ${product.version} has passed its public-source verification workflow but is not yet available from ${candidateRegistry}.`}
+              : `Version ${product.version} is available on ${registryLabel}. Pin the exact preview version in reproducible applications.`}
           </p>
         </Notice>
         {#each product.install ?? [] as command (command)}<pre><code
@@ -173,15 +169,8 @@
             >{/each}
         </div>
         <p>
-          {isApplication
-            ? 'Release status'
-            : isPublished
-              ? 'Registry version'
-              : 'Candidate status'}:
+          {isApplication ? 'Release status' : 'Registry version'}:
           <code>{product.version}</code>
-          {#if !isApplication && !isPublished}
-            <span> · Verified candidate · not yet published</span>
-          {/if}
         </p>
       </section>
       <Card.Root class="next-card" size="sm">

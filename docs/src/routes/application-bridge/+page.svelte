@@ -150,32 +150,27 @@
     </ContentCard>
     <ContentCard
       eyebrow="Availability"
-      title="Wait for registry publication"
+      title="Install the published integrations"
       full
     >
-      <Notice title="Publication pending">
-        <p>
-          These exact candidates have passed their public-source verification
-          workflows:
-        </p>
+      <Notice title="Available on NuGet and npm">
+        <p>Pin the exact preview versions for reproducible applications:</p>
         <ul>
           <li>
-            Runic Toolkit <code>0.1.0-preview.30.1</code> — Verified candidate · not
-            yet published
+            Runic Toolkit <code>0.1.0-preview.30.1</code> — Available on NuGet and
+            npm
           </li>
           <li>
-            Runic Svelte <code>0.1.0-preview.14.1</code> — Verified candidate · not
-            yet published
+            Runic Svelte <code>0.1.0-preview.14.1</code> — Available on npm
           </li>
           <li>
-            Runic Vite <code>0.1.0-preview.8.1</code> — Verified candidate · not yet
-            published
+            Runic Vite <code>0.1.0-preview.8.1</code> — Available on npm
           </li>
         </ul>
-        <p>
-          Install commands will appear after the matching NuGet and npm
-          artifacts are published and accepted.
-        </p>
+        <pre><code
+            >dotnet add package RunicToolkit.ApplicationBridge --version 0.1.0-preview.30.1
+npm install @runic-artifex/application-bridge@0.1.0-preview.30.1 @runic-artifex/svelte@0.1.0-preview.14.1 @runic-artifex/vite-plugin-runic-toolkit@0.1.0-preview.8.1</code
+          ></pre>
       </Notice>
     </ContentCard>
     <ContentCard

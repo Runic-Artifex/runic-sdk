@@ -2,104 +2,57 @@
 
 # Runic Artifex Documentation
 
-The documentation portal for the independent Runic Artifex projects and the
-explicit integration seams between them.
+Start at [docs.runic-artifex.eu](https://docs.runic-artifex.eu): choose a focused, open-source .NET tool, find its NuGet or npm package, and connect products only when your application needs the integration.
 
-The portal source and live site are public while the first package preview train
-awaits registry publication. A successful documentation deployment is not
-authorization to publish packages or claim that registry artifacts are live.
+Runic Artifex tools work independently. The documentation helps you select the right starting point for a native desktop host, a desktop-and-browser application, headless orchestration, asset delivery, localization, or a NativeAOT command-line application.
 
-The portal is built with SvelteKit and Svelte 5. It is fully prerendered with
-`@sveltejs/adapter-static` and served by the Runic Artifex NixOS VPS at
-`https://docs.runic-artifex.eu`. The same source produces the canonical landing
-page served at `https://runic-artifex.eu`; `https://www.runic-artifex.eu`
-redirects to the apex.
+## Find the right starting point
 
-Versioned Runic Translations JSON Schemas are published as static assets under
-`/schemas/translations/`. Their canonical identifiers use the owned apex origin;
-the apex redirects those requests to the same files on the documentation host.
+- [Getting started](https://docs.runic-artifex.eu/getting-started) maps common application goals to a product.
+- [Products](https://docs.runic-artifex.eu/products) explains capabilities, boundaries, and official integrations.
+- [Packages](https://docs.runic-artifex.eu/packages) is the NuGet and npm catalog, including install commands.
+- [Application Bridge](https://docs.runic-artifex.eu/application-bridge) explains how Runic Toolkit connects frontend and .NET application contracts.
+- [Release status](https://docs.runic-artifex.eu/releases) shows what is available today.
 
-## Develop locally
+The first package preview train is public on NuGet and npm. Preview packages release independently, so use the catalog’s exact preview version when you need a reproducible application. Runic Translations Editor is a separate downstream application; its source is public and its first downloadable desktop preview is still pending.
 
-Use Node.js 24 and npm:
+Versioned [Runic Translations JSON Schemas](https://docs.runic-artifex.eu/schemas/translations/) are also published as static assets. Their canonical identifiers use the `runic-artifex.eu` origin and resolve to the documentation host.
+
+## Contribute
+
+Documentation corrections, examples, and product guidance are welcome. Please [open an issue](https://github.com/Runic-Artifex/runic-docs/issues) to discuss a substantial change, then submit a focused [pull request](https://github.com/Runic-Artifex/runic-docs/pulls). Product-specific bugs and feature requests belong in the linked product repository from the relevant documentation page.
+
+### Develop locally
+
+This site requires Node.js 24 and npm.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-The terminal prints the local portal URL (normally `http://localhost:5173`).
+Vite prints the local URL, normally `http://localhost:5173`.
 
-## Verify
+Before opening a pull request, run:
 
 ```bash
-npm audit --omit=dev --audit-level=high
 npm run lint
 npm run check
 npm test
 ```
 
-`npm test` creates the production build and verifies important rendered routes
-and release information.
+`npm test` builds the static site and checks key rendered routes, catalog entries, and release information.
 
-## Build for the VPS
+## How the site is published
 
-The production build is emitted to `build/`. Every documentation route is
-prerendered as an `index.html`, and gzip/Brotli variants are produced for nginx.
-The server flake builds this repository twice with `RUNIC_SITE_ORIGIN`: once for
-the apex landing page and once for the documentation origin. Production
-deployments are reproducible and do not install Node.js dependencies at runtime.
+The documentation portal is a SvelteKit and Svelte 5 site, prerendered with `@sveltejs/adapter-static` and served at [docs.runic-artifex.eu](https://docs.runic-artifex.eu). The separate `runic-site` repository owns the project landing page at [runic-artifex.eu](https://runic-artifex.eu).
 
-## Content model
+## Maintainer release notes
 
-- `/getting-started` introduces the product family.
-- `/products` owns product and integration documentation.
-- `/architecture` records dependency direction and ownership rules.
-- `/packages` is the NuGet/npm catalog.
-- `/releases` describes the coordinated first preview train.
+Keep the public catalog aligned with verified registry artifacts and their install commands. Before a product preview is announced, verify the exact source revision, package identity, version, documentation links, and supported NuGet/npm publishing path. Publish through the protected, trusted-publisher workflow; do not treat this portal’s source repository as a package registry.
 
-## Package publication gate
+The site build is emitted to `build/` and prerendered for deployment. Production builds use `RUNIC_SITE_ORIGIN=https://docs.runic-artifex.eu`; no Node.js dependencies are installed at runtime. The canonical translation-schema identifiers remain on the apex origin and are routed to the static schema files from this repository.
 
-Packages may go public only after:
+## License and support
 
-1. every product's exact release workflow succeeds on `main`;
-2. NuGet and npm trusted publishers are configured;
-3. the npm organization/scope is under Runic Artifex control;
-4. documentation links and install commands are verified against public
-   registries; and
-5. the launch is explicitly approved.
-
-## Maintainer release workflow
-
-The public release page summarizes availability. Maintainers use the following
-runbook to prepare and publish the artifacts behind that status:
-
-1. Finish product changes and select immutable release inputs from green
-   `main` branches.
-2. Restore, test, and pack from those exact commits without sibling-source
-   dependencies. Run frontend checks, isolated downstream-consumer tests, and
-   applicable NativeAOT publication and execution gates.
-3. Review the documentation against the exact artifacts, including identifiers,
-   versions, links, and install commands.
-4. Publish those same verified artifacts through protected GitHub environments
-   and OIDC trusted publishers for NuGet and npm. If npm requires a first
-   package record before trusted publishing can be configured, use a
-   short-lived bootstrap token and revoke it immediately afterward.
-
-Committed npm lockfiles are release inputs. Dependency changes update them in a
-reviewed source change. `npm ci` consumes those lockfiles, so release jobs do not
-re-resolve dependencies. Ephemeral `npm version` stamping may update manifest
-and lockfile metadata for the candidate version.
-
-The first-preview order is intentionally narrow:
-
-- Runic Command Line can publish independently.
-- Runic Translations can publish its NuGet and npm artifacts independently.
-- Runic Translations Editor follows Runic Translations.
-- The Svelte and Vite integrations precede the Toolkit public-template gate.
-- Runic Toolkit follows both integrations.
-- Runic Assets and Runic Flow follow Runic Toolkit.
-
-## License
-
-The portal source and documentation are licensed under the MIT License.
+The portal source and documentation are licensed under the [MIT License](LICENSE). For documentation support, use the [issue tracker](https://github.com/Runic-Artifex/runic-docs/issues); for package support, use the relevant product repository linked from the live documentation.

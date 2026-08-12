@@ -63,6 +63,10 @@ export const products: Product[] = [
       'RunicToolkit.Templates',
     ],
     npmPackages: ['@runic-artifex/application-bridge'],
+    install: [
+      'dotnet add package RunicToolkit.Hosting --version 0.1.0-preview.30.1',
+      'npm install @runic-artifex/application-bridge@0.1.0-preview.30.1',
+    ],
   },
   {
     slug: 'cs-webui',
@@ -112,6 +116,7 @@ export const products: Product[] = [
       'Flow owns its Runic Toolkit Application Bridge integration',
     ],
     packages: ['RunicFlow', 'RunicFlow.ApplicationBridge'],
+    install: ['dotnet add package RunicFlow --version 0.1.0-preview.19.1'],
   },
   {
     slug: 'runic-assets',
@@ -141,6 +146,7 @@ export const products: Product[] = [
       'RunicAssets.AspNetCore',
       'RunicAssets.RunicToolkit',
     ],
+    install: ['dotnet add package RunicAssets --version 0.1.0-preview.24.1'],
   },
   {
     slug: 'runic-translations',
@@ -176,6 +182,10 @@ export const products: Product[] = [
       'RunicTranslations.Templates',
     ],
     npmPackages: ['@runic-artifex/vite-plugin-runic-translations'],
+    install: [
+      'dotnet add package RunicTranslations --version 0.1.0-preview.8.1',
+      'npm install @runic-artifex/vite-plugin-runic-translations@0.1.0-preview.8.1',
+    ],
     related: {
       href: '/products/runic-translations-editor/',
       label: 'Explore Translations Editor',
@@ -242,6 +252,9 @@ export const products: Product[] = [
       'RunicCommandLine',
       'RunicCommandLine.Hosting',
       'RunicCommandLine.Processes',
+    ],
+    install: [
+      'dotnet add package RunicCommandLine --version 0.1.0-preview.5.1',
     ],
   },
 ];

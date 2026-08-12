@@ -30,9 +30,7 @@
         project: product.name,
         projectSlug: product.slug,
         version: product.version,
-        availability: product.install?.length
-          ? 'Available on NuGet'
-          : 'Verified candidate · not yet published',
+        availability: 'Available on NuGet',
       })),
       ...(product.npmPackages ?? []).map((name) => ({
         name,
@@ -40,7 +38,7 @@
         project: product.name,
         projectSlug: product.slug,
         version: product.version,
-        availability: 'Verified candidate · not yet published',
+        availability: 'Available on npm',
       })),
     ]),
     ...frontendIntegrations.map((integration) => ({
@@ -49,14 +47,12 @@
       project: integration.project,
       projectSlug: null,
       version: integration.version,
-      availability: 'Verified candidate · not yet published',
+      availability: 'Available on npm',
     })),
   ].sort((left, right) =>
-    left.availability === right.availability
-      ? 0
-      : left.availability === 'Available on NuGet'
-        ? -1
-        : 1,
+    left.registry === right.registry
+      ? left.name.localeCompare(right.name)
+      : left.registry.localeCompare(right.registry),
   );
 </script>
 
@@ -64,7 +60,7 @@
   <title>Package catalog · Runic Artifex</title>
   <meta
     name="description"
-    content="Browse Runic Artifex packages by registry, product, candidate version, and publication status."
+    content="Browse Runic Artifex packages by registry, product, current version, and public availability."
   />
   <meta
     property="og:title"
@@ -72,7 +68,7 @@
   />
   <meta
     property="og:description"
-    content="Browse Runic Artifex packages by registry, product, candidate version, and publication status."
+    content="Browse Runic Artifex packages by registry, product, current version, and public availability."
   />
   <meta
     name="twitter:title"
@@ -80,7 +76,7 @@
   />
   <meta
     name="twitter:description"
-    content="Browse Runic Artifex packages by registry, product, candidate version, and publication status."
+    content="Browse Runic Artifex packages by registry, product, current version, and public availability."
   />
 </svelte:head>
 
@@ -89,7 +85,7 @@
     <p class="eyebrow">Packages</p>
     <h1>Find packages by product and registry.</h1>
     <p class="lede">
-      See which packages are available now, which version has been verified, and
+      See which packages are available now, their exact preview versions, and
       which product owns each one.
     </p>
   </section>
@@ -97,7 +93,7 @@
     <div class="package-table">
       <Table.Root>
         <Table.Caption class="sr-only">
-          Runic Artifex package projects, candidate versions, and current
+          Runic Artifex package projects, current versions, and public
           availability
         </Table.Caption>
         <Table.Header>

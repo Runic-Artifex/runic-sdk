@@ -123,11 +123,11 @@
       <Badge variant="outline" class="mb-4 border-primary/30 text-primary"
         >Public preview</Badge
       >
-      <h2>The source is ready to explore.</h2>
+      <h2>The first package preview is available.</h2>
       <p>
-        The repositories are public. CS-WebUI 2.5.0-beta.4.4 is available on
-        NuGet. Exact preview candidates for the remaining package families have
-        passed verification but are not yet published to NuGet or npm.
+        The repositories and their first package preview train are public on
+        NuGet and npm. Runic Translations Editor remains a separate application;
+        its first preview is still pending.
       </p>
     </div>
     <ActionLink href={resolve('/releases')} variant="outline"
