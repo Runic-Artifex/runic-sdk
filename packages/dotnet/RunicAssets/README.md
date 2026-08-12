@@ -1,23 +1,66 @@
 # RunicAssets
 
-`RunicAssets` is a framework-neutral static-asset boundary. It has no dependency on hosting, CS-WebUI, HTMX,
-MVVM, a CSS system, or a browser framework.
+`RunicAssets` gives a .NET application one portable, validated description of
+its static files. Embed a Vite build for NativeAOT-friendly deployment, use
+explicit assembly resources for a small bundle, or use a refreshable directory
+while developing—then attach the same `IAssetSource` to the host adapter you
+choose.
 
-- `EmbeddedAssetSource` serves explicitly mapped assembly resources directly,
-  which supports offline, single-file, trimmed, and Native-AOT applications.
-- `DevelopmentDirectoryAssetSource` provides refreshable local files with
-  no-store caching for development only.
-- `AssetArchive.ReadEmbedded` loads a build-generated canonical archive without
-  extracting files to disk and supports single-file and NativeAOT applications.
-- `AssetManifest` is immutable and ordinally ordered. Every entry carries its
-  media type, byte length, SHA-256 digest, strong entity tag, and cache policy.
-- `AssetPath` rejects rooted, traversal, encoded, ambiguous, and
-  control-character paths.
+## Install
 
-Embedded resources must be declared in the application project and registered
-explicitly:
+```bash
+dotnet add package RunicAssets --prerelease
+```
+
+The package targets **.NET 10**, has no UI or web-framework dependency, and is
+currently in preview. Install `RunicAssets.AspNetCore`,
+`RunicAssets.CsWebUi`, or `RunicAssets.RunicToolkit` only when you also need
+that delivery integration.
+
+## Embed a Vite build
+
+After your Vite project's `npm run build` creates `dist`, add this to the .NET
+application project:
+
+```xml
+<PropertyGroup>
+  <RunicAssetsDist>../Client.Web/dist</RunicAssetsDist>
+</PropertyGroup>
+```
+
+`dotnet build` incrementally creates a canonical archive and embeds it. Load
+the default `RunicAssets.StaticFiles` resource at runtime:
 
 ```csharp
+using System.Reflection;
+using RunicAssets;
+
+AssetArchiveSource assets = AssetArchive.ReadEmbedded(
+    Assembly.GetExecutingAssembly());
+```
+
+The default entry point is `index.html`. Set `RunicAssetsEntryPoint` for a
+different entry file; set `RunicAssetsDistExclude` to omit files such as build
+statistics. To use an existing canonical archive, set
+`RunicAssetsEmbeddedArchive` instead of `RunicAssetsDist`. Set
+`RunicAssetsEmbeddedResourceName` if you need a resource name other than
+`RunicAssets.StaticFiles`, and supply that name to `ReadEmbedded`.
+
+## Small explicit bundles
+
+For a few hand-authored files, declare assembly resources in your application
+project and map them explicitly:
+
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="Assets/index.html" />
+  <EmbeddedResource Include="Assets/app.css" />
+</ItemGroup>
+```
+
+```csharp
+using RunicAssets;
+
 var assets = new EmbeddedAssetSource(
     typeof(Program).Assembly,
     [
@@ -27,23 +70,24 @@ var assets = new EmbeddedAssetSource(
     ]);
 ```
 
-For a complete Vite build, automatic packing avoids per-file registrations:
+Use `DevelopmentDirectoryAssetSource` only for the development inner loop; it
+refreshes local files and marks them `no-store`. Use an embedded source or an
+archive for a reproducible deployed bundle.
 
-```xml
-<PropertyGroup>
-  <RunicAssetsDist>..\Client.Web\dist</RunicAssetsDist>
-</PropertyGroup>
-```
+## Guarantees and limits
 
-```csharp
-var assets = AssetArchive.ReadEmbedded(typeof(Program).Assembly);
-```
+`AssetPath` rejects rooted, traversal, encoded, ambiguous, and
+control-character paths. `AssetManifest` is immutable and ordinally ordered.
+Each entry carries media type, length, SHA-256 digest, strong entity tag, and
+cache policy. Archive reads validate declared content and can be bounded with
+`AssetArchiveReadOptions` when input is not trusted.
 
-The build target is incremental, uses `index.html` as the default entry point,
-and accepts `RunicAssetsEntryPoint`, `RunicAssetsDistExclude`,
-`RunicAssetsEmbeddedArchive`, and `RunicAssetsEmbeddedResourceName` overrides.
-The generated archive is the portable `runic.assets.archive/1` format rather
-than a host-specific virtual-filesystem image.
+This package deliberately does not expose HTTP endpoints or a CS-WebUI handler;
+choose a host adapter for that responsibility.
 
-The package deliberately does not define HTTP endpoints or a CS-WebUI adapter.
-Those layers translate `IAssetSource` into their own transport contracts.
+## Documentation and support
+
+- [Runic Assets documentation](https://docs.runic-artifex.eu/products/runic-assets)
+- [Vite archive consumer example](https://github.com/Runic-Artifex/runic-assets/tree/main/tests/RunicAssets.PackageConsumer)
+- [Issues and support](https://github.com/Runic-Artifex/runic-assets/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-assets/blob/main/LICENSE)

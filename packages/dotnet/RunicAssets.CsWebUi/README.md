@@ -1,55 +1,41 @@
 # RunicAssets.CsWebUi
 
-This integration is owned by Runic Assets and maps an `IAssetSource` directly
-to CS-WebUI's policy-free managed custom file handler. CS-WebUI remains
-independent and does not depend on Runic Assets.
+Ship a Vite build inside a CS-WebUI desktop application and let the window serve
+the exact files and metadata from a Runic Assets source. The adapter keeps host
+delivery separate from archive creation, so the same bundle can also be used by
+other Runic Assets hosts.
 
-```csharp
-using RunicAssets.CsWebUi;
+## Install
 
-window.SetRunicAssets(assets);
-window.Show(assets.Manifest.EntryPoint.RelativePath);
+```bash
+dotnet add package RunicAssets.CsWebUi --prerelease
 ```
 
-For a Vite application, the `RunicAssets` package supplies the complete build
-and runtime path:
+The package targets **.NET 10**, brings `RunicAssets` and `CsWebUi`
+transitively, and is currently in preview. Choose it for a CS-WebUI window;
+choose `RunicAssets.AspNetCore` for an ASP.NET Core host.
 
-```xml
-<PropertyGroup>
-  <RunicAssetsDist>..\Client.Web\dist</RunicAssetsDist>
-</PropertyGroup>
-```
+## Serve an embedded Vite build
+
+Configure the application project with `RunicAssetsDist` after the Vite build
+has produced its `dist` directory, then attach the embedded source to a window:
 
 ```csharp
 using System.Reflection;
+using CsWebUi;
 using RunicAssets;
 using RunicAssets.CsWebUi;
 
-var assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly());
+AssetArchiveSource assets = AssetArchive.ReadEmbedded(
+    Assembly.GetExecutingAssembly());
+
+using var window = new WebUiWindow();
 window.SetRunicAssets(assets);
 window.Show(assets.Manifest.EntryPoint.RelativePath);
 ```
 
-The incremental build target creates the canonical Runic Assets archive,
-including media type, digest, cache policy, ETag, entry-point, and length
-metadata. The archive stays embedded in single-file and NativeAOT applications
-and is read without extraction.
-
-The adapter resolves the source's current manifest for every request, performs
-exact ordinal path lookup, and reads content directly from `IAssetSource`. `/`
-maps to the current manifest entry point. Responses preserve `MediaType`,
-`CacheControl`, `EntityTag`, and content length, and always include
-`X-Content-Type-Options: nosniff`.
-
-Unknown and invalid paths produce complete 404 responses; source and read
-failures produce complete 500 responses. Neither can fall through to WebUI's
-local filesystem. Stable responses are not cached because no measurement yet
-justifies retaining a second full response copy. `NoStore` development assets
-therefore observe `DevelopmentDirectoryAssetSource.Refresh()` without replacing
-the window handler.
-
-Single-page application fallback is explicit and applies only to extensionless
-unknown routes:
+`/` resolves to the manifest entry point. Enable client-side routing explicitly
+when an SPA should handle extensionless unknown routes:
 
 ```csharp
 window.SetRunicAssets(
@@ -60,18 +46,29 @@ window.SetRunicAssets(
     });
 ```
 
-WebUI requires one contiguous buffer containing the complete HTTP header and
-body. This is not streaming. Its callback cannot inspect request headers, so
-the adapter cannot implement conditional 304 responses, ranges, or
-request-dependent authentication. HTTP file handling is serialized behind a
-process-wide native mutex and WebUI's async-response mode is process-wide;
-sources should keep reads local and prompt.
+## Delivery and safety notes
 
-Installing a custom file handler disables WebUI's authentication-cookie check
-process-wide. This adapter assumes a private, loopback-only desktop deployment.
-Do not expose the window with `SetPublic(true)` without an upstream
-authentication layer.
+The handler uses exact ordinal manifest lookup and sends the source's media
+type, cache-control value, entity tag, and content length with
+`X-Content-Type-Options: nosniff`. Invalid and unknown paths produce a complete
+`404`; source or read failures produce a complete `500` and cannot fall through
+to WebUI's local filesystem.
 
 CS-WebUI owns callback retention, native buffer ownership, exception containment,
 replacement, and disposal. The window retains the handler—and therefore the
 asset source—until another handler replaces it or the window is disposed.
+
+CS-WebUI requires one contiguous in-memory HTTP response, so this adapter is not
+streaming and cannot implement ranges or conditional `304` responses. Its HTTP
+callback is serialized process-wide; keep sources local and prompt.
+
+Installing a custom file handler disables CS-WebUI's authentication-cookie check
+process-wide. This adapter is for private, loopback-only desktop deployments.
+Do not call `SetPublic(true)` without an upstream authentication layer.
+
+## Documentation and support
+
+- [Runic Assets documentation](https://docs.runic-artifex.eu/products/runic-assets)
+- [Vite archive consumer example](https://github.com/Runic-Artifex/runic-assets/tree/main/tests/RunicAssets.PackageConsumer)
+- [Issues and support](https://github.com/Runic-Artifex/runic-assets/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-assets/blob/main/LICENSE)

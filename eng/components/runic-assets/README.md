@@ -2,66 +2,74 @@
 
 # Runic Assets
 
-Runic Assets is a framework-neutral static-asset model for .NET applications.
-It provides safe paths, immutable manifests, embedded and development sources,
-and a portable ZIP archive. Its core is trimming- and NativeAOT-compatible and
-does not depend on a UI or web framework.
+Package a Vite build once, embed it in your .NET application, and serve the
+same validated asset manifest in desktop, ASP.NET Core, or Runic Toolkit hosts.
+Runic Assets keeps paths, content metadata, caching, and archives independent
+of the UI and hosting framework, so the asset boundary stays portable from
+development through NativeAOT deployment.
 
-This repository was extracted from Runic Toolkit with its product history
-intact. It uses independent `RunicAssets*` package, assembly, namespace, and
-archive identities without compatibility aliases for the retired Toolkit-owned
-identity.
+## Choose a package
 
-## Projects
+All packages target **.NET 10** and are currently published as previews. Use
+`--prerelease` until a stable release is available.
 
-| Project | Purpose |
-| --- | --- |
-| `RunicAssets` | Transport-neutral contracts, sources, validation, media types, portable archives, and incremental `dist` embedding |
-| `RunicAssets.CsWebUi` | Assets-owned direct HTTP response adapter over CS-WebUI's custom file handler |
-| `RunicAssets.AspNetCore` | Exact ASP.NET Core endpoints with cache and entity-tag metadata |
-| `integrations/RunicAssets.RunicToolkit` | Published Toolkit frontend-asset integration owned by Runic Assets |
+| Package | Choose it when | Install |
+| --- | --- | --- |
+| [RunicAssets](https://www.nuget.org/packages/RunicAssets) | You need the framework-neutral manifest, embedded sources, development sources, or Vite archive embedding. | `dotnet add package RunicAssets --prerelease` |
+| [RunicAssets.AspNetCore](https://www.nuget.org/packages/RunicAssets.AspNetCore) | You want exact GET endpoints for a Runic Assets source in ASP.NET Core. | `dotnet add package RunicAssets.AspNetCore --prerelease` |
+| [RunicAssets.CsWebUi](https://www.nuget.org/packages/RunicAssets.CsWebUi) | You ship a private CS-WebUI desktop application and want it to serve a Runic Assets source. | `dotnet add package RunicAssets.CsWebUi --prerelease` |
+| [RunicAssets.RunicToolkit](https://www.nuget.org/packages/RunicAssets.RunicToolkit) | Your Runic Toolkit host accepts `IFrontendAssetProvider`. | `dotnet add package RunicAssets.RunicToolkit --prerelease` |
 
-The Toolkit adapter is part of the standalone solution and consumes Toolkit
-contracts as exact packages. This preserves the dependency direction: adapters
-depend on both products; neither core depends on an integration.
+Each adapter brings in `RunicAssets` transitively. See the individual package
+READMEs for a host-specific example.
 
-## Archives
+## Vite `dist` to an embedded archive
 
-`AssetArchive` writes a standard ZIP containing a canonical
-`runic-assets.json` manifest and declared files below `assets/`. Paths and
-metadata are validated on read, undeclared content is rejected, and no private
-host-specific archive format is required.
+Use this path when a Vite build should travel inside your .NET application—no
+runtime static-files directory or per-file resource registrations required.
 
-## Embed a Vite build
+1. Install the core package in the .NET application project:
 
-The `RunicAssets` package can turn a complete Vite `dist` directory into a
-canonical metadata-bearing archive and embed it during the application build:
+   ```bash
+   dotnet add package RunicAssets --prerelease
+   ```
 
-```xml
-<PropertyGroup>
-  <RunicAssetsDist>..\Client.Web\dist</RunicAssetsDist>
-</PropertyGroup>
-```
+2. Build the Vite application so its output directory exists:
 
-Load the archive without extraction. It remains embedded in single-file and
-NativeAOT applications:
+   ```bash
+   npm run build
+   ```
 
-```csharp
-using System.Reflection;
-using RunicAssets;
+3. Point the application project at Vite's generated `dist` directory:
 
-AssetArchiveSource assets = AssetArchive.ReadEmbedded(
-    Assembly.GetExecutingAssembly());
-```
+   ```xml
+   <PropertyGroup>
+     <RunicAssetsDist>../Client.Web/dist</RunicAssetsDist>
+   </PropertyGroup>
+   ```
 
-Packing is incremental and reruns when the project, target, packer, or a file
-below `RunicAssetsDist` changes. HTML files use revalidation caching; built
-non-HTML assets use immutable caching, matching the conventional Vite output
-model. Every file receives deterministic media type, length, SHA-256, ETag,
-and cache metadata in the archive manifest.
+4. Build the .NET application, then load the embedded archive:
 
-The entry point defaults to `index.html`. Configure it and exact exclusions
-when needed:
+   ```bash
+   dotnet build
+   ```
+
+   ```csharp
+   using System.Reflection;
+   using RunicAssets;
+
+   AssetArchiveSource assets = AssetArchive.ReadEmbedded(
+       Assembly.GetExecutingAssembly());
+   ```
+
+The build target packages the complete directory into a canonical archive and
+embeds it as `RunicAssets.StaticFiles`. It is incremental and runs again when
+the project, target, packer, or a file under `RunicAssetsDist` changes. The
+archive remains embedded in single-file, trimmed, and NativeAOT applications;
+reading it does not extract files to disk.
+
+`index.html` is the default entry point. Configure an alternate entry point or
+exclude generated files when necessary:
 
 ```xml
 <PropertyGroup>
@@ -70,32 +78,29 @@ when needed:
 </PropertyGroup>
 ```
 
-`RunicAssetsEmbeddedArchive` embeds an externally produced canonical Runic
-Assets archive instead of packing a directory. `RunicAssetsEmbeddedResourceName`
-changes the default `RunicAssets.StaticFiles` resource name; pass the same name
-to `AssetArchive.ReadEmbedded`. `AssetArchiveReadOptions` bounds compressed
-size, file count, and total uncompressed size.
+To embed an archive produced elsewhere, set `RunicAssetsEmbeddedArchive`
+instead of `RunicAssetsDist`. Change the logical resource name with
+`RunicAssetsEmbeddedResourceName` and pass the same name to
+`AssetArchive.ReadEmbedded`.
 
-## Development
+## What travels with the assets
 
-```bash
-nix develop
-./eng/verify.sh
-```
+Every manifest entry has an exact safe path, media type, byte length, SHA-256
+digest, strong entity tag, and cache policy. HTML uses revalidation caching;
+Vite's built non-HTML assets use immutable caching. `AssetArchive` is a
+standard ZIP with a validated `runic-assets.json` manifest; archive read limits
+can be set with `AssetArchiveReadOptions` when consuming untrusted input.
 
-Verification performs a warning-free Release build, contract and adapter tests,
-an isolated package-consumer test, and NativeAOT publication and execution.
+For development, `DevelopmentDirectoryAssetSource` provides refreshable local
+files with `no-store` caching. For small, hand-authored bundles,
+`EmbeddedAssetSource` maps explicit assembly resources directly.
 
-## Prerelease packages
+## Documentation and support
 
-Pull requests produce validated, non-published artifacts for `RunicAssets`,
-`RunicAssets.CsWebUi`, and `RunicAssets.AspNetCore`. Publishing to GitHub
-Packages is a separate manually guarded workflow action.
+- [Runic Assets documentation](https://docs.runic-artifex.eu/products/runic-assets)
+- [Package-consumer example](https://github.com/Runic-Artifex/runic-assets/tree/main/tests/RunicAssets.PackageConsumer)
+- [Report an issue or request support](https://github.com/Runic-Artifex/runic-assets/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-assets/blob/main/LICENSE)
 
-```bash
-./eng/pack.sh 0.1.0-preview.local.1 /tmp/runic-assets-packages
-```
-
-## License
-
-Runic Assets is licensed under the [MIT License](LICENSE).
+Preview packages are built and validated before release. Follow the repository
+for release status and use the issue tracker for questions and bug reports.
