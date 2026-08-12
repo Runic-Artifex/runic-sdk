@@ -1,18 +1,20 @@
 # RunicToolkit.Hosting.WebUi
 
-`RunicToolkit.Hosting.WebUi` composes dependency-neutral browser contracts with a
-scoped root session and a deterministic manifest-backed static-asset endpoint.
-It uses only `Microsoft.Extensions.DependencyInjection.Abstractions` for its optional
-scoped-session bridge. It is not an ASP.NET Core web application host.
+Serve a validated static frontend and scope its root session through framework-neutral browser contracts.
 
-The package deliberately does not discover or load a native browser runtime. Use the
-first-party `RunicToolkit.Hosting.CsWebUi` adapter, create a `WebUiModeRunner`, and add
-the matching `FrontendAssetValidator` for `LaunchKind.UserInterface`. This keeps command
-launches from resolving or initializing UI services.
+```bash
+dotnet add package RunicToolkit.Hosting.WebUi --prerelease
+dotnet add package RunicToolkit.Hosting.Build --prerelease
+```
 
-HTMX and CS-WebUI remain separate adapters around these closed static-asset,
-root-session, and stop-notification seams.
+Requires .NET 10. Use it to author a browser-host adapter; choose `RunicToolkit.Hosting.CsWebUi.App` when you want the supplied native app composition.
 
-Application protocol ownership belongs to `RunicToolkit.ApplicationBridge`; its
-CS-WebUI adapter remains a separate package so this hosting layer stays independent
-of any application contract or rendering framework.
+```csharp
+using RunicToolkit.Hosting.Build;
+using RunicToolkit.Hosting.WebUi;
+
+var manifest = new FrontendAssetManifestBuilder().BuildFromDirectory("wwwroot", "index.html");
+var assets = new DirectoryFrontendAssetProvider("wwwroot", manifest);
+```
+
+`FrontendAssetManifestBuilder` comes from the companion `RunicToolkit.Hosting.Build` package; keep both packages on the same preview version. This is not an ASP.NET Core host and does not discover a native runtime. Pair the assets with a concrete browser adapter and root-session factory. See the [package source](https://github.com/Runic-Artifex/runic-toolkit/tree/main/src/RunicToolkit.Hosting.WebUi), [examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).

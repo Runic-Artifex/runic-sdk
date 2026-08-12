@@ -1,26 +1,18 @@
-# RunicToolkit templates
+# RunicToolkit.Templates
 
-Install the package and create one native CS-WebUI application:
+Create a native CS-WebUI desktop app with a working Application Bridge and React, Vue, Svelte, or Angular frontend.
 
-```console
-dotnet new install RunicToolkit.Templates
-dotnet new runic-toolkit-react -n MyApp
+```bash
+dotnet new install RunicToolkit.Templates::<VERSION>
+dotnet new runic-toolkit-svelte --name MyApp
+cd MyApp
+dotnet run
 ```
 
-The available short names are `runic-toolkit-react`, `runic-toolkit-vue`,
-`runic-toolkit-svelte`, and `runic-toolkit-angular`.
+Requires the .NET 10 SDK, Node.js 24.18 or later, npm, and CS-WebUI platform support. Replace `<VERSION>` with the current preview shown on [NuGet](https://www.nuget.org/packages/RunicToolkit.Templates), and replace `svelte` with `react`, `vue`, or `angular` to select the frontend. The explicit preview version is intentional: a template must create a version-matched NuGet/npm package set.
 
-Every generated project has the same local development flow:
-
-```console
-dotnet build
+```bash
 dotnet run -- --smoke-test
 ```
 
-Each template authors an Effect Schema contract, commits its generated C#
-artifacts, uses the shared one-binding Application Bridge, and builds its
-production frontend through `RunicToolkit.Hosting.Build`. React, Vue, and
-Angular consume the framework-neutral controller directly. The Svelte template
-uses the Svelte-5-only `@runic-artifex/svelte` lifecycle projection and the
-official `@runic-artifex/vite-plugin-runic-toolkit` DevTools integration. Each
-project creates its dependency lock after the first `npm install`.
+Each template includes a counter contract, generated C# dispatcher, frontend controller, and production asset build. Svelte uses the Runic Svelte/SvelteKit path; React, Vue, and Angular consume the controller directly. See the [template source](https://github.com/Runic-Artifex/runic-toolkit/tree/main/templates/RunicToolkit.Templates), [runnable examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).

@@ -1,47 +1,16 @@
 # RunicToolkit.Hosting.CsWebUi
 
-This package adapts [CS-WebUI](https://github.com/Runic-Artifex/cs-webui) to the
-browser-neutral contracts in `RunicToolkit.Hosting.Abstractions`. It serves a
-local frontend directory without ASP.NET Core and supports CS-WebUI's automatic
-browser selection, an explicitly selected installed browser, or an embedded
-WebView.
+Host a local static frontend in a native CS-WebUI window without ASP.NET Core.
 
-The adapter remains prerelease while its upstream `CsWebUi` dependency is
-prerelease.
-
-```csharp
-using CsWebUi;
-using RunicToolkit.Hosting.CsWebUi;
-
-var factory = new CsWebUiBrowserHostFactory(
-    new CsWebUiAdapterOptions(
-        "wwwroot",
-        CsWebUiPresentationMode.Auto,
-        configureWindow: window =>
-        {
-            window.Bind("greet", static webEvent =>
-                WebUiResult.FromString($"Hello, {webEvent.GetString()}!"));
-        }));
+```bash
+dotnet add package RunicToolkit.Hosting.CsWebUi --prerelease
 ```
 
-Pass `factory` to `WebUiModeRunner`. The runner supplies an `app://` entry URI;
-the adapter accepts only the current application host, rejects credentials,
-ports, queries, fragments, traversal, encoded separators, and control
-characters, and translates the URI to a relative CS-WebUI root path.
+Requires .NET 10 and the matching prerelease [CS-WebUI](https://github.com/Runic-Artifex/cs-webui) native dependency. Choose this low-level adapter for a custom host; choose `RunicToolkit.Hosting.CsWebUi.App` for the high-level app builder.
 
-`BrowserWindowOptions` size and resizability are applied before show. The title
-is set after CS-WebUI establishes the client connection. The server is kept
-private to the local machine. A disconnected client raises `CloseRequested`
-and completes `WaitForCloseAsync`.
+```csharp
+var factory = new CsWebUiBrowserHostFactory(
+    new CsWebUiAdapterOptions("wwwroot", CsWebUiPresentationMode.Auto));
+```
 
-The native configuration callback runs after `WebUiWindow` creation and before
-the window can be shown. It is intended for CS-WebUI `Bind`/`BindAsync`
-registration; do not show or dispose the window from that callback.
-
-CS-WebUI owns process-wide native state, so adapter dispatchers serialize native
-work across hosts. Disposing a host closes only its owned windows; it does not
-call the process-wide `WebUiApplication.Exit` or `Clean` methods.
-
-Applications that want the shared high-level builder add the separate
-`RunicToolkit.Hosting.CsWebUi.App` composition package. Keeping that dependency
-out of this adapter allows custom hosts to use CS-WebUI without Generic Host.
+Pass the factory to `WebUiModeRunner`. The adapter serves only the current local application, validates entry routes, and serializes process-wide CS-WebUI native work. Do not show or dispose a window from `configureWindow`. See the [adapter reference](https://github.com/Runic-Artifex/runic-toolkit/tree/main/src/RunicToolkit.Hosting.CsWebUi), [examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).

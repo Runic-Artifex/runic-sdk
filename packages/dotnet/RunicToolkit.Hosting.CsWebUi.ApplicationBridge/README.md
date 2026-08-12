@@ -1,11 +1,21 @@
 # RunicToolkit.Hosting.CsWebUi.ApplicationBridge
 
-Carries all application commands through one bounded binary CS-WebUI binding.
-Correlated receipts and any events produced during their dispatch return as one
-sequence-ordered binding result; later unsolicited host events use the single
-receiver. The adapter pins native client identity, permits explicit
-reinitialization after a physical reconnect, and owns exact session teardown.
+Connect a generated Application Bridge session to a native CS-WebUI frontend through one bounded binary binding.
 
-Use `WebUiAppBuilder.UseApplicationBridge` for ordinary applications. It binds
-the bridge to the exact native window created by the high-level host and opens a
-fresh logical session for that root lifetime.
+```bash
+dotnet add package RunicToolkit.Hosting.CsWebUi.ApplicationBridge --prerelease
+```
+
+Requires .NET 10, CS-WebUI, `RunicToolkit.ApplicationBridge`, and matching generated contracts. It is the adoption path for a template-based Application Bridge app.
+
+```csharp
+var options = new ApplicationBridgeFrontendApplicationOptions(
+    assets, new CsWebUiAdapterOptions(webRoot),
+    new BrowserHostOptions("my-app"),
+    new BrowserWindowOptions("main", "My app", 1000, 720),
+    static () => new ApplicationBridgeSession(
+        new CounterBridgeDispatcher(new CounterBridgeHandler())));
+await using var frontend = builder.UseApplicationBridge("MyFrontend", options);
+```
+
+The dispatcher and handler are generated/application types, as in the templates. Each native root lifetime receives a fresh logical session; reconnect and ordered event handling are transport-owned. See the [bridge guide](https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/guides/application-bridge.md), [examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).

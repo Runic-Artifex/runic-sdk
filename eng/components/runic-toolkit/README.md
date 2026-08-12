@@ -2,81 +2,44 @@
 
 # Runic Toolkit
 
-Runic Toolkit is a NativeAOT-first application toolbelt for composing the same
-application model across desktop windows, browser frontends, Generic Host, and
-framework-specific UI adapters. It owns application lifecycle, frontend-neutral
-desktop contracts, application-bridge contracts, frontend build integration,
-and the developer CLI. It does not own a UI language, workflow engine,
-command-line framework, localization system, or asset model.
+Build a native desktop application with a modern web frontend without giving up a typed .NET application boundary. Runic Toolkit supplies the NativeAOT-friendly host, CS-WebUI integration, Application Bridge, and project templates; you bring your domain and frontend.
 
-This repository is the clean-break successor to WebUIToolkit. Package,
-assembly, namespace, MSBuild, protocol, npm, diagnostic, and tool identities use
-`RunicToolkit.*`, `runic.toolkit.*`, `@runic-artifex/*`, `RTK*`, and
-`dotnet-runic-toolkit`; no compatibility aliases are provided for the retired
-identity.
+## Start in five minutes
 
-## Package families
-
-| Family | Purpose |
-| --- | --- |
-| `RunicToolkit.ApplicationBridge` | Session, revision, operation, cancellation, and bounded wire runtime |
-| `RunicToolkit.ApplicationBridge.Generators` | Reflection-free C# contracts and dispatch from committed schema artifacts |
-| `RunicToolkit.Hosting.*` | Deterministic lifecycle, Generic Host, WebUi, CS-WebUI, build, and adapter contracts |
-| `RunicToolkit.Hosting.CsWebUi.ApplicationBridge` | One-binding native transport and high-level application composition |
-| `RunicToolkit.Desktop` | Frontend-neutral desktop capabilities and close contracts |
-| `RunicToolkit.Collections` | Observable range collection primitives |
-| `RunicToolkit.DotNet.RunicToolkit` | `dotnet runic-toolkit` development and diagnostic tool |
-
-The web clients live under `web/packages` and use the GitHub-compatible npm
-scope `@runic-artifex`.
-
-## Independent products and integrations
-
-Independent RunicArtifex products own their official Toolkit adapters:
-
-- [Runic Flow](https://github.com/Runic-Artifex/runic-flow) owns
-  the headless `RunicFlow.ApplicationBridge` operation integration;
-- [Runic Assets](https://github.com/Runic-Artifex/runic-assets) owns
-  `RunicAssets.RunicToolkit`;
-- [Runic Command Line](https://github.com/Runic-Artifex/runic-command-line)
-  will own `RunicCommandLine.RunicToolkit`.
-- [Runic Svelte](https://github.com/Runic-Artifex/runic-svelte) owns the
-  Svelte-5-only `@runic-artifex/svelte` and `@runic-artifex/sveltekit`
-  integrations;
-- [Runic Vite](https://github.com/Runic-Artifex/runic-vite) owns
-  `@runic-artifex/vite-plugin-runic-toolkit` and the official Vite DevTools
-  surface.
-
-[Runic Translations](https://github.com/Runic-Artifex/runic-translations) is
-independently consumable and needs no Toolkit
-dependency. Examples and cross-repository package canaries live in
-[runic-toolkit-examples](https://github.com/Runic-Artifex/runic-toolkit-examples),
-not in this library repository.
-
-## Application Bridge
-
-The Application Bridge is the official browser application boundary. It uses
-named domain commands and events, Effect Schema as the TypeScript wire
-authority, deterministic committed JSON Schema and manifest artifacts, and
-reflection-free C# dispatch. The earlier numeric-member MVVM experiment has
-been removed; there is no compatibility protocol or generic `setProperty` /
-`execute` surface. See the [Application Bridge guide](docs/guides/application-bridge.md)
-and [ADR 0015](docs/adr/0015-effect-schema-application-bridge.md).
-
-## Development
-
-On NixOS, enter the checked-in environment and run the standalone verification:
+Prerequisites: the .NET 10 SDK, Node.js 24.18 or later, npm, and a supported desktop platform for [CS-WebUI](https://github.com/Runic-Artifex/cs-webui).
 
 ```bash
-nix develop
-./eng/verify.sh
+dotnet new install RunicToolkit.Templates::<VERSION>
+dotnet new runic-toolkit-svelte --name MyApp
+cd MyApp
+dotnet run
 ```
 
-The pipeline verifies clean identities, restores and builds the filtered
-solution, runs the managed contract suites, verifies the npm workspaces, packs
-the NuGet surface, and consumes it from an isolated local feed.
+Replace `<VERSION>` with the current preview shown on [NuGet](https://www.nuget.org/packages/RunicToolkit.Templates). Choose `runic-toolkit-react`, `runic-toolkit-vue`, or `runic-toolkit-angular` to start with another frontend. The templates include a working counter, a generated Application Bridge contract, and the matching frontend runtime. Run `dotnet run -- --smoke-test` to exercise the managed bridge without opening a window.
 
-## License
+## Choose your package
 
-Runic Toolkit is licensed under the [MIT License](LICENSE). Third-party
-components retain their own licenses and notices.
+| Need | Start with |
+| --- | --- |
+| A complete native desktop app | `RunicToolkit.Templates` |
+| Typed browser-to-.NET commands and events | `RunicToolkit.ApplicationBridge` and `@runic-artifex/application-bridge` |
+| Generated, trim-friendly bridge contracts | `RunicToolkit.ApplicationBridge.Generators` |
+| A deterministic app lifecycle | `RunicToolkit.Hosting` |
+| Microsoft Generic Host integration | `RunicToolkit.Hosting.GenericHost` |
+| A static frontend and root-session boundary | `RunicToolkit.Hosting.WebUi` |
+| A native CS-WebUI window | `RunicToolkit.Hosting.CsWebUi` |
+| The high-level CS-WebUI app builder | `RunicToolkit.Hosting.CsWebUi.App` |
+| The Application Bridge over CS-WebUI | `RunicToolkit.Hosting.CsWebUi.ApplicationBridge` |
+| Deterministic frontend asset manifests | `RunicToolkit.Hosting.Build` |
+| Desktop capability interfaces | `RunicToolkit.Desktop` |
+| Observable range collections | `RunicToolkit.Collections` |
+| Closed registration source generation | `RunicToolkit.Hosting.Generators` |
+| Development diagnostics and frontend watch | `RunicToolkit.DotNet.RunicToolkit` |
+
+Install NuGet packages with `dotnet add package <PackageId> --prerelease`; install the TypeScript runtime with `npm install @runic-artifex/application-bridge`. All currently published Toolkit packages are preview releases—keep the matched template package versions together until the first stable release.
+
+## Learn and get help
+
+Start with the [documentation](https://github.com/Runic-Artifex/runic-toolkit/tree/main/docs) and [runnable examples](https://github.com/Runic-Artifex/runic-toolkit-examples). The Application Bridge is schema-first and deliberately has no generic property-setting or numeric-member compatibility API. Its protocol, validation, determinism, and NativeAOT guidance live in the [Application Bridge guide](https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/guides/application-bridge.md).
+
+Report bugs or request features in [GitHub Issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Runic Toolkit is released under the [MIT License](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).

@@ -10,11 +10,11 @@
     "access": "public"
   },
   "description": "Effect-based, schema-first application bridge for RunicToolkit hosts.",
-  "homepage": "https://github.com/Runic-Artifex/runic-toolkit#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-toolkit/tree/main/web/packages/application-bridge",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
   },
-  "keywords": ["runic-artifex", "effect", "application-bridge", "webui", "typescript"],
+  "keywords": ["runic-artifex", "runic-toolkit", "effect", "application-bridge", "cs-webui", "typescript"],
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

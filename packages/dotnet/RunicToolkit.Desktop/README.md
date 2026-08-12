@@ -1,29 +1,21 @@
 # RunicToolkit.Desktop
 
-Frontend-neutral desktop capability contracts for CS-WebUI applications and
-WPF migrations. ViewModels depend on small typed services rather than WPF,
-CS-WebUI, browser, DOM, or operating-system objects.
+Keep view-models independent of a windowing framework with typed desktop capability contracts.
 
-Every host publishes a complete `IDesktopCapabilities` report. Calling an
-unsupported, unavailable, or permission-gated service produces a stable
-`DesktopCapabilityException`; applications can therefore choose a fallback
-before invoking a feature.
+```bash
+dotnet add package RunicToolkit.Desktop --prerelease
+```
 
-The contracts intentionally use file contents rather than platform paths and
-semantic element identifiers rather than DOM nodes.
+Requires .NET 10. Reference this package from application code; select `RunicToolkit.Hosting.CsWebUi.App` when a CS-WebUI host should provide the implementations.
 
-The high-level CS-WebUI application builder registers:
+```csharp
+using RunicToolkit.Desktop;
 
-- `IDesktopApplicationLifetime`, `IDesktopWindow`, `IDesktopFocus`, and
-  `IDesktopDispatcher`;
-- keyboard accelerators, text clipboard, bounded open/save file content, and
-  drag/drop;
-- external HTTP(S) launch and notifications;
-- browser profile and local-storage policy; and
-- application-owned secondary windows.
+sealed class Editor(IDesktopCapabilities capabilities)
+{
+    public bool CanUseClipboard =>
+        capabilities.Report[DesktopCapability.Clipboard].IsSupported;
+}
+```
 
-Clipboard and notification descriptors may be `PermissionRequired`. Callers
-can inspect `IDesktopCapabilities.Report` before invoking optional behavior.
-An accepted programmatic close runs every registered guard before canceling
-`Stopping`; an already-forced native disconnect cannot be vetoed and begins
-the same cancellation and teardown path immediately.
+Check the capability report before optional or permission-gated operations. Desktop contracts use file contents and semantic identifiers, not native paths or DOM handles. See the [API source](https://github.com/Runic-Artifex/runic-toolkit/tree/main/src/RunicToolkit.Desktop), [examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).

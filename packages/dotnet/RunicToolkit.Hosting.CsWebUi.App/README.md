@@ -1,30 +1,20 @@
 # RunicToolkit.Hosting.CsWebUi.App
 
-This package projects native CS-WebUI application composition onto the shared
-`WebUiAppBuilder`. The low-level CS-WebUI adapter remains independent of Generic
-Host; applications opt into this package when they want the high-level surface.
+Build a native CS-WebUI application from a frontend asset provider, a root session, and the shared lifecycle.
+
+```bash
+dotnet add package RunicToolkit.Hosting.CsWebUi.App --prerelease
+```
+
+Requires .NET 10 and CS-WebUI. This is the high-level host for applications without the Application Bridge; use `RunicToolkit.Hosting.CsWebUi.ApplicationBridge` when your frontend uses generated bridge contracts.
 
 ```csharp
 var builder = WebUiApp.CreateBuilder(args);
-builder.UseCsWebUi(
-    "MyFrontend",
-    new CsWebUiAppOptions(
-        assets,
-        root,
-        new CsWebUiAdapterOptions(webRoot, configureWindow: root.ConfigureWindow),
-        new BrowserHostOptions("my-app"),
-        new BrowserWindowOptions("main", "My app", 1000, 720)));
-
+builder.UseCsWebUi("MyFrontend", new CsWebUiAppOptions(
+    assets, root, new CsWebUiAdapterOptions(webRoot),
+    new BrowserHostOptions("my-app"),
+    new BrowserWindowOptions("main", "My app", 1000, 720)));
 return await builder.RunAsync();
 ```
 
-Framework integrations normally wrap `UseCsWebUi` with their own extension
-members, such as `UseReact`. Toolkit hosting stays renderer-neutral so frontend
-integrations do not acquire unrelated runtime dependencies.
-
-Registration also contributes the frontend-neutral `RunicToolkit.Desktop`
-services. Applications can inject typed lifetime, window, focus, dispatcher,
-keyboard, clipboard, file, drop, external-launch, notification, browser
-profile/storage, and owned-window contracts without referencing CS-WebUI or DOM
-types. The services attach to the exact native window lifetime owned by the
-mode runner and release secondary windows before the browser host.
+The builder registers frontend-neutral desktop services for the exact native-window lifetime. Use one frontend per builder. See the [public API](https://github.com/Runic-Artifex/runic-toolkit/blob/main/src/RunicToolkit.Hosting.CsWebUi.App/PUBLIC-API.md), [examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).

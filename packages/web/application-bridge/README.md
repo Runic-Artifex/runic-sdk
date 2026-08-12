@@ -1,43 +1,54 @@
-# `@runic-artifex/application-bridge`
+# @runic-artifex/application-bridge
 
-The official schema-first boundary between a TypeScript UI and a RunicToolkit
-application host. Effect owns validation, services, streams, resource lifetime,
-mocking, and fault injection. Rendering frameworks consume the service but do
-not own its protocol state.
+Connect a TypeScript UI to a Runic Toolkit host through typed commands, snapshots, receipts, and events. The package owns protocol validation, recovery, subscriptions, and resource lifetime so a rendering framework does not have to.
 
-Application contracts use named domain commands and events. They never expose
-generic ViewModel members, `setProperty`, or `execute` operations.
+```bash
+npm install @runic-artifex/application-bridge
+```
 
-Create one `CsWebUiApplicationBridgeLive`, `MockApplicationBridge`, or
-`TestApplicationBridge` Layer at bootstrap and pass it to
-`createApplicationBridgeController`. The controller owns one `ManagedRuntime`
-and exposes promises plus a validated event subscription at the UI edge.
+Requires Node.js 24.18 or later, TypeScript, and Effect. This preview runtime is intended to match the generated .NET Application Bridge contract. Use [RunicToolkit.Templates](https://www.nuget.org/packages/RunicToolkit.Templates) for a complete app, or use this package directly with React, Vue, Angular, or another framework.
 
-The controller also exposes the same operations under `effects`, together with
-`run`, `runExit`, `fork`, `await`, and `interrupt`. Framework integrations can
-therefore offer opt-in Effect workflows and scoped actions without constructing
-a renderer-owned runtime. Promise methods remain the default convenience edge.
+## Bootstrap a controller
 
-`createCsWebUiFrameChannel` can be created as soon as the application module
-loads. It waits up to ten seconds for CS-WebUI to install its native send binding
-and reads the settled sender again before use. Correlated responses return
-through that binding promise as a sequence-ordered host-frame batch; the named
-receiver remains available for later unsolicited events. Fast Vite and
-SvelteKit startup therefore cannot lose initialization while CS-WebUI completes
-its bootstrap. The timeout, polling interval, and one-time 25 ms stabilization
-delay can be overridden for unusual hosts or tests.
+Define the contract once, then create exactly one controller at your application boundary:
 
-Returned batches remain one owned byte frame until the Effect runtime parses
-them. Each envelope is then schema-validated and processed in sequence without
-a transport-level parse/stringify pass. Raw ingress and validated-event PubSubs
-are bounded and fail into explicit authoritative recovery instead of silently
-dropping protocol state. Pending commands are bounded, and the browser retains
-only currently pending command identifiers. The authoritative host owns bounded
-duplicate-command rejection.
+```ts
+import { Schema } from "effect";
+import {
+  CsWebUiApplicationBridgeLive,
+  createApplicationBridgeController,
+  createCsWebUiFrameChannel,
+  defineApplicationContract,
+} from "@runic-artifex/application-bridge";
 
-`ApplicationBridgeOptions` exposes the limits for unusual applications:
-`maxFrameBytes`, `maxPendingCommands`, `maxBufferedFrames`,
-`maxBufferedEvents`, and `maxBatchFrames`. Defaults align
-with the host contract where the same limit exists. Raising a limit should be
-backed by the Application Bridge benchmark and the application's own burst
-tests.
+const Snapshot = Schema.Struct({ count: Schema.Int });
+const Command = Schema.TaggedStruct("InitializeApplication", {});
+const Receipt = Schema.TaggedStruct("ApplicationInitialized", { snapshot: Snapshot });
+const Event = Schema.TaggedStruct("CounterChanged", { snapshot: Snapshot });
+
+const contract = defineApplicationContract({
+  identity: "example.counter",
+  version: 1,
+  command: Command,
+  receipt: Receipt,
+  event: Event,
+  snapshot: Snapshot,
+  initialize: { _tag: "InitializeApplication" } as const,
+});
+
+const bridge = createApplicationBridgeController(
+  contract,
+  CsWebUiApplicationBridgeLive(contract, createCsWebUiFrameChannel()),
+);
+const snapshot = await bridge.initialize();
+```
+
+Use `CsWebUiApplicationBridgeLive` with `createCsWebUiFrameChannel()` in a native CS-WebUI application. For browser-only development and tests, use `MockApplicationBridge` instead. A controller owns one Effect runtime: create it during bootstrap, share it with the UI, subscribe once for host events, and call `dispose()` on application teardown.
+
+## Transport and safety
+
+The CS-WebUI channel waits for its native binding during frontend startup, returns correlated host frames through the binding response, and receives later host events through one named receiver. Frame, pending-command, and event buffers are bounded; invalid frames, protocol mismatches, and sequence gaps require authoritative recovery rather than silently changing UI state. Tune limits only after application burst testing.
+
+Commands are named domain operations. This package deliberately does not expose generic `setProperty` or `execute` protocol operations.
+
+Read the [Application Bridge guide](https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/guides/application-bridge.md), explore [runnable examples](https://github.com/Runic-Artifex/runic-toolkit-examples), or report problems in [GitHub Issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Released under the [MIT License](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).
