@@ -1,21 +1,55 @@
-# SvelteKit Setup Application
+# 04 — SvelteKit Setup Application
 
-This package-only sample is the authoritative native Svelte 5 and SvelteKit
-vertical. It consumes the separately published Application Bridge, Svelte,
-SvelteKit, and Vite integrations.
+Use Svelte 5 runes and SvelteKit for the presentation layer while keeping the
+same validated Application Bridge and native CS-WebUI host used by the React
+sample.
 
-- Svelte runes own presentation state and component lifecycle.
-- The Application Bridge remains the only protocol and Effect runtime.
-- The SvelteKit adapter emits an explicit `index.html` CS-WebUI SPA fallback and
-  `runic-toolkit.sveltekit.json`. Conventional static hosts can retain the
-  adapter's `200.html` default.
-- A catch-all route maps the native startup document and deep links back to the
-  client application instead of SvelteKit's 404 page.
-- The Runic Vite plugin contributes bounded diagnostics through the official
-  experimental Vite DevTools API and preserves the bridge across HMR.
+## Prerequisites
+
+- .NET SDK 10.0.302.
+- Node.js 24.18 and npm 11.16. Run `npm ci` from the repository root.
+- A supported browser or WebView for the interactive window. The smoke check is
+  headless.
+
+## Run and verify
+
+From the repository root:
 
 ```bash
+npm ci
 npm run verify
-dotnet build samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj
-dotnet run --project samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj -- --smoke-test
+dotnet run --project samples/04-SvelteKitSetupApplication
 ```
+
+The final command opens a **Runic Toolkit · SvelteKit Setup** window. The
+SvelteKit adapter emits the native `index.html` SPA fallback and routes deep
+links back to the client application.
+
+Run the deterministic host-only smoke check with:
+
+```bash
+dotnet run --project samples/04-SvelteKitSetupApplication -- --smoke-test
+```
+
+It exits with code 0 and reports successful completion, cancellation, failure,
+and recovery. For a browser-only frontend loop, run:
+
+```bash
+npm run dev:mock --workspace @runic-artifex/sveltekit-setup-application
+```
+
+## What stays where
+
+Svelte runes own component lifecycle and presentation state. The Application
+Bridge remains responsible for protocol validation, sessions, revisions,
+events, operations, and reconnect recovery. The Runic Vite plugin preserves
+the bridge across HMR and contributes bounded diagnostics through Vite DevTools.
+
+## Next
+
+Continue to [Runic Translations Setup](../05-RunicTranslationsSetup/) to add
+typed, locale-aware text generated for both .NET and ESM.
+
+[Svelte and SvelteKit integration documentation](https://docs.runic-artifex.eu/application-bridge) ·
+[Examples](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/04-SvelteKitSetupApplication) ·
+[Issues](https://github.com/Runic-Artifex/runic-toolkit-examples/issues)

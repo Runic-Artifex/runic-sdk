@@ -2,65 +2,87 @@
 
 # Runic Toolkit Examples
 
-This repository preserves the filtered history of the examples extracted from
-WebUIToolkit and now consumes the independently released Runic Artifex packages.
-Every sample is standalone from the product source repositories: .NET projects
-restore exact NuGet versions, browser projects restore exact npm versions, and
-the package-only canaries under [`integrations/`](integrations/) guard each
-product boundary.
+Build a small .NET application, then follow it through a typed command line,
+a native React setup experience, a SvelteKit variant, and localized text. Each
+sample is runnable on its own and uses released Runic Artifex packages rather
+than a product-source checkout.
 
-## Package authentication
+## Start here
 
-Runic packages are private during the migration. Local restores need a GitHub
-personal access token with `read:packages` exposed to NuGet without committing it:
+| Step | Sample | Outcome |
+| --- | --- | --- |
+| 1 | [Hello lifecycle](samples/01-HelloLifecycle/) | Compose startup work, a UI launch mode, and orderly shutdown. |
+| 2 | [Greeting command line](samples/02-GreetingCommandLine/) | Parse a typed command and present human or JSON output. |
+| 3 | [React Setup Application](samples/03-SetupApplication/) | Drive a native CS-WebUI setup wizard through the Application Bridge. |
+| 4 | [SvelteKit Setup Application](samples/04-SvelteKitSetupApplication/) | Use the same native bridge contract with Svelte 5 runes and SvelteKit. |
+| 5 | [Runic Translations Setup](samples/05-RunicTranslationsSetup/) | Generate typed .NET and ESM translations with isolated request locales. |
+
+Start with the first sample:
 
 ```bash
-export NuGetPackageSourceCredentials_github="Username=YOUR_GITHUB_USER;Password=YOUR_TOKEN;ValidAuthenticationTypes=Basic"
-dotnet restore integrations/RunicTranslations.Canary/RunicTranslations.Canary.csproj
-dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj
-dotnet restore integrations/RunicFlow.Canary/RunicFlow.Canary.csproj
-dotnet restore integrations/RunicAssets.Canary/RunicAssets.Canary.csproj
+dotnet run --project samples/01-HelloLifecycle
 ```
 
-The Setup frontend uses GitHub's npm registry through the committed `.npmrc`:
+It prints workspace startup, `Hello from Runic Toolkit!`, and an orderly close.
+Each sample README includes its prerequisites, smoke command, expected result,
+and next step.
+
+## Prerequisites
+
+- .NET SDK 10.0.302 (the repository pins it in [`global.json`](global.json)).
+- Node.js 24.18 and npm 11.16 for samples 3–5; install their locked workspace
+  dependencies once with `npm ci` from the repository root.
+- A supported desktop browser or WebView for the interactive CS-WebUI samples.
+  The headless smoke checks do not open a window.
+
+The committed [`.npmrc`](.npmrc) supplies the scoped npm registry
+configuration. Check the public package catalog for the current availability of
+each preview artifact.
+
+## Choose a package
+
+These examples are a learning repository, not a package. Use the product that
+matches the problem in your own application; preview packages should be tested
+against your supported runtime before production use.
+
+| Need | Install | Learn more |
+| --- | --- | --- |
+| Application lifecycle and desktop/browser hosting | `dotnet add package RunicToolkit.Hosting --prerelease` | [Runic Toolkit](https://docs.runic-artifex.eu/products/runic-toolkit) |
+| Typed command-line applications | `dotnet add package RunicCommandLine --prerelease` | [Runic Command Line](https://docs.runic-artifex.eu/products/runic-command-line) |
+| A validated native-to-web application contract | `dotnet add package RunicToolkit.ApplicationBridge --prerelease` | [Application Bridge](https://docs.runic-artifex.eu/application-bridge) |
+| Flow orchestration without a UI | `dotnet add package RunicFlow --prerelease` | [Runic Flow](https://docs.runic-artifex.eu/products/runic-flow) |
+| Typed localization for .NET and ESM | `dotnet add package RunicTranslations --prerelease` | [Runic Translations](https://docs.runic-artifex.eu/products/runic-translations) |
+| Application Bridge in a browser frontend | `npm install @runic-artifex/application-bridge` | [JavaScript packages](https://docs.runic-artifex.eu/packages) |
+
+For the full package catalog, compatibility notes, and release status, see
+[Runic Artifex packages](https://docs.runic-artifex.eu/packages) and
+[releases](https://docs.runic-artifex.eu/releases). The examples pin known-good
+preview versions in `Directory.Packages.props` and `package-lock.json`; use
+those pins when reproducing a sample, not as a general version-selection policy.
+
+## Verification
+
+Run the locked frontend checks and the headless samples after `npm ci`:
 
 ```bash
-export NODE_AUTH_TOKEN="YOUR_TOKEN"
-npm ci
-```
-
-After both package managers are authenticated, the full package-only check is:
-
-```bash
-dotnet restore samples/03-SetupApplication/SetupApplication.csproj
 dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
-dotnet restore samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
 dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
 npm run verify
-dotnet build samples/03-SetupApplication/SetupApplication.csproj --configuration Release
-dotnet run --project samples/03-SetupApplication/SetupApplication.csproj -- --smoke-test
-dotnet run --project samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --no-build -- --smoke-test
+dotnet run --project samples/01-HelloLifecycle --configuration Release
+dotnet run --project samples/02-GreetingCommandLine --configuration Release -- greet Runic
+dotnet run --project samples/03-SetupApplication --configuration Release -- --smoke-test
+dotnet run --project samples/04-SvelteKitSetupApplication --configuration Release -- --smoke-test
+dotnet run --project samples/05-RunicTranslationsSetup --configuration Release -- --smoke-test
 ```
 
-GitHub Actions uses its repository `GITHUB_TOKEN` with `packages: read`. Each
-private NuGet or npm package must grant this repository Actions access before its
-workflow can restore it.
+The package-only [integration canaries](integrations/) provide focused checks
+for the broader Runic Toolkit family, including NativeAOT coverage where it is
+supported.
 
-The neutral Setup wizard is the reference application boundary. It uses named
-commands, an Effect-owned frontend runtime, generated C# dispatch from committed
-schemas, opaque host-owned destination selections, and explicit operations.
-The React sample consumes the controller directly. The SvelteKit sample uses the
-official Svelte-5-only rune lifecycle, static/native SvelteKit adapter, Runic
-Vite plugin, and official Vite DevTools extension point. Both drive the same
-native contract and backend handler.
+## Documentation and support
 
-The [Runic Translations Setup reference](samples/05-RunicTranslationsSetup/) is
-the package-only cross-runtime localization fixture. It compiles one English and
-German catalog into C# and ESM, validates typed backend text references, proves
-request-scoped locale isolation, and records production tree-shaking
-measurements. Its scenario table also records the current dynamic-pack blocker.
+[Documentation](https://docs.runic-artifex.eu/) ·
+[Examples on GitHub](https://github.com/Runic-Artifex/runic-toolkit-examples) ·
+[Report an issue](https://github.com/Runic-Artifex/runic-toolkit-examples/issues)
 
-## License
-
-Runic Toolkit Examples is licensed under the [MIT License](LICENSE). Third-party
-components retain their own licenses and attribution terms.
+Runic Toolkit Examples is licensed under the [MIT License](LICENSE).

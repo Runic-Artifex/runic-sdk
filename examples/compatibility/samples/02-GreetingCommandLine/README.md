@@ -1,44 +1,47 @@
 # 02 — Typed greeting command
 
-**Difficulty:** Beginner / intermediate
+Turn command-line input into a typed request, validate it once, and render the
+same result for people or JSON consumers.
 
-This sample builds a small command-line application with a typed catalog,
-options binder, handler, and separate human/JSON presentation. It uses project
-references, so editing the command-line libraries and rerunning the sample is
-an immediate inner loop.
+## Prerequisites
 
-## Run it
+Install .NET SDK 10.0.302. The project uses the released preview
+`RunicCommandLine` and `RunicCommandLine.Abstractions` packages.
 
-The no-argument form greets `World`:
+## Run and verify
 
-```console
+From the repository root:
+
+```bash
 dotnet run --project samples/02-GreetingCommandLine
-```
-
-Then try real command-line input:
-
-```console
 dotnet run --project samples/02-GreetingCommandLine -- greet Ada --times 2
 dotnet run --project samples/02-GreetingCommandLine -- greet Ada --output json
 dotnet run --project samples/02-GreetingCommandLine -- --help
 ```
 
-## Guided code tour
+The first command defaults to `greet World`. The second prints `Hello, Ada!`
+twice, and the JSON command returns a typed greeting payload. A value outside
+`--times 1` through `--times 5` returns a validation error and usage text.
 
-1. `GreetingCommand.cs` declares an immutable command catalog. Names, aliases,
-   arity, binding, execution, and result presentation are explicit.
-2. `GreetingOptionsBinder` converts parser-neutral strings into a typed
-   `GreetingOptions` value and returns a friendly validation fault for bad
-   input.
-3. `GreetingHandler` contains only application behavior. It does not know
-   whether its result will be rendered for a person or a machine.
-4. `GreetingResultCodec` writes human output and supplies source-generated JSON
-   metadata for `--output json`.
-5. `Program.cs` parses once, then hands the typed invocation to
-   `CommandExecutor`. `CommandInfrastructure.cs` adapts the system console and
-   supplies a minimal per-invocation scope.
+Use this as the headless smoke command:
 
-## Try next
+```bash
+dotnet run --project samples/02-GreetingCommandLine -- greet Runic
+```
 
-Add a `--greeting` option and carry it from `GreetingOptionsBinder` through the
-handler into both output formats.
+It exits with code 0 and prints `Hello, Runic!`.
+
+## What to inspect
+
+`GreetingCommand.cs` declares the catalog, typed binder, handler, and result
+codec. `Program.cs` parses once and hands the invocation to `CommandExecutor`.
+The handler stays independent of console and JSON presentation.
+
+## Next
+
+Continue to the [React Setup Application](../03-SetupApplication/) to use a
+validated contract between a web frontend and a native CS-WebUI host.
+
+[Command Line documentation](https://docs.runic-artifex.eu/products/runic-command-line) ·
+[Examples](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/02-GreetingCommandLine) ·
+[Issues](https://github.com/Runic-Artifex/runic-toolkit-examples/issues)

@@ -1,36 +1,45 @@
 # 01 — Hello lifecycle
 
-**Difficulty:** Beginner
+Build the smallest useful Runic Toolkit application: prepare application
+services, run a selected UI mode, and shut everything down in order.
 
-This is the smallest useful Runic Toolkit application. It teaches how the
-hosting layer separates application startup, mode execution, and shutdown.
-It consumes the exact published hosting packages from GitHub Packages.
+## Prerequisites
 
-## Run it
+Install .NET SDK 10.0.302, as pinned by the repository's `global.json`. This
+sample uses `RunicToolkit.Hosting` and `RunicToolkit.Hosting.GenericHost`.
+
+## Run and verify
 
 From the repository root:
 
-```console
+```bash
 dotnet run --project samples/01-HelloLifecycle
 ```
 
-You will see a workspace start, a user-interface launch mode run, and the
-workspace close again. The messages are application behavior, not test
-assertions.
+Expected output includes:
 
-## Guided code tour
+```text
+Preparing the workspace...
+Hello from Runic Toolkit!
+The launcher selected the UserInterface mode.
+Closing the workspace...
+```
 
-1. `Program.cs` creates `GenericHostRunicToolkitApplicationBuilder`, the
-   convenient bridge between .NET Generic Host and Runic Toolkit.
-2. `WorkspaceParticipant` represents infrastructure with an owned lifecycle.
-   Participants start in phase order and stop during application teardown.
-3. `WelcomeMode` handles `LaunchKind.UserInterface`. A real desktop or web
-   front end can replace this tiny console runner without changing the
-   surrounding lifecycle.
-4. `Build()` freezes the composition. `RunAsync()` then validates, starts,
-   routes, and stops it.
+The command is the smoke check: it exits with code 0 after printing the final
+application state.
 
-## Try next
+## What to inspect
 
-Add a second startup participant with phase
-`ApplicationStartPhase.Integrations` and observe its start/stop ordering.
+`Program.cs` creates `GenericHostRunicToolkitApplicationBuilder`, adds a
+startup participant, adds a `LaunchKind.UserInterface` mode runner, then calls
+`Build()` and `RunAsync()`. The participant's `Infrastructure` phase makes the
+start/stop ordering explicit.
+
+## Next
+
+Continue to [02 — Typed greeting command](../02-GreetingCommandLine/) to add a
+typed command catalog and machine-readable output.
+
+[Hosting documentation](https://docs.runic-artifex.eu/products/runic-toolkit) ·
+[Examples](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/01-HelloLifecycle) ·
+[Issues](https://github.com/Runic-Artifex/runic-toolkit-examples/issues)

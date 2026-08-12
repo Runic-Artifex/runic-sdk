@@ -1,32 +1,65 @@
-# Runic Translations Setup reference
+# 05 — Runic Translations Setup
 
-This package-only compatibility fixture shows the same schema-v2 catalog compiled
-into generated C# and tree-shakable ESM for a .NET backend and an SSR-capable
-SvelteKit/Vite frontend. It has no source-project reference to a Runic product.
+Generate one catalog into typed C# and tree-shakable ESM, then use it safely
+from a .NET backend and an SSR-capable SvelteKit frontend. The sample proves
+English and German request-local formatting, typed text references, and a
+version-skew fallback.
 
-## Clean-checkout verification
+## Prerequisites
 
-Run these commands from the repository root after configuring package
-authentication as described in the root README:
+- .NET SDK 10.0.302 and Node.js 24.18 with npm 11.16.
+- From the repository root, run `npm ci` to restore the locked frontend
+  workspace packages.
+- Restore the version-pinned Runic Translations local tool before building:
+  `dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json`.
+
+## Run and verify
+
+From the repository root:
 
 ```bash
-dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
-dotnet restore samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
-dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
 npm ci
+dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
+dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
 npm run typecheck --workspace @runic-artifex/translations-setup-application
 npm run test --workspace @runic-artifex/translations-setup-application
 npm run build --workspace @runic-artifex/translations-setup-application
 npm run verify:production --workspace @runic-artifex/translations-setup-application
-dotnet run --project samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --no-build -- --smoke-test
+dotnet run --project samples/05-RunicTranslationsSetup --no-build -- --smoke-test
 ```
 
-The MSBuild integration calls the version-pinned `runic-translations` local tool
-and writes generated artifacts below `obj/net10.0/translations/`. To create a
-separate deterministic CLI baseline for editor changes, run:
+The smoke command exits with code 0 and prints:
+
+```text
+PASS: C# and ESM generation, typed transport, fallback, and concurrent locale isolation
+```
+
+For interactive development, use separate shells:
 
 ```bash
-cd samples/05-RunicTranslationsSetup
+dotnet run --project samples/05-RunicTranslationsSetup --urls http://127.0.0.1:5080
+npm run dev --workspace @runic-artifex/translations-setup-application -- --open /en
+```
+
+Visit `/en` and `/de`; the backend also exposes `GET /health` and returns a
+typed `TranslationReference` from `POST /api/registration`.
+
+## What this verifies
+
+| Scenario | Expected behavior |
+| --- | --- |
+| Catalog compilation | The same catalog produces C# and ESM artifacts. |
+| URL locale | `/en` and `/de` select the respective text; unsupported tags fail closed. |
+| Typed transport | Backend validation text is a typed `TranslationReference`; browser decoding validates the catalog fingerprint, key, and arguments. |
+| Version skew | English `fallbackText` is used only after a decode failure. |
+| SSR isolation | Concurrent .NET and SvelteKit requests retain their explicit locale. |
+| Production output | Verification rejects a sentinel and records tree-shaking byte totals in `Frontend/artifacts/bundle-metrics.json`. |
+
+The MSBuild integration writes generated output beneath
+`obj/net10.0/translations/`. For a deterministic command-line baseline, run
+from this sample directory:
+
+```bash
 dotnet tool run runic-translations generate \
   --catalog Resources/setup.catalog.json \
   --documents Resources/setup.en.json Resources/setup.de.json \
@@ -39,43 +72,17 @@ dotnet tool run runic-translations verify \
   --emit-esm
 ```
 
-For interactive use, start the backend and frontend in separate shells:
+Generated ESM exposes an exact-key `m` namespace: single-segment keys use dot
+access and dotted keys use bracket access. This sample re-exports that namespace
+from `src/lib/messages.ts` and keeps its text-reference transport handlers at
+the same boundary.
 
-```bash
-dotnet run --project samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --urls http://127.0.0.1:5080
-npm run dev --workspace @runic-artifex/translations-setup-application -- --open /en
-```
+## Next
 
-## Scenario coverage
+You have completed the learning path. Revisit the
+[integration canaries](../../integrations/) for focused package-consumer and
+NativeAOT checks.
 
-| # | Scenario | Fixture |
-|---|---|---|
-| 1 | Compile one catalog into C# and ESM | MSBuild, generator, and pinned CLI tool |
-| 2 | English/German URL locale | `/en` and `/de`; unsupported tags fail closed |
-| 3 | Switch locale through supported integration | Ordinary SvelteKit links plus explicit generated message locale |
-| 4 | Typed backend validation reference | `POST /api/registration` returns `TranslationReference` JSON |
-| 5 | Browser contract validation | Generated `decodeTextReference` tests fingerprint, key, and arguments |
-| 6 | Version-skew fallback | The sender's English `fallbackText` is used only after decode failure |
-| 7 | Concurrent SSR isolation | 100 interleaved calls pass locale explicitly; .NET uses one manager per request |
-| 8 | Tree-shaking measurement | Production verification rejects the sentinel and records byte totals |
-| 9 | Validate a dynamic locale pack | Blocked: preview 4.3 rejects the canonical v2 locale output path when JSON is selected |
-| 10 | Editor and CLI workflow | CLI verification is automated; editor steps below use its supported open/save workflow |
-
-Bundle metrics are emitted to
-`Frontend/artifacts/bundle-metrics.json` and uploaded by CI. They are deliberately
-generated rather than committed, so measurements always describe the tested
-production build.
-
-## Editor workflow
-
-Open this directory in Runic Translations Editor, select `Resources/setup.catalog.json`,
-edit either locale, save, and run the CLI `verify` command above. The editor does
-not currently expose a stable headless automation API, so CI validates the exact
-files produced by its supported save workflow through the public CLI rather than
-driving editor internals.
-
-The generated API in the currently published preview uses identifiers such as
-`m$Application$Title`. The sample keeps those names behind `src/lib/messages.ts`.
-When the separately tracked ergonomic `m` namespace ships publicly, this one
-wrapper is the intended migration point; the fixture does not depend on an
-unpublished compiler shape.
+[Runic Translations documentation](https://docs.runic-artifex.eu/products/runic-translations) ·
+[Examples](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/05-RunicTranslationsSetup) ·
+[Issues](https://github.com/Runic-Artifex/runic-toolkit-examples/issues)
