@@ -18,3 +18,25 @@ public enum WebUiEventType : uint
     /// <summary>A JavaScript binding invoked managed code.</summary>
     Callback,
 }
+
+/// <summary>Controls process-wide managed WebUI behavior.</summary>
+public enum WebUiConfiguration : uint
+{
+    /// <summary>Reserved for browser-host compatibility in M3.</summary>
+    ShowWaitConnection = 0,
+
+    /// <summary>Reserved for event-dispatch compatibility.</summary>
+    UiEventBlocking,
+
+    /// <summary>Reserved for folder-monitor compatibility.</summary>
+    FolderMonitor,
+
+    /// <summary>Whether more than one browser may connect to a window concurrently.</summary>
+    MultiClient,
+
+    /// <summary>Whether managed WebUI authentication cookies are enabled.</summary>
+    UseCookies,
+
+    /// <summary>Reserved because managed callbacks are asynchronous by design.</summary>
+    AsynchronousResponse,
+}

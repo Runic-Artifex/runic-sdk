@@ -1,6 +1,6 @@
 # Managed WebUI port roadmap
 
-Status: M1 bridge and binding compatibility complete
+Status: M2 content and server compatibility complete
 
 Compatibility oracle: `webui-dev/webui@52f9e75`
 
@@ -100,12 +100,24 @@ behavior.
 
 ### M2: content and server compatibility
 
-- Embedded HTML, explicit files, root folders, and external URLs.
-- `/webui.js` route priority and index fallback behavior.
-- MIME handling, redirects, cache behavior, and virtual content fallback.
-- Explicit port selection, server-only mode, and public/loopback binding.
-- Multi-window and multi-client session ownership.
-- Close, restart, reconnect, and application wait semantics.
+Implemented:
+
+- embedded HTML (including the M0 fragment convenience), explicit files, root
+  folders, and external-URL refresh pages for server-only mode;
+- priority `/webui.js` routing, explicit-entry redirects, and WebUI's
+  `index.html`, `index.htm`, `index.ts`, and `index.js` folder fallback order;
+- extension-based MIME handling, non-cacheable responses, favicon behavior,
+  streamed physical files, scoped-root traversal protection, and a virtual
+  content handler with local-root fallback;
+- explicit or ephemeral ports, idempotent server-only start, and public or
+  loopback Kestrel binding;
+- independent multi-window roots and listeners, cookie-backed stable client
+  identifiers, per-connection identifiers, and configurable single- or
+  multi-client WebSocket admission;
+- deterministic close and restart, bridge reconnect, and application-wide
+  running state, wait, and exit operations;
+- focused HTTP and lifecycle tests plus native-versus-managed differential
+  coverage for folder routing and response metadata.
 
 Kestrel remains the transport. Compatibility handlers may expose WebUI-shaped
 complete responses, but the internal server must retain native streaming and
@@ -161,10 +173,12 @@ After useful parity is established, add improvements deliberately:
 
 ## Current intentional gaps
 
-- Only embedded HTML is routed by the managed server.
+- Short non-path strings remain embedded bodies for M0 source compatibility;
+  native WebUI treats such values as filenames unless they contain a full HTML
+  marker.
 - `ShowAsync` opens the default browser rather than selecting application mode.
-- There is no explicit single-client or multi-client policy yet; each accepted
-  connection receives a distinct managed client and connection identifier.
+- Port and public-binding changes take effect after close/restart rather than
+  live-reloading a running listener.
 - Window dragging and resize packets are recognized but have no platform host
   to act on until M3/M4.
 - The bridge core high-contrast query currently returns `false` until browser

@@ -21,10 +21,16 @@ internal sealed class WebUiSession : IAsyncDisposable
     private int _disposed;
     private int _nextScriptId;
 
-    public WebUiSession(WebUiWindow window, WebSocket socket, nuint connectionId, string cookies)
+    public WebUiSession(
+        WebUiWindow window,
+        WebSocket socket,
+        nuint clientId,
+        nuint connectionId,
+        string cookies)
     {
         _window = window;
         _socket = socket;
+        ClientId = clientId;
         ConnectionId = connectionId;
         Cookies = cookies;
     }
@@ -33,7 +39,7 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     public nuint ConnectionId { get; }
 
-    public nuint ClientId => ConnectionId;
+    public nuint ClientId { get; }
 
     public string Cookies { get; }
 

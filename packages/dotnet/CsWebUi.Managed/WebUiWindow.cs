@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Logging;
 
 namespace CsWebUi.Managed;
@@ -21,22 +22,51 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
 {
     private const string BridgePath = "/webui.js";
     private const string WebSocketPath = "/_webui_ws_connect";
+    private const string AuthCookieName = "webui_auth";
+    private const string NoCache = "no-cache, no-store, must-revalidate, private, max-age=0";
+    private const string AccessDenied = "<html><head><title>Access Denied</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Access Denied</h2><p>This content is already in use and multi-client mode is disabled.</p></body></html>";
+    private const string ResourceUnavailable = "<html><head><title>Resource Not Available</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Resource Not Available</h2><p>The requested resource is not available.</p></body></html>";
+    private const string DefaultIcon = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" viewBox=\"0 0 375 375\" height=\"500\"><path fill=\"#2a6699\" d=\"M22 22h330v330H22z\"/></svg>";
+    private static readonly FileExtensionContentTypeProvider ContentTypes = new();
 
     private readonly ConcurrentDictionary<string, BindingRegistration> _bindings = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Guid, WebUiSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, nuint> _clients = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly object _connectionGate = new();
     private CancellationTokenSource _shutdown = new();
     private readonly uint _token = CreateToken();
 
     private WebApplication? _application;
-    private string _content = string.Empty;
+    private string _rootFolder;
+    private string? _embeddedHtml;
+    private string? _entryFile;
+    private Uri? _externalUrl;
+    private WebUiFileHandler? _fileHandler;
+    private bool _allowIndexFallback;
+    private bool _isPublic;
+    private int _requestedPort;
+    private int _activeConnections;
+    private long _nextClientId;
     private long _nextConnectionId;
     private long _nextEventNumber;
     private long _nextRegistrationId;
     private int _disposed;
 
+    /// <summary>Creates a managed window using the current application default root folder.</summary>
+    public WebUiWindow()
+    {
+        _rootFolder = WebUiApplication.GetDefaultRootFolder();
+    }
+
     /// <summary>Gets the local server URL after the window has started.</summary>
     public Uri? Url { get; private set; }
+
+    /// <summary>Gets the configured or bound HTTP port.</summary>
+    public nuint Port => checked((nuint)(Url?.Port ?? _requestedPort));
+
+    /// <summary>Gets whether the server accepts connections on non-loopback interfaces.</summary>
+    public bool IsPublic => _isPublic;
 
     /// <summary>Registers a synchronous JavaScript binding.</summary>
     public WebUiBinding Bind(string element, Action<WebUiEvent> handler)
@@ -111,7 +141,7 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             if (_application is not null)
             {
-                throw new InvalidOperationException("This managed window is already running.");
+                return Url ?? throw new InvalidOperationException("The running managed window has no server URL.");
             }
 
             if (_shutdown.IsCancellationRequested)
@@ -120,16 +150,21 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 _shutdown = new CancellationTokenSource();
             }
 
-            _content = content;
+            ConfigureContent(content);
             var builder = WebApplication.CreateSlimBuilder();
             builder.Logging.ClearProviders();
-            builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                var address = _isPublic ? IPAddress.Any : IPAddress.Loopback;
+                options.Listen(address, _requestedPort);
+            });
 
             var application = builder.Build();
             application.UseWebSockets();
-            application.MapGet("/", ServeContentAsync);
-            application.MapGet(BridgePath, ServeBridgeAsync);
+            application.Use(PrepareResponseAsync);
+            application.MapMethods(BridgePath, [HttpMethods.Get, HttpMethods.Head], ServeBridgeAsync);
             application.MapGet(WebSocketPath, AcceptWebSocketAsync);
+            application.MapMethods("/{**path}", [HttpMethods.Get, HttpMethods.Head], ServeContentAsync);
 
             _application = application;
             await application.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -138,7 +173,9 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
             var address = addresses?.SingleOrDefault()
                 ?? throw new InvalidOperationException("Kestrel did not publish a listening address.");
 
-            Url = new Uri(address, UriKind.Absolute);
+            var boundAddress = new Uri(address, UriKind.Absolute);
+            Url = new UriBuilder(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), boundAddress.Port).Uri;
+            WebUiApplication.Started(this);
             return Url;
         }
         catch
@@ -161,12 +198,90 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     public async Task<Uri> ShowAsync(string content, CancellationToken cancellationToken = default)
     {
         var url = await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
-        Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true });
+        var browserUrl = GetBrowserUrl(url);
+        Process.Start(new ProcessStartInfo(browserUrl.AbsoluteUri) { UseShellExecute = true });
         return url;
     }
 
     /// <summary>Starts the managed server and opens its URL in the default browser.</summary>
     public Uri Show(string content) => ShowAsync(content).GetAwaiter().GetResult();
+
+    /// <summary>Sets the local root used for files and folder-mode index discovery.</summary>
+    public void SetRootFolder(string path)
+    {
+        if (!TrySetRootFolder(path))
+        {
+            throw new DirectoryNotFoundException($"The managed WebUI root folder does not exist: {path}");
+        }
+    }
+
+    /// <summary>Attempts to set the local root used for files and folder-mode index discovery.</summary>
+    public bool TrySetRootFolder(string path)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(path);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+        if (!Directory.Exists(fullPath))
+        {
+            return false;
+        }
+
+        Volatile.Write(ref _rootFolder, fullPath);
+        return true;
+    }
+
+    /// <summary>Sets the port used the next time this window starts. Zero selects an ephemeral port.</summary>
+    public void SetPort(nuint port)
+    {
+        if (!TrySetPort(port))
+        {
+            throw new InvalidOperationException("The port is outside the TCP range or the managed window is already running.");
+        }
+    }
+
+    /// <summary>Attempts to set the port used the next time this window starts.</summary>
+    public bool TrySetPort(nuint port)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (port > ushort.MaxValue || _application is not null)
+        {
+            return false;
+        }
+
+        _requestedPort = (int)port;
+        return true;
+    }
+
+    /// <summary>Sets whether the next server start binds to all IPv4 interfaces or only loopback.</summary>
+    public void SetPublic(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (_application is not null)
+        {
+            throw new InvalidOperationException("Close the managed window before changing its public binding.");
+        }
+
+        _isPublic = enabled;
+    }
+
+    /// <summary>Sets a virtual content handler that runs before local-root fallback.</summary>
+    public void SetFileHandler(WebUiFileHandler? handler)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        Volatile.Write(ref _fileHandler, handler);
+    }
 
     /// <summary>Runs JavaScript in every authenticated browser without waiting for a response.</summary>
     public void RunJavaScript(string script)
@@ -271,19 +386,30 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
             var sessions = _sessions.Values.ToArray();
             var bridgeClosures = sessions
                 .Where(static session => session.IsAuthenticated)
-                .Select(session => session.CloseBridgeAsync(cancellationToken))
+                .Select(session => CloseBridgeIgnoringFailureAsync(session, cancellationToken))
                 .ToArray();
             await Task.WhenAll(bridgeClosures).ConfigureAwait(false);
 
             _shutdown.Cancel();
-            var sessionClosures = sessions.Select(static session => session.DisposeAsync().AsTask()).ToArray();
+            var sessionClosures = sessions.Select(DisposeSessionIgnoringFailureAsync).ToArray();
             await Task.WhenAll(sessionClosures).ConfigureAwait(false);
 
             _sessions.Clear();
-            await application.StopAsync(cancellationToken).ConfigureAwait(false);
-            await application.DisposeAsync().ConfigureAwait(false);
-            _application = null;
-            Url = null;
+            try
+            {
+                await application.StopAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                await application.DisposeAsync().ConfigureAwait(false);
+                _application = null;
+                Url = null;
+                lock (_connectionGate)
+                {
+                    _activeConnections = 0;
+                }
+                WebUiApplication.Stopped(this);
+            }
         }
         finally
         {
@@ -424,19 +550,96 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
-    private Task ServeContentAsync(HttpContext context)
+    private async Task ServeContentAsync(HttpContext context)
     {
-        context.Response.ContentType = "text/html; charset=utf-8";
-        return context.Response.WriteAsync(_content, context.RequestAborted);
+        var path = GetDecodedPath(context.Request.Path);
+        var handler = Volatile.Read(ref _fileHandler);
+        if (handler is not null)
+        {
+            var virtualContent = await handler(path, context.RequestAborted).ConfigureAwait(false);
+            if (virtualContent is not null)
+            {
+                await SendVirtualContentAsync(context, path, virtualContent).ConfigureAwait(false);
+                return;
+            }
+
+            var virtualIndex = await FindVirtualIndexAsync(handler, path, context.RequestAborted).ConfigureAwait(false);
+            if (virtualIndex is not null)
+            {
+                Redirect(context, virtualIndex);
+                return;
+            }
+        }
+
+        if (path == "/")
+        {
+            if (_embeddedHtml is not null)
+            {
+                await SendTextAsync(context, _embeddedHtml, "text/html; charset=utf-8").ConfigureAwait(false);
+                return;
+            }
+
+            if (_externalUrl is not null)
+            {
+                var escapedUrl = WebUtility.HtmlEncode(_externalUrl.AbsoluteUri);
+                await SendTextAsync(
+                    context,
+                    $"<html><head><meta http-equiv=\"refresh\" content=\"0;url={escapedUrl}\"></head></html>",
+                    "text/html; charset=utf-8").ConfigureAwait(false);
+                return;
+            }
+        }
+
+        if (path is "/favicon.ico" or "/favicon.svg")
+        {
+            var iconPath = ResolveLocalPath(path);
+            if (iconPath is not null && File.Exists(iconPath))
+            {
+                await SendFileAsync(context, iconPath, path).ConfigureAwait(false);
+                return;
+            }
+
+            if (path == "/favicon.ico")
+            {
+                Redirect(context, "/favicon.svg");
+                return;
+            }
+
+            await SendTextAsync(context, DefaultIcon, "image/svg+xml").ConfigureAwait(false);
+            return;
+        }
+
+        var localPath = ResolveLocalPath(path);
+        if (localPath is not null && File.Exists(localPath))
+        {
+            await SendFileAsync(context, localPath, path).ConfigureAwait(false);
+            return;
+        }
+
+        if (localPath is not null && Directory.Exists(localPath))
+        {
+            var index = FindPhysicalIndex(path, localPath);
+            if (index is not null)
+            {
+                Redirect(context, index);
+                return;
+            }
+        }
+
+        await SendNotFoundAsync(context).ConfigureAwait(false);
     }
 
-    private Task ServeBridgeAsync(HttpContext context)
+    private async Task ServeBridgeAsync(HttpContext context)
     {
         context.Response.ContentType = "text/javascript; charset=utf-8";
         var script = WebUiBridge.Script
             .Replace("__TOKEN__", _token.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("__PORT__", Url?.Port.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0", StringComparison.Ordinal);
-        return context.Response.WriteAsync(script, context.RequestAborted);
+        context.Response.ContentLength = Encoding.UTF8.GetByteCount(script);
+        if (!HttpMethods.IsHead(context.Request.Method))
+        {
+            await context.Response.WriteAsync(script, context.RequestAborted).ConfigureAwait(false);
+        }
     }
 
     private async Task AcceptWebSocketAsync(HttpContext context)
@@ -447,35 +650,397 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
-        using var socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-        var connectionId = checked((nuint)Interlocked.Increment(ref _nextConnectionId));
-        var session = new WebUiSession(this, socket, connectionId, context.Request.Headers.Cookie.ToString());
-        if (!_sessions.TryAdd(session.Id, session))
+        lock (_connectionGate)
         {
-            await session.DisposeAsync().ConfigureAwait(false);
-            return;
+            if (!WebUiApplication.MultiClient && _activeConnections > 0)
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+
+            _activeConnections++;
         }
 
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, _shutdown.Token);
         try
         {
-            await session.RunAsync(cancellation.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-        }
-        catch (WebSocketException)
-        {
-        }
-        catch (ObjectDisposedException) when (_shutdown.IsCancellationRequested)
-        {
+            var clientId = GetOrCreateClient(context);
+            using var socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+            var connectionId = checked((nuint)Interlocked.Increment(ref _nextConnectionId));
+            var session = new WebUiSession(
+                this,
+                socket,
+                clientId == 0 ? connectionId : clientId,
+                connectionId,
+                context.Request.Headers.Cookie.ToString());
+            if (!_sessions.TryAdd(session.Id, session))
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, _shutdown.Token);
+            try
+            {
+                await session.RunAsync(cancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+            }
+            catch (WebSocketException)
+            {
+            }
+            catch (ObjectDisposedException) when (_shutdown.IsCancellationRequested)
+            {
+            }
+            finally
+            {
+                _sessions.TryRemove(session.Id, out _);
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
         }
         finally
         {
-            _sessions.TryRemove(session.Id, out _);
-            await session.DisposeAsync().ConfigureAwait(false);
+            lock (_connectionGate)
+            {
+                _activeConnections--;
+            }
         }
     }
+
+    private async Task PrepareResponseAsync(HttpContext context, RequestDelegate next)
+    {
+        context.Response.Headers.AccessControlAllowOrigin = "*";
+        context.Response.Headers.CacheControl = NoCache;
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        if (!context.WebSockets.IsWebSocketRequest)
+        {
+            var clientId = GetOrCreateClient(context);
+            if (WebUiApplication.UseCookies &&
+                !WebUiApplication.MultiClient &&
+                _sessions.Values.Any(session => session.ClientId != clientId))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await SendTextAsync(context, AccessDenied, "text/html; charset=utf-8").ConfigureAwait(false);
+                return;
+            }
+        }
+
+        await next(context).ConfigureAwait(false);
+    }
+
+    private nuint GetOrCreateClient(HttpContext context)
+    {
+        if (!WebUiApplication.UseCookies)
+        {
+            return 0;
+        }
+
+        if (context.Request.Cookies.TryGetValue(AuthCookieName, out var existing) &&
+            _clients.TryGetValue(existing, out var clientId))
+        {
+            return clientId;
+        }
+
+        var cookie = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        clientId = checked((nuint)Interlocked.Increment(ref _nextClientId));
+        _clients[cookie] = clientId;
+        context.Response.Cookies.Append(AuthCookieName, cookie, new CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = SameSiteMode.Strict,
+            Path = "/",
+        });
+        return clientId;
+    }
+
+    private void ConfigureContent(string content)
+    {
+        _embeddedHtml = null;
+        _entryFile = null;
+        _externalUrl = null;
+        _allowIndexFallback = false;
+
+        if (content.Length == 0)
+        {
+            _allowIndexFallback = true;
+            return;
+        }
+
+        if (Uri.TryCreate(content, UriKind.Absolute, out var url) &&
+            (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps))
+        {
+            _externalUrl = url;
+            return;
+        }
+
+        if (IsEmbeddedHtml(content))
+        {
+            _embeddedHtml = content;
+            return;
+        }
+
+        // Preserve M0's useful text-fragment behavior while keeping path-shaped values file-based.
+        if (Path.GetExtension(content).Length == 0 &&
+            !content.Contains('/') &&
+            !content.Contains('\\'))
+        {
+            _embeddedHtml = content;
+            return;
+        }
+
+        var isRooted = Path.IsPathRooted(content);
+        var rootedCandidate = isRooted
+            ? Path.GetFullPath(content)
+            : Path.GetFullPath(content, Volatile.Read(ref _rootFolder));
+        if (Directory.Exists(rootedCandidate))
+        {
+            Volatile.Write(ref _rootFolder, rootedCandidate);
+            _allowIndexFallback = true;
+            return;
+        }
+
+        if (File.Exists(rootedCandidate))
+        {
+            if (isRooted)
+            {
+                Volatile.Write(ref _rootFolder, Path.GetDirectoryName(rootedCandidate)!);
+                _entryFile = Path.GetFileName(rootedCandidate);
+            }
+            else
+            {
+                _entryFile = NormalizeEntryFile(content);
+            }
+            return;
+        }
+
+        _entryFile = NormalizeEntryFile(content);
+    }
+
+    private Uri GetBrowserUrl(Uri serverUrl)
+    {
+        if (_externalUrl is not null)
+        {
+            return _externalUrl;
+        }
+
+        if (_entryFile is null)
+        {
+            return serverUrl;
+        }
+
+        return new Uri(serverUrl, string.Join('/', _entryFile.Split('/').Select(Uri.EscapeDataString)));
+    }
+
+    private async ValueTask<string?> FindVirtualIndexAsync(
+        WebUiFileHandler handler,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        foreach (var indexUrl in GetIndexUrls(path))
+        {
+            if (await handler(indexUrl, cancellationToken).ConfigureAwait(false) is not null)
+            {
+                return indexUrl;
+            }
+        }
+
+        return null;
+    }
+
+    private string? FindPhysicalIndex(string path, string directory)
+    {
+        foreach (var indexUrl in GetIndexUrls(path))
+        {
+            var candidate = path == "/"
+                ? ResolveLocalPath(indexUrl)
+                : Path.Combine(directory, indexUrl[(indexUrl.LastIndexOf('/') + 1)..]);
+            if (candidate is not null && File.Exists(candidate))
+            {
+                return indexUrl;
+            }
+        }
+
+        return null;
+    }
+
+    private IEnumerable<string> GetIndexUrls(string path)
+    {
+        var basePath = path == "/" ? "/" : path.TrimEnd('/') + "/";
+        if (_entryFile is not null)
+        {
+            var entry = path == "/" ? _entryFile : Path.GetFileName(_entryFile);
+            yield return basePath + entry;
+        }
+
+        if (_allowIndexFallback)
+        {
+            yield return basePath + "index.html";
+            yield return basePath + "index.htm";
+            yield return basePath + "index.ts";
+            yield return basePath + "index.js";
+        }
+    }
+
+    private string? ResolveLocalPath(string path)
+    {
+        if (path.Contains('\0'))
+        {
+            return null;
+        }
+
+        var root = Path.GetFullPath(Volatile.Read(ref _rootFolder));
+        var relative = path.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+        var candidate = Path.GetFullPath(Path.Combine(root, relative));
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        if (!candidate.Equals(root, comparison) && !candidate.StartsWith(rootPrefix, comparison))
+        {
+            return null;
+        }
+
+        var resolvedRoot = ResolveLink(root, directory: true);
+        var resolvedRootPrefix = resolvedRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? resolvedRoot
+            : resolvedRoot + Path.DirectorySeparatorChar;
+        var resolvedCandidate = resolvedRoot;
+        foreach (var segment in relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        {
+            resolvedCandidate = Path.Combine(resolvedCandidate, segment);
+            if (Directory.Exists(resolvedCandidate))
+            {
+                resolvedCandidate = ResolveLink(resolvedCandidate, directory: true);
+            }
+            else if (File.Exists(resolvedCandidate))
+            {
+                resolvedCandidate = ResolveLink(resolvedCandidate, directory: false);
+            }
+
+            resolvedCandidate = Path.GetFullPath(resolvedCandidate);
+            if (!resolvedCandidate.Equals(resolvedRoot, comparison) &&
+                !resolvedCandidate.StartsWith(resolvedRootPrefix, comparison))
+            {
+                return null;
+            }
+        }
+
+        return candidate;
+    }
+
+    private static string GetDecodedPath(PathString path)
+    {
+        var value = path.Value ?? "/";
+        try
+        {
+            return Uri.UnescapeDataString(value);
+        }
+        catch (UriFormatException)
+        {
+            return value;
+        }
+    }
+
+    private static bool IsEmbeddedHtml(string content) =>
+        (content.Contains('<') && content.Contains('>')) ||
+        content.Contains("<html", StringComparison.Ordinal) ||
+        content.Contains("<!DOCTYPE", StringComparison.Ordinal) ||
+        content.Contains("<!doctype", StringComparison.Ordinal) ||
+        content.Contains("<!Doctype", StringComparison.Ordinal);
+
+    private static string NormalizeEntryFile(string content) =>
+        content.Replace('\\', '/').TrimStart('/');
+
+    private static string ResolveLink(string path, bool directory)
+    {
+        if (directory ? !Directory.Exists(path) : !File.Exists(path))
+        {
+            return path;
+        }
+
+        FileSystemInfo info = directory ? new DirectoryInfo(path) : new FileInfo(path);
+        return info.ResolveLinkTarget(true)?.FullName ?? path;
+    }
+
+    private static async Task CloseBridgeIgnoringFailureAsync(
+        WebUiSession session,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await session.CloseBridgeAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or WebSocketException or ObjectDisposedException)
+        {
+        }
+    }
+
+    private static async Task DisposeSessionIgnoringFailureAsync(WebUiSession session)
+    {
+        try
+        {
+            await session.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or WebSocketException or ObjectDisposedException)
+        {
+        }
+    }
+
+    private static void Redirect(HttpContext context, string location)
+    {
+        context.Response.StatusCode = StatusCodes.Status302Found;
+        context.Response.Headers.Location = location;
+    }
+
+    private static async Task SendVirtualContentAsync(HttpContext context, string path, WebUiContent content)
+    {
+        context.Response.StatusCode = content.StatusCode;
+        context.Response.ContentType = content.ContentType ?? GetContentType(path);
+        if (content.Headers is not null)
+        {
+            foreach (var header in content.Headers)
+            {
+                context.Response.Headers[header.Key] = header.Value;
+            }
+        }
+        context.Response.ContentLength = content.Body.Length;
+        if (!HttpMethods.IsHead(context.Request.Method))
+        {
+            await context.Response.Body.WriteAsync(content.Body, context.RequestAborted).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task SendFileAsync(HttpContext context, string filePath, string requestPath)
+    {
+        var file = new FileInfo(filePath);
+        context.Response.ContentType = GetContentType(requestPath);
+        context.Response.ContentLength = file.Length;
+        if (!HttpMethods.IsHead(context.Request.Method))
+        {
+            await context.Response.SendFileAsync(file.FullName, context.RequestAborted).ConfigureAwait(false);
+        }
+    }
+
+    private static Task SendTextAsync(HttpContext context, string content, string contentType)
+    {
+        var bytes = Encoding.UTF8.GetBytes(content);
+        context.Response.ContentType = contentType;
+        context.Response.ContentLength = bytes.Length;
+        return HttpMethods.IsHead(context.Request.Method)
+            ? Task.CompletedTask
+            : context.Response.Body.WriteAsync(bytes, context.RequestAborted).AsTask();
+    }
+
+    private static Task SendNotFoundAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return SendTextAsync(context, ResourceUnavailable, "text/html; charset=utf-8");
+    }
+
+    private static string GetContentType(string path) =>
+        ContentTypes.TryGetContentType(path, out var contentType)
+            ? contentType
+            : "application/octet-stream";
 
     private void BroadcastBinding(string element)
     {
