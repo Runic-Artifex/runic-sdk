@@ -1,5 +1,36 @@
 namespace CsWebUi.Managed;
 
+/// <summary>Identifies the browser host used to display a managed WebUI window.</summary>
+public enum WebUiBrowser : uint
+{
+    /// <summary>Do not launch a browser.</summary>
+    NoBrowser = 0,
+
+    /// <summary>Alias for <see cref="NoBrowser"/>.</summary>
+    None = NoBrowser,
+
+    /// <summary>Use the recommended installed browser.</summary>
+    AnyBrowser = 1,
+
+    /// <summary>Alias for <see cref="AnyBrowser"/>.</summary>
+    Any = AnyBrowser,
+
+    Chrome,
+    Firefox,
+    Edge,
+    Safari,
+    Chromium,
+    Opera,
+    Brave,
+    Vivaldi,
+    Epic,
+    Yandex,
+    ChromiumBased,
+
+    /// <summary>Reserved for the M4 embedded WebView hosts.</summary>
+    WebView,
+}
+
 /// <summary>Identifies an event reported by a managed WebUI bridge.</summary>
 public enum WebUiEventType : uint
 {
@@ -22,7 +53,7 @@ public enum WebUiEventType : uint
 /// <summary>Controls process-wide managed WebUI behavior.</summary>
 public enum WebUiConfiguration : uint
 {
-    /// <summary>Reserved for browser-host compatibility in M3.</summary>
+    /// <summary>Whether show calls wait for bridge authentication.</summary>
     ShowWaitConnection = 0,
 
     /// <summary>Reserved for event-dispatch compatibility.</summary>

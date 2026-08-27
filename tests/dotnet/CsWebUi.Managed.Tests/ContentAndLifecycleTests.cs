@@ -219,6 +219,18 @@ public sealed class ContentAndLifecycleTests
     }
 
     [Fact]
+    public async Task ServerOnlyShowReloadsContentWithoutChangingTheListener()
+    {
+        await using var window = new WebUiWindow();
+        var firstUrl = await window.ShowInBrowserAsync("first", WebUiBrowser.NoBrowser);
+        var secondUrl = await window.ShowInBrowserAsync("second", WebUiBrowser.NoBrowser);
+
+        Assert.Equal(firstUrl, secondUrl);
+        using var client = new HttpClient { BaseAddress = secondUrl };
+        Assert.Equal("second", await client.GetStringAsync("/"));
+    }
+
+    [Fact]
     public async Task ApplicationWaitTracksAllRunningWindowsAndExitClosesThem()
     {
         await using var first = new WebUiWindow();
@@ -334,6 +346,49 @@ public sealed class ContentAndLifecycleTests
             firstRoot.Delete(recursive: true);
             secondRoot.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task RunningWindowUsesRootFolderChangesImmediately()
+    {
+        var firstRoot = Directory.CreateTempSubdirectory("cs-webui-live-root-one-");
+        var secondRoot = Directory.CreateTempSubdirectory("cs-webui-live-root-two-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(firstRoot.FullName, "value.txt"), "one");
+            await File.WriteAllTextAsync(Path.Combine(secondRoot.FullName, "value.txt"), "two");
+            await using var window = new WebUiWindow();
+            window.SetRootFolder(firstRoot.FullName);
+            var url = await window.StartServerAsync(string.Empty);
+            using var client = new HttpClient { BaseAddress = url };
+            Assert.Equal("one", await client.GetStringAsync("/value.txt"));
+
+            window.SetRootFolder(secondRoot.FullName);
+            Assert.Equal("two", await client.GetStringAsync("/value.txt"));
+        }
+        finally
+        {
+            firstRoot.Delete(recursive: true);
+            secondRoot.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentServerWindowChurnLeavesNoApplicationLifetimeBehind()
+    {
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(async worker =>
+        {
+            for (var iteration = 0; iteration < 6; iteration++)
+            {
+                await using var window = new WebUiWindow();
+                var url = await window.StartServerAsync($"worker-{worker}-iteration-{iteration}");
+                using var client = new HttpClient { BaseAddress = url };
+                Assert.Contains($"worker-{worker}", await client.GetStringAsync("/"), StringComparison.Ordinal);
+            }
+        }));
+
+        Assert.False(WebUiApplication.IsRunning);
+        await WebUiApplication.WaitAsync().WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     private static async Task<uint> GetTokenAsync(Uri url, CookieContainer cookies, CancellationToken cancellationToken)

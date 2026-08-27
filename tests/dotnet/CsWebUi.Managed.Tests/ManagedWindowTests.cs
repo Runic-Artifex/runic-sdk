@@ -43,10 +43,11 @@ public sealed class ManagedWindowTests
     public async Task CanRestartAfterClose()
     {
         await using var window = new WebUiWindow();
-        await window.StartServerAsync("first");
+        var firstUrl = await window.StartServerAsync("first");
         await window.CloseAsync();
         var secondUrl = await window.StartServerAsync("second");
 
+        Assert.Equal(firstUrl, secondUrl);
         Assert.Equal(secondUrl, window.Url);
         using var client = new HttpClient { BaseAddress = secondUrl };
         Assert.Equal("second", await client.GetStringAsync("/"));

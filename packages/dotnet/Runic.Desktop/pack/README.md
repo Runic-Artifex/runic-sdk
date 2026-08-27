@@ -35,10 +35,11 @@ you need the complete unsafe WebUI 2.5 C ABI directly.
 
 An independent managed engine is also being developed in `CsWebUi.Managed`.
 The current source preview uses Kestrel for HTTP and WebSocket hosting and does
-not load the WebUI native library. Its completed M2 surface speaks WebUI's
+not load the WebUI native library. Its completed M3 surface speaks WebUI's
 binary protocol in real browsers and adds file/folder/virtual content routing,
-explicit listener configuration, client ownership, and application lifecycle
-coordination. See the
+explicit listener configuration, client ownership, application lifecycle
+coordination, browser discovery, Chromium app-mode hosting, isolated profiles,
+and deterministic browser-process cleanup. See the
 [managed port roadmap](docs/design/managed-webui-port-roadmap.md) for its
 implemented vertical slice, compatibility milestones, and intentional gaps.
 

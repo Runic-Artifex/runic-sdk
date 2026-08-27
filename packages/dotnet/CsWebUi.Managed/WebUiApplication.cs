@@ -1,3 +1,8 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
+using CsWebUi.Managed.Internal;
+
 namespace CsWebUi.Managed;
 
 /// <summary>Provides process-wide configuration and lifetime operations for managed WebUI windows.</summary>
@@ -5,8 +10,12 @@ public static class WebUiApplication
 {
     private static readonly object Gate = new();
     private static readonly HashSet<WebUiWindow> RunningWindows = [];
+    private static readonly HashSet<string> GeneratedProfiles = new(StringComparer.Ordinal);
     private static TaskCompletionSource _allClosed = CompletedSource();
     private static string _defaultRootFolder = Path.GetFullPath(Environment.CurrentDirectory);
+    private static string? _browserFolder;
+    private static long _connectionTimeoutTicks = TimeSpan.FromSeconds(15).Ticks;
+    private static int _showWaitConnection = 1;
     private static int _multiClient;
     private static int _useCookies = 1;
 
@@ -34,12 +43,84 @@ public static class WebUiApplication
                 Volatile.Write(ref _useCookies, enabled ? 1 : 0);
                 break;
             case WebUiConfiguration.ShowWaitConnection:
+                Volatile.Write(ref _showWaitConnection, enabled ? 1 : 0);
+                break;
             case WebUiConfiguration.UiEventBlocking:
             case WebUiConfiguration.FolderMonitor:
             case WebUiConfiguration.AsynchronousResponse:
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(configuration));
+        }
+    }
+
+    /// <summary>Sets the maximum number of seconds a show call waits for bridge authentication.</summary>
+    public static void SetConnectionTimeout(nuint seconds)
+    {
+        var clampedSeconds = seconds > 60 ? 60 : (long)seconds;
+        var timeout = clampedSeconds == 0 ? TimeSpan.Zero : TimeSpan.FromSeconds(clampedSeconds);
+        Volatile.Write(ref _connectionTimeoutTicks, timeout.Ticks);
+    }
+
+    /// <summary>Sets an optional folder searched before system browser locations.</summary>
+    public static void SetBrowserFolder(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        lock (Gate)
+        {
+            _browserFolder = path.Length == 0 ? null : Path.GetFullPath(path);
+        }
+    }
+
+    /// <summary>Gets whether a supported browser can be discovered.</summary>
+    public static bool BrowserExists(WebUiBrowser browser)
+        => WebUiBrowserDiscovery.Find(browser, GetBrowserFolder()) is not null;
+
+    /// <summary>Opens a URL through the operating system's default URL handler.</summary>
+    public static void OpenUrl(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
+
+    /// <summary>Deletes generated browser profiles that are not owned by a running window.</summary>
+    public static void DeleteAllProfiles()
+    {
+        string[] profiles;
+        lock (Gate)
+        {
+            var activeProfiles = RunningWindows
+                .Select(static window => window.GeneratedProfilePath)
+                .OfType<string>()
+                .ToHashSet(StringComparer.Ordinal);
+            profiles = [.. GeneratedProfiles.Where(path => !activeProfiles.Contains(path))];
+        }
+
+        foreach (var profile in profiles)
+        {
+            _ = TryDeleteGeneratedProfile(profile);
+        }
+    }
+
+    /// <summary>Closes all windows and removes managed browser profiles.</summary>
+    public static void Clean()
+    {
+        Exit();
+        DeleteAllProfiles();
+    }
+
+    /// <summary>Gets an available loopback TCP port.</summary>
+    public static nuint GetFreePort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        try
+        {
+            listener.Start();
+            return checked((nuint)((IPEndPoint)listener.LocalEndpoint).Port);
+        }
+        finally
+        {
+            listener.Stop();
         }
     }
 
@@ -86,12 +167,31 @@ public static class WebUiApplication
             windows = [.. RunningWindows];
         }
 
-        return Task.WhenAll(windows.Select(window => window.CloseAsync(cancellationToken)));
+        return Task.WhenAll(windows.Select(window => window.CloseFromApplicationAsync(cancellationToken)));
     }
 
     internal static bool MultiClient => Volatile.Read(ref _multiClient) != 0;
 
     internal static bool UseCookies => Volatile.Read(ref _useCookies) != 0;
+
+    internal static bool ShowWaitConnection => Volatile.Read(ref _showWaitConnection) != 0;
+
+    internal static TimeSpan ConnectionTimeout
+    {
+        get
+        {
+            var configured = TimeSpan.FromTicks(Volatile.Read(ref _connectionTimeoutTicks));
+            return configured == TimeSpan.Zero ? TimeSpan.FromSeconds(15) : configured;
+        }
+    }
+
+    internal static string? GetBrowserFolder()
+    {
+        lock (Gate)
+        {
+            return _browserFolder;
+        }
+    }
 
     internal static string GetDefaultRootFolder()
     {
@@ -122,6 +222,39 @@ public static class WebUiApplication
             {
                 _allClosed.TrySetResult();
             }
+        }
+    }
+
+    internal static void RegisterGeneratedProfile(string path)
+    {
+        lock (Gate)
+        {
+            GeneratedProfiles.Add(path);
+        }
+    }
+
+    internal static bool TryDeleteGeneratedProfile(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+
+            lock (Gate)
+            {
+                GeneratedProfiles.Remove(path);
+            }
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

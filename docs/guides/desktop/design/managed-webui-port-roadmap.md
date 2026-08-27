@@ -1,6 +1,6 @@
 # Managed WebUI port roadmap
 
-Status: M2 content and server compatibility complete
+Status: M3 browser host compatibility complete
 
 Compatibility oracle: `webui-dev/webui@52f9e75`
 
@@ -125,14 +125,32 @@ cancellation capabilities.
 
 ### M3: browser host compatibility
 
-- Browser discovery and explicit browser selection.
-- Chromium application mode and isolated profiles.
-- Browser arguments, proxy settings, kiosk mode, and process ownership.
-- Window close detection and deterministic child-process cleanup.
-- Windows, Linux, and macOS browser-hosted validation.
+Implemented:
 
-Exit gate: all non-WebView upstream examples and the stress-test stages have a
-managed execution path.
+- ordered discovery for Chrome, Edge, Chromium, Epic, Vivaldi, Brave, Firefox,
+  and Yandex across PATH, conventional Windows install roots, macOS application
+  bundles, Linux system paths, and an explicitly configured browser folder;
+- recommended, explicit, and Chromium-family selection with Chromium
+  application mode and a Firefox new-window fallback;
+- isolated per-window temporary profiles by default, persistent user-supplied
+  profiles, and deterministic generated-profile cleanup;
+- WebUI-compatible default arguments, safely tokenized custom arguments,
+  Chromium proxy settings, kiosk/headless modes, and initial size and position;
+- direct process ownership without a command shell, process-tree termination on
+  managed close, natural browser-exit detection, restart, and application-wait
+  integration;
+- authenticated-show timeout behavior and navigation of an existing browser
+  host when a shown window's content changes;
+- platform-neutral discovery/argument tests and real browser-host lifecycle
+  coverage that runs on the repository's Windows, Linux, Intel macOS, and Arm
+  macOS CI matrix.
+
+Exit gate met for the M3 surface: non-WebView browser, protocol, content,
+lifecycle, multi-window, multi-client, window churn, callback disposal, and
+rapid restart scenarios have managed execution paths in the behavioral suite.
+The native stress stage that changes a running listener's port remains the
+explicit M2 live-reload deviation below. WebView-only window-frame operations
+remain assigned to M4.
 
 ### M4: embedded WebView hosts
 
@@ -176,11 +194,10 @@ After useful parity is established, add improvements deliberately:
 - Short non-path strings remain embedded bodies for M0 source compatibility;
   native WebUI treats such values as filenames unless they contain a full HTML
   marker.
-- `ShowAsync` opens the default browser rather than selecting application mode.
 - Port and public-binding changes take effect after close/restart rather than
   live-reloading a running listener.
-- Window dragging and resize packets are recognized but have no platform host
-  to act on until M3/M4.
+- Window dragging and resize packets are recognized but have no embedded
+  platform host to act on until M4.
 - The bridge core high-contrast query currently returns `false` until browser
   and platform preference integration is added.
 - There are no embedded WebViews yet.

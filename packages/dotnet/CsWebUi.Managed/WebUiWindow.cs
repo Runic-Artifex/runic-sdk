@@ -28,23 +28,40 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private const string ResourceUnavailable = "<html><head><title>Resource Not Available</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Resource Not Available</h2><p>The requested resource is not available.</p></body></html>";
     private const string DefaultIcon = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" viewBox=\"0 0 375 375\" height=\"500\"><path fill=\"#2a6699\" d=\"M22 22h330v330H22z\"/></svg>";
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
+    private static readonly AsyncLocal<WebUiWindow?> CallbackWindow = new();
 
     private readonly ConcurrentDictionary<string, BindingRegistration> _bindings = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Guid, WebUiSession> _sessions = new();
     private readonly ConcurrentDictionary<string, nuint> _clients = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly TaskCompletionSource _disposeCompletion = NewCompletionSource();
     private readonly object _connectionGate = new();
     private CancellationTokenSource _shutdown = new();
     private readonly uint _token = CreateToken();
 
     private WebApplication? _application;
+    private Process? _browserProcess;
+    private TaskCompletionSource _browserConnected = NewCompletionSource();
     private string _rootFolder;
+    private string? _profileName;
+    private string? _profilePath;
+    private string? _generatedProfilePath;
+    private string? _proxyServer;
+    private IReadOnlyList<string> _customBrowserArguments = [];
     private string? _embeddedHtml;
     private string? _entryFile;
     private Uri? _externalUrl;
     private WebUiFileHandler? _fileHandler;
     private bool _allowIndexFallback;
     private bool _isPublic;
+    private bool _profileConfigured;
+    private bool _kiosk;
+    private bool _hidden;
+    private uint? _width;
+    private uint? _height;
+    private uint? _x;
+    private uint? _y;
+    private WebUiBrowser _currentBrowser;
     private int _requestedPort;
     private int _activeConnections;
     private long _nextClientId;
@@ -67,6 +84,24 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     /// <summary>Gets whether the server accepts connections on non-loopback interfaces.</summary>
     public bool IsPublic => _isPublic;
+
+    /// <summary>Gets whether this window currently owns a browser process or authenticated client.</summary>
+    public bool IsShown =>
+        (_browserProcess is { HasExited: false }) || _sessions.Values.Any(static session => session.IsAuthenticated);
+
+    /// <summary>Gets the operating-system identifier of the owned browser process.</summary>
+    public nuint BrowserProcessId => _browserProcess is { HasExited: false } process
+        ? checked((nuint)process.Id)
+        : 0;
+
+    /// <summary>Gets the selected browser for this window, or <see cref="WebUiBrowser.NoBrowser"/>.</summary>
+    public WebUiBrowser CurrentBrowser => _currentBrowser;
+
+    /// <summary>Gets the recommended installed browser.</summary>
+    public WebUiBrowser BestBrowser => _currentBrowser != WebUiBrowser.NoBrowser
+        ? _currentBrowser
+        : WebUiBrowserDiscovery.Find(WebUiBrowser.AnyBrowser, WebUiApplication.GetBrowserFolder())?.Browser
+            ?? WebUiBrowser.AnyBrowser;
 
     /// <summary>Registers a synchronous JavaScript binding.</summary>
     public WebUiBinding Bind(string element, Action<WebUiEvent> handler)
@@ -174,6 +209,10 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 ?? throw new InvalidOperationException("Kestrel did not publish a listening address.");
 
             var boundAddress = new Uri(address, UriKind.Absolute);
+            if (_requestedPort == 0)
+            {
+                _requestedPort = boundAddress.Port;
+            }
             Url = new UriBuilder(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), boundAddress.Port).Uri;
             WebUiApplication.Started(this);
             return Url;
@@ -194,17 +233,155 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
-    /// <summary>Starts the managed server and opens its URL in the default browser.</summary>
-    public async Task<Uri> ShowAsync(string content, CancellationToken cancellationToken = default)
+    /// <summary>Starts the managed server and opens it in the recommended installed browser.</summary>
+    public Task<Uri> ShowAsync(string content, CancellationToken cancellationToken = default)
+        => ShowInBrowserAsync(content, WebUiBrowser.AnyBrowser, cancellationToken);
+
+    /// <summary>Starts the managed server and opens it in a selected browser.</summary>
+    public async Task<Uri> ShowInBrowserAsync(
+        string content,
+        WebUiBrowser browser,
+        CancellationToken cancellationToken = default)
     {
         var url = await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
-        var browserUrl = GetBrowserUrl(url);
-        Process.Start(new ProcessStartInfo(browserUrl.AbsoluteUri) { UseShellExecute = true });
+        if (browser == WebUiBrowser.NoBrowser)
+        {
+            await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                ConfigureContent(content);
+            }
+            finally
+            {
+                _lifecycleGate.Release();
+            }
+            return url;
+        }
+
+        Task connection;
+        Uri browserUrl;
+        var navigateExisting = false;
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ConfigureContent(content);
+            browserUrl = GetBrowserUrl(url);
+            if (_browserProcess is { HasExited: true } exitedProcess)
+            {
+                _browserProcess = null;
+                exitedProcess.Dispose();
+            }
+            if (_browserProcess is { HasExited: false })
+            {
+                if (browser is not WebUiBrowser.AnyBrowser and not WebUiBrowser.ChromiumBased && browser != _currentBrowser)
+                {
+                    throw new InvalidOperationException($"This window is already hosted by {_currentBrowser}.");
+                }
+
+                navigateExisting = true;
+                connection = Task.CompletedTask;
+            }
+            else
+            {
+                var requestedBrowser = browser == WebUiBrowser.AnyBrowser && _currentBrowser != WebUiBrowser.NoBrowser
+                    ? _currentBrowser
+                    : browser;
+                var installation = WebUiBrowserDiscovery.Find(requestedBrowser, WebUiApplication.GetBrowserFolder())
+                    ?? throw new InvalidOperationException($"No supported installation was found for {browser}.");
+                var profilePath = GetOrCreateProfilePath(installation.Browser);
+                var options = new WebUiBrowserLaunchOptions(
+                    _profileName,
+                    profilePath,
+                    _proxyServer,
+                    _customBrowserArguments,
+                    _kiosk,
+                    _hidden,
+                    _width,
+                    _height,
+                    _x,
+                    _y);
+                _browserConnected = NewCompletionSource();
+                Process process;
+                try
+                {
+                    process = WebUiBrowserHost.Start(installation, browserUrl, options);
+                }
+                catch
+                {
+                    if (_generatedProfilePath is { } failedProfile)
+                    {
+                        _generatedProfilePath = null;
+                        _ = WebUiApplication.TryDeleteGeneratedProfile(failedProfile);
+                    }
+                    throw;
+                }
+                _browserProcess = process;
+                _currentBrowser = installation.Browser;
+                connection = _browserConnected.Task;
+                _ = MonitorBrowserAsync(process);
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+
+        if (navigateExisting)
+        {
+            await NavigateAsync(browserUrl.AbsoluteUri, cancellationToken).ConfigureAwait(false);
+        }
+        else if (WebUiApplication.ShowWaitConnection && _externalUrl is null)
+        {
+            try
+            {
+                await connection.WaitAsync(WebUiApplication.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
+                throw;
+            }
+        }
+
         return url;
     }
 
-    /// <summary>Starts the managed server and opens its URL in the default browser.</summary>
+    /// <summary>Starts the managed server and opens it in the recommended installed browser.</summary>
     public Uri Show(string content) => ShowAsync(content).GetAwaiter().GetResult();
+
+    /// <summary>Starts the managed server and opens it in a selected browser.</summary>
+    public Uri ShowInBrowser(string content, WebUiBrowser browser)
+        => ShowInBrowserAsync(content, browser).GetAwaiter().GetResult();
+
+    /// <summary>Attempts to show content in the recommended installed browser.</summary>
+    public bool TryShow(string content)
+    {
+        try
+        {
+            Show(content);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or TimeoutException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Attempts to show content in a selected browser.</summary>
+    public bool TryShowInBrowser(string content, WebUiBrowser browser)
+    {
+        try
+        {
+            ShowInBrowser(content, browser);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or TimeoutException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
 
     /// <summary>Sets the local root used for files and folder-mode index discovery.</summary>
     public void SetRootFolder(string path)
@@ -283,6 +460,69 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         Volatile.Write(ref _fileHandler, handler);
     }
 
+    /// <summary>Sets the browser profile name and storage path used for this window.</summary>
+    public void SetProfile(string name, string path)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(path);
+        _profileConfigured = true;
+        _profileName = name.Length == 0 ? null : name;
+        _profilePath = path.Length == 0 ? null : Path.GetFullPath(path);
+        if (_profilePath is not null)
+        {
+            Directory.CreateDirectory(_profilePath);
+        }
+    }
+
+    /// <summary>Sets the proxy server passed to Chromium-based browser hosts.</summary>
+    public void SetProxy(string proxyServer)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentNullException.ThrowIfNull(proxyServer);
+        _proxyServer = proxyServer.Length == 0 ? null : proxyServer;
+    }
+
+    /// <summary>Sets additional command-line parameters passed to the browser.</summary>
+    public void SetCustomParameters(string parameters)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentNullException.ThrowIfNull(parameters);
+        _customBrowserArguments = WebUiCommandLine.Split(parameters);
+    }
+
+    /// <summary>Sets whether the browser is launched in kiosk mode.</summary>
+    public void SetKiosk(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _kiosk = enabled;
+    }
+
+    /// <summary>Sets whether the browser is launched without a visible window.</summary>
+    public void SetHidden(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _hidden = enabled;
+    }
+
+    /// <summary>Sets the initial outer browser dimensions in pixels.</summary>
+    public void SetSize(uint width, uint height)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentOutOfRangeException.ThrowIfZero(width);
+        ArgumentOutOfRangeException.ThrowIfZero(height);
+        _width = width;
+        _height = height;
+    }
+
+    /// <summary>Sets the initial browser position in pixels.</summary>
+    public void SetPosition(uint x, uint y)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _x = x;
+        _y = y;
+    }
+
     /// <summary>Runs JavaScript in every authenticated browser without waiting for a response.</summary>
     public void RunJavaScript(string script)
         => RunJavaScriptAsync(script).GetAwaiter().GetResult();
@@ -349,6 +589,9 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Stops the server and closes its active bridge connections.</summary>
+    public void Close() => CloseAsync().GetAwaiter().GetResult();
+
+    /// <summary>Stops the server and closes its active bridge connections.</summary>
     public async Task CloseAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -356,20 +599,49 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+        if (ReferenceEquals(CallbackWindow.Value, this))
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _ = CompleteDisposeAsync();
+            }
+            return;
+        }
+
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        GC.SuppressFinalize(this);
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            return;
+            _ = CompleteDisposeAsync();
         }
 
-        await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
-        _shutdown.Dispose();
-        _lifecycleGate.Dispose();
-        GC.SuppressFinalize(this);
+        if (!ReferenceEquals(CallbackWindow.Value, this))
+        {
+            await _disposeCompletion.Task.ConfigureAwait(false);
+        }
+    }
+
+    private async Task CompleteDisposeAsync()
+    {
+        try
+        {
+            await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
+            _shutdown.Dispose();
+            _lifecycleGate.Dispose();
+            _disposeCompletion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            _disposeCompletion.TrySetException(exception);
+        }
     }
 
     private async Task CloseCoreAsync(CancellationToken cancellationToken)
@@ -380,6 +652,7 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
             var application = _application;
             if (application is null)
             {
+                await StopBrowserAsync().ConfigureAwait(false);
                 return;
             }
 
@@ -395,6 +668,7 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
             await Task.WhenAll(sessionClosures).ConfigureAwait(false);
 
             _sessions.Clear();
+            await StopBrowserAsync().ConfigureAwait(false);
             try
             {
                 await application.StopAsync(cancellationToken).ConfigureAwait(false);
@@ -418,6 +692,15 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     internal uint Token => _token;
+
+    internal string? GeneratedProfilePath => _generatedProfilePath;
+
+    internal void NotifyAuthenticated() => _browserConnected.TrySetResult();
+
+    internal Task CloseFromApplicationAsync(CancellationToken cancellationToken) =>
+        Volatile.Read(ref _disposed) != 0
+            ? _disposeCompletion.Task.WaitAsync(cancellationToken)
+            : CloseCoreAsync(cancellationToken);
 
     internal string[] GetBindingNames() =>
         ["__webui_core_api__", .. _bindings.OrderBy(static pair => pair.Value.Order).Select(static pair => pair.Key)];
@@ -522,12 +805,15 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
             session.ClientId,
             session.ConnectionId,
             session.Cookies);
+        var previousCallbackWindow = CallbackWindow.Value;
+        CallbackWindow.Value = this;
         try
         {
             return await registration.Handler(webUiEvent, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
+            CallbackWindow.Value = previousCallbackWindow;
             webUiEvent.Invalidate();
         }
     }
@@ -549,6 +835,94 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 .Remove(new KeyValuePair<string, BindingRegistration>(element, registration));
         }
     }
+
+    private string? GetOrCreateProfilePath(WebUiBrowser browser)
+    {
+        if (_profileConfigured)
+        {
+            return _profilePath;
+        }
+
+        if (_generatedProfilePath is not null)
+        {
+            return _generatedProfilePath;
+        }
+
+        var basePath = Path.Combine(Path.GetTempPath(), "cs-webui-managed");
+        Directory.CreateDirectory(basePath);
+        _generatedProfilePath = Path.Combine(
+            basePath,
+            $"{browser.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_generatedProfilePath);
+        WebUiApplication.RegisterGeneratedProfile(_generatedProfilePath);
+        return _generatedProfilePath;
+    }
+
+    private async Task MonitorBrowserAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(Volatile.Read(ref _browserProcess), process))
+        {
+            await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private async Task StopBrowserAsync()
+    {
+        var process = _browserProcess;
+        if (process is not null && WebUiApplication.ShowWaitConnection && _externalUrl is null)
+        {
+            _browserConnected.TrySetException(new IOException("The browser process closed before bridge authentication completed."));
+        }
+        _browserProcess = null;
+        _currentBrowser = WebUiBrowser.NoBrowser;
+        if (process is not null)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.CloseMainWindow();
+                    try
+                    {
+                        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromMilliseconds(750)).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException)
+                    {
+                        process.Kill(entireProcessTree: true);
+                        await process.WaitForExitAsync().ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        if (_generatedProfilePath is { } profilePath)
+        {
+            _generatedProfilePath = null;
+            for (var attempt = 0; attempt < 10 && !WebUiApplication.TryDeleteGeneratedProfile(profilePath); attempt++)
+            {
+                await Task.Delay(50).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static TaskCompletionSource NewCompletionSource() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private async Task ServeContentAsync(HttpContext context)
     {

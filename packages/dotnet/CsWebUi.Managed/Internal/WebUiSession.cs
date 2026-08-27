@@ -375,6 +375,10 @@ internal sealed class WebUiSession : IAsyncDisposable
             bindingBytes.CopyTo(payload, 1);
             await SendPacketUnderGateAsync(WebUiProtocol.CreatePacket(id, WebUiProtocol.CheckToken, payload), cancellationToken)
                 .ConfigureAwait(false);
+            if (accepted)
+            {
+                _window.NotifyAuthenticated();
+            }
         }
         finally
         {

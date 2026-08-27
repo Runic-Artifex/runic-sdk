@@ -1,6 +1,7 @@
 using CsWebUi.Managed;
 
 await using var window = new WebUiWindow();
+window.SetSize(900, 650);
 
 window.Bind("multiply", static e => e.GetInt64() * e.GetInt64(1));
 window.BindAsync("greet", static (e, cancellationToken) =>
@@ -16,7 +17,8 @@ window.Bind("increment", e =>
     e.RunJavaScript($"setCount({count + 1});");
 });
 
-await window.ShowAsync("""
+Console.WriteLine($"Selected browser: {window.BestBrowser}");
+await window.ShowInBrowserAsync("""
     <!doctype html>
     <html lang="en">
     <head>
@@ -37,7 +39,7 @@ await window.ShowAsync("""
       </script>
     </body>
     </html>
-    """);
+    """, WebUiBrowser.AnyBrowser);
 
 Console.WriteLine($"Managed window available at {window.Url}");
 Console.WriteLine("Press Enter to close.");

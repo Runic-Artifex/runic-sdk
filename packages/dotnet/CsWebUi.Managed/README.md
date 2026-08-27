@@ -12,12 +12,16 @@ generated bridge implements WebUI's binary token handshake, binding discovery,
 function calls, correlated responses, large `MULTI` packets, keepalive, and
 reconnect behavior.
 
-M2 content and server compatibility is complete. The server supports WebUI's
+M3 browser-host compatibility is complete. The server supports WebUI's
 index discovery and redirects, MIME and no-cache behavior, explicit ports,
 loopback or public binding, cookie-backed client ownership, single- or
 multi-client operation, deterministic restart, and application-wide wait and
-exit. Physical files are streamed by Kestrel; virtual handlers return complete
-in-memory responses until the managed streaming API is introduced in M5.
+exit. Browser hosting adds discovery and explicit selection, Chromium app mode,
+isolated or user-supplied profiles, custom arguments, proxy and kiosk options,
+window geometry, process-tree ownership, close detection, and generated-profile
+cleanup. Physical files are streamed by Kestrel; virtual handlers return
+complete in-memory responses until the managed streaming API is introduced in
+M5.
 
-Browser host selection and embedded WebViews remain later milestones, and the
-preview API is not yet compatibility-stable.
+Embedded WebViews remain the next milestone, and the preview API is not yet
+compatibility-stable.
