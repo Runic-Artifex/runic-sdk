@@ -1,0 +1,44 @@
+using CsWebUi.Managed;
+
+await using var window = new WebUiWindow();
+
+window.Bind("multiply", static e => e.GetInt64() * e.GetInt64(1));
+window.BindAsync("greet", static (e, cancellationToken) =>
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    return ValueTask.FromResult<WebUiResult>($"Hello, {e.GetString()}!");
+});
+window.Bind("increment", e =>
+{
+    var count = int.Parse(
+        e.Window.ExecuteJavaScript("return getCount();", TimeSpan.FromSeconds(5)),
+        System.Globalization.CultureInfo.InvariantCulture);
+    e.RunJavaScript($"setCount({count + 1});");
+});
+
+await window.ShowAsync("""
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <script src="webui.js"></script>
+      <title>CS-WebUI Managed</title>
+    </head>
+    <body>
+      <h1>CS-WebUI is running without the native WebUI library</h1>
+      <button onclick="multiply(6, 7).then(value => alert(`6 × 7 = ${value}`))">Multiply</button>
+      <button onclick="greet('Managed WebUI').then(alert)">Greet</button>
+      <button id="increment">Increment from managed C#</button>
+      <p>Count: <strong id="count">0</strong></p>
+      <script>
+        let count = 0;
+        function getCount() { return count; }
+        function setCount(value) { count = value; document.querySelector('#count').textContent = value; }
+      </script>
+    </body>
+    </html>
+    """);
+
+Console.WriteLine($"Managed window available at {window.Url}");
+Console.WriteLine("Press Enter to close.");
+Console.ReadLine();

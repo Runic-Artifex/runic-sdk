@@ -6,7 +6,8 @@ WebUI is Copyright (c) 2020-2026 Hassan Draga and contributors,
 distributed under the MIT License:
 https://github.com/webui-dev/webui
 
-The complete upstream license is retained in this repository at
+The managed bridge implementation is informed by WebUI's wire protocol and
+MIT-licensed TypeScript bridge. The complete upstream license is retained in this repository at
 eng/licenses/WebUI-LICENSE.txt and in the CsWebUi.Native package under
 licenses/WebUI/.
 

@@ -33,6 +33,14 @@ window ownership, UTF-8 conversion, error handling, raw-data helpers, and safe
 synchronous or `ValueTask`-based callbacks. Choose `CsWebUi.Native` only when
 you need the complete unsafe WebUI 2.5 C ABI directly.
 
+An independent managed engine is also being developed in `CsWebUi.Managed`.
+The current source preview uses Kestrel for HTTP and WebSocket hosting and does
+not load the WebUI native library. Its M1 bridge and binding layer now speaks
+WebUI's binary protocol in real browsers, including events, JavaScript calls,
+raw data, chunking, and reconnect behavior. See the
+[managed port roadmap](docs/design/managed-webui-port-roadmap.md) for its
+implemented vertical slice, compatibility milestones, and intentional gaps.
+
 > CS-WebUI follows WebUI's 2.5 beta ABI and is currently released as a
 > prerelease package.
 
@@ -157,6 +165,7 @@ is a contiguous-buffer API, not streaming.
 | --- | --- |
 | `CsWebUi.Native` | Full low-level C ABI, `LibraryImport`, pointers, native enums, callbacks, and library override support. |
 | `CsWebUi` | Friendly window, event, callback, JavaScript, browser/server, and lifecycle APIs. |
+| `CsWebUi.Managed` | Source-preview managed implementation using Kestrel; not yet a compatibility-complete or published package. |
 
 Release packages bundle the standard, non-TLS WebUI shared library for `win-x64`, `linux-x64`, `linux-arm64`, `osx-x64`, and `osx-arm64`. The raw TLS API remains available when an application supplies a secure custom WebUI build.
 
