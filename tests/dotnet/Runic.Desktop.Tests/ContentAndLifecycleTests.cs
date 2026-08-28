@@ -166,6 +166,81 @@ public sealed class ContentAndLifecycleTests
     }
 
     [Fact]
+    public async Task StreamingVirtualContentHonorsHeadCancellationAndDisposal()
+    {
+        await using var window = new WebUiWindow();
+        var stream = new CancellationAwareStream("first"u8.ToArray());
+        var factoryCalls = 0;
+        window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(
+            path == "/stream"
+                ? WebUiContent.FromStream(
+                    _ =>
+                    {
+                        Interlocked.Increment(ref factoryCalls);
+                        return ValueTask.FromResult<Stream>(stream);
+                    },
+                    "application/octet-stream",
+                    contentLength: 10)
+                : null));
+
+        var url = await window.StartServerAsync(string.Empty);
+        using var client = new HttpClient { BaseAddress = url };
+
+        using (var headRequest = new HttpRequestMessage(HttpMethod.Head, "/stream"))
+        using (var headResponse = await client.SendAsync(headRequest))
+        {
+            Assert.Equal(HttpStatusCode.OK, headResponse.StatusCode);
+            Assert.Equal(10, headResponse.Content.Headers.ContentLength);
+            Assert.Empty(await headResponse.Content.ReadAsByteArrayAsync());
+            Assert.Equal(0, Volatile.Read(ref factoryCalls));
+        }
+
+        using var requestCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var response = await client.GetAsync(
+            "/stream",
+            HttpCompletionOption.ResponseHeadersRead,
+            requestCancellation.Token);
+        await using var responseBody = await response.Content.ReadAsStreamAsync(requestCancellation.Token);
+        var buffer = new byte[5];
+        Assert.Equal(5, await responseBody.ReadAsync(buffer, requestCancellation.Token));
+        Assert.Equal("first", Encoding.UTF8.GetString(buffer));
+        await stream.WaitForBlockedReadAsync(requestCancellation.Token);
+
+        requestCancellation.Cancel();
+        response.Dispose();
+
+        using var observationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await stream.WaitForCancellationAsync(observationTimeout.Token);
+        await stream.WaitForDisposalAsync(observationTimeout.Token);
+        Assert.Equal(1, Volatile.Read(ref factoryCalls));
+    }
+
+    [Fact]
+    public async Task StreamingVirtualContentCancelsAndDisposesWhenWindowCloses()
+    {
+        await using var window = new WebUiWindow();
+        var stream = new CancellationAwareStream("first"u8.ToArray());
+        window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(
+            path == "/stream"
+                ? WebUiContent.FromStream(_ => ValueTask.FromResult<Stream>(stream))
+                : null));
+
+        var url = await window.StartServerAsync(string.Empty);
+        using var client = new HttpClient { BaseAddress = url };
+        using var response = await client.GetAsync("/stream", HttpCompletionOption.ResponseHeadersRead);
+        await using var responseBody = await response.Content.ReadAsStreamAsync();
+        var buffer = new byte[5];
+        Assert.Equal(5, await responseBody.ReadAsync(buffer));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await stream.WaitForBlockedReadAsync(timeout.Token);
+
+        await window.CloseAsync(timeout.Token);
+
+        await stream.WaitForCancellationAsync(timeout.Token);
+        await stream.WaitForDisposalAsync(timeout.Token);
+    }
+
+    [Fact]
     public async Task RejectsTraversalAndSymlinksOutsideRoot()
     {
         if (OperatingSystem.IsWindows())
@@ -389,6 +464,88 @@ public sealed class ContentAndLifecycleTests
 
         Assert.False(WebUiApplication.IsRunning);
         await WebUiApplication.WaitAsync().WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    private sealed class CancellationAwareStream(byte[] firstChunk) : Stream
+    {
+        private readonly TaskCompletionSource _blockedRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _readCount;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public Task WaitForBlockedReadAsync(CancellationToken cancellationToken) =>
+            _blockedRead.Task.WaitAsync(cancellationToken);
+
+        public Task WaitForCancellationAsync(CancellationToken cancellationToken) =>
+            _cancelled.Task.WaitAsync(cancellationToken);
+
+        public Task WaitForDisposalAsync(CancellationToken cancellationToken) =>
+            _disposed.Task.WaitAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default) =>
+            ReadCoreAsync(buffer, cancellationToken);
+
+        private async ValueTask<int> ReadCoreAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _readCount) == 1)
+            {
+                firstChunk.AsSpan().CopyTo(buffer.Span);
+                return firstChunk.Length;
+            }
+
+            _blockedRead.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                return 0;
+            }
+            catch (OperationCanceledException)
+            {
+                _cancelled.TrySetResult();
+                throw;
+            }
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _disposed.TrySetResult();
+            }
+            base.Dispose(disposing);
+        }
+
+        public override ValueTask DisposeAsync()
+        {
+            _disposed.TrySetResult();
+            return base.DisposeAsync();
+        }
     }
 
     private static async Task<uint> GetTokenAsync(Uri url, CookieContainer cookies, CancellationToken cancellationToken)

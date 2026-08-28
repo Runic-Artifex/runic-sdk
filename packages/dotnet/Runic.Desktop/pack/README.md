@@ -10,7 +10,7 @@ WebView. It does not load the native WebUI library.
 
 ## Capabilities
 
-- Embedded HTML, files, folders, external URLs, and virtual content
+- Embedded HTML, files, folders, external URLs, and fixed or streaming virtual content
 - Synchronous and asynchronous JavaScript-to-.NET bindings
 - Managed-to-JavaScript execution, navigation, and raw byte transport
 - Kestrel HTTP and WebSocket hosting with loopback or public binding

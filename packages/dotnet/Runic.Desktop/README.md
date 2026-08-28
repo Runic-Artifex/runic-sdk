@@ -19,9 +19,10 @@ multi-client operation, deterministic restart, and application-wide wait and
 exit. Browser hosting adds discovery and explicit selection, Chromium app mode,
 isolated or user-supplied profiles, custom arguments, proxy and kiosk options,
 window geometry, process-tree ownership, close detection, and generated-profile
-cleanup. Physical files are streamed by Kestrel; virtual handlers return
-complete in-memory responses until the managed streaming API is introduced in
-M5.
+cleanup. Physical files are streamed by Kestrel. Virtual handlers may return
+fixed in-memory content or a request-scoped stream; streaming writes observe
+backpressure and are cancelled when the requester disconnects or the managed
+window closes.
 
 `ShowWebView` and `ShowWebViewAsync` use WebView2 on Windows, WKWebView on
 macOS, and WebKitGTK on Linux. Embedded windows support initial and live

@@ -1304,18 +1304,22 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private async Task ServeContentAsync(HttpContext context)
     {
+        using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            context.RequestAborted,
+            _shutdown.Token);
+        var cancellationToken = requestCancellation.Token;
         var path = GetDecodedPath(context.Request.Path);
         var handler = Volatile.Read(ref _fileHandler);
         if (handler is not null)
         {
-            var virtualContent = await handler(path, context.RequestAborted).ConfigureAwait(false);
+            var virtualContent = await handler(path, cancellationToken).ConfigureAwait(false);
             if (virtualContent is not null)
             {
-                await SendVirtualContentAsync(context, path, virtualContent).ConfigureAwait(false);
+                await SendVirtualContentAsync(context, path, virtualContent, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            var virtualIndex = await FindVirtualIndexAsync(handler, path, context.RequestAborted).ConfigureAwait(false);
+            var virtualIndex = await FindVirtualIndexAsync(handler, path, cancellationToken).ConfigureAwait(false);
             if (virtualIndex is not null)
             {
                 Redirect(context, virtualIndex);
@@ -1745,7 +1749,11 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         context.Response.Headers.Location = location;
     }
 
-    private static async Task SendVirtualContentAsync(HttpContext context, string path, WebUiContent content)
+    private static async Task SendVirtualContentAsync(
+        HttpContext context,
+        string path,
+        WebUiContent content,
+        CancellationToken cancellationToken)
     {
         context.Response.StatusCode = content.StatusCode;
         context.Response.ContentType = content.ContentType ?? GetContentType(path);
@@ -1756,10 +1764,10 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 context.Response.Headers[header.Key] = header.Value;
             }
         }
-        context.Response.ContentLength = content.Body.Length;
+        context.Response.ContentLength = content.ContentLength;
         if (!HttpMethods.IsHead(context.Request.Method))
         {
-            await context.Response.Body.WriteAsync(content.Body, context.RequestAborted).ConfigureAwait(false);
+            await content.WriteBodyAsync(context.Response.Body, cancellationToken).ConfigureAwait(false);
         }
     }
 
