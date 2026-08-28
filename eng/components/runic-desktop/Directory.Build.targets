@@ -1,4 +1,4 @@
 <Project>
-  <Import Project="$(MSBuildThisFileDirectory)src/CsWebUi.Managed/buildTransitive/CsWebUi.Managed.targets"
-          Condition="Exists('$(MSBuildThisFileDirectory)src/CsWebUi.Managed/buildTransitive/CsWebUi.Managed.targets')" />
+  <Import Project="$(MSBuildThisFileDirectory)src/Runic.Desktop/buildTransitive/Runic.Desktop.targets"
+          Condition="Exists('$(MSBuildThisFileDirectory)src/Runic.Desktop/buildTransitive/Runic.Desktop.targets')" />
 </Project>

@@ -18,25 +18,7 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs",
-        "webui": "webui"
-      }
-    },
-    "webui": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1786742607,
-        "narHash": "sha256-G5jKzdqEOISkNmmGmXdZue5yrMn3a8P3JOAudSRlu9Y=",
-        "owner": "webui-dev",
-        "repo": "webui",
-        "rev": "52f9e75b92faf9a23fd150b3c60051c4ec85fc69",
-        "type": "github"
-      },
-      "original": {
-        "owner": "webui-dev",
-        "repo": "webui",
-        "rev": "52f9e75b92faf9a23fd150b3c60051c4ec85fc69",
-        "type": "github"
+        "nixpkgs": "nixpkgs"
       }
     }
   },

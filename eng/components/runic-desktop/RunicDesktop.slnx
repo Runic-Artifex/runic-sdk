@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Runic.Desktop/Runic.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj" />
+    <Project Path="tests/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj" />
+  </Folder>
+</Solution>
