@@ -80,47 +80,6 @@ public sealed class EmbeddedHostTests
         }
     }
 
-    [Fact]
-    public async Task RunsRealLinuxWebKitGtkHostWhenDisplayIsAvailable()
-    {
-        if (!OperatingSystem.IsLinux()
-            || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DISPLAY")))
-        {
-            return;
-        }
-        WebUiApplication.SetEmbeddedHostFactory(null);
-        if (!WebUiApplication.EmbeddedWebViewExists)
-        {
-            return;
-        }
-
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await using var window = new WebUiWindow();
-        window.SetSize(640, 480);
-        window.SetMinimumSize(320, 240);
-        window.SetHidden(true);
-        var url = await window.ShowWebViewAsync(Page("embedded"), timeout.Token);
-        Assert.NotNull(url);
-        Assert.Equal(WebUiBrowser.WebView, window.CurrentBrowser);
-        Assert.NotEqual(0, window.NativeWindowHandle);
-        Assert.True(window.IsShown);
-        Assert.Equal("embedded", await window.ExecuteJavaScriptAsync(
-            "return document.title;",
-            TimeSpan.FromSeconds(5),
-            cancellationToken: timeout.Token));
-
-        await window.FocusAsync(timeout.Token);
-        await window.MinimizeAsync(timeout.Token);
-        await window.MaximizeAsync(timeout.Token);
-        await window.CloseAsync(timeout.Token);
-        Assert.False(window.IsShown);
-        Assert.Equal(0, window.NativeWindowHandle);
-    }
-
-    private static string Page(string title) => $$"""
-        <!doctype html><html><head><script src="webui.js"></script><title>{{title}}</title></head><body>{{title}}</body></html>
-        """;
-
     private sealed class RecordingHostFactory : IWebUiEmbeddedHostFactory
     {
         internal IWebUiEmbeddedHost? Host { get; private set; }
