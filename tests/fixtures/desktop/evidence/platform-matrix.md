@@ -15,9 +15,9 @@ The Linux gate runs the complete sequence:
    run the native executable; and
 5. launch the embedded WebView smoke as a separate process.
 
-Native Windows/macOS certification restores, builds, runs the complete managed
-suite, and launches the platform WebView smoke. It does not repeat the
-platform-neutral package/NativeAOT journey already proved by the Linux gate.
+Native Windows/macOS certification restores, builds, and launches the platform
+WebView smoke. It does not repeat the managed suite or the platform-neutral
+package/NativeAOT journey already proved by the Linux gate.
 
 | Profile | Runner | Browser/WebView process evidence | Exact package / NativeAOT |
 | --- | --- | --- | --- |
@@ -26,10 +26,10 @@ platform-neutral package/NativeAOT journey already proved by the Linux gate.
 | macOS Intel | `macos-15-intel`, system WKWebView | separate `dotnet run` process | not repeated |
 | macOS Arm64 | `macos-14`, system WKWebView | separate `dotnet run` process | not repeated |
 
-The workflow uploads TRX output under a RID-specific artifact even on failure.
-The smoke executable uses only the public M6 host/surface/window API and checks
-native handle creation, bridge JavaScript execution, focus, geometry,
-minimize/maximize, close, and a second surface/window lifetime.
+The Linux gate uploads its TRX output even on failure. The smoke executable uses
+only the public M6 host/surface/window API and checks native handle creation,
+bridge JavaScript execution, focus, geometry, minimize/maximize, close, and a
+second surface/window lifetime.
 
 ## Local W90 execution
 

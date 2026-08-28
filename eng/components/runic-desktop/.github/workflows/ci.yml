@@ -93,22 +93,8 @@ jobs:
       - name: Build
         run: dotnet build RunicDesktop.slnx --configuration Release --no-restore
 
-      - name: Test
-        run: >-
-          dotnet test RunicDesktop.slnx --configuration Release --no-build
-          --logger "trx;LogFileName=test-results.trx"
-          --results-directory artifacts/test-results/${{ matrix.rid }}
-
       - name: Embedded WebView smoke
         run: >-
           dotnet run
           --project tests/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj
           --configuration Release --no-build
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-results-${{ matrix.rid }}
-          path: artifacts/test-results/${{ matrix.rid }}
-          if-no-files-found: ignore
