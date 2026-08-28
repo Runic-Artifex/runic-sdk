@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runic-artifex.org/schemas/runic-desktop/conformance-scenario-1.schema.json",
+  "title": "Runic Desktop portable conformance scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "id", "contract", "area", "ids", "arrange", "steps", "expect"],
+  "properties": {
+    "format": { "const": "runic.desktop.conformance-scenario/1" },
+    "id": { "$ref": "#/$defs/dottedId" },
+    "contract": { "$ref": "#/$defs/contract" },
+    "area": {
+      "enum": ["lifecycle", "protocol", "serialization", "cancellation-streaming", "security", "errors"]
+    },
+    "requires": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/name" },
+      "uniqueItems": true
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialMilliseconds"],
+      "properties": {
+        "initialMilliseconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ids": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/name" }
+    },
+    "policy": { "type": "object" },
+    "limits": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "arrange": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "expect": { "$ref": "#/$defs/expectation" }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._/-]*$"
+    },
+    "dottedId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "const": "runic.desktop.presentation" },
+        "version": { "const": 1 }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "target"],
+      "properties": {
+        "op": { "$ref": "#/$defs/name" },
+        "target": { "$ref": "#/$defs/name" },
+        "arguments": { "type": "object" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "subject"],
+      "properties": {
+        "type": { "$ref": "#/$defs/name" },
+        "subject": { "$ref": "#/$defs/name" },
+        "data": { "type": "object" }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "state"],
+      "properties": {
+        "subject": { "$ref": "#/$defs/name" },
+        "state": { "$ref": "#/$defs/name" }
+      }
+    },
+    "errorCategory": {
+      "enum": [
+        "invalidArgument",
+        "invalidState",
+        "invalidFrame",
+        "limitExceeded",
+        "authenticationDenied",
+        "originDenied",
+        "capabilityDenied",
+        "notFound",
+        "conflict",
+        "cancelled",
+        "timedOut",
+        "transportClosed",
+        "hostStopping",
+        "unavailable",
+        "operationFailed"
+      ]
+    },
+    "outcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["subject", "terminal"],
+          "properties": {
+            "subject": { "$ref": "#/$defs/name" },
+            "terminal": { "const": "succeeded" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["subject", "terminal", "category", "code", "message", "retryable"],
+          "properties": {
+            "subject": { "$ref": "#/$defs/name" },
+            "terminal": { "enum": ["failed", "cancelled", "timedOut", "unavailable"] },
+            "category": { "$ref": "#/$defs/errorCategory" },
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 },
+            "reason": { "$ref": "#/$defs/name" },
+            "retryable": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "expectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "states", "outcomes"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/event" }
+        },
+        "states": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/state" }
+        },
+        "outcomes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/outcome" }
+        },
+        "absentEvents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/event" }
+        }
+      }
+    }
+  }
+}

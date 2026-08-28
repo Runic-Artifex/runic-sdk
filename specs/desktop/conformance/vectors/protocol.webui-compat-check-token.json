@@ -1,0 +1,24 @@
+{
+  "format": "runic.desktop.codec-vector/1",
+  "id": "protocol.webui-compat-check-token.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "protocol",
+  "profile": "webui-compat/52f9e75",
+  "operation": "decode",
+  "input": {
+    "encoding": "base64",
+    "value": "3QQDAgEHAPUA"
+  },
+  "expect": {
+    "value": {
+      "encoding": "json",
+      "value": {
+        "signature": 221,
+        "token": 16909060,
+        "correlationId": 7,
+        "command": "checkToken",
+        "payloadBase64": "AA=="
+      }
+    }
+  }
+}

@@ -11,6 +11,11 @@ observable window, bridge, binding, content, and lifecycle behavior before
 intentionally evolving toward APIs and implementation choices that fit managed
 applications better.
 
+M5 and later are governed by the language-neutral
+[Runic Desktop presentation contract](../../contract/README.md). WebUI parity
+remains compatibility evidence rather than the definition of new Runic-owned
+behavior.
+
 This is a semantic port, not a line-by-line translation of `webui.c`. The
 compatibility surface may retain WebUI-shaped behavior while the implementation
 uses managed ownership, asynchronous operations, cancellation, Kestrel, and
@@ -192,9 +197,41 @@ After useful parity is established, add improvements deliberately:
 - opt-in compatibility adapters for behavior that should not remain the
   managed default.
 
+M5 exits only when the .NET implementation satisfies the shared
+[M5 contract gate](../../contract/milestones.md#m5-managed-hosting-foundation)
+and its portable lifecycle, streaming/cancellation, security, error, and
+shared-listener scenarios.
+
+### M6: Runic Desktop .NET API
+
+Replace the transitional WebUI-shaped public identity with an idiomatic,
+async-first .NET API over the M5 ownership model. The public API must satisfy
+the [M6 contract gate](../../contract/milestones.md#m6-net-api-reset); it must
+not turn CLR types into cross-language contract authority.
+
+### M7: TypeScript+Effect frontend transport
+
+Provide the browser-side presentation transport through Effect services,
+scopes, interruption, streams, and typed errors. It supplies the existing
+Application Bridge `FrameChannel` and does not create another application
+controller or schema system. The selected wire profile and portable evidence
+must satisfy the
+[M7 contract gate](../../contract/milestones.md#m7-typescripteffect-frontend-transport).
+
+### M8: suite adoption and v1 certification
+
+Update affected Runic products and first-party applications through their
+owned integration seams, then bind exact C# and TypeScript+Effect packages to
+the v1 golden path. Completion follows the
+[M8 contract gate](../../contract/milestones.md#m8-suite-adoption-and-v1-certification).
+Rust and modern C++ remain post-v1 implementation programs.
+
 ## Validation strategy
 
 - Keep focused protocol and lifecycle tests in `Runic.Desktop.Tests`.
+- Run the portable scenarios and codec vectors under `contract/conformance`
+  against every implementation profile that claims the corresponding
+  capability.
 - Port reusable scenarios from `samples/UpstreamExamples` to an engine-neutral
   harness only after both engines can express them faithfully.
 - Compare event order, argument values, responses, navigation, reconnect, and

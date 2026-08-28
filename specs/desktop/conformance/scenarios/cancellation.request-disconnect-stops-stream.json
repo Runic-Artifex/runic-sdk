@@ -1,0 +1,43 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "cancellation.request-disconnect-stops-stream.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "cancellation-streaming",
+  "requires": ["streaming-response", "request-cancellation"],
+  "ids": {
+    "host": "host-1",
+    "surface": "surface-1",
+    "request": "request-1",
+    "stream": "stream-1"
+  },
+  "arrange": [
+    { "op": "host.createStarted", "target": "host-1" },
+    { "op": "surface.createStarted", "target": "surface-1", "arguments": { "host": "host-1" } },
+    { "op": "response.stream", "target": "stream-1", "arguments": { "chunks": ["first", "second"] } }
+  ],
+  "steps": [
+    { "op": "request.start", "target": "request-1", "arguments": { "surface": "surface-1", "stream": "stream-1" } },
+    { "op": "stream.acceptNext", "target": "stream-1" },
+    { "op": "request.disconnect", "target": "request-1" }
+  ],
+  "expect": {
+    "events": [
+      { "type": "request.started", "subject": "request-1" },
+      { "type": "response.committed", "subject": "request-1" },
+      { "type": "stream.chunkAccepted", "subject": "stream-1", "data": { "index": 0 } },
+      { "type": "request.cancelled", "subject": "request-1", "data": { "reason": "requesterDisconnected" } },
+      { "type": "stream.released", "subject": "stream-1" }
+    ],
+    "states": [
+      { "subject": "request-1", "state": "cancelled" },
+      { "subject": "stream-1", "state": "released" }
+    ],
+    "outcomes": [
+      { "subject": "request-1", "terminal": "cancelled", "category": "cancelled", "code": "requester-disconnected", "message": "The requester disconnected.", "reason": "requesterDisconnected", "retryable": false }
+    ],
+    "absentEvents": [
+      { "type": "stream.chunkAccepted", "subject": "stream-1", "data": { "index": 1 } },
+      { "type": "request.succeeded", "subject": "request-1" }
+    ]
+  }
+}

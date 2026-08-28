@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runic-artifex.org/schemas/runic-desktop/codec-vector-1.schema.json",
+  "title": "Runic Desktop portable codec vector",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "id", "contract", "area", "profile", "operation", "input", "expect"],
+  "properties": {
+    "format": { "const": "runic.desktop.codec-vector/1" },
+    "id": { "$ref": "#/$defs/dottedId" },
+    "contract": { "$ref": "#/$defs/contract" },
+    "area": { "enum": ["protocol", "serialization"] },
+    "profile": { "$ref": "#/$defs/profile" },
+    "operation": { "enum": ["encode", "decode", "roundTrip"] },
+    "limits": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "input": { "$ref": "#/$defs/value" },
+    "expect": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value"],
+          "properties": { "value": { "$ref": "#/$defs/value" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["error"],
+          "properties": { "error": { "$ref": "#/$defs/error" } }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "dottedId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "const": "runic.desktop.presentation" },
+        "version": { "const": 1 }
+      }
+    },
+    "profile": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]+/[A-Za-z0-9._-]+$"
+    },
+    "jsonValue": {
+      "anyOf": [
+        { "type": "object" },
+        { "type": "array" },
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+    "value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding", "value"],
+      "properties": {
+        "encoding": { "enum": ["json", "utf8", "base64"] },
+        "value": { "$ref": "#/$defs/jsonValue" },
+        "schemaId": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "encoding": { "enum": ["utf8", "base64"] } } },
+          "then": { "properties": { "value": { "type": "string" } } }
+        }
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "message", "retryable"],
+      "properties": {
+        "category": {
+          "enum": [
+            "invalidArgument",
+            "invalidState",
+            "invalidFrame",
+            "limitExceeded",
+            "authenticationDenied",
+            "originDenied",
+            "capabilityDenied",
+            "notFound",
+            "conflict",
+            "cancelled",
+            "timedOut",
+            "transportClosed",
+            "hostStopping",
+            "unavailable",
+            "operationFailed"
+          ]
+        },
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" }
+      }
+    }
+  }
+}

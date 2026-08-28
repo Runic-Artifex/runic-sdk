@@ -1,0 +1,40 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "lifecycle.shared-listener-surface-close.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "lifecycle",
+  "requires": ["shared-listener", "surface-isolation"],
+  "ids": {
+    "host": "host-1",
+    "listener": "listener-1",
+    "surfaceA": "surface-a",
+    "surfaceB": "surface-b"
+  },
+  "arrange": [
+    { "op": "host.create", "target": "host-1" },
+    { "op": "surface.create", "target": "surface-a", "arguments": { "host": "host-1" } },
+    { "op": "surface.create", "target": "surface-b", "arguments": { "host": "host-1" } }
+  ],
+  "steps": [
+    { "op": "host.start", "target": "host-1" },
+    { "op": "surface.close", "target": "surface-a" },
+    { "op": "request.probe", "target": "surface-b" }
+  ],
+  "expect": {
+    "events": [
+      { "type": "host.started", "subject": "host-1" },
+      { "type": "surface.started", "subject": "surface-a" },
+      { "type": "surface.started", "subject": "surface-b" },
+      { "type": "surface.closing", "subject": "surface-a" },
+      { "type": "surface.closed", "subject": "surface-a" },
+      { "type": "request.succeeded", "subject": "surface-b" }
+    ],
+    "states": [
+      { "subject": "host-1", "state": "running" },
+      { "subject": "surface-a", "state": "closed" },
+      { "subject": "surface-b", "state": "running" },
+      { "subject": "listener-1", "state": "listening" }
+    ],
+    "outcomes": []
+  }
+}

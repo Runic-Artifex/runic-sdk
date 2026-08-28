@@ -1,0 +1,36 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "errors.handler-failure-redaction.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "errors",
+  "requires": ["correlated-invocation", "structured-errors"],
+  "ids": {
+    "host": "host-1",
+    "surface": "surface-1",
+    "session": "session-1",
+    "invocation": "invocation-1"
+  },
+  "arrange": [
+    { "op": "session.createAuthenticated", "target": "session-1", "arguments": { "surface": "surface-1" } },
+    { "op": "capability.registerFailing", "target": "surface-1", "arguments": { "name": "sample.failure", "privateDetail": "secret-stack" } }
+  ],
+  "steps": [
+    { "op": "invocation.start", "target": "invocation-1", "arguments": { "session": "session-1", "capability": "sample.failure" } }
+  ],
+  "expect": {
+    "events": [
+      { "type": "invocation.accepted", "subject": "invocation-1" },
+      { "type": "invocation.failed", "subject": "invocation-1", "data": { "category": "operationFailed", "code": "capability-failed", "retryable": false, "redacted": true } }
+    ],
+    "states": [
+      { "subject": "session-1", "state": "authenticated" },
+      { "subject": "invocation-1", "state": "failed" }
+    ],
+    "outcomes": [
+      { "subject": "invocation-1", "terminal": "failed", "category": "operationFailed", "code": "capability-failed", "message": "The presentation capability failed.", "retryable": false }
+    ],
+    "absentEvents": [
+      { "type": "publicError.containsPrivateDetail", "subject": "invocation-1" }
+    ]
+  }
+}

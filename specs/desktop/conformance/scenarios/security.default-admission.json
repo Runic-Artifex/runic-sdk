@@ -1,0 +1,53 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "security.default-admission.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "security",
+  "requires": ["session-authentication", "origin-policy"],
+  "ids": {
+    "host": "host-1",
+    "surface": "surface-1",
+    "missingCredential": "session-missing",
+    "foreignOrigin": "session-foreign",
+    "accepted": "session-accepted",
+    "deniedInvocation": "invocation-denied"
+  },
+  "policy": {
+    "binding": "loopback",
+    "origins": ["same-origin"],
+    "credential": "required",
+    "clientAdmission": "single"
+  },
+  "arrange": [
+    { "op": "host.createStarted", "target": "host-1" },
+    { "op": "surface.createStarted", "target": "surface-1", "arguments": { "host": "host-1" } }
+  ],
+  "steps": [
+    { "op": "session.connect", "target": "session-missing", "arguments": { "credential": "missing", "origin": "same-origin" } },
+    { "op": "session.connect", "target": "session-foreign", "arguments": { "credential": "valid", "origin": "https://foreign.invalid" } },
+    { "op": "session.connect", "target": "session-accepted", "arguments": { "credential": "valid", "origin": "same-origin" } },
+    { "op": "invocation.start", "target": "invocation-denied", "arguments": { "session": "session-accepted", "capability": "undeclared.capability" } }
+  ],
+  "expect": {
+    "events": [
+      { "type": "session.rejected", "subject": "session-missing", "data": { "category": "authenticationDenied" } },
+      { "type": "session.rejected", "subject": "session-foreign", "data": { "category": "originDenied" } },
+      { "type": "session.authenticated", "subject": "session-accepted" },
+      { "type": "invocation.rejected", "subject": "invocation-denied", "data": { "category": "capabilityDenied", "code": "capability-not-admitted" } }
+    ],
+    "states": [
+      { "subject": "session-missing", "state": "closed" },
+      { "subject": "session-foreign", "state": "closed" },
+      { "subject": "session-accepted", "state": "authenticated" },
+      { "subject": "invocation-denied", "state": "failed" }
+    ],
+    "outcomes": [
+      { "subject": "session-missing", "terminal": "failed", "category": "authenticationDenied", "code": "credential-required", "message": "A valid session credential is required.", "retryable": false },
+      { "subject": "session-foreign", "terminal": "failed", "category": "originDenied", "code": "origin-not-allowed", "message": "The browser origin is not allowed.", "retryable": false },
+      { "subject": "invocation-denied", "terminal": "failed", "category": "capabilityDenied", "code": "capability-not-admitted", "message": "The presentation capability is not admitted for this session.", "retryable": false }
+    ],
+    "absentEvents": [
+      { "type": "capability.handlerEntered", "subject": "invocation-denied" }
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "protocol.reconnect-new-session.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "protocol",
+  "requires": ["correlated-invocation", "reconnect", "session-authentication"],
+  "ids": {
+    "surface": "surface-1",
+    "sessionOld": "session-old",
+    "sessionNew": "session-new",
+    "invocation": "invocation-1"
+  },
+  "arrange": [
+    { "op": "surface.createStarted", "target": "surface-1" },
+    { "op": "session.createAuthenticated", "target": "session-old", "arguments": { "surface": "surface-1", "client": "client-1" } },
+    { "op": "invocation.startPending", "target": "invocation-1", "arguments": { "session": "session-old" } }
+  ],
+  "steps": [
+    { "op": "session.disconnect", "target": "session-old" },
+    { "op": "session.connect", "target": "session-new", "arguments": { "surface": "surface-1", "client": "client-1", "credential": "valid", "origin": "same-origin" } },
+    { "op": "session.authenticate", "target": "session-new" },
+    { "op": "invocation.deliverLateSuccess", "target": "invocation-1", "arguments": { "session": "session-old" } }
+  ],
+  "expect": {
+    "events": [
+      { "type": "session.closed", "subject": "session-old", "data": { "reason": "transportClosed" } },
+      { "type": "invocation.failed", "subject": "invocation-1", "data": { "category": "transportClosed" } },
+      { "type": "session.connected", "subject": "session-new" },
+      { "type": "session.authenticated", "subject": "session-new" },
+      { "type": "invocation.lateTerminalIgnored", "subject": "invocation-1" }
+    ],
+    "states": [
+      { "subject": "session-old", "state": "closed" },
+      { "subject": "session-new", "state": "authenticated" },
+      { "subject": "invocation-1", "state": "failed" }
+    ],
+    "outcomes": [
+      { "subject": "invocation-1", "terminal": "failed", "category": "transportClosed", "code": "session-transport-closed", "message": "The presentation session transport closed.", "retryable": true }
+    ],
+    "absentEvents": [
+      { "type": "invocation.succeeded", "subject": "invocation-1" },
+      { "type": "session.resumed", "subject": "session-old" }
+    ]
+  }
+}

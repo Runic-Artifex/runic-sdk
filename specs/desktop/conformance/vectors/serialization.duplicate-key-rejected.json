@@ -1,0 +1,21 @@
+{
+  "format": "runic.desktop.codec-vector/1",
+  "id": "serialization.duplicate-key-rejected.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "serialization",
+  "profile": "structured-json/1",
+  "operation": "decode",
+  "input": {
+    "encoding": "utf8",
+    "schemaId": "example.message/1",
+    "value": "{\"name\":\"first\",\"name\":\"second\"}"
+  },
+  "expect": {
+    "error": {
+      "category": "invalidFrame",
+      "code": "duplicate-object-key",
+      "message": "The structured payload contains a duplicate object key.",
+      "retryable": false
+    }
+  }
+}

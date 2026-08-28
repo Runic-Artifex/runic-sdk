@@ -67,6 +67,16 @@ production dependency on CS-WebUI or the WebUI native library.
 The current compatibility work and intentional differences are recorded in the
 [roadmap](docs/design/runic-desktop-roadmap.md).
 
+## Product contract
+
+M5 and later implement the language-neutral
+[Runic Desktop presentation contract](contract/README.md). The contract defines
+host, surface, window, session, request, streaming, cancellation, security, and
+error semantics independently of .NET and TypeScript APIs. Its
+[ownership map](contract/ownership.md) keeps Application Bridge, Assets,
+Translations, Vite, and framework responsibilities with their existing Runic
+products.
+
 ## License and attribution
 
 Runic Desktop is MIT licensed. Its managed bridge implementation is informed by
