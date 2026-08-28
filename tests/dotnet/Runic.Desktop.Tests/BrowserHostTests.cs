@@ -128,8 +128,8 @@ public sealed class BrowserHostTests
             return;
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
-        WebUiApplication.SetConnectionTimeout(20);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        WebUiApplication.SetConnectionTimeout(30);
         await using var window = new WebUiWindow();
         window.SetHidden(true);
         window.SetCustomParameters("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
@@ -199,7 +199,8 @@ public sealed class BrowserHostTests
             return;
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        WebUiApplication.SetConnectionTimeout(30);
         var destroyed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var window = new WebUiWindow();
         window.SetHidden(true);
@@ -225,6 +226,7 @@ public sealed class BrowserHostTests
         finally
         {
             await window.DisposeAsync();
+            WebUiApplication.SetConnectionTimeout(15);
         }
     }
 

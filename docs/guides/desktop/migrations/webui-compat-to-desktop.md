@@ -41,7 +41,11 @@ await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
 {
     Browser = BrowserKind.Embedded,
 });
+window.WaitForClose();
 ```
+
+`WaitForClose` keeps the platform window loop responsive while synchronously
+holding the process open, including AppKit's main-thread loop on macOS.
 
 Security is intentionally stricter. The default bridge handshake requires the
 surface's 256-bit bootstrap credential and a canonical same origin. Public

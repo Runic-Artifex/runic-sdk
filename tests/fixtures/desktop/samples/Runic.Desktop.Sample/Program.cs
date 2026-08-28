@@ -59,5 +59,5 @@ await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
 });
 
 Console.WriteLine($"Runic Desktop surface available at {surface.Url}");
-Console.WriteLine("Press Enter to close.");
-Console.ReadLine();
+Console.WriteLine("Close the presentation window to exit.");
+window.WaitForClose();

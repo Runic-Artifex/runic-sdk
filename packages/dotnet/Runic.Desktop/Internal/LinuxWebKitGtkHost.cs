@@ -437,12 +437,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private sealed unsafe class GtkApi
     {
         private readonly nint _gtk;
+        private readonly nint _gObject;
         private readonly nint _webkit;
 
         internal GtkApi()
         {
             if (!OperatingSystem.IsLinux()
                 || !TryLoad(["libgtk-3.so.0"], out _gtk)
+                || !TryLoad(["libgobject-2.0.so.0"], out _gObject)
                 || !TryLoad(["libwebkit2gtk-4.1.so.0", "libwebkit2gtk-4.0.so.37"], out _webkit))
             {
                 return;
@@ -484,12 +486,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GdkSeatGetPointerPointer = Required(_gtk, "gdk_seat_get_pointer");
                 GdkDeviceGetPositionPointer = Required(_gtk, "gdk_device_get_position");
                 GSignalConnectDataPointer = Required(_gtk, "g_signal_connect_data");
+                GObjectUnrefPointer = Required(_gObject, "g_object_unref");
                 GtkWindowSetIconFromFilePointer = Optional(_gtk, "gtk_window_set_icon_from_file");
                 GtkWidgetSetVisualPointer = Optional(_gtk, "gtk_widget_set_visual");
                 GtkWidgetGetScreenPointer = Optional(_gtk, "gtk_widget_get_screen");
                 GdkScreenGetRgbaVisualPointer = Optional(_gtk, "gdk_screen_get_rgba_visual");
                 GtkWidgetSetAppPaintablePointer = Optional(_gtk, "gtk_widget_set_app_paintable");
-                WebKitWebViewNewPointer = Required(_webkit, "webkit_web_view_new");
+                WebKitWebContextNewPointer = Required(_webkit, "webkit_web_context_new");
+                WebKitWebViewNewWithContextPointer = Required(_webkit, "webkit_web_view_new_with_context");
                 WebKitWebViewLoadUriPointer = Required(_webkit, "webkit_web_view_load_uri");
                 WebKitWebViewGetTitlePointer = Required(_webkit, "webkit_web_view_get_title");
                 WebKitWebViewSetBackgroundColorPointer = Optional(_webkit, "webkit_web_view_set_background_color");
@@ -537,12 +541,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GdkSeatGetPointerPointer { get; }
         private nint GdkDeviceGetPositionPointer { get; }
         private nint GSignalConnectDataPointer { get; }
+        private nint GObjectUnrefPointer { get; }
         private nint GtkWindowSetIconFromFilePointer { get; }
         private nint GtkWidgetSetVisualPointer { get; }
         private nint GtkWidgetGetScreenPointer { get; }
         private nint GdkScreenGetRgbaVisualPointer { get; }
         private nint GtkWidgetSetAppPaintablePointer { get; }
-        private nint WebKitWebViewNewPointer { get; }
+        private nint WebKitWebContextNewPointer { get; }
+        private nint WebKitWebViewNewWithContextPointer { get; }
         private nint WebKitWebViewLoadUriPointer { get; }
         private nint WebKitWebViewGetTitlePointer { get; }
         private nint WebKitWebViewSetBackgroundColorPointer { get; }
@@ -605,7 +611,23 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             }
         }
 
-        internal nint WebKitWebViewNew() => ((delegate* unmanaged[Cdecl]<nint>)WebKitWebViewNewPointer)();
+        internal nint WebKitWebViewNew()
+        {
+            var context = ((delegate* unmanaged[Cdecl]<nint>)WebKitWebContextNewPointer)();
+            if (context == 0)
+            {
+                return 0;
+            }
+
+            try
+            {
+                return ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewNewWithContextPointer)(context);
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)GObjectUnrefPointer)(context);
+            }
+        }
 
         internal void LoadUri(nint webView, string uri)
         {

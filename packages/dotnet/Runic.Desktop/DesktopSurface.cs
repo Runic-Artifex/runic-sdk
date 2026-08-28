@@ -236,6 +236,7 @@ public sealed class DesktopWindow : IAsyncDisposable
 {
     private readonly DesktopSurface _surface;
     private readonly WebUiWindow _engine;
+    private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _disposed;
 
     internal DesktopWindow(DesktopSurface surface, WebUiWindow engine, BrowserKind browser)
@@ -282,11 +283,45 @@ public sealed class DesktopWindow : IAsyncDisposable
     public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) =>
         RequireAndMove(x, y, cancellationToken);
 
+    /// <summary>Blocks until this presentation closes while servicing platform window events.</summary>
+    public void WaitForClose(CancellationToken cancellationToken = default)
+    {
+        while ((Volatile.Read(ref _disposed) != 0 && !_closed.Task.IsCompleted)
+            || (Volatile.Read(ref _disposed) == 0 && _engine.IsShown))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (OperatingSystem.IsMacOS())
+            {
+                Internal.MacOsWkWebViewHost.ProcessPendingMainThreadWork();
+            }
+            _engine.ProcessEmbeddedHostEvents();
+            Thread.Sleep(10);
+        }
+
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            _closed.Task.GetAwaiter().GetResult();
+        }
+    }
+
     public async ValueTask CloseAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            await _surface.CloseWindowAsync(this).ConfigureAwait(false);
+            try
+            {
+                await _surface.CloseWindowAsync(this).ConfigureAwait(false);
+                _closed.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                _closed.TrySetException(exception);
+                throw;
+            }
+        }
+        else
+        {
+            await _closed.Task.ConfigureAwait(false);
         }
     }
 
