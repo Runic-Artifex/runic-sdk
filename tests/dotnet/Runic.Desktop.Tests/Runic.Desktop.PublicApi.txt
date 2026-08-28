@@ -4,6 +4,7 @@ Runic.Desktop.ContentRequest
 Runic.Desktop.ContentResponse
 Runic.Desktop.ContentStreamFactory
 Runic.Desktop.DesktopClientAdmission
+Runic.Desktop.DesktopDiagnostic
 Runic.Desktop.DesktopErrorCategory
 Runic.Desktop.DesktopException
 Runic.Desktop.DesktopHost

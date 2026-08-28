@@ -1,0 +1,37 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "requests.head-stream-metadata.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "requests",
+  "requires": ["streaming-response", "head-request"],
+  "ids": {
+    "host": "host-1",
+    "surface": "surface-1",
+    "request": "request-1",
+    "stream": "stream-1"
+  },
+  "arrange": [
+    { "op": "host.createStarted", "target": "host-1" },
+    { "op": "surface.createStarted", "target": "surface-1", "arguments": { "host": "host-1" } },
+    { "op": "response.stream", "target": "stream-1", "arguments": { "contentType": "application/octet-stream", "contentLength": 6 } }
+  ],
+  "steps": [
+    { "op": "request.head", "target": "request-1", "arguments": { "surface": "surface-1", "path": "/stream", "stream": "stream-1" } }
+  ],
+  "expect": {
+    "events": [
+      { "type": "request.started", "subject": "request-1" },
+      { "type": "response.committed", "subject": "request-1", "data": { "status": 200, "contentType": "application/octet-stream", "contentLength": 6 } },
+      { "type": "request.succeeded", "subject": "request-1" }
+    ],
+    "states": [
+      { "subject": "request-1", "state": "succeeded" },
+      { "subject": "stream-1", "state": "unopened" }
+    ],
+    "outcomes": [],
+    "absentEvents": [
+      { "type": "stream.opened", "subject": "stream-1" },
+      { "type": "stream.chunkAccepted", "subject": "stream-1" }
+    ]
+  }
+}

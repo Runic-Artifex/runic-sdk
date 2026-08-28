@@ -10,7 +10,7 @@
     "id": { "$ref": "#/$defs/dottedId" },
     "contract": { "$ref": "#/$defs/contract" },
     "area": {
-      "enum": ["lifecycle", "protocol", "serialization", "cancellation-streaming", "security", "errors"]
+      "enum": ["lifecycle", "requests", "protocol", "serialization", "cancellation-streaming", "security", "errors"]
     },
     "requires": {
       "type": "array",

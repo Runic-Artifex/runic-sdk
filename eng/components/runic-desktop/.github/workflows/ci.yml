@@ -59,6 +59,10 @@ jobs:
           --logger "trx;LogFileName=test-results.trx"
           --results-directory artifacts/test-results/${{ matrix.rid }}
 
+      - name: Exact package and NativeAOT consumer
+        shell: bash
+        run: ./eng/verify-local-package.sh ${{ matrix.rid }}
+
       - name: Embedded WebView smoke (Linux)
         if: matrix.rid == 'linux-x64'
         run: >-

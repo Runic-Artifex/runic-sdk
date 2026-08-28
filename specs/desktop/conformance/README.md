@@ -7,8 +7,8 @@ one pass, fail, unsupported, or excluded outcome.
 
 ## Behavioral scenarios
 
-Behavioral scenarios validate lifecycle, ordering, cancellation, streaming,
-security, and errors against
+Behavioral scenarios validate lifecycle, requests, ordering, cancellation,
+streaming, security, and errors against
 [`scenario.schema.json`](scenario.schema.json).
 
 - `arrange` creates deterministic resources without asserting behavior.
@@ -47,6 +47,13 @@ outside this directory as implementation evidence:
 - Windows, Linux, and macOS process smokes;
 - CS-WebUI differential classifications; and
 - performance and accessibility measurements.
+
+The .NET M6 receipt is retained at
+[`evidence/conformance/dotnet-m6.json`](../../evidence/conformance/dotnet-m6.json).
+CS-WebUI comparisons are classified in
+[`cs-webui-classification.md`](cs-webui-classification.md), and the native
+runner definition and current local evidence are recorded in
+[`evidence/platform-matrix.md`](../../evidence/platform-matrix.md).
 
 An unsupported scenario is acceptable only when its capability is explicitly
 optional or the implementation profile is excluded. A required v1 capability

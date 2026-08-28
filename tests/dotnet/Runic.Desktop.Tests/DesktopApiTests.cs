@@ -1,10 +1,17 @@
+using System.Buffers;
+using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
+using System.Net.WebSockets;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Runic.Desktop.Tests;
 
 public sealed class DesktopApiTests
 {
+    private const int PacketHeaderSize = 8;
+
     [Fact]
     public void StructuredPayloadRejectsDuplicateKeysWithStableRedactedError()
     {
@@ -37,6 +44,43 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task CapabilityFailuresProduceOnlyStableRedactedDiagnostics()
+    {
+        var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            DiagnosticSink = diagnostics.Enqueue,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        using var registration = surface.RegisterCapability(
+            "sample.failure",
+            static (_, _) => throw new InvalidOperationException("secret-stack"));
+        using var client = new HttpClient();
+        var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
+        var token = ExtractUnsigned(bridge, "const TOKEN = ");
+        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("Origin", $"{surface.Url.Scheme}://{surface.Url.Authority}");
+        socket.Options.AddSubProtocol($"runic-desktop.{credential}");
+        await socket.ConnectAsync(ToWebSocketUrl(surface.Url), timeout.Token);
+
+        await SendPacketAsync(socket, CreatePacket(token, 0, 0xF5, [0]), timeout.Token);
+        _ = await ReceivePacketAsync(socket, timeout.Token);
+        await SendPacketAsync(
+            socket,
+            CreatePacket(token, 1, 0xF9, [.. "sample.failure\0\0"u8]),
+            timeout.Token);
+        _ = await ReceivePacketAsync(socket, timeout.Token);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(DesktopErrorCategory.OperationFailed, diagnostic.Category);
+        Assert.Equal("capability-failed", diagnostic.Code);
+        Assert.Equal("The presentation capability failed.", diagnostic.Message);
+        Assert.DoesNotContain("secret-stack", diagnostic.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task HostSharesListenerAndCreatesARequestScopePerRequest()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -55,8 +99,14 @@ public sealed class DesktopApiTests
             ContentHandler = static (request, _) => ValueTask.FromResult<ContentResponse?>(
                 ContentResponse.Text($"second:{request.Services.GetRequiredService<RequestMarker>().Id}")),
         });
+        await using var isolated = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            UseIsolatedListener = true,
+            Content = "isolated",
+        });
 
         Assert.Equal(first.Url.Port, second.Url.Port);
+        Assert.NotEqual(first.Url.Port, isolated.Url.Port);
         using var client = new HttpClient();
         var firstRequest = await client.GetStringAsync(first.Url);
         var secondRequest = await client.GetStringAsync(first.Url);
@@ -135,6 +185,59 @@ public sealed class DesktopApiTests
     private sealed class RequestMarker
     {
         internal Guid Id { get; } = Guid.NewGuid();
+    }
+
+    private static uint ExtractUnsigned(string script, string prefix)
+    {
+        var start = script.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        var end = script.IndexOf(';', start);
+        return uint.Parse(script[start..end], System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string ExtractQuoted(string script, string prefix)
+    {
+        var start = script.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        var end = script.IndexOf('"', start);
+        return script[start..end];
+    }
+
+    private static Uri ToWebSocketUrl(Uri surfaceUrl) => new UriBuilder(surfaceUrl)
+    {
+        Scheme = "ws",
+        Path = $"{surfaceUrl.AbsolutePath}_webui_ws_connect",
+    }.Uri;
+
+    private static byte[] CreatePacket(uint token, ushort id, byte command, byte[] payload)
+    {
+        var packet = new byte[PacketHeaderSize + payload.Length];
+        packet[0] = 0xDD;
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(1, 4), token);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(5, 2), id);
+        packet[7] = command;
+        payload.CopyTo(packet, PacketHeaderSize);
+        return packet;
+    }
+
+    private static Task SendPacketAsync(
+        ClientWebSocket socket,
+        byte[] packet,
+        CancellationToken cancellationToken) =>
+        socket.SendAsync(packet, WebSocketMessageType.Binary, true, cancellationToken);
+
+    private static async Task<byte[]> ReceivePacketAsync(
+        ClientWebSocket socket,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[4096];
+        var packet = new ArrayBufferWriter<byte>();
+        WebSocketReceiveResult response;
+        do
+        {
+            response = await socket.ReceiveAsync(buffer, cancellationToken);
+            packet.Write(buffer.AsSpan(0, response.Count));
+        }
+        while (!response.EndOfMessage);
+        return packet.WrittenSpan.ToArray();
     }
 
     private sealed class CancellationProbeStream : Stream

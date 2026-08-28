@@ -1,0 +1,22 @@
+{
+  "format": "runic.desktop.codec-vector/1",
+  "id": "protocol.webui-compat-multi-header.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "protocol",
+  "profile": "webui-compat/52f9e75",
+  "operation": "decode",
+  "input": {
+    "encoding": "base64",
+    "value": "3QAAAAAAAPYxNTAwMDAA"
+  },
+  "expect": {
+    "value": {
+      "encoding": "json",
+      "value": {
+        "signature": 221,
+        "command": "multi",
+        "payloadLength": 150000
+      }
+    }
+  }
+}

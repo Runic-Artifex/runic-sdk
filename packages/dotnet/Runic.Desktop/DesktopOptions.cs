@@ -67,6 +67,9 @@ public sealed record DesktopHostOptions
 
     /// <summary>Gets the bridge authentication deadline.</summary>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
+    public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 }
 
 /// <summary>Configures one isolated presentation surface.</summary>

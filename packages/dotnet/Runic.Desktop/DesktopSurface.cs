@@ -47,6 +47,11 @@ public sealed class DesktopSurface : IAsyncDisposable
             }
             catch
             {
+                _host.Report(new DesktopDiagnostic(
+                    DesktopErrorCategory.OperationFailed,
+                    "capability-failed",
+                    "The presentation capability failed.",
+                    Retryable: false));
                 return WebUiResult.None;
             }
         });

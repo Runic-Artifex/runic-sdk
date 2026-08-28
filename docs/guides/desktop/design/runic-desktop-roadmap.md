@@ -184,7 +184,7 @@ shared across hosts.
 
 ### M5: managed-first evolution
 
-After useful parity is established, add improvements deliberately:
+Implemented as the managed hosting foundation:
 
 - first-class `Stream`, pipelines, and asynchronous response bodies;
 - `CancellationToken` propagation from browser disconnects;
@@ -204,10 +204,10 @@ shared-listener scenarios.
 
 ### M6: Runic Desktop .NET API
 
-Replace the transitional WebUI-shaped public identity with an idiomatic,
-async-first .NET API over the M5 ownership model. The public API must satisfy
-the [M6 contract gate](../../contract/milestones.md#m6-net-api-reset); it must
-not turn CLR types into cross-language contract authority.
+Implemented by replacing the transitional WebUI-shaped public identity with an
+idiomatic, async-first .NET API over the M5 ownership model. The public API
+satisfies the [M6 contract gate](../../contract/milestones.md#m6-net-api-reset)
+without turning CLR types into cross-language contract authority.
 
 ### M7: TypeScript+Effect frontend transport
 

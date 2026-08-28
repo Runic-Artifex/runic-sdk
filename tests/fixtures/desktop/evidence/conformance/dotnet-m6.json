@@ -1,0 +1,75 @@
+{
+  "format": "runic.desktop.conformance-receipt/1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "implementation": {
+    "id": "runic.desktop.dotnet",
+    "version": "0.1.0-w90",
+    "framework": "net10.0",
+    "wireProfile": "webui-compat/52f9e75"
+  },
+  "results": [
+    {
+      "id": "cancellation.request-disconnect-stops-stream.v1",
+      "kind": "scenario",
+      "outcome": "pass",
+      "evidence": "ContentAndLifecycleTests.StreamingVirtualContentHonorsHeadCancellationAndDisposal"
+    },
+    {
+      "id": "errors.handler-failure-redaction.v1",
+      "kind": "scenario",
+      "outcome": "pass",
+      "evidence": "DesktopApiTests.CapabilityFailuresProduceOnlyStableRedactedDiagnostics",
+      "profileLimitation": "webui-compat cannot carry structured invocation errors; it collapses the wire result after emitting the stable redacted host diagnostic"
+    },
+    {
+      "id": "lifecycle.shared-listener-surface-close.v1",
+      "kind": "scenario",
+      "outcome": "pass",
+      "evidence": "DesktopApiTests.HostSharesListenerAndCreatesARequestScopePerRequest"
+    },
+    {
+      "id": "protocol.reconnect-new-session.v1",
+      "kind": "scenario",
+      "outcome": "pass",
+      "evidence": "ManagedWindowTests.AcceptsAReconnectedBridgeAndRaisesNewConnectionEvents",
+      "profileLimitation": "webui-compat has no remote cancellation or late-terminal error frame; pending local operations still terminate with their transport"
+    },
+    {
+      "id": "requests.head-stream-metadata.v1",
+      "kind": "scenario",
+      "outcome": "pass",
+      "evidence": "DesktopApiTests.PublicStreamingResponseDoesNotOpenForHead"
+    },
+    {
+      "id": "security.default-admission.v1",
+      "kind": "scenario",
+      "outcome": "pass",
+      "evidence": "ContentAndLifecycleTests.SafePolicyRequiresSameOriginSurfaceScopedCredential",
+      "profileLimitation": "webui-compat collapses undeclared capability denial to an empty result before any handler is entered"
+    },
+    {
+      "id": "security.surface-credential-isolation.v1",
+      "kind": "scenario",
+      "outcome": "pass",
+      "evidence": "ContentAndLifecycleTests.SafePolicyRequiresSameOriginSurfaceScopedCredential"
+    },
+    {
+      "id": "protocol.webui-compat-check-token.v1",
+      "kind": "vector",
+      "outcome": "pass",
+      "evidence": "ManagedWindowTests.UsesWebUiHandshakeAndCallFraming"
+    },
+    {
+      "id": "protocol.webui-compat-multi-header.v1",
+      "kind": "vector",
+      "outcome": "pass",
+      "evidence": "ManagedWindowTests.ReassemblesWebUiMultiPackets"
+    },
+    {
+      "id": "serialization.duplicate-key-rejected.v1",
+      "kind": "vector",
+      "outcome": "pass",
+      "evidence": "DesktopApiTests.StructuredPayloadRejectsDuplicateKeysWithStableRedactedError"
+    }
+  ]
+}

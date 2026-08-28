@@ -122,6 +122,8 @@ public sealed class DesktopHost : IAsyncDisposable
 
     internal void Detach(Guid id) => _surfaces.TryRemove(id, out _);
 
+    internal void Report(DesktopDiagnostic diagnostic) => _options.DiagnosticSink?.Invoke(diagnostic);
+
     private static PresentationHostCore CreateCore(DesktopHostOptions options, int port) => new(
         new PresentationHostCoreOptions(
             port,

@@ -41,3 +41,10 @@ public class DesktopException : Exception
     public string Code { get; }
     public bool Retryable { get; }
 }
+
+/// <summary>Describes one redacted presentation diagnostic.</summary>
+public sealed record DesktopDiagnostic(
+    DesktopErrorCategory Category,
+    string Code,
+    string Message,
+    bool Retryable);
