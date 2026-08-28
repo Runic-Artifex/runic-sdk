@@ -1,6 +1,6 @@
 # Runic Desktop roadmap
 
-Status: M4 embedded WebView hosts complete
+Status: M6 managed host and .NET API complete; W90 conformance certification active
 
 Compatibility oracle: `webui-dev/webui@52f9e75`
 
@@ -33,8 +33,8 @@ product:
 - `CsWebUi` is the safe high-level wrapper over native WebUI.
 - `Runic.Desktop` is developed and released from this repository.
 
-No public backend abstraction is introduced until both implementations have
-enough behavioral coverage to reveal which concepts are genuinely shared.
+The M6 public API is a Runic-owned host/surface/window model. WebUI-shaped types
+remain internal compatibility evidence and are not an alternate public backend.
 
 ## Porting principles
 

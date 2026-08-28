@@ -11,9 +11,11 @@ WebView. It does not load the native WebUI library.
 ## Capabilities
 
 - Embedded HTML, files, folders, external URLs, and fixed or streaming virtual content
-- Synchronous and asynchronous JavaScript-to-.NET bindings
+- Async JavaScript-to-.NET presentation capabilities
 - Managed-to-JavaScript execution, navigation, and raw byte transport
-- Kestrel HTTP and WebSocket hosting with loopback or public binding
+- Shared or isolated Kestrel listeners with explicit host and surface ownership
+- Request-scoped dependency injection, streaming backpressure, and cancellation causes
+- Same-origin admission and 256-bit surface-scoped session credentials by default
 - Installed-browser discovery, isolated profiles, kiosk mode, and process ownership
 - Embedded WebView2, WKWebView, and WebKitGTK windows
 - Window geometry, framing, transparency, visibility, focus, and native handles
@@ -24,17 +26,22 @@ WebView. It does not load the native WebUI library.
 ```csharp
 using Runic.Desktop;
 
-using var window = new WebUiWindow();
-window.Bind("greet", name => $"Hello, {name.GetString()}!");
-window.Show("""
+await using var host = await DesktopHost.StartAsync();
+await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+{
+    Content = """
     <!doctype html>
     <html>
     <head><script src="webui.js"></script></head>
     <body><button onclick="greet('Runic').then(alert)">Greet</button></body>
     </html>
-    """);
-
-WebUiApplication.Wait();
+    """,
+});
+using var greeting = surface.RegisterCapability(
+    "greet",
+    static (invocation, _) =>
+        ValueTask.FromResult<PresentationResult>($"Hello, {invocation.GetString()}!"));
+await using var window = await surface.OpenWindowAsync();
 ```
 
 Run the included sample from source:
@@ -50,9 +57,9 @@ dotnet run --project samples/Runic.Desktop.Sample -- --webview
 - macOS uses the system WebKit framework.
 - Linux requires GTK 3, WebKitGTK 4.1 or 4.0, and a graphical display.
 
-Applications can replace the embedded platform adapter through
-`WebUiApplication.SetEmbeddedHostFactory` without replacing the managed server,
-bridge, bindings, or lifecycle.
+Applications can provide an `IDesktopWindowHostFactory` in immutable host
+options without replacing the managed server, transport, capabilities, or
+lifecycle.
 
 ## Relationship to WebUI and CS-WebUI
 
@@ -64,7 +71,10 @@ behavior, while Runic Desktop owns its implementation and future API direction.
 maintained .NET binding for unmodified upstream WebUI. Runic Desktop has no
 production dependency on CS-WebUI or the WebUI native library.
 
-The current compatibility work and intentional differences are recorded in the
+The internal WebUI-profile engine remains differential evidence; it is not part
+of the public API. Existing source-preview consumers can use the
+[M6 migration guide](docs/migrations/webui-compat-to-desktop.md). Compatibility
+work and intentional differences are recorded in the
 [roadmap](docs/design/runic-desktop-roadmap.md).
 
 ## Product contract

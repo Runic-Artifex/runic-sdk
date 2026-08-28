@@ -1,7 +1,7 @@
 namespace Runic.Desktop;
 
 /// <summary>Identifies the browser host used to display a Runic Desktop window.</summary>
-public enum WebUiBrowser : uint
+internal enum WebUiBrowser : uint
 {
     /// <summary>Do not launch a browser.</summary>
     NoBrowser = 0,
@@ -32,7 +32,7 @@ public enum WebUiBrowser : uint
 }
 
 /// <summary>Identifies an event reported by a Runic Desktop bridge.</summary>
-public enum WebUiEventType : uint
+internal enum WebUiEventType : uint
 {
     /// <summary>A client disconnected from a window.</summary>
     Disconnected = 0,
@@ -51,7 +51,7 @@ public enum WebUiEventType : uint
 }
 
 /// <summary>Controls process-wide Runic Desktop behavior.</summary>
-public enum WebUiConfiguration : uint
+internal enum WebUiConfiguration : uint
 {
     /// <summary>Whether show calls wait for bridge authentication.</summary>
     ShowWaitConnection = 0,

@@ -25,6 +25,8 @@ internal static class WebUiBridge
           const MULTI_CHUNK_SIZE = 65500;
           const TOKEN = __TOKEN__;
           const PORT = __PORT__;
+          const BASE_PATH = "__BASE_PATH__";
+          const SESSION_CREDENTIAL = "__SESSION_CREDENTIAL__";
           const CUSTOM_WINDOW_DRAG = __CUSTOM_WINDOW_DRAG__;
           const encoder = new TextEncoder();
           const decoder = new TextDecoder();
@@ -282,10 +284,12 @@ internal static class WebUiBridge
           function connect() {
             clearTimeout(reconnectTimer);
             tokenAccepted = false;
-            const endpoint = new URL("/_webui_ws_connect", window.location.href);
+            const endpoint = new URL(`${BASE_PATH}/_webui_ws_connect`, window.location.href);
             endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
             endpoint.port = String(PORT);
-            socket = new WebSocket(endpoint);
+            socket = SESSION_CREDENTIAL.length === 0
+              ? new WebSocket(endpoint)
+              : new WebSocket(endpoint, `runic-desktop.${SESSION_CREDENTIAL}`);
             socket.binaryType = "arraybuffer";
             socket.addEventListener("open", () => checkToken().catch(() => {}));
             socket.addEventListener("message", event => receivePacket(event).catch(error => {

@@ -1,7 +1,7 @@
 namespace Runic.Desktop;
 
 /// <summary>Represents one JavaScript binding registered with a managed window.</summary>
-public sealed class WebUiBinding : IDisposable
+internal sealed class WebUiBinding : IDisposable
 {
     private WebUiWindow? _window;
     private readonly long _registrationId;

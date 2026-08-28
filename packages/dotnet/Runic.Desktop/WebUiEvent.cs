@@ -4,7 +4,7 @@ using System.Text;
 namespace Runic.Desktop;
 
 /// <summary>Represents one browser event while its managed binding is executing.</summary>
-public sealed class WebUiEvent
+internal sealed class WebUiEvent
 {
     private readonly byte[][] _arguments;
     private readonly Guid _sessionId;
@@ -147,6 +147,34 @@ public sealed class WebUiEvent
     }
 
     internal void Invalidate() => Volatile.Write(ref _active, 0);
+
+    internal ReadOnlyMemory<byte> GetMemory(nuint index) => GetArgument(index);
+
+    internal Guid SessionIdentifier => _sessionId;
+
+    internal Task RunJavaScriptAsync(string script, CancellationToken cancellationToken)
+    {
+        ThrowIfInactive();
+        return Window.RunJavaScriptForSessionAsync(_sessionId, script, cancellationToken);
+    }
+
+    internal Task NavigateAsync(string url, CancellationToken cancellationToken)
+    {
+        ThrowIfInactive();
+        return Window.NavigateSessionAsync(_sessionId, url, cancellationToken);
+    }
+
+    internal Task SendAsync(string function, ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
+    {
+        ThrowIfInactive();
+        return Window.SendRawToSessionAsync(_sessionId, function, data, cancellationToken);
+    }
+
+    internal Task CloseSessionAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfInactive();
+        return Window.CloseSessionAsync(_sessionId, cancellationToken);
+    }
 
     private byte[] GetArgument(nuint index)
     {

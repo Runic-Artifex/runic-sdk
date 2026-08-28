@@ -1,56 +1,67 @@
 using Runic.Desktop;
 
-if (!WebUiApplication.EmbeddedWebViewExists)
+if (!DesktopPlatform.IsEmbeddedWindowAvailable)
 {
     throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
 }
 
-using var window = new WebUiWindow();
-window.SetSize(640, 480);
-window.SetMinimumSize(320, 240);
-window.SetHidden(true);
-window.ShowWebView("""
-    <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <script src="webui.js"></script>
-      <title>Runic Desktop M4 smoke</title>
-    </head>
-    <body>embedded</body>
-    </html>
-    """);
-
-if (window.NativeWindowHandle == 0 || window.CurrentBrowser != WebUiBrowser.WebView)
+await using var host = await DesktopHost.StartAsync();
+await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
-    throw new InvalidOperationException("The embedded platform window did not open.");
-}
-if (window.ExecuteJavaScript("return document.title;", TimeSpan.FromSeconds(10)) != "Runic Desktop M4 smoke")
+    Content = """
+        <!doctype html><html><head><meta charset="utf-8"><script src="webui.js"></script>
+        <title>Runic Desktop M6 smoke</title></head><body>embedded</body></html>
+        """,
+}))
+await using (var window = await surface.OpenWindowAsync(new DesktopWindowOptions
 {
-    throw new InvalidOperationException("The embedded WebView bridge did not execute JavaScript.");
+    Browser = BrowserKind.Embedded,
+    Width = 640,
+    Height = 480,
+    MinimumWidth = 320,
+    MinimumHeight = 240,
+    Hidden = true,
+}))
+{
+    if (window.NativeHandle == 0)
+    {
+        throw new InvalidOperationException("The embedded platform window did not open.");
+    }
+    if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) !=
+        "Runic Desktop M6 smoke")
+    {
+        throw new InvalidOperationException("The embedded WebView bridge did not execute JavaScript.");
+    }
+
+    await window.ResizeAsync(700, 500);
+    await window.MoveAsync(20, 30);
+    await window.FocusAsync();
+    await window.MinimizeAsync();
+    await window.ToggleMaximizedAsync();
+    await window.CloseAsync();
+    if (window.IsOpen || window.NativeHandle != 0)
+    {
+        throw new InvalidOperationException("The embedded platform window did not close.");
+    }
 }
 
-window.SetSize(700, 500);
-window.SetPosition(20, 30);
-window.SetHidden(false);
-window.Focus();
-window.Minimize();
-window.Maximize();
-window.Close();
-
-if (window.IsShown || window.NativeWindowHandle != 0)
+await using (var restarted = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
-    throw new InvalidOperationException("The embedded platform window did not close.");
-}
-
-window.SetHidden(true);
-window.ShowWebView("""
-    <!doctype html><html><head><script src="webui.js"></script><title>restarted</title></head><body></body></html>
-    """);
-if (window.ExecuteJavaScript("return document.title;", TimeSpan.FromSeconds(10)) != "restarted")
+    Content = """
+        <!doctype html><html><head><script src="webui.js"></script>
+        <title>restarted</title></head><body></body></html>
+        """,
+}))
+await using (var restartedWindow = await restarted.OpenWindowAsync(new DesktopWindowOptions
 {
-    throw new InvalidOperationException("The embedded WebView did not restart.");
+    Browser = BrowserKind.Embedded,
+    Hidden = true,
+}))
+{
+    if (await restarted.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "restarted")
+    {
+        throw new InvalidOperationException("The embedded WebView did not restart.");
+    }
 }
-window.Close();
 
 Console.WriteLine("Runic Desktop embedded WebView smoke passed.");

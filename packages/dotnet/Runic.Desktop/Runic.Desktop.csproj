@@ -5,7 +5,7 @@
     <PackageId>Runic.Desktop</PackageId>
     <Title>Runic Desktop</Title>
     <Description>A managed .NET runtime for web-powered desktop applications.</Description>
-    <PackageTags>runic-artifex;webui;dotnet;managed;kestrel;desktop</PackageTags>
+    <PackageTags>runic-artifex;dotnet;managed;kestrel;desktop;webview</PackageTags>
     <NoWarn>$(NoWarn);CA1720</NoWarn>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>

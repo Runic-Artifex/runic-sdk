@@ -20,4 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Runic.Desktop/Runic.Desktop.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../eng/Runic.Desktop.PublicApi.txt" Link="Runic.Desktop.PublicApi.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

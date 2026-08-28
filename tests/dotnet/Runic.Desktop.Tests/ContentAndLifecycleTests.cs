@@ -8,6 +8,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Channels;
 using Runic.Desktop;
+using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
 
@@ -16,6 +17,75 @@ public sealed class ContentAndLifecycleTests
     private const byte Signature = 0xDD;
     private const byte CheckToken = 0xF5;
     private const int HeaderSize = 8;
+
+    [Fact]
+    public async Task SharedHostIsolatesSurfacesAndClosingOnePreservesTheOther()
+    {
+        await using var host = new PresentationHostCore(new PresentationHostCoreOptions(
+            Port: 0,
+            NetworkExposure: PresentationNetworkExposure.Loopback));
+        await using var first = new WebUiWindow(host, "first");
+        await using var second = new WebUiWindow(host, "second");
+
+        var firstUrl = await first.StartServerAsync("<h1>first</h1>");
+        var secondUrl = await second.StartServerAsync("<h1>second</h1>");
+
+        Assert.Equal(firstUrl.Port, secondUrl.Port);
+        Assert.Equal("/first/", firstUrl.AbsolutePath);
+        Assert.Equal("/second/", secondUrl.AbsolutePath);
+
+        using var client = new HttpClient();
+        Assert.Equal("<h1>first</h1>", await client.GetStringAsync(firstUrl));
+        Assert.Equal("<h1>second</h1>", await client.GetStringAsync(secondUrl));
+        Assert.Contains(
+            "const BASE_PATH = \"/first\";",
+            await client.GetStringAsync(new Uri(firstUrl, "webui.js")),
+            StringComparison.Ordinal);
+
+        await first.CloseAsync();
+
+        using var firstAfterClose = await client.GetAsync(firstUrl);
+        Assert.Equal(HttpStatusCode.NotFound, firstAfterClose.StatusCode);
+        Assert.Equal("<h1>second</h1>", await client.GetStringAsync(secondUrl));
+    }
+
+    [Fact]
+    public async Task SafePolicyRequiresSameOriginSurfaceScopedCredential()
+    {
+        await using var host = new PresentationHostCore(new PresentationHostCoreOptions(
+            Port: 0,
+            NetworkExposure: PresentationNetworkExposure.Loopback));
+        await using var first = new WebUiWindow(host, "first", PresentationSecurityPolicy.SafeDefault);
+        await using var second = new WebUiWindow(host, "second", PresentationSecurityPolicy.SafeDefault);
+        var firstUrl = await first.StartServerAsync("first");
+        var secondUrl = await second.StartServerAsync("second");
+        using var client = new HttpClient();
+        var firstCredential = ExtractSessionCredential(await client.GetStringAsync(new Uri(firstUrl, "webui.js")));
+        var secondCredential = ExtractSessionCredential(await client.GetStringAsync(new Uri(secondUrl, "webui.js")));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        using (var missingCredential = CreateAdmittedSocket(firstUrl, credential: null))
+        {
+            await Assert.ThrowsAsync<WebSocketException>(
+                () => missingCredential.ConnectAsync(GetSurfaceWebSocketUrl(firstUrl), timeout.Token));
+        }
+
+        using (var wrongSurface = CreateAdmittedSocket(secondUrl, firstCredential))
+        {
+            await Assert.ThrowsAsync<WebSocketException>(
+                () => wrongSurface.ConnectAsync(GetSurfaceWebSocketUrl(secondUrl), timeout.Token));
+        }
+
+        using (var foreignOrigin = CreateAdmittedSocket(secondUrl, secondCredential, "https://foreign.invalid"))
+        {
+            await Assert.ThrowsAsync<WebSocketException>(
+                () => foreignOrigin.ConnectAsync(GetSurfaceWebSocketUrl(secondUrl), timeout.Token));
+        }
+
+        using var accepted = CreateAdmittedSocket(secondUrl, secondCredential);
+        await accepted.ConnectAsync(GetSurfaceWebSocketUrl(secondUrl), timeout.Token);
+        Assert.Equal(WebSocketState.Open, accepted.State);
+    }
 
     [Fact]
     public async Task ServesFoldersIndexesFilesMimeHeadAndNoCache()
@@ -547,6 +617,37 @@ public sealed class ContentAndLifecycleTests
             return base.DisposeAsync();
         }
     }
+
+    private static string ExtractSessionCredential(string bridge)
+    {
+        const string prefix = "const SESSION_CREDENTIAL = \"";
+        var start = bridge.IndexOf(prefix, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        start += prefix.Length;
+        var end = bridge.IndexOf('"', start);
+        Assert.True(end > start);
+        return bridge[start..end];
+    }
+
+    private static ClientWebSocket CreateAdmittedSocket(
+        Uri surfaceUrl,
+        string? credential,
+        string? origin = null)
+    {
+        var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("Origin", origin ?? $"{surfaceUrl.Scheme}://{surfaceUrl.Authority}");
+        if (credential is not null)
+        {
+            socket.Options.AddSubProtocol($"runic-desktop.{credential}");
+        }
+        return socket;
+    }
+
+    private static Uri GetSurfaceWebSocketUrl(Uri surfaceUrl) => new UriBuilder(surfaceUrl)
+    {
+        Scheme = "ws",
+        Path = $"{surfaceUrl.AbsolutePath}_webui_ws_connect",
+    }.Uri;
 
     private static async Task<uint> GetTokenAsync(Uri url, CookieContainer cookies, CancellationToken cancellationToken)
     {

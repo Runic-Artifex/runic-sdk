@@ -1,7 +1,7 @@
 namespace Runic.Desktop;
 
 /// <summary>Creates an embedded platform WebView host for a Runic Desktop window.</summary>
-public interface IWebUiEmbeddedHostFactory
+internal interface IWebUiEmbeddedHostFactory
 {
     /// <summary>Gets whether the required platform WebView runtime is available.</summary>
     bool IsSupported { get; }
@@ -11,7 +11,7 @@ public interface IWebUiEmbeddedHostFactory
 }
 
 /// <summary>Hosts one Runic Desktop page in a platform-native embedded WebView window.</summary>
-public interface IWebUiEmbeddedHost : IAsyncDisposable
+internal interface IWebUiEmbeddedHost : IAsyncDisposable
 {
     /// <summary>Occurs after the platform window has closed.</summary>
     event EventHandler? Closed;
@@ -54,7 +54,7 @@ public interface IWebUiEmbeddedHost : IAsyncDisposable
 }
 
 /// <summary>Describes the initial state of an embedded platform WebView window.</summary>
-public sealed record WebUiEmbeddedHostOptions
+internal sealed record WebUiEmbeddedHostOptions
 {
     public uint Width { get; init; } = 800;
 

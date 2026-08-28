@@ -1,21 +1,5 @@
+using System.Globalization;
 using Runic.Desktop;
-
-await using var window = new WebUiWindow();
-window.SetSize(900, 650);
-
-window.Bind("multiply", static e => e.GetInt64() * e.GetInt64(1));
-window.BindAsync("greet", static (e, cancellationToken) =>
-{
-    cancellationToken.ThrowIfCancellationRequested();
-    return ValueTask.FromResult<WebUiResult>($"Hello, {e.GetString()}!");
-});
-window.Bind("increment", e =>
-{
-    var count = int.Parse(
-        e.Window.ExecuteJavaScript("return getCount();", TimeSpan.FromSeconds(5)),
-        System.Globalization.CultureInfo.InvariantCulture);
-    e.RunJavaScript($"setCount({count + 1});");
-});
 
 var content = """
     <!doctype html>
@@ -26,7 +10,7 @@ var content = """
       <title>Runic Desktop</title>
     </head>
     <body>
-      <h1>Runic Desktop is running without the native WebUI library</h1>
+      <h1>Runic Desktop managed presentation host</h1>
       <button onclick="multiply(6, 7).then(value => alert(`6 × 7 = ${value}`))">Multiply</button>
       <button onclick="greet('Runic Desktop').then(alert)">Greet</button>
       <button id="increment">Increment from managed C#</button>
@@ -40,17 +24,40 @@ var content = """
     </html>
     """;
 
-if (args.Contains("--webview", StringComparer.Ordinal))
-{
-    Console.WriteLine("Selected host: platform embedded WebView");
-    await window.ShowWebViewAsync(content);
-}
-else
-{
-    Console.WriteLine($"Selected browser: {window.BestBrowser}");
-    await window.ShowInBrowserAsync(content, WebUiBrowser.AnyBrowser);
-}
+await using var host = await DesktopHost.StartAsync();
+await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = content });
+using var multiply = surface.RegisterCapability(
+    "multiply",
+    static (invocation, _) => ValueTask.FromResult<PresentationResult>(
+        invocation.GetInt64() * invocation.GetInt64(1)));
+using var greet = surface.RegisterCapability(
+    "greet",
+    static (invocation, cancellationToken) =>
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PresentationResult>($"Hello, {invocation.GetString()}!");
+    });
+using var increment = surface.RegisterCapability(
+    "increment",
+    async (invocation, cancellationToken) =>
+    {
+        var count = int.Parse(
+            await surface.ExecuteJavaScriptAsync("return getCount();", cancellationToken: cancellationToken),
+            CultureInfo.InvariantCulture);
+        await invocation.RunJavaScriptAsync($"setCount({count + 1});", cancellationToken);
+        return PresentationResult.None;
+    });
 
-Console.WriteLine($"Runic Desktop window available at {window.Url}");
+var browser = args.Contains("--webview", StringComparer.Ordinal)
+    ? BrowserKind.Embedded
+    : BrowserKind.Any;
+await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Browser = browser,
+    Width = 900,
+    Height = 650,
+});
+
+Console.WriteLine($"Runic Desktop surface available at {surface.Url}");
 Console.WriteLine("Press Enter to close.");
 Console.ReadLine();

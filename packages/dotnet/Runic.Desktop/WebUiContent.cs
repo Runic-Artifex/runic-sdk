@@ -6,17 +6,17 @@ namespace Runic.Desktop;
 /// <param name="path">The requested absolute path, beginning with <c>/</c>.</param>
 /// <param name="cancellationToken">Cancelled when the HTTP request is aborted or the managed window closes.</param>
 /// <returns>Virtual content, or <see langword="null"/> to use the configured local content.</returns>
-public delegate ValueTask<WebUiContent?> WebUiFileHandler(
+internal delegate ValueTask<WebUiContent?> WebUiFileHandler(
     string path,
     CancellationToken cancellationToken);
 
 /// <summary>Opens one streaming response body for the current request.</summary>
 /// <param name="cancellationToken">Cancelled when the request or managed window closes.</param>
 /// <returns>A readable stream that Runic Desktop owns and disposes after the response ends.</returns>
-public delegate ValueTask<Stream> WebUiStreamFactory(CancellationToken cancellationToken);
+internal delegate ValueTask<Stream> WebUiStreamFactory(CancellationToken cancellationToken);
 
 /// <summary>Represents a fixed or streaming virtual response returned by a Runic Desktop file handler.</summary>
-public sealed class WebUiContent
+internal sealed class WebUiContent
 {
     private readonly WebUiStreamFactory? _streamFactory;
 

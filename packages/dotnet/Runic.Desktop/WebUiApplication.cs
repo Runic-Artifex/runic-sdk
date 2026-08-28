@@ -6,7 +6,7 @@ using Runic.Desktop.Internal;
 namespace Runic.Desktop;
 
 /// <summary>Provides process-wide configuration and lifetime operations for Runic Desktop windows.</summary>
-public static class WebUiApplication
+internal static class WebUiApplication
 {
     private static readonly object Gate = new();
     private static readonly HashSet<WebUiWindow> RunningWindows = [];

@@ -1,7 +1,7 @@
 namespace Runic.Desktop;
 
 /// <summary>Represents a value returned from a managed binding to JavaScript.</summary>
-public readonly struct WebUiResult
+internal readonly struct WebUiResult
 {
     private readonly object? _value;
 
@@ -51,7 +51,7 @@ public readonly struct WebUiResult
 }
 
 /// <summary>Identifies a managed binding response value category.</summary>
-public enum WebUiResultKind
+internal enum WebUiResultKind
 {
     /// <summary>Returns JavaScript null.</summary>
     None,
