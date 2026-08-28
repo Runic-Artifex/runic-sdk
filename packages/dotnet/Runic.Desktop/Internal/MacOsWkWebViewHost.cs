@@ -197,7 +197,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         var work = new MainQueueWorkItem(action);
         var handle = GCHandle.Alloc(work);
-        Native.DispatchAsyncF(Native.DispatchGetMainQueue(), GCHandle.ToIntPtr(handle), &RunMainQueueWorkItem);
+        Native.DispatchAsyncF(Native.MainQueue, GCHandle.ToIntPtr(handle), &RunMainQueueWorkItem);
         return new ValueTask(work.Completion.Task.WaitAsync(cancellationToken));
     }
 
@@ -518,6 +518,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private static partial class Native
     {
+        internal static nint MainQueue { get; } = GetMainQueue();
+
         [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_getClass")]
         internal static unsafe partial nint ObjCGetClass(byte* name);
 
@@ -537,10 +539,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "pthread_main_np")]
         internal static partial int PthreadMainNp();
 
-        [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "dispatch_get_main_queue")]
-        internal static partial nint DispatchGetMainQueue();
-
         [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "dispatch_async_f")]
         internal static unsafe partial void DispatchAsyncF(nint queue, nint context, delegate* unmanaged[Cdecl]<nint, void> work);
+
+        private static nint GetMainQueue()
+        {
+            if (!OperatingSystem.IsMacOS()
+                || !NativeLibrary.TryLoad("/usr/lib/libSystem.B.dylib", out var library)
+                || !NativeLibrary.TryGetExport(library, "_dispatch_main_q", out var queue))
+            {
+                throw new PlatformNotSupportedException("The macOS main dispatch queue is unavailable.");
+            }
+
+            return queue;
+        }
     }
 }

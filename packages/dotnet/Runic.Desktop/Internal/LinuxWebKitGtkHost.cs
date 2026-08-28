@@ -10,7 +10,6 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private static readonly GtkDispatcher Dispatcher = new(Api);
 
     private readonly TaskCompletionSource _closed = NewCompletionSource();
-    private GCHandle _selfHandle;
     private nint _window;
     private nint _webView;
     private WebUiEmbeddedHostOptions? _options;
@@ -46,7 +45,6 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
 
         _options = options;
-        _selfHandle = GCHandle.Alloc(this);
         try
         {
             await Dispatcher.AcquireAsync(cancellationToken).ConfigureAwait(false);
@@ -58,10 +56,6 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             if (Interlocked.Exchange(ref _dispatcherLease, 0) != 0)
             {
                 await Dispatcher.ReleaseAsync().ConfigureAwait(false);
-            }
-            if (_selfHandle.IsAllocated)
-            {
-                _selfHandle.Free();
             }
             throw;
         }
@@ -136,10 +130,6 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
 
         await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
-        if (_selfHandle.IsAllocated)
-        {
-            _selfHandle.Free();
-        }
         if (Interlocked.Exchange(ref _dispatcherLease, 0) != 0)
         {
             await Dispatcher.ReleaseAsync().ConfigureAwait(false);
@@ -210,13 +200,12 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             Api.GtkWindowSetIconFromFile(_window, options.IconFile);
         }
 
-        var context = GCHandle.ToIntPtr(_selfHandle);
-        Api.Connect(_window, "destroy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnDestroyed, context);
-        Api.Connect(_webView, "notify::title", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitleChanged, context);
+        Api.Connect(_window, "destroy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnDestroyed, this);
+        Api.Connect(_webView, "notify::title", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitleChanged, this);
         if (options.Frameless && options.Resizable)
         {
             Api.EnableResizeEvents(_webView);
-            Api.Connect(_webView, "button-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnButtonPress, context);
+            Api.Connect(_webView, "button-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnButtonPress, this);
         }
         Api.LoadUri(_webView, url.AbsoluteUri);
         Api.GtkWidgetShowAll(_window);
@@ -276,6 +265,15 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
         return 0;
     }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ReleaseSignalContext(nint context, nint _)
+    {
+        GCHandle.FromIntPtr(context).Free();
+    }
+
+    private static unsafe nint SignalContextDestroyCallback =>
+        (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&ReleaseSignalContext;
 
     private static TaskCompletionSource NewCompletionSource() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -589,11 +587,22 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             ((delegate* unmanaged[Cdecl]<nint, byte*, nint, int>)GtkWindowSetIconFromFilePointer)(window, value.Pointer, 0);
         }
 
-        internal void Connect(nint instance, string signal, nint callback, nint data)
+        internal void Connect(nint instance, string signal, nint callback, LinuxWebKitGtkHost host)
         {
             using var value = Utf8String.Create(signal);
-            ((delegate* unmanaged[Cdecl]<nint, byte*, nint, nint, nint, int, ulong>)GSignalConnectDataPointer)(
-                instance, value.Pointer, callback, data, 0, 0);
+            var handle = GCHandle.Alloc(host);
+            var handler = ((delegate* unmanaged[Cdecl]<nint, byte*, nint, nint, nint, int, ulong>)GSignalConnectDataPointer)(
+                instance,
+                value.Pointer,
+                callback,
+                GCHandle.ToIntPtr(handle),
+                SignalContextDestroyCallback,
+                0);
+            if (handler == 0)
+            {
+                handle.Free();
+                throw new InvalidOperationException($"GTK rejected the '{signal}' signal handler.");
+            }
         }
 
         internal nint WebKitWebViewNew() => ((delegate* unmanaged[Cdecl]<nint>)WebKitWebViewNewPointer)();
