@@ -35,11 +35,12 @@ you need the complete unsafe WebUI 2.5 C ABI directly.
 
 An independent managed engine is also being developed in `CsWebUi.Managed`.
 The current source preview uses Kestrel for HTTP and WebSocket hosting and does
-not load the WebUI native library. Its completed M3 surface speaks WebUI's
+not load the WebUI native library. Its completed M4 surface speaks WebUI's
 binary protocol in real browsers and adds file/folder/virtual content routing,
 explicit listener configuration, client ownership, application lifecycle
 coordination, browser discovery, Chromium app-mode hosting, isolated profiles,
-and deterministic browser-process cleanup. See the
+deterministic browser-process cleanup, and native embedded hosts using WebView2,
+WKWebView, or WebKitGTK. See the
 [managed port roadmap](docs/design/managed-webui-port-roadmap.md) for its
 implemented vertical slice, compatibility milestones, and intentional gaps.
 
@@ -103,6 +104,9 @@ automatically opt WebUI into its asynchronous-response mode; return a
   callback example.
 - [`CsWebUi.HighLevelSample`](samples/CsWebUi.HighLevelSample) demonstrates the
   safe window, event, async callback, binary-message, and JavaScript APIs.
+- [`CsWebUi.ManagedSample`](samples/CsWebUi.ManagedSample) demonstrates the
+  independent managed engine in browser mode, or embedded mode with
+  `dotnet run --project samples/CsWebUi.ManagedSample -- --webview`.
 - [`UpstreamExamples`](samples/UpstreamExamples) contains C# ports of every
   distinct C and C++ example in the pinned WebUI source tree, including a
   stage-timed stress test and a C-versus-NativeAOT comparison harness.
@@ -167,7 +171,7 @@ is a contiguous-buffer API, not streaming.
 | --- | --- |
 | `CsWebUi.Native` | Full low-level C ABI, `LibraryImport`, pointers, native enums, callbacks, and library override support. |
 | `CsWebUi` | Friendly window, event, callback, JavaScript, browser/server, and lifecycle APIs. |
-| `CsWebUi.Managed` | Source-preview managed implementation using Kestrel; not yet a compatibility-complete or published package. |
+| `CsWebUi.Managed` | Source-preview managed implementation using Kestrel with browser and platform embedded-WebView hosts; not yet published. |
 
 Release packages bundle the standard, non-TLS WebUI shared library for `win-x64`, `linux-x64`, `linux-arm64`, `osx-x64`, and `osx-arm64`. The raw TLS API remains available when an application supplies a secure custom WebUI build.
 

@@ -41,6 +41,7 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private WebApplication? _application;
     private Process? _browserProcess;
+    private IWebUiEmbeddedHost? _embeddedHost;
     private TaskCompletionSource _browserConnected = NewCompletionSource();
     private string _rootFolder;
     private string? _profileName;
@@ -48,6 +49,7 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string? _generatedProfilePath;
     private string? _proxyServer;
     private IReadOnlyList<string> _customBrowserArguments = [];
+    private string? _customBrowserParameters;
     private string? _embeddedHtml;
     private string? _entryFile;
     private Uri? _externalUrl;
@@ -57,10 +59,18 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private bool _profileConfigured;
     private bool _kiosk;
     private bool _hidden;
+    private bool _resizable = true;
+    private bool _frameless;
+    private bool _transparent;
+    private bool _centered;
+    private bool? _highContrast;
     private uint? _width;
     private uint? _height;
+    private uint? _minimumWidth;
+    private uint? _minimumHeight;
     private uint? _x;
     private uint? _y;
+    private string? _iconFile;
     private WebUiBrowser _currentBrowser;
     private int _requestedPort;
     private int _activeConnections;
@@ -87,12 +97,16 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     /// <summary>Gets whether this window currently owns a browser process or authenticated client.</summary>
     public bool IsShown =>
-        (_browserProcess is { HasExited: false }) || _sessions.Values.Any(static session => session.IsAuthenticated);
+        (_browserProcess is { HasExited: false }) || (_embeddedHost?.IsOpen ?? false)
+        || _sessions.Values.Any(static session => session.IsAuthenticated);
 
     /// <summary>Gets the operating-system identifier of the owned browser process.</summary>
     public nuint BrowserProcessId => _browserProcess is { HasExited: false } process
         ? checked((nuint)process.Id)
         : 0;
+
+    /// <summary>Gets the native embedded-window handle, or zero outside WebView mode.</summary>
+    public nint NativeWindowHandle => _embeddedHost?.NativeHandle ?? 0;
 
     /// <summary>Gets the selected browser for this window, or <see cref="WebUiBrowser.NoBrowser"/>.</summary>
     public WebUiBrowser CurrentBrowser => _currentBrowser;
@@ -238,10 +252,18 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         => ShowInBrowserAsync(content, WebUiBrowser.AnyBrowser, cancellationToken);
 
     /// <summary>Starts the managed server and opens it in a selected browser.</summary>
-    public async Task<Uri> ShowInBrowserAsync(
+    public Task<Uri> ShowInBrowserAsync(
         string content,
         WebUiBrowser browser,
         CancellationToken cancellationToken = default)
+        => browser == WebUiBrowser.WebView
+            ? ShowWebViewAsync(content, cancellationToken)
+            : ShowInBrowserCoreAsync(content, browser, cancellationToken);
+
+    private async Task<Uri> ShowInBrowserCoreAsync(
+        string content,
+        WebUiBrowser browser,
+        CancellationToken cancellationToken)
     {
         var url = await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
         if (browser == WebUiBrowser.NoBrowser)
@@ -266,6 +288,10 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             ConfigureContent(content);
             browserUrl = GetBrowserUrl(url);
+            if (_embeddedHost is not null)
+            {
+                throw new InvalidOperationException("This window is already hosted by an embedded WebView.");
+            }
             if (_browserProcess is { HasExited: true } exitedProcess)
             {
                 _browserProcess = null;
@@ -343,6 +369,172 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
         }
 
+        return url;
+    }
+
+    /// <summary>Starts the managed server and opens it in the platform embedded WebView.</summary>
+    public Task<Uri> ShowWebViewAsync(string content, CancellationToken cancellationToken = default)
+    {
+        if (OperatingSystem.IsMacOS() && MacOsWkWebViewHost.IsMainThread)
+        {
+            return Task.FromResult(ShowWebViewOnMacMainThread(content, cancellationToken));
+        }
+        return ShowWebViewCoreAsync(content, cancellationToken);
+    }
+
+    /// <summary>Starts the managed server and opens it in the platform embedded WebView.</summary>
+    public Uri ShowWebView(string content) => ShowWebViewAsync(content).GetAwaiter().GetResult();
+
+    /// <summary>Attempts to show content in the platform embedded WebView.</summary>
+    public bool TryShowWebView(string content)
+    {
+        try
+        {
+            ShowWebView(content);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or TimeoutException
+                or PlatformNotSupportedException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private async Task<Uri> ShowWebViewCoreAsync(string content, CancellationToken cancellationToken)
+    {
+        var url = await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
+        Task connection;
+        IWebUiEmbeddedHost host;
+        var navigateExisting = false;
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ConfigureContent(content);
+            if (_browserProcess is { HasExited: false })
+            {
+                throw new InvalidOperationException("This window is already hosted by a browser process.");
+            }
+            if (_embeddedHost is { IsOpen: true } existingHost)
+            {
+                host = existingHost;
+                navigateExisting = true;
+                connection = Task.CompletedTask;
+            }
+            else
+            {
+                host = WebUiApplication.CreateEmbeddedHost();
+                host.Closed += EmbeddedHostClosed;
+                _embeddedHost = host;
+                _currentBrowser = WebUiBrowser.WebView;
+                _browserConnected = NewCompletionSource();
+                connection = _browserConnected.Task;
+                try
+                {
+                    await host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    host.Closed -= EmbeddedHostClosed;
+                    _embeddedHost = null;
+                    _currentBrowser = WebUiBrowser.NoBrowser;
+                    await host.DisposeAsync().ConfigureAwait(false);
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+
+        if (navigateExisting)
+        {
+            await host.NavigateAsync(GetBrowserUrl(url), cancellationToken).ConfigureAwait(false);
+        }
+        else if (WebUiApplication.ShowWaitConnection && _externalUrl is null)
+        {
+            try
+            {
+                await connection.WaitAsync(WebUiApplication.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
+                throw;
+            }
+        }
+        return url;
+    }
+
+    private Uri ShowWebViewOnMacMainThread(string content, CancellationToken cancellationToken)
+    {
+        var url = StartServerAsync(content, cancellationToken).GetAwaiter().GetResult();
+        _lifecycleGate.Wait(cancellationToken);
+        IWebUiEmbeddedHost host;
+        Task connection;
+        var navigateExisting = false;
+        try
+        {
+            ConfigureContent(content);
+            if (_browserProcess is { HasExited: false })
+            {
+                throw new InvalidOperationException("This window is already hosted by a browser process.");
+            }
+            if (_embeddedHost is { IsOpen: true } existingHost)
+            {
+                host = existingHost;
+                navigateExisting = true;
+                connection = Task.CompletedTask;
+            }
+            else
+            {
+                host = WebUiApplication.CreateEmbeddedHost();
+                host.Closed += EmbeddedHostClosed;
+                _embeddedHost = host;
+                _currentBrowser = WebUiBrowser.WebView;
+                _browserConnected = NewCompletionSource();
+                connection = _browserConnected.Task;
+                try
+                {
+                    host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken)
+                        .AsTask().GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    host.Closed -= EmbeddedHostClosed;
+                    _embeddedHost = null;
+                    _currentBrowser = WebUiBrowser.NoBrowser;
+                    host.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+
+        if (navigateExisting)
+        {
+            host.NavigateAsync(GetBrowserUrl(url), cancellationToken).AsTask().GetAwaiter().GetResult();
+        }
+        else if (WebUiApplication.ShowWaitConnection && _externalUrl is null)
+        {
+            var deadline = DateTime.UtcNow + WebUiApplication.ConnectionTimeout;
+            while (!connection.IsCompleted)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ProcessEmbeddedHostEvents();
+                if (DateTime.UtcNow >= deadline)
+                {
+                    CloseCoreAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    throw new TimeoutException("The embedded WebView did not authenticate before the connection timeout.");
+                }
+                Thread.Sleep(10);
+            }
+            connection.GetAwaiter().GetResult();
+        }
         return url;
     }
 
@@ -488,6 +680,7 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentNullException.ThrowIfNull(parameters);
+        _customBrowserParameters = parameters.Length == 0 ? null : parameters;
         _customBrowserArguments = WebUiCommandLine.Split(parameters);
     }
 
@@ -503,6 +696,10 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         _hidden = enabled;
+        if (_embeddedHost is { IsOpen: true } host)
+        {
+            host.SetVisibleAsync(!enabled).AsTask().GetAwaiter().GetResult();
+        }
     }
 
     /// <summary>Sets the initial outer browser dimensions in pixels.</summary>
@@ -513,6 +710,10 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfZero(height);
         _width = width;
         _height = height;
+        if (_embeddedHost is { IsOpen: true } host)
+        {
+            host.SetSizeAsync(width, height).AsTask().GetAwaiter().GetResult();
+        }
     }
 
     /// <summary>Sets the initial browser position in pixels.</summary>
@@ -521,7 +722,93 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         _x = x;
         _y = y;
+        _centered = false;
+        if (_embeddedHost is { IsOpen: true } host)
+        {
+            host.SetPositionAsync(x, y).AsTask().GetAwaiter().GetResult();
+        }
     }
+
+    /// <summary>Sets whether an embedded window can be resized by the user.</summary>
+    public void SetResizable(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _resizable = enabled;
+    }
+
+    /// <summary>Sets whether an embedded window uses a borderless frame.</summary>
+    public void SetFrameless(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _frameless = enabled;
+    }
+
+    /// <summary>Sets whether an embedded window and page background may be transparent.</summary>
+    public void SetTransparent(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _transparent = enabled;
+    }
+
+    /// <summary>Overrides high-contrast reporting for this window.</summary>
+    public void SetHighContrast(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _highContrast = enabled;
+    }
+
+    /// <summary>Sets the minimum embedded-window dimensions in pixels.</summary>
+    public void SetMinimumSize(uint width, uint height)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentOutOfRangeException.ThrowIfZero(width);
+        ArgumentOutOfRangeException.ThrowIfZero(height);
+        _minimumWidth = width;
+        _minimumHeight = height;
+    }
+
+    /// <summary>Centers the embedded window when it is first shown.</summary>
+    public void Center()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _centered = true;
+        _x = null;
+        _y = null;
+    }
+
+    /// <summary>Sets the platform window icon file used by embedded hosts that support it.</summary>
+    public void SetIconFile(string path)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException("The embedded-window icon file does not exist.", fullPath);
+        }
+        _iconFile = fullPath;
+    }
+
+    /// <summary>Activates the embedded platform window.</summary>
+    public void Focus() => FocusAsync().GetAwaiter().GetResult();
+
+    /// <summary>Activates the embedded platform window.</summary>
+    public Task FocusAsync(CancellationToken cancellationToken = default)
+        => GetEmbeddedHost().FocusAsync(cancellationToken).AsTask();
+
+    /// <summary>Minimizes the embedded platform window.</summary>
+    public void Minimize() => MinimizeAsync().GetAwaiter().GetResult();
+
+    /// <summary>Minimizes the embedded platform window.</summary>
+    public Task MinimizeAsync(CancellationToken cancellationToken = default)
+        => GetEmbeddedHost().MinimizeAsync(cancellationToken).AsTask();
+
+    /// <summary>Toggles maximized and restored embedded-window state.</summary>
+    public void Maximize() => MaximizeAsync().GetAwaiter().GetResult();
+
+    /// <summary>Toggles maximized and restored embedded-window state.</summary>
+    public Task MaximizeAsync(CancellationToken cancellationToken = default)
+        => GetEmbeddedHost().MaximizeAsync(cancellationToken).AsTask();
 
     /// <summary>Runs JavaScript in every authenticated browser without waiting for a response.</summary>
     public void RunJavaScript(string script)
@@ -695,7 +982,22 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal string? GeneratedProfilePath => _generatedProfilePath;
 
+    internal bool HasEmbeddedHost => _embeddedHost is not null;
+
+    internal bool RequiresMainThreadEventPump => _embeddedHost is IWebUiMainThreadHost;
+
     internal void NotifyAuthenticated() => _browserConnected.TrySetResult();
+
+    internal void ProcessEmbeddedHostEvents()
+    {
+        if (_embeddedHost is IWebUiMainThreadHost host)
+        {
+            host.ProcessEvents();
+        }
+    }
+
+    internal Task BeginEmbeddedWindowMoveAsync(CancellationToken cancellationToken)
+        => _embeddedHost?.BeginMoveAsync(cancellationToken).AsTask() ?? Task.CompletedTask;
 
     internal Task CloseFromApplicationAsync(CancellationToken cancellationToken) =>
         Volatile.Read(ref _disposed) != 0
@@ -714,7 +1016,7 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (element == "__webui_core_api__")
         {
             return arguments.Length > 0 && Encoding.UTF8.GetString(arguments[0]) == "high_contrast"
-                ? WebUiResult.FromBoolean(false)
+                ? WebUiResult.FromBoolean(_highContrast ?? WebUiApplication.IsHighContrast)
                 : WebUiResult.None;
         }
 
@@ -822,6 +1124,67 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         => _sessions.Values.FirstOrDefault(static session => session.IsAuthenticated)
             ?? throw new InvalidOperationException("No authenticated WebUI browser is connected.");
 
+    private IWebUiEmbeddedHost GetEmbeddedHost()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _embeddedHost is { IsOpen: true } host
+            ? host
+            : throw new InvalidOperationException("This window is not using an embedded WebView host.");
+    }
+
+    private WebUiEmbeddedHostOptions CreateEmbeddedHostOptions()
+    {
+        string? profilePath = null;
+        if (_profileConfigured)
+        {
+            profilePath = _profilePath;
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            profilePath = GetOrCreateProfilePath(WebUiBrowser.WebView);
+        }
+
+        return new WebUiEmbeddedHostOptions
+        {
+            Width = _width ?? 800,
+            Height = _height ?? 600,
+            MinimumWidth = _minimumWidth,
+            MinimumHeight = _minimumHeight,
+            X = _x,
+            Y = _y,
+            Centered = _centered,
+            Resizable = _resizable,
+            Frameless = _frameless,
+            Transparent = _transparent,
+            Hidden = _hidden,
+            Kiosk = _kiosk,
+            HighContrast = _highContrast ?? WebUiApplication.IsHighContrast,
+            IconFile = _iconFile,
+            ProfilePath = profilePath,
+            CustomParameters = _customBrowserParameters,
+        };
+    }
+
+    private void EmbeddedHostClosed(object? sender, EventArgs eventArgs)
+    {
+        if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host))
+        {
+            _ = HandleEmbeddedHostClosedAsync(host);
+        }
+    }
+
+    private async Task HandleEmbeddedHostClosedAsync(IWebUiEmbeddedHost host)
+    {
+        if (!ReferenceEquals(Interlocked.CompareExchange(ref _embeddedHost, null, host), host))
+        {
+            return;
+        }
+        host.Closed -= EmbeddedHostClosed;
+        await host.DisposeAsync().ConfigureAwait(false);
+        _currentBrowser = WebUiBrowser.NoBrowser;
+        await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
+    }
+
     private WebUiSession GetSession(Guid sessionId)
         => _sessions.TryGetValue(sessionId, out var session) && session.IsAuthenticated
             ? session
@@ -877,10 +1240,25 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private async Task StopBrowserAsync()
     {
-        var process = _browserProcess;
-        if (process is not null && WebUiApplication.ShowWaitConnection && _externalUrl is null)
+        var embeddedHost = Interlocked.Exchange(ref _embeddedHost, null);
+        if (embeddedHost is not null)
         {
-            _browserConnected.TrySetException(new IOException("The browser process closed before bridge authentication completed."));
+            embeddedHost.Closed -= EmbeddedHostClosed;
+            try
+            {
+                await embeddedHost.CloseAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                await embeddedHost.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        var process = _browserProcess;
+        if ((process is not null || embeddedHost is not null)
+            && WebUiApplication.ShowWaitConnection && _externalUrl is null)
+        {
+            _browserConnected.TrySetException(new IOException("The window closed before bridge authentication completed."));
         }
         _browserProcess = null;
         _currentBrowser = WebUiBrowser.NoBrowser;
@@ -1008,7 +1386,8 @@ public sealed class WebUiWindow : IDisposable, IAsyncDisposable
         context.Response.ContentType = "text/javascript; charset=utf-8";
         var script = WebUiBridge.Script
             .Replace("__TOKEN__", _token.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
-            .Replace("__PORT__", Url?.Port.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0", StringComparison.Ordinal);
+            .Replace("__PORT__", Url?.Port.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0", StringComparison.Ordinal)
+            .Replace("__CUSTOM_WINDOW_DRAG__", _embeddedHost is not null && _frameless ? "true" : "false", StringComparison.Ordinal);
         context.Response.ContentLength = Encoding.UTF8.GetByteCount(script);
         if (!HttpMethods.IsHead(context.Request.Method))
         {

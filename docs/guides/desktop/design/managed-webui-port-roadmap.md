@@ -1,6 +1,6 @@
 # Managed WebUI port roadmap
 
-Status: M3 browser host compatibility complete
+Status: M4 embedded WebView hosts complete
 
 Compatibility oracle: `webui-dev/webui@52f9e75`
 
@@ -154,11 +154,25 @@ remain assigned to M4.
 
 ### M4: embedded WebView hosts
 
-- WebView2 host on Windows.
-- WKWebView host on macOS.
-- WebKitGTK host on Linux.
-- Common navigation, size, position, visibility, focus, and close contracts.
-- Keep platform code in small host-specific assemblies or native shims.
+Implemented:
+
+- a WebView2 host with a dedicated STA window thread and Win32 message loop on
+  Windows;
+- a main-thread AppKit window and WKWebView host on macOS;
+- a dynamically loaded GTK 3 and WebKitGTK 4.1/4.0 host with its own GTK event
+  thread on Linux;
+- one shared host contract for creation, navigation, native handles, live size,
+  position and visibility changes, focus, minimize, maximize, frameless drag,
+  natural close, and deterministic disposal;
+- platform-window options for initial and minimum dimensions, positioning or
+  centering, resizability, framing, transparency, kiosk and hidden state,
+  icons, profile storage, custom WebView2 arguments, and high contrast;
+- `ShowWebView`, `ShowWebViewAsync`, `TryShowWebView`, WebView selection through
+  `ShowInBrowser`, host availability and native-handle queries, plus a public
+  factory contract for consumer-provided embedded hosts;
+- real WebKitGTK execution under Xvfb, platform-neutral lifecycle coverage, and
+  a process-main-thread smoke executable run on the Windows, Linux, Intel macOS,
+  and Arm macOS CI matrix.
 
 The server, bridge, bindings, and application lifecycle remain managed and
 shared across hosts.
@@ -196,10 +210,10 @@ After useful parity is established, add improvements deliberately:
   marker.
 - Port and public-binding changes take effect after close/restart rather than
   live-reloading a running listener.
-- Window dragging and resize packets are recognized but have no embedded
-  platform host to act on until M4.
-- The bridge core high-contrast query currently returns `false` until browser
-  and platform preference integration is added.
-- There are no embedded WebViews yet.
+- Embedded hosting requires the platform runtime: Microsoft Edge WebView2 on
+  Windows, system WebKit on macOS, or GTK 3 with WebKitGTK 4.1/4.0 on Linux.
+- The built-in hosts intentionally remain small native platform adapters; a
+  consumer that needs a different window toolkit can install an
+  `IWebUiEmbeddedHostFactory` without replacing the managed server or bridge.
 - Package and API compatibility are not promised while the managed engine is a
   source preview.

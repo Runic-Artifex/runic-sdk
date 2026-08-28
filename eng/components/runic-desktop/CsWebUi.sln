@@ -20,6 +20,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsWebUi.Managed.Tests", "te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsWebUi.ManagedSample", "samples\\CsWebUi.ManagedSample\\CsWebUi.ManagedSample.csproj", "{AC5151CB-0994-48DC-A7AB-9BE30A8C6C34}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsWebUi.Managed.WebViewSmoke", "tests\\CsWebUi.Managed.WebViewSmoke\\CsWebUi.Managed.WebViewSmoke.csproj", "{A314E8CA-22CF-413C-8367-9D6C13992BB4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -62,6 +64,10 @@ Global
 		{AC5151CB-0994-48DC-A7AB-9BE30A8C6C34}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AC5151CB-0994-48DC-A7AB-9BE30A8C6C34}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AC5151CB-0994-48DC-A7AB-9BE30A8C6C34}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A314E8CA-22CF-413C-8367-9D6C13992BB4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A314E8CA-22CF-413C-8367-9D6C13992BB4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A314E8CA-22CF-413C-8367-9D6C13992BB4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A314E8CA-22CF-413C-8367-9D6C13992BB4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -17,8 +17,7 @@ window.Bind("increment", e =>
     e.RunJavaScript($"setCount({count + 1});");
 });
 
-Console.WriteLine($"Selected browser: {window.BestBrowser}");
-await window.ShowInBrowserAsync("""
+var content = """
     <!doctype html>
     <html lang="en">
     <head>
@@ -39,7 +38,18 @@ await window.ShowInBrowserAsync("""
       </script>
     </body>
     </html>
-    """, WebUiBrowser.AnyBrowser);
+    """;
+
+if (args.Contains("--webview", StringComparer.Ordinal))
+{
+    Console.WriteLine("Selected host: platform embedded WebView");
+    await window.ShowWebViewAsync(content);
+}
+else
+{
+    Console.WriteLine($"Selected browser: {window.BestBrowser}");
+    await window.ShowInBrowserAsync(content, WebUiBrowser.AnyBrowser);
+}
 
 Console.WriteLine($"Managed window available at {window.Url}");
 Console.WriteLine("Press Enter to close.");

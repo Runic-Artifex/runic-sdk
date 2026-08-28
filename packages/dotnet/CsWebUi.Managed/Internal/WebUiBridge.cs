@@ -19,11 +19,13 @@ internal static class WebUiBridge
           const CMD_ADD_ID = 0xF7;
           const CMD_MULTI = 0xF6;
           const CMD_CHECK_TK = 0xF5;
+          const CMD_WINDOW_DRAG = 0xF4;
           const CMD_WINDOW_RESIZED = 0xF3;
           const HEADER_SIZE = 8;
           const MULTI_CHUNK_SIZE = 65500;
           const TOKEN = __TOKEN__;
           const PORT = __PORT__;
+          const CUSTOM_WINDOW_DRAG = __CUSTOM_WINDOW_DRAG__;
           const encoder = new TextEncoder();
           const decoder = new TextDecoder();
           const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
@@ -312,6 +314,38 @@ internal static class WebUiBridge
             }
           }
 
+          function resolveDragRegion(element) {
+            while (element) {
+              const region = globalThis.getComputedStyle(element).getPropertyValue("--webui-app-region").trim();
+              if (region === "drag" || region === "no-drag") return region;
+              element = element.parentElement;
+            }
+            return "";
+          }
+
+          function installCustomWindowDrag() {
+            if (!CUSTOM_WINDOW_DRAG) return;
+            let armed = false;
+            let dragging = false;
+            document.addEventListener("mousedown", event => {
+              dragging = false;
+              armed = event.button === 0 && resolveDragRegion(event.target instanceof Element ? event.target : null) === "drag";
+            });
+            document.addEventListener("mousemove", event => {
+              if (event.buttons !== 1) {
+                armed = false;
+                dragging = false;
+              } else if (armed && !dragging && tokenAccepted) {
+                dragging = true;
+                sendPacket(createPacket(0, 0, CMD_WINDOW_DRAG)).catch(() => {});
+              }
+            });
+            document.addEventListener("mouseup", () => {
+              armed = false;
+              dragging = false;
+            });
+          }
+
           const webui = {
             call,
             callCore,
@@ -332,6 +366,7 @@ internal static class WebUiBridge
             value: webui
           });
           document.addEventListener("click", handleDocumentClick);
+          installCustomWindowDrag();
           if (hasNavigationApi) {
             globalThis.navigation.addEventListener("navigate", event => {
               if (allEvents && !allowNavigation && tokenAccepted) {

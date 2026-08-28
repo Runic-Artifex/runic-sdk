@@ -275,6 +275,7 @@ internal sealed class WebUiSession : IAsyncDisposable
                 _ = DispatchCallIgnoringFailureAsync(id, payload, cancellationToken);
                 break;
             case WebUiProtocol.WindowDrag:
+                _ = _window.BeginEmbeddedWindowMoveAsync(cancellationToken);
                 break;
         }
     }

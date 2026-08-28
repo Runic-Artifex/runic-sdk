@@ -12,7 +12,7 @@ generated bridge implements WebUI's binary token handshake, binding discovery,
 function calls, correlated responses, large `MULTI` packets, keepalive, and
 reconnect behavior.
 
-M3 browser-host compatibility is complete. The server supports WebUI's
+M4 embedded-host compatibility is complete. The server supports WebUI's
 index discovery and redirects, MIME and no-cache behavior, explicit ports,
 loopback or public binding, cookie-backed client ownership, single- or
 multi-client operation, deterministic restart, and application-wide wait and
@@ -23,5 +23,15 @@ cleanup. Physical files are streamed by Kestrel; virtual handlers return
 complete in-memory responses until the managed streaming API is introduced in
 M5.
 
-Embedded WebViews remain the next milestone, and the preview API is not yet
-compatibility-stable.
+`ShowWebView` and `ShowWebViewAsync` use WebView2 on Windows, WKWebView on
+macOS, and WebKitGTK on Linux. Embedded windows support initial and live
+geometry, visibility, focus, minimize/maximize, minimum sizes, framing,
+transparency, kiosk mode, icons, platform close events, and native handles.
+Frameless pages can mark drag regions with
+`--webui-app-region: drag`. Applications can replace the platform adapter with
+`WebUiApplication.SetEmbeddedHostFactory` while retaining the managed server,
+bridge, bindings, and lifecycle.
+
+Windows requires the Microsoft Edge WebView2 Runtime. macOS uses the system
+WebKit framework. Linux requires GTK 3 and WebKitGTK 4.1 or 4.0; a graphical
+display is also required. The preview API is not yet compatibility-stable.

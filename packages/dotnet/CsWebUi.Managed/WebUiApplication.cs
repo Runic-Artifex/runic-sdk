@@ -14,6 +14,7 @@ public static class WebUiApplication
     private static TaskCompletionSource _allClosed = CompletedSource();
     private static string _defaultRootFolder = Path.GetFullPath(Environment.CurrentDirectory);
     private static string? _browserFolder;
+    private static IWebUiEmbeddedHostFactory _embeddedHostFactory = WebUiEmbeddedHostFactory.Instance;
     private static long _connectionTimeoutTicks = TimeSpan.FromSeconds(15).Ticks;
     private static int _showWaitConnection = 1;
     private static int _multiClient;
@@ -74,7 +75,39 @@ public static class WebUiApplication
 
     /// <summary>Gets whether a supported browser can be discovered.</summary>
     public static bool BrowserExists(WebUiBrowser browser)
-        => WebUiBrowserDiscovery.Find(browser, GetBrowserFolder()) is not null;
+        => browser == WebUiBrowser.WebView
+            ? EmbeddedWebViewExists
+            : WebUiBrowserDiscovery.Find(browser, GetBrowserFolder()) is not null;
+
+    /// <summary>Gets whether the configured embedded WebView host is available.</summary>
+    public static bool EmbeddedWebViewExists
+    {
+        get
+        {
+            IWebUiEmbeddedHostFactory factory;
+            lock (Gate)
+            {
+                factory = _embeddedHostFactory;
+            }
+            return factory.IsSupported;
+        }
+    }
+
+    /// <summary>Gets whether the operating system currently uses a high-contrast theme.</summary>
+    public static bool IsHighContrast => WebUiSystemTheme.IsHighContrast;
+
+    /// <summary>Sets a custom embedded host factory, or restores the platform default when null.</summary>
+    public static void SetEmbeddedHostFactory(IWebUiEmbeddedHostFactory? factory)
+    {
+        lock (Gate)
+        {
+            if (RunningWindows.Any(static window => window.HasEmbeddedHost))
+            {
+                throw new InvalidOperationException("Close all embedded WebView windows before changing the host factory.");
+            }
+            _embeddedHostFactory = factory ?? WebUiEmbeddedHostFactory.Instance;
+        }
+    }
 
     /// <summary>Opens a URL through the operating system's default URL handler.</summary>
     public static void OpenUrl(string url)
@@ -147,9 +180,30 @@ public static class WebUiApplication
     public static Task WaitAsync(CancellationToken cancellationToken = default)
     {
         Task task;
+        WebUiWindow[] windows;
         lock (Gate)
         {
             task = _allClosed.Task;
+            windows = [.. RunningWindows];
+        }
+
+        if (OperatingSystem.IsMacOS() && MacOsWkWebViewHost.IsMainThread
+            && windows.Any(static window => window.RequiresMainThreadEventPump))
+        {
+            while (!task.IsCompleted)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                foreach (var window in windows)
+                {
+                    window.ProcessEmbeddedHostEvents();
+                }
+                Thread.Sleep(10);
+                lock (Gate)
+                {
+                    windows = [.. RunningWindows];
+                }
+            }
+            return task;
         }
 
         return cancellationToken.CanBeCanceled ? task.WaitAsync(cancellationToken) : task;
@@ -191,6 +245,21 @@ public static class WebUiApplication
         {
             return _browserFolder;
         }
+    }
+
+    internal static IWebUiEmbeddedHost CreateEmbeddedHost()
+    {
+        IWebUiEmbeddedHostFactory factory;
+        lock (Gate)
+        {
+            factory = _embeddedHostFactory;
+        }
+        if (!factory.IsSupported)
+        {
+            throw new PlatformNotSupportedException(
+                "No embedded WebView host is available. Install the platform runtime or configure a custom host factory.");
+        }
+        return factory.Create();
     }
 
     internal static string GetDefaultRootFolder()

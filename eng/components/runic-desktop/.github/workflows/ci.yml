@@ -41,6 +41,12 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Install Linux WebKitGTK runtime
+        if: matrix.rid == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-0 xvfb
+
       - name: Restore
         run: dotnet restore CsWebUi.sln
 
@@ -52,6 +58,20 @@ jobs:
           dotnet test CsWebUi.sln --configuration Release --no-build
           --logger "trx;LogFileName=test-results.trx"
           --results-directory artifacts/test-results/${{ matrix.rid }}
+
+      - name: Embedded WebView smoke (Linux)
+        if: matrix.rid == 'linux-x64'
+        run: >-
+          xvfb-run -a dotnet run
+          --project tests/CsWebUi.Managed.WebViewSmoke/CsWebUi.Managed.WebViewSmoke.csproj
+          --configuration Release --no-build
+
+      - name: Embedded WebView smoke (Windows and macOS)
+        if: matrix.rid != 'linux-x64'
+        run: >-
+          dotnet run
+          --project tests/CsWebUi.Managed.WebViewSmoke/CsWebUi.Managed.WebViewSmoke.csproj
+          --configuration Release --no-build
 
       - name: Upload test results
         if: always()

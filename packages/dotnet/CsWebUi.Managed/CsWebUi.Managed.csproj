@@ -12,10 +12,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" PrivateAssets="contentfiles;analyzers" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="CsWebUi.Managed.Tests" />
     <None Update="README.md" Pack="true" PackagePath="" />
     <None Include="$(MSBuildThisFileDirectory)..\..\NOTICE" Pack="true" PackagePath="" />
     <None Include="$(MSBuildThisFileDirectory)..\..\eng\licenses\WebUI-LICENSE.txt" Pack="true" PackagePath="licenses/WebUI/" />
+    <None Include="buildTransitive\CsWebUi.Managed.targets" Pack="true" PackagePath="buildTransitive\CsWebUi.Managed.targets" />
   </ItemGroup>
+
 </Project>

@@ -1,0 +1,4 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)src/CsWebUi.Managed/buildTransitive/CsWebUi.Managed.targets"
+          Condition="Exists('$(MSBuildThisFileDirectory)src/CsWebUi.Managed/buildTransitive/CsWebUi.Managed.targets')" />
+</Project>
