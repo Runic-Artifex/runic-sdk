@@ -1,0 +1,30 @@
+CS-WebUI is an independent .NET binding for WebUI.
+
+Bundled native assets are source builds of the reviewed
+Runic-Artifex/webui revision recorded in eng/webui-source-build-provenance.json.
+WebUI is Copyright (c) 2020-2026 Hassan Draga and contributors,
+distributed under the MIT License:
+https://github.com/webui-dev/webui
+
+The complete upstream license is retained in this repository at
+eng/licenses/WebUI-LICENSE.txt and in the CsWebUi.Native package under
+licenses/WebUI/.
+
+The WebUI and C# logo is the official webui_csharp.png asset published by
+webui-dev/webui-logo, Copyright (c) 2023 Hassan Draga, distributed under the
+MIT License:
+https://github.com/webui-dev/webui-logo
+
+The logo license is retained at eng/licenses/WebUI-Logo-LICENSE.txt and in the
+NuGet packages under licenses/WebUI-Logo/.
+
+The exact reviewed source revision, header digest, and build settings are
+recorded in eng/webui-source-build-provenance.json. Each native package also
+contains its source-build binary digests under provenance/WebUI. The C# ports
+under samples/UpstreamExamples are derived from WebUI examples under its MIT
+License.
+
+The optional statically linked Windows build includes WebView2LoaderStatic.lib
+from the Microsoft.Web.WebView2 SDK, version 1.0.4078.44. Its license and
+third-party notices are included under licenses/WebView2 in the
+CsWebUi.Native package.
