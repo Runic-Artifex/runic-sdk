@@ -74,7 +74,7 @@ public sealed class DesktopSurface : IAsyncDisposable
             }
 
             ApplyWindowOptions(configured);
-            await _engine.ShowInBrowserAsync(string.Empty, ToCompatibilityBrowser(configured.Browser), cancellationToken)
+            await _engine.OpenPresentationAsync(ToCompatibilityBrowser(configured.Browser), cancellationToken)
                 .ConfigureAwait(false);
             _window = new DesktopWindow(this, _engine, configured.Browser);
             return _window;

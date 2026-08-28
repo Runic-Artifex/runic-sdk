@@ -274,18 +274,34 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ? ShowWebViewAsync(content, cancellationToken)
             : ShowInBrowserCoreAsync(content, browser, cancellationToken);
 
+    internal Task<Uri> OpenPresentationAsync(WebUiBrowser browser, CancellationToken cancellationToken)
+    {
+        if (browser != WebUiBrowser.WebView)
+        {
+            return ShowInBrowserCoreAsync(content: null, browser, cancellationToken);
+        }
+        return OperatingSystem.IsMacOS() && MacOsWkWebViewHost.IsMainThread
+            ? Task.FromResult(ShowWebViewOnMacMainThread(content: null, cancellationToken))
+            : ShowWebViewCoreAsync(content: null, cancellationToken);
+    }
+
     private async Task<Uri> ShowInBrowserCoreAsync(
-        string content,
+        string? content,
         WebUiBrowser browser,
         CancellationToken cancellationToken)
     {
-        var url = await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
+        var url = content is null
+            ? Url ?? throw new InvalidOperationException("The surface must be started before opening a presentation.")
+            : await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
         if (browser == WebUiBrowser.NoBrowser)
         {
             await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                ConfigureContent(content);
+                if (content is not null)
+                {
+                    ConfigureContent(content);
+                }
             }
             finally
             {
@@ -300,7 +316,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            ConfigureContent(content);
+            if (content is not null)
+            {
+                ConfigureContent(content);
+            }
             browserUrl = GetBrowserUrl(url);
             if (_embeddedHost is not null)
             {
@@ -415,16 +434,21 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
-    private async Task<Uri> ShowWebViewCoreAsync(string content, CancellationToken cancellationToken)
+    private async Task<Uri> ShowWebViewCoreAsync(string? content, CancellationToken cancellationToken)
     {
-        var url = await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
+        var url = content is null
+            ? Url ?? throw new InvalidOperationException("The surface must be started before opening a presentation.")
+            : await StartServerAsync(content, cancellationToken).ConfigureAwait(false);
         Task connection;
         IWebUiEmbeddedHost host;
         var navigateExisting = false;
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            ConfigureContent(content);
+            if (content is not null)
+            {
+                ConfigureContent(content);
+            }
             if (_browserProcess is { HasExited: false })
             {
                 throw new InvalidOperationException("This window is already hosted by a browser process.");
@@ -481,16 +505,21 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return url;
     }
 
-    private Uri ShowWebViewOnMacMainThread(string content, CancellationToken cancellationToken)
+    private Uri ShowWebViewOnMacMainThread(string? content, CancellationToken cancellationToken)
     {
-        var url = StartServerAsync(content, cancellationToken).GetAwaiter().GetResult();
+        var url = content is null
+            ? Url ?? throw new InvalidOperationException("The surface must be started before opening a presentation.")
+            : StartServerAsync(content, cancellationToken).GetAwaiter().GetResult();
         _lifecycleGate.Wait(cancellationToken);
         IWebUiEmbeddedHost host;
         Task connection;
         var navigateExisting = false;
         try
         {
-            ConfigureContent(content);
+            if (content is not null)
+            {
+                ConfigureContent(content);
+            }
             if (_browserProcess is { HasExited: false })
             {
                 throw new InvalidOperationException("This window is already hosted by a browser process.");
@@ -1624,6 +1653,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         if (!_securityPolicy.AllowsOrigin(Url!, context.Request.Headers.Origin.ToString()))
         {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.OriginDenied,
+                "origin-not-allowed",
+                "The browser origin is not allowed.",
+                Retryable: false));
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return null;
         }
@@ -1637,6 +1671,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var offered = context.WebSockets.WebSocketRequestedProtocols;
         if (!offered.Contains(expected, StringComparer.Ordinal))
         {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.AuthenticationDenied,
+                "credential-required",
+                "A valid session credential is required.",
+                Retryable: false));
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return null;
         }
@@ -1908,7 +1947,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             await session.CloseBridgeAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is IOException or WebSocketException or ObjectDisposedException)
+        catch (Exception exception) when (
+            exception is IOException or WebSocketException or ObjectDisposedException or OperationCanceledException)
         {
         }
     }
@@ -1919,7 +1959,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             await session.DisposeAsync().ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is IOException or WebSocketException or ObjectDisposedException)
+        catch (Exception exception) when (
+            exception is IOException or WebSocketException or ObjectDisposedException or OperationCanceledException)
         {
         }
     }

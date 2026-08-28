@@ -122,6 +122,31 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task OpeningAndClosingWindowPreservesSurfaceContentAndLifetime()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = "original",
+        });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+        });
+        using var client = new HttpClient();
+
+        Assert.Equal(surface.Url, factory.Host?.Url);
+        Assert.Equal("original", await client.GetStringAsync(surface.Url));
+        await window.CloseAsync();
+        Assert.Equal("original", await client.GetStringAsync(surface.Url));
+    }
+
+    [Fact]
     public async Task PublicStreamingResponseDoesNotOpenForHead()
     {
         var factoryCalls = 0;
@@ -284,6 +309,63 @@ public sealed class DesktopApiTests
         {
             _disposed.TrySetResult();
             await base.DisposeAsync();
+        }
+    }
+
+    private sealed class RecordingWindowHostFactory : IDesktopWindowHostFactory
+    {
+        internal RecordingWindowHost? Host { get; private set; }
+        public bool IsSupported => true;
+        public IDesktopWindowHost Create() => Host = new RecordingWindowHost();
+    }
+
+    private sealed class RecordingWindowHost : IDesktopWindowHost
+    {
+        public event EventHandler? Closed;
+        public bool IsOpen { get; private set; }
+        public nint NativeHandle => IsOpen ? 1 : 0;
+        internal Uri? Url { get; private set; }
+
+        public ValueTask OpenAsync(
+            Uri url,
+            DesktopWindowHostOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Url = url;
+            IsOpen = true;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Url = url;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IsOpen = false;
+            Closed?.Invoke(this, EventArgs.Empty);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask FocusAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+        public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+        public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+        public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            IsOpen = false;
+            return ValueTask.CompletedTask;
         }
     }
 }

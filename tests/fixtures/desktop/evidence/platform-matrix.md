@@ -25,11 +25,13 @@ minimize/maximize, close, and a second surface/window lifetime.
 
 ## Local W90 execution
 
-On 2026-08-28, the Linux x64 managed and receipt suite passed 45/45. The
+On 2026-08-28, the Linux x64 managed and receipt suite passed 46/46. The
 focused API/framing/reconnect set also passed 8/8 while the receipt was being
 bound. The exact `Runic.Desktop.0.1.0-w90.nupkg` clean consumer restored,
 built, executed through Kestrel, published with NativeAOT, and the produced
-native Linux x64 executable executed the same HTTP journey successfully.
+native Linux x64 executable executed the same HTTP journey successfully. The
+process-isolated WebKitGTK smoke passed under Xvfb, including bridge
+authentication, JavaScript, native-window operations, close, and restart.
 
 Windows and both macOS runtime results are intentionally produced only on their
 native hosted runners; cross-compilation on Linux is not presented as WebView

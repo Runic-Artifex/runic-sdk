@@ -50,4 +50,5 @@ internal sealed record PresentationSurfaceRuntimeOptions(
     string? BrowserFolder,
     IWebUiEmbeddedHostFactory EmbeddedHostFactory,
     bool WaitForConnection,
-    TimeSpan ConnectionTimeout);
+    TimeSpan ConnectionTimeout,
+    Action<DesktopDiagnostic>? DiagnosticSink);

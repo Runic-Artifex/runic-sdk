@@ -5,7 +5,11 @@ if (!DesktopPlatform.IsEmbeddedWindowAvailable)
     throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
 }
 
-await using var host = await DesktopHost.StartAsync();
+await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+{
+    DiagnosticSink = diagnostic => Console.Error.WriteLine(
+        $"Desktop diagnostic: {diagnostic.Category}/{diagnostic.Code}: {diagnostic.Message}"),
+});
 await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
     Content = """
