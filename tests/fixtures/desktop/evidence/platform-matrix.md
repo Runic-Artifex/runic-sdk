@@ -5,6 +5,8 @@ split deliberately: Linux is the routine push/pull-request gate, an explicit
 manual dispatch runs only the three hosted Windows/macOS lanes, and a `v*`
 release tag runs both. This avoids spending hosted macOS capacity on ordinary
 commits or rerunning Linux during one-off native certification.
+Routine Linux jobs are capped at ten minutes and native jobs at five minutes so
+a wedged platform process cannot consume the hosted runner's six-hour default.
 
 The Linux gate runs the complete sequence:
 
