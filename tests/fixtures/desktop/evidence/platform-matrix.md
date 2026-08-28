@@ -43,7 +43,16 @@ native Linux x64 executable executed the same HTTP journey successfully. The
 process-isolated WebKitGTK smoke passed under Xvfb, including bridge
 authentication, JavaScript, native-window operations, close, and restart.
 
-Windows and both macOS runtime results are intentionally produced only on their
-native hosted runners; cross-compilation on Linux is not presented as WebView
-runtime evidence. A candidate is incomplete until all four required CI lanes
-are green for the same commit.
+## Hosted W90 certification
+
+Commit `532dd8381ea7a34bcafb6cdbbc5a541ebb05a4c2` passed the complete matrix on
+2026-08-28. The
+[Linux gate](https://github.com/Runic-Artifex/runic-desktop/actions/runs/33182154574)
+passed all 46 tests—including the owned-Chromium restart/natural-exit and
+callback-disposal journeys—the exact-package/NativeAOT consumer, and the
+WebKitGTK process smoke. The separate
+[native certification](https://github.com/Runic-Artifex/runic-desktop/actions/runs/33182177906)
+passed real WebView2, Intel WKWebView, and Arm64 WKWebView process smokes.
+
+Cross-compilation on Linux is not presented as native WebView runtime evidence;
+each platform result above was produced by its corresponding hosted runner.
