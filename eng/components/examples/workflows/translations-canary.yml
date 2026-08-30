@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: translations-canary-${{ github.workflow }}-${{ github.ref }}
@@ -20,11 +19,10 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
-  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   verify:
-    name: Consume published packages
+    name: Consume local candidate packages
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -36,11 +34,19 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Build isolated package candidates
+        shell: bash
+        env:
+          RUNIC_CANDIDATE_SET: translations
+        run: bash eng/prepare-ci-candidates.sh
+
       - name: Restore package-only canary
-        run: dotnet restore integrations/RunicTranslations.Canary/RunicTranslations.Canary.csproj
+        run: >-
+          dotnet restore integrations/Runic.Translations.Canary/Runic.Translations.Canary.csproj
+          --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
 
       - name: Build package-only canary
-        run: dotnet build integrations/RunicTranslations.Canary/RunicTranslations.Canary.csproj --no-restore --configuration Release
+        run: dotnet build integrations/Runic.Translations.Canary/Runic.Translations.Canary.csproj --no-restore --configuration Release
 
       - name: Run package-only canary
-        run: dotnet run --project integrations/RunicTranslations.Canary/RunicTranslations.Canary.csproj --no-build --configuration Release
+        run: dotnet run --project integrations/Runic.Translations.Canary/Runic.Translations.Canary.csproj --no-build --configuration Release

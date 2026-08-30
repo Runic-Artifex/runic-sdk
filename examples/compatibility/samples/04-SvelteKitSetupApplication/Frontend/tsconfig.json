@@ -6,7 +6,7 @@
     "strict": true,
     "types": [
       "vite/client",
-      "@runic-artifex/vite-plugin-runic-toolkit/virtual"
+      "@runic-artifex/vite-plugin-runic/virtual"
     ]
   }
 }

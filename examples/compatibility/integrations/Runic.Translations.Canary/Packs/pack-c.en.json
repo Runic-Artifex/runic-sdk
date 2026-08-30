@@ -1,0 +1,15 @@
+{
+  "artifactVersion": 1,
+  "messageGrammarVersion": 1,
+  "catalog": "canary",
+  "locale": "en",
+  "contractFingerprint": "sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "messages": {
+    "Greeting": {
+      "pattern": "Tampered, {name}!",
+      "arguments": [
+        { "name": "name", "type": "string", "format": "none" }
+      ]
+    }
+  }
+}

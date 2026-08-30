@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: command-line-canary-${{ github.workflow }}-${{ github.ref }}
@@ -20,11 +19,10 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
-  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   verify:
-    name: Consume published packages
+    name: Consume local candidate packages
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -36,18 +34,26 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Build isolated package candidates
+        shell: bash
+        env:
+          RUNIC_CANDIDATE_SET: command-line
+        run: bash eng/prepare-ci-candidates.sh
+
       - name: Restore package-only canary
-        run: dotnet restore integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj
+        run: >-
+          dotnet restore integrations/Runic.CommandLine.Canary/Runic.CommandLine.Canary.csproj
+          --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
 
       - name: Build package-only canary
-        run: dotnet build integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --no-restore --configuration Release
+        run: dotnet build integrations/Runic.CommandLine.Canary/Runic.CommandLine.Canary.csproj --no-restore --configuration Release
 
       - name: Run package-only canary
-        run: dotnet run --project integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj --no-build --configuration Release
+        run: dotnet run --project integrations/Runic.CommandLine.Canary/Runic.CommandLine.Canary.csproj --no-build --configuration Release
 
       - name: Publish NativeAOT canary
         run: >-
-          dotnet publish integrations/RunicCommandLine.Canary/RunicCommandLine.Canary.csproj
+          dotnet publish integrations/Runic.CommandLine.Canary/Runic.CommandLine.Canary.csproj
           --configuration Release
           --runtime linux-x64
           --self-contained true
@@ -58,7 +64,7 @@ jobs:
           -p:IlcTreatWarningsAsErrors=true
 
       - name: Run NativeAOT canary
-        run: '"$RUNNER_TEMP/native/RunicCommandLine.Canary"'
+        run: '"$RUNNER_TEMP/native/Runic.CommandLine.Canary"'
 
       - name: Ensure portable inputs are unchanged
         run: git diff --exit-code

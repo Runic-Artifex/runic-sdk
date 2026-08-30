@@ -6,7 +6,7 @@ same result for people or JSON consumers.
 ## Prerequisites
 
 Install .NET SDK 10.0.302. The project uses the released preview
-`RunicCommandLine` and `RunicCommandLine.Abstractions` packages.
+`Runic.CommandLine` and `Runic.CommandLine.Abstractions` packages.
 
 ## Run and verify
 
@@ -40,7 +40,7 @@ The handler stays independent of console and JSON presentation.
 ## Next
 
 Continue to the [React Setup Application](../03-SetupApplication/) to use a
-validated contract between a web frontend and a native CS-WebUI host.
+validated contract between a web frontend and a Runic Desktop host.
 
 [Command Line documentation](https://docs.runic-artifex.eu/products/runic-command-line) ·
 [Examples](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/02-GreetingCommandLine) ·

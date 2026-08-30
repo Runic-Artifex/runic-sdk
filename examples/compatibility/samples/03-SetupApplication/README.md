@@ -1,6 +1,6 @@
 # 03 — React Setup Application
 
-Build a desktop setup wizard with a React frontend, a native CS-WebUI window,
+Build a desktop setup wizard with a React frontend and a Runic Desktop window,
 and a validated Application Bridge contract. The host keeps navigation policy,
 destination selection, installation work, progress, and cancellation; React
 owns presentation state.
@@ -22,7 +22,7 @@ npm run verify
 dotnet run --project samples/03-SetupApplication
 ```
 
-The final command opens a **Runic Toolkit · Setup** window. Complete the sample
+The final command opens a **Runic Toolkit · React Setup** window. Complete the sample
 flow to see the native host update the React UI.
 
 For the deterministic host-only smoke check:

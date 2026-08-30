@@ -1,0 +1,40 @@
+{
+  "$defs": {
+    "Uuid": {
+      "description": "a string matching the pattern ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    }
+  },
+  "$id": "runic.artifex.setup/1/StartInstallation",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "StartInstallation"
+      ],
+      "type": "string"
+    },
+    "destinationSelectionId": {
+      "$ref": "#/$defs/Uuid"
+    },
+    "selectedFeatures": {
+      "items": {
+        "enum": [
+          "core",
+          "desktop-shortcut",
+          "examples"
+        ],
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "_tag",
+    "destinationSelectionId",
+    "selectedFeatures"
+  ],
+  "type": "object"
+}

@@ -1,12 +1,12 @@
 # 01 — Hello lifecycle
 
-Build the smallest useful Runic Toolkit application: prepare application
-services, run a selected UI mode, and shut everything down in order.
+Build the smallest useful Runic Application: select one host, run it, and shut
+it down in order.
 
 ## Prerequisites
 
 Install .NET SDK 10.0.302, as pinned by the repository's `global.json`. This
-sample uses `RunicToolkit.Hosting` and `RunicToolkit.Hosting.GenericHost`.
+sample uses `Runic.Application`.
 
 ## Run and verify
 
@@ -20,8 +20,8 @@ Expected output includes:
 
 ```text
 Preparing the workspace...
-Hello from Runic Toolkit!
-The launcher selected the UserInterface mode.
+Hello from Runic Application!
+Running runic-examples-hello-lifecycle.
 Closing the workspace...
 ```
 
@@ -30,10 +30,9 @@ application state.
 
 ## What to inspect
 
-`Program.cs` creates `GenericHostRunicToolkitApplicationBuilder`, adds a
-startup participant, adds a `LaunchKind.UserInterface` mode runner, then calls
-`Build()` and `RunAsync()`. The participant's `Infrastructure` phase makes the
-start/stop ordering explicit.
+`Program.cs` declares the generated application manifest, selects one
+`IApplicationHost`, then calls `Build()` and `RunAsync()`. The host makes the
+start, wait, stop, and disposal ordering explicit.
 
 ## Next
 

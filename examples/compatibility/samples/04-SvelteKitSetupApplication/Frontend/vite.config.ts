@@ -1,12 +1,12 @@
 import { DevTools } from "@vitejs/devtools";
-import { runicToolkit } from "@runic-artifex/vite-plugin-runic-toolkit";
+import { runic } from "@runic-artifex/vite-plugin-runic";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
     DevTools({ visibility: "passive" }),
-    runicToolkit({
+    runic({
       contract: { identity: "runic.artifex.setup", version: "1" },
     }),
     sveltekit(),

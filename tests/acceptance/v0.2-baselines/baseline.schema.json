@@ -1,0 +1,420 @@
+{
+  "$defs": {
+    "Int": {
+      "description": "an integer",
+      "title": "int",
+      "type": "integer"
+    }
+  },
+  "$id": "https://runic-artifex.eu/schemas/runic.v0.2-baseline-2.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "environment": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "type": "string"
+        },
+        "hashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "os": {
+          "type": "string"
+        },
+        "packageIdentities": {
+          "additionalProperties": false,
+          "properties": {
+            "npm": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "nuget": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "npm",
+            "nuget"
+          ],
+          "type": "object"
+        },
+        "tools": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "version"
+            ],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        }
+      },
+      "required": [
+        "os",
+        "arch",
+        "tools",
+        "packageIdentities",
+        "hashes"
+      ],
+      "type": "object"
+    },
+    "measurements": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "argv": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "category": {
+            "type": "string"
+          },
+          "clock": {
+            "type": "string"
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/$defs/Int"
+            },
+            "type": "array"
+          },
+          "reasonCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "samples": {
+            "$ref": "#/$defs/Int"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "blocked"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unit": {
+            "type": "string"
+          },
+          "warmups": {
+            "$ref": "#/$defs/Int"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "status",
+          "required",
+          "unit",
+          "argv",
+          "cwd",
+          "clock",
+          "warmups",
+          "samples",
+          "observations",
+          "summary",
+          "details",
+          "reasonCode"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "methodology": {
+      "additionalProperties": false,
+      "properties": {
+        "clock": {
+          "enum": [
+            "process.hrtime.bigint-monotonic-nanoseconds"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "enum": [
+            2
+          ],
+          "type": "number"
+        },
+        "volatilePaths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "version",
+        "clock",
+        "volatilePaths"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "enum": [
+        "runic.v0.2-baseline/2"
+      ],
+      "type": "string"
+    },
+    "source": {
+      "additionalProperties": false,
+      "properties": {
+        "editor": {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "before": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "tree": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "revision",
+            "tree",
+            "before",
+            "after"
+          ],
+          "type": "object"
+        },
+        "examples": {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "before": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "tree": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "revision",
+            "tree",
+            "before",
+            "after"
+          ],
+          "type": "object"
+        },
+        "releaseManifest": {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "additionalProperties": false,
+              "properties": {
+                "revision": {
+                  "description": "a string matching the pattern ^[0-9a-f]{40}$",
+                  "pattern": "^[0-9a-f]{40}$",
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    ""
+                  ],
+                  "type": "string"
+                },
+                "tree": {
+                  "description": "a string matching the pattern ^[0-9a-f]{40}$",
+                  "pattern": "^[0-9a-f]{40}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "revision",
+                "tree",
+                "status"
+              ],
+              "type": "object"
+            },
+            "before": {
+              "additionalProperties": false,
+              "properties": {
+                "revision": {
+                  "description": "a string matching the pattern ^[0-9a-f]{40}$",
+                  "pattern": "^[0-9a-f]{40}$",
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    ""
+                  ],
+                  "type": "string"
+                },
+                "tree": {
+                  "description": "a string matching the pattern ^[0-9a-f]{40}$",
+                  "pattern": "^[0-9a-f]{40}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "revision",
+                "tree",
+                "status"
+              ],
+              "type": "object"
+            },
+            "digest": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "path": {
+              "enum": [
+                "runic.release.json"
+              ],
+              "type": "string"
+            },
+            "publicPackageCounts": {
+              "additionalProperties": false,
+              "properties": {
+                "npm": {
+                  "$ref": "#/$defs/Int",
+                  "description": "a non-negative number",
+                  "minimum": 0,
+                  "title": "nonNegative"
+                },
+                "nuget": {
+                  "$ref": "#/$defs/Int",
+                  "description": "a non-negative number",
+                  "minimum": 0,
+                  "title": "nonNegative"
+                }
+              },
+              "required": [
+                "nuget",
+                "npm"
+              ],
+              "type": "object"
+            },
+            "revision": {
+              "description": "a string matching the pattern ^[0-9a-f]{40}$",
+              "pattern": "^[0-9a-f]{40}$",
+              "type": "string"
+            },
+            "tree": {
+              "description": "a string matching the pattern ^[0-9a-f]{40}$",
+              "pattern": "^[0-9a-f]{40}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "revision",
+            "tree",
+            "digest",
+            "publicPackageCounts",
+            "before",
+            "after"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "examples",
+        "editor",
+        "releaseManifest"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "environment",
+    "methodology",
+    "measurements"
+  ],
+  "type": "object"
+}

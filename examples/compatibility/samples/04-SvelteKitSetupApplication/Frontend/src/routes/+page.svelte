@@ -117,7 +117,7 @@
 >
   <header>
     <div>
-      <p class="eyebrow">Svelte 5 · SvelteKit · native CS-WebUI</p>
+      <p class="eyebrow">Svelte 5 · SvelteKit · Runic Desktop</p>
       <h1>Setup Application</h1>
     </div>
     <span class="status">{bridge.status} · revision {snapshot.revision}</span>

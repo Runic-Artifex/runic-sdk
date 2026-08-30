@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
+    <RunicTranslationsSourceRoot Condition="Exists('../../../runic-translations/dotnet/src/Runic.Translations.Build/build/Runic.Translations.Build.props')">$(MSBuildProjectDirectory)/../../../runic-translations</RunicTranslationsSourceRoot>
+  </PropertyGroup>
+  <Import Project="$(RunicTranslationsSourceRoot)/dotnet/src/Runic.Translations.Build/build/Runic.Translations.Build.props" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+  <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>RunicArtifex.Examples.Translations</RootNamespace>
@@ -7,15 +11,17 @@
     <IntermediateOutputPath>obj/</IntermediateOutputPath>
     <TranslationsEmitEsm>true</TranslationsEmitEsm>
     <TranslationsOutputPath>obj/$(TargetFramework)/translations</TranslationsOutputPath>
+    <TranslationsToolCommand Condition="'$(RunicTranslationsSourceRoot)' != ''">dotnet run --project &quot;$(RunicTranslationsSourceRoot)/dotnet/tools/dotnet-runic-translations/dotnet-runic-translations.csproj&quot; --configuration Release --</TranslationsToolCommand>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="RunicTranslations" />
-    <PackageReference Include="RunicTranslations.Build" PrivateAssets="all" />
-    <PackageReference Include="RunicTranslations.Generator"
-                      PrivateAssets="all"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../runic-translations/dotnet/src/Runic.Translations/Runic.Translations.csproj" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+    <ProjectReference Include="../../../runic-translations/dotnet/src/Runic.Translations.Compiler/Runic.Translations.Compiler.csproj" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+    <ProjectReference Include="../../../runic-translations/dotnet/src/Runic.Translations.Generator/Runic.Translations.Generator.csproj"
+                      Condition="'$(RunicTranslationsSourceRoot)' != ''" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Analyzer Include="$(RunicTranslationsSourceRoot)/dotnet/src/Runic.Translations.Compiler/bin/$(Configuration)/net10.0/Runic.Translations.Compiler.dll" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+    <PackageReference Include="Runic.Translations" Condition="'$(RunicTranslationsSourceRoot)' == ''" />
+    <PackageReference Include="Runic.Translations.Build" PrivateAssets="all" Condition="'$(RunicTranslationsSourceRoot)' == ''" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,4 +30,5 @@
     <TranslationDocument Include="Resources/setup.de.json" />
     <TranslationsToolInput Include=".config/dotnet-tools.json" />
   </ItemGroup>
+  <Import Project="$(RunicTranslationsSourceRoot)/dotnet/src/Runic.Translations.Build/build/Runic.Translations.Build.targets" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
 </Project>

@@ -16,7 +16,7 @@ a product-source checkout.
 | --- | --- | --- | --- | --- |
 | 1 | [Hello lifecycle](01-HelloLifecycle/) | Compose startup, a UI mode, and shutdown. | `dotnet run --project samples/01-HelloLifecycle` | The normal run is its smoke check. |
 | 2 | [Greeting command line](02-GreetingCommandLine/) | Parse and execute a typed command. | `dotnet run --project samples/02-GreetingCommandLine -- greet Ada` | `dotnet run --project samples/02-GreetingCommandLine -- greet Ada --output json` |
-| 3 | [React Setup Application](03-SetupApplication/) | Run a React frontend in a native CS-WebUI host. | `dotnet run --project samples/03-SetupApplication` | `dotnet run --project samples/03-SetupApplication -- --smoke-test` |
+| 3 | [React Setup Application](03-SetupApplication/) | Run a React frontend in a Runic Desktop host. | `dotnet run --project samples/03-SetupApplication` | `dotnet run --project samples/03-SetupApplication -- --smoke-test` |
 | 4 | [SvelteKit Setup Application](04-SvelteKitSetupApplication/) | Run the same bridge contract with Svelte 5 and SvelteKit. | `dotnet run --project samples/04-SvelteKitSetupApplication` | `dotnet run --project samples/04-SvelteKitSetupApplication -- --smoke-test` |
 | 5 | [Runic Translations Setup](05-RunicTranslationsSetup/) | Generate and use typed .NET and ESM translations. | Restore its local tool, then start the backend. | `dotnet run --project samples/05-RunicTranslationsSetup -- --smoke-test` |
 

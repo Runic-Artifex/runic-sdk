@@ -13,7 +13,7 @@ test("SvelteKit dev server exposes the official bounded Runic DevTools state", a
     const address = server.httpServer?.address();
     assert.ok(address && typeof address === "object");
     const origin = `http://127.0.0.1:${address.port}`;
-    const response = await fetch(`${origin}/__runic-toolkit/state`);
+    const response = await fetch(`${origin}/__runic/state`);
     assert.equal(response.status, 200);
     const state = await response.json();
     assert.deepEqual(state.contract, {
@@ -25,12 +25,12 @@ test("SvelteKit dev server exposes the official bounded Runic DevTools state", a
     assert.deepEqual(state.operations, []);
     assert.deepEqual(state.timeline, []);
 
-    const virtualClient = await server.transformRequest("virtual:runic-toolkit/client");
+    const virtualClient = await server.transformRequest("virtual:runic/client");
     assert.match(
       virtualClient?.code ?? "",
       /@vitejs(?:\/|_)devtools(?:\/|_)client(?:\/|_)inject-passive/,
     );
-    assert.match(virtualClient?.code ?? "", /vite-plugin-runic-toolkit(?:\/|_)client/);
+    assert.match(virtualClient?.code ?? "", /vite-plugin-runic(?:\/|_)client/);
   } finally {
     await server.close();
   }

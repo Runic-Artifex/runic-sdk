@@ -20,7 +20,7 @@ From the repository root:
 ```bash
 npm ci
 dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
-dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
+dotnet build samples/05-RunicTranslationsSetup/Runic.TranslationsSetup.csproj
 npm run typecheck --workspace @runic-artifex/translations-setup-application
 npm run test --workspace @runic-artifex/translations-setup-application
 npm run build --workspace @runic-artifex/translations-setup-application

@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import {
-  CsWebUiApplicationBridgeLive,
+  ApplicationBridgeLive,
   MockApplicationBridge,
   createApplicationBridgeController,
-  createCsWebUiFrameChannel,
 } from "@runic-artifex/application-bridge";
+import { createDesktopFrameChannel } from "@runic-artifex/desktop";
 import {
   SetupContract,
   type DestinationSelection,
@@ -76,5 +76,5 @@ export const setupBridge = createApplicationBridgeController(
   SetupContract,
   import.meta.env.MODE === "mock"
     ? mock
-    : CsWebUiApplicationBridgeLive(SetupContract, createCsWebUiFrameChannel()),
+    : ApplicationBridgeLive(SetupContract, createDesktopFrameChannel()),
 );

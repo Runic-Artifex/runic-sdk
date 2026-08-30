@@ -1,8 +1,7 @@
 # 04 — SvelteKit Setup Application
 
 Use Svelte 5 runes and SvelteKit for the presentation layer while keeping the
-same validated Application Bridge and native CS-WebUI host used by the React
-sample.
+same validated Application Bridge over Runic Desktop's presentation transport.
 
 ## Prerequisites
 
@@ -40,10 +39,13 @@ npm run dev:mock --workspace @runic-artifex/sveltekit-setup-application
 
 ## What stays where
 
-Svelte runes own component lifecycle and presentation state. The Application
-Bridge remains responsible for protocol validation, sessions, revisions,
-events, operations, and reconnect recovery. The Runic Vite plugin preserves
-the bridge across HMR and contributes bounded diagnostics through Vite DevTools.
+Svelte runes own component lifecycle and presentation state. Runic Desktop owns
+the local HTTP/WebSocket presentation boundary and browser/WebView selection.
+The Application Bridge remains responsible for protocol validation, sessions,
+revisions, events, operations, cancellation, and reconnect recovery. Runic
+Assets streams the embedded SPA with range and cache semantics, and the Runic
+Vite plugin preserves the projection across HMR and contributes bounded
+diagnostics through Vite DevTools.
 
 ## Next
 

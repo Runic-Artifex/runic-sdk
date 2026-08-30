@@ -1,0 +1,32 @@
+{
+  "schema": "runic.examples-historical-evidence-allowlist/1",
+  "purpose": "Retain W10-W70 pre-1.0 receipts without treating their package identities or implicit feeds as the current train.",
+  "paths": [
+    "eng/current-csharp-composition/testing-profile.mjs",
+    "eng/current-csharp-composition/verify.mjs",
+    "eng/current-editor-quality/verify.mjs",
+    "eng/current-host-transport/contract.mjs",
+    "eng/current-host-transport/generated/bridge.manifest.json",
+    "eng/current-host-transport/verify.mjs",
+    "eng/current-hosted-product/verify.mjs",
+    "eng/current-localization-compatibility/verify.mjs",
+    "eng/current-manual-replacement-preflight/verify.mjs",
+    "eng/current-mf2-subset-consumer/verify.mjs",
+    "eng/current-mf2-subset-consumer/verify.test.mjs",
+    "eng/current-native-shell/verify.mjs",
+    "eng/current-native-shell/verify.test.mjs",
+    "eng/current-readiness-audit/README.md",
+    "eng/current-readiness-audit/record-canonical-package-gate.mjs",
+    "eng/current-readiness-audit/verify.mjs",
+    "eng/current-readiness-index/verify.mjs",
+    "eng/current-readiness-index/verify.test.mjs",
+    "eng/current-recovery-capability/verify.mjs",
+    "eng/current-recovery-capability/README.md",
+    "eng/current-recovery-capability/verify.test.mjs",
+    "eng/current-support-envelope/verify.mjs",
+    "eng/current-support-envelope/README.md",
+    "eng/current-support-envelope/verify.test.mjs",
+    "eng/current-svelte-template/verify.mjs",
+    "eng/current-unsigned-tool-staging/verify.mjs"
+  ]
+}

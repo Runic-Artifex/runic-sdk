@@ -7,7 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="RunicCommandLine.Abstractions" />
-    <PackageReference Include="RunicCommandLine" />
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj"
+                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
+                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj')"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <PackageReference Include="Runic.CommandLine" Condition="!Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
   </ItemGroup>
 </Project>

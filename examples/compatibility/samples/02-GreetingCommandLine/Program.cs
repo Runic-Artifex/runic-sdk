@@ -2,9 +2,9 @@ using System;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
-using RunicCommandLine;
+using Runic.CommandLine;
 
-namespace RunicToolkit.Samples.GreetingCommandLine;
+namespace Runic.Examples.GreetingCommandLine;
 
 internal static class Program
 {

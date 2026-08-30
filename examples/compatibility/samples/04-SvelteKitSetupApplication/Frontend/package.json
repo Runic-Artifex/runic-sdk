@@ -13,14 +13,15 @@
     "verify:production": "node test/verify-production.mjs"
   },
   "dependencies": {
-    "@runic-artifex/application-bridge": "0.1.0-preview.30.1",
-    "@runic-artifex/svelte": "0.1.0-preview.14.1",
+    "@runic-artifex/application-bridge": "0.1.0",
+    "@runic-artifex/desktop": "0.1.0",
+    "@runic-artifex/svelte": "0.1.0-preview.15.0",
     "effect": "3.22.1",
     "svelte": "5.56.8"
   },
   "devDependencies": {
-    "@runic-artifex/sveltekit": "0.1.0-preview.14.1",
-    "@runic-artifex/vite-plugin-runic-toolkit": "0.1.0-preview.8.1",
+    "@runic-artifex/sveltekit": "0.1.0-preview.15.0",
+    "@runic-artifex/vite-plugin-runic": "0.2.0-preview.2",
     "@sveltejs/kit": "2.70.2",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
     "@vitejs/devtools": "0.4.12",

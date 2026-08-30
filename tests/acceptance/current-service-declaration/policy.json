@@ -1,0 +1,28 @@
+{
+  "schema": "runic.hosted-service-admission/1",
+  "authentication": {
+    "flow": "oidc-authorization-code",
+    "carrier": "encrypted-host-only-cookie",
+    "sessionCookieName": "__Host-runic-session",
+    "browserBearerTokens": false
+  },
+  "topology": {
+    "publicOrigin": "https://app.example.test",
+    "tlsTerminator": "trusted-reverse-proxy",
+    "serviceRoutePrefix": "/runic/service",
+    "oidcCallbackRoute": "/signin-oidc",
+    "frontendProcess": "sveltekit-ssr"
+  },
+  "proxy": {
+    "trustedAddresses": ["10.0.0.10"]
+  },
+  "csrf": {
+    "antiforgeryHeaderName": "X-Runic-CSRF",
+    "unsafeRequestOrigin": "exact-public-origin"
+  },
+  "ownership": {
+    "serviceIdentitySessionEndpointPolicy": "csharp",
+    "frontendMayForwardOpaqueCookieOnly": true,
+    "w20WebSocketRemainsLocalOnly": true
+  }
+}
