@@ -2,8 +2,9 @@ import type { Effect, Exit } from "effect";
 import { SvelteApplicationBridge } from "./bridge.svelte.js";
 import { SvelteEffectAction } from "./effect-action.svelte.js";
 import type {
+  ApplicationBridgeController,
   ApplicationBridgeEffects,
-  EffectApplicationBridgeController,
+  ApplicationBridgeService,
   SvelteApplicationBridgeOptions,
 } from "./types.js";
 
@@ -17,30 +18,14 @@ export class EffectSvelteApplicationBridge<
   Receipt,
   HostEvent,
   Snapshot,
-  Failure,
-  Requirements,
-> extends SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure> {
-  readonly effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot, Failure, Requirements>;
+> extends SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
+  readonly effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot>;
 
-  readonly #effectController: EffectApplicationBridgeController<
-    Command,
-    Receipt,
-    HostEvent,
-    Snapshot,
-    Failure,
-    Requirements
-  >;
+  readonly #effectController: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>;
   readonly #actions: DisposableEffectAction[] = [];
 
   constructor(
-    controller: EffectApplicationBridgeController<
-      Command,
-      Receipt,
-      HostEvent,
-      Snapshot,
-      Failure,
-      Requirements
-    >,
+    controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>,
     options: SvelteApplicationBridgeOptions<HostEvent, Snapshot> = {},
   ) {
     super(controller, options);
@@ -48,11 +33,11 @@ export class EffectSvelteApplicationBridge<
     this.effects = controller.effects;
   }
 
-  run<A, E>(program: Effect.Effect<A, E, Requirements>): Promise<A> {
+  run<A, E>(program: Effect.Effect<A, E, ApplicationBridgeService>): Promise<A> {
     return this.#effectController.run(program);
   }
 
-  runExit<A, E>(program: Effect.Effect<A, E, Requirements>): Promise<Exit.Exit<A, E>> {
+  runExit<A, E>(program: Effect.Effect<A, E, ApplicationBridgeService>): Promise<Exit.Exit<A, E>> {
     return this.#effectController.runExit(program);
   }
 
@@ -63,11 +48,11 @@ export class EffectSvelteApplicationBridge<
   createAction<Input, Success, Error>(
     program: (
       input: Input,
-      effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot, Failure, Requirements>,
-    ) => Effect.Effect<Success, Error, Requirements>,
-  ): SvelteEffectAction<Input, Success, Error, Requirements> {
+      effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot>,
+    ) => Effect.Effect<Success, Error, ApplicationBridgeService>,
+  ): SvelteEffectAction<Input, Success, Error> {
     if (this.status === "disposed") throw new Error("The Svelte Application Bridge is disposed.");
-    let action!: SvelteEffectAction<Input, Success, Error, Requirements>;
+    let action!: SvelteEffectAction<Input, Success, Error>;
     action = new SvelteEffectAction(
       this.#effectController,
       (input) => program(input, this.effects),
@@ -94,18 +79,9 @@ export function createEffectSvelteApplicationBridge<
   Receipt,
   HostEvent,
   Snapshot,
-  Failure,
-  Requirements,
 >(
-  controller: EffectApplicationBridgeController<
-    Command,
-    Receipt,
-    HostEvent,
-    Snapshot,
-    Failure,
-    Requirements
-  >,
+  controller: ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>,
   options: SvelteApplicationBridgeOptions<HostEvent, Snapshot> = {},
-): EffectSvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure, Requirements> {
+): EffectSvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot> {
   return new EffectSvelteApplicationBridge(controller, options);
 }

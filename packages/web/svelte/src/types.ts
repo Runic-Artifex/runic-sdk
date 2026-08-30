@@ -1,47 +1,27 @@
-import type { Effect, Exit, Fiber, Stream } from "effect";
+import type {
+  ApplicationBridgeController,
+  ApplicationBridgeEffects,
+  ApplicationBridgeService,
+  BridgeError,
+} from "@runic-artifex/application-bridge";
 
-export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot, Failure = unknown> {
-  initialize(): Promise<Snapshot>;
-  dispatch(command: Command): Promise<Receipt>;
-  cancel(operationId: string): Promise<void>;
-  reconnect(): Promise<Snapshot>;
-  uiReady(): Promise<void>;
-  uiRendered(): Promise<void>;
-  subscribe(
-    onEvent: (event: HostEvent) => void,
-    onError?: (error: Failure) => void,
-  ): () => void;
-  dispose(): Promise<void>;
-}
+/** Public Application Bridge contracts, re-exported without a renderer-owned copy. */
+export type {
+  ApplicationBridgeController,
+  ApplicationBridgeEffects,
+  ApplicationBridgeService,
+  BridgeError,
+};
 
-export interface ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot, Failure, Requirements> {
-  readonly initialize: Effect.Effect<Snapshot, Failure, Requirements>;
-  readonly dispatch: (command: Command) => Effect.Effect<Receipt, Failure, Requirements>;
-  readonly cancel: (operationId: string) => Effect.Effect<void, Failure, Requirements>;
-  readonly reconnect: Effect.Effect<Snapshot, Failure, Requirements>;
-  readonly uiReady: Effect.Effect<void, Failure, Requirements>;
-  readonly uiRendered: Effect.Effect<void, Failure, Requirements>;
-  readonly events: Stream.Stream<HostEvent, Failure, Requirements>;
-}
+/** @deprecated Application Bridge controllers already expose the Effect surface. */
+export type EffectApplicationBridgeController<Command, Receipt, HostEvent, Snapshot> =
+  ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>;
 
-export interface EffectRunner<Requirements> {
-  run<A, E>(program: Effect.Effect<A, E, Requirements>): Promise<A>;
-  runExit<A, E>(program: Effect.Effect<A, E, Requirements>): Promise<Exit.Exit<A, E>>;
-  fork<A, E>(program: Effect.Effect<A, E, Requirements>): Fiber.RuntimeFiber<A, E>;
-  await<A, E>(fiber: Fiber.RuntimeFiber<A, E>): Promise<Exit.Exit<A, E>>;
-  interrupt<A, E>(fiber: Fiber.RuntimeFiber<A, E>): Promise<Exit.Exit<A, E>>;
-}
-
-export interface EffectApplicationBridgeController<
-  Command,
-  Receipt,
-  HostEvent,
-  Snapshot,
-  Failure,
-  Requirements,
-> extends ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot, Failure>, EffectRunner<Requirements> {
-  readonly effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot, Failure, Requirements>;
-}
+/** @deprecated Use ApplicationBridgeController directly. */
+export type EffectRunner = Pick<
+  ApplicationBridgeController<unknown, unknown, unknown, unknown>,
+  "run" | "runExit" | "fork" | "await" | "interrupt"
+>;
 
 export type ApplicationBridgeStatus =
   | "idle"
@@ -59,8 +39,21 @@ export type EffectActionStatus =
   | "interrupted"
   | "disposed";
 
+/**
+ * Optional callbacks emitted by the Svelte projection. This deliberately stays
+ * independent of any Vite implementation; use the `/vite` entry point to
+ * connect it to Runic Toolkit DevTools.
+ */
 export interface ApplicationBridgeObserver {
-  state(state: Readonly<Record<string, unknown>>): void;
+  state(state: Readonly<{
+    connection?: Readonly<{
+      state?: "connecting" | "connected" | "disconnected" | "closed";
+      transport?: string;
+      sessionId?: string;
+      revision?: number;
+      sequence?: number;
+    }>;
+  }>): void;
   trace(entry: Readonly<{
     kind: "command" | "receipt" | "event" | "operation" | "connection" | "error";
     label: string;

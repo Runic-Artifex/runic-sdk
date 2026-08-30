@@ -1,7 +1,19 @@
 {
   "name": "@runic-artifex/sveltekit",
-  "version": "0.1.0-preview.0",
-  "description": "Static/native SvelteKit adapter for Runic Toolkit applications",
+  "version": "1.0.0-preview.1",
+  "description": "SvelteKit integration for Runic Toolkit applications",
+  "homepage": "https://github.com/Runic-Artifex/runic-svelte#readme",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-svelte/issues"
+  },
+  "keywords": [
+    "runic-artifex",
+    "runic-toolkit",
+    "svelte",
+    "sveltekit",
+    "vite",
+    "adapter"
+  ],
   "license": "MIT",
   "type": "module",
   "types": "./dist/index.d.ts",
@@ -22,9 +34,17 @@
       "types": "./dist/translations/navigation.d.ts",
       "svelte": "./dist/translations/navigation.js",
       "import": "./dist/translations/navigation.js"
+    },
+    "./hosted": {
+      "types": "./dist/hosted/index.d.ts",
+      "import": "./dist/hosted/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
@@ -32,18 +52,25 @@
     "pack:check": "npm pack --dry-run"
   },
   "peerDependencies": {
-    "@runic-artifex/svelte": ">=0.1.0-preview.0 <1",
-    "@runic-artifex/vite-plugin-runic-toolkit": ">=0.1.0-preview.0 <1",
+    "@runic-artifex/svelte": ">=1.0.0-preview.1 <2",
+    "@runic-artifex/vite-plugin-runic": ">=1.0.0-preview.1 <2",
     "@sveltejs/adapter-static": ">=3 <4",
-    "@sveltejs/kit": ">=2 <3",
-    "svelte": ">=5.7.0 <6",
+    "@sveltejs/kit": ">=2.53.0 <3",
+    "@sveltejs/vite-plugin-svelte": ">=7 <8",
+    "svelte": ">=5.46.4 <6",
     "vite": ">=8 <9"
   },
   "peerDependenciesMeta": {
-    "@runic-artifex/svelte": { "optional": true },
-    "@runic-artifex/vite-plugin-runic-toolkit": { "optional": true }
+    "@runic-artifex/svelte": {
+      "optional": true
+    },
+    "@runic-artifex/vite-plugin-runic": {
+      "optional": true
+    }
   },
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-svelte.git",

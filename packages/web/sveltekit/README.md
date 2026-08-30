@@ -1,6 +1,62 @@
 # `@runic-artifex/sveltekit`
 
-Static/native SvelteKit adapter for Runic Toolkit applications.
+Ship a Runic Toolkit SvelteKit UI as a static/native application while keeping
+SvelteKit in charge of routes, browser history, and page state. The package
+provides the static adapter, SPA page options, and optional URL-based locale
+routing.
+
+## Install
+
+```sh
+npm install -D @runic-artifex/sveltekit@preview @runic-artifex/vite-plugin-runic@preview @vitejs/devtools @sveltejs/adapter-static
+```
+
+Install `@runic-artifex/svelte@preview` too when your pages project an
+Application Bridge controller or use the locale context. These packages are
+public npm previews; the `preview` tag selects the current preview release.
+
+| Requirement | Supported range |
+|---|---|
+| SvelteKit | `>=2.53.0 <3` |
+| Svelte | `>=5.46.4 <6` |
+| Vite | `>=8 <9` |
+| `@sveltejs/vite-plugin-svelte` | `>=7 <8` |
+| `@sveltejs/adapter-static` | `>=3 <4` |
+| `@runic-artifex/svelte` | `>=0.1.0-preview.0 <1` (optional peer) |
+| `@runic-artifex/vite-plugin-runic` | `>=0.2.0-preview.1 <1` (optional peer; required for Runic Vite development integration) |
+
+Use a Node.js version supported by your SvelteKit and Vite versions. Svelte 4
+is not supported.
+
+For the v0.2 Vite rename, replace the removed
+`@runic-artifex/vite-plugin-runic-toolkit` package and `runicToolkit()` call
+with `@runic-artifex/vite-plugin-runic` and `runic()`. Browser client imports
+move from `virtual:runic-toolkit/client` to `virtual:runic/client`.
+
+## Adapter and Vite setup
+
+Complete this checklist before adding routes or localization:
+
+1. Install the packages above in a SvelteKit 2 / Vite 8 application.
+2. Register the Runic Vite plugin and the official Vite DevTools plugin.
+3. Use `runicToolkitAdapter` in `svelte.config.js`.
+4. Choose `prerendered` for static pages or `spa` for a host-driven shell. A
+   multi-page prerender without `/` must name one emitted output file as
+   `entrypoint`.
+5. Build the app. The adapter writes `runic-toolkit.sveltekit.json` to the
+   output directory so the native host can find the entrypoint.
+
+```ts
+// vite.config.ts
+import { DevTools } from "@vitejs/devtools";
+import { runic } from "@runic-artifex/vite-plugin-runic";
+import { sveltekit } from "@sveltejs/kit/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [DevTools({ visibility: "passive" }), runic(), sveltekit()],
+});
+```
 
 ```js
 // svelte.config.js
@@ -13,33 +69,52 @@ export default {
 };
 ```
 
-Use `mode: "spa"` for an entirely host-driven UI. It generates `200.html` by
-default and records that entrypoint in `runic-toolkit.sveltekit.json`. The
-prerendered mode keeps SvelteKit SSR/prerendering available and initializes the
-native bridge only after hydration.
+For an entirely host-driven Desktop SPA, set `mode: "spa"`, enable
+`desktop: true`, and set `kit.router.type` to `"hash"`. Desktop mode injects
+the surface-relative bootstrap and rejects pathname routing because a
+Desktop surface is mounted under a generated path namespace; hash routing keeps
+the document URL at that relocatable surface root. SPA mode emits `200.html` by
+default and rewrites SvelteKit's generated application asset URLs relative to
+that root. Prerendered mode uses `/` only when it actually emitted `index.html`;
+otherwise it uses the one emitted page or requires an explicit entrypoint.
 
-Import route constants from the browser-safe subpath so client compilation does
-not traverse the Node-only adapter implementation:
+```js
+kit: {
+  adapter: runicToolkitAdapter({ mode: "spa", desktop: true }),
+  router: { type: "hash" },
+}
+```
+
+For a prerendered application without a root page, select its entrypoint explicitly:
+
+```js
+adapter: runicToolkitAdapter({ mode: "prerendered", entrypoint: "setup.html" })
+```
+
+The `runicToolkitSpaPageOptions` export remains available for pathname-routed
+static hosting profiles that use a different adapter. Hash-routed Runic Desktop
+SPAs do not need page-level SSR or prerender flags because SvelteKit disables
+both for that router.
 
 ```ts
+// src/routes/+layout.ts
 import { runicToolkitSpaPageOptions } from "@runic-artifex/sveltekit/page-options";
 
 export const ssr = runicToolkitSpaPageOptions.ssr;
 export const prerender = runicToolkitSpaPageOptions.prerender;
 ```
 
-Add `runicToolkit()` and the official `DevTools()` plugin to `vite.config.ts`.
-The SvelteKit package does not duplicate their development runtime.
+For a static prerendered site, use
+`runicToolkitPrerenderedPageOptions` instead. In either mode, route application
+commands in your code rather than mirroring a host process graph into a second
+router.
 
-SvelteKit remains authoritative for URLs, history, and page state even when the
-host uses Runic Flow. Map routes to named application commands in application
-code; do not mirror a Flow process graph into a second router owned by this
-adapter.
+## Optional: locale routing
 
-## Runic Translations routing
-
-Translation routing is exposed from the browser-safe
-`@runic-artifex/sveltekit/translations` subpath. Define the locale policy once:
+The browser-safe `@runic-artifex/sveltekit/translations` subpath resolves a
+locale from the URL, cookie, application setting, browser preference, then your
+base locale. It keeps URLs canonical without setting process-global translation
+state.
 
 ```ts
 // src/lib/i18n.ts
@@ -52,11 +127,12 @@ export const routing = createRunicLocaleRouting({
 });
 ```
 
-With `unprefixed`, `/setup` is English and `/de/setup` is German. Use
-`baseLocalePath: "prefixed"` when both `/en/setup` and `/de/setup` are desired.
-Set `basePath` when the SvelteKit application is mounted below `/`.
+With this policy, `/setup` is English and `/de/setup` is German. Choose
+`baseLocalePath: "prefixed"` when `/en/setup` is also required, and set
+`basePath` when the app is served below `/`.
 
-Use the pure reroute hook so both public URLs select the same filesystem route:
+Use the reroute hook so localized URLs select the same filesystem route, then
+use the server handle to resolve, canonicalize, and expose the request locale:
 
 ```ts
 // src/hooks.ts
@@ -65,9 +141,6 @@ import { routing } from "$lib/i18n";
 
 export const reroute = createRunicLocaleReroute(routing);
 ```
-
-The server handle resolves one locale for one request, writes it to
-`event.locals.locale`, applies canonical redirects, and optionally persists it:
 
 ```ts
 // src/hooks.server.ts
@@ -80,83 +153,55 @@ export const handle = createRunicLocaleHandle(routing, {
 });
 ```
 
-Resolution defaults to URL, cookie, application setting, browser preference,
-then the configured base locale. Change `resolutionOrder` when application
-settings should win. URL prefixes and preference tags are matched
-case-insensitively with parent fallback (`de-DE` can select `de`). Unsupported
-values fall through to the next strategy; an unsupported first path segment is
-treated as an application route, not silently removed.
+Declare `App.Locals.locale`, return it from the root server load with
+`localeFromLocals(locals, routing)`, and initialize your Svelte locale source
+from that value. Put `<html lang="%runic.locale%">` in `app.html` to receive
+the request language without another resolver. Generated messages must still
+receive the request locale explicitly.
 
-Declare the local and return it from the root server load for hydration:
+For client navigation, call `synchronizeLocaleWithNavigation(source, routing)`
+from the root layout and pass `createLocaleNavigation(routing)` as the locale
+context's `requestLocale`. `gotoLocale`, `localizeUrl`, `delocalizeUrl`, and
+`canonicalUrl` are available for selectors, links, metadata, and redirects.
+
+Prerendering requires every localized public URL to be listed as an entry or
+discoverable through links. A deployed static asset does not execute
+`hooks.server`; SPA mode has no server handle, so initialize from the URL or
+browser instead.
+
+## Hosted SSR session projection
+
+`@runic-artifex/sveltekit/hosted` is the server-only W30 helper for the D008
+profile. It derives the locale from request locals, forwards exactly one opaque
+`__Host-runic-session` cookie to a caller-supplied C# session loader, and returns
+only the C# sanitized session projection plus a deterministic hydration marker.
+It does not validate or mint a cookie, process OIDC, carry a bearer token, add
+CORS, or create a browser bridge.
 
 ```ts
-// src/app.d.ts
-declare global {
-  namespace App {
-    interface Locals { locale: "en" | "de" }
-  }
-}
-export {};
-```
-
-```ts
-// src/routes/+layout.server.ts
-import { localeFromLocals } from "@runic-artifex/sveltekit/translations";
+// src/routes/[locale]/+page.server.ts
+import { createRunicHostedSsrLoad } from "@runic-artifex/sveltekit/hosted";
 import { routing } from "$lib/i18n";
+import { loadCSharpSession } from "$lib/csharp-session.server";
 
-export const load = ({ locals }) => ({ locale: localeFromLocals(locals, routing) });
+export const load = createRunicHostedSsrLoad(routing, {
+  loadSession: loadCSharpSession,
+});
 ```
 
-Put the default `%runic.locale%` token in `app.html` to receive the request
-locale without a second resolver:
+The loader receives only `{ path: "/runic/service/session", cookie }`. Route
+it to the C# service using that cookie alone and reject unavailable, malformed,
+or unauthorized responses. The helper fails closed if the cookie is missing or
+duplicated, C# denies it, or the returned projection contains unbounded or
+noncanonical facts. Keep the locale handle's URL-first/cookie-second routing
+policy and pass the resolved locale explicitly to every generated translation
+call. SSR, client navigation, and browser bootstrap therefore share one
+request-scoped locale without process-global state.
 
-```html
-<html lang="%runic.locale%">
-```
+## Links, status, and support
 
-The token can be changed or disabled with `htmlLanguageToken`. Generated
-messages must still receive the request locale explicitly through
-`{ locale: data.locale }`; the handle never installs process-global state.
-
-### Client navigation
-
-Browser lifecycle helpers have their own subpath so server hooks do not import
-`$app/navigation`:
-
-```svelte
-<script lang="ts">
-  import { createLocaleSource } from "virtual:runic-translations/app/runtime";
-  import {
-    createLocaleNavigation,
-    synchronizeLocaleWithNavigation,
-  } from "@runic-artifex/sveltekit/translations/navigation";
-  import { localeContext } from "$lib/locale-context";
-  import { routing } from "$lib/i18n";
-
-  let { data, children } = $props();
-  const source = createLocaleSource({ initialLocale: data.locale });
-  synchronizeLocaleWithNavigation(source, routing);
-  localeContext.provide(source, {
-    requestLocale: createLocaleNavigation(routing),
-  });
-</script>
-
-{@render children()}
-```
-
-`routing.localizeUrl(url, locale)`, `delocalizeUrl`, and `canonicalUrl` preserve
-the query and hash and can be used for links, language selectors, canonical
-metadata, and redirects. `gotoLocale` is available for direct event handlers.
-
-### Deployment and prerendering
-
-- SSR works with Node, serverless, and edge adapters that implement SvelteKit's
-  standard request, cookie, and response APIs. Concurrent requests share no
-  locale state.
-- SPA mode uses the same URL and navigation helpers, but there is no server
-  handle; initialize from the URL/browser instead.
-- Prerendering is supported, but every localized public URL must be present in
-  SvelteKit's prerender entries or discoverable links. A deployed prerendered
-  asset does not execute `hooks.server`.
-- The adapter does not translate route slugs, discover localized entries,
-  negotiate locales at a CDN, or manage service-worker caches.
+- [Application Bridge guide](https://docs.runic-artifex.eu/application-bridge)
+- [Package catalog and release status](https://docs.runic-artifex.eu/packages)
+- [SvelteKit reference application](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/04-SvelteKitSetupApplication)
+- [Issues and support](https://github.com/Runic-Artifex/runic-svelte/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-svelte/blob/main/LICENSE)

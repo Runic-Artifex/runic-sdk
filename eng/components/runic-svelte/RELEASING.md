@@ -3,7 +3,7 @@
 The `Public release` workflow builds and validates
 `@runic-artifex/svelte` and `@runic-artifex/sveltekit` as one exact-version
 family. Every dispatch requires an explicit version. The next planned private
-candidate is `0.1.0-preview.8.1`; this is a planning value, not a claim that the
+candidate is `0.2.0-preview.1`; this is a planning value, not a claim that the
 candidate has been verified or published.
 
 Run a verify-only dispatch first and retain its two tarballs and `SHA256SUMS`.
