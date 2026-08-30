@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
+    <RunicAssetsShippingProject>true</RunicAssetsShippingProject>
+    <AssemblyName>Runic.Assets.AspNetCore</AssemblyName>
+    <RootNamespace>Runic.Assets.AspNetCore</RootNamespace>
+    <PackageId>Runic.Assets.AspNetCore</PackageId>
+    <Description>ASP.NET Core endpoint integration for Runic Assets.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Assets/Runic.Assets.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

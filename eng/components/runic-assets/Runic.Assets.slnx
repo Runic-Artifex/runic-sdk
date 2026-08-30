@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
+    <Project Path="src/Runic.Assets/Runic.Assets.csproj" />
+    <Project Path="src/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj" />
+    <Project Path="src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Runic.Assets.Tests/Runic.Assets.Tests.csproj" />
+    <Project Path="tests/Runic.Assets.Desktop.Tests/Runic.Assets.Desktop.Tests.csproj" />
+  </Folder>
+</Solution>

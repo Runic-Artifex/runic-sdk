@@ -19,10 +19,9 @@ fi
 
 mkdir -p "$output_directory"
 package_projects=(
-  "$repository_root/src/RunicAssets/RunicAssets.csproj"
-  "$repository_root/src/RunicAssets.CsWebUi/RunicAssets.CsWebUi.csproj"
-  "$repository_root/src/RunicAssets.AspNetCore/RunicAssets.AspNetCore.csproj"
-  "$repository_root/integrations/RunicAssets.RunicToolkit/RunicAssets.RunicToolkit.csproj"
+  "$repository_root/src/Runic.Assets/Runic.Assets.csproj"
+  "$repository_root/src/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj"
+  "$repository_root/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj"
 )
 
 for project in "${package_projects[@]}"; do

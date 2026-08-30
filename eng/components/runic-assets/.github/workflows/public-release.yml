@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/public-release.yml
+      - .github/actions/checkout-verification-dependencies/action.yml
       - Directory.Build.props
       - eng/pack.sh
       - eng/verify-package-artifacts.ps1
@@ -37,6 +38,7 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
+  RUNIC_ASSETS_DEPENDENCY_ROOT: ${{ github.workspace }}/.runic-dependencies
   PACKAGE_VERSION: ${{ inputs.version || format('0.1.0-preview.{0}.{1}', github.run_number, github.run_attempt) }}
   NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
@@ -72,6 +74,9 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Check out exact verification candidates
+        uses: ./.github/actions/checkout-verification-dependencies
+
       - name: Run verification pipeline
         run: ./eng/verify.sh
 
@@ -83,7 +88,7 @@ jobs:
 
       - name: Consume packages with NativeAOT
         run: >-
-          ./tests/RunicAssets.PackageConsumer/Test-PackageConsumer.sh
+          ./tests/Runic.Assets.PackageConsumer/Test-PackageConsumer.sh
           "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
 
       - name: Validate public package contract
@@ -93,7 +98,7 @@ jobs:
           artifact-directory: ${{ runner.temp }}/packages
           repository-url: https://github.com/Runic-Artifex/runic-assets
           repository-commit: ${{ github.sha }}
-          expected-nuget-count: "4"
+          expected-nuget-count: "3"
 
       - name: Record package digests
         working-directory: ${{ runner.temp }}/packages

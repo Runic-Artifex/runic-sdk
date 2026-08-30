@@ -1,6 +1,6 @@
 # Releasing Runic Assets
 
-The `Public release` workflow builds, consumes, and validates the four NuGet
+The `Public release` workflow builds, consumes, and validates the three NuGet
 packages as one independently versioned family. Verify-only dispatches are safe
 on any branch. Publication is accepted only from `main`, after the exact
 `PUBLISH PUBLIC` confirmation and the `public-release` environment's `main`
