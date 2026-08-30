@@ -67,13 +67,25 @@ public sealed class BrowserHostTests
         Assert.Contains("--window-position=12,34", chromiumArguments);
         Assert.Contains("--proxy-server=http://proxy.test:8080", chromiumArguments);
         Assert.DoesNotContain("--no-proxy-server", chromiumArguments);
+        Assert.Contains("--deny-permission-prompts", chromiumArguments);
+        Assert.DoesNotContain("--auto-accept-camera-and-microphone-capture", chromiumArguments);
         Assert.Equal($"--app={url.AbsoluteUri}", chromiumArguments[^1]);
+
+        var mediaArguments = WebUiBrowserHost.BuildArguments(
+            chromium,
+            url,
+            new WebUiBrowserLaunchOptions(
+                null, null, null, [], false, false, null, null, null, null,
+                DesktopPermissionGrant.MediaCapture));
+        Assert.Contains("--auto-accept-camera-and-microphone-capture", mediaArguments);
+        Assert.DoesNotContain("--deny-permission-prompts", mediaArguments);
 
         var customArguments = WebUiBrowserHost.BuildArguments(
             chromium,
             url,
             new WebUiBrowserLaunchOptions(null, "/profile", null, ["--custom=value"], false, false, null, null, null, null));
         Assert.Contains("--custom=value", customArguments);
+        Assert.Contains("--deny-permission-prompts", customArguments);
         Assert.DoesNotContain("--no-first-run", customArguments);
         Assert.DoesNotContain("--no-proxy-server", customArguments);
 

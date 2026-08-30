@@ -44,9 +44,26 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task PublicSurfaceServesRunicDesktopBootstrapIdentity()
+    {
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync();
+        using var client = new HttpClient();
+
+        var script = await client.GetStringAsync(new Uri(surface.Url, "runic-desktop.js"));
+
+        Assert.Contains("globalThis, \"runicDesktop\"", script, StringComparison.Ordinal);
+        Assert.Contains("product: \"Runic Desktop\"", script, StringComparison.Ordinal);
+        Assert.Contains("profile: \"webui-compat/52f9e75\"", script, StringComparison.Ordinal);
+        Assert.Contains("sessionCredential:", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Object.defineProperty(globalThis, \"webui\"", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CapabilityFailuresProduceOnlyStableRedactedDiagnostics()
     {
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        string? invocationCorrelationId = null;
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
         {
             DiagnosticSink = diagnostics.Enqueue,
@@ -54,7 +71,11 @@ public sealed class DesktopApiTests
         await using var surface = await host.CreateSurfaceAsync();
         using var registration = surface.RegisterCapability(
             "sample.failure",
-            static (_, _) => throw new InvalidOperationException("secret-stack"));
+            (invocation, _) =>
+            {
+                invocationCorrelationId = invocation.CorrelationId;
+                throw new InvalidOperationException("secret-stack");
+            });
         using var client = new HttpClient();
         var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
         var token = ExtractUnsigned(bridge, "const TOKEN = ");
@@ -77,6 +98,8 @@ public sealed class DesktopApiTests
         Assert.Equal(DesktopErrorCategory.OperationFailed, diagnostic.Category);
         Assert.Equal("capability-failed", diagnostic.Code);
         Assert.Equal("The presentation capability failed.", diagnostic.Message);
+        Assert.Equal(invocationCorrelationId, diagnostic.CorrelationId);
+        Assert.Matches("^[a-f0-9]{32}$", diagnostic.CorrelationId);
         Assert.DoesNotContain("secret-stack", diagnostic.ToString(), StringComparison.Ordinal);
     }
 
@@ -122,6 +145,29 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task ContentRequestExposesAnImmutableCaseInsensitiveHeaderSnapshot()
+    {
+        IReadOnlyDictionary<string, string>? observed = null;
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            ContentHandler = (request, _) =>
+            {
+                observed = request.Headers;
+                return ValueTask.FromResult<ContentResponse?>(ContentResponse.Text("ok"));
+            },
+        });
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("If-None-Match", "\"asset-v1\"");
+
+        _ = await client.GetStringAsync(surface.Url);
+
+        Assert.NotNull(observed);
+        Assert.Equal("\"asset-v1\"", observed["if-none-match"]);
+        Assert.Throws<NotSupportedException>(() => ((IDictionary<string, string>)observed).Add("x", "y"));
+    }
+
+    [Fact]
     public async Task OpeningAndClosingWindowPreservesSurfaceContentAndLifetime()
     {
         var factory = new RecordingWindowHostFactory();
@@ -144,6 +190,165 @@ public sealed class DesktopApiTests
         Assert.Equal("original", await client.GetStringAsync(surface.Url));
         await window.CloseAsync();
         Assert.Equal("original", await client.GetStringAsync(surface.Url));
+    }
+
+    [Fact]
+    public async Task EmbeddedPresentationReceivesExplicitPermissionPolicy()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            AllowedPermissions = DesktopPermissionGrant.MediaCapture,
+        });
+
+        Assert.Equal(DesktopPermissionGrant.MediaCapture, factory.Host?.Options?.AllowedPermissions);
+        Assert.False(window.FellBack);
+        Assert.Equal(BrowserKind.Embedded, window.Browser);
+        Assert.Equal(BrowserKind.Embedded, window.RequestedBrowser);
+    }
+
+    [Fact]
+    public async Task EmbeddedPresentationDeniesSensitivePermissionsByDefault()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var _ = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+        });
+
+        Assert.Equal(DesktopPermissionGrant.None, factory.Host?.Options?.AllowedPermissions);
+    }
+
+    [Fact]
+    public async Task UnavailablePresentationFailsEarlyWithCorrelatedRemediation()
+    {
+        var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new UnavailableWindowHostFactory(),
+            DiagnosticSink = diagnostics.Enqueue,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+
+        var error = await Assert.ThrowsAsync<DesktopException>(() =>
+            surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded }).AsTask());
+
+        Assert.Equal("custom-window-host-unavailable", error.Code);
+        Assert.NotEmpty(error.CorrelationId);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(error.CorrelationId, diagnostic.CorrelationId);
+        Assert.False(string.IsNullOrWhiteSpace(diagnostic.Remediation));
+    }
+
+    [Fact]
+    public async Task PreflightReportsTheRequestedPolicyAndConcreteCapabilityLimit()
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new UnavailableWindowHostFactory(),
+        });
+
+        var requestedOnly = host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+        });
+        var explicitFallback = host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+        });
+
+        Assert.Equal(BrowserKind.Embedded, requestedOnly.RequestedBrowser);
+        Assert.Equal(DesktopPresentationPolicy.RequestedOnly, requestedOnly.PresentationPolicy);
+        Assert.False(requestedOnly.IsAvailable);
+        Assert.Equal(DesktopWindowCapabilities.None, requestedOnly.Preferred.Capabilities);
+        Assert.Equal("custom-window-host-unavailable", requestedOnly.Diagnostic?.Code);
+        Assert.Equal(DesktopPresentationPolicy.EmbeddedThenBrowser, explicitFallback.PresentationPolicy);
+        Assert.NotNull(explicitFallback.Fallback);
+        Assert.Equal(
+            explicitFallback.Fallback!.IsAvailable && !explicitFallback.Preferred.IsAvailable,
+            explicitFallback.WouldFallBack);
+    }
+
+    [Fact]
+    public async Task PreflightRejectsUnknownPresentationPolicies()
+    {
+        await using var host = await DesktopHost.StartAsync();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            PresentationPolicy = (DesktopPresentationPolicy)42,
+        }));
+    }
+
+    [Fact]
+    public async Task ExplicitEmbeddedThenBrowserFallbackIsObservable()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-fallback-");
+        try
+        {
+            var executable = Path.Combine(folder.FullName, OperatingSystem.IsMacOS()
+                ? "Google Chrome.app/Contents/MacOS/Google Chrome"
+                : "google-chrome");
+            Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+            await File.WriteAllTextAsync(executable, "#!/bin/sh\nexit 0\n");
+            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                BrowserFolder = folder.FullName,
+                WindowHostFactory = new UnavailableWindowHostFactory(),
+                DiagnosticSink = diagnostics.Enqueue,
+                WaitForConnection = false,
+            });
+            await using var surface = await host.CreateSurfaceAsync();
+            await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+            {
+                Browser = BrowserKind.Chrome,
+                PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            });
+
+            Assert.True(window.FellBack);
+            Assert.Equal(BrowserKind.Chrome, window.RequestedBrowser);
+            Assert.Equal(BrowserKind.Chrome, window.Browser);
+            Assert.Contains(diagnostics, static item => item.Code == "embedded-presentation-fallback");
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AvailabilityReportsConcretePresentationsAndActionableFailures()
+    {
+        var availability = DesktopPlatform.GetAvailability(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+
+        Assert.False(string.IsNullOrWhiteSpace(availability.Platform));
+        Assert.Contains(availability.Presentations, static item => item.Browser == BrowserKind.Embedded);
+        Assert.DoesNotContain(availability.Presentations, static item => item.Browser == BrowserKind.Any);
+        Assert.All(
+            availability.Diagnostics,
+            static diagnostic => Assert.False(string.IsNullOrWhiteSpace(diagnostic.Remediation)));
     }
 
     [Fact]
@@ -174,6 +379,18 @@ public sealed class DesktopApiTests
 
         Assert.Equal("stream", await client.GetStringAsync(new Uri(surface.Url, "stream")));
         Assert.Equal(1, Volatile.Read(ref factoryCalls));
+    }
+
+    [Fact]
+    public async Task LocalContentDeniesMediaCaptureByDefault()
+    {
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = "safe" });
+        using var client = new HttpClient();
+
+        using var response = await client.GetAsync(surface.Url);
+
+        Assert.Equal("camera=(), microphone=()", response.Headers.GetValues("Permissions-Policy").Single());
     }
 
     [Fact]
@@ -325,6 +542,7 @@ public sealed class DesktopApiTests
         public bool IsOpen { get; private set; }
         public nint NativeHandle => IsOpen ? 1 : 0;
         internal Uri? Url { get; private set; }
+        internal DesktopWindowHostOptions? Options { get; private set; }
 
         public ValueTask OpenAsync(
             Uri url,
@@ -333,6 +551,7 @@ public sealed class DesktopApiTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Url = url;
+            Options = options;
             IsOpen = true;
             return ValueTask.CompletedTask;
         }
@@ -367,5 +586,11 @@ public sealed class DesktopApiTests
             IsOpen = false;
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class UnavailableWindowHostFactory : IDesktopWindowHostFactory
+    {
+        public bool IsSupported => false;
+        public IDesktopWindowHost Create() => throw new InvalidOperationException("An unavailable host cannot be created.");
     }
 }

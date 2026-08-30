@@ -28,6 +28,7 @@ public sealed class PresentationInvocation
         Surface = surface;
         _event = webUiEvent;
         Session = new PresentationSession(webUiEvent.Window, webUiEvent.SessionIdentifier, webUiEvent.ConnectionId);
+        CorrelationId = Guid.NewGuid().ToString("N");
     }
 
     public DesktopSurface Surface { get; }
@@ -35,6 +36,9 @@ public sealed class PresentationInvocation
     public PresentationEventKind Kind => (PresentationEventKind)_event.EventType;
     public string Capability => _event.Element;
     public ulong InvocationId => _event.EventNumber;
+
+    /// <summary>Gets the opaque identity shared with any redacted diagnostic for this invocation.</summary>
+    public string CorrelationId { get; }
     public ulong SessionId => _event.ConnectionId;
     public int ArgumentCount => checked((int)_event.ArgumentCount);
 

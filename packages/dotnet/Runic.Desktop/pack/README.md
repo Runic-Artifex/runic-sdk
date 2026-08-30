@@ -18,6 +18,8 @@ WebView. It does not load the native WebUI library.
 - Same-origin admission and 256-bit surface-scoped session credentials by default
 - Installed-browser discovery, isolated profiles, kiosk mode, and process ownership
 - Embedded WebView2, WKWebView, and WebKitGTK windows
+- Structured browser/WebView preflight with actionable prerequisite diagnostics
+- Sensitive permissions denied by default and explicit, typed presentation opt-in
 - Window geometry, framing, transparency, visibility, focus, and native handles
 - Trimming and NativeAOT-compatible managed core
 
@@ -61,6 +63,36 @@ dotnet run --project samples/Runic.Desktop.Sample -- --webview
 Applications can provide an `IDesktopWindowHostFactory` in immutable host
 options without replacing the managed server, transport, capabilities, or
 lifecycle.
+
+Inspect presentation readiness before doing application work:
+
+```csharp
+await using var host = await DesktopHost.StartAsync();
+var preflight = host.GetPresentationPreflight(new DesktopWindowOptions
+{
+    Browser = BrowserKind.Embedded,
+    PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+});
+if (!preflight.IsAvailable)
+{
+    Console.Error.WriteLine($"{preflight.Diagnostic?.Code}: {preflight.Diagnostic?.Remediation}");
+}
+```
+
+The default `RequestedOnly` policy never changes presentation mode. Applications
+that deliberately prefer a WebView but can continue in a browser can select
+`DesktopPresentationPolicy.EmbeddedThenBrowser`; the resulting
+`DesktopWindow.FellBack` property and the diagnostic sink make that decision
+observable. The typed preflight reports the preferred host, the policy's only
+permitted fallback, capability limits, and safe prerequisite remediation without
+starting a presentation. Camera and microphone access remains denied unless
+`DesktopPermissionGrant.MediaCapture` is explicitly selected for the window.
+
+The retained `webui-compat/52f9e75` direct-capability profile cannot carry a
+structured invocation failure on its legacy wire response. It reports only the
+stable empty compatibility result while the host emits a redacted,
+correlation-bearing diagnostic. The `@runic-artifex/desktop` Application Bridge
+transport exposes its own typed, redacted, correlation-bearing errors.
 
 ## Relationship to WebUI and CS-WebUI
 

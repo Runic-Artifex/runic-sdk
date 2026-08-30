@@ -3,6 +3,7 @@ Runic.Desktop.ContentHandler
 Runic.Desktop.ContentRequest
 Runic.Desktop.ContentResponse
 Runic.Desktop.ContentStreamFactory
+Runic.Desktop.DesktopAvailabilityResult
 Runic.Desktop.DesktopClientAdmission
 Runic.Desktop.DesktopDiagnostic
 Runic.Desktop.DesktopErrorCategory
@@ -10,7 +11,11 @@ Runic.Desktop.DesktopException
 Runic.Desktop.DesktopHost
 Runic.Desktop.DesktopHostOptions
 Runic.Desktop.DesktopNetworkExposure
+Runic.Desktop.DesktopPermissionGrant
 Runic.Desktop.DesktopPlatform
+Runic.Desktop.DesktopPresentationPolicy
+Runic.Desktop.DesktopPresentationAvailability
+Runic.Desktop.DesktopPresentationPreflight
 Runic.Desktop.DesktopSecurityPolicy
 Runic.Desktop.DesktopSurface
 Runic.Desktop.DesktopSurfaceOptions

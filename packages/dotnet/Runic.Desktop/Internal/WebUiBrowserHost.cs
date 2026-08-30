@@ -12,7 +12,8 @@ internal sealed record WebUiBrowserLaunchOptions(
     uint? Width,
     uint? Height,
     uint? X,
-    uint? Y);
+    uint? Y,
+    DesktopPermissionGrant AllowedPermissions = DesktopPermissionGrant.None);
 
 internal static class WebUiBrowserHost
 {
@@ -31,7 +32,6 @@ internal static class WebUiBrowserHost
         "--disable-sync-preferences",
         "--disable-component-update",
         "--allow-insecure-localhost",
-        "--auto-accept-camera-and-microphone-capture",
     ];
 
     internal static Process Start(
@@ -75,6 +75,10 @@ internal static class WebUiBrowserHost
             {
                 arguments.AddRange(ChromiumDefaults);
             }
+
+            arguments.Add((options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0
+                ? "--auto-accept-camera-and-microphone-capture"
+                : "--deny-permission-prompts");
 
             if (options.Kiosk)
             {

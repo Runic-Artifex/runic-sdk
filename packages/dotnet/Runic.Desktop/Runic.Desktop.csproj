@@ -12,7 +12,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" PrivateAssets="contentfiles;analyzers" />
+    <!-- Keep the WebView2 compile surface private while allowing its build
+         targets to carry the Core assembly and loader to clean consumers.
+         Runic.Desktop's own transitive target removes the SDK's WPF/WinForms
+         references when the application does not use them. -->
+    <PackageReference Include="Microsoft.Web.WebView2" PrivateAssets="compile;contentfiles;analyzers" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Runic.Desktop.Tests" />
     <None Include="$(MSBuildThisFileDirectory)..\..\README.md" Pack="true" PackagePath="" />

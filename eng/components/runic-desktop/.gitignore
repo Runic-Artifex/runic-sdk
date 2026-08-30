@@ -4,6 +4,8 @@
 [Aa]rtifacts/
 [Tt]est[Rr]esults/
 [Bb]uild/
+node_modules/
+web/packages/*/dist/
 __pycache__/
 *.py[cod]
 !samples/UpstreamExamples/React/webui-react-example/build/
@@ -11,6 +13,7 @@ __pycache__/
 [Ll]og/
 *.nupkg
 *.snupkg
+*.tgz
 
 # Local package cache and coverage output
 .nuget/

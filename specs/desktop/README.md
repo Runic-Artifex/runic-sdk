@@ -22,6 +22,8 @@ intentionally divergent, or not applicable.
   TypeScript+Effect without making either API normative.
 - [Milestone gates](milestones.md) binds M5-M8 completion to the shared
   contract.
+- [M7 wire-profile decision](wire-profile.md) selects and isolates the v1
+  browser framing profile.
 - [Conformance](conformance/README.md) selects portable scenario and codec
   vector formats.
 
@@ -29,6 +31,12 @@ The schemas and committed examples under `conformance/` are normative test
 inputs. Test reports, platform receipts, performance measurements, WebUI
 differential results, and language-specific API baselines are evidence, not
 contract sources.
+
+Run `npm run verify:contract` to validate the contract identity and version,
+the committed schemas, every scenario and vector fixture, Markdown artifact
+links, and the closed authored fixture set. This is repository-local format
+verification; language implementations still supply their own conformance and
+platform evidence.
 
 ## Change rules
 

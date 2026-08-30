@@ -17,11 +17,13 @@ public sealed class ContentRequest
     internal ContentRequest(
         string path,
         string method,
+        IReadOnlyDictionary<string, string> headers,
         IServiceProvider services,
         PresentationRequestCancellation? cancellation)
     {
         Path = path;
         Method = method;
+        Headers = headers;
         Services = services;
         _cancellation = cancellation;
     }
@@ -33,6 +35,9 @@ public sealed class ContentRequest
 
     /// <summary>Gets the HTTP request method.</summary>
     public string Method { get; }
+
+    /// <summary>Gets the immutable request-header snapshot using case-insensitive names.</summary>
+    public IReadOnlyDictionary<string, string> Headers { get; }
 
     /// <summary>Gets the request-scoped service provider.</summary>
     public IServiceProvider Services { get; }
