@@ -19,6 +19,7 @@
     {
       devShells = forAllSystems (pkgs:
         let
+          dotnet = pkgs.dotnetCorePackages.sdk_10_0;
           linuxRuntimePackages = with pkgs; [
             chromium
             gtk3
@@ -30,10 +31,12 @@
           default = pkgs.mkShell {
             packages = with pkgs; [
               curl
-              dotnet-sdk_10
+              dotnet
               git
+              nodejs_24
             ] ++ linuxRuntimePackages;
 
+            DOTNET_ROOT = "${dotnet}/share/dotnet";
             shellHook = ''
               export DOTNET_CLI_TELEMETRY_OPTOUT=1
               export DOTNET_NOLOGO=1

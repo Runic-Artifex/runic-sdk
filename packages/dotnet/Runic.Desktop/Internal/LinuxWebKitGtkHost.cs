@@ -202,6 +202,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         Api.Connect(_window, "destroy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnDestroyed, this);
         Api.Connect(_webView, "notify::title", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitleChanged, this);
+        Api.Connect(_webView, "permission-request", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnPermissionRequest, this);
         if (options.Frameless && options.Resizable)
         {
             Api.EnableResizeEvents(_webView);
@@ -264,6 +265,19 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             return Api.BeginResize(host._window, widget, webEvent) ? 1 : 0;
         }
         return 0;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnPermissionRequest(nint _, nint request, nint context)
+    {
+        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost host ||
+            (host._options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0)
+        {
+            return 0;
+        }
+
+        Api.DenyPermission(request);
+        return 1;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -496,6 +510,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 WebKitWebViewNewWithContextPointer = Required(_webkit, "webkit_web_view_new_with_context");
                 WebKitWebViewLoadUriPointer = Required(_webkit, "webkit_web_view_load_uri");
                 WebKitWebViewGetTitlePointer = Required(_webkit, "webkit_web_view_get_title");
+                WebKitPermissionRequestDenyPointer = Required(_webkit, "webkit_permission_request_deny");
                 WebKitWebViewSetBackgroundColorPointer = Optional(_webkit, "webkit_web_view_set_background_color");
                 IsAvailable = true;
             }
@@ -551,6 +566,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint WebKitWebViewNewWithContextPointer { get; }
         private nint WebKitWebViewLoadUriPointer { get; }
         private nint WebKitWebViewGetTitlePointer { get; }
+        private nint WebKitPermissionRequestDenyPointer { get; }
         private nint WebKitWebViewSetBackgroundColorPointer { get; }
 
         internal bool GtkInitCheck() => ((delegate* unmanaged[Cdecl]<nint, nint, int>)GtkInitCheckPointer)(0, 0) != 0;
@@ -640,6 +656,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             var value = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetTitlePointer)(webView);
             return value == 0 ? null : Marshal.PtrToStringUTF8(value);
         }
+
+        internal void DenyPermission(nint request) =>
+            ((delegate* unmanaged[Cdecl]<nint, void>)WebKitPermissionRequestDenyPointer)(request);
 
         internal void BeginMove(nint window)
         {

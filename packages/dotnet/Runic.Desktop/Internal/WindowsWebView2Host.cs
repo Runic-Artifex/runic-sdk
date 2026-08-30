@@ -308,6 +308,14 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             _controller.CoreWebView2.DocumentTitleChanged += (_, _) =>
                 Native.SetWindowText(_window, _controller.CoreWebView2.DocumentTitle);
             _controller.CoreWebView2.WindowCloseRequested += (_, _) => Native.PostMessage(_window, WmClose, 0, 0);
+            _controller.CoreWebView2.PermissionRequested += (_, request) =>
+            {
+                var isMedia = request.PermissionKind is CoreWebView2PermissionKind.Camera or CoreWebView2PermissionKind.Microphone;
+                request.State = isMedia && (options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0
+                    ? CoreWebView2PermissionState.Allow
+                    : CoreWebView2PermissionState.Deny;
+                request.Handled = true;
+            };
             _controller.CoreWebView2.Navigate(url.AbsoluteUri);
             if (!string.IsNullOrWhiteSpace(options.IconFile))
             {

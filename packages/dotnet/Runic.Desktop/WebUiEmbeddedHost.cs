@@ -87,4 +87,6 @@ internal sealed record WebUiEmbeddedHostOptions
     public string? ProfilePath { get; init; }
 
     public string? CustomParameters { get; init; }
+
+    public DesktopPermissionGrant AllowedPermissions { get; init; }
 }

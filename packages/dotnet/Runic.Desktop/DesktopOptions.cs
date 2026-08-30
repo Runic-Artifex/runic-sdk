@@ -112,6 +112,27 @@ public enum BrowserKind
     Embedded,
 }
 
+/// <summary>Controls whether a requested presentation may explicitly fall back to another host.</summary>
+public enum DesktopPresentationPolicy
+{
+    /// <summary>Open only the requested browser or embedded WebView.</summary>
+    RequestedOnly,
+
+    /// <summary>Prefer the embedded WebView and fall back to the selected installed browser.</summary>
+    EmbeddedThenBrowser,
+}
+
+/// <summary>Identifies sensitive presentation permissions that an application may explicitly grant.</summary>
+[Flags]
+public enum DesktopPermissionGrant
+{
+    /// <summary>Deny sensitive permissions.</summary>
+    None = 0,
+
+    /// <summary>Allow camera and microphone capture for the presentation.</summary>
+    MediaCapture = 1 << 0,
+}
+
 /// <summary>Identifies a platform-window operation reported by a presentation.</summary>
 [Flags]
 public enum DesktopWindowCapabilities
@@ -129,6 +150,8 @@ public enum DesktopWindowCapabilities
 public sealed record DesktopWindowOptions
 {
     public BrowserKind Browser { get; init; } = BrowserKind.Any;
+    public DesktopPresentationPolicy PresentationPolicy { get; init; }
+    public DesktopPermissionGrant AllowedPermissions { get; init; }
     public uint Width { get; init; } = 800;
     public uint Height { get; init; } = 600;
     public uint? MinimumWidth { get; init; }

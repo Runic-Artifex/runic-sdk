@@ -36,9 +36,10 @@ public sealed class DesktopSurface : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(handler);
         var binding = _engine.BindAsync(capability, async (webUiEvent, token) =>
         {
+            var invocation = new PresentationInvocation(this, webUiEvent);
             try
             {
-                return (await handler(new PresentationInvocation(this, webUiEvent), token).ConfigureAwait(false))
+                return (await handler(invocation, token).ConfigureAwait(false))
                     .ToCompatibilityResult();
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -51,7 +52,8 @@ public sealed class DesktopSurface : IAsyncDisposable
                     DesktopErrorCategory.OperationFailed,
                     "capability-failed",
                     "The presentation capability failed.",
-                    Retryable: false));
+                    Retryable: false,
+                    CorrelationId: invocation.CorrelationId));
                 return WebUiResult.None;
             }
         });
@@ -73,10 +75,50 @@ public sealed class DesktopSurface : IAsyncDisposable
                 throw new InvalidOperationException("This surface already has an open window presentation.");
             }
 
+            ValidateWindowOptions(configured);
             ApplyWindowOptions(configured);
-            await _engine.OpenPresentationAsync(ToCompatibilityBrowser(configured.Browser), cancellationToken)
-                .ConfigureAwait(false);
-            _window = new DesktopWindow(this, _engine, configured.Browser);
+            var requestedBrowser = configured.Browser;
+            var actualBrowser = requestedBrowser;
+            var fellBack = false;
+            if (configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser)
+            {
+                try
+                {
+                    await OpenCheckedAsync(BrowserKind.Embedded, cancellationToken).ConfigureAwait(false);
+                    actualBrowser = BrowserKind.Embedded;
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    fellBack = true;
+                    var correlationId = exception is DesktopException desktopException
+                        ? desktopException.CorrelationId
+                        : Guid.NewGuid().ToString("N");
+                    _host.Report(new DesktopDiagnostic(
+                        DesktopErrorCategory.Unavailable,
+                        "embedded-presentation-fallback",
+                        "The embedded presentation was unavailable; the explicit browser fallback will be used.",
+                        Retryable: true,
+                        correlationId,
+                        "Install the platform WebView prerequisite to restore the preferred presentation."));
+                    actualBrowser = requestedBrowser == BrowserKind.Embedded ? BrowserKind.Any : requestedBrowser;
+                    await OpenCheckedAsync(actualBrowser, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                await OpenCheckedAsync(requestedBrowser, cancellationToken).ConfigureAwait(false);
+            }
+
+            // A concrete installed browser was selected successfully once its
+            // process launched. Its process can exit before this async method
+            // observes CurrentBrowser, which is intentionally reset during
+            // cleanup; keep the presentation snapshot observable instead of
+            // degrading it to Any because of that scheduling race.
+            if (actualBrowser is BrowserKind.Any or BrowserKind.ChromiumBased)
+            {
+                actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
+            }
+            _window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
             return _window;
         }
         finally
@@ -210,6 +252,78 @@ public sealed class DesktopSurface : IAsyncDisposable
         {
             _engine.SetCustomParameters(arguments);
         }
+        _engine.SetAllowedPermissions(options.AllowedPermissions);
+    }
+
+    private async Task OpenCheckedAsync(BrowserKind browser, CancellationToken cancellationToken)
+    {
+        var availability = _host.FindAvailability(browser);
+        if (availability is null || !availability.IsAvailable)
+        {
+            var diagnostic = availability?.Diagnostic ?? new DesktopDiagnostic(
+                DesktopErrorCategory.Unavailable,
+                "presentation-unavailable",
+                $"No supported presentation was discovered for {browser}.",
+                Retryable: false,
+                Remediation: "Install a supported browser or WebView runtime and run DesktopPlatform.GetAvailability().");
+            var correlationId = Guid.NewGuid().ToString("N");
+            diagnostic = diagnostic with { CorrelationId = correlationId };
+            _host.Report(diagnostic);
+            throw new DesktopException(
+                diagnostic.Category,
+                diagnostic.Code,
+                diagnostic.Message,
+                diagnostic.Retryable,
+                correlationId: correlationId);
+        }
+
+        try
+        {
+            await _engine.OpenPresentationAsync(ToCompatibilityBrowser(browser), cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (DesktopException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var correlationId = Guid.NewGuid().ToString("N");
+            _host.Report(new DesktopDiagnostic(
+                DesktopErrorCategory.Unavailable,
+                "presentation-start-failed",
+                "The selected presentation could not be started.",
+                Retryable: true,
+                correlationId,
+                "Review DesktopPlatform.GetAvailability(), install missing prerequisites, or select another presentation."));
+            throw new DesktopException(
+                DesktopErrorCategory.Unavailable,
+                "presentation-start-failed",
+                "The selected presentation could not be started.",
+                retryable: true,
+                exception,
+                correlationId);
+        }
+    }
+
+    internal static void ValidateWindowOptions(DesktopWindowOptions options)
+    {
+        const DesktopPermissionGrant supported = DesktopPermissionGrant.MediaCapture;
+        if (!Enum.IsDefined(options.Browser))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Browser contains an unsupported value.");
+        }
+        if (!Enum.IsDefined(options.PresentationPolicy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "PresentationPolicy contains an unsupported value.");
+        }
+        if ((options.AllowedPermissions & ~supported) != 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "AllowedPermissions contains an unsupported value.");
+        }
     }
 
     private static WebUiBrowser ToCompatibilityBrowser(BrowserKind browser) => browser switch
@@ -229,6 +343,22 @@ public sealed class DesktopSurface : IAsyncDisposable
         BrowserKind.Embedded => WebUiBrowser.WebView,
         _ => throw new ArgumentOutOfRangeException(nameof(browser)),
     };
+
+    private static BrowserKind FromCompatibilityBrowser(WebUiBrowser browser) => browser switch
+    {
+        WebUiBrowser.Chrome => BrowserKind.Chrome,
+        WebUiBrowser.Firefox => BrowserKind.Firefox,
+        WebUiBrowser.Edge => BrowserKind.Edge,
+        WebUiBrowser.Safari => BrowserKind.Safari,
+        WebUiBrowser.Chromium => BrowserKind.Chromium,
+        WebUiBrowser.Opera => BrowserKind.Opera,
+        WebUiBrowser.Brave => BrowserKind.Brave,
+        WebUiBrowser.Vivaldi => BrowserKind.Vivaldi,
+        WebUiBrowser.Epic => BrowserKind.Epic,
+        WebUiBrowser.Yandex => BrowserKind.Yandex,
+        WebUiBrowser.WebView => BrowserKind.Embedded,
+        _ => BrowserKind.Any,
+    };
 }
 
 /// <summary>Represents one installed-browser or embedded-WebView presentation of a surface.</summary>
@@ -239,14 +369,23 @@ public sealed class DesktopWindow : IAsyncDisposable
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _disposed;
 
-    internal DesktopWindow(DesktopSurface surface, WebUiWindow engine, BrowserKind browser)
+    internal DesktopWindow(
+        DesktopSurface surface,
+        WebUiWindow engine,
+        BrowserKind requestedBrowser,
+        BrowserKind browser,
+        bool fellBack)
     {
         _surface = surface;
         _engine = engine;
+        RequestedBrowser = requestedBrowser;
         Browser = browser;
+        FellBack = fellBack;
     }
 
+    public BrowserKind RequestedBrowser { get; }
     public BrowserKind Browser { get; }
+    public bool FellBack { get; }
     public bool IsOpen => Volatile.Read(ref _disposed) == 0 && _engine.IsShown;
     public ulong ProcessId => _engine.BrowserProcessId;
     public nint NativeHandle => _engine.NativeWindowHandle;

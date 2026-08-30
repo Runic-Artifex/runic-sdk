@@ -47,6 +47,7 @@ public sealed record DesktopWindowHostOptions
     public string? IconFile { get; init; }
     public string? ProfilePath { get; init; }
     public string? CustomArguments { get; init; }
+    public DesktopPermissionGrant AllowedPermissions { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -94,6 +95,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             IconFile = options.IconFile,
             ProfilePath = options.ProfilePath,
             CustomArguments = options.CustomParameters,
+            AllowedPermissions = options.AllowedPermissions,
         }, cancellationToken);
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>

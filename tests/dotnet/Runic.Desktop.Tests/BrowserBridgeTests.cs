@@ -8,6 +8,9 @@ namespace Runic.Desktop.Tests;
 
 public sealed class BrowserBridgeTests
 {
+    private const string ApplicationBridgeCapability = "runic.desktop.application-bridge/1";
+    private const string ApplicationBridgeReceiver = "__runicDesktopReceiveApplicationBridgeFrame";
+
     [Fact]
     public async Task UpstreamStyleCallbackAndJavaScriptRoundTripRunsInChromium()
     {
@@ -104,6 +107,100 @@ public sealed class BrowserBridgeTests
             }
             profile.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task TypeScriptEffectPackageRoundTripsThroughPublicDesktopApiInChromium()
+    {
+        var chrome = FindChrome();
+        var bundlePath = Path.Combine(AppContext.BaseDirectory, "runic-desktop-browser-test.js");
+        if (chrome is null || !File.Exists(bundlePath))
+        {
+            return;
+        }
+
+        var bundle = await File.ReadAllBytesAsync(bundlePath);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = """
+                <!doctype html>
+                <html><head><script src="runic-desktop.js"></script><title>WAIT</title></head>
+                <body data-result="waiting"><script type="module" src="transport-test.js"></script></body></html>
+                """,
+            ContentHandler = (request, _) => ValueTask.FromResult<ContentResponse?>(
+                request.Path == "/transport-test.js"
+                    ? new ContentResponse(bundle, "text/javascript; charset=utf-8")
+                    : null),
+        });
+        using var registration = surface.RegisterCapability(
+            ApplicationBridgeCapability,
+            static async (invocation, cancellationToken) =>
+            {
+                if (invocation.Kind == PresentationEventKind.Invocation && invocation.ArgumentCount == 1)
+                {
+                    await invocation.Session.SendAsync(
+                        ApplicationBridgeReceiver,
+                        invocation.GetBytes(),
+                        cancellationToken);
+                }
+                return PresentationResult.None;
+            });
+
+        var profile = Directory.CreateTempSubdirectory("runic-desktop-effect-chrome-");
+        using var process = StartChrome(chrome, profile.FullName, surface.Url);
+        try
+        {
+            var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
+            var debuggerUrl = await FindPageDebuggerUrlAsync(debuggerPort, surface.Url, timeout.Token);
+            using var devTools = new ClientWebSocket();
+            await devTools.ConnectAsync(debuggerUrl, timeout.Token);
+
+            string? result = null;
+            for (var attempt = 0; attempt < 100 && result != "1,0,2"; attempt++)
+            {
+                result = await EvaluateAsync(devTools, attempt + 1, "document.body?.dataset.result", timeout.Token);
+                if (result != "1,0,2")
+                {
+                    await Task.Delay(25, timeout.Token);
+                }
+            }
+
+            var diagnostic = await EvaluateAsync(
+                devTools,
+                102,
+                "JSON.stringify({runicDesktop:globalThis.runicDesktop?.product,webui:typeof globalThis.webui,title:document.title})",
+                timeout.Token);
+            Assert.True(result == "1,0,2", $"Actual result: {result}; browser state: {diagnostic}");
+            Assert.Equal("PASS", await EvaluateAsync(devTools, 101, "document.title", timeout.Token));
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+            profile.Delete(recursive: true);
+        }
+    }
+
+    private static Process StartChrome(string chrome, string profile, Uri url)
+    {
+        var startInfo = new ProcessStartInfo(chrome)
+        {
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("--headless=new");
+        startInfo.ArgumentList.Add("--no-sandbox");
+        startInfo.ArgumentList.Add("--disable-gpu");
+        startInfo.ArgumentList.Add("--disable-dev-shm-usage");
+        startInfo.ArgumentList.Add("--remote-debugging-port=0");
+        startInfo.ArgumentList.Add($"--user-data-dir={profile}");
+        startInfo.ArgumentList.Add(url.AbsoluteUri);
+        return Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start Chromium.");
     }
 
     private static string? FindChrome()

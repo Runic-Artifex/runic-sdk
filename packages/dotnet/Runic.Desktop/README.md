@@ -21,3 +21,11 @@ Installed browsers and the built-in WebView2, WKWebView, and WebKitGTK adapters
 remain replaceable through `IDesktopWindowHostFactory`. The internal
 `webui-compat/52f9e75` implementation is retained only as protocol and
 differential evidence; no public `WebUi*` identity is exported.
+
+Call `DesktopHost.GetPresentationPreflight` before opening a window when the
+application needs to present actionable platform prerequisites. It evaluates the
+requested host and only the explicit fallback policy without creating a browser
+or WebView. Sensitive permissions remain denied unless the window opts into a
+typed grant. Direct legacy capability failures retain a redacted, correlated
+host diagnostic; the TypeScript transport maps its own frontend failures to
+typed correlation-bearing errors.

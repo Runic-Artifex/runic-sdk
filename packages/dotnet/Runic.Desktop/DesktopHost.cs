@@ -30,6 +30,67 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <summary>Gets the bound port, or the configured port before the first surface starts.</summary>
     public int Port => _core.Port;
 
+    /// <summary>Inspects presentations available under this host's browser and embedded-host configuration.</summary>
+    public DesktopAvailabilityResult GetAvailability()
+    {
+        var availability = DesktopPlatform.GetAvailability(_options.BrowserFolder);
+        if (_options.WindowHostFactory is null)
+        {
+            return availability;
+        }
+
+        var customHostAvailable = _options.WindowHostFactory.IsSupported;
+        var presentations = availability.Presentations
+            .Where(static presentation => presentation.Browser != BrowserKind.Embedded)
+            .Append(new DesktopPresentationAvailability(
+                BrowserKind.Embedded,
+                customHostAvailable,
+                ExecutablePath: null,
+                customHostAvailable
+                    ? DesktopWindowCapabilities.NativeHandle |
+                      DesktopWindowCapabilities.Focus |
+                      DesktopWindowCapabilities.Minimize |
+                      DesktopWindowCapabilities.Maximize |
+                      DesktopWindowCapabilities.Resize |
+                      DesktopWindowCapabilities.Move
+                    : DesktopWindowCapabilities.None,
+                customHostAvailable
+                    ? null
+                    : new DesktopDiagnostic(
+                        DesktopErrorCategory.Unavailable,
+                        "custom-window-host-unavailable",
+                        "The configured embedded-window host is unavailable.",
+                        Retryable: false,
+                        Remediation: "Install its platform prerequisites or select an installed browser.")))
+            .ToArray();
+        return availability with { Presentations = presentations };
+    }
+
+    /// <summary>Evaluates one requested presentation and its explicit fallback policy without starting a browser or WebView.</summary>
+    public DesktopPresentationPreflight GetPresentationPreflight(DesktopWindowOptions? options = null)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        var configured = options ?? new DesktopWindowOptions();
+        DesktopSurface.ValidateWindowOptions(configured);
+        var availability = GetAvailability();
+        var preferredBrowser = configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser
+            ? BrowserKind.Embedded
+            : configured.Browser;
+        var preferred = FindAvailability(availability, preferredBrowser) ?? Unavailable(preferredBrowser);
+        DesktopPresentationAvailability? fallback = null;
+        if (configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser)
+        {
+            var fallbackBrowser = configured.Browser == BrowserKind.Embedded ? BrowserKind.Any : configured.Browser;
+            fallback = FindAvailability(availability, fallbackBrowser) ?? Unavailable(fallbackBrowser);
+        }
+
+        return new DesktopPresentationPreflight(
+            configured.Browser,
+            configured.PresentationPolicy,
+            preferred,
+            fallback);
+    }
+
     /// <summary>Creates and starts one isolated surface namespace.</summary>
     public async ValueTask<DesktopSurface> CreateSurfaceAsync(
         DesktopSurfaceOptions? options = null,
@@ -80,6 +141,11 @@ public sealed class DesktopHost : IAsyncDisposable
                     var request = new ContentRequest(
                         requestPath,
                         context.Request.Method,
+                        new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
+                            context.Request.Headers.ToDictionary(
+                                static header => header.Key,
+                                static header => header.Value.ToString(),
+                                StringComparer.OrdinalIgnoreCase)),
                         context.RequestServices,
                         cancellation as PresentationRequestCancellation);
                     var response = await handler(request, token).ConfigureAwait(false);
@@ -124,6 +190,43 @@ public sealed class DesktopHost : IAsyncDisposable
     internal void Detach(Guid id) => _surfaces.TryRemove(id, out _);
 
     internal void Report(DesktopDiagnostic diagnostic) => _options.DiagnosticSink?.Invoke(diagnostic);
+
+    internal DesktopPresentationAvailability? FindAvailability(BrowserKind browser)
+    {
+        return FindAvailability(GetAvailability(), browser);
+    }
+
+    private static DesktopPresentationAvailability? FindAvailability(
+        DesktopAvailabilityResult availability,
+        BrowserKind browser)
+    {
+        var presentations = availability.Presentations;
+        if (browser == BrowserKind.Any)
+        {
+            return presentations.FirstOrDefault(static candidate =>
+                candidate.Browser != BrowserKind.Embedded && candidate.IsAvailable);
+        }
+        if (browser == BrowserKind.ChromiumBased)
+        {
+            return presentations.FirstOrDefault(static candidate =>
+                candidate.IsAvailable && candidate.Browser is BrowserKind.Chrome or BrowserKind.Edge or
+                    BrowserKind.Chromium or BrowserKind.Brave or BrowserKind.Vivaldi or BrowserKind.Epic or
+                    BrowserKind.Yandex);
+        }
+        return presentations.FirstOrDefault(candidate => candidate.Browser == browser);
+    }
+
+    private static DesktopPresentationAvailability Unavailable(BrowserKind browser) => new(
+        browser,
+        IsAvailable: false,
+        ExecutablePath: null,
+        DesktopWindowCapabilities.None,
+        new DesktopDiagnostic(
+            DesktopErrorCategory.Unavailable,
+            "presentation-unavailable",
+            $"No supported presentation was discovered for {browser}.",
+            Retryable: false,
+            Remediation: "Install a supported browser or WebView runtime and run DesktopPlatform.GetAvailability()."));
 
     private static PresentationHostCore CreateCore(DesktopHostOptions options, int port) => new(
         new PresentationHostCoreOptions(

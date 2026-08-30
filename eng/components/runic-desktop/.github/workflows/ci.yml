@@ -34,6 +34,17 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.x
+          cache: npm
+
+      - name: TypeScript transport and package
+        run: |
+          npm ci
+          npm test
+          ./eng/verify-web-package.sh
+
       - name: Install Linux WebKitGTK runtime
         run: |
           sudo apt-get update

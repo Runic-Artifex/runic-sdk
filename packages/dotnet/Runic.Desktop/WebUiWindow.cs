@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using Runic.Desktop.Internal;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
@@ -15,6 +16,7 @@ namespace Runic.Desktop;
 internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 {
     private const string BridgePath = "/webui.js";
+    private const string DesktopBootstrapPath = "/runic-desktop.js";
     private const string WebSocketPath = "/_webui_ws_connect";
     private const string AuthCookieName = "webui_auth";
     private const string NoCache = "no-cache, no-store, must-revalidate, private, max-age=0";
@@ -50,6 +52,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string? _proxyServer;
     private IReadOnlyList<string> _customBrowserArguments = [];
     private string? _customBrowserParameters;
+    private DesktopPermissionGrant _allowedPermissions;
     private string? _embeddedHtml;
     private string? _entryFile;
     private Uri? _externalUrl;
@@ -358,7 +361,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     _width,
                     _height,
                     _x,
-                    _y);
+                    _y,
+                    _allowedPermissions);
                 _browserConnected = NewCompletionSource();
                 Process process;
                 try
@@ -730,6 +734,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _customBrowserParameters = parameters.Length == 0 ? null : parameters;
         _customBrowserArguments = WebUiCommandLine.Split(parameters);
     }
+
+    internal void SetAllowedPermissions(DesktopPermissionGrant permissions) => _allowedPermissions = permissions;
 
     /// <summary>Sets whether the browser is launched in kiosk mode.</summary>
     public void SetKiosk(bool enabled)
@@ -1103,6 +1109,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         if (!_bindings.TryGetValue(element, out var registration))
         {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.CapabilityDenied,
+                "capability-not-admitted",
+                "The presentation capability is not admitted for this session.",
+                Retryable: false,
+                CorrelationId: Guid.NewGuid().ToString("N")));
             return WebUiResult.None;
         }
 
@@ -1243,6 +1255,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             IconFile = _iconFile,
             ProfilePath = profilePath,
             CustomParameters = _customBrowserParameters,
+            AllowedPermissions = _allowedPermissions,
         };
     }
 
@@ -1405,6 +1418,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             return ServeBridgeAsync(context);
         }
+        if (path == DesktopBootstrapPath && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
+        {
+            return ServeDesktopBootstrapAsync(context);
+        }
         if (path == WebSocketPath && HttpMethods.IsGet(context.Request.Method))
         {
             return AcceptWebSocketAsync(context);
@@ -1527,6 +1544,39 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
+    private async Task ServeDesktopBootstrapAsync(HttpContext context)
+    {
+        context.Response.ContentType = "text/javascript; charset=utf-8";
+        var webSocketPath = $"{_surface?.PathBase ?? string.Empty}{WebSocketPath}";
+        var script = $$"""
+            (() => {
+              "use strict";
+              const endpoint = new URL({{EncodeJavaScriptString(webSocketPath)}}, globalThis.location.href);
+              endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+              endpoint.port = {{Url?.Port.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0"}};
+              Object.defineProperty(globalThis, "runicDesktop", {
+                configurable: false,
+                enumerable: true,
+                value: Object.freeze({
+                  product: "Runic Desktop",
+                  profile: "webui-compat/52f9e75",
+                  endpoint: endpoint.href,
+                  token: {{_token.ToString(System.Globalization.CultureInfo.InvariantCulture)}},
+                  sessionCredential: {{EncodeJavaScriptString(_sessionCredential)}}
+                })
+              });
+            })();
+            """;
+        context.Response.ContentLength = Encoding.UTF8.GetByteCount(script);
+        if (!HttpMethods.IsHead(context.Request.Method))
+        {
+            await context.Response.WriteAsync(script, context.RequestAborted).ConfigureAwait(false);
+        }
+    }
+
+    private static string EncodeJavaScriptString(string value) =>
+        $"\"{JavaScriptEncoder.Default.Encode(value)}\"";
+
     private async Task AcceptWebSocketAsync(HttpContext context)
     {
         if (!context.WebSockets.IsWebSocketRequest)
@@ -1603,6 +1653,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         context.Response.Headers.CacheControl = NoCache;
         context.Response.Headers.XContentTypeOptions = "nosniff";
+        if ((_allowedPermissions & DesktopPermissionGrant.MediaCapture) == 0)
+        {
+            context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=()";
+        }
         if (!context.WebSockets.IsWebSocketRequest)
         {
             var clientId = GetOrCreateClient(context);

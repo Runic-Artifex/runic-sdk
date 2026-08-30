@@ -1,0 +1,209 @@
+{
+  "schema": "runic.desktop.linux-native-quality-repeat/1",
+  "journeys": [
+    {
+      "schema": "runic.desktop.linux-native-quality/1",
+      "profile": {
+        "os": { "family": "linux", "name": "NixOS 26.11 (Zokor)" },
+        "architecture": "x64",
+        "runtime": { "sdk": "10.0.302", "framework": "Microsoft.NETCore.App 10.0.10" },
+        "browser": {
+          "kind": "Chromium",
+          "version": "150.0.7871.186",
+          "executable": "/nix/store/wjs8nzn73dd8kqkg1sl06071syl2hxxh-chromium-150.0.7871.186/bin/chromium"
+        },
+        "embeddedWebView": {
+          "kind": "WebKitGTK",
+          "package": "webkitgtk-2.52.5+abi=4.1",
+          "driver": "/nix/store/clhasr1lfayv6akwlbfz84g05v55yys9-webkitgtk-2.52.5+abi=4.1/bin/WebKitWebDriver"
+        },
+        "packages": {
+          "dotnet": { "identity": "Runic.Desktop", "version": "1.0.0-preview.1" },
+          "transport": { "identity": "@runic-artifex/desktop", "version": "1.0.0-preview.1" },
+          "webView2CompileDependency": { "identity": "Microsoft.Web.WebView2", "version": "1.0.4078.44" },
+          "contract": { "id": "runic.desktop.presentation", "version": 1 }
+        }
+      },
+      "inputs": {
+        "implementationSha256": "075ae7b015001450c741df9f5ae8387d4cf095b1f29c9730432587e2a7d3fa5e",
+        "evidenceSha256": "714d0a5084f3613f1874e795688d6e122adc93ec0add26e09d8e0482f9f87627"
+      },
+      "evidence": {
+        "multiWindow": {
+          "surfaces": 2,
+          "concurrentWindowCycles": 24,
+          "postcondition": "application-not-running",
+          "tests": [
+            "ContentAndLifecycleTests.SharedHostIsolatesSurfacesAndClosingOnePreservesTheOther",
+            "ContentAndLifecycleTests.ConcurrentServerWindowChurnLeavesNoApplicationLifetimeBehind"
+          ]
+        },
+        "streaming": {
+          "headStreamFactoryCalls": 0,
+          "streamedFirstChunkBytes": 5,
+          "streamFactoryCalls": 1,
+          "cancellation": "request-disconnect-and-window-close",
+          "disposal": "required",
+          "tests": [
+            "ContentAndLifecycleTests.StreamingVirtualContentHonorsHeadCancellationAndDisposal",
+            "ContentAndLifecycleTests.StreamingVirtualContentCancelsAndDisposesWhenWindowCloses"
+          ]
+        },
+        "reconnect": {
+          "authenticatedConnections": 2,
+          "connectionIds": "distinct",
+          "test": "ManagedWindowTests.AcceptsAReconnectedBridgeAndRaisesNewConnectionEvents"
+        },
+        "cleanRecovery": {
+          "ownedBrowserLaunches": 2,
+          "generatedProfiles": "unique-and-cleaned",
+          "unexpectedBrowserExit": "detected-and-cleaned",
+          "embeddedWebViewRestart": "second-surface-window",
+          "tests": [
+            "BrowserHostTests.OwnsChromiumProcessProfileRestartAndNaturalExit",
+            "Runic.Desktop.WebViewSmoke"
+          ]
+        },
+        "browserBridgeCapacity": {
+          "javascriptToDotnetPayloadBytes": 150000,
+          "rawResponseBytes": 3,
+          "test": "BrowserBridgeTests.UpstreamStyleCallbackAndJavaScriptRoundTripRunsInChromium",
+          "boundary": "structural-capacity-not-a-latency-budget"
+        }
+      },
+      "exclusions": {
+        "accessibility": {
+          "status": "not-certified",
+          "reason": "Runic Desktop hosts consumer content; this runtime receipt has no representative application accessibility tree or assistive-technology journey."
+        },
+        "performance": {
+          "status": "not-certified",
+          "reason": "The retained 150000-byte bridge check is a structural capacity check, not a calibrated latency or throughput budget."
+        },
+        "memory": {
+          "status": "not-certified",
+          "reason": "No profiler-backed managed or native memory budget is measured by this receipt."
+        },
+        "windows": {
+          "status": "not-certified",
+          "reason": "This Linux-only receipt cannot certify WebView2 lifecycle, recovery, or diagnostics."
+        },
+        "macos": {
+          "status": "not-certified",
+          "reason": "This Linux-only receipt cannot certify WKWebView lifecycle, recovery, or diagnostics."
+        }
+      },
+      "phases": [
+        { "name": "locked-node-install", "status": "passed", "exitCode": 0 },
+        { "name": "contract-verification", "status": "passed", "exitCode": 0 },
+        { "name": "browser-transport-build", "status": "passed", "exitCode": 0 },
+        { "name": "managed-build", "status": "passed", "exitCode": 0 },
+        { "name": "representative-managed-quality-tests", "status": "passed", "exitCode": 0 },
+        { "name": "embedded-webview-smoke", "status": "passed", "exitCode": 0 },
+        { "name": "npm-package-consumer", "status": "passed", "exitCode": 0 }
+      ]
+    },
+    {
+      "schema": "runic.desktop.linux-native-quality/1",
+      "profile": {
+        "os": { "family": "linux", "name": "NixOS 26.11 (Zokor)" },
+        "architecture": "x64",
+        "runtime": { "sdk": "10.0.302", "framework": "Microsoft.NETCore.App 10.0.10" },
+        "browser": {
+          "kind": "Chromium",
+          "version": "150.0.7871.186",
+          "executable": "/nix/store/wjs8nzn73dd8kqkg1sl06071syl2hxxh-chromium-150.0.7871.186/bin/chromium"
+        },
+        "embeddedWebView": {
+          "kind": "WebKitGTK",
+          "package": "webkitgtk-2.52.5+abi=4.1",
+          "driver": "/nix/store/clhasr1lfayv6akwlbfz84g05v55yys9-webkitgtk-2.52.5+abi=4.1/bin/WebKitWebDriver"
+        },
+        "packages": {
+          "dotnet": { "identity": "Runic.Desktop", "version": "1.0.0-preview.1" },
+          "transport": { "identity": "@runic-artifex/desktop", "version": "1.0.0-preview.1" },
+          "webView2CompileDependency": { "identity": "Microsoft.Web.WebView2", "version": "1.0.4078.44" },
+          "contract": { "id": "runic.desktop.presentation", "version": 1 }
+        }
+      },
+      "inputs": {
+        "implementationSha256": "075ae7b015001450c741df9f5ae8387d4cf095b1f29c9730432587e2a7d3fa5e",
+        "evidenceSha256": "714d0a5084f3613f1874e795688d6e122adc93ec0add26e09d8e0482f9f87627"
+      },
+      "evidence": {
+        "multiWindow": {
+          "surfaces": 2,
+          "concurrentWindowCycles": 24,
+          "postcondition": "application-not-running",
+          "tests": [
+            "ContentAndLifecycleTests.SharedHostIsolatesSurfacesAndClosingOnePreservesTheOther",
+            "ContentAndLifecycleTests.ConcurrentServerWindowChurnLeavesNoApplicationLifetimeBehind"
+          ]
+        },
+        "streaming": {
+          "headStreamFactoryCalls": 0,
+          "streamedFirstChunkBytes": 5,
+          "streamFactoryCalls": 1,
+          "cancellation": "request-disconnect-and-window-close",
+          "disposal": "required",
+          "tests": [
+            "ContentAndLifecycleTests.StreamingVirtualContentHonorsHeadCancellationAndDisposal",
+            "ContentAndLifecycleTests.StreamingVirtualContentCancelsAndDisposesWhenWindowCloses"
+          ]
+        },
+        "reconnect": {
+          "authenticatedConnections": 2,
+          "connectionIds": "distinct",
+          "test": "ManagedWindowTests.AcceptsAReconnectedBridgeAndRaisesNewConnectionEvents"
+        },
+        "cleanRecovery": {
+          "ownedBrowserLaunches": 2,
+          "generatedProfiles": "unique-and-cleaned",
+          "unexpectedBrowserExit": "detected-and-cleaned",
+          "embeddedWebViewRestart": "second-surface-window",
+          "tests": [
+            "BrowserHostTests.OwnsChromiumProcessProfileRestartAndNaturalExit",
+            "Runic.Desktop.WebViewSmoke"
+          ]
+        },
+        "browserBridgeCapacity": {
+          "javascriptToDotnetPayloadBytes": 150000,
+          "rawResponseBytes": 3,
+          "test": "BrowserBridgeTests.UpstreamStyleCallbackAndJavaScriptRoundTripRunsInChromium",
+          "boundary": "structural-capacity-not-a-latency-budget"
+        }
+      },
+      "exclusions": {
+        "accessibility": {
+          "status": "not-certified",
+          "reason": "Runic Desktop hosts consumer content; this runtime receipt has no representative application accessibility tree or assistive-technology journey."
+        },
+        "performance": {
+          "status": "not-certified",
+          "reason": "The retained 150000-byte bridge check is a structural capacity check, not a calibrated latency or throughput budget."
+        },
+        "memory": {
+          "status": "not-certified",
+          "reason": "No profiler-backed managed or native memory budget is measured by this receipt."
+        },
+        "windows": {
+          "status": "not-certified",
+          "reason": "This Linux-only receipt cannot certify WebView2 lifecycle, recovery, or diagnostics."
+        },
+        "macos": {
+          "status": "not-certified",
+          "reason": "This Linux-only receipt cannot certify WKWebView lifecycle, recovery, or diagnostics."
+        }
+      },
+      "phases": [
+        { "name": "locked-node-install", "status": "passed", "exitCode": 0 },
+        { "name": "contract-verification", "status": "passed", "exitCode": 0 },
+        { "name": "browser-transport-build", "status": "passed", "exitCode": 0 },
+        { "name": "managed-build", "status": "passed", "exitCode": 0 },
+        { "name": "representative-managed-quality-tests", "status": "passed", "exitCode": 0 },
+        { "name": "embedded-webview-smoke", "status": "passed", "exitCode": 0 },
+        { "name": "npm-package-consumer", "status": "passed", "exitCode": 0 }
+      ]
+    }
+  ]
+}
