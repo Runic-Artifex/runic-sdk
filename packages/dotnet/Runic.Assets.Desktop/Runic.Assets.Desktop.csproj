@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>Runic.Assets.Desktop</AssemblyName>
+    <RootNamespace>Runic.Assets.Desktop</RootNamespace>
+    <PackageId>Runic.Assets.Desktop</PackageId>
+    <Description>Request-scoped Runic Desktop delivery for Runic Assets.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Runic.Assets\Runic.Assets.csproj" />
+    <ProjectReference Include="$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj"
+                      Condition="Exists('$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj')" />
+    <PackageReference Include="Runic.Desktop"
+                      Condition="!Exists('$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj')" />
+  </ItemGroup>
+  <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
+</Project>

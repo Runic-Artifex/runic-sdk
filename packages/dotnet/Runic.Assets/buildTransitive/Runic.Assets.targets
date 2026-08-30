@@ -1,0 +1,62 @@
+<Project>
+  <PropertyGroup>
+    <RunicAssetsEmbeddedResourceName Condition="'$(RunicAssetsEmbeddedResourceName)' == ''">Runic.Assets.StaticFiles</RunicAssetsEmbeddedResourceName>
+    <RunicAssetsEntryPoint Condition="'$(RunicAssetsEntryPoint)' == ''">index.html</RunicAssetsEntryPoint>
+    <RunicAssetsDistExclude Condition="'$(RunicAssetsDistExclude)' == ''">runic-assets.zip</RunicAssetsDistExclude>
+    <RunicAssetsPackerPath Condition="'$(RunicAssetsPackerPath)' == '' and Exists('$(MSBuildThisFileDirectory)..\tools\net10.0\Runic.Assets.Packer.dll')">$(MSBuildThisFileDirectory)..\tools\net10.0\Runic.Assets.Packer.dll</RunicAssetsPackerPath>
+    <RunicAssetsPackerPath Condition="'$(RunicAssetsPackerPath)' == ''">$(MSBuildThisFileDirectory)..\..\Runic.Assets.Packer\bin\$(Configuration)\net10.0\Runic.Assets.Packer.dll</RunicAssetsPackerPath>
+    <_RunicAssetsDotNetHost Condition="'$(DotNetHostPath)' != ''">$(DotNetHostPath)</_RunicAssetsDotNetHost>
+    <_RunicAssetsDotNetHost Condition="'$(_RunicAssetsDotNetHost)' == ''">dotnet</_RunicAssetsDotNetHost>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RunicAssetsDist)' != ''">
+    <_RunicAssetsDistInput Include="$(RunicAssetsDist)\**\*" />
+  </ItemGroup>
+
+  <Target Name="RunicAssetsPackFileSystem"
+          Condition="'$(RunicAssetsDist)' != '' and '$(DesignTimeBuild)' != 'true'"
+          Inputs="$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(RunicAssetsPackerPath);@(_RunicAssetsDistInput)"
+          Outputs="$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets">
+    <PropertyGroup>
+      <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>
+    </PropertyGroup>
+
+    <Error Condition="'$(RunicAssetsEmbeddedArchive)' != ''"
+           Text="Set either RunicAssetsDist or RunicAssetsEmbeddedArchive, not both." />
+    <Error Condition="!Exists('$(RunicAssetsDist)')"
+           Text="The RunicAssetsDist directory '$(RunicAssetsDist)' does not exist. Build the web UI before compiling this project." />
+    <Error Condition="!Exists('$(RunicAssetsPackerPath)')"
+           Text="The Runic Assets packer '$(RunicAssetsPackerPath)' does not exist." />
+
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicAssetsGeneratedArchive)'))" />
+    <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(RunicAssetsDist)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --trusted-generated-output"
+          Condition="'$(RunicAssetsDistExclude)' == ''" />
+    <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(RunicAssetsDist)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --exclude &quot;$(RunicAssetsDistExclude)&quot; --trusted-generated-output"
+          Condition="'$(RunicAssetsDistExclude)' != ''" />
+  </Target>
+
+  <Target Name="RunicAssetsEmbedFileSystem"
+          BeforeTargets="SplitResourcesByCulture"
+          DependsOnTargets="RunicAssetsPackFileSystem"
+          Condition="('$(RunicAssetsDist)' != '' or '$(RunicAssetsEmbeddedArchive)' != '') and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>
+    </PropertyGroup>
+
+    <Error Condition="'$(RunicAssetsDist)' != '' and '$(RunicAssetsEmbeddedArchive)' != ''"
+           Text="Set either RunicAssetsDist or RunicAssetsEmbeddedArchive, not both." />
+    <Error Condition="'$(RunicAssetsEmbeddedArchive)' != '' and !Exists('$(RunicAssetsEmbeddedArchive)')"
+           Text="The RunicAssetsEmbeddedArchive file '$(RunicAssetsEmbeddedArchive)' does not exist." />
+
+    <ItemGroup>
+      <EmbeddedResource Include="$(_RunicAssetsGeneratedArchive)"
+                        Condition="'$(RunicAssetsDist)' != ''">
+        <LogicalName>$(RunicAssetsEmbeddedResourceName)</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(RunicAssetsEmbeddedArchive)"
+                        Condition="'$(RunicAssetsEmbeddedArchive)' != ''">
+        <LogicalName>$(RunicAssetsEmbeddedResourceName)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+</Project>

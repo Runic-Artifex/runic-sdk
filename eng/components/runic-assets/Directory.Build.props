@@ -8,6 +8,8 @@
     <RunicAssetsBuildMode Condition="'$(RunicAssetsBuildMode)' == ''">Development</RunicAssetsBuildMode>
     <RunicAssetsVerificationBuild Condition="'$(RunicAssetsBuildMode)' == 'Verification'">true</RunicAssetsVerificationBuild>
     <RunicAssetsVerificationBuild Condition="'$(RunicAssetsVerificationBuild)' == ''">false</RunicAssetsVerificationBuild>
+    <RunicAssetsDependencyRoot Condition="'$(RunicAssetsDependencyRoot)' == '' and '$(RUNIC_ASSETS_DEPENDENCY_ROOT)' != ''">$(RUNIC_ASSETS_DEPENDENCY_ROOT)</RunicAssetsDependencyRoot>
+    <RunicAssetsDependencyRoot Condition="'$(RunicAssetsDependencyRoot)' == ''">$(MSBuildThisFileDirectory)..</RunicAssetsDependencyRoot>
 
     <LangVersion>14.0</LangVersion>
     <Nullable>enable</Nullable>

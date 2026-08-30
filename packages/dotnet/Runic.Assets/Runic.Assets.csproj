@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
+    <RunicAssetsShippingProject>true</RunicAssetsShippingProject>
+    <AssemblyName>Runic.Assets</AssemblyName>
+    <RootNamespace>Runic.Assets</RootNamespace>
+    <PackageId>Runic.Assets</PackageId>
+    <Description>Framework-neutral deterministic asset manifests, sources, and archives; mutable directory development is Linux-only.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="buildTransitive/Runic.Assets.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.dll"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
+    <None Include="bin/$(Configuration)/net10.0/Runic.Assets.dll"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
+    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.CommandLine.dll"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
+    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.deps.json"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
+    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.runtimeconfig.json"
+          Pack="true"
+          PackagePath="tools/net10.0/" />
+  </ItemGroup>
+
+  <Target Name="BuildRunicAssetsPackerForPackage" BeforeTargets="GenerateNuspec">
+    <MSBuild Projects="../Runic.Assets.Packer/Runic.Assets.Packer.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);RunicAssetsBuildMode=$(RunicAssetsBuildMode)" />
+  </Target>
+</Project>

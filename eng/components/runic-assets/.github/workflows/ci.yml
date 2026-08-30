@@ -20,6 +20,7 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
+  RUNIC_ASSETS_DEPENDENCY_ROOT: ${{ github.workspace }}/.runic-dependencies
   NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
@@ -37,6 +38,9 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+
+      - name: Check out exact verification candidates
+        uses: ./.github/actions/checkout-verification-dependencies
 
       - name: Run verification pipeline
         run: ./eng/verify.sh

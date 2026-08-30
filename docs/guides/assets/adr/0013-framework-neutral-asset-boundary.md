@@ -20,7 +20,7 @@ Native AOT.
 
 ## Decision
 
-Introduce the dependency-free `RunicAssets` package and namespace.
+Introduce the dependency-free `Runic.Assets` package and namespace.
 
 - `AssetManifest` is an immutable, ordinally sorted catalog with exactly one
   entry point.
@@ -31,9 +31,11 @@ Introduce the dependency-free `RunicAssets` package and namespace.
 - `EmbeddedAssetSource` maps explicit assembly resource names to asset paths.
   It does not extract resources or enumerate an application filesystem. This
   is the production/offline/single-file/Native-AOT source.
-- `DevelopmentDirectoryAssetSource` is explicitly for local development. It
-  rejects reparse points, constrains reads to a fixed root, assigns `no-store`,
-  and atomically publishes a fresh immutable manifest on `Refresh`.
+- `DevelopmentDirectoryAssetSource` is explicitly for local Linux development.
+  It pins a Linux no-follow root directory handle, resolves every child relative
+  to that handle, assigns `no-store`, and atomically publishes a fresh immutable
+  manifest on `Refresh`. Other platforms use an embedded source or archive until
+  an equally handle-validated development implementation exists.
 - `IAssetSource` exposes manifest, validation, and exact-path open operations.
   Endpoint routing and response delivery remain adapter responsibilities.
 
@@ -41,7 +43,7 @@ Media type resolution is a deterministic package-owned table and never uses
 an operating-system registry. The package has no third-party or other
 WebUIToolkit package dependency.
 
-Host-specific adapters depend on `RunicAssets`; the core package never depends
+Host-specific adapters depend on `Runic.Assets`; the core package never depends
 on CS-WebUI, ASP.NET Core, Runic Toolkit, or another UI framework.
 
 The CS-WebUI adapter uses CS-WebUI's public, policy-free custom file-handler API.

@@ -3,15 +3,18 @@
   <packageSources>
     <clear />
     <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+    <add key="github" value="https://nuget.pkg.github.com/Runic-Artifex/index.json" protocolVersion="3" />
+    <add key="runic-command-line-release-train" value="__RUN_COMMAND_LINE_FEED__" />
   </packageSources>
   <packageSourceMapping>
     <packageSource key="nuget.org">
       <package pattern="Microsoft.*" />
       <package pattern="runtime.*" />
       <package pattern="System.*" />
+    </packageSource>
+    <packageSource key="runic-command-line-release-train">
       <package pattern="Runic.CommandLine" />
       <package pattern="Runic.CommandLine.*" />
-      <package pattern="Runic.Desktop" />
     </packageSource>
   </packageSourceMapping>
   <config>

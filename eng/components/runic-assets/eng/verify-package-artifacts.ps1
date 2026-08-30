@@ -9,17 +9,13 @@ $ErrorActionPreference = "Stop"
 
 $repositoryUrl = "https://github.com/Runic-Artifex/runic-assets"
 $expectedPackages = [ordered]@{
-    "RunicAssets" = @{}
-    "RunicAssets.CsWebUi" = @{
-        "CsWebUi" = "2.5.0-beta.4.4"
-        "RunicAssets" = $PackageVersion
+    "Runic.Assets" = @{}
+    "Runic.Assets.AspNetCore" = @{
+        "Runic.Assets" = $PackageVersion
     }
-    "RunicAssets.AspNetCore" = @{
-        "RunicAssets" = $PackageVersion
-    }
-    "RunicAssets.RunicToolkit" = @{
-        "RunicAssets" = $PackageVersion
-        "RunicToolkit.Hosting.Abstractions" = "[0.1.0-preview.30.1]"
+    "Runic.Assets.Desktop" = @{
+        "Runic.Assets" = $PackageVersion
+        "Runic.Desktop" = $PackageVersion
     }
 }
 
@@ -102,15 +98,17 @@ foreach ($packageId in $expectedPackages.Keys) {
         }
     }
 
-    if ($packageId -eq "RunicAssets") {
+    if ($packageId -eq "Runic.Assets") {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($packagePath)
         try {
             $entryNames = @($archive.Entries | ForEach-Object { $_.FullName })
             $requiredEntries = @(
-                "buildTransitive/RunicAssets.targets",
-                "tools/net10.0/RunicAssets.Packer.dll",
-                "tools/net10.0/RunicAssets.Packer.deps.json",
-                "tools/net10.0/RunicAssets.Packer.runtimeconfig.json"
+                "buildTransitive/Runic.Assets.targets",
+                "tools/net10.0/Runic.Assets.Packer.dll",
+                "tools/net10.0/Runic.Assets.dll",
+                "tools/net10.0/Runic.CommandLine.dll",
+                "tools/net10.0/Runic.Assets.Packer.deps.json",
+                "tools/net10.0/Runic.Assets.Packer.runtimeconfig.json"
             )
 
             foreach ($entryName in $requiredEntries) {
@@ -120,6 +118,31 @@ foreach ($packageId in $expectedPackages.Keys) {
             }
         }
         finally { $archive.Dispose() }
+
+        $toolRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("runic-assets-package-tool-" + [guid]::NewGuid().ToString("N"))
+        try {
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($packagePath, $toolRoot)
+            $toolInput = Join-Path $toolRoot "fixture"
+            [System.IO.Directory]::CreateDirectory($toolInput) | Out-Null
+            [System.IO.File]::WriteAllText((Join-Path $toolInput "index.html"), "<main>packaged tool</main>")
+            $toolPath = Join-Path $toolRoot "tools/net10.0/Runic.Assets.Packer.dll"
+            $toolArchive = Join-Path $toolInput "output.runic-assets"
+            & dotnet $toolPath $toolInput $toolArchive
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $toolArchive -PathType Leaf)) {
+                throw "Packaged Runic Assets packer did not produce an archive."
+            }
+
+            [byte[]]$firstArchive = [System.IO.File]::ReadAllBytes($toolArchive)
+            & dotnet $toolPath $toolInput $toolArchive
+            if ($LASTEXITCODE -ne 0 -or -not [System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($firstArchive, [System.IO.File]::ReadAllBytes($toolArchive))) {
+                throw "Packaged Runic Assets packer is not reproducible when its output is inside the source directory."
+            }
+        }
+        finally {
+            if (Test-Path -LiteralPath $toolRoot) {
+                Remove-Item -LiteralPath $toolRoot -Recurse -Force
+            }
+        }
     }
 }
 
