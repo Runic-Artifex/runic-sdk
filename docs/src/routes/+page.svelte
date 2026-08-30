@@ -5,14 +5,15 @@
   import { Badge } from '$lib/components/ui/badge';
   import * as Card from '$lib/components/ui/card';
   import { Separator } from '$lib/components/ui/separator';
-  import { products } from '$lib/docs-data';
+  import { activeProducts } from '$lib/docs-data';
+  import { releaseSummary } from '$lib/release-docs';
 </script>
 
 <svelte:head>
   <title>Open-source .NET tools that work independently · Runic Artifex</title>
   <meta
     name="description"
-    content="Open-source .NET tools for UI, hosting, workflows, assets, localization, and command-line applications."
+    content="Open-source .NET tools for desktop and browser UI, application hosting, assets, localization, and command-line applications."
   />
   <meta
     property="og:title"
@@ -20,7 +21,7 @@
   />
   <meta
     property="og:description"
-    content="Open-source .NET tools for UI, hosting, workflows, assets, localization, and command-line applications."
+    content="Open-source .NET tools for desktop and browser UI, application hosting, assets, localization, and command-line applications."
   />
   <meta
     name="twitter:title"
@@ -28,7 +29,7 @@
   />
   <meta
     name="twitter:description"
-    content="Open-source .NET tools for UI, hosting, workflows, assets, localization, and command-line applications."
+    content="Open-source .NET tools for desktop and browser UI, application hosting, assets, localization, and command-line applications."
   />
 </svelte:head>
 
@@ -39,9 +40,9 @@
       <h1>Build with only the tools you need.</h1>
       <p class="lede">
         Runic Artifex is a family of open-source .NET tools for desktop and
-        browser UI, application hosting, workflows, assets, localization, and
-        command-line apps. Each product works independently and connects through
-        documented integrations when needed.
+        browser UI, application hosting, assets, localization, and command-line
+        apps. Each product works independently and connects through documented
+        integrations when needed.
       </p>
       <div class="actions">
         <ActionLink href={resolve('/products')}>Explore the products</ActionLink
@@ -59,9 +60,9 @@
         <span>Application composition</span><strong>Runic Toolkit</strong>
       </div>
       <div class="map-ring">
-        <span>Bridge</span><span>Flow</span><span>Assets</span><span
-          >Translations</span
-        ><span>Editor</span><span>CLI</span><span>CS-WebUI</span>
+        <span>Bridge</span><span>Assets</span><span>Translations</span><span
+          >Editor</span
+        ><span>CLI</span><span>CS-WebUI</span>
       </div>
       <p>Products own their cores and official integrations.</p>
     </Card.Root>
@@ -81,7 +82,7 @@
       >
     </div>
     <div class="product-grid">
-      {#each products as product (product.slug)}
+      {#each activeProducts as product (product.slug)}
         <ProductCard {product} label={`Explore ${product.shortName}`} />
       {/each}
     </div>
@@ -99,17 +100,10 @@
         product to another product, framework, or tool; the product cores do not
         depend back on those integrations.
       </p>
-      <div
-        class="mini-flow"
-        aria-label="Runic Flow integration dependency direction"
-      >
-        <span>RunicFlow</span><b>→</b><strong
-          >RunicFlow.ApplicationBridge</strong
-        ><b>←</b><span>RunicToolkit.ApplicationBridge</span>
-      </div>
       <p>
-        Runic Flow owns its Toolkit adapter because Flow defines the behavior.
-        The adapter depends on both products; neither core depends back on it.
+        Application Bridge owns its protocol and transport boundary. Frontend
+        adapters project that boundary without making the application core
+        depend on a renderer.
       </p>
       <ActionLink href={resolve('/architecture')} variant="outline"
         >Read the architecture guide</ActionLink
@@ -123,11 +117,9 @@
       <Badge variant="outline" class="mb-4 border-primary/30 text-primary"
         >Public preview</Badge
       >
-      <h2>The first package preview is available.</h2>
+      <h2>Track the release authority.</h2>
       <p>
-        The repositories and their first package preview train are public on
-        NuGet and npm. Runic Translations Editor remains a separate application;
-        its first preview is still pending.
+        {releaseSummary}
       </p>
     </div>
     <ActionLink href={resolve('/releases')} variant="outline"

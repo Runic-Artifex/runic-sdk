@@ -7,17 +7,55 @@
   import * as Card from '$lib/components/ui/card';
   import { Separator } from '$lib/components/ui/separator';
   import type { Product } from '$lib/docs-data';
+  import {
+    catalogRows,
+    distributionRows,
+    packageInstallCommand,
+    versionLabel,
+  } from '$lib/release-docs';
 
   let { product }: { product: Product } = $props();
   let isApplication = $derived(product.kind === 'application');
-  let isPublished = $derived(!isApplication);
-  let hasNpmPackages = $derived((product.npmPackages?.length ?? 0) > 0);
-  let registryLabel = $derived(
-    hasNpmPackages && product.packages.length > 0
-      ? 'NuGet and npm'
-      : hasNpmPackages
-        ? 'npm'
-        : 'NuGet',
+  let isArchived = $derived(product.availability === 'archived');
+  let isIndependent = $derived(product.availability === 'independent');
+  let productVersion = $derived({
+    state: product.versionState,
+    value: product.version,
+  });
+  let currentPackages = $derived(
+    catalogRows.filter((entry) => entry.productId === product.releaseProduct),
+  );
+  let distributions = $derived(
+    distributionRows.filter(
+      (entry) => entry.productId === product.releaseProduct,
+    ),
+  );
+  let currentDistributions = $derived(
+    distributions.filter(
+      (distribution) => distribution.kind !== 'application-archive',
+    ),
+  );
+  let historicalDistributions = $derived(
+    distributions.filter(
+      (distribution) => distribution.kind === 'application-archive',
+    ),
+  );
+  let availabilityVersion = $derived(
+    isApplication ? currentDistributions[0]?.version : productVersion,
+  );
+  let hasPublishedVersion = $derived(
+    isApplication
+      ? currentDistributions.some(
+          (distribution) => distribution.version.state === 'published',
+        )
+      : availabilityVersion?.state === 'published',
+  );
+  let packageSectionTitle = $derived(
+    isApplication && currentDistributions.length === 0
+      ? 'Distribution history'
+      : isApplication
+        ? 'Downloads'
+        : 'Packages',
   );
   let pageTitle = $derived(`${product.name} · Runic Artifex`);
 </script>
@@ -60,16 +98,19 @@
     </div>
     <p class="lede">{product.description}</p>
     <div class="actions">
-      {#if isPublished}
+      {#if !isArchived && hasPublishedVersion}
         <ActionLink
           href={resolve('/products/[slug]#availability', {
             slug: product.slug,
-          })}>Install {product.shortName}</ActionLink
+          })}
+          >{isApplication
+            ? 'Downloads'
+            : `Install ${product.shortName}`}</ActionLink
         >
       {:else}
         <ActionLink href={product.source}>View source</ActionLink>
       {/if}
-      {#if !isPublished && !isApplication}
+      {#if !isArchived && !isIndependent && !hasPublishedVersion && !isApplication}
         <ActionLink
           href={resolve('/products/[slug]#availability', {
             slug: product.slug,
@@ -77,7 +118,7 @@
           variant="outline">Release status</ActionLink
         >
       {/if}
-      {#if isPublished}
+      {#if !isArchived && hasPublishedVersion}
         <ActionLink href={product.source} variant="outline"
           >View source</ActionLink
         >
@@ -113,11 +154,18 @@
       <a
         href={resolve('/products/[slug]#availability', {
           slug: product.slug,
-        })}>Availability</a
+        })}
+        >{isArchived
+          ? 'Archive status'
+          : isIndependent
+            ? 'Independent status'
+            : 'Availability'}</a
       >
-      <a href={resolve('/products/[slug]#packages', { slug: product.slug })}
-        >{isApplication ? 'Downloads' : 'Packages'}</a
-      >
+      {#if !isArchived && !isIndependent}
+        <a href={resolve('/products/[slug]#packages', { slug: product.slug })}
+          >{packageSectionTitle}</a
+        >
+      {/if}
     </aside>
     <article class="doc-content">
       <section id="choose">
@@ -137,42 +185,117 @@
       <section id="availability">
         <p class="eyebrow">Availability</p>
         <h2>
-          {isApplication
-            ? 'Desktop downloads'
-            : isPublished
-              ? `Install ${product.shortName}`
-              : 'Release status'}
+          {isArchived
+            ? 'Archive status'
+            : isIndependent
+              ? 'Independent compatibility product'
+              : isApplication
+                ? currentDistributions.length > 0
+                  ? 'Desktop downloads'
+                  : 'Release status'
+                : hasPublishedVersion
+                  ? `Install ${product.shortName}`
+                  : 'Release status'}
         </h2>
         <Notice
-          title={isApplication
-            ? 'First preview pending'
-            : `Available on ${registryLabel}`}
+          title={isArchived
+            ? 'Archived — no release-bearing packages'
+            : isIndependent
+              ? 'Maintained outside the Runic v1 train'
+              : isApplication
+                ? hasPublishedVersion
+                  ? 'Published distributions available'
+                  : 'Distribution versions unassigned'
+                : hasPublishedVersion
+                  ? `Version ${availabilityVersion?.value}`
+                  : 'Version unassigned'}
         >
           <p>
-            {isApplication
-              ? 'The first desktop preview is pending. Downloads will appear in GitHub Releases for the editor repository.'
-              : `Version ${product.version} is available on ${registryLabel}. Pin the exact preview version in reproducible applications.`}
+            {#if isArchived}
+              This product is archived. Historical records retain its former
+              identities for removal guidance, while current release authority
+              contains no public replacement or forwarding package.
+              {#if product.archive}
+                Archive evidence: <code
+                  >{product.archive.evidence.repository}</code
+                >
+                at <code>{product.archive.evidence.revision}</code>,
+                <code>{product.archive.evidence.path}</code>.
+              {/if}
+            {:else if isIndependent}
+              This product is maintained and released by its own repository. It
+              is not governed by the Runic v1 compatibility set, so this site
+              does not infer its package availability or version. Consult the
+              source repository for its current packages and upstream WebUI
+              compatibility.
+            {:else if isApplication}
+              {#if currentDistributions.length > 0}
+                Each desktop distribution has its own release status. Only a
+                distribution with a recorded published version is available.
+              {:else}
+                No current desktop distribution is recorded. Any archived
+                distribution evidence is listed separately below and does not
+                indicate current availability.
+              {/if}
+            {:else if hasPublishedVersion}
+              Version {availabilityVersion?.value} is published for this product's
+              active compatibility lane.
+            {:else}
+              The release authority has not assigned a version. This
+              documentation does not infer availability from repository state.
+            {/if}
           </p>
         </Notice>
-        {#each product.install ?? [] as command (command)}<pre><code
-              >{command}</code
-            ></pre>{/each}
       </section>
-      <section id="packages">
-        <p class="eyebrow">What you get</p>
-        <h2>{isApplication ? 'Downloads' : 'Packages'}</h2>
-        <div class="package-list">
-          {#each product.packages as name (name)}<code>{name}</code>{/each}
-          {#each product.npmPackages ?? [] as name (name)}<code>{name}</code
-            >{/each}
-          {#each product.artifacts ?? [] as name (name)}<code>{name}</code
-            >{/each}
-        </div>
-        <p>
-          {isApplication ? 'Release status' : 'Registry version'}:
-          <code>{product.version}</code>
-        </p>
-      </section>
+      {#if !isArchived && !isIndependent}
+        <section id="packages">
+          <p class="eyebrow">What you get</p>
+          <h2>{packageSectionTitle}</h2>
+          <div class="package-list">
+            {#each currentPackages as entry (entry.name)}
+              <span>
+                <code>{entry.name}</code>
+                {#if packageInstallCommand(entry)}
+                  — Install: <code>{packageInstallCommand(entry)}</code>
+                {:else}
+                  — <code>{versionLabel(entry.version)}</code>
+                {/if}
+              </span>
+            {/each}
+            {#each currentDistributions as distribution (distribution.identity)}
+              <span>
+                <code>{distribution.identity}</code>
+                {#if distribution.version.state === 'published'}
+                  — Published distribution: <code
+                    >{distribution.version.value}</code
+                  >
+                {:else}
+                  — Distribution version unassigned
+                {/if}
+              </span>
+            {/each}
+            {#each historicalDistributions as distribution (distribution.identity)}
+              <span>
+                Historical archive distribution:
+                <code>{distribution.identity}</code>
+                {#if distribution.version.state === 'published'}
+                  — Published historical distribution: <code
+                    >{distribution.version.value}</code
+                  >
+                {:else}
+                  — Historical distribution version unassigned
+                {/if}
+              </span>
+            {/each}
+          </div>
+          {#if !isApplication}
+            <p>
+              Release-train version:
+              <code>{availabilityVersion?.value ?? 'Version unassigned'}</code>
+            </p>
+          {/if}
+        </section>
+      {/if}
       <Card.Root class="next-card" size="sm">
         <Card.Header>
           <Card.Description>Next steps</Card.Description>

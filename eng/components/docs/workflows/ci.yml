@@ -12,9 +12,21 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      RUNIC_RELEASE_MANIFEST: release-authority/runic.release.json
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+
+      - name: Read release authority pin
+        run: node --input-type=module -e "import { authorityRevision } from './scripts/release-authority.mjs'; process.stdout.write('RUNIC_RELEASE_AUTHORITY_REVISION=' + authorityRevision + '\\n');" >> "$GITHUB_ENV"
+
+      - name: Check out release authority
+        uses: actions/checkout@v5
+        with:
+          repository: Runic-Artifex/.github
+          ref: ${{ env.RUNIC_RELEASE_AUTHORITY_REVISION }}
+          path: release-authority
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -30,6 +42,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Check generated release data
+        run: npm run check:release-data
 
       - name: Check Svelte and TypeScript
         run: npm run check

@@ -44,27 +44,19 @@
     </ContentCard>
     <ContentCard
       eyebrow="A concrete example"
-      title="Flow owns its Toolkit connection"
+      title="Application Bridge keeps renderers outside the core"
       full
     >
-      <div class="mini-flow">
-        <span>RunicFlow<br /><small>Headless core</small></span><b>→</b><strong
-          >RunicFlow.ApplicationBridge<br /><small>Owned by Flow</small></strong
-        ><b>←</b><span
-          >RunicToolkit.ApplicationBridge<br /><small
-            >Application boundary</small
-          ></span
-        >
-      </div>
       <p>
-        <code>RunicFlow.ApplicationBridge</code> depends on Runic Flow and Toolkit
-        Application Bridge, but both cores remain usable without it.
+        Application Bridge defines the validated application boundary. Svelte,
+        Vite, and native-host integrations project that boundary without making
+        the application core depend on a renderer or host implementation.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Portable cores" title="Cores stay portable">
       <p>
-        Runic Flow owns no UI state. Runic Assets owns no host. Runic
-        Translations begins with .NET but defines language-neutral contracts.
+        Runic Assets owns no host. Runic Translations begins with .NET but
+        defines language-neutral contracts.
       </p>
     </ContentCard>
     <ContentCard
@@ -72,8 +64,8 @@
       title="Products move at their own pace"
     >
       <p>
-        Flow, Assets, Translations, Translations Editor, Command Line, Toolkit,
-        and CS-WebUI each keep an independent release history. Package families
+        Assets, Translations, Translations Editor, Command Line, Toolkit, and
+        CS-WebUI each keep an independent release history. Package families
         release registry artifacts; Translations Editor releases desktop
         archives from its own repository.
       </p>
@@ -83,10 +75,8 @@
       title="Behavior stays with the product that defines it"
     >
       <p>
-        <code>RunicAssets.RunicToolkit</code> and
-        <code>RunicFlow.ApplicationBridge</code> live and release with Assets and
-        Flow respectively. The same rule applies when a product connects to an external
-        framework or development tool.
+        <code>Runic.Assets</code> lives and releases with Assets. The same rule applies
+        when a product connects to an external framework or development tool.
       </p>
     </ContentCard>
     <ContentCard

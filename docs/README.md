@@ -4,7 +4,7 @@
 
 Start at [docs.runic-artifex.eu](https://docs.runic-artifex.eu): choose a focused, open-source .NET tool, find its NuGet or npm package, and connect products only when your application needs the integration.
 
-Runic Artifex tools work independently. The documentation helps you select the right starting point for a native desktop host, a desktop-and-browser application, headless orchestration, asset delivery, localization, or a NativeAOT command-line application.
+Runic Artifex tools work independently. The documentation helps you select the right starting point for a native desktop host, a desktop-and-browser application, asset delivery, localization, or a NativeAOT command-line application.
 
 ## Find the right starting point
 
@@ -14,7 +14,7 @@ Runic Artifex tools work independently. The documentation helps you select the r
 - [Application Bridge](https://docs.runic-artifex.eu/application-bridge) explains how Runic Toolkit connects frontend and .NET application contracts.
 - [Release status](https://docs.runic-artifex.eu/releases) shows what is available today.
 
-The first package preview train is public on NuGet and npm. Preview packages release independently, so use the catalog’s exact preview version when you need a reproducible application. Runic Translations Editor is a separate downstream application; its source is public and its first downloadable desktop preview is still pending.
+Release, package, compatibility, and migration status are generated from the shared release authority. A version remains explicitly unassigned until the authority records it as published; the documentation never infers package availability from repository state.
 
 Versioned [Runic Translations JSON Schemas](https://docs.runic-artifex.eu/schemas/translations/) are also published as static assets. Their canonical identifiers use the `runic-artifex.eu` origin and resolve to the documentation host.
 
@@ -42,6 +42,36 @@ npm test
 ```
 
 `npm test` builds the static site and checks key rendered routes, catalog entries, and release information.
+
+### Release authority data
+
+Release data is generated from the sibling `Runic-Artifex/.github` authority;
+it is not copied into a hand-maintained catalog. In the shared workspace the
+default manifest is `../.github/runic.release.json`:
+
+```bash
+npm run generate:release-data
+npm run check:release-data
+```
+
+For a standalone clone, check out the authority at the same immutable commit
+recorded by `RUNIC_RELEASE_AUTHORITY_REVISION`, then pass its manifest path:
+
+```bash
+git clone https://github.com/Runic-Artifex/.github.git release-authority
+export RUNIC_RELEASE_AUTHORITY_REVISION="$(node --input-type=module -e 'import { authorityRevision } from "./scripts/release-authority.mjs"; console.log(authorityRevision)')"
+git -C release-authority checkout "$RUNIC_RELEASE_AUTHORITY_REVISION"
+RUNIC_RELEASE_MANIFEST=release-authority/runic.release.json \
+  npm test
+```
+
+The environment variable applies to `npm run generate:release-data`,
+`npm run check:release-data`, and the full `npm test` verification.
+
+The docs workflow uses that pinned revision for the manifest, schema, and
+verifier together. Publish the authority revision first; then update the one
+docs pin, regenerate `src/lib/generated/release-data.ts`, and submit both
+changes. Do not point the generator or CI at a mutable branch.
 
 ## How the site is published
 

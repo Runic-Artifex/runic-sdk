@@ -1,6 +1,9 @@
 import { error } from '@sveltejs/kit';
-import { getProduct } from '$lib/docs-data';
+import { getProduct, products } from '$lib/docs-data';
 import type { PageLoad } from './$types';
+
+export const entries = () =>
+  products.map((product) => ({ slug: product.slug }));
 
 export const load: PageLoad = ({ params }) => {
   const product = getProduct(params.slug);

@@ -1,3 +1,19 @@
+import { releaseData } from '$lib/generated/release-data';
+import { activeVersionForProduct } from '$lib/release-docs';
+
+type ReleaseProductId = (typeof releaseData.products)[number]['id'];
+type ArchivedReleaseProduct = Extract<
+  (typeof releaseData.products)[number],
+  { readonly support: 'archived' }
+>;
+type ReleaseMetadata = {
+  releaseProduct: ReleaseProductId;
+  version: string | null;
+  versionState: 'published' | 'unassigned';
+  availability: 'active' | 'archived';
+  archive?: ArchivedReleaseProduct['archive'];
+};
+
 export type Product = {
   slug: string;
   name: string;
@@ -6,21 +22,44 @@ export type Product = {
   kicker: string;
   summary: string;
   description: string;
-  version: string;
+  releaseProduct: ReleaseProductId | null;
+  version: string | null;
+  versionState: 'published' | 'unassigned';
   source: string;
   bestFor: string[];
   boundaries: string[];
-  packages: string[];
-  npmPackages?: string[];
-  install?: string[];
+  availability?: 'active' | 'archived' | 'independent';
+  archive?: ArchivedReleaseProduct['archive'];
   kind?: 'package-family' | 'application';
-  artifacts?: string[];
   related?: {
     href:
       '/products/runic-translations/' | '/products/runic-translations-editor/';
     label: string;
   };
 };
+
+function releaseVersion(product: ReleaseProductId) {
+  return (
+    activeVersionForProduct(product) ?? {
+      state: 'unassigned' as const,
+      value: null,
+    }
+  );
+}
+
+function releaseMetadata(releaseProduct: ReleaseProductId): ReleaseMetadata {
+  const version = releaseVersion(releaseProduct);
+  const product = releaseData.products.find(
+    (candidate) => candidate.id === releaseProduct,
+  );
+  return {
+    releaseProduct,
+    version: version.value,
+    versionState: version.state,
+    availability: product?.support === 'archived' ? 'archived' : 'active',
+    archive: product?.support === 'archived' ? product.archive : undefined,
+  };
+}
 
 export const products: Product[] = [
   {
@@ -33,7 +72,7 @@ export const products: Product[] = [
       'Compose desktop windows, browser frontends, and .NET hosting around one application model with NativeAOT-safe application contracts.',
     description:
       'Runic Toolkit connects desktop windows, browser frontends, and .NET hosting around one application model. Its Application Bridge carries named commands and validated events between a frontend and a NativeAOT-safe .NET host.',
-    version: '0.1.0-preview.30.1',
+    ...releaseMetadata('application'),
     source: 'https://github.com/Runic-Artifex/runic-toolkit',
     bestFor: [
       'Composing .NET desktop and browser applications',
@@ -45,27 +84,28 @@ export const products: Product[] = [
       'Uses named domain commands and events rather than exposing ViewModels as the public application contract',
       'Rendering frameworks own presentation state; the bridge owns validation, transport, sessions, revisions, and operations',
     ],
-    packages: [
-      'RunicToolkit.ApplicationBridge',
-      'RunicToolkit.ApplicationBridge.Generators',
-      'RunicToolkit.Collections',
-      'RunicToolkit.Desktop',
-      'RunicToolkit.Hosting.Abstractions',
-      'RunicToolkit.Hosting.Build',
-      'RunicToolkit.Hosting.CsWebUi',
-      'RunicToolkit.Hosting.CsWebUi.App',
-      'RunicToolkit.Hosting.CsWebUi.ApplicationBridge',
-      'RunicToolkit.Hosting.Generators',
-      'RunicToolkit.Hosting.GenericHost',
-      'RunicToolkit.Hosting.WebUi',
-      'RunicToolkit.Hosting',
-      'RunicToolkit.DotNet.RunicToolkit',
-      'RunicToolkit.Templates',
+  },
+  {
+    slug: 'runic-desktop',
+    name: 'Runic Desktop',
+    shortName: 'Desktop',
+    icon: '/products/runic-desktop.png',
+    kicker: 'Native presentation',
+    summary:
+      'Present web-powered Runic applications in native windows through explicit browser and embedded-WebView policies.',
+    description:
+      'Runic Desktop owns native presentation hosting for Runic applications. Its C# backend and TypeScript+Effect frontend are native implementations of one shared presentation contract; neither package wraps the other language runtime.',
+    ...releaseMetadata('desktop'),
+    source: 'https://github.com/Runic-Artifex/runic-desktop',
+    bestFor: [
+      'Native-window presentation for C# application backends',
+      'TypeScript+Effect frontends using the shared Desktop contract',
+      'Explicit browser, embedded-WebView, availability, and fallback policies',
     ],
-    npmPackages: ['@runic-artifex/application-bridge'],
-    install: [
-      'dotnet add package RunicToolkit.Hosting --version 0.1.0-preview.30.1',
-      'npm install @runic-artifex/application-bridge@0.1.0-preview.30.1',
+    boundaries: [
+      'Owns presentation hosting and lifecycle, not application composition, assets, localization, or domain commands',
+      'C# and TypeScript+Effect are peer implementations with deliberate language-specific APIs',
+      'Does not depend on WebUI or CivetWeb; CS-WebUI remains a separate upstream WebUI compatibility product',
     ],
   },
   {
@@ -73,50 +113,48 @@ export const products: Product[] = [
     name: 'CS-WebUI',
     shortName: 'CS-WebUI',
     icon: '/products/cs-webui.png',
-    kicker: 'Native host',
+    kicker: 'Independent WebUI binding',
     summary:
-      'Host a web-powered cross-platform desktop UI in a native window using an installed browser or supported WebView.',
+      'Use upstream WebUI from .NET through a complete C-ABI binding and an ownership-safe managed API.',
     description:
-      'CS-WebUI provides .NET bindings for WebUI. The raw package follows the WebUI C ABI, while the high-level package adds deterministic managed ownership, safer callbacks and window APIs, custom HTTP responses for asset integrations, and NativeAOT support.',
-    version: '2.5.0-beta.4.4',
+      'CS-WebUI tracks unmodified upstream WebUI. CsWebUi.Native exposes the complete WebUI 2.5 C ABI, while CsWebUi adds deterministic managed ownership, UTF-8 conversion, error handling, and safer window and callback APIs.',
+    releaseProduct: null,
+    version: null,
+    versionState: 'unassigned',
+    availability: 'independent',
     source: 'https://github.com/Runic-Artifex/cs-webui',
     bestFor: [
-      'Small cross-platform desktop hosts backed by web technology',
-      'Direct WebUI interop without a larger application framework',
-      'Dynamic or opt-in static NativeAOT deployment',
+      'Direct upstream WebUI interop from .NET',
+      'Applications that intentionally choose WebUI’s native runtime and protocol',
+      'Low-level C-ABI access or an ownership-safe managed wrapper',
     ],
     boundaries: [
-      'Tracks the WebUI 2.5 beta ABI',
-      'Remains independently useful without Runic Toolkit',
-      'Raw and safe packages are intentionally separate',
+      'Tracks the WebUI 2.5 beta ABI and unmodified upstream native source',
+      'Is maintained and released independently of the Runic v1 compatibility set',
+      'Is not the implementation underneath Runic Desktop',
     ],
-    packages: ['CsWebUi.Native', 'CsWebUi'],
-    install: ['dotnet add package CsWebUi --version 2.5.0-beta.4.4'],
   },
   {
     slug: 'runic-flow',
     name: 'Runic Flow',
     shortName: 'Flow',
     icon: '/products/runic-flow.png',
-    kicker: 'Headless orchestration',
+    kicker: 'Archived product',
     summary:
-      'Coordinate predictable, UI-independent work with typed decisions, progress, cancellation, and deterministic state commits.',
+      'Runic Flow is archived and has no release-bearing packages or public replacement.',
     description:
-      'Runic Flow coordinates headless application work through typed command decisions and serialized state commits. It tracks process-local versions, opaque checkpoints, concurrency slots, timeouts, progress, cancellation, and terminal outcomes without taking ownership of UI state.',
-    version: '0.1.0-preview.19.1',
+      'Runic Flow is archived. Historical migration documentation remains available to guide removal, while current release authority records no package identity, public replacement, or forwarding package.',
+    ...releaseMetadata('flow'),
     source: 'https://github.com/Runic-Artifex/runic-flow',
     bestFor: [
-      'Deterministic application processes',
-      'Coordinated backend operations with progress and cancellation',
-      'Headless orchestration shared across application surfaces',
+      'Reviewing archived package migrations',
+      'Removing legacy Flow dependencies without adopting a replacement',
     ],
     boundaries: [
-      'Core has no Runic Toolkit or frontend-framework dependency',
-      'Does not provide navigation, dialogs, presenters, ViewModel activation, routing, or a generic wire protocol',
-      'Flow owns its Runic Toolkit Application Bridge integration',
+      'Has no canonical packages, install instructions, or compatibility lane',
+      'Legacy identities survive only in clearly historical records, not current release authority',
+      'Archive evidence records the authoritative retirement decision',
     ],
-    packages: ['RunicFlow', 'RunicFlow.ApplicationBridge'],
-    install: ['dotnet add package RunicFlow --version 0.1.0-preview.19.1'],
   },
   {
     slug: 'runic-assets',
@@ -128,7 +166,7 @@ export const products: Product[] = [
       'Package static assets once and serve the same validated manifest from embedded, development, browser, or server hosts.',
     description:
       'Runic Assets lets one validated asset manifest travel through embedded, development, browser, and server hosts. Safe paths, immutable manifests, portable standard-ZIP archives, development sources, and host adapters stay separate from the transport-neutral core.',
-    version: '0.1.0-preview.24.1',
+    ...releaseMetadata('assets'),
     source: 'https://github.com/Runic-Artifex/runic-assets',
     bestFor: [
       'Sharing static assets across hosts',
@@ -140,13 +178,6 @@ export const products: Product[] = [
       'Host delivery lives in owned adapters',
       'Archive format is documented separately from host behavior',
     ],
-    packages: [
-      'RunicAssets',
-      'RunicAssets.CsWebUi',
-      'RunicAssets.AspNetCore',
-      'RunicAssets.RunicToolkit',
-    ],
-    install: ['dotnet add package RunicAssets --version 0.1.0-preview.24.1'],
   },
   {
     slug: 'runic-translations',
@@ -158,7 +189,7 @@ export const products: Product[] = [
       'Turn portable translation resources into strongly typed, NativeAOT-ready .NET APIs.',
     description:
       'Runic Translations defines source schemas, message grammar, generated artifacts, and its runtime ABI as portable contracts. Its deterministic compiler, authoring API, generators, build integration, CLI, and NativeAOT runtime begin with .NET without making .NET the boundary of the system.',
-    version: '0.1.0-preview.8.1',
+    ...releaseMetadata('translations'),
     source: 'https://github.com/Runic-Artifex/runic-translations',
     bestFor: [
       'Deterministic localization builds',
@@ -169,22 +200,8 @@ export const products: Product[] = [
     boundaries: [
       'Independent of every UI framework',
       'The canonical protocol identifier is runic.translations/1',
-      'The canonical .NET package family is RunicTranslations.*',
+      'The canonical .NET package family is Runic.Translations.*',
       'The desktop authoring experience and its releases belong to Runic Translations Editor',
-    ],
-    packages: [
-      'RunicTranslations',
-      'RunicTranslations.Compiler',
-      'RunicTranslations.Authoring',
-      'RunicTranslations.Generator',
-      'RunicTranslations.Build',
-      'RunicTranslations.Tool',
-      'RunicTranslations.Templates',
-    ],
-    npmPackages: ['@runic-artifex/vite-plugin-runic-translations'],
-    install: [
-      'dotnet add package RunicTranslations --version 0.1.0-preview.8.1',
-      'npm install @runic-artifex/vite-plugin-runic-translations@0.1.0-preview.8.1',
     ],
     related: {
       href: '/products/runic-translations-editor/',
@@ -201,7 +218,7 @@ export const products: Product[] = [
       'Create, translate, review, and validate Runic Translations workspaces in a focused desktop editor.',
     description:
       'Runic Translations Editor gives translators a focused workspace for natural text, variables, variants, workflow status, and validation. It preserves the deterministic Runic Translations resource model without requiring people to edit resource files directly.',
-    version: 'First preview pending',
+    ...releaseMetadata('editor'),
     source: 'https://github.com/Runic-Artifex/runic-translations-editor',
     bestFor: [
       'Translating and reviewing messages without editing JSON directly',
@@ -213,13 +230,7 @@ export const products: Product[] = [
       'Owns the desktop UX, application packaging, and release cadence',
       'Does not own the compiler, schemas, runtime ABI, generators, or package releases',
     ],
-    packages: [],
     kind: 'application',
-    artifacts: [
-      'Linux x64 self-contained archive',
-      'macOS arm64 self-contained archive',
-      'Windows x64 self-contained archive',
-    ],
     related: {
       href: '/products/runic-translations/',
       label: 'Explore Runic Translations',
@@ -235,7 +246,7 @@ export const products: Product[] = [
       'Build reflection-free NativeAOT command applications with parser-neutral contracts and predictable human and machine output.',
     description:
       'Runic Command Line separates portable command contracts from execution, hosting, and child-process support. It provides command catalogs and predictable output without requiring reflection or committing applications to one parser.',
-    version: '0.1.0-preview.5.1',
+    ...releaseMetadata('command-line'),
     source: 'https://github.com/Runic-Artifex/runic-command-line',
     bestFor: [
       'NativeAOT command applications',
@@ -247,17 +258,12 @@ export const products: Product[] = [
       'Parser-neutral abstractions are independently consumable',
       'A future Toolkit adapter remains owned by Command Line',
     ],
-    packages: [
-      'RunicCommandLine.Abstractions',
-      'RunicCommandLine',
-      'RunicCommandLine.Hosting',
-      'RunicCommandLine.Processes',
-    ],
-    install: [
-      'dotnet add package RunicCommandLine --version 0.1.0-preview.5.1',
-    ],
   },
 ];
+
+export const activeProducts = products.filter(
+  (product) => product.availability !== 'archived',
+);
 
 export function getProduct(slug: string) {
   return products.find((candidate) => candidate.slug === slug);
