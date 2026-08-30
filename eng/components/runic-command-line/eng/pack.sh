@@ -13,17 +13,16 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repository_commit="$(git -C "$repository_root" rev-parse HEAD)"
 
 if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "Package version must be a SemVer-compatible version such as 0.1.0-preview.1." >&2
+  echo "Package version must be a SemVer-compatible version such as 0.2.0-preview.1." >&2
   exit 2
 fi
 
 mkdir -p "$output_directory"
 
 package_projects=(
-  "$repository_root/src/RunicCommandLine.Abstractions/RunicCommandLine.Abstractions.csproj"
-  "$repository_root/src/RunicCommandLine/RunicCommandLine.csproj"
-  "$repository_root/src/RunicCommandLine.Hosting/RunicCommandLine.Hosting.csproj"
-  "$repository_root/src/RunicCommandLine.Processes/RunicCommandLine.Processes.csproj"
+  "$repository_root/src/Runic.CommandLine/Runic.CommandLine.csproj"
+  "$repository_root/src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj"
+  "$repository_root/src/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj"
 )
 
 for project in "${package_projects[@]}"; do
@@ -36,10 +35,9 @@ for project in "${package_projects[@]}"; do
 done
 
 expected_packages=(
-  "RunicCommandLine.Abstractions.$package_version.nupkg"
-  "RunicCommandLine.$package_version.nupkg"
-  "RunicCommandLine.Hosting.$package_version.nupkg"
-  "RunicCommandLine.Processes.$package_version.nupkg"
+  "Runic.CommandLine.$package_version.nupkg"
+  "Runic.CommandLine.Processes.$package_version.nupkg"
+  "Runic.CommandLine.Testing.$package_version.nupkg"
 )
 
 for package in "${expected_packages[@]}"; do

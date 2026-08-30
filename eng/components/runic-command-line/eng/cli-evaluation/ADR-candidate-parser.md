@@ -1,6 +1,6 @@
-# Candidate ADR: Defer parser adoption; retain a neutral syntax boundary
+# ADR: Adopt the Portable/BCL neutral parser adapter
 
-- Status: Candidate / not accepted
+- Status: Accepted
 - Date: 2026-07-22
 - Scope: Wave A C0 evidence under `eng/cli-evaluation/**`
 
@@ -10,15 +10,15 @@ The command-line plan requires current stable evaluation of System.CommandLine, 
 
 Repository policy adds a separate integration constraint: third-party package versions are centrally managed, and the authoritative root `Directory.Packages.props` contains no parser version. The command-line task cannot edit that shared policy. Evaluation package references therefore remain inert templates copied to temporary directories; they are not product references and do not generate retained lock files.
 
-First-party identity is fixed as `RunicCommandLine.*`; machine output uses `RUNIC_COMMANDLINE_OUTPUT` and protocol identity `runic.commandline/1`. Parser-native types, messages, help documents, and error categories must not cross those boundaries.
+First-party identity is fixed as `Runic.CommandLine.*`; machine output uses `RUNIC_COMMANDLINE_OUTPUT` and protocol identity `runic.commandline/1`. Parser-native types, messages, help documents, and error categories must not cross those boundaries.
 
-## Candidate decision
+## Decision
 
-**Do not adopt a parser package in Wave A. Retain the neutral `ICommandSyntaxAdapter` boundary and proceed with BCL-only contracts. Treat System.CommandLine 2.0.10 as the leading candidate for a later adapter, not as an approved dependency.**
+**Adopt the library-owned Portable/BCL neutral adapter as the v0.2 parser implementation. Do not adopt a parser package.**
 
-System.CommandLine is the only mature candidate whose fixture built and published Native AOT with zero evaluated trim/AOT warnings. It scored 92/100, but native behavior differed in 3 of 33 portable corpus cases: invariant decimal conversion, duplicate Boolean options, and attached values on a flag. A later adapter must close those gaps and rerun the same corpus. Until that proof and a central package pin exist, the mandatory syntax and package-policy gates remain open.
+System.CommandLine is the only mature candidate whose fixture built and published Native AOT with zero evaluated trim/AOT warnings. It scored 92/100, but native behavior differed in 3 of 33 portable corpus cases: invariant decimal conversion, duplicate Boolean options, and attached values on a flag. A later adapter must close those gaps and rerun the same corpus. Until that proof and a central package pin exist, System.CommandLine remains ineligible.
 
-The minimal in-house spike passed the narrow corpus and AOT publish. It is not selected because the plan requires explicit approval plus two independently shaped consumer scenarios before custom parsing, and neither is present. The control also lacks mature help/localization and compatibility evidence.
+The maintained Portable adapter now has the required two independently shaped consumer scenarios: the generated method-first AOT smoke application and the isolated packed catalog/hosting/process consumer. This decision accepts the owned adapter implementation, not the earlier minimal spike as a separately extensible custom-parser product.
 
 ## Rejected candidates
 
@@ -30,9 +30,9 @@ The minimal in-house spike passed the narrow corpus and AOT publish. It is not s
 
 - C1 abstractions, grammar corpus, outcomes, faults, exit categories, help model, and `runic.commandline/1` protocol identity remain library-owned and parser-neutral.
 - No parser package or parser-native public type is introduced in Wave A.
-- The orchestrator may later approve a central System.CommandLine version. That approval alone is insufficient; the internal adapter and packed consumer must pass the complete corpus and Native AOT gates.
+- A later System.CommandLine proposal still requires a central version pin, owned normalization of the three observed gaps, complete corpus evidence, and packed consumer Native AOT evidence.
 - Native help/error prose is test evidence only. Stable diagnostics use owned `RCLI####` identities; this evaluation uses symbolic kinds except for the already established `RCLI1001` mapping.
-- The in-house implementation cannot graduate from control to product parser without a separate decision demonstrating the required consumers and long-tail grammar/help burden.
+- The accepted Portable adapter remains deliberately narrow and parser-neutral; long-tail parser/help work requires a new decision.
 
 ## Evidence
 

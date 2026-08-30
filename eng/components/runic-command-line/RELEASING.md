@@ -1,6 +1,6 @@
 # Releasing Runic Command Line
 
-The `Public release` workflow builds and validates the four NuGet packages as
+The `Public release` workflow builds and validates the three NuGet packages as
 one independently versioned family. A verify-only dispatch is safe on any
 branch; registry publication is accepted only from `main`, after the exact
 `PUBLISH PUBLIC` confirmation and the `public-release` environment's `main`

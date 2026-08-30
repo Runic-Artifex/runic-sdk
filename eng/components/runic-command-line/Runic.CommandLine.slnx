@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Runic.CommandLine/Runic.CommandLine.csproj" />
+    <Project Path="src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj" />
+    <Project Path="src/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" />
+    <Project Path="src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Runic.CommandLine.AotSmoke/Runic.CommandLine.AotSmoke.csproj" />
+    <Project Path="tests/Runic.CommandLine.Contracts.Tests/Runic.CommandLine.Contracts.Tests.csproj" />
+    <Project Path="tests/Runic.CommandLine.Hosting.Tests/Runic.CommandLine.Hosting.Tests.csproj" />
+    <Project Path="tests/Runic.CommandLine.Processes.Tests/Runic.CommandLine.Processes.Tests.csproj" />
+    <Project Path="tests/Runic.CommandLine.Tests/Runic.CommandLine.Tests.csproj" />
+  </Folder>
+</Solution>

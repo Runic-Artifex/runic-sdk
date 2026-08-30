@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Runic.CommandLine.Processes.Tests</AssemblyName>
+    <RootNamespace>Runic.CommandLine.Processes.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Runic.CommandLine.Processes\Runic.CommandLine.Processes.csproj" />
+  </ItemGroup>
+</Project>

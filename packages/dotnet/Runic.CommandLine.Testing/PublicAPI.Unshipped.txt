@@ -1,0 +1,31 @@
+#nullable enable
+namespace Runic.CommandLine.Testing
+{
+    public sealed class TestCommandConsole : Runic.CommandLine.ICommandConsole
+    {
+        public TestCommandConsole();
+        public string StandardError { get; }
+        public string StandardOutput { get; }
+    }
+    public sealed class TestExecutionScopeFactory : Runic.CommandLine.ICommandExecutionScopeFactory
+    {
+        public TestExecutionScopeFactory(System.IServiceProvider services);
+    }
+    public static class CommandTestCancellation
+    {
+        public static System.Threading.CancellationToken CancelledToken { get; }
+    }
+    public static class CommandTestEnvelope
+    {
+        public static System.Text.Json.JsonDocument Parse(string json);
+    }
+    public static class CommandTestEnvironment
+    {
+        public static Runic.CommandLine.ParseSettings ParseSettings(string? output = null);
+    }
+    public static class CommandTestInvocation
+    {
+        public static Runic.CommandLine.ParsedInvocation Parse(Runic.CommandLine.CommandCatalog catalog, params string[] args);
+        public static Runic.CommandLine.ParsedInvocation Parse(Runic.CommandLine.CommandCatalog catalog, Runic.CommandLine.ParseSettings settings, params string[] args);
+    }
+}

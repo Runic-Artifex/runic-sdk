@@ -1,9 +1,9 @@
 # `runic.commandline/1` machine response protocol
 
-This directory is the language-neutral, offline contract for RunicCommandLine
+This directory is the language-neutral, offline contract for Runic.CommandLine
 command-line machine output. `--output json` or the captured
 `RUNIC_COMMANDLINE_OUTPUT=json` value selects this protocol. The namespace of
-the implementation remains `RunicCommandLine.*`; neither a parser
+the implementation remains `Runic.CommandLine.*`; neither a parser
 package nor a hosting framework is part of the wire contract.
 
 The words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.

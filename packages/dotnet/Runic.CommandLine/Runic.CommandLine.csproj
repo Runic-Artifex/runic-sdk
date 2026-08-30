@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicCommandLineDefaultTargetFramework)</TargetFramework>
+    <RunicCommandLineShippingProject>true</RunicCommandLineShippingProject>
+    <AssemblyName>Runic.CommandLine</AssemblyName>
+    <RootNamespace>Runic.CommandLine</RootNamespace>
+    <PackageId>Runic.CommandLine</PackageId>
+    <Description>Parser-neutral command catalog, execution, host integration, and output kernel for .NET applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
+                      PrivateAssets="all"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="PublicAPI.Unshipped.txt" Pack="true" PackagePath="" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="../Runic.CommandLine.Generators/bin/$(Configuration)/$(RunicCommandLineGeneratorTargetFramework)/Runic.CommandLine.Generators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs" />
+  </ItemGroup>
+</Project>

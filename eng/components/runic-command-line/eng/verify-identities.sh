@@ -17,4 +17,23 @@ if [[ -n "$retired_paths" ]]; then
   exit 1
 fi
 
+for project in Runic.CommandLine Runic.CommandLine.Processes Runic.CommandLine.Testing; do
+  project_file="src/$project/$project.csproj"
+  grep -Fq "<AssemblyName>$project</AssemblyName>" "$project_file"
+  grep -Fq "<RootNamespace>$project</RootNamespace>" "$project_file"
+  grep -Fq "<PackageId>$project</PackageId>" "$project_file"
+done
+
+if git grep -n -E 'namespace RunicCommandLine|using RunicCommandLine|PackageReference Include="Runic\.CommandLine\.(Abstractions|Hosting)"' -- . ':(exclude)eng/verify-identities.sh'; then
+  echo "Retired Runic Command Line namespaces or package references remain." >&2
+  exit 1
+fi
+
+retired_package_paths="$(git ls-files | grep -E '(^|/)RunicCommandLine\.(Abstractions|Hosting)(/|\.)' || true)"
+if [[ -n "$retired_package_paths" ]]; then
+  echo "Retired Runic Command Line package paths remain:" >&2
+  echo "$retired_package_paths" >&2
+  exit 1
+fi
+
 echo "Runic Command Line identity boundary verified."

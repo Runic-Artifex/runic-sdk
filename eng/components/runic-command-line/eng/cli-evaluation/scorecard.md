@@ -35,13 +35,15 @@ Primary sources:
 - Cocona: [NuGet 2.2.0](https://www.nuget.org/packages/Cocona/2.2.0), [archival statement](https://github.com/mayuki/Cocona/issues/178), [AOT failure](https://github.com/mayuki/Cocona/issues/133), [reflection-based command provider](https://github.com/mayuki/Cocona/blob/v2.2.0/src/Cocona.Core/Command/CoconaCommandProvider.cs), [MIT license](https://github.com/mayuki/Cocona/blob/v2.2.0/LICENSE).
 - CommandLineParser: [NuGet 2.9.1](https://www.nuget.org/packages/CommandLineParser/2.9.1), [Native AOT failure](https://github.com/commandlineparser/commandline/issues/897), [open trimming work](https://github.com/commandlineparser/commandline/pull/913), [open nested-command request](https://github.com/commandlineparser/commandline/issues/353), [MIT license](https://github.com/commandlineparser/commandline/blob/master/License.md).
 
-## Decision
+## Accepted decision
 
-Adopt no package in Wave A. `System.CommandLine` is the leading candidate for a later internal adapter, conditional on:
+Accept the library-owned Portable/BCL neutral adapter for v0.2. It preserves the evaluated grammar corpus and parser-neutral contracts, and is now exercised by two independent consumer shapes: the method-first generated AOT smoke application and the isolated packed catalog/hosting/process consumer.
+
+Adopt no third-party package. `System.CommandLine` is the leading candidate for a later internal adapter, conditional on:
 
 1. the orchestrator approving and centrally pinning its package version;
 2. an adapter passing all 33 portable cases, including invariant conversion and duplicate/flag semantics;
 3. packed-consumer AOT evidence under repository policy; and
-4. parser-native messages and help remaining outside stable `RunicCommandLine.*` and `runic.commandline/1` contracts.
+4. parser-native messages and help remaining outside stable `Runic.CommandLine.*` and `runic.commandline/1` contracts.
 
-The minimal in-house spike remains a control only. Selecting it would require explicit approval and two independent consumer scenarios, neither of which exists in Wave A.
+The minimal in-house spike remains historical control evidence; v0.2 accepts the maintained Portable adapter rather than graduating the spike.
