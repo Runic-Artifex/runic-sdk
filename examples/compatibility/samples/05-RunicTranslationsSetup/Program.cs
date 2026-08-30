@@ -1,6 +1,6 @@
 using System.Text.Json;
 using RunicArtifex.Examples.Translations.Generated;
-using RunicTranslations;
+using Runic.Translations;
 
 if (args.Contains("--smoke-test", StringComparer.Ordinal))
 {

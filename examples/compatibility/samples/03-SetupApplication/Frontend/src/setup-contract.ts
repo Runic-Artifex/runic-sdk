@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { defineApplicationContract } from "@runic-artifex/application-bridge";
+import { SetupBridgeContract } from "./setup-bridge-contract.generated.ts";
 
 export const Uuid = Schema.String.pipe(
   Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
@@ -79,8 +80,9 @@ export const SetupEvent = Schema.Union(
 );
 
 export const SetupContract = defineApplicationContract({
-  identity: "runic.artifex.setup",
-  version: 1,
+  identity: SetupBridgeContract.identity,
+  version: SetupBridgeContract.version,
+  fingerprint: SetupBridgeContract.fingerprint,
   command: SetupCommand,
   receipt: SetupReceipt,
   event: SetupEvent,

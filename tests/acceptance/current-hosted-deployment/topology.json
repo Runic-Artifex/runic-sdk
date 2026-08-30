@@ -1,0 +1,30 @@
+{
+  "schema": "runic.hosted-deployment/1",
+  "publicOrigin": "https://app.example.test",
+  "trustedProxyAddresses": ["10.0.0.10"],
+  "serviceUpstream": "http://service.internal.test:8080",
+  "frontendUpstream": "http://frontend.internal.test:3000",
+  "staticAssets": {
+    "owner": "sveltekit",
+    "path": "frontend/build"
+  },
+  "oidc": {
+    "authority": "https://idp.example.test",
+    "clientId": "runic-hosted"
+  },
+  "secret": {
+    "configurationKey": "Runic__HostedDeployment__OidcClientSecret"
+  },
+  "proxy": {
+    "tlsTerminator": "trusted-reverse-proxy",
+    "routes": [
+      { "path": "/runic/service/*", "upstream": "service" },
+      { "path": "/signin-oidc", "upstream": "service" },
+      { "path": "/runic/health", "upstream": "service" },
+      { "path": "/runic/ready", "upstream": "service" },
+      { "path": "/*", "upstream": "frontend" }
+    ],
+    "cors": false,
+    "publicApplicationBridgeWebSocket": false
+  }
+}

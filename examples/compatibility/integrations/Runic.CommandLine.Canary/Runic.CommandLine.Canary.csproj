@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RunicArtifex.Examples.CommandLine</RootNamespace>
+    <AssemblyName>Runic.CommandLine.Canary</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj"
+                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
+                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj')"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj"
+                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj')" />
+    <PackageReference Include="Runic.CommandLine" Condition="!Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
+    <PackageReference Include="Runic.CommandLine.Processes" Condition="!Exists('../../../runic-command-line/src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj')" />
+  </ItemGroup>
+</Project>

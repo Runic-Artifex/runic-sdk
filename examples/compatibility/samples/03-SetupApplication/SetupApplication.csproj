@@ -2,24 +2,37 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>RunicToolkit.Examples.Setup</RootNamespace>
+    <RootNamespace>Runic.Examples.Setup</RootNamespace>
     <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
-    <RunicToolkitGenerateFrontendAssets>true</RunicToolkitGenerateFrontendAssets>
-    <RunicToolkitFrontendOutputDirectory>$(MSBuildProjectDirectory)/Frontend/dist</RunicToolkitFrontendOutputDirectory>
-    <RunicToolkitFrontendEntryPoint>index.html</RunicToolkitFrontendEntryPoint>
-    <RunicToolkitFrontendAssetMode>Copy</RunicToolkitFrontendAssetMode>
-    <RunicToolkitFrontendBuildCommand>npm install --ignore-scripts &amp;&amp; npm --prefix Frontend run build</RunicToolkitFrontendBuildCommand>
+    <RunicAssetsDist>$(MSBuildProjectDirectory)/Frontend/dist</RunicAssetsDist>
+    <RunicAssetsEntryPoint>index.html</RunicAssetsEntryPoint>
+    <RunicAssetsFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</RunicAssetsFrontendDirectory>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="RunicToolkit.ApplicationBridge" />
-    <PackageReference Include="RunicToolkit.ApplicationBridge.Generators" PrivateAssets="all" />
-    <PackageReference Include="RunicToolkit.Hosting.Build" />
-    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App" />
-    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" />
+    <ProjectReference Include="../../../runic-toolkit/src/Runic.Application.Desktop/Runic.Application.Desktop.csproj"
+                      Condition="Exists('../../../runic-toolkit/src/Runic.Application.Desktop/Runic.Application.Desktop.csproj')" />
+    <ProjectReference Include="../../../runic-toolkit/src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      Condition="Exists('../../../runic-toolkit/src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj')" />
+    <ProjectReference Include="../../../runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj"
+                      Condition="Exists('../../../runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj')" />
+    <ProjectReference Include="../../../runic-assets/src/Runic.Assets.Packer/Runic.Assets.Packer.csproj"
+                      ReferenceOutputAssembly="false"
+                      Condition="Exists('../../../runic-assets/src/Runic.Assets.Packer/Runic.Assets.Packer.csproj')" />
+    <PackageReference Include="Runic.Application.Bridge"
+                      Condition="!Exists('../../../runic-toolkit/src/Runic.Application.Bridge/Runic.Application.Bridge.csproj')" />
+    <PackageReference Include="Runic.Application.Desktop"
+                      Condition="!Exists('../../../runic-toolkit/src/Runic.Application.Desktop/Runic.Application.Desktop.csproj')" />
+    <PackageReference Include="Runic.Assets"
+                      Condition="!Exists('../../../runic-assets/src/Runic.Assets/Runic.Assets.csproj')" />
+    <PackageReference Include="Runic.Assets.Desktop"
+                      Condition="!Exists('../../../runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj')" />
   </ItemGroup>
   <ItemGroup>
     <AdditionalFiles Include="Contract/generated/bridge.manifest.json" />
     <AdditionalFiles Include="Contract/generated/schemas/**/*.schema.json" />
-    <Content Include="NativeE2E/**/*" CopyToOutputDirectory="PreserveNewest" Link="native-e2e/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+  <Import Project="../../../runic-assets/src/Runic.Assets/buildTransitive/Runic.Assets.targets"
+          Condition="Exists('../../../runic-assets/src/Runic.Assets/buildTransitive/Runic.Assets.targets')" />
 </Project>

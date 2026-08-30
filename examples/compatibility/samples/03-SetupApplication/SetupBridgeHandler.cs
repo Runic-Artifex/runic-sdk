@@ -3,13 +3,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using RunicToolkit.ApplicationBridge;
-using RunicToolkit.Examples.Setup.Contract;
+using Runic.Application.Bridge;
+using Runic.Examples.Setup.Contract;
 
-namespace RunicToolkit.Examples.Setup;
+namespace Runic.Examples.Setup;
 
 internal sealed class SetupBridgeHandler(bool failInstallation = false) : ISetupBridgeHandler
 {
+    internal SetupBridgeHandler() : this(false)
+    {
+    }
+
     private static readonly Guid RecommendedDestinationId =
         Guid.Parse("7e510a78-3c9a-4bed-8c31-2d93e5bbb835");
     private readonly Lock _gate = new();

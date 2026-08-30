@@ -13,7 +13,7 @@ than a product-source checkout.
 | --- | --- | --- |
 | 1 | [Hello lifecycle](samples/01-HelloLifecycle/) | Compose startup work, a UI launch mode, and orderly shutdown. |
 | 2 | [Greeting command line](samples/02-GreetingCommandLine/) | Parse a typed command and present human or JSON output. |
-| 3 | [React Setup Application](samples/03-SetupApplication/) | Drive a native CS-WebUI setup wizard through the Application Bridge. |
+| 3 | [React Setup Application](samples/03-SetupApplication/) | Drive a native Runic Desktop setup wizard through the Application Bridge. |
 | 4 | [SvelteKit Setup Application](samples/04-SvelteKitSetupApplication/) | Use the same native bridge contract with Svelte 5 runes and SvelteKit. |
 | 5 | [Runic Translations Setup](samples/05-RunicTranslationsSetup/) | Generate typed .NET and ESM translations with isolated request locales. |
 
@@ -30,14 +30,21 @@ and next step.
 ## Prerequisites
 
 - .NET SDK 10.0.302 (the repository pins it in [`global.json`](global.json)).
-- Node.js 24.18 and npm 11.16 for samples 3–5; install their locked workspace
-  dependencies once with `npm ci` from the repository root.
-- A supported desktop browser or WebView for the interactive CS-WebUI samples.
+- Node.js 24.18 and npm 11.16 for samples 3–5. The current checkout retains
+  historical samples, so do not run its root `npm ci` as a package-acquisition
+  step.
+- A supported desktop browser or WebView for the interactive Desktop samples.
   The headless smoke checks do not open a window.
 
-The committed [`.npmrc`](.npmrc) supplies the scoped npm registry
-configuration. Check the public package catalog for the current availability of
-each preview artifact.
+The historical package pins in this repository are retained for receipt
+verification, not for local package acquisition. The current package-only
+[Desktop clean-room journey](eng/current-clean-install/) takes its exact NuGet
+and npm inputs from the compatibility set and requires all feeds explicitly.
+
+The older W10–W70 receipt artifacts remain available as historical engineering
+evidence. Their retired package identities and feeds are constrained by
+[`eng/current-evidence-allowlist.json`](eng/current-evidence-allowlist.json);
+they are not a competing current-release definition.
 
 ## Choose a package
 
@@ -47,11 +54,11 @@ against your supported runtime before production use.
 
 | Need | Install | Learn more |
 | --- | --- | --- |
-| Application lifecycle and desktop/browser hosting | `dotnet add package RunicToolkit.Hosting --prerelease` | [Runic Toolkit](https://docs.runic-artifex.eu/products/runic-toolkit) |
-| Typed command-line applications | `dotnet add package RunicCommandLine --prerelease` | [Runic Command Line](https://docs.runic-artifex.eu/products/runic-command-line) |
-| A validated native-to-web application contract | `dotnet add package RunicToolkit.ApplicationBridge --prerelease` | [Application Bridge](https://docs.runic-artifex.eu/application-bridge) |
-| Flow orchestration without a UI | `dotnet add package RunicFlow --prerelease` | [Runic Flow](https://docs.runic-artifex.eu/products/runic-flow) |
-| Typed localization for .NET and ESM | `dotnet add package RunicTranslations --prerelease` | [Runic Translations](https://docs.runic-artifex.eu/products/runic-translations) |
+| Application lifecycle and generated manifests | `dotnet add package Runic.Application --prerelease` | [Runic Toolkit](https://docs.runic-artifex.eu/products/runic-toolkit) |
+| Typed command-line applications | `dotnet add package Runic.CommandLine --prerelease` | [Runic Command Line](https://docs.runic-artifex.eu/products/runic-command-line) |
+| A validated application bridge contract | `dotnet add package Runic.Application.Bridge --prerelease` | [Application Bridge](https://docs.runic-artifex.eu/application-bridge) |
+| A current Svelte/Vite application template | `dotnet new install Runic.Application.Templates::<candidate>` | [Current Svelte template consumer](eng/current-svelte-template/) |
+| Typed localization for .NET and ESM | `dotnet add package Runic.Translations --prerelease` | [Runic Translations](https://docs.runic-artifex.eu/products/runic-translations) |
 | Application Bridge in a browser frontend | `npm install @runic-artifex/application-bridge` | [JavaScript packages](https://docs.runic-artifex.eu/packages) |
 
 For the full package catalog, compatibility notes, and release status, see
@@ -62,11 +69,14 @@ those pins when reproducing a sample, not as a general version-selection policy.
 
 ## Verification
 
-Run the locked frontend checks and the headless samples after `npm ci`:
+The commands below document the frozen examples receipt and must not be used
+for local package acquisition. Its pinned package graph is historical. For the
+current package-only path, use the explicit-feed
+[Desktop clean-room journey](eng/current-clean-install/).
 
 ```bash
 dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
-dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj
+dotnet build samples/05-RunicTranslationsSetup/Runic.TranslationsSetup.csproj
 npm run verify
 dotnet run --project samples/01-HelloLifecycle --configuration Release
 dotnet run --project samples/02-GreetingCommandLine --configuration Release -- greet Runic

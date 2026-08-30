@@ -1,15 +1,15 @@
 import { Effect } from "effect";
 import {
-  CsWebUiApplicationBridgeLive,
+  ApplicationBridgeLive,
   MockApplicationBridge,
   createApplicationBridgeController,
-  createCsWebUiFrameChannel,
 } from "@runic-artifex/application-bridge";
+import { createDesktopFrameChannel } from "@runic-artifex/desktop";
 import { createSvelteApplicationBridge } from "@runic-artifex/svelte";
 import {
-  createRunicToolkitDevtoolsObserver,
-  preserveRunicToolkitHmrResource,
-} from "virtual:runic-toolkit/client";
+  createRunicDevtoolsObserver,
+  preserveRunicHmrResource,
+} from "virtual:runic/client";
 import {
   SetupContract,
   type DestinationSelection,
@@ -101,17 +101,17 @@ const mock = MockApplicationBridge<SetupCommand, SetupReceipt, SetupEvent, Setup
   cancel: () => Effect.void,
 });
 
-export const setupBridge = preserveRunicToolkitHmrResource("sveltekit-setup-bridge", () =>
+export const setupBridge = preserveRunicHmrResource("sveltekit-setup-bridge", () =>
   createSvelteApplicationBridge(
     createApplicationBridgeController(
       SetupContract,
       import.meta.env.MODE === "mock"
         ? mock
-        : CsWebUiApplicationBridgeLive(SetupContract, createCsWebUiFrameChannel()),
+        : ApplicationBridgeLive(SetupContract, createDesktopFrameChannel()),
     ),
     {
       reduce: reduceSetupEvent,
-      observer: createRunicToolkitDevtoolsObserver(),
+      observer: createRunicDevtoolsObserver(),
       inspectSnapshot: (snapshot) => ({ revision: snapshot.revision }),
     },
   ));

@@ -1,0 +1,15 @@
+{
+  "artifactVersion": 1,
+  "messageGrammarVersion": 1,
+  "catalog": "canary",
+  "locale": "en",
+  "contractFingerprint": "sha256:2654d6d57aae1b05646f680d4d820bee8059540b0255b5164d7dd1cbed92baa8",
+  "messages": {
+    "Greeting": {
+      "pattern": "Hello, {name}!",
+      "arguments": [
+        { "name": "name", "type": "string", "format": "none" }
+      ]
+    }
+  }
+}

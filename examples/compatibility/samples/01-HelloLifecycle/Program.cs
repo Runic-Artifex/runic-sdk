@@ -1,54 +1,41 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using RunicToolkit.Hosting;
+using Runic.Application;
 
-var builder = new GenericHostRunicToolkitApplicationBuilder(args);
+[assembly: RunicApplicationManifest("runic-examples-hello-lifecycle", Version = "1.0.0", Provenance = "example")]
 
-// A participant prepares application services before the selected mode runs.
-builder.Application.AddStartupParticipant(new WorkspaceParticipant());
+await using ApplicationHost application = RunicApplication.CreateBuilder(args)
+    .UseHost(new ConsoleApplicationHost())
+    .Build();
+await application.RunAsync();
+return 0;
 
-// A mode runner contains the work for one launch kind.
-builder.Application.AddModeRunner(new WelcomeMode());
-
-await using RunicToolkitApplication application = builder.Build();
-ApplicationRunResult result = await application.RunAsync(args);
-
-Console.WriteLine($"Application finished in state {application.State}.");
-return result.ExitCode ?? 1;
-
-internal sealed class WorkspaceParticipant : IApplicationStartupParticipant
+internal sealed class ConsoleApplicationHost : IApplicationHost
 {
-    public ApplicationStartPhase Phase => ApplicationStartPhase.Infrastructure;
-
-    public ValueTask StartAsync(CancellationToken cancellationToken)
+    public ValueTask StartAsync(
+        ApplicationCompositionManifest manifest,
+        ReadOnlyMemory<string> arguments,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Console.WriteLine("Preparing the workspace...");
+        Console.WriteLine("Hello from Runic Application!");
+        Console.WriteLine($"Running {manifest.EntryPoint}.");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask WaitForShutdownAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 
     public ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         Console.WriteLine("Closing the workspace...");
         return ValueTask.CompletedTask;
     }
-}
 
-internal sealed class WelcomeMode : IApplicationModeRunner
-{
-    public LaunchKind Kind => LaunchKind.UserInterface;
-
-    public Task<ApplicationRunResult> RunAsync(
-        LaunchDecision decision,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Console.WriteLine();
-        Console.WriteLine("Hello from Runic Toolkit!");
-        Console.WriteLine($"The launcher selected the {decision.Kind} mode.");
-        Console.WriteLine();
-        return Task.FromResult(ApplicationRunResult.FromExitCode(0));
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

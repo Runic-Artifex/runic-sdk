@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: package-only-samples-${{ github.workflow }}-${{ github.ref }}
@@ -20,8 +19,7 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
-  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+  RUNIC_RELEASE_MANIFEST: ${{ github.workspace }}/release-authority/runic.release.json
 
 jobs:
   verify:
@@ -31,6 +29,15 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check out release authority
+        uses: actions/checkout@v7
+        with:
+          repository: Runic-Artifex/.github
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: release-authority
 
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
@@ -42,20 +49,31 @@ jobs:
         with:
           node-version: 24.18.0
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@runic-artifex"
 
-      - name: Restore published NuGet packages
+      - name: Build isolated package candidates
+        shell: bash
+        env:
+          RUNIC_CANDIDATE_SET: samples
+        run: bash eng/prepare-ci-candidates.sh
+
+      - name: Restore local candidate NuGet packages
         shell: bash
         run: |
           while IFS= read -r project; do
-            dotnet restore "$project"
+            dotnet restore "$project" --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
           done < <(find samples -name '*.csproj' -type f | sort)
 
       - name: Restore pinned Runic Translations tool
-        run: dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
+        run: >-
+          dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
+          --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
 
-      - name: Restore published npm packages
+      - name: Prepare local npm package candidates
+        run: |
+          node eng/prepare-ci-npm-consumer.mjs
+          npm install --package-lock-only --ignore-scripts --no-audit
+
+      - name: Restore locked npm dependencies
         run: npm ci
 
       - name: Generate cross-runtime translation artifacts
@@ -84,6 +102,9 @@ jobs:
 
       - name: Verify frontend package consumers
         run: npm run verify
+
+      - name: Restore tracked npm inputs
+        run: node eng/restore-ci-npm-inputs.mjs
 
       - name: Upload translation bundle measurements
         uses: actions/upload-artifact@v7
@@ -121,6 +142,15 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check out release authority
+        uses: actions/checkout@v7
+        with:
+          repository: Runic-Artifex/.github
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: release-authority
 
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
@@ -132,20 +162,37 @@ jobs:
         with:
           node-version: 24.18.0
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@runic-artifex"
 
-      - name: Restore browser packages
-        run: npm ci
+      - name: Build isolated package candidates
+        shell: bash
+        env:
+          RUNIC_CANDIDATE_SET: samples
+        run: bash eng/prepare-ci-candidates.sh
+
+      - name: Restore local candidate NuGet packages
+        shell: bash
+        run: |
+          dotnet restore samples/03-SetupApplication/SetupApplication.csproj --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
+          dotnet restore samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
+          dotnet restore samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
+
+      - name: Prepare local npm package candidates
+        run: |
+          node eng/prepare-ci-npm-consumer.mjs
+          npm install --package-lock-only --ignore-scripts --no-audit
+          npm ci
 
       - name: Generate translation frontend artifacts
         shell: bash
         run: |
-          dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
-          dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --configuration Release
+          dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
+          dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --no-restore --configuration Release
 
       - name: Verify and build frontend
         run: npm run verify
+
+      - name: Restore tracked npm inputs
+        run: node eng/restore-ci-npm-inputs.mjs
 
       - name: Publish NativeAOT Setup application
         run: >-
@@ -186,6 +233,15 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check out release authority
+        uses: actions/checkout@v7
+        with:
+          repository: Runic-Artifex/.github
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: release-authority
 
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
@@ -197,37 +253,47 @@ jobs:
         with:
           node-version: 24.18.0
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@runic-artifex"
 
-      - name: Restore package-only frontend
-        run: npm ci
+      - name: Build isolated package candidates
+        shell: bash
+        env:
+          RUNIC_CANDIDATE_SET: samples
+        run: bash eng/prepare-ci-candidates.sh
+
+      - name: Restore local candidate NuGet packages
+        shell: pwsh
+        run: |
+          dotnet restore samples/03-SetupApplication/SetupApplication.csproj --configfile "$env:RUNIC_CANDIDATE_NUGET_CONFIG"
+          dotnet restore samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --configfile "$env:RUNIC_CANDIDATE_NUGET_CONFIG"
+          dotnet restore samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --configfile "$env:RUNIC_CANDIDATE_NUGET_CONFIG"
+
+      - name: Prepare local npm package candidates
+        shell: pwsh
+        run: |
+          node eng/prepare-ci-npm-consumer.mjs
+          npm install --package-lock-only --ignore-scripts --no-audit
+          npm ci
 
       - name: Generate translation frontend artifacts
         shell: pwsh
         run: |
-          dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
-          dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --configuration Release
+          dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json --configfile "$env:RUNIC_CANDIDATE_NUGET_CONFIG"
+          dotnet build samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --no-restore --configuration Release
 
       - name: Verify and build frontend
         run: npm run verify
 
+      - name: Restore tracked npm inputs
+        run: node eng/restore-ci-npm-inputs.mjs
+
       - name: Build package-only Setup host
         shell: pwsh
         run: |
-          dotnet restore samples/03-SetupApplication/SetupApplication.csproj
           dotnet build samples/03-SetupApplication/SetupApplication.csproj --no-restore --configuration Release -p:RunicToolkitFrontendBuildCommand=
-          dotnet restore samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj
           dotnet build samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-restore --configuration Release -p:RunicToolkitFrontendBuildCommand=
 
-      - name: Run real browser and native Setup roundtrip
+      - name: Run real embedded and native Setup roundtrip
         shell: pwsh
         run: |
-          $browser = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
-          if (-not (Test-Path $browser)) {
-            $browser = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-          }
-          if (-not (Test-Path $browser)) { throw 'No supported browser executable was found.' }
-          $env:WEBUI_BROWSER_PATH = $browser
           dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --native-e2e
           dotnet run --project samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-build --configuration Release -- --native-e2e

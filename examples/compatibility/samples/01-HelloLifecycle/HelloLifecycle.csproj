@@ -7,7 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="RunicToolkit.Hosting" />
-    <PackageReference Include="RunicToolkit.Hosting.GenericHost" />
+    <ProjectReference Include="../../../runic-toolkit/src/Runic.Application/Runic.Application.csproj"
+                      Condition="Exists('../../../runic-toolkit/src/Runic.Application/Runic.Application.csproj')" />
+    <ProjectReference Include="../../../runic-toolkit/src/Runic.Application.Generators/Runic.Application.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      Condition="Exists('../../../runic-toolkit/src/Runic.Application.Generators/Runic.Application.Generators.csproj')" />
+    <PackageReference Include="Runic.Application"
+                      Condition="!Exists('../../../runic-toolkit/src/Runic.Application/Runic.Application.csproj')" />
   </ItemGroup>
 </Project>

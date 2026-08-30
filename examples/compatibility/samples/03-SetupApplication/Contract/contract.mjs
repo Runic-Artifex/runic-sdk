@@ -48,7 +48,7 @@ const errors = ["TransportUnavailable", "TransportClosed", "ProtocolVersionMisma
 export default {
   formatVersion: 1,
   protocol: { identity: "runic.artifex.setup", version: 1 },
-  csharp: { namespace: "RunicToolkit.Examples.Setup.Contract", contractName: "Setup" },
+  csharp: { namespace: "Runic.Examples.Setup.Contract", contractName: "Setup" },
   limits: { maxFrameBytes: 262144, maxDepth: 32, maxStringBytes: 65536, maxCollectionItems: 4096, maxPendingCommands: 64 },
   schemas: { SetupSnapshot, DestinationSelection },
   commands,

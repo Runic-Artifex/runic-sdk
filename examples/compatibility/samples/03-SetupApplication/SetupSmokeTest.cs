@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using RunicToolkit.ApplicationBridge;
-using RunicToolkit.Examples.Setup.Contract;
+using Runic.Application.Bridge;
+using Runic.Examples.Setup.Contract;
 
-namespace RunicToolkit.Examples.Setup;
+namespace Runic.Examples.Setup;
 
 internal static class SetupSmokeTest
 {
@@ -136,8 +136,10 @@ internal static class SetupSmokeTest
         long? expectedRevision,
         string payload) => new()
         {
-            Protocol = "runic.artifex.setup",
-            Version = 1,
+            Protocol = SetupBridgeContract.ProtocolIdentity,
+            Version = SetupBridgeContract.ProtocolVersion,
+            ContractFingerprint = SetupBridgeContract.Fingerprint,
+            ConnectionEpoch = 0,
             Kind = kind,
             CommandId = Guid.NewGuid(),
             SessionId = sessionId,

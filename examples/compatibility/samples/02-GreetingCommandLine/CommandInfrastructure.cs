@@ -1,9 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using RunicCommandLine;
+using Runic.CommandLine;
 
-namespace RunicToolkit.Samples.GreetingCommandLine;
+namespace Runic.Examples.GreetingCommandLine;
 
 internal sealed class EmptyScopeFactory : ICommandExecutionScopeFactory
 {

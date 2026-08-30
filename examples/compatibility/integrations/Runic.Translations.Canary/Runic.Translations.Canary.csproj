@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RunicTranslationsSourceRoot Condition="Exists('../../../runic-translations/dotnet/src/Runic.Translations.Build/build/Runic.Translations.Build.props')">$(MSBuildProjectDirectory)/../../../runic-translations</RunicTranslationsSourceRoot>
+  </PropertyGroup>
+  <Import Project="$(RunicTranslationsSourceRoot)/dotnet/src/Runic.Translations.Build/build/Runic.Translations.Build.props" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RunicArtifex.Examples.Translations</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../runic-translations/dotnet/src/Runic.Translations/Runic.Translations.csproj" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+    <ProjectReference Include="../../../runic-translations/dotnet/src/Runic.Translations.Compiler/Runic.Translations.Compiler.csproj" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+    <ProjectReference Include="../../../runic-translations/dotnet/src/Runic.Translations.Generator/Runic.Translations.Generator.csproj"
+                      Condition="'$(RunicTranslationsSourceRoot)' != ''" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Analyzer Include="$(RunicTranslationsSourceRoot)/dotnet/src/Runic.Translations.Compiler/bin/$(Configuration)/net10.0/Runic.Translations.Compiler.dll" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+    <PackageReference Include="Runic.Translations" Condition="'$(RunicTranslationsSourceRoot)' == ''" />
+    <PackageReference Include="Runic.Translations.Build" PrivateAssets="all" Condition="'$(RunicTranslationsSourceRoot)' == ''" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TranslationCatalog Include="Resources/catalog.json" />
+    <TranslationDocument Include="Resources/en.json" />
+    <TranslationDocument Include="Resources/de.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Packs/**/*.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Import Project="$(RunicTranslationsSourceRoot)/dotnet/src/Runic.Translations.Build/build/Runic.Translations.Build.targets" Condition="'$(RunicTranslationsSourceRoot)' != ''" />
+</Project>

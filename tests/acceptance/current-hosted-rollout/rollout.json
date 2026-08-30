@@ -1,0 +1,27 @@
+{
+  "schema": "runic.hosted-rollout/1",
+  "contractFingerprint": "runic.hosted-rollout/1:9aab4d5e",
+  "rollbackStage": "baseline",
+  "stages": [
+    {
+      "id": "baseline",
+      "assetFingerprint": "runic-assets/current:8d22423",
+      "locales": { "en": "Welcome", "de": "Willkommen" }
+    },
+    {
+      "id": "frontend-compatible",
+      "assetFingerprint": "runic-assets/current:8d22423",
+      "locales": { "en": "Welcome", "de": "Willkommen" }
+    },
+    {
+      "id": "asset-compatible",
+      "assetFingerprint": "runic-assets/current:8d22423-next",
+      "locales": { "en": "Welcome", "de": "Willkommen" }
+    },
+    {
+      "id": "locale-compatible",
+      "assetFingerprint": "runic-assets/current:8d22423-next",
+      "locales": { "en": "Welcome", "de": "Willkommen aktualisiert" }
+    }
+  ]
+}

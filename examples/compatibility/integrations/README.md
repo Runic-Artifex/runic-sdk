@@ -13,20 +13,18 @@ public package catalog for the current availability of each preview artifact.
 ## Run a canary
 
 ```bash
-dotnet run --project integrations/RunicTranslations.Canary --configuration Release
-dotnet run --project integrations/RunicCommandLine.Canary --configuration Release
-dotnet run --project integrations/RunicFlow.Canary --configuration Release
-dotnet run --project integrations/RunicAssets.Canary --configuration Release
+dotnet run --project integrations/Runic.Translations.Canary --configuration Release
+dotnet run --project integrations/Runic.CommandLine.Canary --configuration Release
+dotnet run --project integrations/Runic.Assets.Canary --configuration Release
 ```
 
 | Canary | What it proves | Expected result |
 | --- | --- | --- |
-| `RunicTranslations.Canary` | Catalog compilation, source generation, and typed lookup | `Hello, Runic Artifex!` |
-| `RunicCommandLine.Canary` | Protocol, catalog, hosting, and process packages | A managed/NativeAOT success message |
-| `RunicFlow.Canary` | Headless process decisions and Application Bridge operation identity | A managed/NativeAOT success message |
-| `RunicAssets.Canary` | Archive round-trip and CS-WebUI, ASP.NET Core, and Runic Toolkit adapters | An asset round-trip success message |
+| `Runic.Translations.Canary` | Catalog compilation, source generation, typed lookup, and a deterministic external locale-pack hot-swap proof: compose from a staged pack file, atomically replace it, reject a tampered pack, and recover | Three `PASS n:` lines ending in `HOT-SWAP CANARY PASS` |
+| `Runic.CommandLine.Canary` | Protocol, catalog, hosting, and process packages | A managed/NativeAOT success message |
+| `Runic.Assets.Canary` | Archive round-trip plus ASP.NET Core and Runic Desktop adapters | An asset round-trip success message |
 
-The Command Line, Flow, and Assets canaries also cover consumer paths intended
+The Command Line and Assets canaries also cover consumer paths intended
 for NativeAOT publishing. See the package documentation for platform support
 before choosing NativeAOT for an application.
 
@@ -34,17 +32,15 @@ before choosing NativeAOT for an application.
 
 | Problem | Install command | Documentation |
 | --- | --- | --- |
-| Generate strongly typed localized text | `dotnet add package RunicTranslations --prerelease` | [Runic Translations](https://docs.runic-artifex.eu/products/runic-translations) |
-| Build a portable typed CLI | `dotnet add package RunicCommandLine --prerelease` | [Runic Command Line](https://docs.runic-artifex.eu/products/runic-command-line) |
-| Coordinate typed, UI-independent work | `dotnet add package RunicFlow --prerelease` | [Runic Flow](https://docs.runic-artifex.eu/products/runic-flow) |
-| Package and serve application assets | `dotnet add package RunicAssets --prerelease` | [Runic Assets](https://docs.runic-artifex.eu/products/runic-assets) |
+| Generate strongly typed localized text | `dotnet add package Runic.Translations --prerelease` | [Runic Translations](https://docs.runic-artifex.eu/products/runic-translations) |
+| Build a portable typed CLI | `dotnet add package Runic.CommandLine --prerelease` | [Runic Command Line](https://docs.runic-artifex.eu/products/runic-command-line) |
+| Package and serve application assets | `dotnet add package Runic.Assets --prerelease` | [Runic Assets](https://docs.runic-artifex.eu/products/runic-assets) |
 
 For companion integrations, install the matching released package alongside the
-core package: `RunicTranslations.Build`, `RunicTranslations.Generator`,
-`RunicCommandLine.Abstractions`, `RunicCommandLine.Hosting`,
-`RunicCommandLine.Processes`, `RunicFlow.ApplicationBridge`,
-`RunicAssets.CsWebUi`, `RunicAssets.AspNetCore`, or
-`RunicAssets.RunicToolkit`. The canary project files show the supported
+core package: `Runic.Translations.Build`, `Runic.Translations.Generator`,
+`Runic.CommandLine.Abstractions`, `Runic.CommandLine.Hosting`,
+`Runic.CommandLine.Processes`, `Runic.Assets.AspNetCore`, or
+`Runic.Assets.Desktop`. The canary project files show the supported
 consumer configuration without pinning a version in this guide.
 
 [Package catalog and preview status](https://docs.runic-artifex.eu/packages) ·
