@@ -5,10 +5,50 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repository_root"
 
 configuration="Release"
+verification_root="$(mktemp -d /tmp/runic-application-verification.XXXXXXXXXX)"
+verification_feed="$verification_root/feed"
+verification_nuget="$verification_root/nuget"
+command_line_worktree="$verification_root/runic-command-line"
+assets_worktree="$verification_root/runic-assets"
+translations_worktree="$verification_root/runic-translations"
+desktop_worktree="$verification_root/runic-desktop"
+svelte_worktree="$verification_root/runic-svelte"
+vite_worktree="$verification_root/runic-vite"
+command_line_revision="$(node eng/compatibility-set-value.mjs source runic-command-line)"
+assets_revision="$(node eng/compatibility-set-value.mjs source runic-assets)"
+translations_revision="$(node eng/compatibility-set-value.mjs source runic-translations)"
+desktop_revision="$(node eng/compatibility-set-value.mjs source runic-desktop)"
+svelte_revision="$(node eng/compatibility-set-value.mjs source runic-svelte)"
+vite_revision="$(node eng/compatibility-set-value.mjs source runic-vite)"
+cleanup() {
+  git -C "$repository_root/../runic-command-line" worktree remove --force "$command_line_worktree" 2>/dev/null || true
+  git -C "$repository_root/../runic-assets" worktree remove --force "$assets_worktree" 2>/dev/null || true
+  git -C "$repository_root/../runic-translations" worktree remove --force "$translations_worktree" 2>/dev/null || true
+  git -C "$repository_root/../runic-desktop" worktree remove --force "$desktop_worktree" 2>/dev/null || true
+  git -C "$repository_root/../runic-svelte" worktree remove --force "$svelte_worktree" 2>/dev/null || true
+  git -C "$repository_root/../runic-vite" worktree remove --force "$vite_worktree" 2>/dev/null || true
+  rm -rf -- "$verification_root"
+}
+trap cleanup EXIT
+git -C "$repository_root/../runic-command-line" worktree add --detach "$command_line_worktree" "$command_line_revision"
+git -C "$repository_root/../runic-assets" worktree add --detach "$assets_worktree" "$assets_revision"
+git -C "$repository_root/../runic-translations" worktree add --detach "$translations_worktree" "$translations_revision"
+git -C "$repository_root/../runic-desktop" worktree add --detach "$desktop_worktree" "$desktop_revision"
+mkdir -p "$verification_feed"
+export NUGET_PACKAGES="$verification_nuget"
+dotnet pack "$command_line_worktree/src/Runic.CommandLine/Runic.CommandLine.csproj" --configuration "$configuration" --output "$verification_feed" -p:PackageVersion=1.0.0-preview.1
+dotnet restore "$assets_worktree/Runic.Assets.slnx" --configfile "$repository_root/NuGet.config" --source "$verification_feed" --source https://api.nuget.org/v3/index.json
+for asset_project in Runic.Assets Runic.Assets.AspNetCore Runic.Assets.Desktop; do
+  dotnet pack "$assets_worktree/src/$asset_project/$asset_project.csproj" --configuration "$configuration" --no-restore --output "$verification_feed" -p:PackageVersion=1.0.0-preview.1 -p:RepositoryCommit="$assets_revision"
+done
+dotnet pack "$translations_worktree/dotnet/src/Runic.Translations/Runic.Translations.csproj" --configuration "$configuration" --output "$verification_feed" -p:PackageVersion=1.0.0-preview.1
+dotnet pack "$desktop_worktree/src/Runic.Desktop/Runic.Desktop.csproj" --configuration "$configuration" --output "$verification_feed" -p:PackageVersion=1.0.0-preview.1
+export RUNIC_VERIFICATION_FEED="$verification_feed"
 build_properties=(
   -p:RunicToolkitBuildMode=Verification
   -p:RunicToolkitFrontendBuild=false
   -p:RunicToolkitFrontendInstall=false
+  -p:RunicVerificationFeed="$verification_feed"
 )
 
 pwsh -NoProfile -File eng/verify-namespaces.ps1
@@ -27,3 +67,94 @@ dotnet build RunicToolkit.slnx \
 pwsh -NoProfile \
   -File eng/run-contract-tests.ps1 \
   -Configuration "$configuration"
+bash eng/run-hosted-browser-e2e.sh
+pwsh -NoProfile -File eng/verify-native-aot.ps1 -RuntimeIdentifier linux-x64 -Configuration "$configuration"
+tool_native_publish="$verification_root/dotnet-runic-native"
+dotnet publish tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj \
+  --configuration "$configuration" \
+  --runtime linux-x64 \
+  --self-contained true \
+  -p:PublishAot=true \
+  -p:PublishTrimmed=true \
+  -p:TrimMode=full \
+  -p:IlcTreatWarningsAsErrors=true \
+  -p:PublishDir="$tool_native_publish" \
+  "${build_properties[@]}"
+bash tests/RunicToolkit.PackageCanary/Test-ToolParsePresentation.sh "$tool_native_publish/dotnet-runic"
+bash tests/RunicToolkit.PackageCanary/Test-ToolMigration.sh "$tool_native_publish/dotnet-runic"
+
+# Release-facing acceptance is package-only: the canonical seven NuGet artifacts,
+# local release-train bridge and Angular archives, and clean official Svelte/Vite archives.
+release_version="$(node eng/compatibility-set-value.mjs release-train-version)"
+release_train_npm_version="$release_version"
+bridge_npm_version="$release_train_npm_version"
+svelte_release_version="$release_train_npm_version"
+vite_release_version="$release_train_npm_version"
+desktop_release_version="$release_train_npm_version"
+release_packages="$verification_root/packages"
+RUNIC_SVELTE_NPM_VERSION="$svelte_release_version" \
+RUNIC_VITE_NPM_VERSION="$vite_release_version" \
+APPLICATION_BRIDGE_NPM_VERSION="$bridge_npm_version" \
+  bash eng/pack.sh "$release_version" "$release_packages"
+bash tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh "$release_version" "$release_packages"
+bash tests/Runic.Application.PackageConsumer/Test-HostileGenerator.sh "$release_version" "$release_packages"
+node eng/pack-npm.mjs "$bridge_npm_version" "$release_packages"
+git -C "$repository_root/../runic-svelte" worktree add --detach "$svelte_worktree" "$svelte_revision"
+git -C "$repository_root/../runic-vite" worktree add --detach "$vite_worktree" "$vite_revision"
+(
+  cd "$desktop_worktree"
+  npm ci
+  npm run build --workspace @runic-artifex/desktop
+  npm pack --workspace @runic-artifex/desktop --ignore-scripts --pack-destination "$release_packages"
+)
+(
+  cd "$svelte_worktree"
+  npm ci
+  npm run build --workspace @runic-artifex/svelte
+  npm pack --workspace @runic-artifex/svelte --pack-destination "$release_packages"
+)
+(
+  cd "$vite_worktree"
+  npm ci
+  npm run build
+  npm pack --ignore-scripts --pack-destination "$release_packages"
+)
+assert_npm_archive() {
+  local archive="$1"
+  local expected_name="$2"
+  node -e '
+    const { execFileSync } = require("node:child_process");
+    const archive = process.argv[1];
+    const expected = process.argv[2];
+    const manifest = JSON.parse(execFileSync("tar", ["-xOf", archive, "package/package.json"], { encoding: "utf8" }));
+    if (manifest.name !== expected || !manifest.version || !manifest.exports || !manifest.license) {
+      throw new Error(`Expected ${expected} release archive, found ${manifest.name}@${manifest.version}.`);
+    }
+  ' "$archive" "$expected_name"
+}
+assert_npm_archive "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" "@runic-artifex/application-bridge"
+assert_npm_archive "$release_packages/runic-artifex-angular-$bridge_npm_version.tgz" "@runic-artifex/angular"
+assert_npm_archive "$release_packages/runic-artifex-svelte-$svelte_release_version.tgz" "@runic-artifex/svelte"
+assert_npm_archive "$release_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz" "@runic-artifex/vite-plugin-runic"
+assert_npm_archive "$release_packages/runic-artifex-desktop-$desktop_release_version.tgz" "@runic-artifex/desktop"
+(
+  cd "$svelte_worktree"
+  npm run test:package-consumers -- \
+    "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" \
+    "$release_packages/runic-artifex-svelte-$svelte_release_version.tgz" \
+    "$release_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz"
+)
+node tests/RunicToolkit.AngularPackageCanary/test-package-consumer.mjs \
+  "$repository_root/../.github/runic.release.json" \
+  "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" \
+  "$release_packages/runic-artifex-angular-$bridge_npm_version.tgz" \
+  "$verification_root/angular-package-canary-receipt.json"
+cp "$verification_feed"/*.nupkg "$release_packages"/
+bash tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh \
+  "$release_version" \
+  "$release_packages" \
+  "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" \
+  "$release_packages/runic-artifex-angular-$bridge_npm_version.tgz" \
+  "$release_packages/runic-artifex-svelte-$svelte_release_version.tgz" \
+  "$release_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz" \
+  "$release_packages/runic-artifex-desktop-$desktop_release_version.tgz"

@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal enum DoctorStatus
 {
@@ -101,6 +101,8 @@ internal sealed class SystemDoctorRuntime : IDoctorRuntime
 
 internal static class DoctorChecks
 {
+    private static readonly CompatibilitySetAuthority Authority = CompatibilitySetAuthority.Current;
+
     private static readonly string[] BrowserExecutables =
         OperatingSystem.IsWindows()
             ? ["msedge", "chrome", "chromium"]
@@ -143,8 +145,18 @@ internal static class DoctorChecks
             project,
             runtime,
             cancellationToken).ConfigureAwait(false);
-        CheckPackageManagerAndLockFile(checks, project, runtime);
-        CheckNativeLibrary(checks, project, runtime);
+        await CheckPackageManagerAndLockFileAsync(
+            checks,
+            project,
+            runtime,
+            cancellationToken).ConfigureAwait(false);
+        CheckCompatibilitySet(checks, project);
+        CheckOriginPolicy(checks, project);
+        await CheckEmbeddedPresentationAsync(
+            checks,
+            project,
+            runtime,
+            cancellationToken).ConfigureAwait(false);
         await CheckBrowserAsync(
             checks,
             project,
@@ -204,11 +216,18 @@ internal static class DoctorChecks
             return;
         }
 
+        if (!StringComparer.Ordinal.Equals(versionText, Authority.Toolchain.DotNetSdk))
+        {
+            checks.Add(Fail(
+                "dotnet-sdk",
+                $".NET SDK {versionText} does not match compatibility set {Authority.Id} ({Authority.Toolchain.DotNetSdk}).",
+                $"Install SDK {Authority.Toolchain.DotNetSdk} and let global.json select it."));
+            return;
+        }
+
         checks.Add(Pass(
             "dotnet-sdk",
-            targetMajor is null
-                ? $".NET SDK {versionText} is available."
-                : $".NET SDK {versionText} can build {project.TargetFramework}."));
+            $".NET SDK {versionText} matches compatibility set {Authority.Id} and can build {project.TargetFramework}."));
     }
 
     private static void CheckFrontendMode(
@@ -277,14 +296,25 @@ internal static class DoctorChecks
             return null;
         }
 
-        checks.Add(Pass("node", $"Node {result.StandardOutput.Trim()} is available."));
+        string version = result.StandardOutput.Trim().TrimStart('v');
+        if (!StringComparer.Ordinal.Equals(version, Authority.Toolchain.Node))
+        {
+            checks.Add(Fail(
+                "node",
+                $"Node {version} does not match compatibility set {Authority.Id} ({Authority.Toolchain.Node}).",
+                $"Install Node {Authority.Toolchain.Node} and activate it for this workspace."));
+            return null;
+        }
+
+        checks.Add(Pass("node", $"Node {version} matches compatibility set {Authority.Id}."));
         return node;
     }
 
-    private static void CheckPackageManagerAndLockFile(
+    private static async Task CheckPackageManagerAndLockFileAsync(
         List<DoctorCheck> checks,
         DoctorProjectConfiguration project,
-        IDoctorRuntime runtime)
+        IDoctorRuntime runtime,
+        CancellationToken cancellationToken)
     {
         if (!project.NodeEnabled)
         {
@@ -316,9 +346,25 @@ internal static class DoctorChecks
         }
         else
         {
-            checks.Add(Pass(
-                "package-manager",
-                $"{packageManager} is available at '{executable}'."));
+            CommandResult result = await runtime
+                .RunAsync(executable, project.WorkspaceRoot, ["--version"], cancellationToken)
+                .ConfigureAwait(false);
+            string version = result.StandardOutput.Trim().TrimStart('v');
+            if (!StringComparer.Ordinal.Equals(packageManager, "npm") ||
+                result.ExitCode != 0 ||
+                !StringComparer.Ordinal.Equals(version, Authority.Toolchain.Npm))
+            {
+                checks.Add(Fail(
+                    "package-manager",
+                    $"The workspace package manager '{packageManager}' reported '{version}', but compatibility set {Authority.Id} requires npm {Authority.Toolchain.Npm}.",
+                    $"Activate npm {Authority.Toolchain.Npm} and keep packageManager set to npm@{Authority.Toolchain.Npm}."));
+            }
+            else
+            {
+                checks.Add(Pass(
+                    "package-manager",
+                    $"npm {version} matches compatibility set {Authority.Id}."));
+            }
         }
 
         string expectedLock = packageManager switch
@@ -341,47 +387,290 @@ internal static class DoctorChecks
         }
     }
 
-    private static void CheckNativeLibrary(
+    private static void CheckCompatibilitySet(
         List<DoctorCheck> checks,
-        DoctorProjectConfiguration project,
-        IDoctorRuntime runtime)
+        DoctorProjectConfiguration project)
     {
-        string? configured = runtime.GetEnvironmentVariable("CSWEBUI_NATIVE_LIBRARY");
-        if (!string.IsNullOrWhiteSpace(configured))
+        if (!File.Exists(project.ProjectAssetsFile))
         {
-            string path = Path.GetFullPath(configured);
-            if (File.Exists(path))
-            {
-                checks.Add(Pass(
-                    "native-library",
-                    $"CS-WebUI native library is pinned by CSWEBUI_NATIVE_LIBRARY: '{path}'."));
-            }
-            else
-            {
-                checks.Add(Fail(
-                    "native-library",
-                    $"CSWEBUI_NATIVE_LIBRARY points to missing file '{path}'.",
-                    "Correct or unset CSWEBUI_NATIVE_LIBRARY, then restore the CsWebUi.Native package."));
-            }
-
+            checks.Add(Fail(
+                "compatibility-set",
+                $"NuGet restore graph '{project.ProjectAssetsFile}' is missing.",
+                $"Run 'dotnet restore \"{project.ProjectPath}\"' and rerun doctor."));
             return;
         }
 
-        NativeAssetResult native = FindNativeAsset(project);
-        if (native.Path is not null)
+        var mismatches = new List<string>();
+        int selected = 0;
+        try
         {
-            checks.Add(Pass(
-                "native-library",
-                $"CS-WebUI native asset for {project.RuntimeIdentifier} is restored at '{native.Path}'."));
+            using JsonDocument assets = JsonDocument.Parse(File.ReadAllBytes(project.ProjectAssetsFile));
+            if (assets.RootElement.TryGetProperty("libraries", out JsonElement libraries))
+            {
+                foreach (JsonProperty library in libraries.EnumerateObject())
+                {
+                    int separator = library.Name.LastIndexOf('/');
+                    if (separator <= 0) continue;
+                    string identity = library.Name[..separator];
+                    string version = library.Name[(separator + 1)..];
+                    string type = library.Value.TryGetProperty("type", out JsonElement typeNode)
+                        ? typeNode.GetString() ?? string.Empty
+                        : string.Empty;
+                    if (Authority.NuGetPackages.TryGetValue(identity, out CompatibilityPackage? expected))
+                    {
+                        selected++;
+                        if (StringComparer.Ordinal.Equals(type, "package") &&
+                            !StringComparer.Ordinal.Equals(version, expected.Version))
+                        {
+                            mismatches.Add($"{identity} {version} (expected {expected.Version})");
+                        }
+                    }
+                    else if (StringComparer.OrdinalIgnoreCase.Equals(type, "package") &&
+                             IsRunicIdentity(identity))
+                    {
+                        mismatches.Add($"{identity} {version} (not selected by {Authority.Id})");
+                    }
+                }
+            }
+        }
+        catch (JsonException exception)
+        {
+            checks.Add(Fail(
+                "compatibility-set",
+                $"NuGet restore graph could not be read: {Compact(exception.Message)}",
+                "Delete obj/project.assets.json, restore the project, and rerun doctor."));
+            return;
+        }
+
+        CheckNpmCompatibility(project, mismatches, ref selected);
+        if (mismatches.Count != 0)
+        {
+            checks.Add(Fail(
+                "compatibility-set",
+                $"Compatibility set {Authority.Id} does not match: {string.Join("; ", mismatches)}.",
+                $"Select the exact packages recorded by {Authority.Id}, restore with an isolated feed, and rerun doctor."));
+        }
+        else if (selected == 0)
+        {
+            checks.Add(Warn(
+                "compatibility-set",
+                $"No package selected by compatibility set {Authority.Id} was found in the restore graphs.",
+                "Restore the generated Runic application before running doctor."));
         }
         else
         {
-            checks.Add(Fail(
-                "native-library",
-                native.Message,
-                $"Run 'dotnet restore \"{project.ProjectPath}\"'; for custom builds set CSWEBUI_NATIVE_LIBRARY to the native WebUI library."));
+            checks.Add(Pass(
+                "compatibility-set",
+                $"{selected} selected package(s) match {Authority.Id} ({Authority.ReleaseTrainVersion})."));
         }
     }
+
+    private static void CheckNpmCompatibility(
+        DoctorProjectConfiguration project,
+        List<string> mismatches,
+        ref int selected)
+    {
+        string lockPath = Path.Combine(project.WorkspaceRoot, "package-lock.json");
+        if (!project.NodeEnabled || !File.Exists(lockPath)) return;
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(lockPath));
+            if (!document.RootElement.TryGetProperty("lockfileVersion", out JsonElement lockfileVersion) ||
+                !lockfileVersion.TryGetInt32(out int lockVersion) ||
+                lockVersion != 3)
+            {
+                mismatches.Add("package-lock.json is not lockfileVersion 3");
+                return;
+            }
+            if (!document.RootElement.TryGetProperty("packages", out JsonElement packages))
+            {
+                mismatches.Add("package-lock.json has no package entries");
+                return;
+            }
+            foreach (JsonProperty package in packages.EnumerateObject())
+            {
+                const string prefix = "node_modules/";
+                if (!package.Name.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                string identity = package.Name[prefix.Length..];
+                string version = package.Value.TryGetProperty("version", out JsonElement versionNode)
+                    ? versionNode.GetString() ?? string.Empty
+                    : string.Empty;
+                if (Authority.NpmPackages.TryGetValue(identity, out CompatibilityPackage? expected))
+                {
+                    selected++;
+                    if (!StringComparer.Ordinal.Equals(version, expected.Version))
+                        mismatches.Add($"{identity} {version} (expected {expected.Version})");
+                    if (!package.Value.TryGetProperty("integrity", out JsonElement integrity) ||
+                        !(integrity.GetString() ?? string.Empty).StartsWith("sha512-", StringComparison.Ordinal))
+                    {
+                        mismatches.Add($"{identity} has no sha512 lock integrity");
+                    }
+                    if (package.Value.TryGetProperty("resolved", out _))
+                    {
+                        mismatches.Add($"{identity} lock pins a registry host");
+                    }
+                }
+                else if (identity.StartsWith("@runic-artifex/", StringComparison.OrdinalIgnoreCase))
+                {
+                    mismatches.Add($"{identity} {version} (not selected by {Authority.Id})");
+                }
+            }
+        }
+        catch (JsonException exception)
+        {
+            mismatches.Add($"package-lock.json is unreadable ({Compact(exception.Message)})");
+        }
+    }
+
+    private static void CheckOriginPolicy(
+        List<DoctorCheck> checks,
+        DoctorProjectConfiguration project)
+    {
+        if (HasResolvedLibrary(project.ProjectAssetsFile, "Runic.Desktop"))
+        {
+            checks.Add(Pass(
+                "origin-policy",
+                "Runic Desktop owns a private loopback origin; public binding is not selected by the Desktop profile."));
+            return;
+        }
+
+        if (!HasResolvedLibrary(project.ProjectAssetsFile, "Runic.Application.Hosting"))
+        {
+            checks.Add(Pass("origin-policy", "No hosted public-origin profile is selected."));
+            return;
+        }
+
+        string settingsPath = Path.Combine(project.ProjectDirectory, "appsettings.json");
+        if (!File.Exists(settingsPath))
+        {
+            checks.Add(Warn(
+                "origin-policy",
+                "The hosted profile is selected, but appsettings.json does not declare its public origin.",
+                "Provide Runic:HostedDeployment:PublicOrigin as one HTTPS origin and explicit TrustedProxyAddresses through configuration."));
+            return;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(settingsPath));
+            JsonElement hosted = default;
+            bool hasSection = document.RootElement.TryGetProperty("Runic", out JsonElement runic) &&
+                runic.TryGetProperty("HostedDeployment", out hosted);
+            string? origin = hasSection && hosted.TryGetProperty("PublicOrigin", out JsonElement originNode)
+                ? originNode.GetString()
+                : null;
+            string? proxies = hasSection && hosted.TryGetProperty("TrustedProxyAddresses", out JsonElement proxyNode)
+                ? proxyNode.GetString()
+                : null;
+            bool validOrigin = Uri.TryCreate(origin, UriKind.Absolute, out Uri? value) &&
+                StringComparer.OrdinalIgnoreCase.Equals(value.Scheme, Uri.UriSchemeHttps) &&
+                string.IsNullOrEmpty(value.UserInfo) &&
+                StringComparer.Ordinal.Equals(value.AbsoluteUri, value.GetLeftPart(UriPartial.Authority) + "/");
+            if (!validOrigin || string.IsNullOrWhiteSpace(proxies))
+            {
+                checks.Add(Fail(
+                    "origin-policy",
+                    "Hosted origin configuration is incomplete or is not one exact HTTPS origin with explicit trusted proxies.",
+                    "Set Runic:HostedDeployment:PublicOrigin to one HTTPS scheme-and-authority value and TrustedProxyAddresses to explicit non-wildcard addresses."));
+            }
+            else
+            {
+                checks.Add(Pass("origin-policy", $"Hosted public origin '{origin}' is explicit and proxy-bounded."));
+            }
+        }
+        catch (JsonException exception)
+        {
+            checks.Add(Fail(
+                "origin-policy",
+                $"appsettings.json is unreadable: {Compact(exception.Message)}",
+                "Repair appsettings.json and rerun doctor."));
+        }
+    }
+
+    private static async Task CheckEmbeddedPresentationAsync(
+        List<DoctorCheck> checks,
+        DoctorProjectConfiguration project,
+        IDoctorRuntime runtime,
+        CancellationToken cancellationToken)
+    {
+        if (!HasResolvedLibrary(project.ProjectAssetsFile, "Runic.Desktop"))
+        {
+            checks.Add(Pass("embedded-webview", "Runic Desktop embedded presentation is not selected."));
+            return;
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            checks.Add(Pass("embedded-webview", "WKWebView is supplied by macOS; application startup must remain on the main thread."));
+            return;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            string? fixedRuntime = runtime.GetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER");
+            if (!string.IsNullOrWhiteSpace(fixedRuntime) && Directory.Exists(fixedRuntime))
+            {
+                checks.Add(Pass("embedded-webview", $"Found the configured WebView2 runtime at '{fixedRuntime}'."));
+            }
+            else
+            {
+                checks.Add(Warn(
+                    "embedded-webview",
+                    "A fixed WebView2 runtime was not configured; Evergreen runtime discovery will occur at startup.",
+                    "Install the Microsoft Edge WebView2 Runtime or select Browser presentation explicitly."));
+            }
+            return;
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            string? pkgConfig = runtime.FindExecutable("pkg-config");
+            if (pkgConfig is null)
+            {
+                checks.Add(Warn(
+                    "embedded-webview",
+                    "WebKitGTK could not be probed because pkg-config is unavailable.",
+                    "Install pkg-config plus webkit2gtk-4.1, or select Browser presentation explicitly."));
+                return;
+            }
+            CommandResult result = await runtime
+                .RunAsync(pkgConfig, project.ProjectDirectory, ["--exists", "webkit2gtk-4.1"], cancellationToken)
+                .ConfigureAwait(false);
+            checks.Add(result.ExitCode == 0
+                ? Pass("embedded-webview", "WebKitGTK 4.1 is available for embedded presentation.")
+                : Warn(
+                    "embedded-webview",
+                    "WebKitGTK 4.1 was not found.",
+                    "Install webkit2gtk-4.1, or select Browser presentation explicitly."));
+            return;
+        }
+
+        checks.Add(Warn(
+            "embedded-webview",
+            $"Embedded presentation is not certified for runtime identifier '{project.RuntimeIdentifier}'.",
+            "Select Browser presentation or use a certified platform profile."));
+    }
+
+    private static bool HasResolvedLibrary(string assetsPath, string identity)
+    {
+        if (!File.Exists(assetsPath)) return false;
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(assetsPath));
+            if (!document.RootElement.TryGetProperty("libraries", out JsonElement libraries)) return false;
+            return libraries.EnumerateObject().Any(item =>
+                item.Name.StartsWith(identity + "/", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsRunicIdentity(string identity) =>
+        identity.StartsWith("Runic", StringComparison.OrdinalIgnoreCase) ||
+        identity.StartsWith("dotnet-runic", StringComparison.OrdinalIgnoreCase) ||
+        identity.StartsWith("CsWebUi", StringComparison.OrdinalIgnoreCase);
 
     private static async Task CheckBrowserAsync(
         List<DoctorCheck> checks,
@@ -389,7 +678,7 @@ internal static class DoctorChecks
         IDoctorRuntime runtime,
         CancellationToken cancellationToken)
     {
-        string? configured = runtime.GetEnvironmentVariable("WEBUI_BROWSER_PATH");
+        string? configured = runtime.GetEnvironmentVariable("RUNIC_BROWSER_PATH");
         string? browser;
         if (!string.IsNullOrWhiteSpace(configured))
         {
@@ -398,8 +687,8 @@ internal static class DoctorChecks
             {
                 checks.Add(Fail(
                     "browser",
-                    $"WEBUI_BROWSER_PATH points to missing file '{browser}'.",
-                    "Point WEBUI_BROWSER_PATH at Chromium, Chrome, or Edge, or unset it to use PATH discovery."));
+                    $"RUNIC_BROWSER_PATH points to missing file '{browser}'.",
+                    "Point RUNIC_BROWSER_PATH at Chromium, Chrome, or Edge, or unset it to use PATH discovery."));
                 return;
             }
         }
@@ -413,7 +702,7 @@ internal static class DoctorChecks
                 checks.Add(Fail(
                     "browser",
                     "No Chromium-family browser was found.",
-                    "Install Chromium, Chrome, or Edge, or set WEBUI_BROWSER_PATH to its executable."));
+                    "Install Chromium, Chrome, or Edge, or set RUNIC_BROWSER_PATH to its executable."));
                 return;
             }
         }
@@ -567,7 +856,7 @@ internal static class DoctorChecks
             checks.Add(Fail(
                 "contract-outputs",
                 "One or more generated contract outputs are missing.",
-                "Run 'dotnet runic-toolkit dev' once to generate both contract outputs."));
+                "Run 'dotnet runic dev' once to generate both contract outputs."));
         }
         else
         {
@@ -614,130 +903,6 @@ internal static class DoctorChecks
                 $"Generated contract verification exited with {verify.ExitCode}: {Compact(verify.CombinedOutput)}",
                 "Regenerate the contracts and commit the updated C# and TypeScript outputs."));
         }
-    }
-
-    private static NativeAssetResult FindNativeAsset(DoctorProjectConfiguration project)
-    {
-        if (string.IsNullOrWhiteSpace(project.ProjectAssetsFile)
-            || !File.Exists(project.ProjectAssetsFile))
-        {
-            return new(
-                null,
-                $"NuGet assets file '{project.ProjectAssetsFile}' is missing, so the CS-WebUI native library cannot be resolved.");
-        }
-
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(
-                File.ReadAllBytes(project.ProjectAssetsFile));
-            JsonElement root = document.RootElement;
-            if (!root.TryGetProperty("targets", out JsonElement targets)
-                || !root.TryGetProperty("libraries", out JsonElement libraries)
-                || !root.TryGetProperty("packageFolders", out JsonElement packageFolders))
-            {
-                return new(null, "NuGet assets do not contain the expected target/package graph.");
-            }
-
-            JsonProperty? target = targets
-                .EnumerateObject()
-                .Where(property =>
-                    string.IsNullOrWhiteSpace(project.RuntimeIdentifier)
-                    || property.Name.EndsWith(
-                        "/" + project.RuntimeIdentifier,
-                        StringComparison.OrdinalIgnoreCase))
-                .Cast<JsonProperty?>()
-                .FirstOrDefault()
-                ?? targets.EnumerateObject().Cast<JsonProperty?>().FirstOrDefault();
-            if (target is null)
-            {
-                return new(null, "NuGet assets contain no target graph.");
-            }
-
-            JsonProperty? library = target.Value.Value
-                .EnumerateObject()
-                .Where(static property =>
-                    property.Name.StartsWith("CsWebUi.Native/", StringComparison.OrdinalIgnoreCase))
-                .Cast<JsonProperty?>()
-                .FirstOrDefault();
-            if (library is null)
-            {
-                return new(null, "The selected project has no restored CsWebUi.Native package.");
-            }
-
-            string? relativeNative = FindRelativeNativeAsset(
-                library.Value.Value,
-                project.RuntimeIdentifier);
-            if (relativeNative is null)
-            {
-                return new(
-                    null,
-                    $"CsWebUi.Native has no native asset for runtime '{project.RuntimeIdentifier}'.");
-            }
-
-            if (!libraries.TryGetProperty(library.Value.Name, out JsonElement libraryMetadata)
-                || !libraryMetadata.TryGetProperty("path", out JsonElement packagePathElement))
-            {
-                return new(null, "NuGet assets do not identify the CsWebUi.Native package path.");
-            }
-
-            string? packagePath = packagePathElement.GetString();
-            string? packageRoot = packageFolders
-                .EnumerateObject()
-                .Select(static property => property.Name)
-                .FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(packagePath) || string.IsNullOrWhiteSpace(packageRoot))
-            {
-                return new(null, "NuGet assets do not identify the package cache root.");
-            }
-
-            string nativePath = Path.GetFullPath(
-                Path.Combine(
-                    packageRoot,
-                    packagePath.Replace('/', Path.DirectorySeparatorChar),
-                    relativeNative.Replace('/', Path.DirectorySeparatorChar)));
-            return File.Exists(nativePath)
-                ? new(nativePath, string.Empty)
-                : new(null, $"Restored CS-WebUI native asset '{nativePath}' is missing.");
-        }
-        catch (JsonException exception)
-        {
-            return new(
-                null,
-                $"NuGet assets file '{project.ProjectAssetsFile}' is invalid: {exception.Message}");
-        }
-    }
-
-    private static string? FindRelativeNativeAsset(
-        JsonElement library,
-        string runtimeIdentifier)
-    {
-        if (library.TryGetProperty("runtimeTargets", out JsonElement runtimeTargets))
-        {
-            JsonProperty? matching = runtimeTargets
-                .EnumerateObject()
-                .Where(property =>
-                    !property.Value.TryGetProperty("rid", out JsonElement rid)
-                    || string.IsNullOrWhiteSpace(runtimeIdentifier)
-                    || StringComparer.OrdinalIgnoreCase.Equals(
-                        rid.GetString(),
-                        runtimeIdentifier))
-                .Where(static property =>
-                    property.Value.TryGetProperty("assetType", out JsonElement assetType)
-                    && StringComparer.Ordinal.Equals(assetType.GetString(), "native"))
-                .Cast<JsonProperty?>()
-                .FirstOrDefault();
-            if (matching is not null)
-            {
-                return matching.Value.Name;
-            }
-        }
-
-        if (library.TryGetProperty("native", out JsonElement native))
-        {
-            return native.EnumerateObject().Select(static property => property.Name).FirstOrDefault();
-        }
-
-        return null;
     }
 
     private static string? ReadPackageManager(string packageJson)
@@ -825,5 +990,4 @@ internal static class DoctorChecks
         string remediation) =>
         new(DoctorStatus.Failure, name, message, remediation);
 
-    private sealed record NativeAssetResult(string? Path, string Message);
 }

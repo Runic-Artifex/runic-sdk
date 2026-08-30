@@ -1,22 +1,39 @@
 # Application Bridge
 
-The Application Bridge is RunicToolkit’s official boundary between a browser UI
-and an application host.
+The Application Bridge is Runic Application's official boundary between a
+frontend and an application host.
 
 1. Author the encoded wire contract with Effect Schema.
 2. Generate and commit JSON Schema plus the canonical bridge manifest.
 3. Let the C# analyzer generate wire records, handler interfaces, typed event
    publishers, and exhaustive dispatch.
 4. Implement the generated handler with domain services.
-5. Host a fresh `ApplicationBridgeSession` through
-   `UseApplicationBridge(...)` and the CS-WebUI adapter.
-6. Bootstrap one `CsWebUiApplicationBridgeLive` or `MockApplicationBridge`
+5. Host one caller-owned `ApplicationBridgeSession` through Runic Desktop or
+   the local `Runic.Application.Hosting` WebSocket transport.
+6. Bootstrap one `ApplicationBridgeLive` or `MockApplicationBridge`
    `Layer`, then expose one `createApplicationBridgeController(...)` to the UI.
 
 The host owns sessions, authoritative revisions, operation lifetimes,
 cancellation, privileged resources, and sanitized failures. The frontend owns
 presentation and transient interaction state. Long-running commands return an
 operation ID promptly and publish progress through the Effect Stream.
+
+For the local WebSocket boundary, the host maps one binary endpoint over its
+existing session, enforces configured origins and `BridgeLimits`, and admits a
+replacement connection only after a higher-epoch initialization. The frontend
+may reconnect its `FrameChannel`, but it cannot create a session, select a
+revision, or bypass authoritative recovery. Asset and translation refreshes are
+published by the host through that same session.
+
+`GenericHostApplicationHost` adapts an explicitly supplied C# lifetime; it is
+not a second frontend host. Likewise, a Desktop attachment and a WebSocket
+attachment must not compete for one session. This boundary deliberately stops
+before authentication, authorization, public service routing, deployment, SSR,
+hydration, and rollout.
+
+The hosted-service profile is documented separately in
+[Hosted service admission](hosted-service.md). It does not promote this local
+WebSocket endpoint into a public route.
 
 ## Optional Runic Flow orchestration
 

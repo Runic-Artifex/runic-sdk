@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "id": "runic-1.0-preview.1",
+  "releaseTrainVersion": "1.0.0-preview.1",
+  "toolchain": {
+    "dotnetSdk": "10.0.302",
+    "node": "24.18.0",
+    "npm": "11.16.0"
+  },
+  "sources": [
+    {
+      "repository": "runic-desktop",
+      "url": "https://github.com/Runic-Artifex/runic-desktop",
+      "revision": "a0d1432e9a7b8dcf3d6311fcbdf4e824bc0d479f"
+    },
+    {
+      "repository": "runic-assets",
+      "url": "https://github.com/Runic-Artifex/runic-assets",
+      "revision": "e9affd725903077339c5df5a23c44f898121c0b5"
+    },
+    {
+      "repository": "runic-translations",
+      "url": "https://github.com/Runic-Artifex/runic-translations",
+      "revision": "233b1f08e86210a5320c52d1cb0ad6535f2182e0"
+    },
+    {
+      "repository": "runic-svelte",
+      "url": "https://github.com/Runic-Artifex/runic-svelte",
+      "revision": "39af8c08bb8cf1168789093bdfb575f420a51f39"
+    },
+    {
+      "repository": "runic-vite",
+      "url": "https://github.com/Runic-Artifex/runic-vite",
+      "revision": "a5f94c90948e20324e8d4f168763d4f858dd1b10"
+    },
+    {
+      "repository": "runic-command-line",
+      "url": "https://github.com/Runic-Artifex/runic-command-line",
+      "revision": "beadc31d91746a2cb005207ac1161cf579e128e5"
+    }
+  ],
+  "packages": [
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Application",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Application.Bridge",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Application.Desktop",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Application.Hosting",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Application.Testing",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Application.Templates",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "dotnet-runic",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.CommandLine",
+      "version": "1.0.0-preview.1",
+      "source": "runic-command-line"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.CommandLine.Processes",
+      "version": "1.0.0-preview.1",
+      "source": "runic-command-line"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.CommandLine.Testing",
+      "version": "1.0.0-preview.1",
+      "source": "runic-command-line"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Assets",
+      "version": "1.0.0-preview.1",
+      "source": "runic-assets"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Assets.AspNetCore",
+      "version": "1.0.0-preview.1",
+      "source": "runic-assets"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Assets.Desktop",
+      "version": "1.0.0-preview.1",
+      "source": "runic-assets"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Translations",
+      "version": "1.0.0-preview.1",
+      "source": "runic-translations"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Translations.Tooling",
+      "version": "1.0.0-preview.1",
+      "source": "runic-translations"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Translations.Build",
+      "version": "1.0.0-preview.1",
+      "source": "runic-translations"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "dotnet-runic-translations",
+      "version": "1.0.0-preview.1",
+      "source": "runic-translations"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Translations.Templates",
+      "version": "1.0.0-preview.1",
+      "source": "runic-translations"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop",
+      "version": "1.0.0-preview.1",
+      "source": "runic-desktop"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/desktop",
+      "version": "1.0.0-preview.1",
+      "source": "runic-desktop"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/application-bridge",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/angular",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/vite-plugin-runic-translations",
+      "version": "1.0.0-preview.1",
+      "source": "runic-translations"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/svelte",
+      "version": "1.0.0-preview.1",
+      "source": "runic-svelte"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/sveltekit",
+      "version": "1.0.0-preview.1",
+      "source": "runic-svelte"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/vite-plugin-runic",
+      "version": "1.0.0-preview.1",
+      "source": "runic-vite"
+    }
+  ]
+}

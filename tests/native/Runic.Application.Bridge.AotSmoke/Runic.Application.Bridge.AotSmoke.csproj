@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Runic.Application.Bridge.AotSmoke</AssemblyName>
+    <RootNamespace>Runic.Application.Bridge.AotSmoke</RootNamespace>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishAot Condition="'$(ApplicationBridgeNativeAot)' == 'true'">true</PublishAot>
+    <TrimMode>full</TrimMode>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Condition="'$(ApplicationBridgeUsePackages)' != 'true'"
+                      Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Condition="'$(ApplicationBridgeUsePackages)' != 'true'"
+                      Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <PackageReference Condition="'$(ApplicationBridgeUsePackages)' == 'true'"
+                      Include="Runic.Application.Bridge" Version="$(PackageVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="$(ApplicationBridgeContractDirectory)/bridge.manifest.json" />
+    <AdditionalFiles Include="$(ApplicationBridgeContractDirectory)/schemas/**/*.schema.json" />
+  </ItemGroup>
+  <PropertyGroup>
+    <ApplicationBridgeContractDirectory Condition="'$(ApplicationBridgeContractDirectory)' == ''">../../protocol/application-bridge/setup/generated</ApplicationBridgeContractDirectory>
+    <RestoreSources Condition="'$(ApplicationBridgeUsePackages)' == 'true'">$(PackageDirectory);https://api.nuget.org/v3/index.json</RestoreSources>
+  </PropertyGroup>
+</Project>

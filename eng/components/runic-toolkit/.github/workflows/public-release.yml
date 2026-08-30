@@ -9,6 +9,10 @@ on:
       - Directory.Build.targets
       - Directory.Packages.props
       - eng/pack.sh
+      - eng/verify-release-candidate.sh
+      - eng/checkout-ci-candidates.mjs
+      - eng/compatibility-set-value.mjs
+      - eng/runic.compatibility-set.json
       - eng/pack-npm.mjs
       - eng/publish-npm.sh
       - eng/verify-package-artifacts.ps1
@@ -18,6 +22,9 @@ on:
       - protocol/application-bridge/**
       - tools/**/*.csproj
       - web/packages/**
+      - tests/Runic.Application.Bridge.AotSmoke/**
+      - tests/RunicToolkit.PackageCanary/**
+      - tests/RunicToolkit.TemplateAcceptance/**
   workflow_dispatch:
     inputs:
       version:
@@ -50,9 +57,6 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
-  PACKAGE_VERSION: ${{ inputs.version || format('0.1.0-preview.{0}.{1}', github.run_number, github.run_attempt) }}
-  RUNIC_SVELTE_VERSION: 0.1.0-preview.14.1
-  RUNIC_VITE_VERSION: 0.1.0-preview.8.1
 
 jobs:
   package:
@@ -60,6 +64,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve candidate version
+        env:
+          REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: |
+          candidate_version="${REQUESTED_VERSION:-$(node eng/compatibility-set-value.mjs release-train-version)}"
+          echo "PACKAGE_VERSION=$candidate_version" >> "$GITHUB_ENV"
+
       - name: Validate request
         shell: bash
         env:
@@ -81,11 +97,6 @@ jobs:
             exit 1
           fi
 
-      - name: Check out source
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
         with:
@@ -99,58 +110,29 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: "@runic-artifex"
 
+      - name: Check out exact compatibility candidates
+        env:
+          RUNIC_COMPATIBILITY_AUTHORITY_REF: ${{ github.head_ref || github.ref_name }}
+        run: node eng/checkout-ci-candidates.mjs
+
+      - name: Install pinned Chrome for Testing
+        id: chrome
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
+        with:
+          chrome-version: 151.0.7922.77
+
       - name: Run verification pipeline
+        env:
+          WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: ./eng/verify.sh
 
       - name: Ensure verification is reproducible
         run: git diff --exit-code
 
-      - name: Create NuGet packages
-        run: ./eng/pack.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
-
-      - name: Consume NuGet packages in isolation
+      - name: Verify the complete public release candidate locally
         run: >-
-          ./tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh
-          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
-
-      - name: Publish NativeAOT package consumer
-        run: >-
-          ./tests/RunicToolkit.ApplicationBridge.AotSmoke/Test-PackageAot.sh
-          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
-
-      - name: Create public npm packages
-        run: |
-          node eng/pack-npm.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages" public
-          node eng/verify-npm-artifacts.mjs "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
-
-      - name: Download official Svelte and Vite integrations
-        run: |
-          mkdir -p "$RUNNER_TEMP/integrations"
-          npm pack "@runic-artifex/svelte@$RUNIC_SVELTE_VERSION" \
-            --pack-destination "$RUNNER_TEMP/integrations"
-          npm pack "@runic-artifex/vite-plugin-runic-toolkit@$RUNIC_VITE_VERSION" \
-            --pack-destination "$RUNNER_TEMP/integrations"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build all published project templates
-        run: >-
-          ./tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh
-          "$PACKAGE_VERSION"
-          "$RUNNER_TEMP/packages"
-          "$RUNNER_TEMP/packages/runic-artifex-application-bridge-$PACKAGE_VERSION.tgz"
-          "$RUNNER_TEMP/integrations/runic-artifex-svelte-$RUNIC_SVELTE_VERSION.tgz"
-          "$RUNNER_TEMP/integrations/runic-artifex-vite-plugin-runic-toolkit-$RUNIC_VITE_VERSION.tgz"
-
-      - name: Validate public package contract
-        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
-        with:
-          version: ${{ env.PACKAGE_VERSION }}
-          artifact-directory: ${{ runner.temp }}/packages
-          repository-url: https://github.com/Runic-Artifex/runic-toolkit
-          repository-commit: ${{ github.sha }}
-          expected-nuget-count: "15"
-          expected-npm-count: "1"
+          ./eng/verify-release-candidate.sh
+          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages" public
 
       - name: Record package digests
         working-directory: ${{ runner.temp }}/packages

@@ -1,6 +1,8 @@
 {
   "protocol": "runic.artifex.setup",
   "version": 1,
+  "contractFingerprint": "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725",
+  "connectionEpoch": 0,
   "kind": "snapshot",
   "sessionId": "11111111-1111-4111-8111-111111111111",
   "sequence": 1,

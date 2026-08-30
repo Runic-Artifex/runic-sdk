@@ -5,6 +5,13 @@ protocol runtime. Framework integrations may own idiomatic presentation state
 and lifecycle, but never transport, reconnect, revision, cancellation, schema
 validation, or command semantics.
 
+A frontend receives one structural `FrameChannel` from application bootstrap:
+Runic Desktop supplies the default local presentation transport, CS-WebUI may
+supply its compatibility binding, and the local Hosting boundary uses a binary
+WebSocket. In every case the C# host owns the generated contract, session,
+lifecycle, revisions, origin gate, and refresh authority. Framework adapters
+must not turn that local boundary into a remote-service or deployment contract.
+
 ## Svelte 5
 
 `@runic-artifex/svelte`, owned by
@@ -20,23 +27,42 @@ Application Bridge runtime.
 
 ## Vite 8 and DevTools
 
-`@runic-artifex/vite-plugin-runic-toolkit`, owned by
+`@runic-artifex/vite-plugin-runic`, owned by
 [`runic-vite`](https://github.com/Runic-Artifex/runic-vite), is the official
 Vite 8 integration. It preserves the bridge resource across HMR, exposes a
 sanitized diagnostics endpoint and virtual client module, and contributes a
-Runic Toolkit panel to the official experimental `@vitejs/devtools` API. The
+Runic panel to the official experimental `@vitejs/devtools` API. The
 plugin pins the experimental DevTools packages; applications should update
 those versions through the integration package's tested release line.
 
-The `dotnet runic-toolkit dev` command launches the application's normal Vite
+The `dotnet runic dev` command launches the application's normal Vite
 configuration. It no longer generates a synthetic wrapper configuration, so
 SvelteKit and other Vite frameworks retain full control of their plugins and
 routing.
 
-React, Vue, and Angular currently consume the controller directly. Their future
-integration packages belong to their own integration repositories and must keep
-the same protocol boundary.
+React and Vue consume the controller directly. Angular uses the official
+`@runic-artifex/angular` controller projection; every framework integration
+must keep the same protocol boundary.
 
-Use `CsWebUiApplicationBridgeLive` in the native application and
-`MockApplicationBridge` for frontend-only development. Both implement the same
-semantic service, and the packaged templates are executable examples.
+Use `ApplicationBridgeLive` over the selected Desktop, compatibility, or
+WebSocket frame channel and `MockApplicationBridge` for frontend-only
+development. Both
+implement the same semantic service, and the packaged templates are executable
+examples.
+
+## Local host-boundary compatibility evidence
+
+The current package-consumer fixtures prove one generated local contract, not
+parallel framework host models:
+
+| Boundary | Owner | Contract or responsibility | Independent receipt |
+| --- | --- | --- | --- |
+| C# host | Runic Application | `runic.artifex.setup` / `1` / `f92970461e801b80f1e8b8fbf7bab346dece692b61c3c4c167b093ce6bc29336`; session, revision, lifecycle, and local FrameChannel/WebSocket admission | `eng/current-host-transport/` |
+| Svelte projection | `@runic-artifex/svelte` | Supplied controller projection, component lifecycle, and presentation state | `eng/current-svelte-controller/` |
+| Angular projection | `@runic-artifex/angular` | Supplied controller DI, signals, and presentation state | `eng/current-angular-controller/` |
+
+All three receipts verify exact local candidates and bind the same generated
+manifest identity and fingerprint; `eng/current-host-boundary/` independently
+links their repeat receipts. This is evidence for the local W20 boundary only.
+Authentication, remote service transport, deployment, SSR, hydration, and
+rollout remain W30 gates; native/platform certification remains a W70 gate.

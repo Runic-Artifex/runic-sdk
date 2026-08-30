@@ -1,8 +1,8 @@
 using System.Text.Json;
-using RunicToolkit.ApplicationBridge;
-using RunicToolkitStarter.Contract;
+using Runic.Application.Bridge;
+using Runic.Application.Template.Contract;
 
-namespace RunicToolkitStarter;
+namespace RunicDesktopApp;
 
 internal static class CounterSmokeTest
 {
@@ -28,6 +28,8 @@ internal static class CounterSmokeTest
     {
         Protocol = "runic.artifex.counter",
         Version = 1,
+        ContractFingerprint = "4e873f5967e86eeded5e26d8faf27c305464f1272b90935cc8a1b09365471508",
+        ConnectionEpoch = 0,
         Kind = kind,
         CommandId = Guid.NewGuid(),
         SessionId = sessionId,

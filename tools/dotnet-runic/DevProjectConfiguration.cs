@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal sealed record DevProjectConfiguration(
     string ProjectPath,
@@ -43,6 +43,10 @@ internal sealed record DevProjectConfiguration(
     private static readonly string[] PropertyNames =
     [
         "MSBuildProjectFullPath",
+        "RunicAssetsDist",
+        "RunicAssetsEntryPoint",
+        "RunicAssetsEmbeddedResourceName",
+        "RunicAssetsFrontendDirectory",
         "RunicToolkitFrontendEnabled",
         "RunicToolkitFrontendNodeEnabled",
         "RunicToolkitFrontendCompilerEnabled",
@@ -119,19 +123,33 @@ internal sealed record DevProjectConfiguration(
                 ? value.GetString() ?? string.Empty
                 : string.Empty;
 
-        if (!bool.TryParse(Value("RunicToolkitFrontendEnabled"), out bool enabled) || !enabled)
+        bool legacyEnabled = bool.TryParse(Value("RunicToolkitFrontendEnabled"), out bool enabled) && enabled;
+        bool generatedAssets = !string.IsNullOrWhiteSpace(Value("RunicAssetsDist")) &&
+            !string.IsNullOrWhiteSpace(Value("RunicAssetsEntryPoint"));
+        if (!legacyEnabled && !generatedAssets)
         {
             throw new DevUsageException(
                 "RTKDEV1005",
-                "The selected project does not enable the RunicToolkit frontend development properties.");
+                "The selected project must declare a generated Runic application with Runic Assets.");
         }
 
         string evaluatedProject = Normalize(Value("MSBuildProjectFullPath"), projectDirectory);
         string evaluatedProjectDirectory = Path.GetDirectoryName(evaluatedProject)
             ?? projectDirectory;
-        string workspaceRoot = Normalize(
-            Value("RunicToolkitFrontendWorkspaceRoot"),
+        string canonicalFrontendDirectory = NormalizeOptional(
+            Value("RunicAssetsFrontendDirectory"),
             evaluatedProjectDirectory);
+        if (canonicalFrontendDirectory.Length == 0)
+        {
+            string conventionalFrontend = Path.Combine(evaluatedProjectDirectory, "Frontend");
+            canonicalFrontendDirectory = File.Exists(Path.Combine(conventionalFrontend, "package.json"))
+                ? conventionalFrontend
+                : string.Empty;
+        }
+        bool canonicalFrontend = generatedAssets && canonicalFrontendDirectory.Length != 0;
+        string workspaceRoot = canonicalFrontend
+            ? canonicalFrontendDirectory
+            : Normalize(Value("RunicToolkitFrontendWorkspaceRoot"), evaluatedProjectDirectory);
         string packageDirectory = NormalizeOptional(
             Value("RunicToolkitFrontendPackageDirectory"),
             workspaceRoot);
@@ -149,14 +167,14 @@ internal sealed record DevProjectConfiguration(
         var configurationResult = new DevProjectConfiguration(
             evaluatedProject,
             evaluatedProjectDirectory,
-            bool.TryParse(Value("RunicToolkitFrontendNodeEnabled"), out bool nodeEnabled)
-                && nodeEnabled,
-            bool.TryParse(Value("RunicToolkitFrontendCompilerEnabled"), out bool compilerEnabled)
-                && compilerEnabled,
+            canonicalFrontend || (legacyEnabled && bool.TryParse(Value("RunicToolkitFrontendNodeEnabled"), out bool nodeEnabled)
+                && nodeEnabled),
+            generatedAssets || (legacyEnabled && bool.TryParse(Value("RunicToolkitFrontendCompilerEnabled"), out bool compilerEnabled)
+                && compilerEnabled),
             workspaceRoot,
-            Value("RunicToolkitFrontendWorkspace"),
-            packageDirectory,
-            outputDirectory,
+            canonicalFrontend ? "." : Value("RunicToolkitFrontendWorkspace"),
+            canonicalFrontend ? canonicalFrontendDirectory : generatedAssets ? NormalizeOptional(Value("RunicAssetsDist"), evaluatedProjectDirectory) : packageDirectory,
+            generatedAssets ? NormalizeOptional(Value("RunicAssetsDist"), evaluatedProjectDirectory) : outputDirectory,
             string.IsNullOrWhiteSpace(Value("RunicToolkitFrontendWebRoot"))
                 ? "www"
                 : Value("RunicToolkitFrontendWebRoot"),

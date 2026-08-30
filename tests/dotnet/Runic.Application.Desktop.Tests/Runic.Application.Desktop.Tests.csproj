@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>Runic.Application.Desktop.Tests</AssemblyName>
+    <RootNamespace>Runic.Application.Desktop.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+  </ItemGroup>
+</Project>

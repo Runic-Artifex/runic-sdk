@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = import.meta.dirname;
@@ -11,7 +10,6 @@ const configuration = process.argv.includes("--production")
   : watch ? "development" : "production";
 const executable = resolve(
   root,
-  "..",
   "node_modules",
   ".bin",
   process.platform === "win32" ? "ng.cmd" : "ng",
@@ -42,51 +40,10 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => child.kill(signal));
 }
 
-const exitCode = await new Promise((complete) => child.once("exit", complete));
-if (!watch && exitCode === 0) {
-  await writeManifest();
-} else {
-  await manifestWrite;
-}
+const exitCode = await new Promise((complete, fail) => {
+  child.once("error", fail);
+  child.once("exit", complete);
+});
 if (exitCode !== 0 && exitCode !== null) {
   process.exitCode = exitCode;
-}
-
-async function writeManifest() {
-  const files = await collectFiles(output);
-  const entries = {};
-  for (const relativePath of files) {
-    if (relativePath === "runic-toolkit.assets.json") continue;
-    const bytes = await readFile(resolve(output, relativePath));
-    entries[relativePath] = {
-      bytes: bytes.byteLength,
-      sha256: createHash("sha256").update(bytes).digest("hex"),
-    };
-  }
-
-  const manifest = {
-    schema: "runic-toolkit.frontend-assets/1",
-    framework: "Angular",
-    mode: configuration,
-    entrypoints: { document: "index.html" },
-    files: entries,
-  };
-  await writeFile(
-    resolve(output, "runic-toolkit.assets.json"),
-    JSON.stringify(manifest, null, 2) + "\n",
-    "utf8",
-  );
-  console.log("[RunicToolkit] Wrote runic-toolkit.assets.json.");
-}
-
-async function collectFiles(directory, relative = "") {
-  const entries = await readdir(resolve(directory, relative), { withFileTypes: true });
-  const files = [];
-  for (const entry of entries.sort((left, right) =>
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0)) {
-    const path = relative ? `${relative}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) files.push(...await collectFiles(directory, path));
-    else files.push(path);
-  }
-  return files;
 }

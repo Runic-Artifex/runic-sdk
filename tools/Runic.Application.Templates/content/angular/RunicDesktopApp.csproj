@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RunicDesktopApp</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RunicAssetsDist>$(MSBuildProjectDirectory)/Frontend/dist</RunicAssetsDist>
+    <RunicAssetsEntryPoint>index.html</RunicAssetsEntryPoint>
+    <RunicAssetsEmbeddedResourceName>Runic.Assets.StaticFiles</RunicAssetsEmbeddedResourceName>
+    <RunicAssetsFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</RunicAssetsFrontendDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Runic.Application.Bridge" Version="__RUNIC_TOOLKIT_VERSION__" />
+    <PackageReference Include="Runic.Application" Version="__RUNIC_TOOLKIT_VERSION__" />
+    <PackageReference Include="Runic.Application.Desktop" Version="__RUNIC_TOOLKIT_VERSION__" />
+    <PackageReference Include="Runic.Desktop" Version="__RUNIC_DESKTOP_VERSION__" />
+    <PackageReference Include="Runic.Assets" Version="__RUNIC_ASSETS_VERSION__" />
+    <PackageReference Include="Runic.Assets.Desktop" Version="__RUNIC_ASSETS_VERSION__" />
+  </ItemGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="Contract/bridge.manifest.json" />
+    <AdditionalFiles Include="Contract/schemas/**/*.schema.json" />
+  </ItemGroup>
+  <Import Project="RunicTemplateFrontend.targets" />
+</Project>

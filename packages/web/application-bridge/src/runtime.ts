@@ -18,7 +18,7 @@ import {
 } from "./contract.js";
 import { bridgeError, type BridgeError } from "./errors.js";
 import { ApplicationBridge, type ApplicationBridgeService } from "./service.js";
-import type { FrameChannel, FrameChannelEvent } from "./transport.js";
+import type { FrameChannel, FrameChannelEvent, ReconnectableFrameChannel } from "./transport.js";
 
 export interface ApplicationBridgeOptions {
   /** Produces a candidate command identifier. Intended primarily for deterministic tests. */
@@ -28,6 +28,16 @@ export interface ApplicationBridgeOptions {
   readonly maxBufferedFrames?: number;
   readonly maxBufferedEvents?: number;
   readonly maxBatchFrames?: number;
+  /** Receives sanitized bridge connection and contract diagnostics. */
+  readonly onDiagnostic?: (diagnostic: ApplicationBridgeDiagnostic) => void;
+}
+
+export interface ApplicationBridgeDiagnostic {
+  readonly code: "contract-mismatch" | "connection-lost" | "resynchronization-required";
+  readonly message: string;
+  readonly connectionEpoch: number;
+  /** Present when outstanding requests were terminally discarded. */
+  readonly pendingCommandDisposition?: PendingCommandDisposition;
 }
 
 /** Effect programs backed by the controller's single owned ManagedRuntime. */
@@ -77,7 +87,11 @@ interface Pending {
   readonly kind: "initialize" | "dispatch" | "cancel" | "uiReady" | "uiRendered";
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: BridgeError) => void;
+  readonly connectionEpoch: number;
 }
+
+/** Terminal disposition for requests that cannot survive a physical reconnect. */
+export type PendingCommandDisposition = "transport-lost" | "resynchronization-required";
 
 interface BufferedFrame {
   readonly generation: number;
@@ -89,7 +103,8 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 const UiReadyReceiptSchema = Schema.TaggedStruct("UiReadyAccepted", {});
 const UiRenderedReceiptSchema = Schema.TaggedStruct("UiRenderedAccepted", {});
 
-export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
+/** Transport-neutral Application Bridge layer over any structural FrameChannel. */
+export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
   contract: ApplicationContract<Command, Receipt, HostEvent, Snapshot>,
   channel: FrameChannel,
   options: ApplicationBridgeOptions = {},
@@ -113,14 +128,17 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
       let stopped = false;
       let recoveryRequired = false;
       let ingressGeneration = 0;
+      let connectionEpoch = 0;
+      let reconnectPromise: Promise<Snapshot> | undefined;
       const effectRuntime = yield* Effect.runtime<never>();
       const runPromise = Runtime.runPromise(effectRuntime);
       const runSync = Runtime.runSync(effectRuntime);
 
-      const failAll = (error: BridgeError): Effect.Effect<void> => Effect.sync(() => {
+      const disposePending = (error: BridgeError): void => {
         for (const item of pending.values()) item.reject(error);
         pending.clear();
-      }).pipe(
+      };
+      const failAll = (error: BridgeError): Effect.Effect<void> => Effect.sync(() => disposePending(error)).pipe(
         Effect.zipRight(PubSub.publish(failures, error)),
         Effect.asVoid,
       );
@@ -130,11 +148,61 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
         recoveryRequired = true;
         sessionId = undefined;
         sequence = 0;
+        try {
+          options.onDiagnostic?.({
+            code: error._tag === "ProtocolVersionMismatch" ? "contract-mismatch"
+              : error._tag === "TransportClosed" || error._tag === "TransportUnavailable" ? "connection-lost"
+                : "resynchronization-required",
+            message: error.message,
+            connectionEpoch,
+            pendingCommandDisposition: error._tag === "TransportClosed" || error._tag === "TransportUnavailable"
+              ? "transport-lost"
+              : "resynchronization-required",
+          });
+        } catch {
+          // Diagnostics must not affect protocol recovery or command disposition.
+        }
       }).pipe(Effect.zipRight(failAll(error)));
 
       const onEnvelope = (envelope: HostEnvelope): Effect.Effect<void, BridgeError> => Effect.gen(function*() {
-        if (envelope.protocol !== contract.identity || envelope.version !== contract.version) {
+        if (envelope.protocol !== contract.identity || envelope.version !== contract.version ||
+          envelope.contractFingerprint !== contract.fingerprint) {
           return yield* Effect.fail(bridgeError("ProtocolVersionMismatch", "The host uses an incompatible Application Bridge contract."));
+        }
+        // Old frames are an expected consequence of replacing a physical
+        // connection. They are terminally detached from the new epoch.
+        if (envelope.connectionEpoch < connectionEpoch) return;
+        if (envelope.connectionEpoch > connectionEpoch) {
+          // Only a pending initialize may legitimately receive a precommit
+          // admission refusal for its requested future epoch. Other future
+          // sequence-zero errors are hostile or stale and cannot affect work.
+          if (envelope.kind === "error" && envelope.sequence === 0) {
+            const pendingInitialize = envelope.commandId === undefined ? undefined : pending.get(envelope.commandId);
+            if (pendingInitialize?.kind === "initialize" && pendingInitialize.connectionEpoch === envelope.connectionEpoch) {
+              pending.delete(envelope.commandId!);
+              const error = yield* Schema.decodeUnknown(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
+                Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host admission error was invalid.")),
+              );
+              pendingInitialize.reject(error);
+            }
+            return;
+          }
+          return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host response belongs to a stale connection epoch.", true));
+        }
+        // Sequence zero is a correlated local-admission refusal. Epoch checks
+        // must precede it so delayed old-epoch errors cannot reject a reused id.
+        if (envelope.kind === "error" && envelope.sequence === 0) {
+          if (envelope.commandId === undefined) {
+            return yield* Effect.fail(bridgeError("ProtocolDecodeError", "An admission error omitted its command identifier."));
+          }
+          const item = pending.get(envelope.commandId);
+          if (item === undefined || item.connectionEpoch !== connectionEpoch) return;
+          pending.delete(envelope.commandId);
+          const error = yield* Schema.decodeUnknown(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
+            Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host admission error was invalid.")),
+          );
+          item.reject(error);
+          return;
         }
         if (sessionId !== undefined && envelope.sessionId !== sessionId) {
           return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host response belongs to a stale session."));
@@ -165,7 +233,7 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           return yield* Effect.fail(bridgeError("ProtocolDecodeError", "A correlated host response omitted its command identifier."));
         }
         const item = pending.get(commandId);
-        if (item === undefined) return;
+        if (item === undefined || item.connectionEpoch !== connectionEpoch) return;
         pending.delete(commandId);
         if (envelope.kind === "error") {
           const error = yield* Schema.decodeUnknown(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
@@ -206,7 +274,11 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
         const event = buffered.event;
         if (event._tag === "State") {
           if (event.state !== "connected") {
-            yield* failAll(bridgeError("TransportClosed", "The Application Bridge transport closed.", true));
+            yield* requireRecovery(bridgeError(
+              event.state === "closed" ? "TransportClosed" : "TransportUnavailable",
+              "The Application Bridge transport is unavailable; pending commands were discarded.",
+              true,
+            ));
           }
           return;
         }
@@ -292,11 +364,15 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
                   : kind,
             resolve: (value) => resume(Effect.succeed(value as A)),
             reject: (error) => resume(Effect.fail(error)),
+            connectionEpoch,
           };
+          const requestEpoch = connectionEpoch;
           pending.set(commandId, item);
           const envelope: ClientEnvelope = {
             protocol: contract.identity,
             version: contract.version,
+            contractFingerprint: contract.fingerprint,
+            connectionEpoch,
             kind,
             commandId,
             payload,
@@ -306,12 +382,89 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           runPromise(Schema.encode(ClientEnvelopeSchema)(envelope))
             .then((encoded) => channel.send(encoder.encode(JSON.stringify(encoded))))
             .catch(() => {
-              pending.delete(commandId);
-              resume(Effect.fail(bridgeError("TransportUnavailable", "The Application Bridge request could not be sent.", true)));
+              // A reconnect may have already detached this request. Its late
+              // send failure must not tear down the newly admitted epoch.
+              if (requestEpoch !== connectionEpoch || pending.get(commandId) !== item) return;
+              void runPromise(requireRecovery(bridgeError(
+                "TransportUnavailable",
+                "The Application Bridge request could not be sent; pending commands were discarded.",
+                true,
+              )));
             });
         });
 
-      const initialize = request<Snapshot>("initialize", contract.initialize);
+      const connect = (): Effect.Effect<void, BridgeError> => {
+        if (channel.state === "connected") return Effect.void;
+        if (!isReconnectable(channel)) {
+          return Effect.fail(bridgeError(
+            channel.state === "closed" ? "TransportClosed" : "TransportUnavailable",
+            "The Application Bridge transport is unavailable.",
+            true,
+          ));
+        }
+        return Effect.async<void, BridgeError>((resume) => {
+          let active = true;
+          channel.reconnect().then(
+            () => {
+              if (active) resume(Effect.void);
+            },
+            () => {
+              if (active) {
+                resume(Effect.fail(bridgeError(
+                  "TransportUnavailable",
+                  "The Application Bridge transport could not connect.",
+                  true,
+                )));
+              }
+            },
+          );
+          return Effect.sync(() => {
+            active = false;
+            void channel.close("Application Bridge connection interrupted");
+          });
+        });
+      };
+      const initialize = connect().pipe(
+        Effect.zipRight(request<Snapshot>("initialize", contract.initialize)),
+      );
+      const reconnect: Effect.Effect<Snapshot, BridgeError> = Effect.async((resume) => {
+        if (reconnectPromise !== undefined) {
+          reconnectPromise.then(
+            (snapshot) => resume(Effect.succeed(snapshot)),
+            (error: BridgeError) => resume(Effect.fail(error)),
+          );
+          return;
+        }
+        const disposed = bridgeError(
+          "TransportUnavailable",
+          "The Application Bridge reconnect replaced pending commands.",
+          true,
+        );
+        disposePending(disposed);
+        ingressGeneration++;
+        connectionEpoch++;
+        recoveryRequired = false;
+        sessionId = undefined;
+        sequence = 0;
+        revision = 0;
+        const current = (async () => {
+          if (isReconnectable(channel)) {
+            try { await channel.reconnect(); }
+            catch {
+              throw bridgeError("TransportUnavailable", "The Application Bridge transport could not reconnect.", true);
+            }
+          }
+          if (channel.state !== "connected") {
+            throw bridgeError("TransportUnavailable", "The Application Bridge transport could not reconnect.", true);
+          }
+          return await runPromise(request<Snapshot>("initialize", contract.initialize));
+        })();
+        reconnectPromise = current;
+        current.then(
+          (snapshot) => resume(Effect.succeed(snapshot)),
+          (error: BridgeError) => resume(Effect.fail(error)),
+        ).finally(() => { reconnectPromise = undefined; });
+      });
       const service: ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot> = {
         initialize,
         dispatch: (command) => Schema.encode(contract.command)(command).pipe(
@@ -319,13 +472,7 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
           Effect.flatMap((payload) => request<Receipt>("dispatch", payload, revision)),
         ),
         cancel: (operationId) => request<unknown>("cancelOperation", { operationId }, revision).pipe(Effect.asVoid),
-        reconnect: Effect.sync(() => {
-          ingressGeneration++;
-          recoveryRequired = false;
-          sessionId = undefined;
-          sequence = 0;
-          revision = 0;
-        }).pipe(Effect.flatMap(() => request<Snapshot>("initialize", contract.initialize))),
+        reconnect,
         uiReady: request<unknown>("uiReady", {}).pipe(Effect.asVoid),
         uiRendered: request<unknown>("uiRendered", {}).pipe(Effect.asVoid),
         events: Stream.merge(
@@ -336,6 +483,10 @@ export function CsWebUiApplicationBridgeLive<Command, Receipt, HostEvent, Snapsh
       return service as ApplicationBridgeService;
     }),
   );
+}
+
+function isReconnectable(channel: FrameChannel): channel is ReconnectableFrameChannel {
+  return typeof (channel as Partial<ReconnectableFrameChannel>).reconnect === "function";
 }
 
 function positiveInteger(value: number, name: string): number {

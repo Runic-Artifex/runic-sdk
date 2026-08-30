@@ -112,7 +112,7 @@ const errors = [
 export default {
   formatVersion: 1,
   protocol: { identity: "runic.artifex.setup", version: 1 },
-  csharp: { namespace: "RunicToolkit.Setup.Contract", contractName: "Setup" },
+  csharp: { namespace: "Runic.Application.Setup.Contract", contractName: "Setup" },
   limits: {
     maxFrameBytes: 262144,
     maxDepth: 32,

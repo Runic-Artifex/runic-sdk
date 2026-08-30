@@ -4,8 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <RunicToolkitFrontendEnabled>false</RunicToolkitFrontendEnabled>
-    <RestoreAdditionalProjectSources>$(PackageDirectory);https://api.nuget.org/v3/index.json</RestoreAdditionalProjectSources>
+    <RestoreAdditionalProjectSources>$(PackageDirectory);$(RunicVerificationFeed);https://api.nuget.org/v3/index.json</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
   <Target Name="ValidatePackageCanaryProperties" BeforeTargets="Restore">
@@ -14,13 +13,10 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="RunicToolkit.Collections" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.Desktop" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.ApplicationBridge" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.ApplicationBridge.Generators" Version="$(PackageVersion)" PrivateAssets="all" />
-    <PackageReference Include="RunicToolkit.Hosting.Build" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" Version="$(PackageVersion)" />
-    <PackageReference Include="RunicToolkit.Hosting.Generators" Version="$(PackageVersion)" />
+    <PackageReference Include="Runic.Application" Version="$(PackageVersion)" />
+    <PackageReference Include="Runic.Application.Bridge" Version="$(PackageVersion)" />
+    <PackageReference Include="Runic.Application.Desktop" Version="$(PackageVersion)" />
+    <PackageReference Include="Runic.Application.Hosting" Version="$(PackageVersion)" />
+    <PackageReference Include="Runic.Application.Testing" Version="$(PackageVersion)" />
   </ItemGroup>
 </Project>

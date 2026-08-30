@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>Runic.Application.Testing</AssemblyName>
+    <RootNamespace>Runic.Application.Testing</RootNamespace>
+    <PackageId>Runic.Application.Testing</PackageId>
+    <Description>Headless deterministic application host and fakes for Runic.Application tests.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Runic.Application\Runic.Application.csproj" />
+    <ProjectReference Include="..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj"
+                      Condition="Exists('..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj') and '$(RunicToolkitVerificationBuild)' != 'true'" />
+    <PackageReference Include="Runic.Assets"
+                      Condition="!Exists('..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj') or '$(RunicToolkitVerificationBuild)' == 'true'" />
+  </ItemGroup>
+  <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
+</Project>

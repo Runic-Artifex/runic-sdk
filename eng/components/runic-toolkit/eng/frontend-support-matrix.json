@@ -6,9 +6,9 @@
     "contract": "protocol/application-bridge/setup/contract.mjs",
     "manifest": "protocol/application-bridge/setup/generated/bridge.manifest.json",
     "runtime": "web/packages/application-bridge",
-    "dotnet": "src/RunicToolkit.ApplicationBridge",
-    "generator": "src/RunicToolkit.ApplicationBridge.Generators",
-    "transport": "src/RunicToolkit.Hosting.CsWebUi.ApplicationBridge"
+    "dotnet": "src/Runic.Application.Bridge",
+    "generator": "src/Runic.Application.Bridge.Generators",
+    "transport": "src/Runic.Application.Desktop"
   },
   "renderers": {
     "react": { "ownsProtocolState": false },
@@ -19,11 +19,15 @@
       "integrationRepository": "https://github.com/Runic-Artifex/runic-svelte",
       "supportedMajor": 5
     },
-    "angular": { "ownsProtocolState": false }
+    "angular": {
+      "ownsProtocolState": false,
+      "integrationPackage": "@runic-artifex/angular",
+      "supportedMajor": 22
+    }
   },
   "developmentIntegrations": {
     "vite": {
-      "package": "@runic-artifex/vite-plugin-runic-toolkit",
+      "package": "@runic-artifex/vite-plugin-runic",
       "repository": "https://github.com/Runic-Artifex/runic-vite",
       "supportedMajor": 8,
       "officialDevToolsPackage": "@vitejs/devtools"

@@ -47,7 +47,19 @@ foreach ($project in $projects) {
         $targetPath = [IO.Path]::GetFullPath((Join-Path $project.DirectoryName $reference.Include))
         $targetRelativePath = Get-RelativePath $targetPath
         if ($targetRelativePath.StartsWith('../', [StringComparison]::Ordinal)) {
-            throw "Project '$projectRelativePath' references a project outside the repository."
+            $projectCondition = [string]$reference.Condition
+            $sourceExistsCondition = $projectCondition -replace '\s+and\s+.*$', ''
+            $expectedPackageCondition = $sourceExistsCondition -replace '^Exists', '!Exists'
+            $hasPackageFallback = @(
+                $projectXml.Project.ItemGroup.PackageReference | Where-Object {
+                    -not [string]::IsNullOrWhiteSpace($_.Include) -and
+                    ([string]$_.Condition).Contains($expectedPackageCondition, [StringComparison]::Ordinal)
+                }
+            ).Count -gt 0
+            if ([string]::IsNullOrWhiteSpace($projectCondition) -or -not $hasPackageFallback) {
+                throw "External ProjectReference '$projectRelativePath' -> '$targetRelativePath' must be conditional and paired with a package fallback using the inverse Exists condition."
+            }
+            continue
         }
 
         $targetOwner = Get-PathOwner $targetRelativePath

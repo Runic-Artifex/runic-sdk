@@ -1,34 +1,25 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/RunicToolkit.ApplicationBridge.Generators/RunicToolkit.ApplicationBridge.Generators.csproj" />
-    <Project Path="src/RunicToolkit.ApplicationBridge/RunicToolkit.ApplicationBridge.csproj" />
-    <Project Path="src/RunicToolkit.Collections/RunicToolkit.Collections.csproj" />
-    <Project Path="src/RunicToolkit.Desktop/RunicToolkit.Desktop.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.Abstractions/RunicToolkit.Hosting.Abstractions.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.Build/RunicToolkit.Hosting.Build.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.CsWebUi/RunicToolkit.Hosting.CsWebUi.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.CsWebUi.App/RunicToolkit.Hosting.CsWebUi.App.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.CsWebUi.ApplicationBridge/RunicToolkit.Hosting.CsWebUi.ApplicationBridge.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.Generators/RunicToolkit.Hosting.Generators.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.GenericHost/RunicToolkit.Hosting.GenericHost.csproj" />
-    <Project Path="src/RunicToolkit.Hosting.WebUi/RunicToolkit.Hosting.WebUi.csproj" />
-    <Project Path="src/RunicToolkit.Hosting/RunicToolkit.Hosting.csproj" />
+    <Project Path="src/Runic.Application.Generators/Runic.Application.Generators.csproj" />
+    <Project Path="src/Runic.Application/Runic.Application.csproj" />
+    <Project Path="src/Runic.Application.Hosting/Runic.Application.Hosting.csproj" />
+    <Project Path="src/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+    <Project Path="src/Runic.Application.Testing/Runic.Application.Testing.csproj" />
+    <Project Path="src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
+    <Project Path="src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/RunicToolkit.ApplicationBridge.AotSmoke/RunicToolkit.ApplicationBridge.AotSmoke.csproj" />
-    <Project Path="tests/RunicToolkit.ApplicationBridge.Tests/RunicToolkit.ApplicationBridge.Tests.csproj" />
-    <Project Path="tests/RunicToolkit.Collections.Tests/RunicToolkit.Collections.Tests.csproj" />
-    <Project Path="tests/RunicToolkit.Desktop.Tests/RunicToolkit.Desktop.Tests.csproj" />
+    <Project Path="tests/Runic.Application.Tests/Runic.Application.Tests.csproj" />
+    <Project Path="tests/Runic.Application.AotSmoke/Runic.Application.AotSmoke.csproj" />
+    <Project Path="tests/Runic.Application.Hosting.Tests/Runic.Application.Hosting.Tests.csproj" />
+    <Project Path="tests/Runic.Application.Hosting.AotSmoke/Runic.Application.Hosting.AotSmoke.csproj" />
+    <Project Path="tests/Runic.Application.Desktop.Tests/Runic.Application.Desktop.Tests.csproj" />
+    <Project Path="tests/Runic.Application.Bridge.AotSmoke/Runic.Application.Bridge.AotSmoke.csproj" />
+    <Project Path="tests/Runic.Application.Bridge.Tests/Runic.Application.Bridge.Tests.csproj" />
     <Project Path="tests/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
-    <Project Path="tests/RunicToolkit.Hosting.Build.Tests/RunicToolkit.Hosting.Build.Tests.csproj" />
-    <Project Path="tests/RunicToolkit.Hosting.CompositionTests/RunicToolkit.Hosting.CompositionTests.csproj" />
-    <Project Path="tests/RunicToolkit.Hosting.ContractTests/RunicToolkit.Hosting.ContractTests.csproj" />
-    <Project Path="tests/RunicToolkit.Hosting.CsWebUi.Tests/RunicToolkit.Hosting.CsWebUi.Tests.csproj" />
-    <Project Path="tests/RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Tests/RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Tests.csproj" />
-    <Project Path="tests/RunicToolkit.Hosting.CsWebUi.NativeE2E/RunicToolkit.Hosting.CsWebUi.NativeE2E.csproj" />
   </Folder>
   <Folder Name="/tools/">
-    <Project Path="tools/dotnet-runic-toolkit/RunicToolkit.DotNet.RunicToolkit.csproj" />
+    <Project Path="tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj" />
   </Folder>
   <Folder Name="/templates/">
     <Project Path="templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj" />

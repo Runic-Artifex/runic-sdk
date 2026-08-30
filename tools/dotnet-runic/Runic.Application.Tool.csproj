@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>dotnet-runic</AssemblyName>
+    <RootNamespace>Runic.Application.Tool</RootNamespace>
+    <PackageId>dotnet-runic</PackageId>
+    <Description>Generated-command development coordination for Runic Application projects.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dotnet-runic</ToolCommandName>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <EmbeddedResource Include="../../eng/runic.compatibility-set.json"
+                      LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj"
+                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
+                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')"
+                      PrivateAssets="all"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+    <PackageReference Include="Runic.CommandLine"
+                      Condition="!Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
+  </ItemGroup>
+</Project>

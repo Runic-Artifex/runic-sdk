@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal sealed record DoctorProjectConfiguration(
     string ProjectPath,
@@ -32,6 +32,9 @@ internal sealed record DoctorProjectConfiguration(
         "MSBuildProjectFullPath",
         "TargetFramework",
         "TargetFrameworks",
+        "RunicAssetsDist",
+        "RunicAssetsEntryPoint",
+        "RunicAssetsFrontendDirectory",
         "RunicToolkitFrontendEnabled",
         "RunicToolkitFrontendNodeEnabled",
         "RunicToolkitFrontendCompilerEnabled",
@@ -92,8 +95,20 @@ internal sealed record DoctorProjectConfiguration(
         string evaluatedProject = Normalize(Value("MSBuildProjectFullPath"), projectDirectory);
         string evaluatedProjectDirectory = Path.GetDirectoryName(evaluatedProject)
             ?? projectDirectory;
+        bool generatedAssets = !string.IsNullOrWhiteSpace(Value("RunicAssetsDist")) &&
+            !string.IsNullOrWhiteSpace(Value("RunicAssetsEntryPoint"));
+        string canonicalFrontendDirectory = NormalizeOptional(
+            Value("RunicAssetsFrontendDirectory"), evaluatedProjectDirectory);
+        if (canonicalFrontendDirectory.Length == 0)
+        {
+            string conventionalFrontend = Path.Combine(evaluatedProjectDirectory, "Frontend");
+            canonicalFrontendDirectory = File.Exists(Path.Combine(conventionalFrontend, "package.json"))
+                ? conventionalFrontend
+                : string.Empty;
+        }
+        bool canonicalFrontend = generatedAssets && canonicalFrontendDirectory.Length != 0;
         string workspaceRoot = Normalize(
-            Value("RunicToolkitFrontendWorkspaceRoot"),
+            canonicalFrontend ? canonicalFrontendDirectory : Value("RunicToolkitFrontendWorkspaceRoot"),
             evaluatedProjectDirectory);
         string packageDirectory = NormalizeOptional(
             Value("RunicToolkitFrontendPackageDirectory"),
@@ -112,12 +127,12 @@ internal sealed record DoctorProjectConfiguration(
             evaluatedProject,
             evaluatedProjectDirectory,
             targetFramework,
-            Flag("RunicToolkitFrontendEnabled"),
-            Flag("RunicToolkitFrontendNodeEnabled"),
-            Flag("RunicToolkitFrontendCompilerEnabled"),
+            canonicalFrontend || Flag("RunicToolkitFrontendEnabled"),
+            canonicalFrontend || Flag("RunicToolkitFrontendNodeEnabled"),
+            generatedAssets || Flag("RunicToolkitFrontendCompilerEnabled"),
             workspaceRoot,
-            Value("RunicToolkitFrontendWorkspace"),
-            packageDirectory,
+            canonicalFrontend ? "." : Value("RunicToolkitFrontendWorkspace"),
+            canonicalFrontend ? canonicalFrontendDirectory : packageDirectory,
             NormalizeOptional(
                 Value("RunicToolkitFrontendContractSource"),
                 evaluatedProjectDirectory),

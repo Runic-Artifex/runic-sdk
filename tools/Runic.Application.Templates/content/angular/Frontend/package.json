@@ -3,6 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "license": "MIT",
+  "packageManager": "npm@11.16.0",
+  "engines": { "node": "24.18.x", "npm": "11.16.x" },
   "scripts": {
     "build": "node build.mjs",
     "dev": "ng serve frontend --configuration development",
@@ -14,7 +16,9 @@
     "@angular/core": "22.0.8",
     "@angular/platform-browser": "22.0.8",
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@runic-artifex/angular": "__RUNIC_ANGULAR_NPM__",
     "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
+    "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
     "bootstrap": "5.3.8",
     "effect": "3.22.1",
     "rxjs": "7.8.2"

@@ -2,21 +2,15 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal static class DoctorApplication
 {
     internal static async Task<int> RunAsync(
-        string[] arguments,
+        DoctorOptions options,
         CancellationToken cancellationToken)
     {
-        if (DoctorOptions.RequestsHelp(arguments))
-        {
-            WriteHelp();
-            return Program.Success;
-        }
-
-        DoctorOptions options = DoctorOptions.Parse(arguments);
+        ArgumentNullException.ThrowIfNull(options);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnetHost = ResolveDotNetHost();
         DoctorProjectConfiguration configuration = await DoctorProjectConfiguration
@@ -41,7 +35,7 @@ internal static class DoctorApplication
         DoctorProjectConfiguration project,
         DoctorReport report)
     {
-        Console.WriteLine($"RunicToolkit doctor: {project.ProjectPath}");
+        Console.WriteLine($"Runic Application doctor: {project.ProjectPath}");
         foreach (DoctorCheck check in report.Checks)
         {
             Console.WriteLine(
@@ -70,22 +64,4 @@ internal static class DoctorApplication
             _ => throw new InvalidOperationException($"Unknown doctor status '{status}'."),
         };
 
-    private static void WriteHelp()
-    {
-        Console.WriteLine(
-            """
-            Usage:
-              dotnet runic-toolkit doctor [PROJECT] [options]
-
-            Options:
-              --project PATH          Select a .csproj or a directory containing one.
-              --configuration NAME    Evaluation configuration (default: Debug).
-              -h, --help              Show this help.
-
-            Doctor evaluates the selected application and reports actionable PASS,
-            WARN, and FAIL checks for the .NET SDK, optional Node/package-manager
-            toolchain, native CS-WebUI library, browser, lock file, Vite entry/config,
-            and generated contracts. A report with any FAIL result exits with code 1.
-            """);
-    }
 }

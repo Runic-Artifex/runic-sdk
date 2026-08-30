@@ -6,7 +6,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 {
@@ -200,7 +200,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             throw new DevDevelopmentException(
                 "RTKDEV1007",
                 $"Timed out waiting for the Vite development server at {Origin}. " +
-                "Run 'dotnet runic-toolkit doctor' and verify the configured dev script " +
+                "Run 'dotnet runic doctor' and verify the configured dev script " +
                 "and Vite entry module.");
         }
     }

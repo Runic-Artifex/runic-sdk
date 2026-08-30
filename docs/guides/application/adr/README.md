@@ -10,6 +10,8 @@
 - [0014 — MIT license](0014-mit-license.md)
 - [0015 — Effect Schema-first Application Bridge](0015-effect-schema-application-bridge.md)
 - [0016 — Svelte 5 and Vite DevTools integrations](0016-svelte-5-vite-devtools.md)
+- [0017 — v0.2 product identity and package topology](0017-v0.2-product-identity-and-package-topology.md)
+- [0018 — Operational observability boundary](0018-operational-observability-boundary.md)
 
 The standalone repository’s filtered Git history retains older implementation
 context. Monorepo coordination and release-wave documents are not active Toolkit

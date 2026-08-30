@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/application-bridge",
-  "version": "0.1.0",
+  "version": "1.0.0-preview.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
@@ -9,12 +9,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Effect-based, schema-first application bridge for RunicToolkit hosts.",
+  "description": "Effect-based, schema-first application bridge for Runic Application hosts.",
   "homepage": "https://github.com/Runic-Artifex/runic-toolkit/tree/main/web/packages/application-bridge",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
   },
-  "keywords": ["runic-artifex", "runic-toolkit", "effect", "application-bridge", "cs-webui", "typescript"],
+  "keywords": ["runic-artifex", "runic-toolkit", "effect", "application-bridge", "typescript"],
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

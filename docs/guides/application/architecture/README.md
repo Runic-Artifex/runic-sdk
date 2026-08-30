@@ -2,16 +2,16 @@
 
 The dependency direction is deliberately inward:
 
-1. `RunicToolkit.Collections`, `RunicToolkit.Desktop`, and the Application
-   Bridge contract kernel define framework-neutral contracts.
+1. `Runic.Application` and the Application Bridge
+   contract kernel define framework-neutral contracts.
 2. Effect Schema and the canonical bridge manifest define encoded wire data;
    generators consume committed artifacts and never start Node during C# builds.
 3. Presentation frameworks consume one framework-neutral controller.
    Framework-owned integration repositories may publish idiomatic lifecycle
    projections without owning protocol state.
-4. Hosting core depends on abstractions; Generic Host, WebUi, and CS-WebUI are
-   explicit adapters layered above it.
-5. `RunicToolkit.Hosting.Build` turns an explicitly built frontend directory
+4. `Runic.Application.Desktop` and `Runic.Application.Hosting` adapt the
+   application core to native Desktop and local WebSocket presentation.
+5. `Runic.Assets` turns an explicitly built frontend directory
    into a verified application asset manifest.
 6. React, Vue, Svelte, Angular, Avalonia, or future renderers own only their
    presentation state and framework lifecycle; the bridge owns validation,

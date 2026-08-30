@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <PackageId>RunicToolkit.Templates</PackageId>
-    <PackageVersion>1.0.0-beta.1</PackageVersion>
-    <Title>RunicToolkit project templates</Title>
-    <Description>dotnet new templates for native CS-WebUI applications using React, Vue, Svelte, or Angular.</Description>
+    <PackageId>Runic.Application.Templates</PackageId>
+    <PackageVersion>1.0.0-preview.1</PackageVersion>
+    <Title>Runic Application project templates</Title>
+    <Description>dotnet new runic-app-* templates for Runic Desktop applications using React, Vue, Svelte, or Angular.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageType>Template</PackageType>
     <IncludeContentInPack>true</IncludeContentInPack>
@@ -12,6 +12,14 @@
     <ContentTargetFolders>content</ContentTargetFolders>
     <NoDefaultExcludes>true</NoDefaultExcludes>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <TemplatePackContentRoot>$(MSBuildProjectDirectory)/obj/template-pack-content/</TemplatePackContentRoot>
+    <RunicAssetsTemplateVersion Condition="'$(RunicAssetsTemplateVersion)' == ''">$(RunicAssetsPackageVersion)</RunicAssetsTemplateVersion>
+    <ApplicationBridgeTemplateVersion Condition="'$(ApplicationBridgeTemplateVersion)' == ''">1.0.0-preview.1</ApplicationBridgeTemplateVersion>
+    <RunicAngularTemplateVersion Condition="'$(RunicAngularTemplateVersion)' == ''">1.0.0-preview.1</RunicAngularTemplateVersion>
+    <RunicSvelteTemplateVersion Condition="'$(RunicSvelteTemplateVersion)' == ''">1.0.0-preview.1</RunicSvelteTemplateVersion>
+    <RunicViteTemplateVersion Condition="'$(RunicViteTemplateVersion)' == ''">1.0.0-preview.1</RunicViteTemplateVersion>
+    <RunicDesktopTemplateVersion Condition="'$(RunicDesktopTemplateVersion)' == ''">1.0.0-preview.1</RunicDesktopTemplateVersion>
+    <RunicDesktopNpmTemplateVersion Condition="'$(RunicDesktopNpmTemplateVersion)' == ''">1.0.0-preview.1</RunicDesktopNpmTemplateVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,4 +28,45 @@
              Exclude="content/**/bin/**/*;content/**/obj/**/*;content/**/node_modules/**/*;content/**/dist/**/*;content/**/.angular/**/*" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
+
+  <Target Name="PrepareTemplatePackContent" BeforeTargets="_GetPackageFiles">
+    <RemoveDir Directories="$(TemplatePackContentRoot)" />
+    <Copy SourceFiles="content/react/.template.config/template.json;content/vue/.template.config/template.json;content/svelte/.template.config/template.json;content/angular/.template.config/template.json"
+          DestinationFiles="$(TemplatePackContentRoot)react/.template.config/template.json;$(TemplatePackContentRoot)vue/.template.config/template.json;$(TemplatePackContentRoot)svelte/.template.config/template.json;$(TemplatePackContentRoot)angular/.template.config/template.json" />
+
+    <PropertyGroup>
+      <_ReactTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)react/.template.config/template.json'))</_ReactTemplateJson>
+      <_ReactStampedTemplateJson>$([System.String]::Copy('$(_ReactTemplateJson)').Replace('__RUNIC_APPLICATION_PACKAGE_VERSION__', '$(PackageVersion)').Replace('__RUNIC_ASSETS_PACKAGE_VERSION__', '$(RunicAssetsTemplateVersion)').Replace('__RUNIC_DESKTOP_PACKAGE_VERSION__', '$(RunicDesktopTemplateVersion)').Replace('__APPLICATION_BRIDGE_NPM_VERSION__', '$(ApplicationBridgeTemplateVersion)').Replace('__RUNIC_DESKTOP_NPM_VERSION__', '$(RunicDesktopNpmTemplateVersion)').Replace('__RUNIC_VITE_NPM_VERSION__', '$(RunicViteTemplateVersion)'))</_ReactStampedTemplateJson>
+      <_VueTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)vue/.template.config/template.json'))</_VueTemplateJson>
+      <_VueStampedTemplateJson>$([System.String]::Copy('$(_VueTemplateJson)').Replace('__RUNIC_APPLICATION_PACKAGE_VERSION__', '$(PackageVersion)').Replace('__RUNIC_ASSETS_PACKAGE_VERSION__', '$(RunicAssetsTemplateVersion)').Replace('__RUNIC_DESKTOP_PACKAGE_VERSION__', '$(RunicDesktopTemplateVersion)').Replace('__APPLICATION_BRIDGE_NPM_VERSION__', '$(ApplicationBridgeTemplateVersion)').Replace('__RUNIC_DESKTOP_NPM_VERSION__', '$(RunicDesktopNpmTemplateVersion)').Replace('__RUNIC_VITE_NPM_VERSION__', '$(RunicViteTemplateVersion)'))</_VueStampedTemplateJson>
+      <_SvelteTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)svelte/.template.config/template.json'))</_SvelteTemplateJson>
+      <_SvelteStampedTemplateJson>$([System.String]::Copy('$(_SvelteTemplateJson)').Replace('__RUNIC_APPLICATION_PACKAGE_VERSION__', '$(PackageVersion)').Replace('__RUNIC_ASSETS_PACKAGE_VERSION__', '$(RunicAssetsTemplateVersion)').Replace('__RUNIC_DESKTOP_PACKAGE_VERSION__', '$(RunicDesktopTemplateVersion)').Replace('__APPLICATION_BRIDGE_NPM_VERSION__', '$(ApplicationBridgeTemplateVersion)').Replace('__RUNIC_DESKTOP_NPM_VERSION__', '$(RunicDesktopNpmTemplateVersion)').Replace('__RUNIC_SVELTE_NPM_VERSION__', '$(RunicSvelteTemplateVersion)').Replace('__RUNIC_VITE_NPM_VERSION__', '$(RunicViteTemplateVersion)'))</_SvelteStampedTemplateJson>
+      <_AngularTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)angular/.template.config/template.json'))</_AngularTemplateJson>
+      <_AngularStampedTemplateJson>$([System.String]::Copy('$(_AngularTemplateJson)').Replace('__RUNIC_APPLICATION_PACKAGE_VERSION__', '$(PackageVersion)').Replace('__RUNIC_ASSETS_PACKAGE_VERSION__', '$(RunicAssetsTemplateVersion)').Replace('__RUNIC_DESKTOP_PACKAGE_VERSION__', '$(RunicDesktopTemplateVersion)').Replace('__APPLICATION_BRIDGE_NPM_VERSION__', '$(ApplicationBridgeTemplateVersion)').Replace('__RUNIC_DESKTOP_NPM_VERSION__', '$(RunicDesktopNpmTemplateVersion)').Replace('__RUNIC_ANGULAR_NPM_VERSION__', '$(RunicAngularTemplateVersion)'))</_AngularStampedTemplateJson>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(TemplatePackContentRoot)react/.template.config/template.json"
+                      Lines="$(_ReactStampedTemplateJson)"
+                      Overwrite="true" />
+    <WriteLinesToFile File="$(TemplatePackContentRoot)vue/.template.config/template.json"
+                      Lines="$(_VueStampedTemplateJson)"
+                      Overwrite="true" />
+    <WriteLinesToFile File="$(TemplatePackContentRoot)svelte/.template.config/template.json"
+                      Lines="$(_SvelteStampedTemplateJson)"
+                      Overwrite="true" />
+    <WriteLinesToFile File="$(TemplatePackContentRoot)angular/.template.config/template.json"
+                      Lines="$(_AngularStampedTemplateJson)"
+                      Overwrite="true" />
+
+    <ItemGroup>
+      <Content Remove="content/react/.template.config/template.json" />
+      <Content Remove="content/vue/.template.config/template.json" />
+      <Content Remove="content/svelte/.template.config/template.json" />
+      <Content Remove="content/angular/.template.config/template.json" />
+      <Content Remove="$(TemplatePackContentRoot)**/*" />
+      <Content Include="$(TemplatePackContentRoot)react/.template.config/template.json" Pack="true" PackagePath="content/content/react/.template.config/" />
+      <Content Include="$(TemplatePackContentRoot)vue/.template.config/template.json" Pack="true" PackagePath="content/content/vue/.template.config/" />
+      <Content Include="$(TemplatePackContentRoot)svelte/.template.config/template.json" Pack="true" PackagePath="content/content/svelte/.template.config/" />
+      <Content Include="$(TemplatePackContentRoot)angular/.template.config/template.json" Pack="true" PackagePath="content/content/angular/.template.config/" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -21,15 +21,14 @@ if (!new Set(["github", "public"]).has(suppliedRegistry)) {
 
 const root = resolve(import.meta.dirname, "..");
 const output = resolve(suppliedOutput);
-const commitResult = spawnSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
-if (commitResult.status !== 0 || !/^[0-9a-f]{40}$/iu.test(commitResult.stdout.trim())) {
-  console.error("Could not resolve the source Git commit.");
-  process.exit(1);
-}
-const repositoryCommit = commitResult.stdout.trim();
-const packages = ["application-bridge"];
+const packages = ["application-bridge", "angular"];
 const staging = mkdtempSync(join(tmpdir(), "runic-toolkit-npm-pack."));
 mkdirSync(output, { recursive: true });
+const revisionResult = spawnSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
+if (revisionResult.status !== 0) {
+  throw new Error("Could not resolve the source revision for npm package provenance.");
+}
+const revision = revisionResult.stdout.trim();
 
 try {
   for (const directory of packages) {
@@ -43,7 +42,12 @@ try {
     const packagePath = join(target, "package.json");
     const manifest = JSON.parse(readFileSync(packagePath, "utf8"));
     manifest.version = version;
-    manifest.gitHead = repositoryCommit;
+    manifest.gitHead = revision;
+    for (const field of ["dependencies", "optionalDependencies"]) {
+      for (const dependency of Object.keys(manifest[field] ?? {})) {
+        if (dependency.startsWith("@runic-artifex/")) manifest[field][dependency] = version;
+      }
+    }
     if (suppliedRegistry === "public") {
       manifest.publishConfig = {
         access: "public",
@@ -54,12 +58,13 @@ try {
     writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const result = spawnSync(
-      "npm",
+      process.platform === "win32" ? "npm.cmd" : "npm",
       ["pack", "--ignore-scripts", "--pack-destination", output],
       { cwd: target, encoding: "utf8", stdio: "pipe" },
     );
     if (result.status !== 0) {
-      process.stderr.write(result.stderr);
+      if (result.error) throw result.error;
+      process.stderr.write(result.stderr || result.stdout || "npm pack failed without diagnostic output.\n");
       process.exit(result.status ?? 1);
     }
     process.stdout.write(

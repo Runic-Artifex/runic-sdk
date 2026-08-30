@@ -12,151 +12,226 @@ export interface FrameChannel {
   close(reason: string): Promise<void>;
 }
 
-export interface CsWebUiGlobal {
-  readonly __runicToolkit_applicationBridge_send?: (frame: Uint8Array) => Promise<unknown>;
-  __runicToolkit_applicationBridge_receiveHostEvent?: (frame: Uint8Array) => void;
+/** A frame channel that can replace its physical connection while retaining its consumer. */
+export interface ReconnectableFrameChannel extends FrameChannel {
+  /** Establishes a fresh physical connection and resolves once it can send frames. */
+  reconnect(): Promise<void>;
 }
 
-export interface CsWebUiFrameChannelOptions {
-  /** Maximum time to wait for CS-WebUI to install its asynchronous native binding. */
-  readonly bindingTimeoutMs?: number;
-  /** How frequently to check for the binding while the page is booting. */
-  readonly bindingPollIntervalMs?: number;
-  /** One-time grace period after the binding appears while CS-WebUI finishes its response channel. */
-  readonly bindingSettleDelayMs?: number;
+/** Structural WebSocket surface shared by browser and standards-compliant Node runtimes. */
+export interface WebSocketFrameSocket {
+  readonly readyState: number;
+  binaryType: BinaryType;
+  send(data: ArrayBufferView): void;
+  close(code?: number, reason?: string): void;
+  addEventListener(type: "open" | "error" | "close", listener: EventListener): void;
+  addEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void;
+  removeEventListener(type: "open" | "error" | "close", listener: EventListener): void;
+  removeEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void;
 }
 
-const defaultBindingTimeoutMs = 10_000;
-const defaultBindingPollIntervalMs = 10;
-const defaultBindingSettleDelayMs = 25;
-const encoder = new TextEncoder();
+/** Creates one physical WebSocket connection on demand. */
+export type WebSocketFrameSocketFactory = () => WebSocketFrameSocket;
 
-export function createCsWebUiFrameChannel(
-  target: CsWebUiGlobal = globalThis as CsWebUiGlobal,
-  options: CsWebUiFrameChannelOptions = {},
-): FrameChannel {
-  const bindingTimeoutMs = positiveNumber(options.bindingTimeoutMs, defaultBindingTimeoutMs, "bindingTimeoutMs");
-  const bindingPollIntervalMs = positiveNumber(
-    options.bindingPollIntervalMs,
-    defaultBindingPollIntervalMs,
-    "bindingPollIntervalMs",
-  );
-  const bindingSettleDelayMs = nonNegativeNumber(
-    options.bindingSettleDelayMs,
-    defaultBindingSettleDelayMs,
-    "bindingSettleDelayMs",
-  );
-  const listeners = new Set<(event: FrameChannelEvent) => void>();
-  let state: FrameChannelState = "connected";
-  let senderPromise: Promise<(frame: Uint8Array) => Promise<unknown>> | undefined;
+/** Creates a reconnectable binary frame channel over injected standard WebSockets. */
+export function createWebSocketFrameChannel(factory: WebSocketFrameSocketFactory): ReconnectableFrameChannel {
+  return new WebSocketFrameChannel(factory);
+}
 
-  const publishOwnedFrame = (bytes: Uint8Array): void => {
-    for (const listener of listeners) listener({ _tag: "Frame", bytes });
-  };
-  const receiveHostEvent = (bytes: Uint8Array): void => {
-    publishOwnedFrame(new Uint8Array(bytes));
-  };
-  const receiveBindingResponse = (response: string | Uint8Array): void => {
-    // Forward the native result as one owned frame. The Effect runtime recognizes
-    // correlated batches and validates every envelope without a parse/stringify pass here.
-    if (typeof response === "string") publishOwnedFrame(encoder.encode(response));
-    else receiveHostEvent(response);
-  };
-  const installReceiver = (): void => {
-    if (state === "connected") {
-      target.__runicToolkit_applicationBridge_receiveHostEvent = receiveHostEvent;
+/** A paired, transport-neutral channel for conformance fixtures and adapter tests. */
+export interface InMemoryFrameChannelPair {
+  readonly client: FrameChannel;
+  readonly host: FrameChannel;
+}
+
+/**
+ * Creates a deterministic duplex frame transport. Frames are copied before
+ * delivery, so a test adapter has the same ownership boundary as a native one.
+ */
+export function createInMemoryFrameChannelPair(): InMemoryFrameChannelPair {
+  const client = new InMemoryFrameChannel();
+  const host = new InMemoryFrameChannel();
+  client.attach(host);
+  host.attach(client);
+  return { client, host };
+}
+
+class InMemoryFrameChannel implements FrameChannel {
+  private readonly listeners = new Set<(event: FrameChannelEvent) => void>();
+  private peer: InMemoryFrameChannel | undefined;
+  private currentState: FrameChannelState = "connected";
+
+  public get state(): FrameChannelState { return this.currentState; }
+
+  public attach(peer: InMemoryFrameChannel): void { this.peer = peer; }
+
+  public async send(bytes: Uint8Array): Promise<void> {
+    if (this.currentState !== "connected" || this.peer?.currentState !== "connected") {
+      throw new Error("The Application Bridge channel is not connected.");
     }
-  };
+    const owned = new Uint8Array(bytes);
+    queueMicrotask(() => this.peer?.publish({ _tag: "Frame", bytes: owned }));
+  }
 
-  const resolveSender = (): Promise<(frame: Uint8Array) => Promise<unknown>> => {
-    senderPromise ??= waitForSender(
-      target,
-      () => state,
-      bindingTimeoutMs,
-      bindingPollIntervalMs,
-    ).then(async () => {
-      if (bindingSettleDelayMs > 0) await delay(bindingSettleDelayMs);
-      installReceiver();
-      return waitForSender(
-        target,
-        () => state,
-        bindingTimeoutMs,
-        bindingPollIntervalMs,
-      );
-    }).catch((error: unknown) => {
-      senderPromise = undefined;
+  public subscribe(listener: (event: FrameChannelEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  public async close(_reason: string): Promise<void> {
+    if (this.currentState === "closed") return;
+    this.currentState = "closed";
+    this.publish({ _tag: "State", state: "closed" });
+    this.peer?.remoteClosed();
+    this.listeners.clear();
+  }
+
+  private remoteClosed(): void {
+    if (this.currentState === "closed") return;
+    this.currentState = "disconnected";
+    this.publish({ _tag: "State", state: "disconnected" });
+  }
+
+  private publish(event: FrameChannelEvent): void {
+    for (const listener of this.listeners) listener(event);
+  }
+}
+
+class WebSocketFrameChannel implements ReconnectableFrameChannel {
+  private readonly listeners = new Set<(event: FrameChannelEvent) => void>();
+  private currentState: FrameChannelState = "disconnected";
+  private socket: WebSocketFrameSocket | undefined;
+  private detach: (() => void) | undefined;
+  private reconnecting: Promise<void> | undefined;
+  private rejectReconnect: ((reason: unknown) => void) | undefined;
+  private generation = 0;
+
+  public constructor(private readonly factory: WebSocketFrameSocketFactory) {}
+
+  public get state(): FrameChannelState { return this.currentState; }
+
+  public async send(bytes: Uint8Array): Promise<void> {
+    if (this.currentState !== "connected" || this.socket === undefined) {
+      throw new Error("The Application Bridge channel is not connected.");
+    }
+    try {
+      this.socket.send(new Uint8Array(bytes));
+    } catch (error) {
+      this.disconnect();
       throw error;
-    });
-    return senderPromise;
-  };
-
-  installReceiver();
-  return {
-    get state() { return state; },
-    async send(bytes) {
-      if (state !== "connected") throw new Error("The Application Bridge channel is not connected.");
-      const sender = await resolveSender();
-      if (state !== "connected") throw new Error("The Application Bridge channel is not connected.");
-      const result = sender(new Uint8Array(bytes));
-      installReceiver();
-      const response = await result;
-      installReceiver();
-      if (typeof response === "string" && response.length > 0) {
-        receiveBindingResponse(response);
-      } else if (response instanceof Uint8Array && response.byteLength > 0) {
-        receiveBindingResponse(response);
-      }
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    async close() {
-      if (state === "closed") return;
-      state = "closed";
-      delete target.__runicToolkit_applicationBridge_receiveHostEvent;
-      for (const listener of listeners) listener({ _tag: "State", state });
-      listeners.clear();
-    },
-  };
-}
-
-async function waitForSender(
-  target: CsWebUiGlobal,
-  currentState: () => FrameChannelState,
-  bindingTimeoutMs: number,
-  bindingPollIntervalMs: number,
-): Promise<(frame: Uint8Array) => Promise<unknown>> {
-  const deadline = Date.now() + bindingTimeoutMs;
-  while (currentState() === "connected") {
-    const sender = target.__runicToolkit_applicationBridge_send;
-    if (sender !== undefined) return sender;
-    if (Date.now() >= deadline) {
-      throw new Error(
-        `The RunicToolkit Application Bridge native binding was unavailable after ${bindingTimeoutMs}ms.`,
-      );
     }
-    await delay(Math.min(bindingPollIntervalMs, Math.max(1, deadline - Date.now())));
   }
-  throw new Error("The Application Bridge channel is not connected.");
+
+  public subscribe(listener: (event: FrameChannelEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  public reconnect(): Promise<void> {
+    if (this.currentState === "closed") return Promise.reject(new Error("The Application Bridge channel is closed."));
+    if (this.reconnecting !== undefined) return this.reconnecting;
+    this.detach?.();
+    this.detach = undefined;
+    this.socket?.close(1000, "Application Bridge reconnect");
+    this.socket = undefined;
+    this.currentState = "disconnected";
+    const generation = ++this.generation;
+    let resolveReconnect!: () => void;
+    let rejectReconnect!: (reason: unknown) => void;
+    const attempt = new Promise<void>((resolve, reject) => { resolveReconnect = resolve; rejectReconnect = reject; });
+    this.reconnecting = attempt;
+    this.rejectReconnect = rejectReconnect;
+    const settled = (error?: unknown): void => {
+      if (generation !== this.generation || this.reconnecting !== attempt) return;
+      this.reconnecting = undefined;
+      this.rejectReconnect = undefined;
+      if (error === undefined) resolveReconnect();
+      else rejectReconnect(error);
+    };
+    let socket: WebSocketFrameSocket;
+    try {
+      socket = this.factory();
+      socket.binaryType = "arraybuffer";
+    } catch (error) {
+      settled(error);
+      return attempt;
+    }
+    const opened: EventListener = () => {
+      if (generation !== this.generation || this.currentState === "closed") return;
+      this.currentState = "connected";
+      this.publish({ _tag: "State", state: "connected" });
+      settled();
+    };
+    const failed: EventListener = () => {
+      if (generation !== this.generation) return;
+      this.disconnect();
+      settled(new Error("The Application Bridge WebSocket connection failed."));
+    };
+    const closed: EventListener = () => {
+      if (generation !== this.generation) return;
+      this.disconnect();
+      settled(new Error("The Application Bridge WebSocket connection closed."));
+    };
+    const message = (event: MessageEvent<unknown>): void => {
+      if (generation !== this.generation || this.currentState !== "connected") return;
+      const bytes = ownedBinaryFrame(event.data);
+      if (bytes === undefined) {
+        socket.close(1003, "Application Bridge requires binary frames");
+        this.disconnect();
+        return;
+      }
+      this.publish({ _tag: "Frame", bytes });
+    };
+    socket.addEventListener("open", opened);
+    socket.addEventListener("error", failed);
+    socket.addEventListener("close", closed);
+    socket.addEventListener("message", message);
+    this.socket = socket;
+    this.detach = () => {
+      socket.removeEventListener("open", opened);
+      socket.removeEventListener("error", failed);
+      socket.removeEventListener("close", closed);
+      socket.removeEventListener("message", message);
+    };
+    if (socket.readyState === 1) queueMicrotask(() => opened(new Event("open")));
+    else if (socket.readyState !== 0) queueMicrotask(() => failed(new Event("error")));
+    return attempt;
+  }
+
+  public async close(reason: string): Promise<void> {
+    if (this.currentState === "closed") return;
+    this.currentState = "closed";
+    this.generation++;
+    this.rejectReconnect?.(new Error("The Application Bridge channel is closed."));
+    this.rejectReconnect = undefined;
+    this.reconnecting = undefined;
+    this.detach?.();
+    this.detach = undefined;
+    this.socket?.close(1000, boundedCloseReason(reason));
+    this.socket = undefined;
+    this.publish({ _tag: "State", state: "closed" });
+    this.listeners.clear();
+  }
+
+  private disconnect(): void {
+    if (this.currentState === "closed" || this.currentState === "disconnected") return;
+    this.currentState = "disconnected";
+    this.publish({ _tag: "State", state: "disconnected" });
+  }
+
+  private publish(event: FrameChannelEvent): void {
+    for (const listener of this.listeners) listener(event);
+  }
 }
 
-function positiveNumber(value: number | undefined, fallback: number, name: string): number {
-  const resolved = value ?? fallback;
-  if (!Number.isFinite(resolved) || resolved <= 0) {
-    throw new RangeError(`${name} must be a positive finite number.`);
+function ownedBinaryFrame(value: unknown): Uint8Array | undefined {
+  if (value instanceof ArrayBuffer) return new Uint8Array(value.slice(0));
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
   }
-  return resolved;
+  return undefined;
 }
 
-function nonNegativeNumber(value: number | undefined, fallback: number, name: string): number {
-  const resolved = value ?? fallback;
-  if (!Number.isFinite(resolved) || resolved < 0) {
-    throw new RangeError(`${name} must be a non-negative finite number.`);
-  }
-  return resolved;
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function boundedCloseReason(reason: string): string {
+  return new TextDecoder().decode(new TextEncoder().encode(reason).slice(0, 123));
 }

@@ -27,13 +27,6 @@ $projects = Get-ChildItem -LiteralPath $testRoot -Filter '*.csproj' -Recurse -Fi
         [xml]$projectDocument = Get-Content -LiteralPath $_.FullName -Raw
         $outputTypes = @($projectDocument.Project.PropertyGroup.OutputType)
         $outputTypes -contains 'Exe'
-    } |
-    Where-Object {
-        # This is a separate environment gate. The native browser canary needs
-        # the pinned cs-webui library and Chromium.
-        $_.BaseName -notin @(
-            'RunicToolkit.Hosting.CsWebUi.NativeE2E'
-        )
     }
 
 if ($projects.Count -eq 0) {

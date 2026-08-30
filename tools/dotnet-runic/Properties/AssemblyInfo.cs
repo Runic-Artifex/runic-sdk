@@ -1,3 +1,3 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("RunicToolkit.DotNet.RunicToolkit.Tests")]
+[assembly: InternalsVisibleTo("Runic.Application.Tool.Tests")]
