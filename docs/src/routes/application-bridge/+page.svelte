@@ -2,6 +2,25 @@
   import ActionLink from '$lib/components/ActionLink.svelte';
   import ContentCard from '$lib/components/ContentCard.svelte';
   import Notice from '$lib/components/Notice.svelte';
+  import {
+    availabilityLabel,
+    catalogRows,
+    packageInstallCommand,
+    versionLabel,
+  } from '$lib/release-docs';
+
+  const bridgePackages = catalogRows.filter((entry) =>
+    [
+      'Runic.Application.Bridge',
+      '@runic-artifex/application-bridge',
+      '@runic-artifex/svelte',
+      '@runic-artifex/sveltekit',
+      '@runic-artifex/vite-plugin-runic',
+    ].includes(entry.name),
+  );
+  const bridgeVersionsArePending = bridgePackages.every(
+    (entry) => entry.version?.state === 'unassigned',
+  );
 </script>
 
 <svelte:head>
@@ -96,7 +115,7 @@
     </ContentCard>
     <ContentCard eyebrow="Layers" title="Change transports, not semantics">
       <p>
-        <code>CsWebUiApplicationBridgeLive</code>,
+        <code>ApplicationBridgeLive</code>,
         <code>MockApplicationBridge</code>, and fault-injection Layers expose
         the same semantics. Renderer code remains independent of the active
         transport.
@@ -137,9 +156,11 @@
         controller into Svelte 5 runes and context.
         <code>@runic-artifex/sveltekit</code>
         owns the static SPA adapter and native-host page options.
-        <code>@runic-artifex/vite-plugin-runic-toolkit</code>
+        <code>@runic-artifex/vite-plugin-runic</code>
         owns Toolkit development metadata, bounded inspection, and HMR resources.
-        The official
+        It is the canonical replacement for the legacy
+        <code>@runic-artifex/vite-plugin-runic-toolkit</code> source identity,
+        which remains listed only in the migration inventory. The official
         <code>@vitejs/devtools</code> plugin remains the DevTools host and is excluded
         from production output.
       </p>
@@ -150,27 +171,31 @@
     </ContentCard>
     <ContentCard
       eyebrow="Availability"
-      title="Install the published integrations"
+      title="Follow the assigned integration versions"
       full
     >
-      <Notice title="Available on NuGet and npm">
-        <p>Pin the exact preview versions for reproducible applications:</p>
+      <Notice
+        title={bridgeVersionsArePending
+          ? 'Release versions are currently unassigned'
+          : 'Use the recorded release versions'}
+      >
+        <p>
+          This list is generated from the release authority. Install commands
+          are shown only for entries with a published version.
+        </p>
         <ul>
-          <li>
-            Runic Toolkit <code>0.1.0-preview.30.1</code> — Available on NuGet and
-            npm
-          </li>
-          <li>
-            Runic Svelte <code>0.1.0-preview.14.1</code> — Available on npm
-          </li>
-          <li>
-            Runic Vite <code>0.1.0-preview.8.1</code> — Available on npm
-          </li>
+          {#each bridgePackages as entry (entry.name)}
+            <li>
+              <code>{entry.name}</code> —
+              <code>{versionLabel(entry.version)}</code>,
+              {availabilityLabel(entry.version)}
+              {#if packageInstallCommand(entry)}
+                <span>Install: <code>{packageInstallCommand(entry)}</code></span
+                >
+              {/if}
+            </li>
+          {/each}
         </ul>
-        <pre><code
-            >dotnet add package RunicToolkit.ApplicationBridge --version 0.1.0-preview.30.1
-npm install @runic-artifex/application-bridge@0.1.0-preview.30.1 @runic-artifex/svelte@0.1.0-preview.14.1 @runic-artifex/vite-plugin-runic-toolkit@0.1.0-preview.8.1</code
-          ></pre>
       </Notice>
     </ContentCard>
     <ContentCard

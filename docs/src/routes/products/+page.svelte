@@ -1,6 +1,6 @@
 <script lang="ts">
   import ProductCard from '$lib/components/ProductCard.svelte';
-  import { products } from '$lib/docs-data';
+  import { activeProducts } from '$lib/docs-data';
 </script>
 
 <svelte:head>
@@ -31,7 +31,7 @@
     </p>
   </section>
   <section class="shell product-grid section">
-    {#each products as product (product.slug)}
+    {#each activeProducts as product (product.slug)}
       <ProductCard
         {product}
         label={`Explore ${product.shortName}`}

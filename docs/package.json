@@ -7,10 +7,12 @@
   },
   "scripts": {
     "dev": "vite dev",
+    "generate:release-data": "node scripts/generate-release-data.mjs",
+    "check:release-data": "node scripts/generate-release-data.mjs --check",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "npm run build && node --test tests/*.test.mjs",
+    "test": "npm run check:release-data && npm run build && node --test tests/*.test.mjs",
     "lint": "prettier --check . && eslint ."
   },
   "devDependencies": {
