@@ -5,24 +5,44 @@ import { join } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type {
-  RunicToolkitRuntimeState,
-  RunicToolkitTraceEntry,
+  RunicDiagnosticEntry,
+  RunicDiagnosticDetail,
+  RunicDiagnosticSource,
+  RunicRuntimeState,
+  RunicTraceEntry,
 } from "./client.js";
+import { sanitizeDiagnosticSummary } from "./diagnostics.js";
 
 export type {
-  RunicToolkitDevtoolsObserver,
-  RunicToolkitRuntimeState,
-  RunicToolkitTraceEntry,
-  RunicToolkitTraceKind,
+  RunicDevtoolsObserver,
+  RunicDiagnosticDetail,
+  RunicDiagnosticDetailValue,
+  RunicDiagnosticEntry,
+  RunicDiagnosticReporter,
+  RunicDiagnosticSource,
+  RunicRuntimeState,
+  RunicTraceEntry,
+  RunicTraceKind,
 } from "./client.js";
 
-const virtualClientId = "virtual:runic-toolkit/client";
+const virtualClientId = "virtual:runic/client";
 const resolvedVirtualClientId = `\0${virtualClientId}`;
-const stateEvent = "runic-toolkit:state";
-const traceEvent = "runic-toolkit:trace";
-const stateKey = "runic-toolkit:state";
+const legacyVirtualClientId = "virtual:runic-toolkit/client";
+const stateEvent = "runic:state";
+const diagnosticEvent = "runic:diagnostic";
+const traceEvent = "runic:trace";
+const stateKey = "runic:state";
+const defaultTimelineLimit = 200;
+const maximumTimelineLimit = 500;
 
-export interface RunicToolkitViteOptions {
+export interface RunicVitePlugin extends Plugin {
+  /** Server-side input for display-safe companion diagnostics. */
+  readonly diagnostics: Readonly<{
+    report(entry: RunicDiagnosticEntry): void;
+  }>;
+}
+
+export interface RunicViteOptions {
   readonly contract?: Readonly<{
     identity?: string;
     version?: string;
@@ -31,9 +51,14 @@ export interface RunicToolkitViteOptions {
   readonly devtools?: boolean | "auto";
   readonly devtoolsVisibility?: "normal" | "passive" | "hidden";
   readonly maxTimelineEntries?: number;
+  /** Injects the Runic Desktop bootstrap without taking ownership of Vite or HMR. */
+  readonly desktop?: boolean | Readonly<{
+    /** Absolute development bootstrap URL; production uses the surface-relative default. */
+    bootstrapUrl?: string;
+  }>;
 }
 
-export interface RunicToolkitDevelopmentState {
+export interface RunicDevelopmentState {
   readonly contract: Readonly<{
     identity: string;
     version: string;
@@ -57,19 +82,21 @@ export interface RunicToolkitDevelopmentState {
     completed: number;
     total: number;
   }>[];
-  readonly timeline: readonly Readonly<Required<Pick<RunicToolkitTraceEntry, "id" | "timestamp" | "kind" | "label">> & {
-    detail: Readonly<Record<string, string | number | boolean | null>>;
+  readonly timeline: readonly Readonly<Required<Pick<RunicTraceEntry, "id" | "timestamp" | "kind" | "label">> & {
+    source?: RunicDiagnosticSource;
+    detail: RunicDiagnosticDetail;
   }>[];
 }
 
-export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
-  const maxTimelineEntries = options.maxTimelineEntries ?? 200;
-  let config: ResolvedConfig | undefined;
+export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
+  const maxTimelineEntries = timelineLimit(options.maxTimelineEntries);
   let server: ViteDevServer | undefined;
   let injectDevtoolsClient = false;
-  let sharedState: { mutate: (update: (draft: RunicToolkitDevelopmentState) => void) => void } | undefined;
+  let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
   let jsonRenderer: JsonRenderer | undefined;
   let state = initialState(options);
+  let nextDiagnosticSequence = 1;
+  const desktopBootstrapUrl = resolveDesktopBootstrapUrl(options.desktop);
 
   const publish = (): void => {
     sharedState?.mutate((draft) => Object.assign(draft, structuredClone(state)));
@@ -95,9 +122,18 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
     publish();
   };
 
-  const appendTrace = (candidate: unknown): void => {
-    const entry = sanitizeTrace(candidate);
-    if (!entry) return;
+  const appendDiagnostic = (
+    candidate: unknown,
+    defaultSource?: RunicDiagnosticSource,
+  ): void => {
+    const summary = sanitizeDiagnosticSummary(candidate, defaultSource);
+    if (!summary) return;
+    const entry: RunicDevelopmentState["timeline"][number] = {
+      ...summary,
+      id: `diagnostic-${nextDiagnosticSequence}`,
+      timestamp: new Date().toISOString(),
+    };
+    nextDiagnosticSequence += 1;
     state = {
       ...state,
       timeline: [...state.timeline, entry].slice(-maxTimelineEntries),
@@ -106,10 +142,34 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
   };
 
   return {
-    name: "runic-toolkit",
+    name: "runic",
     enforce: "pre",
+    config(config, environment) {
+      if (environment.command !== "build" || desktopBootstrapUrl === undefined) {
+        return undefined;
+      }
+      if (config.base !== undefined && config.base !== "./") {
+        throw new TypeError("desktop: true requires Vite base to be './' for relocatable surface output.");
+      }
+      return { base: "./" };
+    },
+    ...(desktopBootstrapUrl === undefined ? {} : {
+      transformIndexHtml: {
+        order: "post" as const,
+        handler: () => [{
+          tag: "script",
+          attrs: {
+            src: state.vite.command === "build" ? "./runic-desktop.js" : desktopBootstrapUrl,
+          },
+          injectTo: "head-prepend" as const,
+        }],
+      },
+    }),
+    diagnostics: { report: (entry) => appendDiagnostic(entry) },
     configResolved(resolved) {
-      config = resolved;
+      if (resolved.command === "build" && desktopBootstrapUrl !== undefined && resolved.base !== "./") {
+        throw new TypeError("desktop: true requires the resolved Vite base to be './' for relocatable surface output.");
+      }
       injectDevtoolsClient = resolved.command === "serve" &&
         resolveDevtoolsAvailability(resolved.root, options.devtools ?? "auto");
       state = {
@@ -120,8 +180,10 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
     configureServer(viteServer) {
       server = viteServer;
       viteServer.ws.on(stateEvent, (payload) => applyRuntimeState(payload));
-      viteServer.ws.on(traceEvent, (payload) => appendTrace(payload));
-      viteServer.middlewares.use("/__runic-toolkit/state", (_request, response) => {
+      viteServer.ws.on(diagnosticEvent, (payload) => appendDiagnostic(payload));
+      // Compatibility for the bridge-only event emitted by preview clients.
+      viteServer.ws.on(traceEvent, (payload) => appendDiagnostic(payload, "application-bridge"));
+      viteServer.middlewares.use("/__runic/state", (_request, response) => {
         response.statusCode = 200;
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
@@ -132,6 +194,11 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
       });
     },
     resolveId(id) {
+      if (id === legacyVirtualClientId) {
+        throw new Error(
+          'RUNICP001: "virtual:runic-toolkit/client" was removed in v0.2. Import "virtual:runic/client" instead.',
+        );
+      }
       return id === virtualClientId ? resolvedVirtualClientId : undefined;
     },
     load(id) {
@@ -139,7 +206,7 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
       const injector = injectDevtoolsClient
         ? `import ${JSON.stringify(devtoolsInjector(options.devtoolsVisibility ?? "passive"))};\n`
         : "";
-      return `${injector}export * from ${JSON.stringify("@runic-artifex/vite-plugin-runic-toolkit/client")};`;
+      return `${injector}export * from ${JSON.stringify("@runic-artifex/vite-plugin-runic/client")};`;
     },
     devtools: {
       async setup(context) {
@@ -147,15 +214,15 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
         const renderer = context.createJsonRenderer(createDevtoolsSpec(state));
         jsonRenderer = renderer;
         context.docks.register({
-          id: "runic-toolkit:overview",
-          title: "Runic Toolkit",
+          id: "runic:overview",
+          title: "Runic",
           icon: "ph:diamond-duotone",
           type: "json-render",
           ui: renderer,
         });
         context.commands.register({
-          id: "runic-toolkit:copy-diagnostic-state",
-          title: "Runic Toolkit: Copy sanitized diagnostic state",
+          id: "runic:copy-diagnostic-state",
+          title: "Runic: Copy sanitized diagnostic state",
           handler: () => JSON.stringify(state, null, 2),
         });
       },
@@ -163,7 +230,24 @@ export function runicToolkit(options: RunicToolkitViteOptions = {}): Plugin {
   };
 }
 
-function initialState(options: RunicToolkitViteOptions): RunicToolkitDevelopmentState {
+function resolveDesktopBootstrapUrl(
+  options: RunicViteOptions["desktop"],
+): string | undefined {
+  if (options === undefined || options === false) return undefined;
+  const candidate = options === true ? "./runic-desktop.js" : options.bootstrapUrl ?? "./runic-desktop.js";
+  if (candidate === "./runic-desktop.js") return candidate;
+  let url: URL;
+  try { url = new URL(candidate); }
+  catch { throw new TypeError("desktop.bootstrapUrl must be ./runic-desktop.js or an absolute HTTP(S) URL."); }
+  if ((url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username !== "" || url.password !== "" || url.pathname !== "/runic-desktop.js" ||
+      url.search !== "" || url.hash !== "") {
+    throw new TypeError("desktop.bootstrapUrl must be ./runic-desktop.js or an absolute HTTP(S) URL.");
+  }
+  return url.href;
+}
+
+function initialState(options: RunicViteOptions): RunicDevelopmentState {
   return {
     contract: {
       identity: cleanString(options.contract?.identity),
@@ -200,7 +284,7 @@ function devtoolsInjector(visibility: "normal" | "passive" | "hidden"): string {
     : `@vitejs/devtools/client/inject-${visibility}`;
 }
 
-function sanitizeRuntimeState(candidate: unknown): RunicToolkitRuntimeState {
+function sanitizeRuntimeState(candidate: unknown): RunicRuntimeState {
   if (!isRecord(candidate)) return {};
   const contract = isRecord(candidate.contract) ? {
     identity: cleanString(candidate.contract.identity),
@@ -214,7 +298,7 @@ function sanitizeRuntimeState(candidate: unknown): RunicToolkitRuntimeState {
     revision: finiteNumber(candidate.connection.revision),
     sequence: finiteNumber(candidate.connection.sequence),
   } : undefined;
-  const operations: RunicToolkitDevelopmentState["operations"] | undefined = Array.isArray(candidate.operations)
+  const operations: RunicDevelopmentState["operations"] | undefined = Array.isArray(candidate.operations)
     ? candidate.operations.slice(0, 64).flatMap((operation) => isRecord(operation) ? [{
         id: cleanString(operation.id),
         state: cleanString(operation.state),
@@ -229,34 +313,7 @@ function sanitizeRuntimeState(candidate: unknown): RunicToolkitRuntimeState {
   };
 }
 
-function sanitizeTrace(candidate: unknown): RunicToolkitDevelopmentState["timeline"][number] | undefined {
-  if (!isRecord(candidate)) return undefined;
-  const allowedKinds = new Set(["command", "receipt", "event", "operation", "connection", "error"]);
-  const kind = cleanString(candidate.kind);
-  const label = cleanString(candidate.label);
-  if (!allowedKinds.has(kind) || label.length === 0) return undefined;
-  return {
-    id: cleanString(candidate.id) || crypto.randomUUID(),
-    timestamp: cleanString(candidate.timestamp) || new Date().toISOString(),
-    kind: kind as RunicToolkitDevelopmentState["timeline"][number]["kind"],
-    label,
-    detail: sanitizeDetail(candidate.detail),
-  };
-}
-
-function sanitizeDetail(candidate: unknown): Readonly<Record<string, string | number | boolean | null>> {
-  if (!isRecord(candidate)) return {};
-  const output: Record<string, string | number | boolean | null> = {};
-  for (const [key, value] of Object.entries(candidate).slice(0, 32)) {
-    if (/token|secret|capability|password|path|frame|stack/iu.test(key)) continue;
-    if (typeof value === "string") output[key] = cleanString(value);
-    else if (typeof value === "number" && Number.isFinite(value)) output[key] = value;
-    else if (typeof value === "boolean" || value === null) output[key] = value;
-  }
-  return output;
-}
-
-function createDevtoolsSpec(current: RunicToolkitDevelopmentState): JsonRenderSpec {
+function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
   const recent = current.timeline.slice(-12).reverse();
   return {
     root: "root",
@@ -266,7 +323,7 @@ function createDevtoolsSpec(current: RunicToolkitDevelopmentState): JsonRenderSp
         props: { direction: "column", gap: 12 },
         children: ["heading", "connection", "contract", "operations", "timeline"],
       },
-      heading: { type: "Text", props: { content: "Runic Toolkit", variant: "heading" } },
+      heading: { type: "Text", props: { content: "Runic", variant: "heading" } },
       connection: {
         type: "KeyValueTable",
         props: {
@@ -310,7 +367,7 @@ function createDevtoolsSpec(current: RunicToolkitDevelopmentState): JsonRenderSp
           entries: recent.length === 0
             ? [{ key: "Events", value: "none" }]
             : recent.map((entry) => ({
-                key: `${entry.kind} · ${entry.timestamp}`,
+                key: `${entry.source} · ${entry.kind} · ${entry.timestamp || entry.id}`,
                 value: entry.label,
               })),
         },
@@ -323,6 +380,11 @@ function connectionState(value: unknown): "connecting" | "connected" | "disconne
   return value === "connecting" || value === "connected" || value === "closed"
     ? value
     : "disconnected";
+}
+
+function timelineLimit(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return defaultTimelineLimit;
+  return Math.min(maximumTimelineLimit, Math.max(1, Math.floor(value)));
 }
 
 function cleanString(value: unknown): string {

@@ -1,9 +1,9 @@
 # Releasing Runic Vite
 
 The `Public release` workflow builds and validates
-`@runic-artifex/vite-plugin-runic-toolkit`. Every dispatch requires an explicit
+`@runic-artifex/vite-plugin-runic`. Every dispatch requires an explicit
 exact version. The next planned private candidate is
-`0.1.0-preview.8.1`; this is a planning value, not a claim that the candidate
+`1.0.0-preview.1`; this is a planning value, not a claim that the candidate
 has been verified or published.
 
 Run a verify-only dispatch first and retain its tarball and `SHA256SUMS`.
@@ -18,7 +18,7 @@ Before the first public release:
    `NPM_BOOTSTRAP_TOKEN`, limited to the `@runic-artifex` scope, and publish the
    first version with `npm_bootstrap` enabled;
 3. configure npm trusted publishing for
-   `@runic-artifex/vite-plugin-runic-toolkit`, using this repository,
+   `@runic-artifex/vite-plugin-runic`, using this repository,
    workflow filename `public-release.yml`, environment `public-release`, and
    the `npm publish` allowed action;
 4. delete `NPM_BOOTSTRAP_TOKEN`; all later releases use OIDC with

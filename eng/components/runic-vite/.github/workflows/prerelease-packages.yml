@@ -19,11 +19,12 @@ permissions:
   contents: read
 
 env:
-  PACKAGE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || format('0.1.0-preview.{0}.{1}', github.run_number, github.run_attempt) }}
+  PACKAGE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || format('1.0.0-preview.{0}.{1}', github.run_number, github.run_attempt) }}
 
 jobs:
   package:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -45,6 +46,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
     needs: package
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: write

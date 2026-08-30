@@ -1,20 +1,20 @@
-export type RunicToolkitTraceKind =
-  | "command"
-  | "receipt"
-  | "event"
-  | "operation"
-  | "connection"
-  | "error";
+import {
+  sanitizeDiagnosticSummary,
+  type RunicDiagnosticEntry,
+  type RunicDiagnosticSource,
+  type RunicTraceEntry,
+} from "./diagnostics.js";
 
-export interface RunicToolkitTraceEntry {
-  readonly id?: string;
-  readonly timestamp?: string;
-  readonly kind: RunicToolkitTraceKind;
-  readonly label: string;
-  readonly detail?: Readonly<Record<string, unknown>>;
-}
+export type {
+  RunicDiagnosticDetail,
+  RunicDiagnosticDetailValue,
+  RunicDiagnosticEntry,
+  RunicDiagnosticSource,
+  RunicTraceEntry,
+  RunicTraceKind,
+} from "./diagnostics.js";
 
-export interface RunicToolkitRuntimeState {
+export interface RunicRuntimeState {
   readonly contract?: Readonly<{
     identity?: string;
     version?: string;
@@ -35,9 +35,14 @@ export interface RunicToolkitRuntimeState {
   }>[];
 }
 
-export interface RunicToolkitDevtoolsObserver {
-  readonly state: (state: RunicToolkitRuntimeState) => void;
-  readonly trace: (entry: RunicToolkitTraceEntry) => void;
+export interface RunicDevtoolsObserver {
+  readonly state: (state: RunicRuntimeState) => void;
+  readonly trace: (entry: RunicTraceEntry) => void;
+  readonly diagnostic?: (entry: Omit<RunicDiagnosticEntry, "source">) => void;
+}
+
+export interface RunicDiagnosticReporter {
+  readonly report: (entry: Omit<RunicDiagnosticEntry, "source">) => void;
 }
 
 interface ViteHotContextLike {
@@ -52,33 +57,56 @@ interface ImportMetaWithHot extends ImportMeta {
 }
 
 const hot = (import.meta as ImportMetaWithHot).hot;
-const resourcesKey = "runicToolkit:resources";
+const resourcesKey = "runic:resources";
+const diagnosticEvent = "runic:diagnostic";
 const resources = (hot?.data[resourcesKey] as Map<string, unknown> | undefined) ?? new Map<string, unknown>();
 if (hot) hot.data[resourcesKey] = resources;
 
-export function reportRunicToolkitState(state: RunicToolkitRuntimeState): void {
-  hot?.send("runic-toolkit:state", state);
+export function reportRunicState(state: RunicRuntimeState): void {
+  hot?.send("runic:state", state);
 }
 
-export function traceRunicToolkitEvent(entry: RunicToolkitTraceEntry): void {
-  hot?.send("runic-toolkit:trace", entry);
+export function traceRunicEvent(entry: RunicTraceEntry): void {
+  sendDiagnostic({ ...entry, source: "application-bridge" });
 }
 
-export function createRunicToolkitDevtoolsObserver(): RunicToolkitDevtoolsObserver {
+/**
+ * Reports a display-safe summary from an authoritative Runic subsystem.
+ * This intentionally accepts no subsystem state or artifact model.
+ */
+export function reportRunicDiagnostic(entry: RunicDiagnosticEntry): void {
+  sendDiagnostic(entry);
+}
+
+function sendDiagnostic(candidate: unknown): void {
+  const summary = sanitizeDiagnosticSummary(candidate);
+  if (summary) hot?.send(diagnosticEvent, summary);
+}
+
+export function createRunicDiagnosticReporter(
+  source: RunicDiagnosticSource,
+): RunicDiagnosticReporter {
   return {
-    state: reportRunicToolkitState,
-    trace: traceRunicToolkitEvent,
+    report: (entry) => reportRunicDiagnostic({ ...entry, source }),
   };
 }
 
-export function preserveRunicToolkitHmrResource<T>(key: string, create: () => T): T {
+export function createRunicDevtoolsObserver(): RunicDevtoolsObserver {
+  return {
+    state: reportRunicState,
+    trace: traceRunicEvent,
+    diagnostic: createRunicDiagnosticReporter("application-bridge").report,
+  };
+}
+
+export function preserveRunicHmrResource<T>(key: string, create: () => T): T {
   if (resources.has(key)) return resources.get(key) as T;
   const resource = create();
   resources.set(key, resource);
   return resource;
 }
 
-export async function disposeRunicToolkitHmrResource(
+export async function disposeRunicHmrResource(
   key: string,
   dispose: (resource: unknown) => void | Promise<void> = defaultDispose,
 ): Promise<void> {
@@ -94,8 +122,7 @@ async function defaultDispose(resource: unknown): Promise<void> {
   if (typeof dispose === "function") await dispose.call(resource);
 }
 
-hot?.on("runic-toolkit:state", () => undefined);
+hot?.on("runic:state", () => undefined);
 hot?.prune(async () => {
-  for (const key of [...resources.keys()]) await disposeRunicToolkitHmrResource(key);
+  for (const key of [...resources.keys()]) await disposeRunicHmrResource(key);
 });
-
