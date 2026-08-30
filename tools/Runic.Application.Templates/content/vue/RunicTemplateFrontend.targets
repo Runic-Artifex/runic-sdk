@@ -1,0 +1,37 @@
+<Project>
+  <PropertyGroup>
+    <RunicTemplateFrontendBuild Condition="'$(RunicTemplateFrontendBuild)' == '' and '$(RunicToolkitFrontendBuild)' != 'false'">true</RunicTemplateFrontendBuild>
+    <_RunicTemplateFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</_RunicTemplateFrontendDirectory>
+    <_RunicTemplateFrontendBuildStamp>$(IntermediateOutputPath)runic-frontend.build.stamp</_RunicTemplateFrontendBuildStamp>
+    <_RunicTemplateNpm Condition="'$(OS)' == 'Windows_NT'">npm.cmd</_RunicTemplateNpm>
+    <_RunicTemplateNpm Condition="'$(_RunicTemplateNpm)' == ''">npm</_RunicTemplateNpm>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/package.json;$(_RunicTemplateFrontendDirectory)/package-lock.json;$(_RunicTemplateFrontendDirectory)/.npmrc" />
+    <_RunicTemplateFrontendBuildInput Include="$(_RunicTemplateFrontendDirectory)/src/**/*;$(_RunicTemplateFrontendDirectory)/*index.html;$(_RunicTemplateFrontendDirectory)/vite.config.*;$(_RunicTemplateFrontendDirectory)/angular*.json;$(_RunicTemplateFrontendDirectory)/tsconfig*.json" />
+  </ItemGroup>
+
+  <Target Name="RunicTemplateFrontendInstall"
+          BeforeTargets="RunicTemplateFrontendBuild"
+          Condition="'$(RunicTemplateFrontendBuild)' == 'true'"
+          Inputs="@(_RunicTemplateFrontendInstallInput)"
+          Outputs="$(_RunicTemplateFrontendDirectory)/node_modules/.package-lock.json">
+    <Error Condition="!Exists('$(_RunicTemplateFrontendDirectory)/package-lock.json')"
+           Text="The generated frontend lock file is missing. Restore it from source control, then run dotnet runic doctor for the exact package-train prerequisite." />
+    <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
+          Command="&quot;$(_RunicTemplateNpm)&quot; ci --ignore-scripts" />
+  </Target>
+
+  <Target Name="RunicTemplateFrontendBuild"
+          BeforeTargets="RunicAssetsPackFileSystem"
+          DependsOnTargets="RunicTemplateFrontendInstall"
+          Condition="'$(RunicTemplateFrontendBuild)' == 'true'"
+          Inputs="@(_RunicTemplateFrontendInstallInput);@(_RunicTemplateFrontendBuildInput)"
+          Outputs="$(_RunicTemplateFrontendBuildStamp)">
+    <Message Importance="high" Text="[runic] Building managed frontend assets." />
+    <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
+          Command="&quot;$(_RunicTemplateNpm)&quot; run build" />
+    <Touch Files="$(_RunicTemplateFrontendBuildStamp)" AlwaysCreate="true" />
+  </Target>
+</Project>

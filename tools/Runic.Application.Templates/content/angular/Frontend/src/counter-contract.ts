@@ -21,6 +21,7 @@ export const CounterEvent = Schema.TaggedStruct("CounterChanged", { snapshot: Co
 export const CounterContract = defineApplicationContract({
   identity: "runic.artifex.counter",
   version: 1,
+  fingerprint: "4e873f5967e86eeded5e26d8faf27c305464f1272b90935cc8a1b09365471508",
   command: CounterCommand,
   receipt: CounterReceipt,
   event: CounterEvent,

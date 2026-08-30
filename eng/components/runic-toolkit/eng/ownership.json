@@ -1,15 +1,30 @@
 {
   "schemaVersion": 1,
   "allowedProjectReferences": [
-    { "from": "desktop", "to": "hosting", "reason": "Desktop contract tests exercise the production CS-WebUI application adapter." },
-    { "from": "hosting", "to": "desktop", "reason": "Hosting abstractions and the CS-WebUI application adapter consume framework-neutral desktop contracts." },
-    { "from": "hosting", "to": "application-bridge", "reason": "The CS-WebUI transport hosts framework-neutral Application Bridge sessions." }
+    { "from": "application", "to": "application-bridge", "reason": "Runic Desktop and local hosting transport framework-neutral Application Bridge sessions." }
   ],
   "tasks": [
-    { "name": "collections", "branch": "work/collections", "paths": ["src/RunicToolkit.Collections/*", "tests/RunicToolkit.Collections.*/*", "benchmarks/RunicToolkit.Collections.*/*"] },
-    { "name": "desktop", "branch": "work/desktop", "paths": ["src/RunicToolkit.Desktop/*", "tests/RunicToolkit.Desktop.*/*"] },
-    { "name": "application-bridge", "branch": "work/application-bridge", "paths": ["protocol/application-bridge/*", "src/RunicToolkit.ApplicationBridge*/*", "tests/RunicToolkit.ApplicationBridge.*/*"] },
-    { "name": "hosting", "branch": "work/hosting", "paths": ["src/RunicToolkit.Hosting*/*", "tests/RunicToolkit.Hosting.*/*", "tests/Fixtures/Hosting.*/*", "tools/dotnet-runic-toolkit/*", "tests/RunicToolkit.DotNet.RunicToolkit.Tests/*", "tests/RunicToolkit.PackageCanary/*"] },
+    {
+      "name": "application",
+      "branch": "work/application",
+      "paths": [
+        "src/Runic.Application/*",
+        "src/Runic.Application.Generators/*",
+        "src/Runic.Application.Hosting/*",
+        "src/Runic.Application.Desktop/*",
+        "src/Runic.Application.Testing/*",
+        "tests/Runic.Application.Tests/*",
+        "tests/Runic.Application.AotSmoke/*",
+        "tests/Runic.Application.Hosting.Tests/*",
+        "tests/Runic.Application.Hosting.AotSmoke/*",
+        "tests/Runic.Application.Desktop.Tests/*",
+        "tests/Runic.Application.PackageConsumer/*",
+        "tools/dotnet-runic-toolkit/*",
+        "tests/RunicToolkit.DotNet.RunicToolkit.Tests/*",
+        "tests/RunicToolkit.PackageCanary/*"
+      ]
+    },
+    { "name": "application-bridge", "branch": "work/application-bridge", "paths": ["protocol/application-bridge/*", "src/Runic.Application.Bridge*/*", "tests/Runic.Application.Bridge.*/*"] },
     { "name": "templates", "branch": "work/templates", "paths": ["templates/RunicToolkit.Templates/*"] }
   ]
 }

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>Runic.Application.Bridge</AssemblyName>
+    <RootNamespace>Runic.Application.Bridge</RootNamespace>
+    <PackageId>Runic.Application.Bridge</PackageId>
+    <Description>Schema-first, reflection-free application protocol and session runtime for Runic Application.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Runic.Application.Bridge.Generators\Runic.Application.Bridge.Generators.csproj"
+                      PrivateAssets="all"
+                      ReferenceOutputAssembly="false" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="PUBLIC-API.md" Pack="true" PackagePath="docs/" />
+    <None Include="..\Runic.Application.Bridge.Generators\bin\$(Configuration)\$(RunicToolkitGeneratorTargetFramework)\Runic.Application.Bridge.Generators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,54 @@
+{
+  "name": "@runic-artifex/angular",
+  "version": "1.0.0-preview.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
+    "directory": "web/packages/angular"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Angular DI and signal adapter for the Runic Application Bridge.",
+  "homepage": "https://github.com/Runic-Artifex/runic-toolkit/tree/main/web/packages/angular",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
+  },
+  "keywords": ["runic-artifex", "angular", "application-bridge", "signals", "desktop"],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/esm/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "default": "./dist/esm/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "scripts": {
+    "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });\"",
+    "build": "npm run clean && tsc --project tsconfig.json",
+    "test": "npm run build && node --test --experimental-strip-types \"test/**/*.test.ts\"",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@runic-artifex/application-bridge": ">=1.0.0-preview.1 <2"
+  },
+  "peerDependencies": {
+    "@angular/core": ">=20.3.26 <23"
+  },
+  "devDependencies": {
+    "@angular/compiler": "22.0.8",
+    "@angular/compiler-cli": "22.0.8",
+    "@angular/core": "22.0.8",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,7 +1,7 @@
-using RunicToolkit.ApplicationBridge;
-using RunicToolkitStarter.Contract;
+using Runic.Application.Bridge;
+using Runic.Application.Template.Contract;
 
-namespace RunicToolkitStarter;
+namespace RunicDesktopApp;
 
 internal sealed class CounterBridgeHandler : ICounterBridgeHandler
 {

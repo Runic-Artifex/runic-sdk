@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Runic Application Bridge browser smoke</title>
+<body data-result="pending" data-error="">
+  <output id="view">Connecting</output>
+  <output id="refresh">Waiting for refresh</output>
+  <script type="module">
+    import { createWebSocketFrameChannel } from "/application-bridge/transport.js";
+
+    const protocol = "runic.test";
+    const fingerprint = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const text = new TextEncoder();
+    const decode = new TextDecoder("utf-8", { fatal: true });
+    const body = document.body;
+    const view = document.querySelector("#view");
+    const refresh = document.querySelector("#refresh");
+    let epoch = 0;
+    let sequence = 0;
+    let revision = 0;
+    let sessionId;
+    let navigationDelivered = false;
+    let navigationStarted = false;
+    let snapshotReady = false;
+    let refreshTriggered = false;
+    let refreshDelivered = false;
+    let refreshStage = "initial";
+    const channel = createWebSocketFrameChannel(() => new WebSocket(`ws://${location.host}/bridge`));
+
+    const fail = (message) => {
+      body.dataset.result = "fail";
+      body.dataset.error = message;
+      view.textContent = message;
+    };
+    const command = (kind, payload, extra = {}) => ({
+      protocol, version: 1, contractFingerprint: fingerprint, connectionEpoch: epoch,
+      kind, commandId: crypto.randomUUID(), payload, ...extra,
+    });
+    const send = (message) => channel.send(text.encode(JSON.stringify(message)));
+    const initialize = () => send(command("initialize", { _tag: "InitializeApplication" }));
+    const triggerRefresh = async () => {
+      const response = await fetch("/test/refresh", { method: "POST" });
+      if (!response.ok) throw new Error("The refresh test endpoint rejected the request.");
+    };
+    const reconnect = () => {
+      epoch = 1;
+      sequence = 0;
+      channel.reconnect().then(initialize).catch((error) => fail(String(error)));
+    };
+    const startRefreshIfReady = () => {
+      if (navigationDelivered && refreshStage === "ready" && !refreshTriggered) {
+        refreshTriggered = true;
+        refreshStage = "refresh";
+        triggerRefresh().catch((error) => fail(error instanceof Error ? error.message : String(error)));
+      }
+    };
+    const startNavigationIfReady = () => {
+      if (snapshotReady && refreshStage === "ready" && !navigationStarted) {
+        navigationStarted = true;
+        send(command("dispatch", { _tag: "Navigate" }, { sessionId, expectedRevision: revision })).catch((error) => fail(String(error)));
+      }
+    };
+
+    channel.subscribe((event) => {
+      if (event._tag !== "Frame") return;
+      try {
+        const envelope = JSON.parse(decode.decode(event.bytes));
+        if (envelope.protocol !== protocol || envelope.version !== 1 || envelope.contractFingerprint !== fingerprint) {
+          fail("The browser received an incompatible bridge envelope.");
+          return;
+        }
+        if (envelope.connectionEpoch !== epoch || envelope.sequence !== sequence + 1) {
+          fail("The browser received a stale or out-of-order bridge envelope.");
+          return;
+        }
+        sequence = envelope.sequence;
+        revision = envelope.revision;
+        sessionId = envelope.sessionId;
+        if (envelope.kind === "snapshot") {
+          if (envelope.payload?.revision !== 0 || envelope.payload.view !== "Welcome") {
+            fail("The browser did not receive the authoritative snapshot.");
+            return;
+          }
+          if (epoch === 0) {
+            snapshotReady = true;
+            startNavigationIfReady();
+          } else if (navigationDelivered && refreshDelivered) {
+            body.dataset.result = "pass";
+            view.textContent = "Reconnected";
+            refreshStage = "completed";
+          }
+          return;
+        }
+        if (envelope.kind === "event") {
+          if (refreshStage === "completed") return;
+          if (envelope.payload?._tag === "NavigationChanged") {
+            if (envelope.payload.view !== "Complete") {
+              fail("The browser did not receive the navigation event.");
+              return;
+            }
+            navigationDelivered = true;
+            view.textContent = envelope.payload.view;
+            startRefreshIfReady();
+            return;
+          }
+          if (envelope.payload?._tag === "AssetSourceChanged") {
+            if (refreshDelivered || (refreshStage !== "initial" && refreshStage !== "refresh")) {
+              fail("The browser received an out-of-order asset refresh event.");
+              return;
+            }
+            if (envelope.payload.manifestVersion !== "runic.assets/1" || envelope.payload.entryPointPath !== "app.html" || envelope.payload.manifestFingerprint !== "5665ede1341e0b30d3fc4008d093ef2126bcda2edc890a2651a503ec438e852f") {
+              fail("The browser received an invalid asset refresh payload.");
+              return;
+            }
+            refreshStage = refreshStage === "initial" ? "initial-asset" : "refresh-asset";
+            refresh.textContent = "Asset refresh observed";
+            return;
+          }
+          if (envelope.payload?._tag === "TranslationLocaleChanged") {
+            if (refreshStage !== "initial-asset" && refreshStage !== "refresh-asset") {
+              fail("The browser received an out-of-order translation refresh event.");
+              return;
+            }
+            const replay = refreshStage === "initial-asset";
+            if (envelope.payload.catalog !== "test" || envelope.payload.oldLocale !== "en" || envelope.payload.newLocale !== (replay ? "en" : "de")) {
+              fail("The browser received an invalid translation refresh payload.");
+              return;
+            }
+            if (replay) {
+              refreshStage = "ready";
+              startNavigationIfReady();
+              startRefreshIfReady();
+            } else {
+              refreshDelivered = true;
+              body.dataset.refresh = "pass";
+              refresh.textContent = "Refresh events observed";
+              reconnect();
+            }
+            return;
+          }
+          fail("The browser received an unexpected bridge event.");
+        }
+      } catch (error) {
+        fail(error instanceof Error ? error.message : String(error));
+      }
+    });
+
+    channel.reconnect().then(initialize).catch((error) => fail(String(error)));
+  </script>
+</body>

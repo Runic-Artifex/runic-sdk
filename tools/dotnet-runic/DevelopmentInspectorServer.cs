@@ -10,7 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 /// <summary>
 /// Receives payload-free browser inspector events on a random loopback URL and

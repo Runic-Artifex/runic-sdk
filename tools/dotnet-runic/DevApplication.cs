@@ -4,21 +4,15 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal static class DevApplication
 {
     internal static async Task<int> RunAsync(
-        string[] arguments,
+        DevOptions options,
         CancellationToken cancellationToken)
     {
-        if (DevOptions.RequestsHelp(arguments))
-        {
-            WriteHelp();
-            return Program.Success;
-        }
-
-        DevOptions options = DevOptions.Parse(arguments);
+        ArgumentNullException.ThrowIfNull(options);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnetHost = ResolveDotNetHost();
         DevProjectConfiguration configuration;
@@ -52,6 +46,11 @@ internal static class DevApplication
             {
                 await GenerateAndVerifyContractsAsync(configuration, stop.Token)
                     .ConfigureAwait(false);
+            }
+
+            if (configuration.NodeEnabled)
+            {
+                await BuildCanonicalFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
             }
 
             await BuildAsync(dotnetHost, configuration, options, stop.Token)
@@ -115,12 +114,9 @@ internal static class DevApplication
                 ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
                 : null;
 
-        Task assetMonitor =
-            useDevelopmentServer
-            || !options.WatchFrontend
-            || !configuration.HasFrontendWatcher
-            ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
-            : StartAssetMonitor(configuration, host, cancellationToken);
+        // Runic Assets owns archive refresh. Phase 1 has no parallel legacy
+        // manifest/mirror watcher.
+        Task assetMonitor = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         Task contractMonitor = options.GenerateContracts && configuration.HasContracts
             ? FilePoller.WatchAsync(
                 configuration.ContractSource,
@@ -199,7 +195,7 @@ internal static class DevApplication
             return exitCode;
         }
 
-        Program.WriteError(
+        throw new DevDevelopmentException(
             "RTKDEV1007",
             completed == host.Completion
                 ? $"The CS-WebUI host watcher exited unexpectedly with code {exitCode}."
@@ -207,7 +203,32 @@ internal static class DevApplication
                     ? $"The {configuration.DevelopmentServerKind} development server " +
                       $"exited unexpectedly with code {exitCode}."
                     : $"The frontend watcher exited unexpectedly with code {exitCode}.");
-        return Program.DevelopmentFailure;
+    }
+
+    private static async Task BuildCanonicalFrontendAsync(
+        DevProjectConfiguration configuration,
+        bool installDependencies,
+        CancellationToken cancellationToken)
+    {
+        using PhaseTimer phase = PhaseTimer.Start("Installing and building Runic Assets frontend");
+        if (installDependencies)
+        {
+            await RequireSuccessAsync(
+                "npm",
+                configuration.FrontendPackageDirectory,
+                ["ci", "--ignore-scripts"],
+                "RTKDEV1006",
+                "The Runic Assets frontend dependency restore failed. Run 'dotnet runic doctor' to verify the committed lock file and exact package train.",
+                cancellationToken).ConfigureAwait(false);
+        }
+        await RequireSuccessAsync(
+            "npm",
+            configuration.FrontendPackageDirectory,
+            ["run", "build"],
+            "RTKDEV1006",
+            "The Runic Assets frontend build failed.",
+            cancellationToken).ConfigureAwait(false);
+        phase.Complete();
     }
 
     private static async Task<IFrontendDevelopmentServer> StartDevelopmentServerAsync(
@@ -254,36 +275,6 @@ internal static class DevApplication
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static Task StartAssetMonitor(
-        DevProjectConfiguration configuration,
-        HostProcessController host,
-        CancellationToken cancellationToken)
-    {
-        string reloadManifest = Path.Combine(
-            configuration.FrontendOutputDirectory,
-            "runic-toolkit.assets.json");
-        if (!File.Exists(reloadManifest))
-        {
-            throw new DevDevelopmentException(
-                "RTKDEV1006",
-                $"The frontend build did not emit reload manifest '{reloadManifest}'.");
-        }
-
-        var mirror = new AssetMirror(
-            configuration.FrontendOutputDirectory,
-            configuration.RuntimeWebRoot);
-        return FilePoller.WatchAsync(
-            reloadManifest,
-            async token =>
-            {
-                int changed = mirror.Synchronize();
-                Console.WriteLine(
-                    $"[dev] Frontend build completed; synchronized {changed} asset(s).");
-                await host.RestartAsync(token).ConfigureAwait(false);
-            },
-            cancellationToken);
-    }
-
     private static RunningProcess StartFrontendWatcher(
         string dotnetHost,
         DevProjectConfiguration configuration,
@@ -311,7 +302,9 @@ internal static class DevApplication
                 "frontend",
                 "npm",
                 configuration.WorkspaceRoot,
-                ["run", "dev", "--workspace", configuration.Workspace]);
+                configuration.Workspace == "."
+                    ? ["run", "dev"]
+                    : ["run", "dev", "--workspace", configuration.Workspace]);
         }
 
         throw new InvalidOperationException("No frontend watcher is configured.");
@@ -334,7 +327,7 @@ internal static class DevApplication
             configuration.ProjectDirectory,
             arguments,
             "RTKDEV1006",
-            $"Initial build failed. Run 'dotnet runic-toolkit doctor \"{configuration.ProjectPath}\"' to inspect prerequisites.",
+            $"Initial build failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect prerequisites.",
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
     }
@@ -391,7 +384,7 @@ internal static class DevApplication
             configuration.WorkspaceRoot,
             commonArguments,
             "RTKDEV1006",
-            $"Contract generation failed. Run 'dotnet runic-toolkit doctor \"{configuration.ProjectPath}\"' to inspect the configured toolchain.",
+            $"Contract generation failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect the configured toolchain.",
             cancellationToken).ConfigureAwait(false);
 
         var verifyArguments = new List<string>(commonArguments) { "--verify" };
@@ -400,7 +393,7 @@ internal static class DevApplication
             configuration.WorkspaceRoot,
             verifyArguments,
             "RTKDEV1006",
-            $"Generated contract verification failed. Run 'dotnet runic-toolkit doctor \"{configuration.ProjectPath}\"' to inspect stale outputs.",
+            $"Generated contract verification failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect stale outputs.",
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
     }
@@ -480,9 +473,9 @@ internal static class DevApplication
         Console.WriteLine(
             """
             Usage:
-              dotnet runic-toolkit dev [PROJECT] [options] [-- APPLICATION_ARGUMENTS]
-              dotnet runic-toolkit doctor [PROJECT]
-              dotnet runic-toolkit inspect [PROJECT] --artifact manifest
+              dotnet runic dev [PROJECT] [options] [-- APPLICATION_ARGUMENTS]
+              dotnet runic doctor [PROJECT]
+              dotnet runic inspect [PROJECT] --artifact manifest
 
             Options:
               --project PATH          Select a .csproj or a directory containing one.

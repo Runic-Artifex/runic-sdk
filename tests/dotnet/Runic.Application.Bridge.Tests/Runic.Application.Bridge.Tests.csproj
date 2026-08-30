@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>Runic.Application.Bridge.Tests</AssemblyName>
+    <RootNamespace>Runic.Application.Bridge.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="../../protocol/application-bridge/setup/generated/bridge.manifest.json" />
+    <AdditionalFiles Include="../../protocol/application-bridge/setup/generated/schemas/**/*.schema.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../protocol/application-bridge/setup/fixtures/*.json"
+          Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../protocol/application-bridge/conformance/*.json"
+          Link="conformance/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

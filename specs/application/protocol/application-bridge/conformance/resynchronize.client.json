@@ -1,0 +1,9 @@
+{
+  "protocol": "runic.artifex.conformance",
+  "version": 1,
+  "contractFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "connectionEpoch": 1,
+  "kind": "initialize",
+  "commandId": "00000000-0000-4000-8000-000000000002",
+  "payload": { "_tag": "InitializeApplication" }
+}

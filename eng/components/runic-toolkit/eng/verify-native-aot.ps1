@@ -9,10 +9,7 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $exclusionsPath = Join-Path $PSScriptRoot 'solution-exclusions.txt'
 
-$projects = Get-Content -LiteralPath $exclusionsPath |
-    ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -and -not $_.StartsWith('#') -and $_ -match 'Aot(?:Smoke|Tests)' } |
-    ForEach-Object { Get-Item -LiteralPath (Join-Path $repositoryRoot $_) } |
+$projects = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Filter '*AotSmoke.csproj' -Recurse -File |
     Sort-Object FullName
 
 if ($projects.Count -eq 0) {
@@ -27,6 +24,9 @@ try {
 
         $projectDirectory = $project.DirectoryName
         $projectProperties = @()
+        if (-not [string]::IsNullOrWhiteSpace($env:RUNIC_VERIFICATION_FEED)) {
+            $projectProperties += "-p:RunicVerificationFeed=$($env:RUNIC_VERIFICATION_FEED)"
+        }
 
         dotnet restore $project.FullName -p:RuntimeIdentifier= -p:RuntimeIdentifiers= `
             -p:NuGetAudit=false @projectProperties

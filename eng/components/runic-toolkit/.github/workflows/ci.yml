@@ -42,14 +42,27 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
+      - name: Check out exact compatibility candidates
+        env:
+          RUNIC_COMPATIBILITY_AUTHORITY_REF: ${{ github.head_ref || github.ref_name }}
+        run: node eng/checkout-ci-candidates.mjs
+
+      - name: Install pinned Chrome for Testing
+        id: chrome
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
+        with:
+          chrome-version: 151.0.7922.77
+
       - name: Run verification pipeline
+        env:
+          WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: ./eng/verify.sh
 
       - name: Ensure verification is reproducible
         run: git diff --exit-code
 
   application-bridge-windows:
-    name: Application Bridge · Windows native host
+    name: Application Bridge · Windows Desktop host
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
@@ -67,30 +80,32 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
-      - name: Install pinned Chrome for Testing
-        id: chrome
-        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
-        with:
-          chrome-version: 151.0.7922.77
+      - name: Check out exact compatibility candidates
+        env:
+          RUNIC_COMPATIBILITY_AUTHORITY_REF: ${{ github.head_ref || github.ref_name }}
+        shell: pwsh
+        run: node eng/checkout-ci-candidates.mjs
 
-      - name: Verify Effect contract and managed bridge suites
+      - name: Pack exact Runic Desktop candidate
+        shell: pwsh
+        run: |
+          $env:PackageVersion = (node eng/compatibility-set-value.mjs release-train-version).Trim()
+          $feed = Join-Path $env:RUNNER_TEMP "runic-desktop-feed"
+          New-Item -ItemType Directory -Force -Path $feed | Out-Null
+          dotnet pack ..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj -c Release -o $feed
+          "RUNIC_VERIFICATION_FEED=$feed" >> $env:GITHUB_ENV
+
+      - name: Verify Effect contract and managed Desktop bridge suites
         shell: pwsh
         run: |
           npm ci --ignore-scripts
           npm run verify
-          dotnet run --project tests/RunicToolkit.ApplicationBridge.Tests -c Release
-          dotnet run --project tests/RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Tests -c Release
-
-      - name: Run real Windows browser and native host roundtrip
-        shell: pwsh
-        env:
-          WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
-        run: |
-          dotnet run --project tests/RunicToolkit.Hosting.CsWebUi.NativeE2E -c Release
+          dotnet run --project tests/Runic.Application.Bridge.Tests -c Release
+          dotnet run --project tests/Runic.Application.Desktop.Tests -c Release "-p:RunicVerificationFeed=$env:RUNIC_VERIFICATION_FEED"
 
       - name: Publish and execute Windows NativeAOT consumer
         shell: pwsh
         run: |
-          dotnet publish tests/RunicToolkit.ApplicationBridge.AotSmoke -c Release -r win-x64 `
+          dotnet publish tests/Runic.Application.Bridge.AotSmoke -c Release -r win-x64 `
             -p:ApplicationBridgeNativeAot=true -o "$env:RUNNER_TEMP\application-bridge-aot"
-          & "$env:RUNNER_TEMP\application-bridge-aot\RunicToolkit.ApplicationBridge.AotSmoke.exe"
+          & "$env:RUNNER_TEMP\application-bridge-aot\Runic.Application.Bridge.AotSmoke.exe"

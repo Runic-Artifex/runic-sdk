@@ -1,13 +1,8 @@
-import {
-  Component,
-  DestroyRef,
-  inject,
-  provideZonelessChangeDetection,
-  signal,
-} from "@angular/core";
+import { Component, computed, provideZonelessChangeDetection, signal } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
+import { injectApplicationBridge, provideApplicationBridge } from "@runic-artifex/angular";
 import { counterBridge } from "./counter-bridge";
-import type { CounterSnapshot } from "./counter-contract";
+import type { CounterCommand, CounterEvent, CounterReceipt, CounterSnapshot } from "./counter-contract";
 
 @Component({
   selector: "runic-toolkit-root",
@@ -15,20 +10,13 @@ import type { CounterSnapshot } from "./counter-contract";
   templateUrl: "./app.html",
 })
 class App {
-  protected readonly snapshot = signal<CounterSnapshot>({ count: 0, history: [0], revision: 0 });
+  private readonly bridge = injectApplicationBridge<CounterCommand, CounterReceipt, CounterEvent, CounterSnapshot>();
+  protected readonly snapshot = computed(() => this.bridge.snapshot() ?? { count: 0, history: [0], revision: 0 });
   protected readonly step = signal(1);
-  protected readonly error = signal<string | undefined>(undefined);
+  protected readonly error = computed(() => this.bridge.error()?.message);
 
   public constructor() {
-    const unsubscribe = counterBridge.subscribe(
-      (event) => this.snapshot.set(event.snapshot),
-      (failure) => this.error.set(failure.message),
-    );
-    inject(DestroyRef).onDestroy(unsubscribe);
-    void counterBridge.initialize().then(
-      (value) => this.snapshot.set(value),
-      (failure) => this.error.set(failure.message),
-    );
+    void this.bridge.initialize();
   }
 
   protected setStep(event: Event): void {
@@ -36,19 +24,21 @@ class App {
   }
 
   protected async increment(): Promise<void> {
-    const receipt = await counterBridge.dispatch({ _tag: "IncrementCounter", step: this.step() });
-    if (receipt && typeof receipt === "object" && "snapshot" in receipt) {
-      this.snapshot.set(receipt.snapshot as CounterSnapshot);
-    }
+    await this.bridge.dispatch({ _tag: "IncrementCounter", step: this.step() });
   }
 }
 
 export async function bootstrapCounterApplication(): Promise<void> {
   const angular = await bootstrapApplication(App, {
-    providers: [provideZonelessChangeDetection()],
+    providers: [
+      provideZonelessChangeDetection(),
+      provideApplicationBridge({
+        controller: counterBridge,
+        snapshotFromEvent: (event) => event._tag === "CounterChanged" ? event.snapshot : undefined,
+      }),
+    ],
   });
   globalThis.addEventListener("pagehide", () => {
     angular.destroy();
-    void counterBridge.dispose();
   }, { once: true });
 }

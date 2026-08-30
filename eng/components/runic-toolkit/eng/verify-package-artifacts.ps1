@@ -9,21 +9,13 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryUrl = 'https://github.com/Runic-Artifex/runic-toolkit'
 $expectedPackages = @(
-    'RunicToolkit.Collections',
-    'RunicToolkit.Desktop',
-    'RunicToolkit.ApplicationBridge',
-    'RunicToolkit.ApplicationBridge.Generators',
-    'RunicToolkit.Hosting.Abstractions',
-    'RunicToolkit.Hosting.Build',
-    'RunicToolkit.Hosting.CsWebUi',
-    'RunicToolkit.Hosting.CsWebUi.App',
-    'RunicToolkit.Hosting.CsWebUi.ApplicationBridge',
-    'RunicToolkit.Hosting.Generators',
-    'RunicToolkit.Hosting.GenericHost',
-    'RunicToolkit.Hosting.WebUi',
-    'RunicToolkit.Hosting',
-    'RunicToolkit.DotNet.RunicToolkit',
-    'RunicToolkit.Templates'
+    'Runic.Application',
+    'Runic.Application.Hosting',
+    'Runic.Application.Desktop',
+    'Runic.Application.Testing',
+    'Runic.Application.Bridge',
+    'dotnet-runic',
+    'Runic.Application.Templates'
 )
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -87,4 +79,4 @@ foreach ($packageId in $expectedPackages) {
     }
 }
 
-Write-Host "Verified $($expectedPackages.Count) Runic Toolkit package artifacts for $PackageVersion."
+Write-Host "Verified $($expectedPackages.Count) local Runic Application package artifacts for $PackageVersion."

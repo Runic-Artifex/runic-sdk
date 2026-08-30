@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
 {
@@ -151,7 +151,7 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             throw new DevDevelopmentException(
                 "RTKDEV1007",
                 $"Timed out waiting for the Angular development server at {Origin}. " +
-                "Run 'dotnet runic-toolkit doctor' and verify the Angular serve target.");
+                "Run 'dotnet runic doctor' and verify the Angular serve target.");
         }
     }
 

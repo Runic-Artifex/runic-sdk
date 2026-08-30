@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 internal static class ProjectDiscovery
 {

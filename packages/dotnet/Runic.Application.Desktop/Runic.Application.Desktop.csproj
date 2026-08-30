@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>Runic.Application.Desktop</AssemblyName>
+    <RootNamespace>Runic.Application.Desktop</RootNamespace>
+    <PackageId>Runic.Application.Desktop</PackageId>
+    <Description>Runic Desktop presentation integration for Runic Application.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Runic.Application\Runic.Application.csproj" />
+    <ProjectReference Include="..\Runic.Application.Bridge\Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj"
+                      Condition="Exists('..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj') and '$(RunicToolkitVerificationBuild)' != 'true'" />
+    <PackageReference Include="Runic.Desktop"
+                      Condition="!Exists('..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj') or '$(RunicToolkitVerificationBuild)' == 'true'" />
+  </ItemGroup>
+  <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
+</Project>

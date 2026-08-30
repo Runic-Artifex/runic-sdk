@@ -1,23 +1,15 @@
 # Reference
 
-## Core
+## Application
 
-- [`RunicToolkit.Collections`](../../src/RunicToolkit.Collections/README.md)
-- [`RunicToolkit.Desktop`](../../src/RunicToolkit.Desktop/README.md)
-- [`RunicToolkit.ApplicationBridge`](../../src/RunicToolkit.ApplicationBridge/README.md)
-- [`RunicToolkit.ApplicationBridge.Generators`](../../src/RunicToolkit.ApplicationBridge.Generators/README.md)
-
-## Hosting and frontend
-
-- [`RunicToolkit.Hosting`](../../src/RunicToolkit.Hosting/README.md)
-- [`RunicToolkit.Hosting.Abstractions`](../../src/RunicToolkit.Hosting.Abstractions/README.md)
-- [`RunicToolkit.Hosting.Build`](../../src/RunicToolkit.Hosting.Build/README.md)
-- [`RunicToolkit.Hosting.WebUi`](../../src/RunicToolkit.Hosting.WebUi/README.md)
-- [`RunicToolkit.Hosting.CsWebUi`](../../src/RunicToolkit.Hosting.CsWebUi/README.md)
-- [`RunicToolkit.Hosting.CsWebUi.App`](../../src/RunicToolkit.Hosting.CsWebUi.App/README.md)
-- [`RunicToolkit.Hosting.CsWebUi.ApplicationBridge`](../../src/RunicToolkit.Hosting.CsWebUi.ApplicationBridge/README.md)
+- [`Runic.Application`](../../src/Runic.Application/README.md)
+- [`Runic.Application.Hosting`](../../src/Runic.Application.Hosting/README.md)
+- [`Runic.Application.Testing`](../../src/Runic.Application.Testing/README.md)
+- [`Runic.Application.Templates`](../../templates/RunicToolkit.Templates/README.md)
+- [`Runic.Application.Bridge`](../../src/Runic.Application.Bridge/README.md)
+- [`Runic.Application.Bridge.Generators`](../../src/Runic.Application.Bridge.Generators/README.md)
 
 ## Tools and web packages
 
-- [`dotnet-runic-toolkit`](../../tools/dotnet-runic-toolkit/README.md)
+- [`dotnet-runic`](../../tools/dotnet-runic-toolkit/README.md)
 - [`@runic-artifex/application-bridge`](../../web/packages/application-bridge/README.md)

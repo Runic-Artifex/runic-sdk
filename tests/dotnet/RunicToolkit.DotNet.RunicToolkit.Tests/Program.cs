@@ -2,26 +2,23 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using RunicToolkit.DotNet.RunicToolkit;
+using Runic.Application.Tool;
 
-namespace RunicToolkit.DotNet.RunicToolkit.Tests;
+namespace Runic.Application.Tool.Tests;
 
 internal static class Program
 {
-    private const string NativeLibraryEnvironmentVariable =
-        "CSWEB" + "UI_NATIVE_LIBRARY";
-
     public static int Main()
     {
         (string Name, Action Body)[] tests =
         [
-            ("dev options preserve application arguments", DevOptionsPreserveApplicationArguments),
-            ("application help remains an application argument", ApplicationHelpRemainsApplicationArgument),
-            ("dev options reject unknown switches", DevOptionsRejectUnknownSwitches),
-            ("doctor options select a project", DoctorOptionsSelectProject),
+            ("generated dev inputs preserve application arguments", DevOptionsPreserveApplicationArguments),
+            ("generated doctor inputs select a project", DoctorOptionsSelectProject),
             ("project discovery accepts a directory", ProjectDiscoveryAcceptsDirectory),
             ("project discovery rejects ambiguity", ProjectDiscoveryRejectsAmbiguity),
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
@@ -32,11 +29,14 @@ internal static class Program
             ("Application Bridge inspector stays bounded and source-aware", InspectorTerminalSinkIsSafe),
             ("compiler rendered-fragment snapshots stay bounded and private", RenderedFragmentSnapshotsAreSafe),
             ("compiler reload comparison separates renderer edits from shape edits", FrontendCompilerReloadComparisonIsSafe),
-            ("asset mirroring updates its owned graph", AssetMirroringUpdatesOwnedGraph),
             ("phase timings are concise and stable", PhaseTimingsAreConcise),
             ("doctor supports a healthy Node-free project", DoctorSupportsNodeFreeProject),
             ("doctor verifies a complete Node contract toolchain", DoctorVerifiesNodeContracts),
             ("doctor reports actionable frontend failures", DoctorReportsFrontendFailures),
+            ("doctor rejects a skewed compatibility set", DoctorRejectsCompatibilitySkew),
+            ("doctor rejects npm locks without exact portable integrity", DoctorRejectsNonPortableNpmLock),
+            ("support envelope is explicit, deterministic, private, and removable", SupportEnvelopeIsPrivateAndDeterministic),
+            ("migration edits exact XML identities and preserves prefixes", MigrationEditsExactXmlIdentities),
         ];
 
         int failures = 0;
@@ -61,8 +61,7 @@ internal static class Program
 
     private static void DevOptionsPreserveApplicationArguments()
     {
-        DevOptions options = DevOptions.Parse(
-            ["dev", "--project", "App.csproj", "--no-restore", "--", "--advanced", "two words"]);
+        var options = new DevOptions("App.csproj", "Debug", false, true, true, true, false, ["--advanced", "two words"]);
         Equal("App.csproj", options.Project);
         False(options.Restore, "The no-restore option was ignored.");
         if (!options.WatchHost)
@@ -71,39 +70,18 @@ internal static class Program
         }
         SequenceEqual(["--advanced", "two words"], options.ApplicationArguments);
 
-        DevOptions once = DevOptions.Parse(["dev", "--no-dotnet-watch"]);
+        var once = new DevOptions(null, "Debug", true, true, true, false, false, []);
         if (once.WatchHost)
         {
             throw new InvalidOperationException("--no-dotnet-watch was ignored.");
         }
     }
 
-    private static void DevOptionsRejectUnknownSwitches()
-    {
-        Throws<DevUsageException>(() => DevOptions.Parse(["dev", "--wat"]));
-    }
-
     private static void DoctorOptionsSelectProject()
     {
-        DoctorOptions options = DoctorOptions.Parse(
-            ["doctor", "--project", "App.csproj", "--configuration", "Release"]);
+        var options = new DoctorOptions("App.csproj", "Release");
         Equal("App.csproj", options.Project);
         Equal("Release", options.Configuration);
-        if (!DoctorOptions.RequestsHelp(["doctor", "--help"]))
-        {
-            throw new InvalidOperationException("Doctor help was not recognized.");
-        }
-
-        Throws<DevUsageException>(() => DoctorOptions.Parse(["doctor", "--wat"]));
-    }
-
-    private static void ApplicationHelpRemainsApplicationArgument()
-    {
-        False(
-            DevOptions.RequestsHelp(["dev", "--", "--help"]),
-            "Application help was consumed by the development tool.");
-        DevOptions options = DevOptions.Parse(["dev", "--", "--help"]);
-        SequenceEqual(["--help"], options.ApplicationArguments);
     }
 
     private static void ProjectDiscoveryAcceptsDirectory()
@@ -131,6 +109,41 @@ internal static class Program
         Equal("a project.csproj", startInfo.ArgumentList[1]);
         Equal("-p:Value=$(not-a-shell)", startInfo.ArgumentList[2]);
         False(startInfo.UseShellExecute, "Commands unexpectedly use a shell.");
+    }
+
+    private static void MigrationEditsExactXmlIdentities()
+    {
+        using var workspace = new TestWorkspace();
+        string project = workspace.Write("App.csproj", """
+            <Project><ItemGroup>
+              <PackageReference Include="RunicToolkit.Hosting.CsWebUi" Version="0.1.0" />
+              <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App"><Version>0.1.0</Version></PackageReference>
+              <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" />
+              <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Client" />
+              <PackageReference Include="Runic.Application.Bridge.Client" />
+            </ItemGroup><PropertyGroup><RunicToolkitFrontendEnabled>true</RunicToolkitFrontendEnabled></PropertyGroup></Project>
+            """);
+        global::Runic.Application.Tool.MigrationResult dryRun = global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: false, dryRun: true, check: false);
+        if (!dryRun.HasChanges) throw new InvalidOperationException("Migration did not identify legacy XML.");
+        string unchanged = File.ReadAllText(project);
+        Contains(unchanged, "RunicToolkit.Hosting.CsWebUi\" Version=\"0.1.0");
+        Contains(unchanged, "RunicToolkit.Hosting.CsWebUi.ApplicationBridge");
+        Contains(unchanged, "Runic.Application.Bridge.Client");
+
+        global::Runic.Application.Tool.MigrationResult applied = global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: true, dryRun: false, check: false);
+        if (!applied.HasChanges) throw new InvalidOperationException("Migration apply did not report changes.");
+        string migrated = File.ReadAllText(project);
+        Contains(migrated, "Runic.Application.Desktop");
+        Contains(migrated, "Runic.Application.Desktop\" Version=\"0.2.0");
+        Contains(migrated, "<Version>0.2.0</Version>");
+        Contains(migrated, "RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Client");
+        Contains(migrated, "Runic.Application.Bridge.Client");
+        DoesNotContain(migrated, "RunicToolkitFrontendEnabled");
+        if (global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: false, dryRun: false, check: true).HasChanges)
+        {
+            throw new InvalidOperationException("A migrated project still reported pending migration work.");
+        }
+        Throws<DevUsageException>(() => global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: false, dryRun: false, check: false));
     }
 
     private static void ViteArgumentsAreExplicit()
@@ -198,7 +211,7 @@ internal static class Program
             FrontendCompilerDiagnosticsPath: "/repo/obj/Debug/net10.0/frontend-compiler/diagnostics.json",
             FrontendCompilerHotReloadPath: "/repo/obj/Debug/net10.0/frontend-compiler/hot-reload.json",
             TargetDirectory: "/repo/bin/Debug/net10.0");
-        DevOptions options = DevOptions.Parse(["dev"]);
+        var options = new DevOptions(null, "Debug", true, true, true, true, false, []);
 
         IReadOnlyList<string> arguments =
             DevApplication.CreateBuildArguments(configuration, options);
@@ -233,7 +246,7 @@ internal static class Program
             ],
             AngularDevelopmentServer.CreateArguments(configuration, 43124));
 
-        DevOptions options = DevOptions.Parse(["dev"]);
+        var options = new DevOptions(null, "Debug", true, true, true, true, false, []);
         IReadOnlyList<string> build =
             DevApplication.CreateBuildArguments(configuration, options);
         if (!build.Contains(
@@ -440,30 +453,6 @@ internal static class Program
             {"contract":"runic-toolkit.frontend-compiler.hot-reload/1.0","templates":[{"logicalPath":"Views/TodoApp.frontend","rendererFingerprint":"{{renderer}}","compatibilityFingerprint":"{{shape}}","canRefreshFragments":{{canRefresh.ToString().ToLowerInvariant()}},"affectedFragments":["todo_fragment"]}]}
             """);
 
-    private static void AssetMirroringUpdatesOwnedGraph()
-    {
-        using var workspace = new TestWorkspace();
-        string source = Directory.CreateDirectory(Path.Combine(workspace.Root, "source")).FullName;
-        string destination = Directory.CreateDirectory(Path.Combine(workspace.Root, "destination")).FullName;
-        Write(Path.Combine(source, "assets", "app.js"), "one");
-        Write(Path.Combine(source, "simple", "index.html"), "simple");
-        Write(Path.Combine(destination, "vendor", "bootstrap.css"), "vendor");
-        var mirror = new AssetMirror(source, destination);
-        Equal(2, mirror.Synchronize());
-
-        Write(Path.Combine(source, "assets", "app.js"), "two");
-        File.Delete(Path.Combine(source, "simple", "index.html"));
-        Write(Path.Combine(source, "advanced", "index.html"), "advanced");
-        Equal(3, mirror.Synchronize());
-
-        Equal("two", File.ReadAllText(Path.Combine(destination, "assets", "app.js")));
-        False(
-            File.Exists(Path.Combine(destination, "simple", "index.html")),
-            "A stale owned asset was retained.");
-        Equal("advanced", File.ReadAllText(Path.Combine(destination, "advanced", "index.html")));
-        Equal("vendor", File.ReadAllText(Path.Combine(destination, "vendor", "bootstrap.css")));
-    }
-
     private static void PhaseTimingsAreConcise()
     {
         Equal("1 ms", PhaseTimer.Format(TimeSpan.Zero));
@@ -474,11 +463,9 @@ internal static class Program
     private static void DoctorSupportsNodeFreeProject()
     {
         using var workspace = new TestWorkspace();
-        string native = workspace.Write("native/libwebui-2.so", "native");
         string browser = workspace.Write("bin/chromium", "browser");
         var runtime = new FakeDoctorRuntime()
-            .WithEnvironment(NativeLibraryEnvironmentVariable, native)
-            .WithEnvironment("WEBUI_BROWSER_PATH", browser)
+            .WithEnvironment("RUNIC_BROWSER_PATH", browser)
             .WithExecutable("dotnet", "/tools/dotnet")
             .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
             .WithResult(browser, "--version", 0, "Chromium 150");
@@ -513,8 +500,7 @@ internal static class Program
         workspace.Write(
             "package.json",
             """{"packageManager":"npm@11.16.0"}""");
-        workspace.Write("package-lock.json", "{}");
-        string native = workspace.Write("native/libwebui-2.so", "native");
+        workspace.Write("package-lock.json", """{"lockfileVersion":3,"packages":{}}""");
         string browser = workspace.Write("bin/chromium", "browser");
         string source = workspace.Write("contract.json", "{}");
         string csharp = workspace.Write("generated/Contract.g.cs", "// generated");
@@ -531,13 +517,13 @@ internal static class Program
             ContractTool = tool,
         };
         var runtime = new FakeDoctorRuntime()
-            .WithEnvironment(NativeLibraryEnvironmentVariable, native)
-            .WithEnvironment("WEBUI_BROWSER_PATH", browser)
+            .WithEnvironment("RUNIC_BROWSER_PATH", browser)
             .WithExecutable("dotnet", "/tools/dotnet")
             .WithExecutable("node", "/tools/node")
             .WithExecutable("npm", "/tools/npm")
             .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
             .WithResult("/tools/node", "--version", 0, "v24.18.0")
+            .WithResult("/tools/npm", "--version", 0, "11.16.0")
             .WithResult(browser, "--version", 0, "Chromium 150")
             .WithResult("/tools/node", "--verify", 0, string.Empty);
 
@@ -563,7 +549,6 @@ internal static class Program
     {
         using var workspace = new TestWorkspace();
         workspace.Write("package.json", """{"packageManager":"npm@11.16.0"}""");
-        string native = workspace.Write("native/libwebui-2.so", "native");
         string browser = workspace.Write("bin/chromium", "browser");
         DoctorProjectConfiguration project = CreateDoctorProject(
             workspace,
@@ -575,8 +560,7 @@ internal static class Program
             ViteConfigurationPath = Path.Combine(workspace.Root, "vite.config.mjs"),
         };
         var runtime = new FakeDoctorRuntime()
-            .WithEnvironment(NativeLibraryEnvironmentVariable, native)
-            .WithEnvironment("WEBUI_BROWSER_PATH", browser)
+            .WithEnvironment("RUNIC_BROWSER_PATH", browser)
             .WithExecutable("dotnet", "/tools/dotnet")
             .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
             .WithResult(browser, "--version", 0, "Chromium 150");
@@ -607,8 +591,14 @@ internal static class Program
     private static DoctorProjectConfiguration CreateDoctorProject(
         TestWorkspace workspace,
         bool nodeEnabled,
-        bool frontendCompilerEnabled) =>
-        new(
+        bool frontendCompilerEnabled)
+    {
+        string assetsFile = workspace.Write(
+            "obj/project.assets.json",
+            """
+            {"libraries":{"Runic.Application/1.0.0-preview.1":{"type":"package"},"Runic.Desktop/1.0.0-preview.1":{"type":"package"}}}
+            """);
+        return new(
             ProjectPath: workspace.Write("App.csproj", "<Project />"),
             ProjectDirectory: workspace.Root,
             TargetFramework: "net10.0",
@@ -625,13 +615,100 @@ internal static class Program
             ViteDevServerEnabled: false,
             ViteDevServerEntry: string.Empty,
             ViteConfigurationPath: string.Empty,
-            ProjectAssetsFile: Path.Combine(workspace.Root, "obj", "project.assets.json"),
+            ProjectAssetsFile: assetsFile,
             RuntimeIdentifier: "linux-x64");
+    }
+
+    private static void DoctorRejectsCompatibilitySkew()
+    {
+        using var workspace = new TestWorkspace();
+        string browser = workspace.Write("bin/chromium", "browser");
+        DoctorProjectConfiguration project = CreateDoctorProject(
+            workspace,
+            nodeEnabled: false,
+            frontendCompilerEnabled: true);
+        File.WriteAllText(
+            project.ProjectAssetsFile,
+            """
+            {"libraries":{"Runic.Application/1.0.0-preview.2":{"type":"package"},"Runic.Desktop/1.0.0-preview.1":{"type":"package"}}}
+            """);
+        var runtime = new FakeDoctorRuntime()
+            .WithEnvironment("RUNIC_BROWSER_PATH", browser)
+            .WithExecutable("dotnet", "/tools/dotnet")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
+            .WithResult(browser, "--version", 0, "Chromium 150");
+
+        DoctorReport report = InspectDoctor(project, runtime);
+        DoctorCheck check = report.Checks.Single(item => item.Name == "compatibility-set");
+        Equal(DoctorStatus.Failure, check.Status);
+        Contains(check.Message, "Runic.Application 1.0.0-preview.2");
+        Contains(check.Remediation ?? string.Empty, "isolated feed");
+    }
+
+    private static void DoctorRejectsNonPortableNpmLock()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.Write("package.json", """{"packageManager":"npm@11.16.0"}""");
+        workspace.Write(
+            "package-lock.json",
+            """
+            {"lockfileVersion":3,"packages":{"node_modules/@runic-artifex/application-bridge":{"version":"1.0.0-preview.1","resolved":"https://registry.example.invalid/application-bridge.tgz"}}}
+            """);
+        string browser = workspace.Write("bin/chromium", "browser");
+        DoctorProjectConfiguration project = CreateDoctorProject(
+            workspace,
+            nodeEnabled: true,
+            frontendCompilerEnabled: false);
+        var runtime = new FakeDoctorRuntime()
+            .WithEnvironment("RUNIC_BROWSER_PATH", browser)
+            .WithExecutable("dotnet", "/tools/dotnet")
+            .WithExecutable("node", "/tools/node")
+            .WithExecutable("npm", "/tools/npm")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
+            .WithResult("/tools/node", "--version", 0, "v24.18.0")
+            .WithResult("/tools/npm", "--version", 0, "11.16.0")
+            .WithResult(browser, "--version", 0, "Chromium 150");
+
+        DoctorReport report = InspectDoctor(project, runtime);
+        DoctorCheck check = report.Checks.Single(item => item.Name == "compatibility-set");
+        Equal(DoctorStatus.Failure, check.Status);
+        Contains(check.Message, "has no sha512 lock integrity");
+        Contains(check.Message, "lock pins a registry host");
+        Contains(check.Remediation ?? string.Empty, "isolated feed");
+    }
 
     private static void Write(string path, string content)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
+    }
+
+    private static void SupportEnvelopeIsPrivateAndDeterministic()
+    {
+        using var workspace = new TestWorkspace();
+        string source = Path.Combine(workspace.Root, "editor-diagnostics.zip");
+        using (ZipArchive archive = ZipFile.Open(source, ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(archive.CreateEntry("diagnostics.json").Open()))
+        {
+            writer.Write(JsonSerializer.Serialize(new
+            {
+                schema = "runic.translations.editor-diagnostics/1", generatedAt = "2026-08-27T00:00:00Z",
+                application = new { product = "Runic Translations Editor", version = "0.1.0", updateChannel = "preview", commit = "abc123", runtime = ".NET 10", runtimeIdentifier = "linux-x64", operatingSystem = "Linux", architecture = "X64" },
+                workspace = new { catalogId = "editor", schemaVersion = 2, localeCount = 2, documentCount = 3, messageCount = 4, compilerSuccess = true, reviewStateAvailable = true, pendingTransaction = false, pendingTransactionPathCount = 0, diagnostics = new[] { new { id = "RTR0001", severity = "warning", count = 1 } }, },
+            }));
+        }
+        string first = Path.Combine(workspace.Root, "first.json"), second = Path.Combine(workspace.Root, "second.json");
+        SupportCommandResult preview = SupportApplication.ExecuteAsync(new SupportOptions("preview", source, null), CancellationToken.None).GetAwaiter().GetResult();
+        Equal(0, preview.OutboundTransportAttempts); Contains(preview.ToHumanOutput(), "workspace-roots");
+        SupportCommandResult one = SupportApplication.ExecuteAsync(new SupportOptions("collect", source, first), CancellationToken.None).GetAwaiter().GetResult();
+        SupportCommandResult two = SupportApplication.ExecuteAsync(new SupportOptions("collect", source, second), CancellationToken.None).GetAwaiter().GetResult();
+        Equal(one.Digest, two.Digest); Equal(File.ReadAllText(first), File.ReadAllText(second));
+        SupportCommandResult removed = SupportApplication.ExecuteAsync(new SupportOptions("remove", null, first), CancellationToken.None).GetAwaiter().GetResult();
+        Equal(one.Digest, removed.Digest); False(File.Exists(first), "Support removal left the envelope behind.");
+        string hostile = Path.Combine(workspace.Root, "hostile.zip");
+        using (ZipArchive archive = ZipFile.Open(hostile, ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(archive.CreateEntry("diagnostics.json").Open())) writer.Write(File.ReadAllText(second).Replace("runic.support-envelope/1", "runic.translations.editor-diagnostics/1", StringComparison.Ordinal));
+        Throws<SupportUsageException>(() => SupportApplication.ExecuteAsync(new SupportOptions("preview", hostile, null), CancellationToken.None).GetAwaiter().GetResult());
     }
 
     private static void Equal<T>(T expected, T actual)

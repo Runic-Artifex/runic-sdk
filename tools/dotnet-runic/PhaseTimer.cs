@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 
-namespace RunicToolkit.DotNet.RunicToolkit;
+namespace Runic.Application.Tool;
 
 /// <summary>Reports one bounded development-command phase without hiding child output.</summary>
 internal sealed class PhaseTimer : IDisposable

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RestoreAdditionalProjectSources>$(PackageDirectory);$(RunicVerificationFeed);https://api.nuget.org/v3/index.json</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+  <Target Name="ValidatePackageConsumerProperties" BeforeTargets="Restore">
+    <Error Condition="'$(PackageVersion)' == ''" Text="PackageVersion is required." />
+    <Error Condition="'$(PackageDirectory)' == ''" Text="PackageDirectory is required." />
+  </Target>
+  <ItemGroup>
+    <PackageReference Include="Runic.Application" Version="$(PackageVersion)" />
+    <PackageReference Include="Runic.Application.Testing" Version="$(PackageVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="hostile/**/*.cs" />
+    <None Include="hostile/**" />
+  </ItemGroup>
+</Project>

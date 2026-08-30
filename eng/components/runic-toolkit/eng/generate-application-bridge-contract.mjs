@@ -49,16 +49,16 @@ for (const declaration of declarations) {
   });
 }
 
-const manifest = {
+const manifestBody = {
   generatorFormatVersion: contract.formatVersion,
   protocol: contract.protocol,
   envelope: {
     client: {
-      fields: ["protocol", "version", "kind", "commandId", "sessionId", "expectedRevision", "payload"],
+      fields: ["protocol", "version", "contractFingerprint", "connectionEpoch", "kind", "commandId", "sessionId", "expectedRevision", "payload"],
       kinds: ["initialize", "dispatch", "cancelOperation", "uiReady", "uiRendered"],
     },
     host: {
-      fields: ["protocol", "version", "kind", "sessionId", "sequence", "revision", "commandId", "operationId", "payload"],
+      fields: ["protocol", "version", "contractFingerprint", "connectionEpoch", "kind", "sessionId", "sequence", "revision", "commandId", "operationId", "payload"],
       kinds: ["snapshot", "receipt", "event", "error"],
     },
   },
@@ -71,6 +71,13 @@ const manifest = {
   receipts: contract.receipts.map(({ tag }) => tag).sort(),
   events: contract.events.map(({ tag }) => tag).sort(),
   errors: contract.errors.map(({ tag }) => tag).sort(),
+};
+// The contract fingerprint intentionally covers the canonical manifest body, not
+// itself. It is carried on every envelope and gives both runtimes one stable
+// handshake value without creating a second authoring format.
+const manifest = {
+  ...manifestBody,
+  contractFingerprint: fingerprint(serialize(manifestBody)),
 };
 files.set("bridge.manifest.json", serialize(manifest));
 

@@ -62,7 +62,7 @@ const errors = [
 export default {
   formatVersion: 1,
   protocol: { identity: "runic.artifex.counter", version: 1 },
-  csharp: { namespace: "RunicToolkitStarter.Contract", contractName: "Counter" },
+  csharp: { namespace: "Runic.Application.Template.Contract", contractName: "Counter" },
   limits: {
     maxFrameBytes: 262144,
     maxDepth: 32,

@@ -22,15 +22,18 @@
       "tag": "ResetCounter"
     }
   ],
+  "contractFingerprint": "4e873f5967e86eeded5e26d8faf27c305464f1272b90935cc8a1b09365471508",
   "csharp": {
     "contractName": "Counter",
-    "namespace": "RunicToolkitStarter.Contract"
+    "namespace": "Runic.Application.Template.Contract"
   },
   "envelope": {
     "client": {
       "fields": [
         "protocol",
         "version",
+        "contractFingerprint",
+        "connectionEpoch",
         "kind",
         "commandId",
         "sessionId",
@@ -49,6 +52,8 @@
       "fields": [
         "protocol",
         "version",
+        "contractFingerprint",
+        "connectionEpoch",
         "kind",
         "sessionId",
         "sequence",

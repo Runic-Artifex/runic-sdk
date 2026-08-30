@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>Runic.Application.Hosting</AssemblyName>
+    <RootNamespace>Runic.Application.Hosting</RootNamespace>
+    <PackageId>Runic.Application.Hosting</PackageId>
+    <Description>Generic Host and ASP.NET Core integration for Runic.Application.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Generate the library-owned minimal endpoints at build time so AOT-incompatible
+         route handlers fail during ordinary verification builds. -->
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Runic.Application\Runic.Application.csproj" />
+    <ProjectReference Include="..\Runic.Application.Bridge\Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj"
+                      Condition="Exists('..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj') and '$(RunicToolkitVerificationBuild)' != 'true'" />
+    <PackageReference Include="Runic.Assets"
+                      Condition="!Exists('..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj') or '$(RunicToolkitVerificationBuild)' == 'true'" />
+    <ProjectReference Include="../../../runic-translations/dotnet/src/Runic.Translations/Runic.Translations.csproj"
+                      Condition="Exists('../../../runic-translations/dotnet/src/Runic.Translations/Runic.Translations.csproj') and '$(RunicToolkitVerificationBuild)' != 'true'" />
+    <PackageReference Include="Runic.Translations"
+                      Condition="!Exists('../../../runic-translations/dotnet/src/Runic.Translations/Runic.Translations.csproj') or '$(RunicToolkitVerificationBuild)' == 'true'" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
+</Project>

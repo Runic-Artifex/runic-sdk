@@ -3,17 +3,21 @@
   "private": true,
   "version": "1.0.0",
   "license": "MIT",
+  "packageManager": "npm@11.16.0",
+  "engines": { "node": "24.18.x", "npm": "11.16.x" },
   "type": "module",
   "scripts": { "build": "vite build", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "vue-tsc --noEmit" },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
     "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
+    "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
     "bootstrap": "5.3.8",
     "effect": "3.22.1",
     "vue": "3.5.40"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "6.0.8",
+    "@runic-artifex/vite-plugin-runic": "__RUNIC_VITE_NPM__",
     "typescript": "5.9.3",
     "vite": "8.1.5",
     "vue-tsc": "3.3.8"

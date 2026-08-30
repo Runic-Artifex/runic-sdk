@@ -1,38 +1,56 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Runic Artifex",
-  "classifications": ["Desktop", "CS-WebUI", "Svelte"],
-  "identity": "RunicToolkit.Templates.Svelte",
-  "name": "RunicToolkit Svelte application",
-  "shortName": "runic-toolkit-svelte",
-  "sourceName": "RunicToolkitStarter",
+  "classifications": ["Desktop", "Runic Desktop", "Svelte"],
+  "identity": "Runic.Application.Templates.Svelte",
+  "name": "Runic Application Svelte",
+  "shortName": "runic-app-svelte",
+  "sourceName": "RunicDesktopApp",
   "preferNameDirectory": true,
   "tags": { "language": "C#", "type": "project" },
   "symbols": {
-    "runicToolkitVersion": {
+    "runicApplicationVersion": {
       "type": "parameter",
       "datatype": "text",
-      "defaultValue": "1.0.0-beta.1",
+      "defaultValue": "__RUNIC_APPLICATION_PACKAGE_VERSION__",
       "replaces": "__RUNIC_TOOLKIT_VERSION__"
+    },
+    "runicAssetsVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__RUNIC_ASSETS_PACKAGE_VERSION__",
+      "replaces": "__RUNIC_ASSETS_VERSION__"
+    },
+    "runicDesktopVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__RUNIC_DESKTOP_PACKAGE_VERSION__",
+      "replaces": "__RUNIC_DESKTOP_VERSION__"
     },
     "applicationBridgeNpm": {
       "type": "parameter",
       "datatype": "text",
-      "defaultValue": "0.1.0",
+      "defaultValue": "__APPLICATION_BRIDGE_NPM_VERSION__",
       "replaces": "__APPLICATION_BRIDGE_NPM__"
+    },
+    "runicDesktopNpm": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__RUNIC_DESKTOP_NPM_VERSION__",
+      "replaces": "__RUNIC_DESKTOP_NPM__"
     },
     "runicSvelteNpm": {
       "type": "parameter",
       "datatype": "text",
-      "defaultValue": "0.1.0-preview.7.1",
+      "defaultValue": "__RUNIC_SVELTE_NPM_VERSION__",
       "replaces": "__RUNIC_SVELTE_NPM__"
     },
     "runicViteNpm": {
       "type": "parameter",
       "datatype": "text",
-      "defaultValue": "0.1.0-preview.7.1",
+      "defaultValue": "__RUNIC_VITE_NPM_VERSION__",
       "replaces": "__RUNIC_VITE_NPM__"
     }
   },
-  "primaryOutputs": [{ "path": "RunicToolkitStarter.csproj" }]
+  "primaryOutputs": [{ "path": "RunicDesktopApp.csproj" }]
 }

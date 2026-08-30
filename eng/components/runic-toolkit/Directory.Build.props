@@ -40,6 +40,9 @@
     <RunicToolkitDefaultTargetFramework>net10.0</RunicToolkitDefaultTargetFramework>
     <RunicToolkitCompatibilityTargetFramework>net10.0</RunicToolkitCompatibilityTargetFramework>
     <RunicToolkitGeneratorTargetFramework>net10.0</RunicToolkitGeneratorTargetFramework>
+    <!-- Verification injects a temporary package-only sibling-product feed. -->
+    <RestoreAdditionalProjectSources Condition="'$(RunicVerificationFeed)' != ''">$(RunicVerificationFeed)</RestoreAdditionalProjectSources>
+    <IsPackable Condition="'$(MSBuildProjectName)' == 'Runic.Application.Bridge.Generators'">false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

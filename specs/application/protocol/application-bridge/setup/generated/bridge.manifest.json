@@ -36,15 +36,18 @@
       "tag": "StartInstallation"
     }
   ],
+  "contractFingerprint": "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725",
   "csharp": {
     "contractName": "Setup",
-    "namespace": "RunicToolkit.Setup.Contract"
+    "namespace": "Runic.Application.Setup.Contract"
   },
   "envelope": {
     "client": {
       "fields": [
         "protocol",
         "version",
+        "contractFingerprint",
+        "connectionEpoch",
         "kind",
         "commandId",
         "sessionId",
@@ -63,6 +66,8 @@
       "fields": [
         "protocol",
         "version",
+        "contractFingerprint",
+        "connectionEpoch",
         "kind",
         "sessionId",
         "sequence",

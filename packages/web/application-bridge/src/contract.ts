@@ -6,10 +6,13 @@ export const UuidSchema = Schema.String.pipe(
 );
 export const RevisionSchema = Schema.Int.pipe(Schema.nonNegative());
 export const SequenceSchema = Schema.Int.pipe(Schema.positive());
+const HostSequenceSchema = Schema.Int.pipe(Schema.nonNegative());
 
 export interface ApplicationContract<Command, Receipt, HostEvent, Snapshot> {
   readonly identity: string;
   readonly version: number;
+  /** SHA-256 of the generated canonical manifest body. */
+  readonly fingerprint: string;
   readonly command: Schema.Schema<Command, any>;
   readonly receipt: Schema.Schema<Receipt, any>;
   readonly event: Schema.Schema<HostEvent, any>;
@@ -21,8 +24,9 @@ export interface ApplicationContract<Command, Receipt, HostEvent, Snapshot> {
 export function defineApplicationContract<Command, Receipt, HostEvent, Snapshot>(
   contract: ApplicationContract<Command, Receipt, HostEvent, Snapshot>,
 ): ApplicationContract<Command, Receipt, HostEvent, Snapshot> {
-  if (contract.identity.length === 0 || !Number.isSafeInteger(contract.version) || contract.version < 1) {
-    throw new TypeError("An Application Bridge contract requires a stable identity and positive version.");
+  if (contract.identity.length === 0 || !Number.isSafeInteger(contract.version) || contract.version < 1 ||
+    !/^[0-9a-f]{64}$/.test(contract.fingerprint)) {
+    throw new TypeError("An Application Bridge contract requires a stable identity, positive version, and SHA-256 fingerprint.");
   }
   return Object.freeze({
     ...contract,
@@ -33,6 +37,8 @@ export function defineApplicationContract<Command, Receipt, HostEvent, Snapshot>
 export const ClientEnvelopeSchema = Schema.Struct({
   protocol: Schema.String,
   version: Schema.Int.pipe(Schema.positive()),
+  contractFingerprint: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/)),
+  connectionEpoch: Schema.Int.pipe(Schema.nonNegative()),
   kind: Schema.Literal("initialize", "dispatch", "cancelOperation", "uiReady", "uiRendered"),
   commandId: UuidSchema,
   sessionId: Schema.optional(UuidSchema),
@@ -45,9 +51,11 @@ export type ClientEnvelope = typeof ClientEnvelopeSchema.Type;
 export const HostEnvelopeSchema = Schema.Struct({
   protocol: Schema.String,
   version: Schema.Int.pipe(Schema.positive()),
+  contractFingerprint: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/)),
+  connectionEpoch: Schema.Int.pipe(Schema.nonNegative()),
   kind: Schema.Literal("snapshot", "receipt", "event", "error"),
   sessionId: UuidSchema,
-  sequence: SequenceSchema,
+  sequence: HostSequenceSchema,
   revision: RevisionSchema,
   commandId: Schema.optional(UuidSchema),
   operationId: Schema.optional(UuidSchema),

@@ -8,11 +8,11 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $packageDirectory = Join-Path $repositoryRoot 'artifacts/local-development/packages'
 $toolProject = Join-Path $repositoryRoot (
-    'tools/dotnet-runic-toolkit/RunicToolkit.DotNet.RunicToolkit.csproj')
+    'tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj')
 $templateProject = Join-Path $repositoryRoot (
     'templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj')
 $templatePackage = Join-Path $packageDirectory (
-    'RunicToolkit.Templates.1.0.0-beta.1.nupkg')
+    'Runic.Application.Templates.1.0.0-preview.1.nupkg')
 
 function Invoke-DotNet([string[]]$Arguments) {
     & dotnet @Arguments
@@ -25,7 +25,7 @@ Push-Location $repositoryRoot
 try {
     New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
 
-    Write-Host 'Packing the repository-local RunicToolkit development command.'
+    Write-Host 'Packing the repository-local Runic Application development command.'
     Invoke-DotNet -Arguments @(
         'pack',
         $toolProject,
@@ -38,7 +38,7 @@ try {
         throw "The template pack project is missing: $templateProject"
     }
 
-    Write-Host 'Packing the repository-local RunicToolkit templates.'
+    Write-Host 'Packing the repository-local Runic Application templates.'
     Invoke-DotNet -Arguments @(
         'pack',
         $templateProject,
@@ -61,9 +61,9 @@ try {
     Invoke-DotNet -Arguments @('new', 'install', $templatePackage, '--force')
 
     Write-Host ''
-    Write-Host 'RunicToolkit development setup is ready.'
-    Write-Host 'Run: dotnet runic-toolkit doctor <PROJECT>'
-    Write-Host 'Then: dotnet runic-toolkit dev <PROJECT>'
+    Write-Host 'Runic Application development setup is ready.'
+    Write-Host 'Run: dotnet runic doctor <PROJECT>'
+    Write-Host 'Then: dotnet runic dev <PROJECT>'
 }
 finally {
     Pop-Location

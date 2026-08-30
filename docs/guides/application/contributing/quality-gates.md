@@ -2,14 +2,20 @@
 
 The required pull-request gate is `./eng/verify.sh`.
 
-The prerelease package workflow additionally:
+The prerelease and public-release workflows invoke the same
+`eng/verify-release-candidate.sh` command available locally. It:
 
-1. packs and validates 18 MIT-licensed NuGet packages with repository commit
-   provenance;
-2. restores and runs an isolated package consumer;
-3. installs and invokes both dotnet tools;
-4. packs and validates six version-matched npm packages; and
-5. uploads digest-protected workflow artifacts before any optional publish job.
+1. packs and validates seven MIT-licensed NuGet artifacts with repository
+   commit provenance;
+2. keeps exact cross-repository NuGet dependencies in a separate verification
+   feed and runs isolated package plus NativeAOT consumers;
+3. packs and validates the Application Bridge and Angular npm artifacts;
+4. packs exact Desktop, Svelte, and Vite candidates from detached compatibility
+   revisions and builds every generated template through a cold local registry;
+5. applies the exact compatibility-authority public metadata contract when the
+   public target is selected; and
+6. leaves only the canonical seven NuGet and two npm artifacts for digesting and
+   optional publication.
 
 NativeAOT smoke projects remain registered in `eng/solution-exclusions.txt` and
 can be executed with `eng/verify-native-aot.ps1` in an environment containing

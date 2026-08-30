@@ -25,7 +25,7 @@ DevTools experience.
    - `@runic-artifex/sveltekit`, the static/native SvelteKit adapter and host
      manifest.
 3. [`runic-vite`](https://github.com/Runic-Artifex/runic-vite) owns
-   `@runic-artifex/vite-plugin-runic-toolkit` for Vite 8, HMR resource
+   `@runic-artifex/vite-plugin-runic` for Vite 8, HMR resource
    preservation, sanitized diagnostics, and the official experimental
    `@vitejs/devtools` extension point.
 4. Integration packages may own presentation state and framework lifecycle.
@@ -34,7 +34,7 @@ DevTools experience.
    They may expose opt-in Effect programs and Svelte-native action state only
    through Application Bridge's existing `ManagedRuntime`; renderer-owned
    Effect runtimes are not permitted.
-5. `dotnet runic-toolkit dev` launches the project's normal Vite configuration.
+5. `dotnet runic dev` launches the project's normal Vite configuration.
    The CLI does not generate or inject a replacement configuration.
 6. Svelte 4 and pre-Svelte-5 compatibility are out of scope.
 7. Experimental Vite DevTools dependencies are exact-pinned and advanced only

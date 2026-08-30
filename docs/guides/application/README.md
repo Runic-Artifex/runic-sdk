@@ -9,6 +9,7 @@ framework adapters, and Toolkit-specific developer tools.
 - [Getting started](getting-started/README.md)
 - [Frontend contracts](guides/frontend-contracts.md)
 - [Framework adapters](guides/frontend-frameworks.md)
+- [Migrate from CS-WebUI to Runic Desktop](guides/migrate-cs-webui-to-runic-desktop.md)
 - [Reference](reference/README.md)
 - [Development](contributing/development.md)
 - [Quality gates](contributing/quality-gates.md)
