@@ -2,7 +2,7 @@
 
 This directory is an isolated, reproducible evaluation of parser candidates. It does **not** adopt a parser into a shipping project and does not modify the repository's central package policy. Candidate package references live only in inert templates copied to an operating-system temporary directory by `scripts/Invoke-CliEvaluation.ps1`; no lock file is generated or retained.
 
-The stable first-party identities used by the fixture are `RunicCommandLine.*`, `RUNIC_COMMANDLINE_OUTPUT`, and `runic.commandline/1`. Candidate-native types, help text, and diagnostics are evaluation details, never proposed public contracts.
+The stable first-party identities used by the fixture are `Runic.CommandLine.*`, `RUNIC_COMMANDLINE_OUTPUT`, and `runic.commandline/1`. Candidate-native types, help text, and diagnostics are evaluation details, never proposed public contracts.
 
 ## Reproduce
 

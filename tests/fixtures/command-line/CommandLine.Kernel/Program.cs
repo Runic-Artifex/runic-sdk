@@ -6,9 +6,9 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using RunicCommandLine.Processes;
+using Runic.CommandLine.Processes;
 
-namespace RunicCommandLine.Samples.Kernel;
+namespace Runic.CommandLine.Samples.Kernel;
 
 internal static class Program
 {

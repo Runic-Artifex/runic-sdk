@@ -2,7 +2,7 @@ using System;
 using System.CommandLine;
 
 FixtureOutput.ApplyCulture();
-RootCommand root = new("RunicCommandLine parser evaluation fixture");
+RootCommand root = new("Runic.CommandLine parser evaluation fixture");
 
 Command status = new("status");
 Option<bool> statusVerbose = new("--verbose", "-v");

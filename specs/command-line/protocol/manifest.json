@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "protocol": "runic.commandline/1",
   "outputEnvironmentVariable": "RUNIC_COMMANDLINE_OUTPUT",
-  "implementationNamespace": "RunicCommandLine",
+  "implementationNamespace": "Runic.CommandLine",
   "encoding": "utf-8",
   "framing": "one-json-object-one-lf",
   "limits": {

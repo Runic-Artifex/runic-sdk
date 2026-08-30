@@ -3,14 +3,13 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicCommandLineDefaultTargetFramework)</TargetFramework>
     <AssemblyName>CommandLine.Kernel</AssemblyName>
-    <RootNamespace>RunicCommandLine.Samples.Kernel</RootNamespace>
+    <RootNamespace>Runic.CommandLine.Samples.Kernel</RootNamespace>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../../src/RunicCommandLine.Abstractions/RunicCommandLine.Abstractions.csproj" />
-    <ProjectReference Include="../../../src/RunicCommandLine/RunicCommandLine.csproj" />
-    <ProjectReference Include="../../../src/RunicCommandLine.Processes/RunicCommandLine.Processes.csproj" />
+    <ProjectReference Include="../../../src/Runic.CommandLine/Runic.CommandLine.csproj" />
+    <ProjectReference Include="../../../src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj" />
   </ItemGroup>
 </Project>

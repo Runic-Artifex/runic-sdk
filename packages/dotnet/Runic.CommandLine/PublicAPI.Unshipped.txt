@@ -1,0 +1,298 @@
+#nullable enable
+namespace Runic.CommandLine
+{
+    public enum CommandExecutionEventKind
+    {
+        Bound = 1,
+        Completed = 3,
+        HandlerStarted = 2,
+        Started = 0,
+    }
+    public enum CommandOptionRepeatPolicy
+    {
+        Append = 1,
+        Error = 0,
+    }
+    public enum ParseOutcomeKind
+    {
+        Error = 3,
+        Help = 1,
+        Invocation = 0,
+        Version = 2,
+    }
+    public interface ICommandExecutionObserver
+    {
+        void Observe(Runic.CommandLine.CommandExecutionEvent executionEvent);
+    }
+    public interface ICommandOptionsBinder<TOptions>
+    {
+        System.Threading.Tasks.ValueTask<Runic.CommandLine.CommandOutcome<TOptions>> BindAsync(Runic.CommandLine.ParsedInvocation invocation, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface ICommandOutcomeSink
+    {
+        System.Threading.Tasks.ValueTask WriteAsync<TResult>(Runic.CommandLine.CommandDescriptor command, Runic.CommandLine.CommandExecutionContext context, Runic.CommandLine.CommandOutcome<TResult> outcome, Runic.CommandLine.ICommandResultCodec<TResult> codec, int exitCode, System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDiagnostic> diagnostics, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface ICommandSyntaxAdapter
+    {
+        Runic.CommandLine.ParseOutcome Parse(Runic.CommandLine.CommandCatalog catalog, System.ReadOnlySpan<string> args, Runic.CommandLine.ParseSettings settings);
+    }
+    public readonly record struct CommandArity
+    {
+        public CommandArity(int minimum, int? maximum);
+        public int Minimum { get; }
+        public int? Maximum { get; }
+        public static Runic.CommandLine.CommandArity ExactlyOne { get; }
+        public static Runic.CommandLine.CommandArity OneOrMore { get; }
+        public static Runic.CommandLine.CommandArity Zero { get; }
+        public static Runic.CommandLine.CommandArity ZeroOrMore { get; }
+        public static Runic.CommandLine.CommandArity ZeroOrOne { get; }
+        public bool Accepts(int count);
+    }
+    public sealed class CommandArgumentDescriptor
+    {
+        public Runic.CommandLine.CommandArity Arity { get; }
+        public bool IsSensitive { get; }
+        public string Id { get; }
+        public string Name { get; }
+        public string? DescriptionKey { get; }
+    }
+    public sealed class CommandBuilder<TOptions, THandler, TResult> where THandler : notnull, Runic.CommandLine.ICommandHandler<TOptions, TResult>
+    {
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Alias(params string[] aliases);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Argument(string id, string name, Runic.CommandLine.CommandArity arity, bool isSensitive = false, string? descriptionKey = null);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> BindWith(Runic.CommandLine.ICommandOptionsBinder<TOptions> binder);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> CreateHandlerWith(Runic.CommandLine.ICommandHandlerFactory<THandler> factory);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Describe(string descriptionKey);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Option(string id, string name, Runic.CommandLine.CommandArity arity, Runic.CommandLine.CommandOptionRepeatPolicy repeatPolicy = Runic.CommandLine.CommandOptionRepeatPolicy.Error, bool isSensitive = false, string? descriptionKey = null, params string[] aliases);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Option(string id, string name, Runic.CommandLine.CommandArity arity, Runic.CommandLine.CommandOptionRepeatPolicy repeatPolicy, bool? isRequired, params string[] aliases);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Option(string id, string name, Runic.CommandLine.CommandArity arity, Runic.CommandLine.CommandOptionRepeatPolicy repeatPolicy, bool isSensitive, string? descriptionKey, bool isRequired, params string[] aliases);
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Produces(Runic.CommandLine.ICommandResultCodec<TResult> codec);
+        public Runic.CommandLine.CommandBuilder<TChildOptions, TChildHandler, TChildResult> Subcommand<TChildOptions, TChildHandler, TChildResult>(string name) where TChildHandler : notnull, Runic.CommandLine.ICommandHandler<TChildOptions, TChildResult>;
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Subcommand<TChildOptions, TChildHandler, TChildResult>(string name, System.Action<Runic.CommandLine.CommandBuilder<TChildOptions, TChildHandler, TChildResult>> configure) where TChildHandler : notnull, Runic.CommandLine.ICommandHandler<TChildOptions, TChildResult>;
+    }
+    public sealed class CommandCatalog
+    {
+        public Runic.CommandLine.CommandDescriptor? DefaultCommand { get; }
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDescriptor> Commands { get; }
+        public static Runic.CommandLine.CommandCatalog Combine(params Runic.CommandLine.CommandCatalog[] catalogs);
+        public bool TryGetCommand(string token, out Runic.CommandLine.CommandDescriptor? command);
+        public bool TryResolve(System.ReadOnlySpan<string> tokens, out Runic.CommandLine.CommandDescriptor? command, out int consumed);
+    }
+    public sealed class CommandCatalogBuilder
+    {
+        public CommandCatalogBuilder();
+        public Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult> Command<TOptions, THandler, TResult>(string name) where THandler : notnull, Runic.CommandLine.ICommandHandler<TOptions, TResult>;
+        public Runic.CommandLine.CommandCatalogBuilder Command<TOptions, THandler, TResult>(string name, System.Action<Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult>> configure) where THandler : notnull, Runic.CommandLine.ICommandHandler<TOptions, TResult>;
+        public Runic.CommandLine.CommandCatalog Build();
+        public Runic.CommandLine.CommandCatalogBuilder DefaultCommand(string name);
+    }
+    public sealed class CommandCatalogValidationException : System.Exception
+    {
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandCatalogIssue> Issues { get; }
+    }
+    public sealed class CommandAttribute : System.Attribute
+    {
+        public CommandAttribute(string name);
+        public string Name { get; }
+    }
+    public sealed class DefaultCommandAttribute : System.Attribute
+    {
+        public DefaultCommandAttribute();
+    }
+    public sealed class ArgumentAttribute : System.Attribute
+    {
+        public ArgumentAttribute();
+        public ArgumentAttribute(string id);
+        public bool AllowMultipleValues { get; set; }
+        public string? Id { get; }
+    }
+    public sealed class OptionAttribute : System.Attribute
+    {
+        public OptionAttribute(string name, params string[] aliases);
+        public bool AllowMultipleOccurrences { get; set; }
+        public bool AllowMultipleValues { get; set; }
+        public bool Required { get; set; }
+        public string[] Aliases { get; }
+        public string Name { get; }
+    }
+    public sealed class FromServicesAttribute : System.Attribute
+    {
+        public FromServicesAttribute();
+    }
+    public sealed class CommandResultAttribute : System.Attribute
+    {
+        public CommandResultAttribute(string payloadType, System.Type jsonContextType);
+        public System.Type JsonContextType { get; }
+        public string PayloadType { get; }
+    }
+    public sealed class GeneratedCommandBindingException : System.Exception
+    {
+        public GeneratedCommandBindingException(string parameterId, string message);
+        public string ParameterId { get; }
+    }
+    public sealed class CommandDescriptor
+    {
+        public System.Collections.Generic.IReadOnlyList<string> Aliases { get; }
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandArgumentDescriptor> Arguments { get; }
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandOptionDescriptor> Options { get; }
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDescriptor> Subcommands { get; }
+        public string Name { get; }
+        public string? DescriptionKey { get; }
+        public bool TryGetOption(string token, out Runic.CommandLine.CommandOptionDescriptor? option);
+        public bool TryGetSubcommand(string token, out Runic.CommandLine.CommandDescriptor? command);
+    }
+    public sealed class CommandExecutionRequest
+    {
+        public CommandExecutionRequest(Runic.CommandLine.ParsedInvocation invocation, Runic.CommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, string correlationId);
+        public System.Globalization.CultureInfo Culture { get; }
+        public Runic.CommandLine.ICommandConsole Console { get; }
+        public Runic.CommandLine.ParsedInvocation Invocation { get; }
+        public string CorrelationId { get; }
+    }
+    public sealed class CommandExecutionResult
+    {
+        public Runic.CommandLine.CommandExitCategory ExitCategory { get; }
+        public Runic.CommandLine.CommandFault? Fault { get; }
+        public bool IsSuccess { get; }
+        public int ExitCode { get; }
+    }
+    public sealed class CommandExecutor
+    {
+        public CommandExecutor(Runic.CommandLine.ICommandExecutionScopeFactory scopeFactory, Runic.CommandLine.IExitCodePolicy? exitCodePolicy = null, Runic.CommandLine.ICommandExecutionObserver? observer = null);
+        public System.Threading.Tasks.ValueTask<Runic.CommandLine.CommandExecutionResult> ExecuteAsync(Runic.CommandLine.CommandExecutionRequest request, Runic.CommandLine.ICommandOutcomeSink outcomeSink, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public sealed class CommandOptionDescriptor
+    {
+        public System.Collections.Generic.IReadOnlyList<string> Aliases { get; }
+        public Runic.CommandLine.CommandArity Arity { get; }
+        public Runic.CommandLine.CommandOptionRepeatPolicy RepeatPolicy { get; }
+        public bool AllowsMultipleOccurrences { get; }
+        public bool IsSensitive { get; }
+        public bool IsRequired { get; }
+        public string Id { get; }
+        public string Name { get; }
+        public string? DescriptionKey { get; }
+    }
+    public sealed class CommandOutputDispatcher : Runic.CommandLine.ICommandOutcomeSink
+    {
+        public CommandOutputDispatcher();
+        public System.Threading.Tasks.ValueTask WriteAsync<T>(Runic.CommandLine.CommandDescriptor command, Runic.CommandLine.CommandExecutionContext context, Runic.CommandLine.CommandOutcome<T> outcome, Runic.CommandLine.ICommandResultCodec<T> codec, int exitCode, System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDiagnostic> diagnostics, System.Threading.CancellationToken cancellationToken);
+        public static System.Threading.Tasks.ValueTask DispatchAsync<T>(Runic.CommandLine.CommandOutputMode mode, Runic.CommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, Runic.CommandLine.CommandResponse<T> response, Runic.CommandLine.ICommandResultCodec<T> codec, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public sealed class CommandProtocolException : System.Exception
+    {
+        public CommandProtocolException(string kind, string message);
+        public CommandProtocolException(string kind, string message, System.Exception innerException);
+        public string Kind { get; }
+    }
+    public sealed class CommandResponse<T>
+    {
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDiagnostic> Diagnostics { get; }
+        public T? Payload { get; }
+        public Runic.CommandLine.CommandFault? Fault { get; }
+        public bool Success { get; }
+        public int ExitCode { get; }
+        public string Command { get; }
+        public string RequestId { get; }
+        public string? PayloadType { get; }
+    }
+    public sealed class CommandValueBinding
+    {
+        public CommandValueBinding(string id, System.Collections.Generic.IReadOnlyList<string> values);
+        public System.Collections.Generic.IReadOnlyList<string> Values { get; }
+        public string Id { get; }
+    }
+    public sealed class ParseOutcome
+    {
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDiagnostic> Diagnostics { get; }
+        public Runic.CommandLine.CommandOutputClassification? OutputClassification { get; }
+        public static Runic.CommandLine.ParseOutcome FromError(Runic.CommandLine.CommandDiagnostic diagnostic, Runic.CommandLine.CommandOutputClassification outputClassification);
+        public Runic.CommandLine.HelpRequest? HelpRequest { get; }
+        public Runic.CommandLine.ParseOutcomeKind Kind { get; }
+        public Runic.CommandLine.ParsedInvocation? Invocation { get; }
+        public static Runic.CommandLine.ParseOutcome FromError(Runic.CommandLine.CommandDiagnostic diagnostic);
+        public static Runic.CommandLine.ParseOutcome FromHelp(Runic.CommandLine.HelpRequest request, Runic.CommandLine.CommandOutputClassification outputClassification);
+        public static Runic.CommandLine.ParseOutcome FromInvocation(Runic.CommandLine.ParsedInvocation invocation);
+        public static Runic.CommandLine.ParseOutcome FromOutputError(Runic.CommandLine.CommandDiagnostic diagnostic, Runic.CommandLine.CommandOutputClassification outputClassification);
+        public static Runic.CommandLine.ParseOutcome FromVersion(Runic.CommandLine.CommandOutputClassification outputClassification);
+    }
+    public sealed class ParseSettings
+    {
+        public ParseSettings(string? outputEnvironmentValue = null, Runic.CommandLine.CommandOutputMode defaultOutputMode = Runic.CommandLine.CommandOutputMode.Human, string transportOutputOptionName = "--output");
+        public Runic.CommandLine.CommandOutputMode DefaultOutputMode { get; }
+        public static Runic.CommandLine.ParseSettings Default { get; }
+        public string? OutputEnvironmentValue { get; }
+        public string TransportOutputOptionName { get; }
+    }
+    public sealed class ParsedInvocation
+    {
+        public ParsedInvocation(Runic.CommandLine.CommandDescriptor command, Runic.CommandLine.CommandPath path, System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandValueBinding> options, System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandValueBinding> arguments, Runic.CommandLine.CommandOutputClassification outputClassification);
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandValueBinding> Arguments { get; }
+        public System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandValueBinding> Options { get; }
+        public Runic.CommandLine.CommandDescriptor Command { get; }
+        public Runic.CommandLine.CommandOutputClassification OutputClassification { get; }
+        public Runic.CommandLine.CommandPath Path { get; }
+    }
+    public sealed class PortableCommandSyntaxAdapter : Runic.CommandLine.ICommandSyntaxAdapter
+    {
+        public PortableCommandSyntaxAdapter();
+        public Runic.CommandLine.ParseOutcome Parse(Runic.CommandLine.CommandCatalog catalog, System.ReadOnlySpan<string> args, Runic.CommandLine.ParseSettings settings);
+        public static Runic.CommandLine.PortableCommandSyntaxAdapter Instance { get; }
+    }
+    public sealed record CommandCatalogIssue
+    {
+        public CommandCatalogIssue(string Code, string Location, string Message);
+        public string Code { get; init; }
+        public string Location { get; init; }
+        public string Message { get; init; }
+    }
+    public sealed record CommandExecutionEvent
+    {
+        public CommandExecutionEvent(Runic.CommandLine.CommandExecutionEventKind Kind, Runic.CommandLine.CommandPath Path, string CorrelationId, Runic.CommandLine.CommandExitCategory? ExitCategory = null, int? ExitCode = null, string? FaultCode = null);
+        public Runic.CommandLine.CommandExecutionEventKind Kind { get; init; }
+        public Runic.CommandLine.CommandExitCategory? ExitCategory { get; init; }
+        public Runic.CommandLine.CommandPath Path { get; init; }
+        public int? ExitCode { get; init; }
+        public string CorrelationId { get; init; }
+        public string? FaultCode { get; init; }
+    }
+    public sealed record HelpRequest
+    {
+        public HelpRequest(Runic.CommandLine.CommandPath path);
+        public Runic.CommandLine.CommandPath Path { get; }
+    }
+    public static class CommandJsonEnvelopeReader
+    {
+        public const int DefaultMaximumFrameBytes = 1048576;
+        public static Runic.CommandLine.CommandResponse<T> Read<T>(System.ReadOnlySpan<byte> frame, string expectedPayloadType, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> payloadTypeInfo, int maximumFrameBytes = 1048576);
+    }
+    public static class GeneratedCommandBinding
+    {
+        public static System.Collections.Generic.IReadOnlyList<string> Arguments(Runic.CommandLine.ParsedInvocation invocation, string id);
+        public static string Argument(Runic.CommandLine.ParsedInvocation invocation, string id);
+        public static decimal ParseDecimal(string value, string id);
+        public static double ParseDouble(string value, string id);
+        public static System.Guid ParseGuid(string value, string id);
+        public static int ParseInt32(string value, string id);
+        public static long ParseInt64(string value, string id);
+        public static bool Flag(Runic.CommandLine.ParsedInvocation invocation, string id);
+        public static string Option(Runic.CommandLine.ParsedInvocation invocation, string id);
+        public static System.Collections.Generic.IReadOnlyList<string> Options(Runic.CommandLine.ParsedInvocation invocation, string id);
+    }
+    public static class CommandParsePresentation
+    {
+        public static int GetExitCode(Runic.CommandLine.ParseOutcome outcome, System.Func<Runic.CommandLine.CommandDiagnostic, int> mapDiagnostic);
+        public static System.Threading.Tasks.ValueTask WriteHumanAsync(Runic.CommandLine.ParseOutcome outcome, Runic.CommandLine.ICommandConsole console, System.Func<Runic.CommandLine.CommandDiagnostic, System.Globalization.CultureInfo, string> formatDiagnostic, System.Globalization.CultureInfo culture, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public static class CommandJsonEnvelopeWriter
+    {
+        public static byte[] Serialize<T>(Runic.CommandLine.CommandResponse<T> response, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> payloadTypeInfo);
+        public static System.Threading.Tasks.ValueTask WriteAsync<T>(Runic.CommandLine.ICommandConsole console, Runic.CommandLine.CommandResponse<T> response, Runic.CommandLine.ICommandResultCodec<T> codec, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+    }
+    public static class CommandResponse
+    {
+        public static Runic.CommandLine.CommandResponse<T> Failed<T>(string requestId, string command, int exitCode, Runic.CommandLine.CommandFault fault, System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDiagnostic>? diagnostics = null);
+        public static Runic.CommandLine.CommandResponse<T> FromOutcome<T>(string requestId, string command, int exitCode, string payloadType, Runic.CommandLine.CommandOutcome<T> outcome, System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDiagnostic>? diagnostics = null);
+        public static Runic.CommandLine.CommandResponse<T> Succeeded<T>(string requestId, string command, string payloadType, T? payload, System.Collections.Generic.IReadOnlyList<Runic.CommandLine.CommandDiagnostic>? diagnostics = null);
+    }
+}

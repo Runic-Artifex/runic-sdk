@@ -1,0 +1,256 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
+using Runic.CommandLine;
+using Runic.CommandLine.Generated;
+using Runic.CommandLine.Hosting;
+using Runic.CommandLine.Processes;
+
+namespace Runic.CommandLine.PackageConsumer;
+
+internal static class Program
+{
+    private static async Task<int> Main()
+    {
+        var adapter = new CommandLineHostingAdapter(
+            GeneratedCommandCatalog.Create(),
+            new CommandExecutor(EmptyScopeFactory.Instance));
+        HostedCommandLineDecision parseErrorDecision = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--runic-output=JSON", "--unknown=secret"],
+                transportOutputOptionName: "--runic-output"));
+        if (parseErrorDecision.Kind != HostedCommandLineDecisionKind.Invalid ||
+            parseErrorDecision.OutputClassification?.Mode != CommandOutputMode.Json ||
+            parseErrorDecision.Diagnostics.Count != 1 ||
+            parseErrorDecision.Diagnostics[0].Arguments.Count != 1 ||
+            parseErrorDecision.Diagnostics[0].Arguments[0] != "--unknown") return 9;
+
+        HostedCommandLineDecision parseErrorBeforeTransport = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--unknown=secret", "--runic-output=JSON"],
+                transportOutputOptionName: "--runic-output"));
+        if (parseErrorBeforeTransport.Kind != HostedCommandLineDecisionKind.Invalid ||
+            parseErrorBeforeTransport.OutputClassification?.Mode != CommandOutputMode.Json ||
+            parseErrorBeforeTransport.Diagnostics.Count != 1 ||
+            parseErrorBeforeTransport.Diagnostics[0].Arguments.Count != 1 ||
+            parseErrorBeforeTransport.Diagnostics[0].Arguments[0] != "--unknown") return 91;
+
+        HostedCommandLineDecision hostileTransport = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["--runic-output=TOPSECRET"],
+                transportOutputOptionName: "--runic-output"));
+        if (hostileTransport.Kind != HostedCommandLineDecisionKind.Invalid ||
+            hostileTransport.Diagnostics.Count != 1 ||
+            hostileTransport.Diagnostics[0].Code != "RCLI1010" ||
+            hostileTransport.Diagnostics[0].Arguments.Count != 0 ||
+            hostileTransport.Diagnostics[0].Message.Contains("TOPSECRET", StringComparison.Ordinal)) return 92;
+
+        foreach (string[] args in new[]
+        {
+            new[] { "--help", "--runic-output=JSON" },
+            new[] { "--runic-output=JSON", "--help" },
+            new[] { "help", "--runic-output=JSON" },
+            new[] { "--runic-output=JSON", "help" },
+        })
+        {
+            HostedCommandLineDecision help = adapter.Classify(
+                new HostedCommandLineLaunchInput(args, transportOutputOptionName: "--runic-output"));
+            if (help.Kind != HostedCommandLineDecisionKind.Help ||
+                help.OutputClassification?.Mode != CommandOutputMode.Json) return 93;
+        }
+
+        foreach (string[] args in new[]
+        {
+            new[] { "--version", "--runic-output=JSON" },
+            new[] { "--runic-output=JSON", "--version" },
+        })
+        {
+            HostedCommandLineDecision version = adapter.Classify(
+                new HostedCommandLineLaunchInput(args, transportOutputOptionName: "--runic-output"));
+            if (version.Kind != HostedCommandLineDecisionKind.Version ||
+                version.OutputClassification?.Mode != CommandOutputMode.Json) return 94;
+        }
+
+        HostedCommandLineDecision generatedHelp = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--help", "--runic-output=JSON"],
+                transportOutputOptionName: "--runic-output"));
+        if (generatedHelp.Kind != HostedCommandLineDecisionKind.Help ||
+            generatedHelp.OutputClassification?.Mode != CommandOutputMode.Json) return 95;
+
+        HostedCommandLineDecision rootHelpExtra = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["help", "--unknown=secret", "--runic-output=JSON"],
+                transportOutputOptionName: "--runic-output"));
+        if (rootHelpExtra.Kind != HostedCommandLineDecisionKind.Invalid ||
+            rootHelpExtra.OutputClassification?.Mode != CommandOutputMode.Json ||
+            rootHelpExtra.Diagnostics.Count != 1 ||
+            rootHelpExtra.Diagnostics[0].Code != "RCLI1013" ||
+            rootHelpExtra.Diagnostics[0].Arguments.Count != 0 ||
+            rootHelpExtra.Diagnostics[0].Message.Contains("secret", StringComparison.Ordinal)) return 97;
+
+        HostedCommandLineDecision slashAliasBoundary = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--runic-output", "/x"],
+                transportOutputOptionName: "--runic-output"));
+        if (slashAliasBoundary.Kind != HostedCommandLineDecisionKind.Invalid ||
+            slashAliasBoundary.Diagnostics.Count != 1 ||
+            slashAliasBoundary.Diagnostics[0].Code != "RCLI1003" ||
+            slashAliasBoundary.Diagnostics[0].Arguments.Count != 1 ||
+            slashAliasBoundary.Diagnostics[0].Arguments[0] != "--runic-output") return 96;
+
+        HostedCommandLineDecision singleOccurrence = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--documents", "one", "--output", "application", "--single-documents", "a", "b", "--", "world"],
+                transportOutputOptionName: "--runic-output"));
+        if (singleOccurrence.Kind != HostedCommandLineDecisionKind.Invocation) return 98;
+
+        HostedCommandLineDecision repeatedSingleOccurrence = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--documents", "one", "--output", "application", "--single-documents", "a", "--single-documents", "b", "--", "world"],
+                transportOutputOptionName: "--runic-output"));
+        if (repeatedSingleOccurrence.Kind != HostedCommandLineDecisionKind.Invalid ||
+            repeatedSingleOccurrence.Diagnostics.Count != 1 ||
+            repeatedSingleOccurrence.Diagnostics[0].Code != "RCLI1007" ||
+            repeatedSingleOccurrence.Diagnostics[0].Arguments.Count != 1 ||
+            repeatedSingleOccurrence.Diagnostics[0].Arguments[0] != "--single-documents") return 99;
+
+        HostedCommandLineDecision decision = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--documents", "one", "two", "--documents", "three", "--output", "application", "--runic-output=json", "world", "--", "--app-flag", "-3", "literal"],
+                transportOutputOptionName: "--runic-output"));
+        if (decision.Kind != HostedCommandLineDecisionKind.Invocation) return 10;
+
+        var console = new BufferCommandConsole();
+        HostedCommandLineExecutionResult execution = await adapter.ExecuteAsync(
+            new HostedCommandLineExecutionInput(decision, console, CultureInfo.InvariantCulture, "package-consumer-1", new CommandOutputDispatcher())).ConfigureAwait(false);
+        if (!execution.IsSuccess) return 20;
+        using JsonDocument json = JsonDocument.Parse(console.StandardOutput);
+        if (json.RootElement.GetProperty("payload").GetProperty("Message").GetString() != "Hello, world! application 3 --app-flag|-3|literal") return 30;
+        if (json.RootElement.GetProperty("diagnostics").GetArrayLength() != 1 ||
+            json.RootElement.GetProperty("diagnostics")[0].GetProperty("code").GetString() != "RCLI3001") return 31;
+
+        HostedCommandLineDecision humanDecision = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--documents", "one", "two", "--documents", "three", "--output", "application", "--runic-output=human", "world", "--", "--app-flag", "-3", "literal"],
+                transportOutputOptionName: "--runic-output"));
+        if (humanDecision.Kind != HostedCommandLineDecisionKind.Invocation) return 32;
+
+        var humanConsole = new BufferCommandConsole();
+        HostedCommandLineExecutionResult humanExecution = await adapter.ExecuteAsync(
+            new HostedCommandLineExecutionInput(humanDecision, humanConsole, CultureInfo.InvariantCulture, "package-consumer-2", new CommandOutputDispatcher())).ConfigureAwait(false);
+        if (!humanExecution.IsSuccess || humanConsole.StandardOutput.Length == 0 ||
+            humanConsole.StandardError != "RCLI3001: The generated result format is deprecated.\n") return 33;
+
+        HostedCommandLineDecision failureHumanDecision = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--documents", "one", "--output", "failure", "--runic-output=human", "world"],
+                transportOutputOptionName: "--runic-output"));
+        if (failureHumanDecision.Kind != HostedCommandLineDecisionKind.Invocation) return 34;
+
+        var failureHumanConsole = new BufferCommandConsole();
+        HostedCommandLineExecutionResult failureHumanExecution = await adapter.ExecuteAsync(
+            new HostedCommandLineExecutionInput(failureHumanDecision, failureHumanConsole, CultureInfo.InvariantCulture, "package-consumer-3", new CommandOutputDispatcher())).ConfigureAwait(false);
+        if (failureHumanExecution.ExitCode != CommandExitCodes.Validation ||
+            failureHumanConsole.StandardOutput != "Dry-run report\n" ||
+            failureHumanConsole.StandardError != "RCLI3002: The documents require review.\nRCLI3000: The dry run cannot continue.\n") return 35;
+
+        HostedCommandLineDecision failureJsonDecision = adapter.Classify(
+            new HostedCommandLineLaunchInput(
+                ["smoke", "--documents", "one", "--output", "failure", "--runic-output=json", "world"],
+                transportOutputOptionName: "--runic-output"));
+        if (failureJsonDecision.Kind != HostedCommandLineDecisionKind.Invocation) return 36;
+
+        var failureJsonConsole = new BufferCommandConsole();
+        HostedCommandLineExecutionResult failureJsonExecution = await adapter.ExecuteAsync(
+            new HostedCommandLineExecutionInput(failureJsonDecision, failureJsonConsole, CultureInfo.InvariantCulture, "package-consumer-4", new CommandOutputDispatcher())).ConfigureAwait(false);
+        if (failureJsonExecution.ExitCode != CommandExitCodes.Validation ||
+            failureJsonConsole.StandardError.Length != 0 ||
+            failureJsonConsole.StandardOutput.Contains("Dry-run report", StringComparison.Ordinal)) return 37;
+        using JsonDocument failureJson = JsonDocument.Parse(failureJsonConsole.StandardOutput);
+        if (failureJson.RootElement.GetProperty("success").GetBoolean() ||
+            failureJson.RootElement.GetProperty("diagnostics")[0].GetProperty("code").GetString() != "RCLI3002") return 38;
+
+        Console.Out.Write(console.StandardOutput);
+        return 0;
+    }
+
+    [Command("smoke")]
+    [CommandResult("runic.commandline.consumer/1", typeof(ConsumerJsonContext))]
+    internal static async ValueTask<CommandOutcome<ConsumerResult>> Smoke(
+        [Argument] string name,
+        [Argument("app-args", AllowMultipleValues = true)] IReadOnlyList<string> appArgs,
+        [Option("--documents", AllowMultipleValues = true, Required = true)] IReadOnlyList<string> documents,
+        [Option("--single-documents", AllowMultipleValues = true, AllowMultipleOccurrences = false)] IReadOnlyList<string> singleDocuments,
+        [Option("--output", Required = true)] string output,
+        [Option("--value", "/x")] bool value,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(output, "failure", StringComparison.Ordinal))
+        {
+            return CommandOutcome.Failure<ConsumerResult>(
+                CommandExitCategory.Validation,
+                new CommandFault("RCLI3000", "The dry run cannot continue."),
+                [new CommandDiagnostic(
+                    "RCLI3002",
+                    "documents-require-review",
+                    "The documents require review.",
+                    CommandDiagnosticPhase.Execution,
+                    CommandDiagnosticSeverity.Error)],
+                "Dry-run report\n");
+        }
+
+        string fileName = OperatingSystem.IsWindows() ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : "/bin/sh";
+        string[] arguments = OperatingSystem.IsWindows() ? ["/d", "/c", "exit", "0"] : ["-c", "exit 0"];
+        ProcessResult child = await new ProcessRunner(new LocalExecutablePolicy()).RunAsync(
+            new ProcessRequest(fileName, arguments, options: new ProcessExecutionOptions(timeout: TimeSpan.FromSeconds(10))), cancellationToken).ConfigureAwait(false);
+        if (child.State != ProcessState.Exited || child.ExitCode != 0) throw new InvalidOperationException("The bounded process command failed.");
+        return CommandOutcome.Success(
+            new ConsumerResult($"Hello, {name}! {output} {documents.Count} {string.Join('|', appArgs)}"),
+            [new CommandDiagnostic(
+                "RCLI3001",
+                "generated-result-format-deprecated",
+                "The generated result format is deprecated.",
+                CommandDiagnosticPhase.Execution,
+                CommandDiagnosticSeverity.Warning)]);
+    }
+}
+
+internal sealed record ConsumerResult(string Message);
+
+[JsonSerializable(typeof(ConsumerResult))]
+internal sealed partial class ConsumerJsonContext : JsonSerializerContext;
+
+internal sealed class BufferCommandConsole : ICommandConsole
+{
+    private readonly StringBuilder _output = new();
+    private readonly StringBuilder _error = new();
+    public string StandardOutput => _output.ToString();
+    public string StandardError => _error.ToString();
+    public bool IsInteractive => false;
+    public bool IsInputRedirected => true;
+    public bool IsOutputRedirected => true;
+    public bool IsErrorRedirected => true;
+    public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) => ValueTask.FromResult<string?>(null);
+    public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) { _output.Append(value.Span); return ValueTask.CompletedTask; }
+    public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken) { _output.Append(Encoding.UTF8.GetString(value.Span)); return ValueTask.CompletedTask; }
+    public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) { _error.Append(value.Span); return ValueTask.CompletedTask; }
+}
+
+internal sealed class EmptyScopeFactory : ICommandExecutionScopeFactory
+{
+    public static EmptyScopeFactory Instance { get; } = new();
+    public ICommandExecutionScope CreateScope() => Scope.Instance;
+    private sealed class Scope : ICommandExecutionScope
+    {
+        public static Scope Instance { get; } = new();
+        public IServiceProvider Services { get; } = new EmptyServices();
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class EmptyServices : IServiceProvider { public object? GetService(Type serviceType) => null; }
+}
