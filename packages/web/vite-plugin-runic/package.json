@@ -1,9 +1,10 @@
 {
-  "name": "@runic-artifex/vite-plugin-runic-toolkit",
-  "version": "0.0.0-private",
-  "description": "Vite 8 development and DevTools integration for Runic Toolkit applications",
+  "name": "@runic-artifex/vite-plugin-runic",
+  "version": "1.0.0-preview.1",
+  "description": "Vite 8 development and DevTools integration for Runic applications",
   "license": "MIT",
   "type": "module",
+  "packageManager": "npm@11.16.0",
   "files": [
     "dist",
     "virtual.d.ts",
@@ -57,12 +58,15 @@
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-vite.git"
   },
+  "homepage": "https://github.com/Runic-Artifex/runic-vite#readme",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-vite/issues"
+  },
   "keywords": [
     "runic-artifex",
-    "runic-toolkit",
+    "runic",
     "vite",
     "vite-plugin",
     "devtools"
   ]
 }
-
