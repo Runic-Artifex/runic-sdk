@@ -1,127 +1,242 @@
 # `@runic-artifex/svelte`
 
-Svelte 5-only projection and lifecycle support for a Runic Toolkit Application
-Bridge controller.
+Make one Runic Toolkit Application Bridge controller feel native in a Svelte 5
+application. This package owns Svelte lifecycle, context, and rune projection
+while the controller remains authoritative for its snapshots, transport,
+commands, reconnect, and events.
 
-## Runic Translations locale state
+## Install
 
-Translation support is isolated in `@runic-artifex/svelte/translations`. It
-consumes the structural `LocaleSource` emitted by Runic Translations and does
-not make the generated catalog a runtime dependency.
-
-Create one typed context in an application module:
-
-```ts
-// src/lib/locale-context.ts
-import { createLocaleContext } from "@runic-artifex/svelte/translations";
-
-export type AppLocale = "en" | "de";
-export const localeContext = createLocaleContext<AppLocale>();
+```sh
+npm install @runic-artifex/application-bridge@preview @runic-artifex/svelte@preview
 ```
 
-Create one locale source per browser root or SSR component tree and provide it
-from the root layout. `createLocaleSource` is generated for the catalog:
+`@runic-artifex/svelte` is a public npm preview. The `preview` tag follows the
+current preview release without pinning a stale version.
+
+| Requirement | Supported range |
+|---|---|
+| Svelte | `>=5.46.4 <6` |
+| Effect | `>=3.22.1 <4` |
+| Runic Toolkit Application Bridge | `>=0.1.0-preview.30.1 <1` (optional peer; required by the root and `/bridge` entries) |
+| Runic Vite integration | `>=0.2.0-preview.1 <1` (optional peer; required only by `/vite`) |
+
+Svelte 4 and legacy stores are not supported.
+
+### Public contract boundary
+
+This adapter follows the released Application Bridge controller: failures are
+the generated `BridgeError` union and Effect programs use its owned service.
+It does not retain adapter-local failure or runtime generics. The released
+local host boundary is the structural Application Bridge `FrameChannel`
+contract; Svelte neither creates a frame channel nor owns transport,
+reconnect, protocol, revision, or controller lifetime. The optional `/vite`
+entry covers the released Vite resource lifecycle; authentication, remote
+service transport, deployment, SSR, hydration, and rollout remain outside this
+adapter.
+
+## Use an Application Bridge in Svelte 5
+
+`@runic-artifex/svelte/translations` is deliberately independent of the
+Application Bridge peer, so translation-only apps can install and render it
+without a bridge package. The package root and the additive
+`@runic-artifex/svelte/bridge` entry point load bridge support; if the optional
+peer is absent, they report the exact `npm install
+@runic-artifex/application-bridge@preview` remediation.
+
+Use `@runic-artifex/svelte/vite` only when registering Runic Vite
+DevTools. It supplies the typed observer and HMR resource helpers without
+making the root bridge entry depend on Vite.
+
+Create the controller with `@runic-artifex/application-bridge`, then create one
+Svelte projection and one typed context for the component tree. `provide()`
+starts the bridge after the first browser mount by default; it initializes the
+snapshot, then calls `uiReady()` and `uiRendered()`. It disposes the bridge on
+unmount by default.
+
+For a Runic Desktop application, compose the transport before constructing the
+Svelte projection. The generated contract is unchanged:
+
+```ts
+import { createDesktopFrameChannel } from "@runic-artifex/desktop";
+import {
+  ApplicationBridgeLive,
+  createApplicationBridgeController,
+} from "@runic-artifex/application-bridge";
+import { SetupContract } from "./generated/setup-contract";
+
+export const controller = createApplicationBridgeController(
+  SetupContract,
+  ApplicationBridgeLive(SetupContract, createDesktopFrameChannel()),
+);
+```
+
+The controller's Effect scope connects and closes the Desktop channel. Svelte
+mounting owns only its subscription and projection; dispose the controller once
+at the application-composition boundary after the Svelte root is unmounted.
+
+```ts
+// src/lib/setup-bridge.svelte.ts
+import {
+  createApplicationBridgeContext,
+  createSvelteApplicationBridge,
+} from "@runic-artifex/svelte";
+import { controller } from "./setup-controller";
+
+export const setupBridge = createSvelteApplicationBridge(controller, {
+  reduce: (snapshot, event) =>
+    event._tag === "SnapshotReplaced" ? event.snapshot : snapshot,
+});
+
+export const setupBridgeContext = createApplicationBridgeContext();
+```
+
+```svelte
+<!-- src/routes/+page.svelte -->
+<script lang="ts">
+  import { setupBridge, setupBridgeContext } from "$lib/setup-bridge.svelte";
+
+  const bridge = setupBridgeContext.provide(setupBridge);
+  let snapshot = $derived(bridge.snapshot);
+
+  async function refresh() {
+    await bridge.dispatch({ _tag: "Refresh" });
+  }
+</script>
+
+<p>{bridge.status}</p>
+{#if snapshot}
+  <button onclick={refresh}>Refresh</button>
+{/if}
+```
+
+Keep transient presentation state in Svelte. Supply `reduce` when bridge events
+produce a newer snapshot; otherwise the initial/reconnect snapshots remain the
+projection's state. Call `bridge.cancel(operationId)` to request an explicit
+backend operation cancellation. Disposing a component is not a cancellation
+command.
+
+## Optional: Runic Translations
+
+The `@runic-artifex/svelte/translations` subpath adapts a generated Runic
+Translations `LocaleSource` without making the generated catalog a runtime
+dependency. Install and configure the Runic Translations Vite plugin that
+provides your `virtual:runic-translations/...` modules, then create one locale
+context and provide a source per browser root or SSR component tree.
+
+```ts
+// src/lib/locale-context.svelte.ts
+import { createLocaleContext } from "@runic-artifex/svelte/translations";
+
+export const localeContext = createLocaleContext<"en" | "de">();
+```
 
 ```svelte
 <script lang="ts">
   import { createLocaleSource } from "virtual:runic-translations/app/runtime";
-  import { localeContext } from "$lib/locale-context";
+  import { localeContext } from "$lib/locale-context.svelte";
 
   let { data, children } = $props();
   const source = createLocaleSource({ initialLocale: data.locale });
-  localeContext.provide(source);
+  const locale = localeContext.provide(source);
 </script>
 
+<button onclick={() => locale.setLocale("de")}>Deutsch</button>
 {@render children()}
 ```
 
-Message options read reactive rune state, so a source notification invalidates
-the rendered call without a reload:
+A mutable source is updated directly. If navigation or application settings are
+authoritative, pass `requestLocale` to `provide()` and update the source through
+that callback. Initialize the client source from the root server load for
+deterministic hydration. For URL routing, use
+[`@runic-artifex/sveltekit/translations`](https://www.npmjs.com/package/@runic-artifex/sveltekit).
+
+### Localization and visual-accessibility regression cases
+
+`@runic-artifex/svelte/translations/testing` provides framework-neutral data
+for a UI regression matrix. Mount each `localizationStressCases` entry with its
+`localizationStressAttributes`, render every `pluralStressCounts` value, and
+exercise each `visualAccessibilityStressScenarios` media query in the
+application's own browser harness. The fixtures include an expanded pseudo
+locale, an RTL string with a bidi-isolated identifier, and explicit forced
+colors, high-contrast, and reduced-motion checks. They deliberately do not
+prescribe application styling or replace real localized content.
+
+```ts
+import {
+  localizationStressCases,
+  pluralStressCounts,
+  visualAccessibilityStressScenarios,
+} from "@runic-artifex/svelte/translations/testing";
+
+for (const stressCase of localizationStressCases) {
+  // Mount this exact text in your app's visual test with lang/dir attributes.
+}
+
+for (const count of pluralStressCounts) {
+  // Render a real pluralized message for each count.
+}
+```
+
+## Hosted browser bootstrap
+
+For the hosted SSR profile, render the server-provided bootstrap fingerprint in
+`<meta name="runic-hosted-bootstrap">`, then call
+`startRunicHostedBridgeAfterBootstrap` inside `onMount`. A matching marker starts
+the supplied bridge; a mismatch records a fail-closed hydration state and leaves
+the bridge stopped. The marker guards render consistency only—it is not an
+authorization credential.
 
 ```svelte
 <script lang="ts">
-  import { m } from "virtual:runic-translations/app";
-  import { localeContext } from "$lib/locale-context";
+  import { onMount } from "svelte";
+  import { startRunicHostedBridgeAfterBootstrap } from "@runic-artifex/svelte/hosted";
 
-  const locale = localeContext.use();
+  let { data, bridge } = $props();
+
+  onMount(() => {
+    if (!startRunicHostedBridgeAfterBootstrap(data.bootstrap, bridge)) return;
+    return () => { void bridge.dispose(); };
+  });
 </script>
 
-<h1>{m["Common.Hello"]({ name: "Ada" }, locale.messageOptions)}</h1>
-<button onclick={() => locale.setLocale("de")}>Deutsch</button>
+<svelte:head>
+  <meta name="runic-hosted-bootstrap" content={data.bootstrap.fingerprint} />
+</svelte:head>
 ```
 
-`locale.setLocale` writes a mutable source by default. Pass `requestLocale`
-when navigation or an application setting is authoritative instead. The state
-refreshes from the source after that callback completes; the callback should
-therefore update the source directly or complete the navigation that does so.
+This does not create a new transport or authorization path. The existing bridge
+remains controller-only; the W20 local FrameChannel/WebSocket boundary is not a
+hosted service route.
 
-Providers subscribe during component initialization, including SSR, and
-unsubscribe in `onDestroy`. Context makes each render request-scoped; no global
-generated resolver is configured. Nested providers shadow their parent and
-dispose only their own subscription. Pass `dispose: false` only when the caller
-owns a longer-lived state. Hydration is deterministic when the client source is
-initialized from the locale returned by the root server load.
+## Optional: Effect workflows
 
-Explicit `{ locale }` message options remain authoritative on the server. The
-adapter deliberately has no cookie, URL, or router behavior; SvelteKit support
-lives in `@runic-artifex/sveltekit/translations`.
-
-## Application Bridge
-
-Create the typed context once in an application module, provide it in the root
-layout/component, and consume the same context below that boundary. State uses
-Svelte 5 runes and immutable snapshots use `$state.raw`.
-
-The first mount starts the controller, initializes its authoritative snapshot,
-and announces `uiReady` followed by `uiRendered`. Repeated starts do not repeat
-those lifecycle messages, and unmount performs idempotent disposal.
-
-The integration never parses the protocol and never creates a second Effect
-runtime. It owns only Svelte lifecycle and projection concerns.
-
-## Opt-in Effect workflows
-
-Use `createEffectSvelteApplicationBridge` with an Effect-aware Application
-Bridge controller when a UI workflow benefits from typed failures, composition,
-structured concurrency, or interruption. The existing Promise methods remain
-available for ordinary event handlers.
-
-The enhanced bridge exposes:
-
-- `effects`, containing the typed `initialize`, `dispatch`, `cancel`, reconnect,
-  lifecycle, and event Stream programs;
-- `run` and `runExit`, which execute a composed program in the controller's
-  existing `ManagedRuntime`;
-- `createAction`, which projects one latest-wins Fiber into Svelte-native
-  `status`, `value`, `error`, `cause`, and `exit` state.
-
-An action interrupts its previous invocation before starting another. Disposing
-the root bridge interrupts every action it created. Fiber interruption only
-stops the frontend workflow; backend operation cancellation remains the
-explicit `cancel(operationId)` protocol operation.
+If your controller exposes the Effect-aware Application Bridge contract, use
+`createEffectSvelteApplicationBridge`. It retains the ordinary Promise methods
+and exposes `effects`, `run`, `runExit`, and `createAction` over the controller's
+existing managed runtime—no renderer-owned Effect runtime is created.
 
 ```ts
 import { Effect } from "effect";
 import { createEffectSvelteApplicationBridge } from "@runic-artifex/svelte";
 
 const bridge = createEffectSvelteApplicationBridge(controller);
-const install = bridge.createAction((command, effects) =>
-  effects.dispatch(command).pipe(
-    Effect.retry({ times: 2 }),
-  )
+const refresh = bridge.createAction((_input, effects) =>
+  effects.dispatch({ _tag: "Refresh" }).pipe(Effect.asVoid),
 );
 
-// Components can use install.running, install.value, and install.error.
-void install.run({ _tag: "StartInstallation", selectionId });
-
-// Simple calls stay simple.
-await bridge.dispatch({ _tag: "Navigate", target: "Summary" });
+void refresh.run(undefined);
 ```
 
-Keep transient presentation state in Svelte runes. Put substantial Effect
-programs in framework-neutral TypeScript modules and use actions only to project
-their lifecycle into the component tree.
+An action is latest-wins: beginning another invocation interrupts its preceding
+Fiber, and disposing the bridge interrupts its actions. That interruption only
+stops frontend work; use `cancel(operationId)` when the host operation itself
+must be cancelled.
 
-If the host uses Runic Flow, embed the relevant process state in the application's
-named snapshot and project it with `reduce`. Flow remains backend-only; this
-package neither imports Flow vocabulary nor creates a competing state runtime.
+## Links, status, and support
+
+- [Application Bridge guide](https://docs.runic-artifex.eu/application-bridge)
+- [Package catalog and release status](https://docs.runic-artifex.eu/packages)
+- [SvelteKit reference application](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/04-SvelteKitSetupApplication)
+- [Issues and support](https://github.com/Runic-Artifex/runic-svelte/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-svelte/blob/main/LICENSE)

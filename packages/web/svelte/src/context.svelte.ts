@@ -1,17 +1,17 @@
 import { createContext, onMount } from "svelte";
 import type { SvelteApplicationBridge } from "./bridge.svelte.js";
 
-export interface ApplicationBridgeContext<Command, Receipt, HostEvent, Snapshot, Failure = unknown> {
+export interface ApplicationBridgeContext<Command, Receipt, HostEvent, Snapshot> {
   provide(
-    bridge: SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure>,
+    bridge: SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot>,
     options?: Readonly<{ start?: boolean; dispose?: boolean }>,
-  ): SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure>;
-  use(): SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure>;
+  ): SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot>;
+  use(): SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot>;
 }
 
-export function createApplicationBridgeContext<Command, Receipt, HostEvent, Snapshot, Failure = unknown>():
-  ApplicationBridgeContext<Command, Receipt, HostEvent, Snapshot, Failure> {
-  const [use, set] = createContext<SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure>>();
+export function createApplicationBridgeContext<Command, Receipt, HostEvent, Snapshot>():
+  ApplicationBridgeContext<Command, Receipt, HostEvent, Snapshot> {
+  const [use, set] = createContext<SvelteApplicationBridge<Command, Receipt, HostEvent, Snapshot>>();
   return {
     provide(bridge, options = {}) {
       set(bridge);

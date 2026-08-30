@@ -1,27 +1,27 @@
 import { Cause, Effect, Exit, Option, type Fiber } from "effect";
-import type { EffectActionStatus, EffectRunner } from "./types.js";
+import type { ApplicationBridgeService, EffectActionStatus, EffectRunner } from "./types.js";
 
 /**
  * Projects one latest-wins Effect workflow into Svelte-native reactive state.
  * The supplied runner owns the Fiber; this class never creates an Effect runtime.
  */
-export class SvelteEffectAction<Input, Success, Failure, Requirements> {
+export class SvelteEffectAction<Input, Success, Failure> {
   status = $state<EffectActionStatus>("idle");
   value = $state.raw<Success | undefined>(undefined);
   error = $state.raw<Failure | undefined>(undefined);
   cause = $state.raw<Cause.Cause<Failure> | undefined>(undefined);
   exit = $state.raw<Exit.Exit<Success, Failure> | undefined>(undefined);
 
-  readonly #runner: EffectRunner<Requirements>;
-  readonly #program: (input: Input) => Effect.Effect<Success, Failure, Requirements>;
+  readonly #runner: EffectRunner;
+  readonly #program: (input: Input) => Effect.Effect<Success, Failure, ApplicationBridgeService>;
   readonly #onDispose: (() => void) | undefined;
   #fiber: Fiber.RuntimeFiber<Success, Failure> | undefined;
   #generation = 0;
   #disposed = false;
 
   constructor(
-    runner: EffectRunner<Requirements>,
-    program: (input: Input) => Effect.Effect<Success, Failure, Requirements>,
+    runner: EffectRunner,
+    program: (input: Input) => Effect.Effect<Success, Failure, ApplicationBridgeService>,
     onDispose?: () => void,
   ) {
     this.#runner = runner;

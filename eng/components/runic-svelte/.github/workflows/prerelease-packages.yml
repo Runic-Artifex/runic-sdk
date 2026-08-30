@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  PACKAGE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || format('0.1.0-preview.{0}.{1}', github.run_number, github.run_attempt) }}
+  PACKAGE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || format('0.2.0-preview.{0}.{1}', github.run_number, github.run_attempt) }}
 
 jobs:
   package:
