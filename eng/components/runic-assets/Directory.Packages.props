@@ -3,10 +3,12 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
+    <RunicCommandLineVersion Condition="'$(RunicCommandLineVersion)' == ''">1.0.0-preview.1</RunicCommandLineVersion>
+    <RunicDesktopVersion Condition="'$(RunicDesktopVersion)' == ''">1.0.0-preview.1</RunicDesktopVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="Runic.CommandLine" Version="1.0.0-preview.1" />
-    <PackageVersion Include="Runic.Desktop" Version="1.0.0-preview.1" />
+    <PackageVersion Include="Runic.CommandLine" Version="$(RunicCommandLineVersion)" />
+    <PackageVersion Include="Runic.Desktop" Version="$(RunicDesktopVersion)" />
   </ItemGroup>
 </Project>

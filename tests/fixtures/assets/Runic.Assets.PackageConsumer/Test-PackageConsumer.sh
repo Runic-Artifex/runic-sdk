@@ -21,15 +21,17 @@ else
   package_feed="$candidate_feed"
 fi
 
-if [[ ! -f "$desktop_project" ]]; then
-  echo "Runic Desktop project '$desktop_project' does not exist." >&2
-  exit 2
+if [[ "${RUNIC_USE_REGISTRY_DEPENDENCIES:-}" != "1" ]]; then
+  if [[ ! -f "$desktop_project" ]]; then
+    echo "Runic Desktop project '$desktop_project' does not exist." >&2
+    exit 2
+  fi
+  dotnet pack "$desktop_project" \
+    --configuration Release \
+    -p:PackageVersion="$package_version" \
+    -p:RepositoryCommit="$(git -C "$dependency_root/runic-desktop" rev-parse HEAD)" \
+    --output "$package_feed"
 fi
-dotnet pack "$desktop_project" \
-  --configuration Release \
-  -p:PackageVersion="$package_version" \
-  -p:RepositoryCommit="$(git -C "$dependency_root/runic-desktop" rev-parse HEAD)" \
-  --output "$package_feed"
 
 export NUGET_PACKAGES="$test_root/packages"
 mkdir -p "$consumer_root"
