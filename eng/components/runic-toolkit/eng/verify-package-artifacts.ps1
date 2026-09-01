@@ -17,6 +17,12 @@ $expectedPackages = @(
     'dotnet-runic',
     'Runic.Application.Templates'
 )
+$expectedExternalDependencies = @{
+    'Runic.CommandLine' = if ($env:RunicCommandLinePackageVersion) { $env:RunicCommandLinePackageVersion } else { '1.0.0-preview.1' }
+    'Runic.Assets' = if ($env:RunicAssetsPackageVersion) { $env:RunicAssetsPackageVersion } else { '1.0.0-preview.1' }
+    'Runic.Translations' = if ($env:RunicTranslationsPackageVersion) { $env:RunicTranslationsPackageVersion } else { '1.0.0-preview.1' }
+    'Runic.Desktop' = if ($env:RunicDesktopPackageVersion) { $env:RunicDesktopPackageVersion } else { '1.0.0-preview.1' }
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
@@ -71,10 +77,20 @@ foreach ($packageId in $expectedPackages) {
         throw "Package '$packagePath' does not contain the expected repository provenance."
     }
 
-    foreach ($dependency in @($document.SelectNodes("//*[local-name()='dependency'][starts-with(@id, 'RunicToolkit.')]") )) {
+    foreach ($dependency in @($document.SelectNodes("//*[local-name()='dependency'][starts-with(@id, 'Runic.Application') or @id='dotnet-runic']") )) {
         $dependencyVersion = $dependency.GetAttribute('version')
         if ($dependencyVersion -notin @($PackageVersion, "[$PackageVersion]")) {
             throw "Internal dependency '$($dependency.GetAttribute('id'))' in '$packagePath' does not start at $PackageVersion (found '$dependencyVersion')."
+        }
+    }
+
+    foreach ($dependency in @($document.SelectNodes("//*[local-name()='dependency']"))) {
+        $dependencyId = $dependency.GetAttribute('id')
+        if (-not $expectedExternalDependencies.ContainsKey($dependencyId)) { continue }
+        $expectedVersion = $expectedExternalDependencies[$dependencyId]
+        $dependencyVersion = $dependency.GetAttribute('version')
+        if ($dependencyVersion -notin @($expectedVersion, "[$expectedVersion]")) {
+            throw "External dependency '$dependencyId' in '$packagePath' must select $expectedVersion (found '$dependencyVersion')."
         }
     }
 }

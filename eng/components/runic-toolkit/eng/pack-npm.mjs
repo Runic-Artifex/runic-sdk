@@ -48,23 +48,20 @@ try {
         if (dependency.startsWith("@runic-artifex/")) manifest[field][dependency] = version;
       }
     }
-    if (suppliedRegistry === "public") {
-      manifest.publishConfig = {
-        access: "public",
-        registry: "https://registry.npmjs.org",
-      };
-    }
+    manifest.publishConfig = suppliedRegistry === "public"
+      ? { access: "public", registry: "https://registry.npmjs.org" }
+      : { access: "restricted", registry: "https://npm.pkg.github.com" };
     delete manifest.scripts;
     writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const result = spawnSync(
-      process.platform === "win32" ? "npm.cmd" : "npm",
-      ["pack", "--ignore-scripts", "--pack-destination", output],
+      process.platform === "win32" ? "bun.exe" : "bun",
+      ["pm", "pack", "--destination", output, "--quiet"],
       { cwd: target, encoding: "utf8", stdio: "pipe" },
     );
     if (result.status !== 0) {
       if (result.error) throw result.error;
-      process.stderr.write(result.stderr || result.stdout || "npm pack failed without diagnostic output.\n");
+      process.stderr.write(result.stderr || result.stdout || "bun pm pack failed without diagnostic output.\n");
       process.exit(result.status ?? 1);
     }
     process.stdout.write(

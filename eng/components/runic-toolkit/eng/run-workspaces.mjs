@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const command = process.argv[2];
@@ -60,28 +60,13 @@ while (pending.size > 0) {
   }
 }
 
-const npmCli = process.platform === 'win32'
-  ? [
-      process.env.npm_execpath,
-      join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    ].find(candidate => candidate && existsSync(candidate))
-  : undefined;
-
-if (process.platform === 'win32' && !npmCli) {
-  throw new Error('Unable to locate npm-cli.js. Run this command through npm or use a Node installation that includes npm.');
-}
-
-const npmCommand = npmCli ? (process.env.npm_node_execpath ?? process.execPath) : 'npm';
 for (const manifest of orderedPackages) {
   const result = spawnSync(
-    npmCommand,
+    process.platform === 'win32' ? 'bun.exe' : 'bun',
     [
-      ...(npmCli ? [npmCli] : []),
-      'run',
-      command,
-      '--workspace',
+      'run', '--filter',
       manifest.name,
-      '--if-present',
+      command,
     ],
     { stdio: 'inherit' },
   );

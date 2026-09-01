@@ -34,5 +34,10 @@ for (const name of declared) {
   if (!entry) throw new Error(`Template lock does not contain candidate ${name}.`);
   entry.version = candidate.version;
   entry.integrity = candidate.integrity;
+  for (const field of ["dependencies", "optionalDependencies"]) {
+    for (const dependency of Object.keys(entry[field] ?? {})) {
+      if (candidates.has(dependency)) entry[field][dependency] = candidates.get(dependency).version;
+    }
+  }
 }
 writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);

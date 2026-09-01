@@ -83,7 +83,12 @@ try {
   await write(root, "projects/customer-app/src/index.html", "<customer-root></customer-root>\n");
   await write(root, "projects/customer-app/src/main.ts", appSource());
 
-  const environment = { ...process.env, npm_config_cache: join(root, ".npm-cache"), npm_config_update_notifier: "false" };
+  const environment = {
+    ...process.env,
+    NG_CLI_ANALYTICS: "false",
+    npm_config_cache: join(root, ".npm-cache"),
+    npm_config_update_notifier: "false",
+  };
   await run("npm", ["install", "--ignore-scripts"], root, environment);
   await run("npm", ["exec", "ng", "build", "contracts"], root, environment);
   await run("npm", ["install", "--ignore-scripts", "./dist/contracts"], root, environment);
