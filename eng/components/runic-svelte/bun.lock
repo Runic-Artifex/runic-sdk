@@ -6,6 +6,7 @@
       "name": "@runic-artifex/runic-svelte-workspace",
       "devDependencies": {
         "@runic-artifex/application-bridge": "^0.1.0-preview.30.1",
+        "@runic-artifex/svelte": "workspace:*",
         "@runic-artifex/vite-plugin-runic": "file:./test/fixtures/vite-plugin-runic",
         "@sveltejs/adapter-static": "3.0.10",
         "@sveltejs/kit": "2.70.2",
@@ -305,7 +306,7 @@
 
     "zimmerframe": ["zimmerframe@1.1.4", "", {}, "sha512-B58NGBEoc8Y9MWWCQGl/gq9xBCe4IiKM0a2x7GZdQKOW5Exr8S1W24J6OgM1njK8xCRGvAJIL/MxXHf6SkmQKQ=="],
 
-    "@runic-artifex/svelte/@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@file:test/fixtures/vite-plugin-runic", {}],
+    "@runic-artifex/sveltekit/@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@file:test/fixtures/vite-plugin-runic", {}],
 
     "svelte-check/chokidar": ["chokidar@4.0.3", "", { "dependencies": { "readdirp": "^4.0.1" } }, "sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA=="],
 

@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@runic-artifex/application-bridge": "^0.1.0-preview.30.1",
+    "@runic-artifex/svelte": "workspace:*",
     "@runic-artifex/vite-plugin-runic": "file:./test/fixtures/vite-plugin-runic",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/kit": "2.70.2",
