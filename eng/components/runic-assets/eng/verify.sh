@@ -42,4 +42,6 @@ dotnet publish \
   "$packer_fixture" \
   "$packer_fixture/output.runic-assets"
 
-./tests/Runic.Assets.PackageConsumer/Test-PackageConsumer.sh
+if [[ "${RUNIC_SKIP_LOCAL_PACKAGE_CONSUMER:-}" != "1" ]]; then
+  ./tests/Runic.Assets.PackageConsumer/Test-PackageConsumer.sh
+fi
