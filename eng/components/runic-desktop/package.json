@@ -2,7 +2,7 @@
   "name": "@runic-artifex/runic-desktop-workspace",
   "private": true,
   "type": "module",
-  "packageManager": "npm@11.16.0",
+  "packageManager": "bun@1.4.0",
   "engines": {
     "node": ">=24.18.0"
   },
@@ -10,13 +10,13 @@
     "web/packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present && npm run build:browser-fixture",
+    "build": "bun run --filter @runic-artifex/desktop build && bun run build:browser-fixture",
     "build:browser-fixture": "esbuild web/packages/desktop/test/browser-entry.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=artifacts/browser/runic-desktop-test.js",
-    "test": "npm run verify:contract && npm run build && npm run test:quality-receipt && npm run test --workspaces --if-present",
+    "test": "bun run verify:contract && bun run build && bun run test:quality-receipt && bun run --filter @runic-artifex/desktop test",
     "test:quality-receipt": "node --test eng/verify-linux-native-quality-receipt.test.mjs",
     "verify:contract": "node eng/verify-contract.mjs",
     "verify:linux-native-quality": "node eng/verify-linux-native-quality-receipt.mjs verify-receipt evidence/native-quality/linux-x64.json",
-    "verify": "npm run test"
+    "verify": "bun run test"
   },
   "devDependencies": {
     "esbuild": "0.27.4",

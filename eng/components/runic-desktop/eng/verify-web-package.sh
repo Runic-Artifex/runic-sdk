@@ -19,9 +19,9 @@ package_version=$(node --input-type=module --eval '
   import { readFileSync } from "node:fs";
   process.stdout.write(JSON.parse(readFileSync("web/packages/desktop/package.json", "utf8")).version);
 ')
-npm pack \
-  --workspace @runic-artifex/desktop \
-  --pack-destination "$package_dir" \
+cd "$repository_dir/web/packages/desktop"
+bun pm pack \
+  --destination "$package_dir" \
   --ignore-scripts
 
 archive="$package_dir/runic-artifex-desktop-$package_version.tgz"
@@ -41,8 +41,8 @@ if grep --extended-regexp --quiet '^package/(src|test)/' <<<"$archive_files"; th
 fi
 
 cd "$consumer_dir"
-npm init --yes >/dev/null
-npm install --ignore-scripts "$archive" >/dev/null
+bun init --yes >/dev/null
+bun add --ignore-scripts "$archive" >/dev/null
 node --input-type=module --eval '
   import {
     DesktopTransportLive,
