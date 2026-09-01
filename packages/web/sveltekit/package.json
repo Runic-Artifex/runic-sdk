@@ -48,8 +48,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && vitest run",
-    "pack:check": "npm pack --dry-run"
+    "test": "bun run build && vitest run",
+    "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
     "@runic-artifex/svelte": ">=1.0.0-preview.1 <2",
