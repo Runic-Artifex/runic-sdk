@@ -11,7 +11,7 @@
   "scripts": {
     "build": "bun run --workspaces --if-present build",
     "check": "bun run --workspaces --if-present check",
-    "test": "bun run --workspaces --if-present test",
+    "test": "bun run --filter @runic-artifex/svelte test && bun run --filter @runic-artifex/sveltekit test",
     "test:package-consumers": "node test/package-consumers.mjs",
     "verify": "bun run check && bun run test && bun run --workspaces --if-present pack:check && bun run test:package-consumers && node --test eng/prepare-packages.test.mjs"
   },
