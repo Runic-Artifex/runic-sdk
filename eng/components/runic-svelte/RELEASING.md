@@ -1,10 +1,24 @@
 # Releasing Runic Svelte
 
-The `Public release` workflow builds and validates
-`@runic-artifex/svelte` and `@runic-artifex/sveltekit` as one exact-version
-family. Every dispatch requires an explicit version. The next planned private
-candidate is `0.2.0-preview.1`; this is a planning value, not a claim that the
-candidate has been verified or published.
+The `CI` workflow builds and validates `@runic-artifex/svelte` and
+`@runic-artifex/sveltekit` as one exact-version family with Bun. Pull requests
+pack candidates locally. Branch pushes publish private, immutable GitHub
+Packages candidates using the coordinate
+`1.0.0-ci.sha<first-16-characters-of-the-commit>`, then install those exact
+versions in a clean smoke-test project.
+
+Rerunning the same revision reuses a registry candidate only when its tarball
+digest matches. A coordinate collision with different bytes fails the workflow.
+GitHub Packages access must be granted to every repository that consumes these
+candidates.
+
+The `Public release` workflow is dispatch-only. Every dispatch requires an
+explicit version and rebuilds the package files with the same Bun lockfile and
+packager used by CI. When publication is approved, those exact bytes are first
+stored privately in GitHub Packages with the `release-staging` tag. The public
+job downloads and revalidates that immutable staging version before npm
+publication; it does not rebuild or use an Actions artifact as a package
+handoff.
 
 Run a verify-only dispatch first and retain its two tarballs and `SHA256SUMS`.
 Publication is accepted only from `main`, after the exact `PUBLISH PUBLIC`
