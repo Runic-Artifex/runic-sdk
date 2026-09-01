@@ -1,11 +1,16 @@
 param(
     [Parameter(Mandatory)][string]$PackageVersion,
     [Parameter(Mandatory)][string]$PackageDirectory,
-    [Parameter(Mandatory)][string]$RepositoryCommit
+    [Parameter(Mandatory)][string]$RepositoryCommit,
+    [string]$RunicDesktopVersion = $env:RunicDesktopVersion
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($RunicDesktopVersion)) {
+    $RunicDesktopVersion = "1.0.0-preview.1"
+}
 
 $repositoryUrl = "https://github.com/Runic-Artifex/runic-assets"
 $expectedPackages = [ordered]@{
@@ -15,7 +20,7 @@ $expectedPackages = [ordered]@{
     }
     "Runic.Assets.Desktop" = @{
         "Runic.Assets" = $PackageVersion
-        "Runic.Desktop" = $PackageVersion
+        "Runic.Desktop" = $RunicDesktopVersion
     }
 }
 
