@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - main
+      - "**"
   pull_request:
     branches:
       - main
@@ -23,21 +23,66 @@ env:
 jobs:
   verify:
     name: Verify standalone product
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
+      - uses: ./.github/actions/setup-dotnet
 
       - name: Run verification pipeline
         run: ./eng/verify.sh
 
       - name: Ensure verification is reproducible
         run: git diff --exit-code
+
+      - name: Derive immutable candidate version
+        run: echo "PACKAGE_VERSION=1.0.0-ci.sha${GITHUB_SHA:0:16}" >> "$GITHUB_ENV"
+
+      - name: Pack immutable candidates
+        run: ./eng/pack.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/packages"
+
+      - name: Validate candidate contract
+        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
+        with:
+          version: ${{ env.PACKAGE_VERSION }}
+          artifact-directory: ${{ runner.temp }}/packages
+          repository-url: https://github.com/Runic-Artifex/runic-command-line
+          repository-commit: ${{ github.sha }}
+          expected-nuget-count: "3"
+
+      - name: Publish candidates to GitHub Packages
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for package in "$RUNNER_TEMP"/packages/*.nupkg; do
+            dotnet nuget push "$package" \
+              --source "https://nuget.pkg.github.com/Runic-Artifex/index.json" \
+              --api-key "$GITHUB_TOKEN" \
+              --skip-duplicate
+          done
+
+      - name: Download exact candidates from GitHub Packages
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./eng/download-github-packages.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/registry-packages"
+
+      - name: Validate exact registry candidates
+        if: github.event_name == 'push'
+        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
+        with:
+          version: ${{ env.PACKAGE_VERSION }}
+          artifact-directory: ${{ runner.temp }}/registry-packages
+          repository-url: https://github.com/Runic-Artifex/runic-command-line
+          repository-commit: ${{ github.sha }}
+          expected-nuget-count: "3"
