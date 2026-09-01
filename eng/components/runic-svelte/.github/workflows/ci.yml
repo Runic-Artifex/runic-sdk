@@ -46,5 +46,5 @@ jobs:
           mkdir -p "$RUNNER_TEMP/consumer"
           printf '{"private":true,"dependencies":{"@runic-artifex/svelte":"%s","@runic-artifex/sveltekit":"%s"}}\n' "$PACKAGE_VERSION" "$PACKAGE_VERSION" > "$RUNNER_TEMP/consumer/package.json"
           printf '@runic-artifex:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' > "$RUNNER_TEMP/consumer/.npmrc"
-          bun install --cwd "$RUNNER_TEMP/consumer" --omit peer --omit optional
+          bun install --cwd "$RUNNER_TEMP/consumer" --omit=peer --omit=optional
           bun --cwd "$RUNNER_TEMP/consumer" -e "await import('@runic-artifex/svelte/translations'); await import('@runic-artifex/sveltekit/translations')"
