@@ -16,13 +16,24 @@ for (const archive of archives) {
   });
 }
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 if (lockPath.endsWith("pnpm-lock.yaml")) {
   let lock = readFileSync(lockPath, "utf8");
   let bound = 0;
   for (const [name, candidate] of candidates) {
+    const escapedName = escapeRegExp(name);
+    const packageKey = lock.match(new RegExp(`^  '${escapedName}@([^']+)':$`, "m"));
+    if (!packageKey) continue;
+    const previousVersion = packageKey[1];
+    lock = lock.replaceAll(`${name}@${previousVersion}`, `${name}@${candidate.version}`);
+    lock = lock.replace(
+      new RegExp(`(^      '${escapedName}':\\n        specifier: )[^\\n]+(\\n        version: )[^\\n(]+`, "m"),
+      `$1${candidate.version}$2${candidate.version}`,
+    );
     const marker = `  '${name}@${candidate.version}':\n`;
     const start = lock.indexOf(marker);
-    if (start < 0) continue;
+    if (start < 0) throw new Error(`pnpm lock does not contain candidate ${name}.`);
     const end = lock.indexOf("\n  '", start + marker.length);
     const packageEntry = lock.slice(start, end < 0 ? lock.length : end);
     if (!/resolution: \{integrity: sha512-[^}]+\}/.test(packageEntry)) {
@@ -50,7 +61,17 @@ if (lockPath.endsWith("bun.lock")) {
     if (!/"sha512-[^"]+"\],$/.test(lines[lineIndex])) {
       throw new Error(`Bun lock does not contain candidate integrity for ${name}.`);
     }
-    lines[lineIndex] = lines[lineIndex].replace(/"sha512-[^"]+"\],$/, `"${candidate.integrity}"],`);
+    const previousVersion = lines[lineIndex].match(
+      new RegExp(`${escapeRegExp(name)}@([^"]+)`),
+    )?.[1];
+    if (!previousVersion) throw new Error(`Bun lock does not contain candidate ${name}.`);
+    lines[lineIndex] = lines[lineIndex]
+      .replace(`${name}@${previousVersion}`, `${name}@${candidate.version}`)
+      .replace(/"sha512-[^"]+"\],$/, `"${candidate.integrity}"],`);
+    const importerPrefix = `        "${name}": `;
+    const importerIndex = lines.findIndex((line) => line.startsWith(importerPrefix));
+    if (importerIndex < 0) throw new Error(`Bun lock does not declare candidate ${name}.`);
+    lines[importerIndex] = `${importerPrefix}"${candidate.version}",`;
     bound += 1;
   }
   if (bound === 0) throw new Error("Bun lock does not contain any supplied candidates.");
