@@ -5,6 +5,9 @@ same host with the same bounded HTTP workload. It retains raw per-request
 latencies alongside startup time, measured-workload completion time,
 throughput, managed allocations, peak working set, source revisions, managed
 assembly hashes, the CS-WebUI native-library hash, and a host fingerprint.
+The current `/2` receipt host fingerprint includes the actual Node and .NET SDK
+versions used to build and run the adapters. Historical `/1` observations
+remain verifiable but are not accepted into the native certification matrix.
 The maintained CS-WebUI source baseline is the exact revision in
 `cs-webui-revision.txt`; a different checkout fails before measurement.
 
@@ -25,6 +28,26 @@ Verify an existing receipt with:
 ```sh
 node eng/comparative-stress/run.mjs verify artifacts/comparative-stress.json
 ```
+
+Offline verification checks the closed supported host fingerprint recorded by
+the receipt; it does not require the verifier to run on that same host. The
+measurement path additionally requires the freshly produced receipt to match
+the current host before it writes any evidence.
+
+After the native workflow downloads all three hosted artifacts, it closes them
+into one matrix receipt and verifies that receipt back against the raw files:
+
+```sh
+node eng/comparative-stress/verify-native-matrix.mjs run artifacts/native \
+  "$DESKTOP_REVISION" "$CS_WEBUI_REVISION" > artifacts/native-matrix.json
+node eng/comparative-stress/verify-native-matrix.mjs verify \
+  artifacts/native artifacts/native-matrix.json
+```
+
+The matrix accepts exactly `win-x64`, `osx-x64`, and `osx-arm64`, requires one
+workload and the exact Desktop/CS-WebUI revisions across all receipts, and
+retains each raw receipt's digest. It remains observation evidence rather than
+a cross-host performance comparison or release SLA.
 
 The current maintained CS-WebUI server-only baseline faults while destroying
 its native window on Linux. Its adapter records that limitation explicitly and

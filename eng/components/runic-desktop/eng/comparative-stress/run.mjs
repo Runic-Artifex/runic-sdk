@@ -9,6 +9,7 @@ import { performance } from "node:perf_hooks";
 
 const shaPattern = /^[a-f0-9]{64}$/;
 const revisionPattern = /^[a-f0-9]{40}$/;
+export const receiptSchema = "runic.comparative-stress-observation/2";
 
 export function percentile(values, fraction) {
   const ordered = [...values].sort((left, right) => left - right);
@@ -31,9 +32,9 @@ export function summarize(repetitions) {
   };
 }
 
-export function verifyReceipt(receipt) {
+export function verifyReceipt(receipt, { requireCurrentHost = false } = {}) {
   const errors = [];
-  if (receipt?.schema !== "runic.comparative-stress-observation/1") errors.push("invalid receipt schema");
+  if (!["runic.comparative-stress-observation/1", receiptSchema].includes(receipt?.schema)) errors.push("invalid receipt schema");
   const workload = receipt?.workload;
   if (workload?.schema !== "runic.comparative-stress-workload/1") errors.push("invalid workload schema");
   for (const key of ["payloadBytes", "warmupRequests", "repetitions", "requestsPerRepetition", "concurrency", "requestTimeoutMs", "startupTimeoutMs"]) {
@@ -41,10 +42,16 @@ export function verifyReceipt(receipt) {
   }
   if (!shaPattern.test(receipt?.workloadSha256 ?? "")) errors.push("invalid workload digest");
   if (workload && typeof workload === "object" && receipt?.workloadSha256 !== createHash("sha256").update(JSON.stringify(workload)).digest("hex")) errors.push("workload digest mismatch");
-  if (!receipt?.host || receipt.host.platform !== platform() || receipt.host.architecture !== arch()
-      || typeof receipt.host.release !== "string" || typeof receipt.host.cpuModel !== "string"
-      || !Number.isInteger(receipt.host.logicalCpuCount) || receipt.host.logicalCpuCount <= 0
-      || typeof receipt.host.node !== "string") errors.push("host fingerprint mismatch");
+  const host = receipt?.host;
+  const supportedHost = (host?.platform === "linux" && host?.architecture === "x64")
+    || (host?.platform === "win32" && host?.architecture === "x64")
+    || (host?.platform === "darwin" && ["x64", "arm64"].includes(host?.architecture));
+  if (!host || !supportedHost || typeof host.release !== "string" || !host.release
+      || typeof host.cpuModel !== "string" || !host.cpuModel
+      || !Number.isInteger(host.logicalCpuCount) || host.logicalCpuCount <= 0
+      || !/^v\d+\.\d+\.\d+$/.test(host.node ?? "")
+      || (receipt?.schema === receiptSchema && !/^\d+\.\d+\.\d+$/.test(host.dotnetSdk ?? ""))) errors.push("host fingerprint mismatch");
+  if (requireCurrentHost && (host?.platform !== platform() || host?.architecture !== arch())) errors.push("receipt was not produced on the current host");
   if (receipt?.interpretation !== "raw-observation-only-not-a-cross-host-or-release-sla") errors.push("invalid interpretation boundary");
   if (JSON.stringify(receipt?.externalActions) !== JSON.stringify({ publications: 0, uploads: 0, releases: 0, tags: 0 })) errors.push("external-action boundary mismatch");
   const observations = receipt?.observations;
@@ -164,7 +171,7 @@ async function main(args) {
     if (errors.length) throw new Error(errors.join("\n"));
     return;
   }
-  if (mode !== "run") throw new Error("Usage: run.mjs run --workload <json> --desktop <executable> --desktop-revision <sha> --cs-webui <executable> --cs-webui-revision <sha> | verify <receipt>");
+  if (mode !== "run") throw new Error("Usage: run.mjs run --workload <json> --desktop <executable> --desktop-revision <sha> --cs-webui <executable> --cs-webui-revision <sha> --dotnet-sdk <version> | verify <receipt>");
   const options = argumentsMap(args);
   const workloadPath = resolve(options.get("--workload"));
   const workloadBytes = await readFile(workloadPath);
@@ -180,15 +187,15 @@ async function main(args) {
     observations.push({ implementation, revision, executable: basename(executable), repetitions, summary: summarize(repetitions) });
   }
   const receipt = {
-    schema: "runic.comparative-stress-observation/1",
+    schema: receiptSchema,
     workload,
     workloadSha256: createHash("sha256").update(JSON.stringify(workload)).digest("hex"),
-    host: { platform: platform(), architecture: arch(), release: release(), cpuModel: cpus()[0]?.model ?? "unknown", logicalCpuCount: cpus().length, node: process.version },
+    host: { platform: platform(), architecture: arch(), release: release(), cpuModel: cpus()[0]?.model ?? "unknown", logicalCpuCount: cpus().length, node: process.version, dotnetSdk: options.get("--dotnet-sdk") },
     observations,
     interpretation: "raw-observation-only-not-a-cross-host-or-release-sla",
     externalActions: { publications: 0, uploads: 0, releases: 0, tags: 0 },
   };
-  const errors = verifyReceipt(receipt);
+  const errors = verifyReceipt(receipt, { requireCurrentHost: true });
   if (errors.length) throw new Error(errors.join("\n"));
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
 }

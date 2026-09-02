@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Restore NuGet download cache
         uses: actions/cache@v4
@@ -249,7 +249,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - uses: ./.github/actions/setup-bun
 
@@ -285,4 +285,42 @@ jobs:
           path: |
             artifacts/test-results/${{ matrix.rid }}
             artifacts/comparative-stress/${{ matrix.rid }}.json
+          if-no-files-found: error
+
+  native-evidence:
+    name: Verify native evidence matrix
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: [comparative-stress-source, native-platforms]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-parity-and-stress-*
+          path: ${{ runner.temp }}/native-evidence
+
+      - name: Close and independently verify the native evidence matrix
+        shell: bash
+        env:
+          CS_WEBUI_REVISION: ${{ needs.comparative-stress-source.outputs.revision }}
+        run: |
+          mkdir -p artifacts/native-certification
+          node eng/comparative-stress/verify-native-matrix.mjs run \
+            "$RUNNER_TEMP/native-evidence" "$GITHUB_SHA" "$CS_WEBUI_REVISION" \
+            > artifacts/native-certification/matrix.json
+          node eng/comparative-stress/verify-native-matrix.mjs verify \
+            "$RUNNER_TEMP/native-evidence" artifacts/native-certification/matrix.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-certification-matrix
+          path: artifacts/native-certification/matrix.json
           if-no-files-found: error

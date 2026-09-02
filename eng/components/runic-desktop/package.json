@@ -13,7 +13,7 @@
     "build": "bun run --filter @runic-artifex/desktop build && bun run build:browser-fixture",
     "build:browser-fixture": "esbuild web/packages/desktop/test/browser-entry.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=artifacts/browser/runic-desktop-test.js",
     "test": "bun run verify:contract && bun run build && bun run test:quality-receipt && bun run --filter @runic-artifex/desktop test",
-    "test:quality-receipt": "node --test eng/verify-linux-native-quality-receipt.test.mjs eng/comparative-stress/run.test.mjs",
+    "test:quality-receipt": "node --test eng/verify-linux-native-quality-receipt.test.mjs eng/comparative-stress/run.test.mjs eng/comparative-stress/verify-native-matrix.test.mjs",
     "verify:contract": "node eng/verify-contract.mjs",
     "verify:linux-native-quality": "node eng/verify-linux-native-quality-receipt.mjs verify-receipt evidence/native-quality/linux-x64.json",
     "verify": "bun run test"
