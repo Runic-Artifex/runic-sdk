@@ -16,6 +16,7 @@ desktop_archive="$(realpath "$7")"
 runic_assets_version="${RunicAssetsPackageVersion:-1.0.0-preview.1}"
 runic_desktop_version="${RunicDesktopPackageVersion:-1.0.0-preview.1}"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(cd "$script_directory/../.." && pwd)"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
 template_tmp="$(mktemp -d /tmp/runic-toolkit-templates.XXXXXXXXXX)"
 registry_pid=""
@@ -57,6 +58,15 @@ dotnet tool install dotnet-runic \
   "${tool_source_options[@]}" \
   "${tool_restore_options[@]}"
 
+pnpm_version="$(node "$repository_root/eng/compatibility-set-value.mjs" toolchain pnpm)"
+bun_version="$(node "$repository_root/eng/compatibility-set-value.mjs" toolchain bun)"
+package_manager_directory="$template_tmp/package-managers"
+npm install --global --prefix "$package_manager_directory" "pnpm@$pnpm_version" \
+  --ignore-scripts --no-audit --no-fund
+export PATH="$package_manager_directory/bin:$PATH"
+[[ "$(cd "$template_tmp" && pnpm --version)" == "$pnpm_version" ]]
+[[ "$(bun --version)" == "$bun_version" ]]
+
 npm_archive_version() {
   node -e '
     const { execFileSync } = require("node:child_process");
@@ -74,6 +84,13 @@ bind_candidate_integrities() {
     "$npm_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
 }
 
+configure_candidate_registry() {
+  (
+    cd "$1"
+    npm config set --location=project @runic-artifex:registry "$registry_url"
+  )
+}
+
 registry_ready="$template_tmp/template-npm-registry.url"
 node "$script_directory/template-npm-registry.mjs" \
   "$registry_ready" "$npm_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive" &
@@ -88,10 +105,15 @@ registry_url="$(<"$registry_ready")"
 default_output="$template_tmp/default-react"
 dotnet new runic-app-react --name PackagedDefaults --output "$default_output"
 bind_candidate_integrities "$default_output/Frontend/package-lock.json"
+grep -Fq "\"version\": \"$package_version\"" "$default_output/.config/dotnet-tools.json"
+dotnet tool restore \
+  --tool-manifest "$default_output/.config/dotnet-tools.json" \
+  "${tool_source_options[@]}" \
+  "${tool_restore_options[@]}"
 grep -Fq "Version=\"$package_version\"" "$default_output/PackagedDefaults.csproj"
 grep -Fq "Version=\"$runic_assets_version\"" "$default_output/PackagedDefaults.csproj"
 grep -Fq "Version=\"$runic_desktop_version\"" "$default_output/PackagedDefaults.csproj"
-npm --prefix "$default_output/Frontend" config set @runic-artifex:registry "$registry_url"
+configure_candidate_registry "$default_output/Frontend"
 dotnet restore "$default_output/PackagedDefaults.csproj" "${restore_sources[@]}"
 dotnet build "$default_output/PackagedDefaults.csproj" --configuration Release --no-restore
 test -f "$default_output/Frontend/dist/index.html"
@@ -113,7 +135,7 @@ node -e '
     if (actual !== version) throw new Error(`${name} default was ${actual}, expected ${version}.`);
   }
 ' "$default_svelte_output/Frontend/package.json" "$bridge_npm_version" "$svelte_npm_version" "$vite_npm_version"
-npm --prefix "$default_svelte_output/Frontend" config set @runic-artifex:registry "$registry_url"
+configure_candidate_registry "$default_svelte_output/Frontend"
 dotnet restore "$default_svelte_output/PackagedSvelteDefaults.csproj" "${restore_sources[@]}"
 dotnet build "$default_svelte_output/PackagedSvelteDefaults.csproj" --configuration Release --no-restore
 dotnet run --project "$default_svelte_output/PackagedSvelteDefaults.csproj" \
@@ -133,7 +155,7 @@ for framework in react vue svelte angular; do
   bind_candidate_integrities "$output/Frontend/package-lock.json"
   "$tool_directory/dotnet-runic" dev --project "$output/$project_name.csproj" --dry-run -- --template-option -1 > "$output/dotnet-runic-dev-plan.txt"
   grep -Fq 'Frontend' "$output/dotnet-runic-dev-plan.txt"
-  npm --prefix "$output/Frontend" config set @runic-artifex:registry "$registry_url"
+  configure_candidate_registry "$output/Frontend"
   dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   test -f "$output/Frontend/dist/index.html"
@@ -151,6 +173,63 @@ for framework in react vue svelte angular; do
   [[ "$first_manifest" == "$second_manifest" ]]
   grep -Fq '"schema":"runic.application/1"' <<< "$first_manifest"
   grep -Fq '"provenance":"template"' <<< "$first_manifest"
+  dotnet run --project "$output/$project_name.csproj" \
+    --configuration Release --no-build -- --smoke-test
+done
+
+for selection in "svelte pnpm" "angular bun"; do
+  read -r framework package_manager <<< "$selection"
+  project_name="Acceptance${framework^}${package_manager^}"
+  output="$template_tmp/$framework-$package_manager"
+  dotnet new "runic-app-$framework" \
+    --name "$project_name" \
+    --output "$output" \
+    --packageManager "$package_manager" \
+    --runicApplicationVersion "$package_version" \
+    --runicAssetsVersion "$runic_assets_version"
+
+  case "$package_manager" in
+    pnpm)
+      lock_file="$output/Frontend/pnpm-lock.yaml"
+      other_lock_file="$output/Frontend/bun.lock"
+      expected_version="$pnpm_version"
+      ;;
+    bun)
+      lock_file="$output/Frontend/bun.lock"
+      other_lock_file="$output/Frontend/pnpm-lock.yaml"
+      expected_version="$bun_version"
+      ;;
+  esac
+  test -f "$lock_file"
+  test ! -f "$output/Frontend/package-lock.json"
+  test ! -f "$other_lock_file"
+  grep -Fq "\"packageManager\": \"$package_manager@$expected_version\"" "$output/Frontend/package.json"
+  bind_candidate_integrities "$lock_file"
+  configure_candidate_registry "$output/Frontend"
+
+  dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
+  dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
+  test -f "$output/Frontend/dist/index.html"
+  (
+    cd "$output"
+    dotnet runic doctor --project "$project_name.csproj" > doctor.txt
+  ) || true
+  grep -Fq "PASS package-manager: $package_manager $expected_version matches certified baseline" "$output/doctor.txt"
+  if [[ "$package_manager" == "bun" ]]; then
+    bun_only_path="$template_tmp/bun-only-path"
+    mkdir -p "$bun_only_path"
+    ln -s "$(command -v bun)" "$bun_only_path/bun"
+    (
+      cd "$output/Frontend"
+      env PATH="$bun_only_path" "$bun_only_path/bun" run typecheck
+      env PATH="$bun_only_path" "$bun_only_path/bun" run build
+    )
+  else
+    (
+      cd "$output/Frontend"
+      "$package_manager" run typecheck
+    )
+  fi
   dotnet run --project "$output/$project_name.csproj" \
     --configuration Release --no-build -- --smoke-test
 done

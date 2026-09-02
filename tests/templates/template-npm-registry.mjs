@@ -27,6 +27,8 @@ const server = createServer((request, response) => {
   const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
   for (const [name, entry] of packages) {
     const archivePath = `/archives/${basename(entry.archive)}`;
+    const packageBaseName = name.slice(name.lastIndexOf("/") + 1);
+    const conventionalArchivePath = `/${name}/-/${packageBaseName}-${entry.manifest.version}.tgz`;
     if (decodeURIComponent(path.slice(1)) === name) {
       const tarball = `http://127.0.0.1:${server.address().port}${archivePath}`;
       const metadata = {
@@ -43,7 +45,7 @@ const server = createServer((request, response) => {
       response.end(JSON.stringify(metadata));
       return;
     }
-    if (path === archivePath) {
+    if (path === archivePath || decodeURIComponent(path) === conventionalArchivePath) {
       response.writeHead(200, { "content-type": "application/octet-stream" });
       createReadStream(entry.archive).pipe(response);
       return;

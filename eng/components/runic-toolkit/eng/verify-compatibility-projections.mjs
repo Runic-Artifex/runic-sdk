@@ -71,6 +71,14 @@ for (const [propertyName, identity] of [
   expect(property(templateProject, propertyName), expectedNpm(identity), `${propertyName} default`);
 }
 expect(property(templateProject, "RunicDesktopTemplateVersion"), expectedNuget("Runic.Desktop"), "RunicDesktopTemplateVersion default");
+for (const [propertyName, toolchainName] of [
+  ["BunTemplateVersion", "bun"],
+  ["NpmTemplateVersion", "npm"],
+  ["PnpmTemplateVersion", "pnpm"],
+]) {
+  expect(property(templateProject, propertyName), compatibility.toolchain[toolchainName], `${propertyName} default`);
+  expect(compatibilitySetValue("toolchain", toolchainName), compatibility.toolchain[toolchainName], `${toolchainName} toolchain resolver`);
+}
 
 const sourceRevisions = new Map(compatibility.sources.map((source) => [source.repository, source.revision]));
 const verificationScript = text("eng/verify.sh");
@@ -101,9 +109,9 @@ for (const [profile, selectedPackages] of Object.entries(profilePackages)) {
     fail(`${profile} template must not wrap Frontend in an ancestor npm workspace.`);
   }
   const manifest = JSON.parse(text(`${base}/package.json`));
-  expect(manifest.packageManager, `npm@${compatibility.toolchain.npm}`, `${profile} package manager`);
-  expect(manifest.engines?.node, compatibility.toolchain.node.replace(/\.0$/, ".x"), `${profile} Node engine`);
-  expect(manifest.engines?.npm, compatibility.toolchain.npm.replace(/\.0$/, ".x"), `${profile} npm engine`);
+  expect(manifest.packageManager, "__PACKAGE_MANAGER__", `${profile} package-manager template token`);
+  const nodeMajor = Number.parseInt(compatibility.toolchain.node, 10);
+  expect(manifest.engines?.node, `>=${compatibility.toolchain.node} <${nodeMajor + 1}`, `${profile} Node engine`);
   const npmrc = text(`${base}/.npmrc`);
   if (!npmrc.includes("engine-strict=true") || !npmrc.includes("omit-lockfile-registry-resolved=true")) {
     fail(`${profile} frontend must enforce engines and registry-portable locks.`);
@@ -120,6 +128,18 @@ for (const [profile, selectedPackages] of Object.entries(profilePackages)) {
     }
     if (entry.resolved !== undefined) fail(`${profile} ${identity} lock entry must not pin a registry host.`);
   }
+
+  for (const alternateLock of ["pnpm-lock.yaml", "bun.lock"]) {
+    const content = text(`${base}/${alternateLock}`);
+    if (/https?:\/\/127\.0\.0\.1|localhost/u.test(content)) {
+      fail(`${profile} ${alternateLock} pins a local registry.`);
+    }
+    for (const identity of selectedPackages) {
+      if (!content.includes(identity) || !content.includes(expectedNpm(identity))) {
+        fail(`${profile} ${alternateLock} is missing ${identity}@${expectedNpm(identity)}.`);
+      }
+    }
+  }
   for (const [path, entry] of Object.entries(lock.packages ?? {})) {
     if (!path.startsWith("node_modules/@runic-artifex/")) continue;
     const identity = path.slice("node_modules/".length);
@@ -133,9 +153,17 @@ for (const [profile, selectedPackages] of Object.entries(profilePackages)) {
     fail(`${profile} template does not import the incremental frontend build target.`);
   }
   const target = text(`templates/RunicToolkit.Templates/content/${profile}/RunicTemplateFrontend.targets`);
-  for (const requirement of ["ci --ignore-scripts", "BeforeTargets=\"RunicAssetsPackFileSystem\"", "Inputs=", "Outputs=", "RunicToolkitFrontendBuild"]) {
+  for (const requirement of ["ci --ignore-scripts", "install --frozen-lockfile --ignore-scripts", "pnpm-lock.yaml", "bun.lock", "BeforeTargets=\"RunicAssetsPackFileSystem\"", "Inputs=", "Outputs=", "RunicToolkitFrontendBuild"]) {
     if (!target.includes(requirement)) fail(`${profile} frontend target is missing '${requirement}'.`);
   }
+
+  const template = JSON.parse(text(`templates/RunicToolkit.Templates/content/${profile}/.template.config/template.json`));
+  const choices = template.symbols?.packageManager?.choices?.map(({ choice }) => choice);
+  if (JSON.stringify(choices) !== JSON.stringify(["npm", "pnpm", "bun"])) {
+    fail(`${profile} template does not expose the npm, pnpm, and Bun choices.`);
+  }
+  const toolManifest = JSON.parse(text(`templates/RunicToolkit.Templates/content/${profile}/.config/dotnet-tools.json`));
+  expect(toolManifest.tools?.["dotnet-runic"]?.version, "__RUNIC_TOOLKIT_VERSION__", `${profile} local dotnet-runic manifest`);
 
   const serialized = JSON.stringify(manifest);
   if (serialized.includes("CsWebUi") || serialized.includes("cs-webui")) {

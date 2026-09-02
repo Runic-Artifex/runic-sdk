@@ -11,6 +11,9 @@ output_directory="$2"
 configuration="Release"
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 release_train_version="$(node "$repository_root/eng/compatibility-set-value.mjs" release-train-version)"
+bun_version="$(node "$repository_root/eng/compatibility-set-value.mjs" toolchain bun)"
+npm_version="$(node "$repository_root/eng/compatibility-set-value.mjs" toolchain npm)"
+pnpm_version="$(node "$repository_root/eng/compatibility-set-value.mjs" toolchain pnpm)"
 application_bridge_npm_version="${APPLICATION_BRIDGE_NPM_VERSION:-$package_version}"
 runic_angular_npm_version="${RUNIC_ANGULAR_NPM_VERSION:-$package_version}"
 runic_svelte_npm_version="${RUNIC_SVELTE_NPM_VERSION:-$release_train_version}"
@@ -121,6 +124,9 @@ for project in "${package_projects[@]}"; do
     -p:RunicDesktopNpmTemplateVersion="$runic_desktop_npm_version" \
     -p:RunicSvelteTemplateVersion="$runic_svelte_npm_version" \
     -p:RunicViteTemplateVersion="$runic_vite_npm_version" \
+    -p:BunTemplateVersion="$bun_version" \
+    -p:NpmTemplateVersion="$npm_version" \
+    -p:PnpmTemplateVersion="$pnpm_version" \
     "${verification_properties[@]}" \
     --output "$output_directory"
 done

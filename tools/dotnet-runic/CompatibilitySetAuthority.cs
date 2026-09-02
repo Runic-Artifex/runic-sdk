@@ -9,7 +9,12 @@ namespace Runic.Application.Tool;
 
 internal sealed record CompatibilityPackage(string Ecosystem, string Identity, string Version);
 
-internal sealed record CompatibilityToolchain(string DotNetSdk, string Node, string Npm);
+internal sealed record CompatibilityToolchain(
+    string DotNetSdk,
+    string Node,
+    string Bun,
+    string Npm,
+    string Pnpm);
 
 internal sealed class CompatibilitySetAuthority
 {
@@ -65,7 +70,9 @@ internal sealed class CompatibilitySetAuthority
             new CompatibilityToolchain(
                 toolchain.GetProperty("dotnetSdk").GetString() ?? string.Empty,
                 toolchain.GetProperty("node").GetString() ?? string.Empty,
-                toolchain.GetProperty("npm").GetString() ?? string.Empty),
+                toolchain.GetProperty("bun").GetString() ?? string.Empty,
+                toolchain.GetProperty("npm").GetString() ?? string.Empty,
+                toolchain.GetProperty("pnpm").GetString() ?? string.Empty),
             nuget.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
             npm.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase));
     }

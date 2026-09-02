@@ -6,13 +6,14 @@
     "dotnetSdk": "10.0.302",
     "node": "24.18.0",
     "bun": "1.4.0",
-    "npm": "11.16.0"
+    "npm": "11.16.0",
+    "pnpm": "11.25.0"
   },
   "sources": [
     {
       "repository": "runic-desktop",
       "url": "https://github.com/Runic-Artifex/runic-desktop",
-      "revision": "d1fe517f86890a7a25f6ae8d5092c53959c54b70"
+      "revision": "a7d025d6090e7461d679f9b88af39d0b23099d2e"
     },
     {
       "repository": "runic-assets",

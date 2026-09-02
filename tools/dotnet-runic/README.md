@@ -2,12 +2,16 @@
 
 Run generated-command diagnostics and coordinate local development for a Runic Application.
 
+Generated applications pin this tool locally:
+
 ```bash
-dotnet tool install --global dotnet-runic --prerelease
+dotnet tool restore
 dotnet runic doctor --project path/to/App.csproj
 ```
 
-Requires the .NET 10 SDK, Node.js 24.18 or later, npm, and the prerequisites selected by your app. Use `doctor` first; use `dev` to run the managed host with configured frontend development support and `inspect` for generated diagnostics.
+For other projects, install it globally with `dotnet tool install --global dotnet-runic --prerelease`. The frontend may use Node.js with npm or pnpm, or Bun; `doctor` reads the declared `packageManager` and committed lock file, then checks the matching toolchain. Use `dev` to run the managed host with configured Vite, Angular, or custom frontend development support and `inspect` for generated diagnostics.
+
+Vite+ remains an optional facade over that declared manager and the standard project scripts. `vp run dev` is compatible with generated projects, but `dotnet runic dev` deliberately uses the underlying npm, pnpm, or Bun declaration so the reproducible build does not depend on a separate global Vite+ installation.
 
 ```bash
 dotnet runic dev --project path/to/App.csproj
