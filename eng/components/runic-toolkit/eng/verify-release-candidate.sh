@@ -78,26 +78,13 @@ if [[ "$registry" == "public" ]]; then
     public
 fi
 
-(
-  cd "$desktop_worktree"
-  npm ci
-  npm run build --workspace @runic-artifex/desktop
-  npm pack --workspace @runic-artifex/desktop --ignore-scripts \
-    --pack-destination "$integration_packages"
-)
-(
-  cd "$svelte_worktree"
-  npm ci
-  npm run build --workspace @runic-artifex/svelte
-  npm pack --workspace @runic-artifex/svelte \
-    --pack-destination "$integration_packages"
-)
-(
-  cd "$vite_worktree"
-  npm ci
-  npm run build
-  npm pack --ignore-scripts --pack-destination "$integration_packages"
-)
+bash "$repository_root/eng/pack-integration-npm.sh" \
+  "$package_version" \
+  "$package_directory" \
+  "$integration_packages" \
+  "$desktop_worktree" \
+  "$svelte_worktree" \
+  "$vite_worktree"
 
 RUNIC_VERIFICATION_FEED="$verification_feed" \
   bash "$repository_root/tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh" \

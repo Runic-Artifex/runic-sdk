@@ -12,6 +12,7 @@ on:
       - Directory.Build.targets
       - Directory.Packages.props
       - eng/pack.sh
+      - eng/pack-integration-npm.sh
       - eng/verify-release-candidate.sh
       - eng/checkout-ci-candidates.mjs
       - eng/compatibility-set-value.mjs
