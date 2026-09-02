@@ -119,10 +119,11 @@ state.
 ```ts
 // src/lib/i18n.ts
 import { createRunicLocaleRouting } from "@runic-artifex/sveltekit/translations";
+import { baseLocale, locales } from "virtual:runic-translations/app/runtime";
 
 export const routing = createRunicLocaleRouting({
-  locales: ["en", "de"] as const,
-  baseLocale: "en",
+  locales,
+  baseLocale,
   baseLocalePath: "unprefixed",
 });
 ```
@@ -145,19 +146,22 @@ export const reroute = createRunicLocaleReroute(routing);
 ```ts
 // src/hooks.server.ts
 import { createRunicLocaleHandle } from "@runic-artifex/sveltekit/translations";
+import { runWithLocale } from "virtual:runic-translations/app/server";
 import { routing } from "$lib/i18n";
 
 export const handle = createRunicLocaleHandle(routing, {
+  runWithLocale,
   persistLocale: true,
   cookie: { name: "locale", path: "/", sameSite: "lax", httpOnly: true },
 });
 ```
 
-Declare `App.Locals.locale`, return it from the root server load with
-`localeFromLocals(locals, routing)`, and initialize your Svelte locale source
-from that value. Put `<html lang="%runic.locale%">` in `app.html` to receive
-the request language without another resolver. Generated messages must still
-receive the request locale explicitly.
+Declare `App.Locals.locale` and put `<html lang="%runic.locale%">` in
+`app.html`. The generated server context makes ordinary calls such as
+`m.application_title()` resolve against this request locale, including across
+asynchronous rendering. Pass `{ locale }` only for an intentional per-call
+override. If the UI also uses a Svelte locale source, initialize it from
+`localeFromLocals(locals, routing)` in the root server load.
 
 For client navigation, call `synchronizeLocaleWithNavigation(source, routing)`
 from the root layout and pass `createLocaleNavigation(routing)` as the locale
@@ -194,8 +198,7 @@ it to the C# service using that cookie alone and reject unavailable, malformed,
 or unauthorized responses. The helper fails closed if the cookie is missing or
 duplicated, C# denies it, or the returned projection contains unbounded or
 noncanonical facts. Keep the locale handle's URL-first/cookie-second routing
-policy and pass the resolved locale explicitly to every generated translation
-call. SSR, client navigation, and browser bootstrap therefore share one
+policy and generated request-local context. SSR, client navigation, and browser bootstrap therefore share one
 request-scoped locale without process-global state.
 
 ## Links, status, and support
