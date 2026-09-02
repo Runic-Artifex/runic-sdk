@@ -27,6 +27,10 @@ if (lockPath.endsWith("pnpm-lock.yaml")) {
     if (!packageKey) continue;
     const previousVersion = packageKey[1];
     lock = lock.replaceAll(`${name}@${previousVersion}`, `${name}@${candidate.version}`);
+    lock = lock.replaceAll(
+      `'${name}': ${previousVersion}`,
+      `'${name}': ${candidate.version}`,
+    );
     lock = lock.replace(
       new RegExp(`(^      '${escapedName}':\\n        specifier: )[^\\n]+(\\n        version: )[^\\n(]+`, "m"),
       `$1${candidate.version}$2${candidate.version}`,
@@ -52,7 +56,7 @@ if (lockPath.endsWith("pnpm-lock.yaml")) {
 }
 
 if (lockPath.endsWith("bun.lock")) {
-  const lines = readFileSync(lockPath, "utf8").split("\n");
+  let lines = readFileSync(lockPath, "utf8").split("\n");
   let bound = 0;
   for (const [name, candidate] of candidates) {
     const prefix = `    "${name}": [`;
@@ -65,6 +69,10 @@ if (lockPath.endsWith("bun.lock")) {
       new RegExp(`${escapeRegExp(name)}@([^"]+)`),
     )?.[1];
     if (!previousVersion) throw new Error(`Bun lock does not contain candidate ${name}.`);
+    lines = lines.map((line) => line.replaceAll(
+      `"${name}": "${previousVersion}"`,
+      `"${name}": "${candidate.version}"`,
+    ));
     lines[lineIndex] = lines[lineIndex]
       .replace(`${name}@${previousVersion}`, `${name}@${candidate.version}`)
       .replace(/"sha512-[^"]+"\],$/, `"${candidate.integrity}"],`);
