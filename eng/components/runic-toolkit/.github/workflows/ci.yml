@@ -168,7 +168,8 @@ jobs:
         shell: pwsh
         run: |
           dotnet restore tests/Runic.Application.Bridge.AotSmoke --runtime win-x64 --configfile "$env:NUGET_CONFIG_FILE" `
-            -p:RunicToolkitBuildMode=Verification -p:RunicToolkitFrontendBuild=false -p:RunicToolkitFrontendInstall=false
+            -p:RunicToolkitBuildMode=Verification -p:RunicToolkitFrontendBuild=false -p:RunicToolkitFrontendInstall=false `
+            -p:ApplicationBridgeNativeAot=true
           dotnet publish tests/Runic.Application.Bridge.AotSmoke -c Release -r win-x64 --no-restore `
             -p:ApplicationBridgeNativeAot=true -o "$env:RUNNER_TEMP\application-bridge-aot"
           & "$env:RUNNER_TEMP\application-bridge-aot\Runic.Application.Bridge.AotSmoke.exe"
