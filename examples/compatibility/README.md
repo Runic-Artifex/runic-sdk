@@ -4,8 +4,9 @@
 
 Build a small .NET application, then follow it through a typed command line,
 a native React setup experience, a SvelteKit variant, and localized text. Each
-sample is runnable on its own and uses released Runic Artifex packages rather
-than a product-source checkout.
+sample is runnable on its own and consumes the authority-selected Runic Artifex
+package train rather than rebuilding product repositories from source. Public
+install commands become valid only after those exact packages are published.
 
 ## Start here
 
@@ -33,6 +34,9 @@ and next step.
 - Node.js 24.18 and Bun 1.4.0 for samples 3–5. The current checkout retains
   historical samples, so do not run its root `bun install` as a package-acquisition
   step.
+- Generated Runic Application templates may instead select npm, pnpm, or Bun;
+  this examples repository keeps its own Bun workspace as a reproducible
+  maintainer fixture.
 - A supported desktop browser or WebView for the interactive Desktop samples.
   The headless smoke checks do not open a window.
 
