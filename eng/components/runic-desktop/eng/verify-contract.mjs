@@ -28,6 +28,32 @@ const expectedVectors = new Map([
   ["protocol.webui-compat-multi-header.v1", "protocol.webui-compat-multi-header.json"],
   ["serialization.duplicate-key-rejected.v1", "serialization.duplicate-key-rejected.json"],
 ]);
+const expectedParityEntries = new Set([
+  "cs-webui.basic-sample",
+  "cs-webui.high-level-sample",
+  "cs-webui.native-aot-smoke",
+  "webui.minimal",
+  "webui.call-native-from-javascript",
+  "webui.call-javascript-from-native",
+  "webui.serve-a-folder",
+  "webui.test-index-redirect",
+  "webui.virtual-file-system",
+  "webui.chatgpt-api",
+  "webui.custom-web-server",
+  "webui.frameless",
+  "webui.public-network-access",
+  "webui.react",
+  "webui.stress-test",
+  "webui.text-editor",
+  "webui.web-app-multi-client",
+  "webui.starter-kit",
+]);
+const parityDispositions = new Set([
+  "desktop-sample",
+  "automated-behavioral-equivalent",
+  "suite-level-replacement",
+  "documented-non-goal",
+]);
 
 export function verifyContract(root = repositoryRoot) {
   const errors = [];
@@ -36,6 +62,7 @@ export function verifyContract(root = repositoryRoot) {
   const conformanceRoot = join(contractRoot, "conformance");
   const scenarioSchema = readJson(join(conformanceRoot, "scenario.schema.json"), report);
   const vectorSchema = readJson(join(conformanceRoot, "codec-vector.schema.json"), report);
+  const parity = readJson(join(conformanceRoot, "cs-webui-example-parity.json"), report);
 
   validateSchemaMetadata(
     scenarioSchema,
@@ -50,6 +77,7 @@ export function verifyContract(root = repositoryRoot) {
     report,
   );
   validateMarkdownClosure(contractRoot, report);
+  validateParityCatalog(parity, root, report);
 
   validateFixtureDirectory(
     join(conformanceRoot, "scenarios"),
@@ -74,7 +102,43 @@ export function verifyContract(root = repositoryRoot) {
     identity: contractIdentity,
     scenarios: expectedScenarios.size,
     vectors: expectedVectors.size,
+    parityEntries: expectedParityEntries.size,
   };
+}
+
+function validateParityCatalog(catalog, root, report) {
+  const label = "contract/conformance/cs-webui-example-parity.json";
+  if (!hasOnlyKeys(catalog, ["format", "oracles", "entries"], label, report)) return;
+  requireKeys(catalog, ["format", "oracles", "entries"], label, report);
+  if (catalog.format !== "runic.desktop.cs-webui-example-parity/1") report(`${label} has an invalid format.`);
+  if (!hasOnlyKeys(catalog.oracles, ["webUiExamplesRevision", "csWebUiRevision"], `${label}.oracles`, report)) return;
+  requireKeys(catalog.oracles, ["webUiExamplesRevision", "csWebUiRevision"], `${label}.oracles`, report);
+  for (const [key, value] of Object.entries(catalog.oracles)) {
+    if (typeof value !== "string" || !/^[a-f0-9]{40}$/.test(value)) report(`${label}.oracles.${key} must be a full Git revision.`);
+  }
+  if (!Array.isArray(catalog.entries)) {
+    report(`${label}.entries must be an array.`);
+    return;
+  }
+  const actual = new Set();
+  for (const [index, entry] of catalog.entries.entries()) {
+    const item = `${label}.entries[${index}]`;
+    if (!hasOnlyKeys(entry, ["id", "disposition", "target", "rationale"], item, report)) continue;
+    requireKeys(entry, ["id", "disposition", "target", "rationale"], item, report);
+    if (typeof entry.id !== "string" || !dottedId.test(entry.id)) report(`${item}.id is invalid.`);
+    if (actual.has(entry.id)) report(`${item}.id duplicates ${entry.id}.`);
+    actual.add(entry.id);
+    if (!parityDispositions.has(entry.disposition)) report(`${item}.disposition is invalid.`);
+    if (typeof entry.target !== "string" || entry.target.startsWith("/") || entry.target.includes("..") || !existsSync(resolve(root, entry.target))) {
+      report(`${item}.target must name an existing repository-relative artifact.`);
+    }
+    if (typeof entry.rationale !== "string" || entry.rationale.length < 20) report(`${item}.rationale must explain the mapping.`);
+  }
+  const missing = [...expectedParityEntries].filter((id) => !actual.has(id));
+  const unexpected = [...actual].filter((id) => !expectedParityEntries.has(id));
+  if (missing.length > 0 || unexpected.length > 0) {
+    report(`${label} is not closed: missing ${missing.join(", ") || "none"}; unexpected ${unexpected.join(", ") || "none"}.`);
+  }
 }
 
 function validateSchemaMetadata(schema, expectedId, expectedFormat, report) {
@@ -103,6 +167,7 @@ function validateMarkdownClosure(contractRoot, report) {
     "conformance/README.md",
     "conformance/scenario.schema.json",
     "conformance/codec-vector.schema.json",
+    "conformance/cs-webui-example-parity.json",
   ];
   for (const entry of required) {
     if (!existsSync(join(contractRoot, entry))) report(`Contract closure is missing ${entry}.`);
@@ -360,5 +425,5 @@ function isObject(value) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const result = verifyContract();
-  process.stdout.write(`${result.identity}: ${result.scenarios} scenarios, ${result.vectors} vectors verified.\n`);
+  process.stdout.write(`${result.identity}: ${result.scenarios} scenarios, ${result.vectors} vectors, ${result.parityEntries} parity mappings verified.\n`);
 }

@@ -44,6 +44,18 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task PublicNetworkExposureRequiresAnExplicitSecurityPolicy()
+    {
+        var error = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                NetworkExposure = DesktopNetworkExposure.AllInterfaces,
+            }));
+
+        Assert.Contains("explicit security policy", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PublicSurfaceServesRunicDesktopBootstrapIdentity()
     {
         await using var host = await DesktopHost.StartAsync();
