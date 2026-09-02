@@ -12,7 +12,7 @@ namespace RunicArtifex.Examples.Translations;
 /// Every missed assertion throws, so the process exits non-zero; the final marker line is
 /// printed only after all three passes succeeded.
 /// Packs/*.json embed the contract fingerprint of the current catalog contract; regenerate
-/// them whenever Resources/catalog.json or its documents change, or passes 1-2 fail with RTR0023.
+/// them whenever translations/runic.json or its MF2 messages change, or passes 1-2 fail with RTR0023.
 /// </summary>
 internal static class HotSwapScenario
 {

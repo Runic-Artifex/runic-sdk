@@ -1,14 +1,23 @@
 {
-  "artifactVersion": 1,
-  "messageGrammarVersion": 1,
+  "artifactVersion": 2,
+  "messageGrammarVersion": 2,
   "catalog": "canary",
   "locale": "en",
-  "contractFingerprint": "sha256:2654d6d57aae1b05646f680d4d820bee8059540b0255b5164d7dd1cbed92baa8",
+  "contractFingerprint": "sha256:17902d0e9483fdf7672cbbae81398ece6b92c9d24a8f247f3bf8cf3858830ffd",
   "messages": {
     "Greeting": {
-      "pattern": "Hi again, {name}!",
-      "arguments": [
-        { "name": "name", "type": "string", "format": "none" }
+      "astVersion": 2,
+      "inputs": { "name": { "type": "string", "format": "none" } },
+      "selectors": [],
+      "variants": [
+        {
+          "matches": {},
+          "nodes": [
+            { "kind": "text", "value": "Hi again, " },
+            { "kind": "input", "input": "name" },
+            { "kind": "text", "value": "!" }
+          ]
+        }
       ]
     }
   }

@@ -28,12 +28,12 @@ static async ValueTask<TranslationReference> CreateRequiredReferenceAsync(string
     return new TranslationReference(
         SetupTextCatalog.CatalogId,
         SetupTextCatalog.ContractFingerprint,
-        "Validation.Required",
+        "validation_required",
         new Dictionary<string, TranslationReferenceArgument>(StringComparer.Ordinal)
         {
             ["field"] = new(TextArgumentType.String, field),
         },
-        text.Validation.Required(field));
+        text.validation_required(field));
 }
 
 static async Task<int> RunSmokeTestAsync()
@@ -50,7 +50,7 @@ static async Task<int> RunSmokeTestAsync()
     string json = JsonSerializer.Serialize(reference, TranslationReferenceJsonContext.Default.TranslationReference);
     TranslationReference roundTrip = JsonSerializer.Deserialize(json, TranslationReferenceJsonContext.Default.TranslationReference)
         ?? throw new InvalidOperationException("The translation reference did not round-trip.");
-    Assert(roundTrip.Key == "Validation.Required", "The stable translation key changed in transport.");
+    Assert(roundTrip.Key == "validation_required", "The stable translation key changed in transport.");
     Assert(roundTrip.Arguments["field"].Value == "email", "The typed argument changed in transport.");
     Assert(roundTrip.FallbackText == concurrent[0], "The version-skew fallback was not transported.");
 
@@ -63,7 +63,7 @@ static async Task<string> FormatForRequestAsync(string locale, string field)
     ITranslationManager manager = await SetupTextCatalog.CreateManagerAsync(locale);
     var text = new SetupText(manager);
     await Task.Yield();
-    return text.Validation.Required(field);
+    return text.validation_required(field);
 }
 
 static void Assert(bool condition, string message)

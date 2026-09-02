@@ -21,12 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <TranslationCatalog Include="Resources/catalog.json" />
-    <TranslationDocument Include="Resources/en.json" />
-    <TranslationDocument Include="Resources/de.json" />
-  </ItemGroup>
-
-  <ItemGroup>
     <None Include="Packs/**/*.json"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

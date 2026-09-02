@@ -6,8 +6,8 @@
   let validationMessage = $state("");
   let pending = $state(false);
   const locale = $derived(data.locale);
-  const title = $derived(m["Application.Title"]({ locale }));
-  const lead = $derived(m["Application.Lead"]({ locale }));
+  const title = $derived(m.application_title());
+  const lead = $derived(m.application_lead());
 
   async function submitInvalidRegistration() {
     pending = true;
@@ -36,10 +36,10 @@
 
   <nav aria-label="Language">
     <a href={resolve("/en")} aria-current={locale === "en" ? "page" : undefined}>
-      {m["Locale.English"]({ locale })}
+      {m.locale_english()}
     </a>
     <a href={resolve("/de")} aria-current={locale === "de" ? "page" : undefined}>
-      {m["Locale.German"]({ locale })}
+      {m.locale_german()}
     </a>
   </nav>
 
@@ -60,7 +60,7 @@
   <section aria-labelledby="contract-title">
     <h2 id="contract-title">Compatibility fixture</h2>
     <ul>
-      <li>Explicit locale on every SSR message call</li>
+      <li>Generated request-local locale context for SSR message calls</li>
       <li>Generated transport and dynamic-pack validation</li>
       <li>Measured production tree-shaking</li>
     </ul>

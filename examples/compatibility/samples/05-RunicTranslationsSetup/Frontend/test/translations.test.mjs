@@ -8,6 +8,15 @@ let server;
 let messages;
 let runtime;
 let transport;
+const projectRoot = fileURLToPath(new URL("../../", import.meta.url));
+const sourceCommandArguments = process.env.RUNIC_TRANSLATIONS_TOOL_VERSION
+  ? undefined
+  : [
+      "run",
+      "--project",
+      fileURLToPath(new URL("../../../../../runic-translations/dotnet/tools/dotnet-runic-translations/dotnet-runic-translations.csproj", import.meta.url)),
+      "--",
+    ];
 
 before(async () => {
   server = await createServer({
@@ -16,12 +25,10 @@ before(async () => {
     logLevel: "silent",
     plugins: [
       runicTranslations({
-        manifest: fileURLToPath(
-          new URL(
-            "../../obj/net10.0/translations/setup.esm/web-module-manifest-v1.json",
-            import.meta.url,
-          ),
-        ),
+        cwd: projectRoot,
+        project: fileURLToPath(new URL("../../translations", import.meta.url)),
+        output: fileURLToPath(new URL("../../obj/net10.0/translations", import.meta.url)),
+        ...(sourceCommandArguments ? { commandArguments: sourceCommandArguments } : {}),
       }),
     ],
     server: { middlewareMode: true },
@@ -35,9 +42,9 @@ after(async () => {
   await server?.close();
 });
 
-test("one generated catalog formats English and German with explicit request locales", () => {
-  assert.equal(messages.m["Application.Title"]({ locale: "en" }), "Runic Translations setup");
-  assert.equal(messages.m["Application.Title"]({ locale: "de" }), "Runic-Translations-Einrichtung");
+test("one generated MF2 project exposes identifier-safe message calls", () => {
+  assert.equal(messages.m.application_title({ locale: "en" }), "Runic Translations setup");
+  assert.equal(messages.m.application_title({ locale: "de" }), "Runic-Translations-Einrichtung");
   assert.equal(runtime.resolveLocale("de-DE"), "de");
 });
 
@@ -46,7 +53,7 @@ test("concurrent SSR work stays isolated because locale is request-scoped input"
     const locale = index % 2 === 0 ? "en" : "de";
     const expected = locale === "en" ? "The field email is required." : "Das Feld email ist erforderlich.";
     return Promise.resolve().then(() => {
-      const actual = messages.m["Validation.Required"]({ field: "email" }, { locale });
+      const actual = messages.m.validation_required({ field: "email" }, { locale });
       assert.equal(actual, expected);
       return actual;
     });
@@ -65,8 +72,8 @@ test("browser transport validates fingerprint, key, and typed arguments", () => 
     transport.formatTextReference(
       decoded.value,
       {
-        "Validation.Required": (inputs, options) =>
-          messages.m["Validation.Required"]({ field: inputs.field }, options),
+        validation_required: (inputs, options) =>
+          messages.m.validation_required({ field: inputs.field }, options),
       },
       { locale: "de" },
     ),
@@ -78,7 +85,7 @@ test("browser transport validates fingerprint, key, and typed arguments", () => 
     { ok: false, reason: "fingerprint-mismatch" },
   );
   assert.deepEqual(
-    transport.decodeTextReference({ ...wire, key: "Validation.Unknown" }),
+    transport.decodeTextReference({ ...wire, key: "validation_unknown" }),
     { ok: false, reason: "unknown-key" },
   );
   assert.deepEqual(
@@ -102,7 +109,7 @@ function referenceWire() {
     version: 1,
     catalog: runtime.catalog,
     contractFingerprint: runtime.contractFingerprint,
-    key: "Validation.Required",
+    key: "validation_required",
     arguments: { field: "email" },
     fallbackText: "The field email is required.",
   };

@@ -85,8 +85,7 @@ jobs:
         working-directory: samples/05-RunicTranslationsSetup
         run: >-
           dotnet tool run runic-translations generate
-          --catalog Resources/setup.catalog.json
-          --documents Resources/setup.en.json Resources/setup.de.json
+          --project translations
           --output obj/cli-verification
           --emit-esm
 
@@ -94,8 +93,7 @@ jobs:
         working-directory: samples/05-RunicTranslationsSetup
         run: >-
           dotnet tool run runic-translations verify
-          --catalog Resources/setup.catalog.json
-          --documents Resources/setup.en.json Resources/setup.de.json
+          --project translations
           --output obj/cli-verification
           --emit-esm
 

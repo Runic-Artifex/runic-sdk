@@ -11,8 +11,6 @@
     "eng/current-hosted-product/verify.mjs",
     "eng/current-localization-compatibility/verify.mjs",
     "eng/current-manual-replacement-preflight/verify.mjs",
-    "eng/current-mf2-subset-consumer/verify.mjs",
-    "eng/current-mf2-subset-consumer/verify.test.mjs",
     "eng/current-native-shell/verify.mjs",
     "eng/current-native-shell/verify.test.mjs",
     "eng/current-readiness-audit/README.md",

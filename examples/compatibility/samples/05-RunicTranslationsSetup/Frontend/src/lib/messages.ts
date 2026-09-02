@@ -8,10 +8,10 @@ import {
 export { m };
 
 const transportHandlers = {
-  "Validation.Required": (
+  validation_required: (
     inputs: Readonly<Record<string, unknown>>,
     options?: { locale?: string },
-  ) => m["Validation.Required"]({ field: String(inputs.field) }, options),
+  ) => m.validation_required({ field: String(inputs.field) }, options),
 };
 
 export function localizeReference(value: unknown, locale: string): string {
