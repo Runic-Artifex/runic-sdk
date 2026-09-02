@@ -203,6 +203,6 @@ async function main(args) {
   else await new Promise((resolveWrite, rejectWrite) => process.stdout.write(serialized, (error) => error ? rejectWrite(error) : resolveWrite()));
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+if (import.meta.main) {
   main(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });
 }
