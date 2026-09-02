@@ -108,7 +108,7 @@ bind_candidate_integrities "$default_output/Frontend/package-lock.json"
 grep -Fq "\"version\": \"$package_version\"" "$default_output/.config/dotnet-tools.json"
 dotnet tool restore \
   --tool-manifest "$default_output/.config/dotnet-tools.json" \
-  --add-source "$package_directory" \
+  "${tool_source_options[@]}" \
   "${tool_restore_options[@]}"
 grep -Fq "Version=\"$package_version\"" "$default_output/PackagedDefaults.csproj"
 grep -Fq "Version=\"$runic_assets_version\"" "$default_output/PackagedDefaults.csproj"
