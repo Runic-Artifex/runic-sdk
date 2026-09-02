@@ -51,9 +51,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: Runic-Artifex/.github
+          ref: main
+          path: release-authority
+          persist-credentials: false
       - uses: ./.github/actions/setup-bun
-      - run: bun install --frozen-lockfile
+      - name: Select exact Application Bridge candidate
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          RUNIC_COMPATIBILITY_SET: ${{ github.workspace }}/release-authority/runic.compatibility-set.json
+        run: node eng/prepare-ci-dependency.mjs prepare
+      - run: bun install --no-save
       - run: bun run verify
+      - run: node eng/prepare-ci-dependency.mjs restore
       - name: Pack public candidates
         run: |
           mkdir -p "$RUNNER_TEMP/packages"
