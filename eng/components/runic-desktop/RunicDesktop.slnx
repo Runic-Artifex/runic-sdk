@@ -6,6 +6,7 @@
     <Project Path="samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Runic.Desktop.ComparativeStressAdapter/Runic.Desktop.ComparativeStressAdapter.csproj" />
     <Project Path="tests/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj" />
     <Project Path="tests/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj" />
   </Folder>
