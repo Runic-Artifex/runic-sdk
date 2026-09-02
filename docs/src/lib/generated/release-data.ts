@@ -2,7 +2,7 @@
 export const releaseData = {
   schemaVersion: 1,
   source: {
-    authorityRevision: '724355893b33c745d5f6bdc2d8de607eab1d465c',
+    authorityRevision: 'ad14f837e0577ea90d687d6f0b7ea72d7a5a80ec',
     manifestSha256:
       '44509da940d238738427d2cce4a8d2d58863b21f1d976daf854c04be9c086b3f',
     schemaSha256:
@@ -10,11 +10,11 @@ export const releaseData = {
     verifierSha256:
       '8b6fdf5bb8e83446f7a92c00c3a1f4c8f277c2cfa8e7d56fb704f6653f486ec6',
     compatibilitySetSha256:
-      '16b935531cad4a31bcebc880357d619d166bfd478beabf0afe0a10b307f1e38c',
+      'ddf33b9db5e8c7ead315a70aae3cf8c57a34eb6d5289f09901e825b4558880d8',
     compatibilitySchemaSha256:
-      'dc49e57728661aa01da6d51851519c411b4d8a448e32b1310dcf958843327e35',
+      '0be0b3566a5d8bcc9c72a170740287277002926eac865b835bd7de198645c23c',
     compatibilityVerifierSha256:
-      'c5721fc29aba1a3bd944db8e8d47096dc7701198107d918fcd1a173590a506f7',
+      'c35caf0971ae099069b16edd1ec807ec25e680cb410f358e365596f95d69b21c',
   },
   repositories: [
     {
@@ -994,6 +994,7 @@ export const releaseData = {
       node: '24.18.0',
       bun: '1.4.0',
       npm: '11.16.0',
+      pnpm: '11.25.0',
     },
     languageProfiles: {
       v1: [

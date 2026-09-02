@@ -166,7 +166,7 @@ test('renders every primary documentation route', async () => {
     ['/architecture', 'Use products independently'],
     ['/packages', 'Find packages by product and registry'],
     ['/releases', 'See assigned release versions'],
-    ['/readiness', 'Historical W80 evidence'],
+    ['/readiness', 'W110 completed the retained local readiness receipt'],
     ['/products/runic-toolkit', 'Runic Toolkit'],
     ['/products/runic-desktop', 'Runic Desktop'],
     ['/application-bridge', 'Connect a frontend to .NET'],
@@ -186,9 +186,9 @@ test('renders every primary documentation route', async () => {
 test('renders the local unsigned readiness boundary without a release or updater promise', async () => {
   const html = await render('/readiness');
   assert.match(html, /Local readiness evidence/);
-  assert.match(html, /Historical W80 evidence, not the expanded v1 verdict/);
-  assert.match(html, /expanded\s+W110 index remains pending/);
-  assert.match(html, /private-file streaming and WebView/);
+  assert.match(html, /W110 completed the retained local readiness receipt/);
+  assert.match(html, /current package-manager DX work/);
+  assert.match(html, /linux-x64, win-x64, osx-x64, and osx-arm64/);
   assert.match(
     html,
     /source, translation, review, session, cookie, and token content/,
@@ -205,7 +205,9 @@ test('renders the authority-derived Desktop choose-your-path matrix', async () =
   );
   assert.match(html, /Runic\.Application\.Templates@1\.0\.0-preview\.1/);
   assert.match(html, /@runic-artifex\/desktop@1\.0\.0-preview\.1/);
-  assert.match(html, /\.NET SDK 10\.0\.302, Node 24\.18\.0, npm 11\.16\.0/);
+  assert.match(html, /\.NET SDK 10\.0\.302; Node 24\.18\.0 with npm 11\.16\.0/);
+  assert.match(html, /packageManager/);
+  assert.match(html, /static frontend/);
   assert.match(html, /runic-toolkit-examples/);
 });
 

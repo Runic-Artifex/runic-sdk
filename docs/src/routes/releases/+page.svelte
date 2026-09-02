@@ -11,6 +11,14 @@
     releaseSummary,
     versionLabel,
   } from '$lib/release-docs';
+
+  const toolchainLabels: Readonly<Record<string, string>> = {
+    dotnetSdk: '.NET SDK',
+    node: 'Node',
+    npm: 'npm',
+    pnpm: 'pnpm',
+    bun: 'Bun',
+  };
 </script>
 
 <svelte:head>
@@ -102,11 +110,11 @@
         {/each}
       </ul>
       <p>
-        Exact toolchain: .NET SDK
-        <code>{compatibilitySet.toolchain.dotnetSdk}</code>, Node
-        <code>{compatibilitySet.toolchain.node}</code>, npm
-        <code>{compatibilitySet.toolchain.npm}</code>. Selected platform
-        profiles:
+        Exact build toolchain:
+        {#each Object.entries(compatibilitySet.toolchain) as [tool, version], index (tool)}
+          {index === 0 ? '' : ', '}{toolchainLabels[tool] ?? tool}
+          <code>{version}</code>
+        {/each}. Selected platform profiles:
         {compatibilitySet.platformProfiles.join(', ')}. Native support remains
         bounded by retained platform evidence.
       </p>

@@ -34,7 +34,13 @@ if (!examplesRepository) {
 }
 
 const candidateMaturity = `${compatibilitySet.releaseTrainVersion} local candidate; publication ${compatibilitySet.publication}`;
-const candidatePrerequisites = `.NET SDK ${compatibilitySet.toolchain.dotnetSdk}, Node ${compatibilitySet.toolchain.node}, npm ${compatibilitySet.toolchain.npm}; ${compatibilitySet.platformProfiles.join(', ')}`;
+const selectedToolchain = compatibilitySet.toolchain as Readonly<
+  Record<string, string>
+>;
+const pnpmPrerequisite = selectedToolchain.pnpm
+  ? ` or pnpm ${selectedToolchain.pnpm}`
+  : '';
+const candidatePrerequisites = `.NET SDK ${compatibilitySet.toolchain.dotnetSdk}; Node ${compatibilitySet.toolchain.node} with npm ${compatibilitySet.toolchain.npm}${pnpmPrerequisite}, or Bun ${compatibilitySet.toolchain.bun}; ${compatibilitySet.platformProfiles.join(', ')}`;
 
 export const choosePathRows = [
   {

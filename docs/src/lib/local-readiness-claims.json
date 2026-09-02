@@ -2,59 +2,60 @@
   "schema": "runic.local-nonpublic-documentation-claims/1",
   "publication": "forbidden",
   "profiles": [
-    "csharp-host",
+    "expanded-v1-train",
+    "desktop-native-quality",
     "local-application-bridge",
     "editor-desktop",
     "d008-hosted-product"
   ],
   "claims": [
     {
-      "id": "csharp-host",
-      "anchor": "csharp-host",
-      "evidence": "w70-clean-room",
-      "text": "The C# host and direct local tool path are package-consumer evidence only."
+      "id": "expanded-v1-train",
+      "anchor": "expanded-v1-train",
+      "evidence": "w110-expanded-index",
+      "text": "The deterministic W110 receipt binds the completed W90 conformance, W100 composition, W105 clean-install journeys, and W110 quality evidence for its exact recorded revisions."
     },
     {
       "id": "local-application-bridge",
       "anchor": "local-application-bridge",
-      "evidence": "w70-clean-room",
+      "evidence": "w110-expanded-index",
       "text": "The Application Bridge remains a local validated frame boundary."
     },
     {
       "id": "editor-interchange",
       "anchor": "editor-interchange",
-      "evidence": "w70-clean-room",
+      "evidence": "w110-expanded-index",
       "text": "The Editor retains the closed MF2 subset, XLIFF text, and review-sidecar interchange boundary."
     },
     {
       "id": "hosted-locale",
       "anchor": "hosted-locale",
-      "evidence": "w70-clean-room",
+      "evidence": "w110-expanded-index",
       "text": "The hosted product retains D008 opaque-cookie SSR and hydration locale behavior without changing host topology."
     },
     {
       "id": "support-envelope",
       "anchor": "support-envelope",
-      "evidence": "w70-support",
+      "evidence": "w110-expanded-index",
       "text": "Support collection is opt-in, local, bounded, and excludes source, translation, review, session, cookie, and token content."
     },
     {
       "id": "manual-replacement",
       "anchor": "manual-replacement",
-      "evidence": "w60-preflight",
+      "evidence": "w110-expanded-index",
       "text": "Offline guidance can only describe a user-performed verified manual replacement; it does not update, download, install, or roll back."
     },
     {
       "id": "recovery",
       "anchor": "recovery",
-      "evidence": "w70-support",
+      "evidence": "w110-expanded-index",
       "text": "Interrupted Editor transactions require explicit complete or rollback recovery before mutation; stale Bridge state remains rejected."
     },
     {
-      "id": "native-refusal",
-      "anchor": "native-refusal",
-      "evidence": "w70-native",
-      "text": "Linux/X64 records an actionable managed refusal for private-file streaming and WebView; it is not browser or native platform success."
+      "id": "desktop-native-quality",
+      "anchor": "desktop-native-quality",
+      "evidence": "w110-native-certification",
+      "text": "The retained W110 certification covers linux-x64, win-x64, osx-x64, and osx-arm64 at exact recorded revisions; it does not claim a performance SLA, native assistive-technology certification, or unlisted platforms."
     }
   ],
   "nonClaims": [

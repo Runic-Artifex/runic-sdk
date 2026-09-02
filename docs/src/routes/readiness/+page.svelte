@@ -12,21 +12,23 @@
 
 <div class="shell content-page">
   <p class="eyebrow">Local readiness evidence</p>
-  <h1>Historical W80 evidence, not the expanded v1 verdict.</h1>
+  <h1>W110 completed the retained local readiness receipt.</h1>
   <p class="lede">
-    W80 retains the locally verified C# host, local Application Bridge, Runic
-    Translations Editor desktop, and D008 hosted-product paths. The expanded
-    W110 index remains pending until W105 closure and exact native-platform
-    evidence are complete. Neither record assigns versions, publishes artifacts,
-    or promises an updater.
+    The retained W110 receipt binds the completed W90–W110 evidence, including
+    the four declared Desktop platform profiles, to exact recorded source and
+    authority revisions. W80 remains historical. Any subsequent source or
+    compatibility-set change—including the current package-manager DX work—must
+    refresh that receipt before release. Neither record assigns versions,
+    publishes artifacts, or promises an updater.
   </p>
 
   <section aria-labelledby="retained-boundary">
-    <h2 id="retained-boundary">Retained boundary</h2>
+    <h2 id="retained-boundary">Receipt boundary</h2>
     <p>
-      Evidence is local and unsigned. The hosted path retains opaque-cookie SSR
-      ownership; the Bridge remains local; and localization remains the closed
-      MF2-subset interchange rather than a general message or XLIFF processor.
+      Evidence is local, unsigned, and valid only for the exact revisions it
+      records. The hosted path retains opaque-cookie SSR ownership; the Bridge
+      remains local; and localization remains the closed MF2-subset interchange
+      rather than a general message or XLIFF processor.
     </p>
   </section>
 

@@ -4,14 +4,30 @@
   import * as Table from '$lib/components/ui/table';
   import {
     availabilityLabel,
+    catalogRows,
     choosePathRows,
     distributionRows,
+    packageInstallCommand,
     releaseSummary,
   } from '$lib/release-docs';
 
   const editorDistribution = distributionRows.find(
     (distribution) => distribution.productId === 'editor',
   );
+  const templatePackage = catalogRows.find(
+    (entry) => entry.name === 'Runic.Application.Templates',
+  );
+  const templateInstallCommand = templatePackage
+    ? packageInstallCommand(templatePackage)
+    : undefined;
+  const quickStart = templateInstallCommand
+    ? `${templateInstallCommand}
+dotnet new runic-app-svelte --name MyApp --packageManager pnpm
+cd MyApp
+dotnet tool restore
+dotnet runic doctor
+dotnet run`
+    : undefined;
 </script>
 
 <svelte:head>
@@ -42,6 +58,32 @@
     </p>
   </section>
   <section class="content-grid shell">
+    <ContentCard
+      eyebrow="Five-minute app"
+      title="Generate, check, and run"
+      full
+    >
+      {#if quickStart}
+        <pre><code>{quickStart}</code></pre>
+      {:else}
+        <p>
+          The copy-and-paste install command will appear here when the release
+          authority records a published template version. A source branch or
+          local candidate version is deliberately not presented as public.
+        </p>
+      {/if}
+      <p>
+        The template accepts <code>npm</code>, <code>pnpm</code>, or
+        <code>bun</code> through <code>--packageManager</code> and commits
+        exactly one matching lock file. Vite and Angular CLI stay behind the
+        standard
+        <code>dev</code>, <code>build</code>, and <code>typecheck</code>
+        scripts. Vite+ can optionally run those scripts with <code>vp run</code> while
+        the underlying manager and lock remain authoritative. Publishing embeds the
+        static frontend, so the target machine does not need a JavaScript runtime
+        or package manager.
+      </p>
+    </ContentCard>
     <ContentCard eyebrow="Getting started" title="What are you building?" full>
       <ul>
         <li>
