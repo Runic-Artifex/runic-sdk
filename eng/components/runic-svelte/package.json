@@ -16,7 +16,7 @@
     "verify": "bun run check && bun run test && bun run --workspaces --if-present pack:check && bun run test:package-consumers && node --test eng/prepare-packages.test.mjs"
   },
   "devDependencies": {
-    "@runic-artifex/application-bridge": "^0.1.0-preview.30.1",
+    "@runic-artifex/application-bridge": "1.0.0-preview.1",
     "@runic-artifex/svelte": "workspace:*",
     "@runic-artifex/vite-plugin-runic": "file:./test/fixtures/vite-plugin-runic",
     "@sveltejs/adapter-static": "3.0.10",
