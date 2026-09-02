@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { arch, cpus, platform, release } from "node:os";
@@ -171,7 +171,7 @@ async function main(args) {
     if (errors.length) throw new Error(errors.join("\n"));
     return;
   }
-  if (mode !== "run") throw new Error("Usage: run.mjs run --workload <json> --desktop <executable> --desktop-revision <sha> --cs-webui <executable> --cs-webui-revision <sha> --dotnet-sdk <version> | verify <receipt>");
+  if (mode !== "run") throw new Error("Usage: run.mjs run --workload <json> --desktop <executable> --desktop-revision <sha> --cs-webui <executable> --cs-webui-revision <sha> --dotnet-sdk <version> [--output <json>] | verify <receipt>");
   const options = argumentsMap(args);
   const workloadPath = resolve(options.get("--workload"));
   const workloadBytes = await readFile(workloadPath);
@@ -197,7 +197,10 @@ async function main(args) {
   };
   const errors = verifyReceipt(receipt, { requireCurrentHost: true });
   if (errors.length) throw new Error(errors.join("\n"));
-  process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+  const serialized = `${JSON.stringify(receipt, null, 2)}\n`;
+  const output = options.get("--output");
+  if (output) await writeFile(resolve(output), serialized);
+  else await new Promise((resolveWrite, rejectWrite) => process.stdout.write(serialized, (error) => error ? rejectWrite(error) : resolveWrite()));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {

@@ -39,6 +39,6 @@ node "$repository_root/eng/comparative-stress/run.mjs" run \
   --cs-webui "$working_directory/cs-webui/CsWebUi.ComparativeStressAdapter.dll" \
   --cs-webui-revision "$actual_cs_webui_revision" \
   --dotnet-sdk "$(dotnet --version)" \
-  > "$output"
+  --output "$output"
 node "$repository_root/eng/comparative-stress/run.mjs" verify "$output"
 printf 'Comparative stress observation: %s\n' "$output"
