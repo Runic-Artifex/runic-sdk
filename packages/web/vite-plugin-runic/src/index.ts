@@ -1,9 +1,14 @@
 /// <reference types="@vitejs/devtools-kit" />
 
 import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
+import type {
+  ApplicationBridgeCompilerOptions,
+  ApplicationBridgeCompilation,
+} from "@runic-artifex/application-bridge-tooling";
 import type {
   RunicDiagnosticEntry,
   RunicDiagnosticDetail,
@@ -43,6 +48,12 @@ export interface RunicVitePlugin extends Plugin {
 }
 
 export interface RunicViteOptions {
+  /** Compiles the handwritten Effect Schema bridge contract into Runic IR. */
+  readonly applicationBridge?: boolean | Readonly<{
+    readonly source?: string;
+    readonly ir?: string;
+    readonly facade?: string;
+  }>;
   readonly contract?: Readonly<{
     identity?: string;
     version?: string;
@@ -96,7 +107,69 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   let jsonRenderer: JsonRenderer | undefined;
   let state = initialState(options);
   let nextDiagnosticSequence = 1;
+  let resolvedRoot = process.cwd();
+  let bridgeDependencies = new Set<string>();
+  let bridgeGeneration = Promise.resolve<ApplicationBridgeCompilation & { readonly changed: boolean } | undefined>(undefined);
   const desktopBootstrapUrl = resolveDesktopBootstrapUrl(options.desktop);
+  const bridgeHostReadyPath = process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
+
+  const bridgeOptions = (): ApplicationBridgeCompilerOptions | undefined => {
+    if (options.applicationBridge === undefined || options.applicationBridge === false) return undefined;
+    const overrides = options.applicationBridge === true ? {} : options.applicationBridge;
+    return { root: resolvedRoot, ...overrides };
+  };
+
+  const generateBridge = (
+    reportToOverlay: boolean,
+  ): Promise<ApplicationBridgeCompilation & { readonly changed: boolean } | undefined> => {
+    const compilerOptions = bridgeOptions();
+    if (compilerOptions === undefined) return Promise.resolve(undefined);
+    bridgeGeneration = bridgeGeneration.then(async () => {
+      try {
+        const tooling = await import("@runic-artifex/application-bridge-tooling").catch((error: unknown) => {
+          throw new Error(
+            "applicationBridge requires @runic-artifex/application-bridge-tooling to be installed.",
+            { cause: error },
+          );
+        });
+        const result = await tooling.generateApplicationBridge(compilerOptions);
+        bridgeDependencies = new Set(result.dependencies);
+        server?.watcher.add(result.dependencies);
+        state = {
+          ...state,
+          contract: {
+            identity: result.ir.wire.protocol.identity,
+            version: String(result.ir.wire.protocol.version),
+            fingerprint: result.ir.fingerprint.value,
+          },
+        };
+        appendDiagnostic({
+          source: "application-bridge",
+          kind: "event",
+          label: result.changed ? "Application bridge contract generated" : "Application bridge contract is current",
+          detail: { status: result.changed ? "generated" : "current" },
+        });
+        return result;
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        appendDiagnostic({
+          source: "application-bridge",
+          kind: "error",
+          label: "Application bridge contract generation failed",
+          detail: { errorMessage: failure.message },
+        });
+        if (reportToOverlay && server !== undefined) {
+          server.ws.send({
+            type: "error",
+            err: { message: failure.message, stack: failure.stack ?? failure.message },
+          });
+          return undefined;
+        }
+        throw failure;
+      }
+    });
+    return bridgeGeneration;
+  };
 
   const publish = (): void => {
     sharedState?.mutate((draft) => Object.assign(draft, structuredClone(state)));
@@ -172,12 +245,13 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       injectDevtoolsClient = resolved.command === "serve" &&
         resolveDevtoolsAvailability(resolved.root, options.devtools ?? "auto");
+      resolvedRoot = resolved.root;
       state = {
         ...state,
         vite: { command: resolved.command, mode: resolved.mode, root: resolved.root },
       };
     },
-    configureServer(viteServer) {
+    async configureServer(viteServer) {
       server = viteServer;
       viteServer.ws.on(stateEvent, (payload) => applyRuntimeState(payload));
       viteServer.ws.on(diagnosticEvent, (payload) => appendDiagnostic(payload));
@@ -192,6 +266,52 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.httpServer?.once("close", () => {
         server = undefined;
       });
+      await generateBridge(true);
+    },
+    async buildStart() {
+      await generateBridge(false);
+    },
+    async handleHotUpdate(context) {
+      if (!bridgeDependencies.has(context.file)) return;
+      const result = await generateBridge(true);
+      if (result?.changed) {
+        if (bridgeHostReadyPath === undefined) {
+          appendDiagnostic({
+            source: "application-bridge",
+            kind: "event",
+            label: "Application bridge host rebuild required",
+            detail: { status: "fingerprint-mismatch" },
+          });
+        } else {
+          appendDiagnostic({
+            source: "application-bridge",
+            kind: "event",
+            label: "Waiting for the matching application host",
+            detail: { status: "waiting-for-host" },
+          });
+          try {
+            await waitForMatchingBridgeHost(bridgeHostReadyPath, result.ir.fingerprint.value);
+            appendDiagnostic({
+              source: "application-bridge",
+              kind: "event",
+              label: "Matching application host is ready",
+              detail: { status: "host-ready" },
+            });
+          } catch (error) {
+            const failure = error instanceof Error ? error : new Error(String(error));
+            appendDiagnostic({
+              source: "application-bridge",
+              kind: "error",
+              label: "Application bridge host did not reach the generated fingerprint",
+              detail: { errorMessage: failure.message },
+            });
+            server?.ws.send({ type: "error", err: { message: failure.message, stack: failure.stack ?? failure.message } });
+            return [];
+          }
+        }
+        server?.ws.send({ type: "full-reload" });
+      }
+      return [];
     },
     resolveId(id) {
       if (id === legacyVirtualClientId) {
@@ -228,6 +348,16 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       },
     },
   };
+}
+
+async function waitForMatchingBridgeHost(path: string, fingerprint: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const current = await readFile(path, "utf8").catch(() => "");
+    if (current.trim() === fingerprint) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("Timed out waiting for the .NET host to load the generated Application Bridge fingerprint.");
 }
 
 function resolveDesktopBootstrapUrl(
