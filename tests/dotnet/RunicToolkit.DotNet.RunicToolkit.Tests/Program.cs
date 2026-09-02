@@ -198,10 +198,9 @@ internal static class Program
             FrontendPackageDirectory: "/repo/frontend",
             FrontendOutputDirectory: "/repo/frontend/dist",
             FrontendWebRoot: "www",
-            ContractSource: "",
-            ContractCSharpOutput: "",
-            ContractTypeScriptOutput: "",
-            ContractTool: "",
+            BridgeSource: "",
+            BridgeIr: "",
+            BridgeFacade: "",
             FrontendWatchTarget: "RunicToolkitFrontendWatchAssets",
             ViteDevServerEnabled: true,
             ViteDevServerEntry: "/src/main.js",
@@ -240,10 +239,9 @@ internal static class Program
             FrontendPackageDirectory: "/repo/frontend",
             FrontendOutputDirectory: "/repo/frontend/dist",
             FrontendWebRoot: "www",
-            ContractSource: "",
-            ContractCSharpOutput: "",
-            ContractTypeScriptOutput: "",
-            ContractTool: "",
+            BridgeSource: "",
+            BridgeIr: "",
+            BridgeFacade: "",
             FrontendWatchTarget: "RunicToolkitFrontendWatchAssets",
             ViteDevServerEnabled: true,
             ViteDevServerEntry: "/src/main.js",
@@ -446,10 +444,9 @@ internal static class Program
             FrontendPackageDirectory: "/repo/frontend",
             FrontendOutputDirectory: "/repo/frontend/dist",
             FrontendWebRoot: "www",
-            ContractSource: "",
-            ContractCSharpOutput: "",
-            ContractTypeScriptOutput: "",
-            ContractTool: "",
+            BridgeSource: "",
+            BridgeIr: "",
+            BridgeFacade: "",
             FrontendWatchTarget: "RunicToolkitFrontendWatchAssets",
             ViteDevServerEnabled: kind == "vite",
             ViteDevServerEntry: "/src/main.ts",
@@ -542,19 +539,17 @@ internal static class Program
             """{"packageManager":"npm@11.16.0"}""");
         workspace.Write("package-lock.json", """{"lockfileVersion":3,"packages":{}}""");
         string browser = workspace.Write("bin/chromium", "browser");
-        string source = workspace.Write("contract.json", "{}");
-        string csharp = workspace.Write("generated/Contract.g.cs", "// generated");
-        string typescript = workspace.Write("generated/contract.g.ts", "// generated");
-        string tool = workspace.Write("tools/generate.mjs", "// generator");
+        string source = workspace.Write("src/application.bridge.ts", "// contract");
+        string ir = workspace.Write("Contract/bridge.ir.json", "{}");
+        string facade = workspace.Write("src/application.bridge.generated.ts", "// generated");
         DoctorProjectConfiguration project = CreateDoctorProject(
             workspace,
             nodeEnabled: true,
             frontendCompilerEnabled: false) with
         {
-            ContractSource = source,
-            ContractCSharpOutput = csharp,
-            ContractTypeScriptOutput = typescript,
-            ContractTool = tool,
+            BridgeSource = source,
+            BridgeIr = ir,
+            BridgeFacade = facade,
         };
         var runtime = new FakeDoctorRuntime()
             .WithEnvironment("RUNIC_BROWSER_PATH", browser)
@@ -565,7 +560,7 @@ internal static class Program
             .WithResult("/tools/node", "--version", 0, "v24.18.0")
             .WithResult("/tools/npm", "--version", 0, "11.16.0")
             .WithResult(browser, "--version", 0, "Chromium 150")
-            .WithResult("/tools/node", "--verify", 0, string.Empty);
+            .WithResult("/tools/npm", "contract:check", 0, string.Empty);
 
         DoctorReport report = InspectDoctor(project, runtime);
         if (!report.IsHealthy)
@@ -578,8 +573,8 @@ internal static class Program
             DoctorStatus.Pass,
             report.Checks.Single(check => check.Name == "contract-verify").Status);
         if (!runtime.Calls.Any(call =>
-                call.Executable == "/tools/node"
-                && call.Arguments.Contains("--verify", StringComparer.Ordinal)))
+                call.Executable == "/tools/npm"
+                && call.Arguments.SequenceEqual(["run", "contract:check"], StringComparer.Ordinal)))
         {
             throw new InvalidOperationException("Doctor did not execute contract verification.");
         }
@@ -680,10 +675,9 @@ internal static class Program
             WorkspaceRoot: workspace.Root,
             Workspace: nodeEnabled ? "@example/app" : string.Empty,
             FrontendPackageDirectory: workspace.Root,
-            ContractSource: string.Empty,
-            ContractCSharpOutput: string.Empty,
-            ContractTypeScriptOutput: string.Empty,
-            ContractTool: string.Empty,
+            BridgeSource: string.Empty,
+            BridgeIr: string.Empty,
+            BridgeFacade: string.Empty,
             ViteDevServerEnabled: false,
             ViteDevServerEntry: string.Empty,
             ViteConfigurationPath: string.Empty,

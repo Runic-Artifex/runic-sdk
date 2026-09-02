@@ -143,6 +143,7 @@ assert_npm_archive() {
   ' "$archive" "$expected_name"
 }
 assert_npm_archive "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" "@runic-artifex/application-bridge"
+assert_npm_archive "$release_packages/runic-artifex-application-bridge-tooling-$bridge_npm_version.tgz" "@runic-artifex/application-bridge-tooling"
 assert_npm_archive "$release_packages/runic-artifex-angular-$bridge_npm_version.tgz" "@runic-artifex/angular"
 assert_npm_archive "$integration_packages/runic-artifex-svelte-$svelte_release_version.tgz" "@runic-artifex/svelte"
 assert_npm_archive "$integration_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz" "@runic-artifex/vite-plugin-runic"
@@ -166,6 +167,7 @@ bash tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh \
   "$release_version" \
   "$release_packages" \
   "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" \
+  "$release_packages/runic-artifex-application-bridge-tooling-$bridge_npm_version.tgz" \
   "$release_packages/runic-artifex-angular-$bridge_npm_version.tgz" \
   "$integration_packages/runic-artifex-svelte-$svelte_release_version.tgz" \
   "$integration_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz" \

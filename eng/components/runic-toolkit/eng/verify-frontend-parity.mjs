@@ -93,7 +93,7 @@ if (text("tools/dotnet-runic-toolkit/ViteDevelopmentServer.cs").includes('"--con
 }
 
 const compatibilityGuide = text("docs/guides/frontend-frameworks.md");
-contains(compatibilityGuide, "`runic.artifex.setup` / `1` / `f92970461e801b80f1e8b8fbf7bab346dece692b61c3c4c167b093ce6bc29336`", "generated host contract evidence");
+contains(compatibilityGuide, "`runic.artifex.setup` / `1` / generated fingerprint from `bridge.ir.json`", "generated host contract evidence");
 contains(compatibilityGuide, "`@runic-artifex/svelte`", "Svelte ownership evidence");
 contains(compatibilityGuide, "`@runic-artifex/angular`", "Angular ownership evidence");
 contains(compatibilityGuide, "remain W30 gates", "W30 deferred boundary");

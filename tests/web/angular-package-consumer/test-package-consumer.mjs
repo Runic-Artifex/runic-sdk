@@ -165,12 +165,13 @@ function angularJson() {
 
 function contractSource() {
   return `import { Schema } from "effect";
-import { defineApplicationContract } from "@runic-artifex/application-bridge";
+import { bridge, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
 export const CounterSnapshot = Schema.Struct({ count: Schema.Int, revision: Schema.Int.pipe(Schema.nonNegative()) });
 export const CounterCommand = Schema.TaggedStruct("InitializeApplication", {});
 export const CounterReceipt = Schema.TaggedStruct("ApplicationInitialized", { snapshot: CounterSnapshot });
 export const CounterEvent = Schema.TaggedStruct("CounterChanged", { snapshot: CounterSnapshot });
-export const CounterContract = defineApplicationContract({ identity: "customer.counter", version: 1, fingerprint: "4e873f5967e86eeded5e26d8faf27c305464f1272b90935cc8a1b09365471508", command: CounterCommand, receipt: CounterReceipt, event: CounterEvent, snapshot: CounterSnapshot, initialize: { _tag: "InitializeApplication" } as const });
+const definition = defineApplicationBridgeContract({ protocol: { identity: "customer.counter", version: 1 }, csharp: { namespace: "Customer.Counter", contractName: "Counter" }, snapshot: CounterSnapshot, commands: [bridge.command(CounterCommand, { receipt: CounterReceipt })], events: [CounterEvent], errors: [], initialize: { _tag: "InitializeApplication" } as const });
+export const CounterContract = materializeApplicationBridgeContract(definition, "c".repeat(64));
 export type CounterCommand = typeof CounterCommand.Type;
 export type CounterReceipt = typeof CounterReceipt.Type;
 export type CounterEvent = typeof CounterEvent.Type;

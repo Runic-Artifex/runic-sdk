@@ -17,10 +17,9 @@ internal sealed record DevProjectConfiguration(
     string FrontendPackageDirectory,
     string FrontendOutputDirectory,
     string FrontendWebRoot,
-    string ContractSource,
-    string ContractCSharpOutput,
-    string ContractTypeScriptOutput,
-    string ContractTool,
+    string BridgeSource,
+    string BridgeIr,
+    string BridgeFacade,
     string FrontendWatchTarget,
     bool ViteDevServerEnabled,
     string ViteDevServerEntry,
@@ -55,10 +54,9 @@ internal sealed record DevProjectConfiguration(
         "RunicToolkitFrontendPackageDirectory",
         "RunicToolkitFrontendOutputDirectory",
         "RunicToolkitFrontendWebRoot",
-        "RunicToolkitFrontendContractSource",
-        "RunicToolkitFrontendContractCSharpOutput",
-        "RunicToolkitFrontendContractTypeScriptOutput",
-        "RunicToolkitFrontendContractTool",
+        "RunicApplicationBridgeSource",
+        "RunicApplicationBridgeIr",
+        "RunicApplicationBridgeFacade",
         "RunicToolkitFrontendDevWatchTarget",
         "RunicToolkitFrontendViteDevServerEnabled",
         "RunicToolkitFrontendViteDevServerEntry",
@@ -78,7 +76,7 @@ internal sealed record DevProjectConfiguration(
 
     internal bool HasFrontendWatcher => HasFrontendWatchTarget || HasNodeWorkspace;
 
-    internal bool HasContracts => !string.IsNullOrWhiteSpace(ContractSource);
+    internal bool HasContracts => !string.IsNullOrWhiteSpace(BridgeSource);
 
     internal bool HasDevelopmentServer =>
         DevelopmentServerKind is "vite" or "angular";
@@ -163,6 +161,22 @@ internal sealed record DevProjectConfiguration(
                 "RTKDEV1005",
                 "MSBuild did not evaluate TargetDir for the selected project.");
         }
+        string conventionalBridgeSource = Path.Combine(canonicalFrontendDirectory, "src", "application.bridge.ts");
+        string bridgeSource = NormalizeOptional(Value("RunicApplicationBridgeSource"), evaluatedProjectDirectory);
+        if (bridgeSource.Length == 0 && File.Exists(conventionalBridgeSource))
+        {
+            bridgeSource = conventionalBridgeSource;
+        }
+        string bridgeIr = NormalizeOptional(Value("RunicApplicationBridgeIr"), evaluatedProjectDirectory);
+        if (bridgeIr.Length == 0 && bridgeSource.Length != 0)
+        {
+            bridgeIr = Path.Combine(evaluatedProjectDirectory, "Contract", "bridge.ir.json");
+        }
+        string bridgeFacade = NormalizeOptional(Value("RunicApplicationBridgeFacade"), evaluatedProjectDirectory);
+        if (bridgeFacade.Length == 0 && bridgeSource.Length != 0)
+        {
+            bridgeFacade = Path.Combine(canonicalFrontendDirectory, "src", "application.bridge.generated.ts");
+        }
 
         var configurationResult = new DevProjectConfiguration(
             evaluatedProject,
@@ -178,10 +192,9 @@ internal sealed record DevProjectConfiguration(
             string.IsNullOrWhiteSpace(Value("RunicToolkitFrontendWebRoot"))
                 ? "www"
                 : Value("RunicToolkitFrontendWebRoot"),
-            NormalizeOptional(Value("RunicToolkitFrontendContractSource"), evaluatedProjectDirectory),
-            NormalizeOptional(Value("RunicToolkitFrontendContractCSharpOutput"), evaluatedProjectDirectory),
-            NormalizeOptional(Value("RunicToolkitFrontendContractTypeScriptOutput"), evaluatedProjectDirectory),
-            NormalizeOptional(Value("RunicToolkitFrontendContractTool"), evaluatedProjectDirectory),
+            bridgeSource,
+            bridgeIr,
+            bridgeFacade,
             Value("RunicToolkitFrontendDevWatchTarget"),
             bool.TryParse(
                 Value("RunicToolkitFrontendViteDevServerEnabled"),
@@ -306,13 +319,12 @@ internal sealed record DevProjectConfiguration(
         }
 
         if (HasContracts
-            && (string.IsNullOrWhiteSpace(ContractCSharpOutput)
-                || string.IsNullOrWhiteSpace(ContractTypeScriptOutput)
-                || string.IsNullOrWhiteSpace(ContractTool)))
+            && (string.IsNullOrWhiteSpace(BridgeIr)
+                || string.IsNullOrWhiteSpace(BridgeFacade)))
         {
             throw new DevUsageException(
                 "RTKDEV1005",
-                "Contract source, C# output, TypeScript output, and contract tool must be configured together.");
+                "Application Bridge source, IR, and generated facade must be configured together.");
         }
     }
 

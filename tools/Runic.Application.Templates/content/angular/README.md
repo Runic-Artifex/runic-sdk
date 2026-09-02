@@ -27,7 +27,8 @@ facade over these scripts. Use `vp run dev`, not the Vite+-built-in `vp dev`,
 so the generated `ng serve` script remains authoritative.
 
 `CounterBridgeHandler.cs` implements named generated C# commands.
-`Frontend/src/counter-contract.ts` defines the matching Effect Schema contract,
+`Frontend/src/application.bridge.ts` is the handwritten Effect Schema contract. The Vite plugin
+generates `Contract/bridge.ir.json` and the fingerprint-only frontend facade,
 and `counter-bridge.ts` selects the production Desktop channel or frontend-only
 mock Layer. Angular owns only signal state and its subscription; one controller
 owns the Effect runtime and its transport scope.

@@ -138,6 +138,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             [ViteDevelopmentServer.DiagnosticsEnvironmentVariable] = null,
             [ViteDevelopmentServer.HotReloadEnvironmentVariable] = null,
             [ViteDevelopmentServer.ProjectEnvironmentVariable] = null,
+            [ViteDevelopmentServer.BridgeHostReadyEnvironmentVariable] = null,
             [AngularDevelopmentServer.ServerEnvironmentVariable] = null,
             [AngularDevelopmentServer.KindEnvironmentVariable] = null,
         };

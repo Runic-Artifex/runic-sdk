@@ -16,9 +16,10 @@ Define the contract once, then create exactly one controller at your application
 import { Schema } from "effect";
 import {
   ApplicationBridgeLive,
+  bridge,
   createApplicationBridgeController,
   createWebSocketFrameChannel,
-  defineApplicationContract,
+  defineApplicationBridgeContract,
 } from "@runic-artifex/application-bridge";
 
 const Snapshot = Schema.Struct({ count: Schema.Int });
@@ -26,17 +27,22 @@ const Command = Schema.TaggedStruct("InitializeApplication", {});
 const Receipt = Schema.TaggedStruct("ApplicationInitialized", { snapshot: Snapshot });
 const Event = Schema.TaggedStruct("CounterChanged", { snapshot: Snapshot });
 
-const contract = defineApplicationContract({
-  identity: "example.counter",
-  version: 1,
-  // Copy contractFingerprint from the generated bridge.manifest.json.
-  fingerprint: "0000000000000000000000000000000000000000000000000000000000000000",
-  command: Command,
-  receipt: Receipt,
-  event: Event,
+export default defineApplicationBridgeContract({
+  protocol: { identity: "example.counter", version: 1 },
+  csharp: { namespace: "Example.Counter.Contract", contractName: "Counter" },
   snapshot: Snapshot,
-  initialize: { _tag: "InitializeApplication" } as const,
+  commands: [bridge.command(Command, { receipt: Receipt })],
+  events: [Event],
+  errors: [],
+  initialize: { _tag: "InitializeApplication" },
 });
+```
+
+Run `runic-bridge generate`, then import the generated facade when constructing
+the controller:
+
+```ts
+import contract from "./application.bridge.generated";
 
 const bridge = createApplicationBridgeController(
   contract,

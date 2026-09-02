@@ -4,7 +4,7 @@ import type {
   CounterEvent,
   CounterReceipt,
   CounterSnapshot,
-} from "./counter-contract";
+} from "./application.bridge";
 
 export const counterBridgeContext = createApplicationBridgeContext<
   CounterCommand,
@@ -12,4 +12,3 @@ export const counterBridgeContext = createApplicationBridgeContext<
   CounterEvent,
   CounterSnapshot
 >();
-

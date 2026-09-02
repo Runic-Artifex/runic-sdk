@@ -1,0 +1,337 @@
+{
+  "csharp": {
+    "contractName": "Refresh",
+    "namespace": "Runic.Application.Hosting.RefreshContract"
+  },
+  "documentation": {
+    "event:AssetSourceChanged.entryPointPath": "a string",
+    "event:AssetSourceChanged.manifestFingerprint": "a string matching the pattern ^[a-f0-9]{64}$",
+    "event:AssetSourceChanged.manifestVersion": "a string",
+    "event:TranslationLocaleChanged.catalog": "a string",
+    "event:TranslationLocaleChanged.newLocale": "a string",
+    "event:TranslationLocaleChanged.oldLocale": "a string"
+  },
+  "fingerprint": {
+    "algorithm": "sha256",
+    "scope": "wire",
+    "value": "ab5f2a5a95b870fdec5c4dda6da1264c4b0b0f86e5c7db4e330d797b55e760b8"
+  },
+  "format": "runic.application-bridge-ir",
+  "formatVersion": 1,
+  "wire": {
+    "commands": [],
+    "definitions": {
+      "error:CommandRejected": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CommandRejected"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationCancelled": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationCancelled"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationFailed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationFailed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationTimedOut": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationTimedOut"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolDecodeError": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolDecodeError"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolVersionMismatch": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolVersionMismatch"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:StaleRevision": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "StaleRevision"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportClosed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportClosed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportUnavailable": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportUnavailable"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "event:AssetSourceChanged": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "AssetSourceChanged"
+            }
+          },
+          "entryPointPath": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "manifestFingerprint": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "kind": "string"
+            }
+          },
+          "manifestVersion": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          }
+        }
+      },
+      "event:TranslationLocaleChanged": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TranslationLocaleChanged"
+            }
+          },
+          "catalog": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "newLocale": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "oldLocale": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          }
+        }
+      },
+      "type:RefreshSnapshot": {
+        "kind": "object",
+        "properties": {}
+      }
+    },
+    "envelopeVersion": 1,
+    "errors": [
+      "CommandRejected",
+      "OperationCancelled",
+      "OperationFailed",
+      "OperationTimedOut",
+      "ProtocolDecodeError",
+      "ProtocolVersionMismatch",
+      "StaleRevision",
+      "TransportClosed",
+      "TransportUnavailable"
+    ],
+    "events": [
+      "AssetSourceChanged",
+      "TranslationLocaleChanged"
+    ],
+    "limits": {
+      "maxCollectionItems": 4096,
+      "maxDepth": 32,
+      "maxFrameBytes": 262144,
+      "maxPendingCommands": 64,
+      "maxStringBytes": 65536
+    },
+    "protocol": {
+      "identity": "runic.artifex.refresh",
+      "version": 1
+    },
+    "snapshot": "type:RefreshSnapshot"
+  }
+}

@@ -13,11 +13,29 @@ import {
   createWebSocketFrameChannel,
   ClientEnvelopeSchema,
   HostEnvelopeSchema,
-  defineApplicationContract,
+  bridge,
+  defineApplicationBridgeContract,
+  materializeApplicationBridgeContract,
   type FrameChannel,
   type FrameChannelEvent,
   type WebSocketFrameSocket,
 } from "../dist/esm/index.js";
+
+test("event-only contracts materialize without inventing an initialization schema", () => {
+  const Changed = Schema.TaggedStruct("Changed", { value: Schema.String });
+  const definition = defineApplicationBridgeContract({
+    protocol: { identity: "runic.test.events", version: 1 },
+    csharp: { namespace: "Runic.Test", contractName: "Events" },
+    snapshot: Schema.Struct({}),
+    commands: [],
+    events: [Changed],
+    errors: [],
+  });
+  const contract = materializeApplicationBridgeContract(definition, "1".repeat(64));
+  assert.equal(contract.fingerprint, "1".repeat(64));
+  assert.equal((contract as { readonly initialize?: unknown }).initialize, undefined);
+  assert.equal(contract.event, Changed);
+});
 
 test("transport-neutral conformance fixtures validate paired reconnect epochs", async () => {
   const decode = async (path: string) => JSON.parse(await readFile(`../../../protocol/application-bridge/conformance/${path}`, "utf8"));
@@ -100,22 +118,26 @@ test("the WebSocket channel settles failed and interrupted reconnect attempts", 
 });
 
 const Snapshot = Schema.Struct({ revision: Schema.Int, view: Schema.String });
-const Command = Schema.Union(
-  Schema.TaggedStruct("InitializeApplication", {}),
-  Schema.TaggedStruct("Navigate", { target: Schema.String }),
-);
-const Receipt = Schema.TaggedStruct("NavigationAccepted", { revision: Schema.Int });
+const InitializeApplication = Schema.TaggedStruct("InitializeApplication", {});
+const Navigate = Schema.TaggedStruct("Navigate", { target: Schema.String });
+const NavigationAccepted = Schema.TaggedStruct("NavigationAccepted", { revision: Schema.Int });
 const HostEvent = Schema.TaggedStruct("NavigationChanged", { revision: Schema.Int, view: Schema.String });
-const contract = defineApplicationContract({
-  identity: "runic.test",
-  version: 1,
-  fingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  command: Command,
-  receipt: Receipt,
-  event: HostEvent,
+const definition = defineApplicationBridgeContract({
+  protocol: { identity: "runic.test", version: 1 },
+  csharp: { namespace: "Runic.Test", contractName: "Test" },
   snapshot: Snapshot,
+  commands: [
+    bridge.command(InitializeApplication, { receipt: NavigationAccepted }),
+    bridge.command(Navigate, { receipt: NavigationAccepted }),
+  ],
+  events: [HostEvent],
+  errors: [],
   initialize: { _tag: "InitializeApplication" } as const,
 });
+const contract = materializeApplicationBridgeContract(
+  definition,
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+);
 
 test("mock and live layers expose the same semantic command sequence", async () => {
   const mock = MockApplicationBridge({
@@ -128,6 +150,19 @@ test("mock and live layers expose the same semantic command sequence", async () 
   });
   await semanticSuite(mock);
   await semanticSuite(ApplicationBridgeLive(contract, new LoopbackChannel()));
+});
+
+test("browser encoding rejects undeclared command properties", async () => {
+  const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, new LoopbackChannel()));
+  try {
+    await controller.initialize();
+    await assert.rejects(
+      controller.dispatch({ _tag: "Navigate", target: "Complete", hidden: true } as typeof Navigate.Type),
+      /did not satisfy its Effect Schema/,
+    );
+  } finally {
+    await controller.dispose();
+  }
 });
 
 test("one ManagedRuntime owns and disposes the bridge layer", async () => {
@@ -222,6 +257,16 @@ test("returned host batches enforce the browser item limit", async () => {
       controller.dispatch({ _tag: "Navigate", target: "Complete" }),
       /batch exceeded the configured item limit/,
     );
+  } finally {
+    await controller.dispose();
+  }
+});
+
+test("browser decoding rejects duplicate JSON properties before Effect validation", async () => {
+  const channel = new ReturnedBatchChannel(1, true);
+  const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, channel));
+  try {
+    await assert.rejects(controller.initialize(), /host frame was not valid UTF-8 JSON/);
   } finally {
     await controller.dispose();
   }
@@ -712,9 +757,11 @@ class ReturnedBatchChannel implements FrameChannel {
   private connectionEpoch = 0;
   private readonly sessionId = "11111111-1111-4111-8111-111111111111";
   private readonly eventCount: number;
+  private readonly duplicateProperty: boolean;
 
-  public constructor(eventCount = 1) {
+  public constructor(eventCount = 1, duplicateProperty = false) {
     this.eventCount = eventCount;
+    this.duplicateProperty = duplicateProperty;
   }
 
   public async send(bytes: Uint8Array): Promise<void> {
@@ -725,7 +772,11 @@ class ReturnedBatchChannel implements FrameChannel {
       ? [this.envelope("snapshot", commandId, { revision: 0, view: "Welcome" })]
       : this.dispatchFrames(commandId);
     queueMicrotask(() => {
-      const owned = new TextEncoder().encode(JSON.stringify(frames));
+      const encoded = JSON.stringify(frames);
+      const text = this.duplicateProperty
+        ? encoded.replace('"protocol":"runic.test"', '"protocol":"runic.test","protocol":"runic.test"')
+        : encoded;
+      const owned = new TextEncoder().encode(text);
       for (const listener of this.listeners) listener({ _tag: "Frame", bytes: owned });
     });
   }

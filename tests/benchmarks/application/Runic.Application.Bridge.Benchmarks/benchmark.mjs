@@ -3,8 +3,10 @@ import { performance } from "node:perf_hooks";
 import { Schema } from "effect";
 import {
   ApplicationBridgeLive,
+  bridge,
   createApplicationBridgeController,
-  defineApplicationContract,
+  defineApplicationBridgeContract,
+  materializeApplicationBridgeContract,
 } from "../../web/packages/application-bridge/dist/esm/index.js";
 
 const modes = new Map([
@@ -20,22 +22,20 @@ if (mode === undefined || process.argv.length > 3) {
 }
 
 const Snapshot = Schema.Struct({ revision: Schema.Int, view: Schema.String });
-const Command = Schema.Union(
-  Schema.TaggedStruct("InitializeApplication", {}),
-  Schema.TaggedStruct("Navigate", { target: Schema.String }),
-);
+const Initialize = Schema.TaggedStruct("InitializeApplication", {});
+const Navigate = Schema.TaggedStruct("Navigate", { target: Schema.String });
 const Receipt = Schema.TaggedStruct("NavigationAccepted", { revision: Schema.Int });
 const HostEvent = Schema.TaggedStruct("NavigationChanged", { revision: Schema.Int, view: Schema.String });
-const contract = defineApplicationContract({
-  identity: "runic.benchmark",
-  version: 1,
-  fingerprint: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  command: Command,
-  receipt: Receipt,
-  event: HostEvent,
+const definition = defineApplicationBridgeContract({
+  protocol: { identity: "runic.benchmark", version: 1 },
+  csharp: { namespace: "Runic.Benchmark", contractName: "Benchmark" },
   snapshot: Snapshot,
+  commands: [bridge.command(Initialize, { receipt: Receipt }), bridge.command(Navigate, { receipt: Receipt })],
+  events: [HostEvent],
+  errors: [],
   initialize: { _tag: "InitializeApplication" },
 });
+const contract = materializeApplicationBridgeContract(definition, "b".repeat(64));
 const decoder = new TextDecoder();
 
 await warmUp();

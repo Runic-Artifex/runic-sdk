@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -29,12 +30,42 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
     public ApplicationBridgeSession(IApplicationBridgeDispatcher dispatcher, BridgeLimits? limits = null)
     {
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        ReportDevelopmentFingerprint(dispatcher.ManifestFingerprint);
         _limits = limits ?? BridgeLimits.Default;
         _limits.Validate();
         _admission = new SemaphoreSlim(_limits.MaxPendingCommands, _limits.MaxPendingCommands);
         _events = Channel.CreateUnbounded<PendingEvent>(new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
         Id = BridgeSessionId.New();
         _eventPump = PumpEventsAsync();
+    }
+
+    private static void ReportDevelopmentFingerprint(string fingerprint)
+    {
+        string? path = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_BRIDGE_HOST_READY");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        string? directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        string temporary = path + "." + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".tmp";
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(temporary, fingerprint + "\n");
+            File.Move(temporary, path, overwrite: true);
+        }
+        catch (IOException)
+        {
+            // Development coordination must not affect application semantics.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Development coordination must not affect application semantics.
+        }
+        finally
+        {
+            try { File.Delete(temporary); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
     }
 
     /// <summary>Raised after a committed domain event is accepted into the event stream.</summary>
@@ -110,7 +141,7 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
             try
             {
                 _currentDispatch.Value = transaction;
-                var context = new BridgeCommandContext(Id, commandId, envelope.ExpectedRevision, admission.Revision, this, this);
+                var context = new BridgeCommandContext(Id, commandId, envelope.Kind == "initialize", envelope.ExpectedRevision, admission.Revision, this, this);
                 result = await _dispatcher.DispatchAsync(envelope.Payload, context, cancellationToken).ConfigureAwait(false);
             }
             finally
@@ -121,12 +152,35 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
 
             string kind = envelope.Kind == "initialize" ? "snapshot" : "receipt";
             JsonElement payload = envelope.Kind == "initialize" && result.Receipt.TryGetProperty("snapshot", out JsonElement snapshot) ? snapshot : result.Receipt;
+            if (result.Cancellable && result.OperationId is null)
+                throw new InvalidOperationException("A cancellable dispatch result must identify its operation.");
+            if (result.OperationId is BridgeOperationId operationId &&
+                _operations.TryGetValue(operationId, out OperationRegistration? operation))
+            {
+                operation.SetCancellable(result.Cancellable);
+            }
             BridgeHostEnvelope? committed = CommitTransaction(envelope, admission, stagedEvents, result.AdvancesRevision, kind, commandId, payload, result.OperationId);
             eventBudgetConsumed = committed is not null;
             if (committed is null)
                 return isInitializeAtCurrentOrFutureEpoch ? AdmissionError(commandId, "The initialization could not be committed.", connectionEpoch: envelope.ConnectionEpoch) : Error(commandId, "StaleRevision", "The command completed after the application revision changed.", true);
             // Completion is bounded queue acceptance, never subscriber delivery.
             return committed;
+        }
+        catch (BridgeCommandFailureException exception)
+        {
+            try
+            {
+                JsonElement error = _dispatcher.ValidateError(exception.Error);
+                return isInitializeAtCurrentOrFutureEpoch
+                    ? AdmissionError(commandId, error, envelope.ConnectionEpoch)
+                    : Error(commandId, error);
+            }
+            catch (Exception)
+            {
+                return isInitializeAtCurrentOrFutureEpoch
+                    ? AdmissionError(commandId, "The command handler returned an undeclared error.", connectionEpoch: envelope.ConnectionEpoch)
+                    : Error(commandId, "CommandRejected", "The command handler returned an undeclared error.");
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -207,6 +261,20 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
         Revision = Interlocked.Read(ref _revision),
         CommandId = commandId.Value,
         Payload = JsonSerializer.SerializeToElement(new BridgePublicError(tag, message, retryable), ApplicationBridgeJsonContext.Default.BridgePublicError),
+    };
+
+    private BridgeHostEnvelope AdmissionError(BridgeCommandId commandId, JsonElement payload, long connectionEpoch) => new()
+    {
+        Protocol = _dispatcher.ProtocolIdentity,
+        Version = _dispatcher.ProtocolVersion,
+        ContractFingerprint = _dispatcher.ManifestFingerprint,
+        ConnectionEpoch = connectionEpoch,
+        Kind = "error",
+        SessionId = Id.Value,
+        Sequence = 0,
+        Revision = Interlocked.Read(ref _revision),
+        CommandId = commandId.Value,
+        Payload = payload.Clone(),
     };
 
     private BridgeHostEnvelope BuildEnvelope(string kind, BridgeCommandId? commandId, JsonElement payload, BridgeOperationId? operationId, long epoch, long sequence, long revision) => new()
@@ -313,13 +381,14 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
     private BridgeHostEnvelope Cancel(BridgeClientEnvelope envelope, BridgeCommandId commandId)
     {
         if (!envelope.Payload.TryGetProperty("operationId", out JsonElement value) || !value.TryGetGuid(out Guid operationId)) return Error(commandId, "ProtocolDecodeError", "Cancellation requires an operation identifier.");
-        bool accepted = _operations.TryGetValue(new BridgeOperationId(operationId), out OperationRegistration? operation);
-        operation?.Cancel();
+        bool accepted = _operations.TryGetValue(new BridgeOperationId(operationId), out OperationRegistration? operation)
+            && operation.TryCancel();
         JsonElement payload = JsonSerializer.SerializeToElement(new BridgeCancellationReceipt("OperationCancellationAccepted", operationId, accepted, Revision), ApplicationBridgeJsonContext.Default.BridgeCancellationReceipt);
         return Receipt(commandId, payload, new BridgeOperationId(operationId));
     }
 
     private BridgeHostEnvelope Error(BridgeCommandId commandId, string tag, string message, bool retryable = false) { lock (_gate) return ErrorLocked(commandId, tag, message, retryable); }
+    private BridgeHostEnvelope Error(BridgeCommandId commandId, JsonElement payload) => Create("error", commandId, payload);
     private BridgeHostEnvelope ErrorLocked(BridgeCommandId commandId, string tag, string message, bool retryable = false) => CreateLocked("error", commandId, JsonSerializer.SerializeToElement(new BridgePublicError(tag, message, retryable), ApplicationBridgeJsonContext.Default.BridgePublicError));
     private BridgeHostEnvelope Receipt(BridgeCommandId commandId, JsonElement payload, BridgeOperationId? operationId = null) => Create("receipt", commandId, payload, operationId);
     private BridgeHostEnvelope Create(string kind, BridgeCommandId? commandId, JsonElement payload, BridgeOperationId? operationId = null) { lock (_gate) return CreateLocked(kind, commandId, payload, operationId); }
@@ -360,7 +429,23 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
     {
         private readonly object _gate = new();
         private CancellationTokenSource? _source = source;
+        private bool _cancellable;
         public CancellationToken Token { get; } = source.Token;
+
+        public void SetCancellable(bool cancellable)
+        {
+            lock (_gate) _cancellable = cancellable;
+        }
+
+        public bool TryCancel()
+        {
+            lock (_gate)
+            {
+                if (!_cancellable || _source is null) return false;
+                _source.Cancel();
+                return true;
+            }
+        }
 
         public void Cancel()
         {

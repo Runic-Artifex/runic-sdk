@@ -97,10 +97,10 @@ for (const repositoryName of ["runic-command-line", "runic-assets", "runic-trans
 }
 
 const profilePackages = {
-  angular: ["@runic-artifex/application-bridge", "@runic-artifex/desktop", "@runic-artifex/angular"],
-  react: ["@runic-artifex/application-bridge", "@runic-artifex/desktop", "@runic-artifex/vite-plugin-runic"],
-  svelte: ["@runic-artifex/application-bridge", "@runic-artifex/desktop", "@runic-artifex/svelte", "@runic-artifex/vite-plugin-runic"],
-  vue: ["@runic-artifex/application-bridge", "@runic-artifex/desktop", "@runic-artifex/vite-plugin-runic"],
+  angular: ["@runic-artifex/application-bridge", "@runic-artifex/application-bridge-tooling", "@runic-artifex/desktop", "@runic-artifex/angular"],
+  react: ["@runic-artifex/application-bridge", "@runic-artifex/application-bridge-tooling", "@runic-artifex/desktop", "@runic-artifex/vite-plugin-runic"],
+  svelte: ["@runic-artifex/application-bridge", "@runic-artifex/application-bridge-tooling", "@runic-artifex/desktop", "@runic-artifex/svelte", "@runic-artifex/vite-plugin-runic"],
+  vue: ["@runic-artifex/application-bridge", "@runic-artifex/application-bridge-tooling", "@runic-artifex/desktop", "@runic-artifex/vite-plugin-runic"],
 };
 
 for (const [profile, selectedPackages] of Object.entries(profilePackages)) {

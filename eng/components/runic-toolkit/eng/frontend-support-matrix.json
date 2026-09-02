@@ -3,8 +3,8 @@
   "policy": "Effect owns the application protocol and lifetime once; renderer-owned integration packages project validated domain state and own only framework lifecycle concerns.",
   "protocolOwner": "@runic-artifex/application-bridge",
   "sharedGates": {
-    "contract": "protocol/application-bridge/setup/contract.mjs",
-    "manifest": "protocol/application-bridge/setup/generated/bridge.manifest.json",
+    "contract": "protocol/application-bridge/setup/application.bridge.ts",
+    "ir": "protocol/application-bridge/setup/generated/bridge.ir.json",
     "runtime": "web/packages/application-bridge",
     "dotnet": "src/Runic.Application.Bridge",
     "generator": "src/Runic.Application.Bridge.Generators",

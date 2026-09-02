@@ -901,57 +901,47 @@ internal static class DoctorChecks
             return;
         }
 
-        bool sourceReady = File.Exists(project.ContractSource)
-            && !string.IsNullOrWhiteSpace(project.ContractTool)
-            && File.Exists(project.ContractTool);
-        if (!File.Exists(project.ContractSource))
+        bool sourceReady = File.Exists(project.BridgeSource);
+        if (!sourceReady)
         {
             checks.Add(Fail(
                 "contract-source",
-                $"Configured contract source '{project.ContractSource}' does not exist.",
-                "Create the contract source or correct RunicToolkitFrontendContractSource."));
-        }
-        else if (string.IsNullOrWhiteSpace(project.ContractTool)
-                 || !File.Exists(project.ContractTool))
-        {
-            checks.Add(Fail(
-                "contract-source",
-                $"Contract generator '{project.ContractTool}' does not exist.",
-                "Restore the application-owned contract tool or correct RunicToolkitFrontendContractTool."));
+                $"Configured bridge source '{project.BridgeSource}' does not exist.",
+                "Create src/application.bridge.ts or correct RunicApplicationBridgeSource."));
         }
         else
         {
             checks.Add(Pass(
                 "contract-source",
-                $"Contract source and generator are available for '{project.ContractSource}'."));
+                $"Found handwritten bridge source '{project.BridgeSource}'."));
         }
 
         bool outputsConfigured =
-            !string.IsNullOrWhiteSpace(project.ContractCSharpOutput)
-            && !string.IsNullOrWhiteSpace(project.ContractTypeScriptOutput);
+            !string.IsNullOrWhiteSpace(project.BridgeIr)
+            && !string.IsNullOrWhiteSpace(project.BridgeFacade);
         bool outputsExist =
             outputsConfigured
-            && File.Exists(project.ContractCSharpOutput)
-            && File.Exists(project.ContractTypeScriptOutput);
+            && File.Exists(project.BridgeIr)
+            && File.Exists(project.BridgeFacade);
         if (!outputsConfigured)
         {
             checks.Add(Fail(
                 "contract-outputs",
-                "Both generated C# and TypeScript output paths must be configured.",
-                "Set RunicToolkitFrontendContractCSharpOutput and RunicToolkitFrontendContractTypeScriptOutput."));
+                "Both Bridge IR and fingerprint facade output paths must be configured.",
+                "Set RunicApplicationBridgeIr and RunicApplicationBridgeFacade."));
         }
         else if (!outputsExist)
         {
             checks.Add(Fail(
                 "contract-outputs",
-                "One or more generated contract outputs are missing.",
-                "Run 'dotnet runic dev' once to generate both contract outputs."));
+                "Bridge IR or its fingerprint facade is missing.",
+                "Run the frontend contract:generate script."));
         }
         else
         {
             checks.Add(Pass(
                 "contract-outputs",
-                "Generated C# and TypeScript contract outputs exist."));
+                "Bridge IR and its fingerprint facade exist."));
         }
 
         if (!sourceReady || !outputsExist || node is null)
@@ -959,38 +949,41 @@ internal static class DoctorChecks
             checks.Add(Fail(
                 "contract-verify",
                 "The generated contract cannot be verified with the current prerequisites.",
-                "Resolve the contract source, generator, output, and Node failures above, then rerun doctor."));
+                "Resolve the bridge source, output, and Node failures above, then rerun doctor."));
             return;
         }
 
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            project.WorkspaceRoot,
+            project.FrontendPackageDirectory);
+        string? packageManagerExecutable = runtime.FindExecutable(packageManager.Executable);
+        if (packageManagerExecutable is null)
+        {
+            checks.Add(Fail(
+                "contract-verify",
+                $"The {packageManager.Name} executable is unavailable for contract verification.",
+                $"Install {packageManager.Name} and rerun doctor."));
+            return;
+        }
         CommandResult verify = await runtime
             .RunAsync(
-                node,
-                project.WorkspaceRoot,
-                [
-                    project.ContractTool,
-                    "--source",
-                    project.ContractSource,
-                    "--csharp",
-                    project.ContractCSharpOutput,
-                    "--typescript",
-                    project.ContractTypeScriptOutput,
-                    "--verify",
-                ],
+                packageManagerExecutable,
+                project.FrontendPackageDirectory,
+                packageManager.RunScriptArguments("contract:check", "."),
                 cancellationToken)
             .ConfigureAwait(false);
         if (verify.ExitCode == 0)
         {
             checks.Add(Pass(
                 "contract-verify",
-                "Generated contracts match their source."));
+                "Generated Bridge IR and facade match their source."));
         }
         else
         {
             checks.Add(Fail(
                 "contract-verify",
                 $"Generated contract verification exited with {verify.ExitCode}: {Compact(verify.CombinedOutput)}",
-                "Regenerate the contracts and commit the updated C# and TypeScript outputs."));
+                "Regenerate and commit the Bridge IR and fingerprint facade."));
         }
     }
 

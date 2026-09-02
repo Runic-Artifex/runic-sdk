@@ -2,7 +2,7 @@ import { Component, computed, provideZonelessChangeDetection, signal } from "@an
 import { bootstrapApplication } from "@angular/platform-browser";
 import { injectApplicationBridge, provideApplicationBridge } from "@runic-artifex/angular";
 import { counterBridge } from "./counter-bridge";
-import type { CounterCommand, CounterEvent, CounterReceipt, CounterSnapshot } from "./counter-contract";
+import type { CounterCommand, CounterEvent, CounterReceipt, CounterSnapshot } from "./application.bridge";
 
 @Component({
   selector: "runic-toolkit-root",

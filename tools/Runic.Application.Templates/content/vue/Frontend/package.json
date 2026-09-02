@@ -6,9 +6,10 @@
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": { "node": ">=24.18.0 <25" },
   "type": "module",
-  "scripts": { "build": "vite build", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "vue-tsc --noEmit" },
+  "scripts": { "build": "vite build", "contract:generate": "runic-bridge generate", "contract:check": "runic-bridge check", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "vue-tsc --noEmit" },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@popperjs/core": "2.11.8",
     "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
     "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
     "bootstrap": "5.3.8",
@@ -16,6 +17,7 @@
     "vue": "3.5.40"
   },
   "devDependencies": {
+    "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",
     "@vitejs/plugin-vue": "6.0.8",
     "@runic-artifex/vite-plugin-runic": "__RUNIC_VITE_NPM__",
     "typescript": "5.9.3",

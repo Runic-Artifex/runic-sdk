@@ -8,12 +8,15 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "contract:generate": "runic-bridge generate",
+    "contract:check": "runic-bridge check",
     "dev": "vite",
     "dev:mock": "vite --mode mock",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@popperjs/core": "2.11.8",
     "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
     "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
     "bootstrap": "5.3.8",
@@ -22,6 +25,7 @@
     "effect": "3.22.1"
   },
   "devDependencies": {
+    "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.1",

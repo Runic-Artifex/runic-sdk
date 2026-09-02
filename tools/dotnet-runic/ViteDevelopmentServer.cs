@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -20,6 +21,8 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         "RUNIC_TOOLKIT_FRONTEND_COMPILER_HOT_RELOAD";
     internal const string ProjectEnvironmentVariable =
         "RUNIC_TOOLKIT_DEV_PROJECT";
+    internal const string BridgeHostReadyEnvironmentVariable =
+        "RUNIC_APPLICATION_BRIDGE_HOST_READY";
 
     private readonly RunningProcess _process;
 
@@ -30,7 +33,8 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         string packageDirectory,
         string diagnosticsPath,
         string hotReloadPath,
-        string projectPath)
+        string projectPath,
+        string? bridgeHostReadyPath)
     {
         _process = process;
         Origin = origin;
@@ -42,6 +46,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             [DiagnosticsEnvironmentVariable] = diagnosticsPath,
             [HotReloadEnvironmentVariable] = hotReloadPath,
             [ProjectEnvironmentVariable] = projectPath,
+            [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
         };
     }
 
@@ -62,6 +67,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
         RunningProcess process;
+        string? bridgeHostReadyPath = configuration.HasContracts
+            ? Path.Combine(configuration.ProjectDirectory, "obj", "runic", "application-bridge-host.fingerprint")
+            : null;
         try
         {
             IReadOnlyList<string> arguments = CreateArguments(
@@ -80,6 +88,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                     ["BROWSER"] = "none",
                     ["RUNIC_TOOLKIT_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
                     ["RUNIC_TOOLKIT_DEV_PROJECT"] = configuration.ProjectPath,
+                    [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
                 });
         }
         catch
@@ -93,7 +102,8 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             configuration.FrontendPackageDirectory,
             configuration.FrontendCompilerDiagnosticsPath,
             configuration.FrontendCompilerHotReloadPath + ".ready",
-            configuration.ProjectPath);
+            configuration.ProjectPath,
+            bridgeHostReadyPath);
         try
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);

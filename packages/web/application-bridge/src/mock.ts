@@ -2,21 +2,21 @@ import { Effect, Layer, PubSub, Stream } from "effect";
 import { bridgeError, type BridgeError } from "./errors.js";
 import { ApplicationBridge, type ApplicationBridgeService } from "./service.js";
 
-export interface MockApplicationBridgeFixture<Command, Receipt, HostEvent, Snapshot> {
-  readonly initialize: () => Effect.Effect<Snapshot, BridgeError>;
-  readonly dispatch: (command: Command, publish: (event: HostEvent) => Effect.Effect<void>) => Effect.Effect<Receipt, BridgeError>;
-  readonly cancel?: (operationId: string) => Effect.Effect<void, BridgeError>;
+export interface MockApplicationBridgeFixture<Command, Receipt, HostEvent, Snapshot, Failure = never> {
+  readonly initialize: () => Effect.Effect<Snapshot, Failure>;
+  readonly dispatch: (command: Command, publish: (event: HostEvent) => Effect.Effect<void>) => Effect.Effect<Receipt, Failure>;
+  readonly cancel?: (operationId: string) => Effect.Effect<void, Failure>;
 }
 
-export function MockApplicationBridge<Command, Receipt, HostEvent, Snapshot>(
-  fixture: MockApplicationBridgeFixture<Command, Receipt, HostEvent, Snapshot>,
-): Layer.Layer<ApplicationBridgeService> {
+export function MockApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure = never>(
+  fixture: MockApplicationBridgeFixture<Command, Receipt, HostEvent, Snapshot, Failure>,
+): Layer.Layer<ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, BridgeError | Failure>> {
   return Layer.scoped(
     ApplicationBridge,
     Effect.gen(function*() {
       const events = yield* PubSub.unbounded<HostEvent>();
       yield* Effect.addFinalizer(() => PubSub.shutdown(events));
-      const service: ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot> = {
+      const service: ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, BridgeError | Failure> = {
         initialize: fixture.initialize(),
         dispatch: (command) => fixture.dispatch(command, (event) => PubSub.publish(events, event).pipe(Effect.asVoid)),
         cancel: fixture.cancel ?? (() => Effect.void),
@@ -27,7 +27,7 @@ export function MockApplicationBridge<Command, Receipt, HostEvent, Snapshot>(
       };
       return service as ApplicationBridgeService;
     }),
-  );
+  ) as unknown as Layer.Layer<ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, BridgeError | Failure>>;
 }
 
 export interface FaultInjectionPlan {

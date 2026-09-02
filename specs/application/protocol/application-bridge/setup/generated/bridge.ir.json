@@ -1,0 +1,1348 @@
+{
+  "csharp": {
+    "contractName": "Setup",
+    "namespace": "Runic.Application.Setup.Contract"
+  },
+  "documentation": {
+    "command:CancelOperation.operationId": "a string",
+    "command:Navigate.expectedRevision": "a number",
+    "command:SelectDestination.currentSelectionId|0": "a string",
+    "command:StartInstallation.destinationSelectionId": "a string",
+    "event:NavigationChanged.revision": "a number",
+    "event:OperationCancelled.operationId": "a string",
+    "event:OperationCancelled.revision": "a number",
+    "event:OperationCompleted.operationId": "a string",
+    "event:OperationCompleted.revision": "a number",
+    "event:OperationFailed.error": "a string",
+    "event:OperationFailed.operationId": "a string",
+    "event:OperationFailed.revision": "a number",
+    "event:OperationProgress.completed": "a number",
+    "event:OperationProgress.operationId": "a string",
+    "event:OperationProgress.total": "a positive number",
+    "event:SnapshotReplaced.snapshot.canNavigateBack": "a boolean",
+    "event:SnapshotReplaced.snapshot.canNavigateNext": "a boolean",
+    "event:SnapshotReplaced.snapshot.destination|0.availableBytes": "a non-negative number",
+    "event:SnapshotReplaced.snapshot.destination|0.displayName": "a string",
+    "event:SnapshotReplaced.snapshot.destination|0.selectionId": "a string",
+    "event:SnapshotReplaced.snapshot.revision": "a number",
+    "receipt:ApplicationInitialized.snapshot.canNavigateBack": "a boolean",
+    "receipt:ApplicationInitialized.snapshot.canNavigateNext": "a boolean",
+    "receipt:ApplicationInitialized.snapshot.destination|0.availableBytes": "a non-negative number",
+    "receipt:ApplicationInitialized.snapshot.destination|0.displayName": "a string",
+    "receipt:ApplicationInitialized.snapshot.destination|0.selectionId": "a string",
+    "receipt:ApplicationInitialized.snapshot.revision": "a number",
+    "receipt:DestinationSelected.destination.availableBytes": "a number",
+    "receipt:DestinationSelected.destination.displayName": "a string",
+    "receipt:DestinationSelected.destination.selectionId": "a string",
+    "receipt:DestinationSelected.revision": "a non-negative number",
+    "receipt:InstallationStarted.commandId": "a string",
+    "receipt:InstallationStarted.operationId": "a string matching the pattern ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "receipt:InstallationStarted.revision": "a number",
+    "receipt:NavigationAccepted.snapshot.canNavigateBack": "a boolean",
+    "receipt:NavigationAccepted.snapshot.canNavigateNext": "a boolean",
+    "receipt:NavigationAccepted.snapshot.destination|0.availableBytes": "a non-negative number",
+    "receipt:NavigationAccepted.snapshot.destination|0.displayName": "a string",
+    "receipt:NavigationAccepted.snapshot.destination|0.selectionId": "a string",
+    "receipt:NavigationAccepted.snapshot.revision": "a number",
+    "receipt:OperationCancellationAccepted.accepted": "a boolean",
+    "receipt:OperationCancellationAccepted.operationId": "a string",
+    "receipt:OperationCancellationAccepted.revision": "a number",
+    "type:SetupSnapshot.canNavigateBack": "a boolean",
+    "type:SetupSnapshot.canNavigateNext": "a boolean",
+    "type:SetupSnapshot.destination|0.availableBytes": "a non-negative number",
+    "type:SetupSnapshot.destination|0.displayName": "a string",
+    "type:SetupSnapshot.destination|0.selectionId": "a string",
+    "type:SetupSnapshot.revision": "a number"
+  },
+  "fingerprint": {
+    "algorithm": "sha256",
+    "scope": "wire",
+    "value": "0eaf4741bb21028295ff4a248be59a86558ba1921804b14ef198994a83492763"
+  },
+  "format": "runic.application-bridge-ir",
+  "formatVersion": 1,
+  "wire": {
+    "commands": [
+      {
+        "advancesRevision": false,
+        "cancellable": false,
+        "name": "CancelOperation",
+        "receipt": "OperationCancellationAccepted",
+        "startsOperation": false
+      },
+      {
+        "advancesRevision": false,
+        "cancellable": false,
+        "name": "InitializeApplication",
+        "receipt": "ApplicationInitialized",
+        "startsOperation": false
+      },
+      {
+        "advancesRevision": true,
+        "cancellable": false,
+        "name": "Navigate",
+        "receipt": "NavigationAccepted",
+        "startsOperation": false
+      },
+      {
+        "advancesRevision": true,
+        "cancellable": false,
+        "name": "SelectDestination",
+        "receipt": "DestinationSelected",
+        "startsOperation": false
+      },
+      {
+        "advancesRevision": true,
+        "cancellable": true,
+        "name": "StartInstallation",
+        "receipt": "InstallationStarted",
+        "startsOperation": true
+      }
+    ],
+    "definitions": {
+      "command:CancelOperation": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CancelOperation"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          }
+        }
+      },
+      "command:InitializeApplication": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "InitializeApplication"
+            }
+          }
+        }
+      },
+      "command:Navigate": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "Navigate"
+            }
+          },
+          "expectedRevision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          },
+          "target": {
+            "optional": false,
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "literal",
+                  "value": "Welcome"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Destination"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Features"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Installing"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Complete"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "command:SelectDestination": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "SelectDestination"
+            }
+          },
+          "currentSelectionId": {
+            "optional": true,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          }
+        }
+      },
+      "command:StartInstallation": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "StartInstallation"
+            }
+          },
+          "destinationSelectionId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "selectedFeatures": {
+            "optional": false,
+            "type": {
+              "items": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "literal",
+                    "value": "core"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "desktop-shortcut"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "examples"
+                  }
+                ]
+              },
+              "kind": "array"
+            }
+          }
+        }
+      },
+      "error:CommandRejected": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CommandRejected"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationCancelled": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationCancelled"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationFailed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationFailed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationTimedOut": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationTimedOut"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolDecodeError": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolDecodeError"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolVersionMismatch": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolVersionMismatch"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:StaleRevision": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "StaleRevision"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportClosed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportClosed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportUnavailable": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportUnavailable"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "event:NavigationChanged": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "NavigationChanged"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          },
+          "viewId": {
+            "optional": false,
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "literal",
+                  "value": "Welcome"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Destination"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Features"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Installing"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Complete"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "event:OperationCancelled": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationCancelled"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "event:OperationCompleted": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationCompleted"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "event:OperationFailed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationFailed"
+            }
+          },
+          "error": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "event:OperationProgress": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationProgress"
+            }
+          },
+          "completed": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          },
+          "message": {
+            "optional": true,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "total": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "exclusiveMinimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "event:SnapshotReplaced": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "SnapshotReplaced"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "activeOperationId": {
+                  "optional": true,
+                  "type": {
+                    "constraints": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    },
+                    "kind": "string"
+                  }
+                },
+                "canNavigateBack": {
+                  "optional": false,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                "canNavigateNext": {
+                  "optional": false,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                "destination": {
+                  "optional": true,
+                  "type": {
+                    "kind": "object",
+                    "properties": {
+                      "availableBytes": {
+                        "optional": false,
+                        "type": {
+                          "constraints": {
+                            "minimum": 0
+                          },
+                          "kind": "integer"
+                        }
+                      },
+                      "displayName": {
+                        "optional": false,
+                        "type": {
+                          "kind": "string"
+                        }
+                      },
+                      "selectionId": {
+                        "optional": false,
+                        "type": {
+                          "constraints": {
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                          },
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "revision": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                },
+                "selectedFeatures": {
+                  "optional": false,
+                  "type": {
+                    "items": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "literal",
+                          "value": "core"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "desktop-shortcut"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "examples"
+                        }
+                      ]
+                    },
+                    "kind": "array"
+                  }
+                },
+                "viewId": {
+                  "optional": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "Welcome"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Destination"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Features"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Installing"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Complete"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "receipt:ApplicationInitialized": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ApplicationInitialized"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "activeOperationId": {
+                  "optional": true,
+                  "type": {
+                    "constraints": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    },
+                    "kind": "string"
+                  }
+                },
+                "canNavigateBack": {
+                  "optional": false,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                "canNavigateNext": {
+                  "optional": false,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                "destination": {
+                  "optional": true,
+                  "type": {
+                    "kind": "object",
+                    "properties": {
+                      "availableBytes": {
+                        "optional": false,
+                        "type": {
+                          "constraints": {
+                            "minimum": 0
+                          },
+                          "kind": "integer"
+                        }
+                      },
+                      "displayName": {
+                        "optional": false,
+                        "type": {
+                          "kind": "string"
+                        }
+                      },
+                      "selectionId": {
+                        "optional": false,
+                        "type": {
+                          "constraints": {
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                          },
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "revision": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                },
+                "selectedFeatures": {
+                  "optional": false,
+                  "type": {
+                    "items": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "literal",
+                          "value": "core"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "desktop-shortcut"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "examples"
+                        }
+                      ]
+                    },
+                    "kind": "array"
+                  }
+                },
+                "viewId": {
+                  "optional": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "Welcome"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Destination"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Features"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Installing"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Complete"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "receipt:DestinationSelected": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "DestinationSelected"
+            }
+          },
+          "destination": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "availableBytes": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                },
+                "displayName": {
+                  "optional": false,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                "selectionId": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    },
+                    "kind": "string"
+                  }
+                }
+              }
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "receipt:InstallationStarted": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "InstallationStarted"
+            }
+          },
+          "commandId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "receipt:NavigationAccepted": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "NavigationAccepted"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "activeOperationId": {
+                  "optional": true,
+                  "type": {
+                    "constraints": {
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    },
+                    "kind": "string"
+                  }
+                },
+                "canNavigateBack": {
+                  "optional": false,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                "canNavigateNext": {
+                  "optional": false,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                "destination": {
+                  "optional": true,
+                  "type": {
+                    "kind": "object",
+                    "properties": {
+                      "availableBytes": {
+                        "optional": false,
+                        "type": {
+                          "constraints": {
+                            "minimum": 0
+                          },
+                          "kind": "integer"
+                        }
+                      },
+                      "displayName": {
+                        "optional": false,
+                        "type": {
+                          "kind": "string"
+                        }
+                      },
+                      "selectionId": {
+                        "optional": false,
+                        "type": {
+                          "constraints": {
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                          },
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "revision": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                },
+                "selectedFeatures": {
+                  "optional": false,
+                  "type": {
+                    "items": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "literal",
+                          "value": "core"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "desktop-shortcut"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "examples"
+                        }
+                      ]
+                    },
+                    "kind": "array"
+                  }
+                },
+                "viewId": {
+                  "optional": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "Welcome"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Destination"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Features"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Installing"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Complete"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "receipt:OperationCancellationAccepted": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationCancellationAccepted"
+            }
+          },
+          "accepted": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "type:DestinationSelection": {
+        "kind": "object",
+        "properties": {
+          "availableBytes": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          },
+          "displayName": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "selectionId": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:Uuid"
+            }
+          }
+        }
+      },
+      "type:Revision": {
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "integer"
+      },
+      "type:SetupSnapshot": {
+        "kind": "object",
+        "properties": {
+          "activeOperationId": {
+            "optional": true,
+            "type": {
+              "constraints": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              "kind": "string"
+            }
+          },
+          "canNavigateBack": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "canNavigateNext": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "destination": {
+            "optional": true,
+            "type": {
+              "kind": "ref",
+              "name": "type:DestinationSelection"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:Revision"
+            }
+          },
+          "selectedFeatures": {
+            "optional": false,
+            "type": {
+              "items": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "literal",
+                    "value": "core"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "desktop-shortcut"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "examples"
+                  }
+                ]
+              },
+              "kind": "array"
+            }
+          },
+          "viewId": {
+            "optional": false,
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "literal",
+                  "value": "Welcome"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Destination"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Features"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Installing"
+                },
+                {
+                  "kind": "literal",
+                  "value": "Complete"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "type:Uuid": {
+        "constraints": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "kind": "string"
+      }
+    },
+    "envelopeVersion": 1,
+    "errors": [
+      "CommandRejected",
+      "OperationCancelled",
+      "OperationFailed",
+      "OperationTimedOut",
+      "ProtocolDecodeError",
+      "ProtocolVersionMismatch",
+      "StaleRevision",
+      "TransportClosed",
+      "TransportUnavailable"
+    ],
+    "events": [
+      "NavigationChanged",
+      "OperationCancelled",
+      "OperationCompleted",
+      "OperationFailed",
+      "OperationProgress",
+      "SnapshotReplaced"
+    ],
+    "initialize": "InitializeApplication",
+    "limits": {
+      "maxCollectionItems": 4096,
+      "maxDepth": 32,
+      "maxFrameBytes": 262144,
+      "maxPendingCommands": 64,
+      "maxStringBytes": 65536
+    },
+    "protocol": {
+      "identity": "runic.artifex.setup",
+      "version": 1
+    },
+    "snapshot": "type:SetupSnapshot"
+  }
+}

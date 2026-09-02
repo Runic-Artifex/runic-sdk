@@ -5,13 +5,13 @@ import {
   createApplicationBridgeController,
 } from "@runic-artifex/application-bridge";
 import { createDesktopFrameChannel } from "@runic-artifex/desktop";
+import CounterContract from "./application.bridge.generated";
 import {
-  CounterContract,
   type CounterCommand,
   type CounterEvent,
   type CounterReceipt,
   type CounterSnapshot,
-} from "./counter-contract";
+} from "./application.bridge";
 
 let count = 0;
 let revision = 0;

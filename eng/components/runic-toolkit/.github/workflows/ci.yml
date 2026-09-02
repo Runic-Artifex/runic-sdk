@@ -82,7 +82,7 @@ jobs:
           repository-url: https://github.com/Runic-Artifex/runic-toolkit
           repository-commit: ${{ github.sha }}
           expected-nuget-count: "7"
-          expected-npm-count: "2"
+          expected-npm-count: "3"
           npm-registry: https://npm.pkg.github.com
           npm-access: restricted
 
@@ -118,7 +118,7 @@ jobs:
           repository-url: https://github.com/Runic-Artifex/runic-toolkit
           repository-commit: ${{ github.sha }}
           expected-nuget-count: "7"
-          expected-npm-count: "2"
+          expected-npm-count: "3"
           npm-registry: https://npm.pkg.github.com
           npm-access: restricted
 

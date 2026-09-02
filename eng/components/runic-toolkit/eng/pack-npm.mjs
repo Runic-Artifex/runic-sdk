@@ -21,7 +21,7 @@ if (!new Set(["github", "public"]).has(suppliedRegistry)) {
 
 const root = resolve(import.meta.dirname, "..");
 const output = resolve(suppliedOutput);
-const packages = ["application-bridge", "angular"];
+const packages = ["application-bridge", "application-bridge-tooling", "angular"];
 const staging = mkdtempSync(join(tmpdir(), "runic-toolkit-npm-pack."));
 mkdirSync(output, { recursive: true });
 const revisionResult = spawnSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
@@ -43,7 +43,7 @@ try {
     const manifest = JSON.parse(readFileSync(packagePath, "utf8"));
     manifest.version = version;
     manifest.gitHead = revision;
-    for (const field of ["dependencies", "optionalDependencies"]) {
+    for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
       for (const dependency of Object.keys(manifest[field] ?? {})) {
         if (dependency.startsWith("@runic-artifex/")) manifest[field][dependency] = version;
       }
@@ -55,13 +55,13 @@ try {
     writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const result = spawnSync(
-      process.platform === "win32" ? "bun.exe" : "bun",
-      ["pm", "pack", "--destination", output, "--quiet"],
+      process.platform === "win32" ? "npm.cmd" : "npm",
+      ["pack", "--ignore-scripts", "--pack-destination", output, "--silent"],
       { cwd: target, encoding: "utf8", stdio: "pipe" },
     );
     if (result.status !== 0) {
       if (result.error) throw result.error;
-      process.stderr.write(result.stderr || result.stdout || "bun pm pack failed without diagnostic output.\n");
+      process.stderr.write(result.stderr || result.stdout || "npm pack failed without diagnostic output.\n");
       process.exit(result.status ?? 1);
     }
     process.stdout.write(

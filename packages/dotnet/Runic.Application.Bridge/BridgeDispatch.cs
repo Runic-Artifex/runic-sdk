@@ -19,13 +19,29 @@ public interface IApplicationBridgeDispatcher
         JsonElement command,
         BridgeCommandContext context,
         CancellationToken cancellationToken);
+
+    /// <summary>Validates and canonically re-encodes one declared bridge error.</summary>
+    JsonElement ValidateError(JsonElement payload) =>
+        throw new JsonException("This dispatcher does not declare application errors.");
+}
+
+/// <summary>A typed application failure created by generated contract helpers.</summary>
+public sealed class BridgeCommandFailureException : Exception
+{
+    /// <summary>Creates a failure carrying an encoded application error.</summary>
+    public BridgeCommandFailureException(JsonElement error)
+        : base("The application command returned a declared bridge error.") => Error = error.Clone();
+
+    /// <summary>Gets the encoded error. The generated dispatcher validates it before transport.</summary>
+    public JsonElement Error { get; }
 }
 
 /// <summary>Generated dispatch result containing a typed receipt encoded as JSON.</summary>
 public sealed record BridgeDispatchResult(
     JsonElement Receipt,
     bool AdvancesRevision = false,
-    BridgeOperationId? OperationId = null);
+    BridgeOperationId? OperationId = null,
+    bool Cancellable = false);
 
 /// <summary>Safe event output from a handler or owned operation.</summary>
 public sealed record BridgeEventPayload(
@@ -55,6 +71,7 @@ public sealed class BridgeCommandContext
     internal BridgeCommandContext(
         BridgeSessionId sessionId,
         BridgeCommandId commandId,
+        bool isInitialization,
         long? expectedRevision,
         long currentRevision,
         IBridgeEventPublisher events,
@@ -62,6 +79,7 @@ public sealed class BridgeCommandContext
     {
         SessionId = sessionId;
         CommandId = commandId;
+        IsInitialization = isInitialization;
         ExpectedRevision = expectedRevision;
         CurrentRevision = currentRevision;
         Events = events;
@@ -73,6 +91,9 @@ public sealed class BridgeCommandContext
 
     /// <summary>Gets the admitted command.</summary>
     public BridgeCommandId CommandId { get; }
+
+    /// <summary>Gets whether the command was admitted through the initialization envelope.</summary>
+    public bool IsInitialization { get; }
 
     /// <summary>Gets the client revision, when supplied.</summary>
     public long? ExpectedRevision { get; }

@@ -3,6 +3,8 @@
     <RunicTemplateFrontendBuild Condition="'$(RunicTemplateFrontendBuild)' == '' and '$(RunicToolkitFrontendBuild)' != 'false'">true</RunicTemplateFrontendBuild>
     <_RunicTemplateFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</_RunicTemplateFrontendDirectory>
     <_RunicTemplateFrontendBuildStamp>$(IntermediateOutputPath)runic-frontend.build.stamp</_RunicTemplateFrontendBuildStamp>
+    <_RunicTemplateBridgeIr>$(MSBuildProjectDirectory)/Contract/bridge.ir.json</_RunicTemplateBridgeIr>
+    <_RunicTemplateBridgeFacade>$(_RunicTemplateFrontendDirectory)/src/application.bridge.generated.ts</_RunicTemplateBridgeFacade>
     <_RunicTemplatePackageManager Condition="Exists('$(_RunicTemplateFrontendDirectory)/bun.lock')">bun</_RunicTemplatePackageManager>
     <_RunicTemplatePackageManager Condition="'$(_RunicTemplatePackageManager)' == '' and Exists('$(_RunicTemplateFrontendDirectory)/pnpm-lock.yaml')">pnpm</_RunicTemplatePackageManager>
     <_RunicTemplatePackageManager Condition="'$(_RunicTemplatePackageManager)' == '' and Exists('$(_RunicTemplateFrontendDirectory)/package-lock.json')">npm</_RunicTemplatePackageManager>
@@ -38,6 +40,17 @@
     <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
           Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; $(_RunicTemplateInstallArguments)" />
     <Touch Files="$(_RunicTemplateInstallStamp)" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="RunicTemplateBridgeGenerate"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicTemplateFrontendInstall"
+          Condition="'$(RunicTemplateFrontendBuild)' == 'true'"
+          Inputs="$(_RunicTemplateFrontendDirectory)/src/**/*.ts"
+          Outputs="$(_RunicTemplateBridgeIr);$(_RunicTemplateBridgeFacade)">
+    <Message Importance="high" Text="[runic] Generating Application Bridge IR." />
+    <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
+          Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; run contract:generate" />
   </Target>
 
   <Target Name="RunicTemplateFrontendBuild"

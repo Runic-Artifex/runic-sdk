@@ -1,0 +1,552 @@
+{
+  "csharp": {
+    "contractName": "Counter",
+    "namespace": "Runic.Application.Template.Contract"
+  },
+  "documentation": {
+    "command:IncrementCounter.step": "a number",
+    "event:CounterChanged.snapshot.count": "a number",
+    "event:CounterChanged.snapshot.revision": "a non-negative number",
+    "receipt:ApplicationInitialized.snapshot.count": "a number",
+    "receipt:ApplicationInitialized.snapshot.revision": "a non-negative number",
+    "receipt:CounterIncremented.snapshot.count": "a number",
+    "receipt:CounterIncremented.snapshot.revision": "a non-negative number",
+    "receipt:CounterReset.snapshot.count": "a number",
+    "receipt:CounterReset.snapshot.revision": "a non-negative number",
+    "type:CounterSnapshot.count": "a number",
+    "type:CounterSnapshot.revision": "a non-negative number"
+  },
+  "fingerprint": {
+    "algorithm": "sha256",
+    "scope": "wire",
+    "value": "aa75f8fc0c45307c21de52460f5ba5b75e2a278e016a4bcd32bf8ef15a6b73b2"
+  },
+  "format": "runic.application-bridge-ir",
+  "formatVersion": 1,
+  "wire": {
+    "commands": [
+      {
+        "advancesRevision": true,
+        "cancellable": false,
+        "name": "IncrementCounter",
+        "receipt": "CounterIncremented",
+        "startsOperation": false
+      },
+      {
+        "advancesRevision": false,
+        "cancellable": false,
+        "name": "InitializeApplication",
+        "receipt": "ApplicationInitialized",
+        "startsOperation": false
+      },
+      {
+        "advancesRevision": true,
+        "cancellable": false,
+        "name": "ResetCounter",
+        "receipt": "CounterReset",
+        "startsOperation": false
+      }
+    ],
+    "definitions": {
+      "command:IncrementCounter": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "IncrementCounter"
+            }
+          },
+          "step": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 10,
+                "minimum": 1
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "command:InitializeApplication": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "InitializeApplication"
+            }
+          }
+        }
+      },
+      "command:ResetCounter": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ResetCounter"
+            }
+          }
+        }
+      },
+      "error:CommandRejected": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CommandRejected"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationCancelled": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationCancelled"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationFailed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationFailed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationTimedOut": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationTimedOut"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolDecodeError": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolDecodeError"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolVersionMismatch": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolVersionMismatch"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:StaleRevision": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "StaleRevision"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportClosed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportClosed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportUnavailable": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportUnavailable"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "event:CounterChanged": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CounterChanged"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "count": {
+                  "optional": false,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                "history": {
+                  "optional": false,
+                  "type": {
+                    "items": {
+                      "kind": "integer"
+                    },
+                    "kind": "array"
+                  }
+                },
+                "revision": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "receipt:ApplicationInitialized": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ApplicationInitialized"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "count": {
+                  "optional": false,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                "history": {
+                  "optional": false,
+                  "type": {
+                    "items": {
+                      "kind": "integer"
+                    },
+                    "kind": "array"
+                  }
+                },
+                "revision": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "receipt:CounterIncremented": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CounterIncremented"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "count": {
+                  "optional": false,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                "history": {
+                  "optional": false,
+                  "type": {
+                    "items": {
+                      "kind": "integer"
+                    },
+                    "kind": "array"
+                  }
+                },
+                "revision": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "receipt:CounterReset": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CounterReset"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "object",
+              "properties": {
+                "count": {
+                  "optional": false,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                "history": {
+                  "optional": false,
+                  "type": {
+                    "items": {
+                      "kind": "integer"
+                    },
+                    "kind": "array"
+                  }
+                },
+                "revision": {
+                  "optional": false,
+                  "type": {
+                    "constraints": {
+                      "minimum": 0
+                    },
+                    "kind": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "type:CounterSnapshot": {
+        "kind": "object",
+        "properties": {
+          "count": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:Int"
+            }
+          },
+          "history": {
+            "optional": false,
+            "type": {
+              "items": {
+                "kind": "integer"
+              },
+              "kind": "array"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "type:Int": {
+        "kind": "integer"
+      }
+    },
+    "envelopeVersion": 1,
+    "errors": [
+      "CommandRejected",
+      "OperationCancelled",
+      "OperationFailed",
+      "OperationTimedOut",
+      "ProtocolDecodeError",
+      "ProtocolVersionMismatch",
+      "StaleRevision",
+      "TransportClosed",
+      "TransportUnavailable"
+    ],
+    "events": [
+      "CounterChanged"
+    ],
+    "initialize": "InitializeApplication",
+    "limits": {
+      "maxCollectionItems": 4096,
+      "maxDepth": 32,
+      "maxFrameBytes": 262144,
+      "maxPendingCommands": 64,
+      "maxStringBytes": 65536
+    },
+    "protocol": {
+      "identity": "runic.artifex.counter",
+      "version": 1
+    },
+    "snapshot": "type:CounterSnapshot"
+  }
+}

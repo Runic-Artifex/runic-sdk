@@ -57,7 +57,7 @@ parallel framework host models:
 
 | Boundary | Owner | Contract or responsibility | Independent receipt |
 | --- | --- | --- | --- |
-| C# host | Runic Application | `runic.artifex.setup` / `1` / `f92970461e801b80f1e8b8fbf7bab346dece692b61c3c4c167b093ce6bc29336`; session, revision, lifecycle, and local FrameChannel/WebSocket admission | `eng/current-host-transport/` |
+| C# host | Runic Application | `runic.artifex.setup` / `1` / generated fingerprint from `bridge.ir.json`; session, revision, lifecycle, and local FrameChannel/WebSocket admission | `eng/current-host-transport/` |
 | Svelte projection | `@runic-artifex/svelte` | Supplied controller projection, component lifecycle, and presentation state | `eng/current-svelte-controller/` |
 | Angular projection | `@runic-artifex/angular` | Supplied controller DI, signals, and presentation state | `eng/current-angular-controller/` |
 

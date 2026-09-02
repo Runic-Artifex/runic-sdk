@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 7 ]]; then
-  echo "Usage: $0 <package-version> <package-directory> <application-bridge-tgz> <runic-angular-tgz> <runic-svelte-tgz> <runic-vite-tgz> <runic-desktop-tgz>" >&2
+if [[ $# -ne 8 ]]; then
+  echo "Usage: $0 <package-version> <package-directory> <application-bridge-tgz> <application-bridge-tooling-tgz> <runic-angular-tgz> <runic-svelte-tgz> <runic-vite-tgz> <runic-desktop-tgz>" >&2
   exit 2
 fi
 
 package_version="$1"
 package_directory="$(cd "$2" && pwd)"
 npm_archive="$(realpath "$3")"
-angular_archive="$(realpath "$4")"
-svelte_archive="$(realpath "$5")"
-vite_archive="$(realpath "$6")"
-desktop_archive="$(realpath "$7")"
+tooling_archive="$(realpath "$4")"
+angular_archive="$(realpath "$5")"
+svelte_archive="$(realpath "$6")"
+vite_archive="$(realpath "$7")"
+desktop_archive="$(realpath "$8")"
 runic_assets_version="${RunicAssetsPackageVersion:-1.0.0-preview.1}"
 runic_desktop_version="${RunicDesktopPackageVersion:-1.0.0-preview.1}"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,13 +34,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ ! -f "$template_package" || ! -f "$npm_archive" || ! -f "$angular_archive" || ! -f "$svelte_archive" || ! -f "$vite_archive" || ! -f "$desktop_archive" ]]; then
+if [[ ! -f "$template_package" || ! -f "$npm_archive" || ! -f "$tooling_archive" || ! -f "$angular_archive" || ! -f "$svelte_archive" || ! -f "$vite_archive" || ! -f "$desktop_archive" ]]; then
   echo "One or more template npm archives are missing." >&2
   exit 1
 fi
 
 export DOTNET_CLI_HOME="$template_tmp/dotnet-home"
 export NUGET_PACKAGES="$template_tmp/nuget"
+export BUN_INSTALL_CACHE_DIR="$template_tmp/bun-cache"
 restore_sources=(--source "$package_directory" --source https://api.nuget.org/v3/index.json)
 tool_restore_options=()
 tool_source_options=(--add-source "$package_directory")
@@ -81,7 +83,7 @@ vite_npm_version="$(npm_archive_version "$vite_archive")"
 
 bind_candidate_integrities() {
   node "$script_directory/bind-template-candidate-integrities.mjs" "$1" \
-    "$npm_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
+    "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
 }
 
 configure_candidate_registry() {
@@ -93,7 +95,7 @@ configure_candidate_registry() {
 
 registry_ready="$template_tmp/template-npm-registry.url"
 node "$script_directory/template-npm-registry.mjs" \
-  "$registry_ready" "$npm_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive" &
+  "$registry_ready" "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive" &
 registry_pid=$!
 for _ in $(seq 1 100); do
   [[ -s "$registry_ready" ]] && break
@@ -127,6 +129,7 @@ node -e '
   const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   const expected = new Map([
     ["@runic-artifex/application-bridge", process.argv[2]],
+    ["@runic-artifex/application-bridge-tooling", process.argv[2]],
     ["@runic-artifex/svelte", process.argv[3]],
     ["@runic-artifex/vite-plugin-runic", process.argv[4]],
   ]);

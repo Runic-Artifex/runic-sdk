@@ -11,7 +11,7 @@ BridgeHostEnvelope initialized = await session.DispatchAsync(new BridgeClientEnv
 {
     Protocol = "runic.artifex.setup",
     Version = 1,
-    ContractFingerprint = "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725",
+    ContractFingerprint = SetupBridgeContract.Fingerprint,
     ConnectionEpoch = 0,
     Kind = "initialize",
     CommandId = Guid.Parse("00000000-0000-4000-8000-000000000001"),
