@@ -50,13 +50,13 @@ function expectedNuget(identity) {
 const central = text("Directory.Packages.props");
 expect(property(central, "RunicAssetsPackageVersion"), expectedNuget("Runic.Assets"), "Runic Assets central pin");
 expect(property(central, "RunicTranslationsPackageVersion"), expectedNuget("Runic.Translations"), "Runic Translations central pin");
-for (const [identity, version] of [
-  ["Runic.CommandLine", expectedNuget("Runic.CommandLine")],
-  ["Runic.Desktop", expectedNuget("Runic.Desktop")],
+for (const [identity, propertyName] of [
+  ["Runic.CommandLine", "RunicCommandLinePackageVersion"],
+  ["Runic.Desktop", "RunicDesktopPackageVersion"],
 ]) {
-  const match = new RegExp(`<PackageVersion Include="${identity}" Version="([^"]+)"`).exec(central);
+  expect(property(central, propertyName), expectedNuget(identity), `${identity} central pin`);
+  const match = new RegExp(`<PackageVersion Include="${identity}" Version="\\$\\(${propertyName}\\)"`).exec(central);
   if (!match) fail(`missing ${identity} central package pin.`);
-  expect(match[1], version, `${identity} central pin`);
 }
 
 const templateProject = text("templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj");

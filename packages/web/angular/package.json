@@ -35,9 +35,9 @@
   },
   "scripts": {
     "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });\"",
-    "build": "npm run clean && tsc --project tsconfig.json",
-    "test": "npm run build && node --test --experimental-strip-types \"test/**/*.test.ts\"",
-    "prepack": "npm run build"
+    "build": "bun run clean && tsc --project tsconfig.json",
+    "test": "bun run build && node --test --experimental-strip-types \"test/**/*.test.ts\"",
+    "prepack": "bun run build"
   },
   "dependencies": {
     "@runic-artifex/application-bridge": ">=1.0.0-preview.1 <2"

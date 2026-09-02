@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - main
+      - "**"
   pull_request:
     branches:
       - main
@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -19,32 +20,35 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
+  NUGET_CONFIG_FILE: ${{ github.workspace }}/eng/NuGet.ci.config
+  RUNIC_USE_REGISTRY_DEPENDENCIES: "1"
+  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   verify:
-    name: Verify standalone Toolkit
+    name: Verify and materialize Application candidates
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
+      - uses: ./.github/actions/setup-dotnet
+      - uses: ./.github/actions/setup-bun
 
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-          cache: npm
+      - name: Select exact upstream candidates
+        run: node eng/export-ci-dependencies.mjs >> "$GITHUB_ENV"
 
-      - name: Check out exact compatibility candidates
+      - name: Check out release authority
         env:
-          RUNIC_COMPATIBILITY_AUTHORITY_REF: ${{ github.head_ref || github.ref_name }}
+          RUNIC_COMPATIBILITY_AUTHORITY_REF: main
         run: node eng/checkout-ci-candidates.mjs
 
       - name: Install pinned Chrome for Testing
@@ -53,59 +57,119 @@ jobs:
         with:
           chrome-version: 151.0.7922.77
 
-      - name: Run verification pipeline
+      - name: Derive immutable candidate version
+        run: |
+          candidate_version="1.0.0-ci.sha${GITHUB_SHA:0:16}"
+          echo "PACKAGE_VERSION=$candidate_version" >> "$GITHUB_ENV"
+          echo "RUNIC_PACKAGE_VERSION=$candidate_version" >> "$GITHUB_ENV"
+          echo "RUNIC_PACKAGE_OUTPUT=$GITHUB_WORKSPACE/artifacts/verification/packages" >> "$GITHUB_ENV"
+
+      - name: Run verification and package pipeline
         env:
           WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          RUNIC_RELEASE_AUTHORITY_PATH: ${{ github.workspace }}/../.github/runic.release.json
         run: ./eng/verify.sh
 
       - name: Ensure verification is reproducible
         run: git diff --exit-code
 
+      - name: Validate candidate contract
+        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
+        with:
+          version: ${{ env.PACKAGE_VERSION }}
+          artifact-directory: ${{ github.workspace }}/artifacts/verification/packages
+          repository-url: https://github.com/Runic-Artifex/runic-toolkit
+          repository-commit: ${{ github.sha }}
+          expected-nuget-count: "7"
+          expected-npm-count: "2"
+          npm-registry: https://npm.pkg.github.com
+          npm-access: restricted
+
+      - name: Publish candidates to GitHub Packages
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          for package in artifacts/verification/packages/*.nupkg; do
+            dotnet nuget push "$package" \
+              --source "https://nuget.pkg.github.com/Runic-Artifex/index.json" \
+              --api-key "$GITHUB_TOKEN" \
+              --skip-duplicate
+          done
+          node eng/publish-github-npm.mjs artifacts/verification/packages
+
+      - name: Download exact candidates from GitHub Packages
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          ./eng/download-github-packages.sh "$PACKAGE_VERSION" "$RUNNER_TEMP/registry-packages"
+          node eng/download-github-npm.mjs candidate "$RUNNER_TEMP/registry-packages" "$PACKAGE_VERSION"
+
+      - name: Validate exact registry candidates
+        if: github.event_name == 'push'
+        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
+        with:
+          version: ${{ env.PACKAGE_VERSION }}
+          artifact-directory: ${{ runner.temp }}/registry-packages
+          repository-url: https://github.com/Runic-Artifex/runic-toolkit
+          repository-commit: ${{ github.sha }}
+          expected-nuget-count: "7"
+          expected-npm-count: "2"
+          npm-registry: https://npm.pkg.github.com
+          npm-access: restricted
+
   application-bridge-windows:
     name: Application Bridge · Windows Desktop host
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository }}
     runs-on: windows-2025
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v6
         with:
-          global-json-file: global.json
+          persist-credentials: false
 
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-          cache: npm
+      - uses: ./.github/actions/setup-dotnet
+      - uses: ./.github/actions/setup-bun
 
-      - name: Check out exact compatibility candidates
-        env:
-          RUNIC_COMPATIBILITY_AUTHORITY_REF: ${{ github.head_ref || github.ref_name }}
+      - name: Select exact upstream candidates
         shell: pwsh
+        run: node eng/export-ci-dependencies.mjs >> $env:GITHUB_ENV
+
+      - name: Check out release authority
+        env:
+          RUNIC_COMPATIBILITY_AUTHORITY_REF: main
         run: node eng/checkout-ci-candidates.mjs
 
-      - name: Pack exact Runic Desktop candidate
+      - name: Install and verify the Bun workspace
         shell: pwsh
         run: |
-          $env:PackageVersion = (node eng/compatibility-set-value.mjs release-train-version).Trim()
-          $feed = Join-Path $env:RUNNER_TEMP "runic-desktop-feed"
-          New-Item -ItemType Directory -Force -Path $feed | Out-Null
-          dotnet pack ..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj -c Release -o $feed
-          "RUNIC_VERIFICATION_FEED=$feed" >> $env:GITHUB_ENV
+          bun install --frozen-lockfile
+          bun run verify
+
+      - name: Restore exact registry dependencies
+        shell: pwsh
+        run: dotnet restore RunicToolkit.slnx --configfile "$env:NUGET_CONFIG_FILE" -p:RunicToolkitBuildMode=Verification -p:RunicToolkitFrontendBuild=false -p:RunicToolkitFrontendInstall=false
 
       - name: Verify Effect contract and managed Desktop bridge suites
         shell: pwsh
         run: |
-          npm ci --ignore-scripts
-          npm run verify
-          dotnet run --project tests/Runic.Application.Bridge.Tests -c Release
-          dotnet run --project tests/Runic.Application.Desktop.Tests -c Release "-p:RunicVerificationFeed=$env:RUNIC_VERIFICATION_FEED"
+          dotnet run --project tests/Runic.Application.Bridge.Tests -c Release --no-restore
+          dotnet run --project tests/Runic.Application.Desktop.Tests -c Release --no-restore
 
       - name: Publish and execute Windows NativeAOT consumer
         shell: pwsh
         run: |
-          dotnet publish tests/Runic.Application.Bridge.AotSmoke -c Release -r win-x64 `
+          dotnet restore tests/Runic.Application.Bridge.AotSmoke --runtime win-x64 --configfile "$env:NUGET_CONFIG_FILE" `
+            -p:RunicToolkitBuildMode=Verification -p:RunicToolkitFrontendBuild=false -p:RunicToolkitFrontendInstall=false `
+            -p:ApplicationBridgeNativeAot=true
+          dotnet publish tests/Runic.Application.Bridge.AotSmoke -c Release -r win-x64 --no-restore `
             -p:ApplicationBridgeNativeAot=true -o "$env:RUNNER_TEMP\application-bridge-aot"
           & "$env:RUNNER_TEMP\application-bridge-aot\Runic.Application.Bridge.AotSmoke.exe"

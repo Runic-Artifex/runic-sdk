@@ -28,6 +28,6 @@
   </ItemGroup>
   <PropertyGroup>
     <ApplicationBridgeContractDirectory Condition="'$(ApplicationBridgeContractDirectory)' == ''">../../protocol/application-bridge/setup/generated</ApplicationBridgeContractDirectory>
-    <RestoreSources Condition="'$(ApplicationBridgeUsePackages)' == 'true'">$(PackageDirectory);https://api.nuget.org/v3/index.json</RestoreSources>
+    <RestoreAdditionalProjectSources Condition="'$(ApplicationBridgeUsePackages)' == 'true'">$(PackageDirectory)</RestoreAdditionalProjectSources>
   </PropertyGroup>
 </Project>

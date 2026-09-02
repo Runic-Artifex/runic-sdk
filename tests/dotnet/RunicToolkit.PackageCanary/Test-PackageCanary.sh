@@ -47,9 +47,17 @@ restore_properties=(-p:PackageVersion="$package_version" -p:PackageDirectory="$p
 if [[ -n "${RUNIC_VERIFICATION_FEED:-}" ]]; then
   restore_properties+=(-p:RunicVerificationFeed="$RUNIC_VERIFICATION_FEED")
 fi
+restore_options=(--no-cache)
+tool_options=()
+tool_source_options=(--add-source "$package_directory")
+if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
+  restore_options+=(--configfile "$NUGET_CONFIG_FILE")
+  tool_options+=(--configfile "$NUGET_CONFIG_FILE")
+  tool_source_options=()
+fi
 
 dotnet restore "$project" \
-  --no-cache \
+  "${restore_options[@]}" \
   "${restore_properties[@]}"
 dotnet run \
   --project "$project" \
@@ -60,7 +68,8 @@ dotnet run \
 dotnet tool install dotnet-runic \
   --tool-path "$canary_tmp/tools" \
   --version "$package_version" \
-  --add-source "$package_directory"
+  "${tool_source_options[@]}" \
+  "${tool_options[@]}"
 
 "$canary_tmp/tools/dotnet-runic" --help
 bash "$repository_root/tests/RunicToolkit.PackageCanary/Test-ToolParsePresentation.sh" "$canary_tmp/tools/dotnet-runic"

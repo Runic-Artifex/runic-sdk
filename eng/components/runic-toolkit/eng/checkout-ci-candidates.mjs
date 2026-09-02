@@ -21,7 +21,7 @@ const candidates = [
     url: "https://github.com/Runic-Artifex/.github.git",
     revision: authorityRef,
   },
-  ...compatibility.sources,
+  ...(process.env.RUNIC_USE_REGISTRY_DEPENDENCIES === "1" ? [] : compatibility.sources),
 ];
 
 for (const candidate of candidates) {

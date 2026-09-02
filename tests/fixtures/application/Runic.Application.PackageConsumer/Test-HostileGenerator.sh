@@ -24,7 +24,17 @@ export NUGET_PACKAGES="$hostile_root/nuget"
 cp "$repository_root/tests/Runic.Application.PackageConsumer/hostile/Hostile.csproj.template" "$hostile_root/Hostile.csproj"
 cp "$repository_root/tests/Runic.Application.PackageConsumer/hostile/Program.cs" "$hostile_root/Program.cs"
 
-if dotnet build "$hostile_root/Hostile.csproj" --no-cache \
+restore_options=(--no-cache)
+if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
+  restore_options+=(--configfile "$NUGET_CONFIG_FILE")
+fi
+restore_properties=(-p:PackageVersion="$package_version" -p:PackageDirectory="$package_directory")
+if [[ -n "${RUNIC_VERIFICATION_FEED:-}" ]]; then
+  restore_properties+=(-p:RunicVerificationFeed="$RUNIC_VERIFICATION_FEED")
+fi
+dotnet restore "$hostile_root/Hostile.csproj" "${restore_options[@]}" "${restore_properties[@]}"
+
+if dotnet build "$hostile_root/Hostile.csproj" --no-restore \
   -p:PackageVersion="$package_version" \
   -p:PackageDirectory="$package_directory" > "$hostile_root/build.log" 2>&1; then
   echo "The hostile bridge composition unexpectedly compiled." >&2

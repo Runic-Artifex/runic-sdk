@@ -9,6 +9,7 @@ fi
 package_version="$1"
 package_directory="$(cd "$2" && pwd)"
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+runtime_identifier="${RUNTIME_IDENTIFIER:-linux-x64}"
 aot_tmp="$(mktemp -d /tmp/runic-toolkit-application-bridge-aot.XXXXXXXXXX)"
 
 cleanup() {
@@ -24,8 +25,22 @@ cp "$repository_root/tests/Runic.Application.Bridge.AotSmoke/Runic.Application.B
 cp -a "$repository_root/protocol/application-bridge/setup/generated" "$aot_tmp/Contract"
 export NUGET_PACKAGES="$aot_tmp/nuget"
 
+restore_options=()
+if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
+  restore_options+=(--configfile "$NUGET_CONFIG_FILE")
+fi
+dotnet restore "$aot_tmp/Runic.Application.Bridge.AotSmoke.csproj" \
+  "${restore_options[@]}" \
+  --runtime "$runtime_identifier" \
+  -p:ApplicationBridgeUsePackages=true \
+  -p:ApplicationBridgeNativeAot=true \
+  -p:ApplicationBridgeContractDirectory="$aot_tmp/Contract" \
+  -p:PackageDirectory="$package_directory" \
+  -p:PackageVersion="$package_version"
 dotnet publish "$aot_tmp/Runic.Application.Bridge.AotSmoke.csproj" \
   --configuration Release \
+  --no-restore \
+  --runtime "$runtime_identifier" \
   --output "$aot_tmp/publish" \
   -p:ApplicationBridgeUsePackages=true \
   -p:ApplicationBridgeNativeAot=true \

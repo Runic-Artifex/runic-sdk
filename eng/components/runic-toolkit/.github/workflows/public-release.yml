@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - .github/workflows/public-release.yml
+      - .github/actions/setup-bun/action.yml
+      - .github/actions/setup-dotnet/action.yml
+      - bun.lock
       - Directory.Build.props
       - Directory.Build.targets
       - Directory.Packages.props
@@ -97,22 +100,12 @@ jobs:
             exit 1
           fi
 
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-          cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@runic-artifex"
+      - uses: ./.github/actions/setup-dotnet
+      - uses: ./.github/actions/setup-bun
 
       - name: Check out exact compatibility candidates
         env:
-          RUNIC_COMPATIBILITY_AUTHORITY_REF: ${{ github.head_ref || github.ref_name }}
+          RUNIC_COMPATIBILITY_AUTHORITY_REF: main
         run: node eng/checkout-ci-candidates.mjs
 
       - name: Install pinned Chrome for Testing

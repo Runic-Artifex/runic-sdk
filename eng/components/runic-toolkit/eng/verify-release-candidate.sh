@@ -73,7 +73,9 @@ if [[ "$registry" == "public" ]]; then
     "$package_directory" \
     "https://github.com/Runic-Artifex/runic-toolkit" \
     "$repository_commit" \
-    2
+    2 \
+    "https://registry.npmjs.org" \
+    public
 fi
 
 (

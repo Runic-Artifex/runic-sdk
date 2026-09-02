@@ -40,7 +40,7 @@ const consumer = mkdtempSync(join(tmpdir(), "runic-toolkit-npm-consumer."));
 try {
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
   const archive = packageArchives.get("@runic-artifex/application-bridge");
-  const install = spawnSync("npm", ["install", "--ignore-scripts", "--no-package-lock", archive], {
+  const install = spawnSync("bun", ["add", "--ignore-scripts", archive], {
     cwd: consumer,
     encoding: "utf8",
   });

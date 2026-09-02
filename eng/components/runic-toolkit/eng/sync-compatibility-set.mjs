@@ -4,7 +4,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const authorityPath = resolve(repository, "../.github/runic.compatibility-set.json");
+const authorityRoot = process.env.RUNIC_COMPATIBILITY_AUTHORITY_ROOT ?? resolve(repository, "../.github");
+const authorityPath = resolve(authorityRoot, "runic.compatibility-set.json");
 const projectionPath = resolve(repository, "eng/runic.compatibility-set.json");
 const authority = JSON.parse(readFileSync(authorityPath, "utf8"));
 const verificationRepositories = new Set([

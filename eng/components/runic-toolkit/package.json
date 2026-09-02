@@ -3,10 +3,9 @@
   "private": true,
   "version": "0.0.0-private",
   "license": "MIT",
-  "packageManager": "npm@11.16.0",
+  "packageManager": "bun@1.4.0",
   "engines": {
-    "node": "24.18.x",
-    "npm": "11.16.x"
+    "node": "24.18.x"
   },
   "workspaces": [
     "web/packages/*"
@@ -17,15 +16,16 @@
     "test:application-bridge-compatibility": "node --test eng/application-bridge-compatibility.test.mjs",
     "build": "node eng/run-workspaces.mjs build",
     "test": "node eng/run-workspaces.mjs test",
-    "benchmark:application-bridge": "npm --workspace @runic-artifex/application-bridge run build && node --expose-gc benchmarks/Runic.Application.Bridge.Benchmarks/benchmark.mjs --quick",
+    "benchmark:application-bridge": "bun run --filter @runic-artifex/application-bridge build && node --expose-gc benchmarks/Runic.Application.Bridge.Benchmarks/benchmark.mjs --quick",
     "verify:application-bridge-performance": "node --expose-gc benchmarks/Runic.Application.Bridge.Benchmarks/benchmark.mjs --gate",
     "verify:frontend-parity": "node eng/verify-frontend-parity.mjs",
     "verify:hosted-service-policy": "node eng/verify-hosted-service-policy.mjs",
     "verify:compatibility-set": "node eng/sync-compatibility-set.mjs --check && node eng/verify-compatibility-projections.mjs",
-    "verify": "npm run verify:compatibility-set && npm run verify:application-bridge-artifacts && npm run build && npm run test && npm run verify:application-bridge-performance && npm run verify:frontend-parity && npm run verify:hosted-service-policy"
+    "verify": "bun run verify:compatibility-set && bun run verify:application-bridge-artifacts && bun run build && bun run test && bun run verify:application-bridge-performance && bun run verify:frontend-parity && bun run verify:hosted-service-policy"
   },
   "devDependencies": {
     "esbuild": "0.28.1",
+    "effect": "3.22.1",
     "playwright-core": "1.62.1",
     "typescript": "5.9.3",
     "vite": "8.1.5"

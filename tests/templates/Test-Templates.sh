@@ -13,6 +13,8 @@ angular_archive="$(realpath "$4")"
 svelte_archive="$(realpath "$5")"
 vite_archive="$(realpath "$6")"
 desktop_archive="$(realpath "$7")"
+runic_assets_version="${RunicAssetsPackageVersion:-1.0.0-preview.1}"
+runic_desktop_version="${RunicDesktopPackageVersion:-1.0.0-preview.1}"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
 template_tmp="$(mktemp -d /tmp/runic-toolkit-templates.XXXXXXXXXX)"
@@ -38,12 +40,22 @@ fi
 export DOTNET_CLI_HOME="$template_tmp/dotnet-home"
 export NUGET_PACKAGES="$template_tmp/nuget"
 restore_sources=(--source "$package_directory" --source https://api.nuget.org/v3/index.json)
-if [[ -n "${RUNIC_VERIFICATION_FEED:-}" ]]; then
+tool_restore_options=()
+tool_source_options=(--add-source "$package_directory")
+if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
+  restore_sources=(--configfile "$NUGET_CONFIG_FILE")
+  tool_restore_options=(--configfile "$NUGET_CONFIG_FILE")
+  tool_source_options=()
+elif [[ -n "${RUNIC_VERIFICATION_FEED:-}" ]]; then
   restore_sources=(--source "$RUNIC_VERIFICATION_FEED" "${restore_sources[@]}")
 fi
 dotnet new install "$template_package" --force
 tool_directory="$template_tmp/tools"
-dotnet tool install dotnet-runic --tool-path "$tool_directory" --version "$package_version" --add-source "$package_directory"
+dotnet tool install dotnet-runic \
+  --tool-path "$tool_directory" \
+  --version "$package_version" \
+  "${tool_source_options[@]}" \
+  "${tool_restore_options[@]}"
 
 npm_archive_version() {
   node -e '
@@ -77,7 +89,8 @@ default_output="$template_tmp/default-react"
 dotnet new runic-app-react --name PackagedDefaults --output "$default_output"
 bind_candidate_integrities "$default_output/Frontend/package-lock.json"
 grep -Fq "Version=\"$package_version\"" "$default_output/PackagedDefaults.csproj"
-grep -Fq 'Version="1.0.0-preview.1"' "$default_output/PackagedDefaults.csproj"
+grep -Fq "Version=\"$runic_assets_version\"" "$default_output/PackagedDefaults.csproj"
+grep -Fq "Version=\"$runic_desktop_version\"" "$default_output/PackagedDefaults.csproj"
 npm --prefix "$default_output/Frontend" config set @runic-artifex:registry "$registry_url"
 dotnet restore "$default_output/PackagedDefaults.csproj" "${restore_sources[@]}"
 dotnet build "$default_output/PackagedDefaults.csproj" --configuration Release --no-restore
@@ -113,7 +126,7 @@ for framework in react vue svelte angular; do
     --name "$project_name"
     --output "$output"
     --runicApplicationVersion "$package_version"
-    --runicAssetsVersion "1.0.0-preview.1"
+    --runicAssetsVersion "$runic_assets_version"
   )
   dotnet new "runic-app-$framework" \
     "${template_arguments[@]}"
