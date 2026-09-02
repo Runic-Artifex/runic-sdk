@@ -20,9 +20,9 @@ const receipt = () => ({
   feeds: { nuget: 'explicit-local-directory', npm: 'explicit-runic-registry', githubPackages: 'prohibited' },
   isolation: { dotnetCliHome: '.dotnet', nugetPackages: '.nuget/packages', nugetHttpCache: '.nuget/http-cache', npmCache: '.npm-cache' },
   template: { shortName: 'runic-app-svelte', framework: 'svelte' },
-  phases: ['template-install', 'tool-install', 'create', 'npm-install', 'frontend-typecheck', 'frontend-build', 'restore', 'build', 'doctor', 'inspect', 'develop', 'package', 'run'].map((name) => ({ name, status: 'passed', exitCode: 0, reasonCode: null })),
+  phases: ['template-install', 'tool-install', 'create', 'npm-install', 'frontend-typecheck', 'frontend-build', 'restore', 'build', 'doctor', 'inspect', 'develop', 'package', 'run', 'restart'].map((name) => ({ name, status: 'passed', exitCode: 0, reasonCode: null })),
   nugetPackages: Object.fromEntries(['Runic.Application', 'Runic.Application.Bridge', 'Runic.Application.Desktop', 'Runic.Assets', 'Runic.Assets.Desktop', 'Runic.Desktop'].map((identity) => [identity, { version: '1.0.0-preview.1', contentHash: 'sha512-fixture' }])),
-  npmPackages: Object.fromEntries(REQUIRED_NPM_IDENTITIES.map((identity) => [identity, { version: '1.0.0-preview.1', resolved: `http://127.0.0.1:4873/${identity}` }])),
+  npmPackages: Object.fromEntries(REQUIRED_NPM_IDENTITIES.map((identity) => [identity, { version: '1.0.0-preview.1', integrity: 'sha512-YQ==', registry: 'http://127.0.0.1:4873' }])),
 });
 
 test('the clean-room journey accepts an exact compatibility-set package path', () => {
@@ -42,7 +42,7 @@ test('the clean-room journey rejects a changed authority version and a softened 
 test('the clean-room journey requires two byte-equivalent runs', () => {
   const value = { schema: REPEAT_RECEIPT_SCHEMA, journeys: [receipt(), receipt()] };
   assert.deepEqual(verifyRepeatedReceipt(value, facts), { ok: true, errors: [] });
-  value.journeys[1].npmPackages['@runic-artifex/desktop'].resolved = 'https://example.test/desktop';
+  value.journeys[1].npmPackages['@runic-artifex/desktop'].registry = 'https://example.test';
   const report = verifyRepeatedReceipt(value, facts);
   assert.equal(report.ok, false);
   assert.match(report.errors.join('\n'), /clean journeys are not repeatable/);

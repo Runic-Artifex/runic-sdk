@@ -8,13 +8,16 @@ directory containing the exact selected NuGet packages, the Runic npm registry,
 and the two explicit public package sources required for framework dependencies.
 It rejects a missing package, a non-exact pre-release version, GitHub Packages,
 ambient caches, and generated project pins that differ from the compatibility
-set before accepting any receipt.
+set before accepting any receipt. npm installation uses `npm ci`; every Runic
+lock integrity must match metadata read from the explicit Runic registry even
+when npm's lockfile v3 omits redundant `resolved` URLs.
 
 It installs the template and `dotnet-runic` from the supplied local feed, creates
 the Svelte template, installs its frontend, typechecks and builds it, restores
 and builds the managed host, runs `doctor`, `inspect`, and a dry-run `dev`,
-publishes the application, and performs the headless `--smoke-test` run. Every
-phase must pass twice with byte-identical receipts.
+publishes the application, and performs two headless `--smoke-test` runs to
+prove both initial launch and restart. Every phase must pass twice with
+byte-identical receipts.
 
 ```bash
 node eng/current-clean-install/verify.mjs run-twice \
