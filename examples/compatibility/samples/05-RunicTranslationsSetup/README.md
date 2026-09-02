@@ -1,6 +1,6 @@
 # 05 — Runic Translations Setup
 
-Generate one catalog into typed C# and tree-shakable ESM, then use it safely
+Generate one conventional MF2 project into typed C# and tree-shakable ESM, then use it safely
 from a .NET backend and an SSR-capable SvelteKit frontend. The sample proves
 English and German request-local formatting, typed text references, and a
 version-skew fallback.
@@ -48,11 +48,11 @@ typed `TranslationReference` from `POST /api/registration`.
 
 | Scenario | Expected behavior |
 | --- | --- |
-| Catalog compilation | The same catalog produces C# and ESM artifacts. |
+| Project compilation | `translations/runic.json` and locale MF2 files produce C# and ESM artifacts. |
 | URL locale | `/en` and `/de` select the respective text; unsupported tags fail closed. |
 | Typed transport | Backend validation text is a typed `TranslationReference`; browser decoding validates the catalog fingerprint, key, and arguments. |
 | Version skew | English `fallbackText` is used only after a decode failure. |
-| SSR isolation | Concurrent .NET and SvelteKit requests retain their explicit locale. |
+| SSR isolation | Concurrent SvelteKit renders use the generated request-local locale context. |
 | Production output | Verification rejects a sentinel and records tree-shaking byte totals in `Frontend/artifacts/bundle-metrics.json`. |
 
 The MSBuild integration writes generated output beneath
@@ -61,21 +61,19 @@ from this sample directory:
 
 ```bash
 dotnet tool run runic-translations generate \
-  --catalog Resources/setup.catalog.json \
-  --documents Resources/setup.en.json Resources/setup.de.json \
+  --project translations \
   --output obj/cli-verification \
   --emit-esm
 dotnet tool run runic-translations verify \
-  --catalog Resources/setup.catalog.json \
-  --documents Resources/setup.en.json Resources/setup.de.json \
+  --project translations \
   --output obj/cli-verification \
   --emit-esm
 ```
 
-Generated ESM exposes an exact-key `m` namespace: single-segment keys use dot
-access and dotted keys use bracket access. This sample re-exports that namespace
-from `src/lib/messages.ts` and keeps its text-reference transport handlers at
-the same boundary.
+Each MF2 filename becomes a generated identifier, so the application calls
+`m.application_title()` and `m.validation_required({ field })`. The Vite plugin
+points at the same project directory as MSBuild, and the generated `/server`
+entrypoint provides request-local defaults during SSR.
 
 ## Next
 

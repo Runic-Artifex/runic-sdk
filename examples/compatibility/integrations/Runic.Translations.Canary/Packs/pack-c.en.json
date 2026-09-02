@@ -1,14 +1,23 @@
 {
-  "artifactVersion": 1,
-  "messageGrammarVersion": 1,
+  "artifactVersion": 2,
+  "messageGrammarVersion": 2,
   "catalog": "canary",
   "locale": "en",
   "contractFingerprint": "sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
   "messages": {
     "Greeting": {
-      "pattern": "Tampered, {name}!",
-      "arguments": [
-        { "name": "name", "type": "string", "format": "none" }
+      "astVersion": 2,
+      "inputs": { "name": { "type": "string", "format": "none" } },
+      "selectors": [],
+      "variants": [
+        {
+          "matches": {},
+          "nodes": [
+            { "kind": "text", "value": "Tampered, " },
+            { "kind": "input", "input": "name" },
+            { "kind": "text", "value": "!" }
+          ]
+        }
       ]
     }
   }

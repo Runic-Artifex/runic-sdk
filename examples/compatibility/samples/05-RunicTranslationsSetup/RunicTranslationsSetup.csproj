@@ -25,9 +25,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <TranslationCatalog Include="Resources/setup.catalog.json" />
-    <TranslationDocument Include="Resources/setup.en.json" />
-    <TranslationDocument Include="Resources/setup.de.json" />
     <TranslationsToolInput Include=".config/dotnet-tools.json" />
   </ItemGroup>
   <Import Project="$(RunicTranslationsSourceRoot)/dotnet/src/Runic.Translations.Build/build/Runic.Translations.Build.targets" Condition="'$(RunicTranslationsSourceRoot)' != ''" />

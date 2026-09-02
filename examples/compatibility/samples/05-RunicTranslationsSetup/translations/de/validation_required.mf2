@@ -1,0 +1,2 @@
+.input {$field :string}
+Das Feld {$field} ist erforderlich.

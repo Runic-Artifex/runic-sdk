@@ -4,11 +4,11 @@ declare module "virtual:runic-translations/setup" {
   }
 
   export const m: Readonly<{
-    "Application.Title": (options?: MessageOptions) => string;
-    "Application.Lead": (options?: MessageOptions) => string;
-    "Locale.English": (options?: MessageOptions) => string;
-    "Locale.German": (options?: MessageOptions) => string;
-    "Validation.Required": (
+    application_title: (options?: MessageOptions) => string;
+    application_lead: (options?: MessageOptions) => string;
+    locale_english: (options?: MessageOptions) => string;
+    locale_german: (options?: MessageOptions) => string;
+    validation_required: (
       inputs: Readonly<{ field: string }>,
       options?: MessageOptions,
     ) => string;
@@ -20,7 +20,14 @@ declare module "virtual:runic-translations/setup/runtime" {
   export const catalog: "setup";
   export const contractFingerprint: `sha256:${string}`;
   export const locales: readonly Locale[];
+  export const baseLocale: Locale;
   export function resolveLocale(requested: string): Locale;
+}
+
+declare module "virtual:runic-translations/setup/server" {
+  import type { Locale } from "virtual:runic-translations/setup/runtime";
+  export function runWithLocale<T>(locale: Locale | string, operation: () => T): T;
+  export function getRequestLocale(): Locale;
 }
 
 declare module "virtual:runic-translations/setup/transport" {
