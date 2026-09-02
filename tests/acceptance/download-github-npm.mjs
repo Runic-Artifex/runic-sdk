@@ -7,20 +7,36 @@ import path from "node:path";
 const registry = "https://npm.pkg.github.com";
 const outputDirectory = process.argv[2];
 const token = process.env.NODE_AUTH_TOKEN;
+const authorityPath = process.env.RUNIC_COMPATIBILITY_SET
+  ?? path.resolve(import.meta.dirname, "../../.github/runic.compatibility-set.json");
 
 if (!outputDirectory || !token) {
   throw new Error("usage: NODE_AUTH_TOKEN=... node eng/download-github-npm.mjs <directory>");
 }
 
-const candidateSet = JSON.parse(
-  fs.readFileSync(path.join(import.meta.dirname, "runic.ci-candidates.json"), "utf8"),
-);
-const packages = candidateSet.sources.flatMap((source) =>
-  (source.npm ?? []).map((identity) => ({
-    identity,
-    version: `1.0.0-ci.sha${source.revision.slice(0, 16)}`,
-  })),
-);
+const candidateSet = JSON.parse(fs.readFileSync(path.resolve(authorityPath), "utf8"));
+const revisions = new Map(candidateSet.sources.map((source) => [source.repository, source.revision]));
+const required = new Set([
+  "@runic-artifex/application-bridge",
+  "@runic-artifex/desktop",
+  "@runic-artifex/svelte",
+  "@runic-artifex/sveltekit",
+  "@runic-artifex/vite-plugin-runic",
+  "@runic-artifex/vite-plugin-runic-translations",
+]);
+const packages = candidateSet.packages
+  .filter(({ ecosystem, identity }) => ecosystem === "npm" && required.has(identity))
+  .map(({ identity, source }) => {
+    const revision = revisions.get(source);
+    if (!/^[0-9a-f]{40}$/u.test(revision ?? "")) {
+      throw new Error(`Compatibility authority has no exact source for ${identity}.`);
+    }
+    required.delete(identity);
+    return { identity, version: `1.0.0-ci.sha${revision.slice(0, 16)}` };
+  });
+if (required.size !== 0) {
+  throw new Error(`Compatibility authority omits required npm packages: ${[...required].join(", ")}.`);
+}
 
 fs.mkdirSync(outputDirectory, { recursive: true });
 for (const { identity, version } of packages) {

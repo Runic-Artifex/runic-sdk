@@ -3,9 +3,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const candidateSet = JSON.parse(
-  readFileSync(resolve(import.meta.dirname, "runic.ci-candidates.json"), "utf8"),
-);
+const authorityPath = process.env.RUNIC_COMPATIBILITY_SET
+  ?? resolve(import.meta.dirname, "../../.github/runic.compatibility-set.json");
+const candidateSet = JSON.parse(readFileSync(resolve(authorityPath), "utf8"));
 const versionProperties = new Map([
   ["runic-command-line", "RunicCommandLinePackageVersion"],
   ["runic-assets", "RunicAssetsPackageVersion"],
@@ -13,8 +13,8 @@ const versionProperties = new Map([
   ["runic-toolkit", "RunicApplicationPackageVersion"],
 ]);
 
-if (candidateSet.schemaVersion !== 1 || !Array.isArray(candidateSet.sources)) {
-  throw new Error("The CI candidate set must use schema version 1.");
+if (candidateSet.schemaVersion !== 1 || candidateSet.publication !== "forbidden" || !Array.isArray(candidateSet.sources)) {
+  throw new Error("The compatibility authority must be a publication-forbidden schema version 1 set.");
 }
 
 const repositories = new Set();

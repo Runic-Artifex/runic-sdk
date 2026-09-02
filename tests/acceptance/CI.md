@@ -1,8 +1,8 @@
 # Integrated candidate validation
 
 The package-only workflows consume immutable packages from GitHub Packages.
-[`runic.ci-candidates.json`](runic.ci-candidates.json) is the single manual
-selection of source revisions for an integration run. A revision maps to
+The release authority's `runic.compatibility-set.json` is the single selection
+of source revisions for an integration run. A revision maps to
 `1.0.0-ci.sha<first-16-characters-of-revision>` for every package owned by that
 repository.
 
@@ -16,11 +16,12 @@ Until coordination needs automation, advance the train manually:
    `runic-svelte`.
 2. Confirm each selected main-branch workflow published and re-downloaded its
    exact GitHub Packages candidate.
-3. Replace the corresponding full revision in `runic.ci-candidates.json`.
+3. Advance the corresponding full revision in the compatibility authority.
    Keep a producer on its prior known-good revision when it did not change.
-4. Open the examples pull request. Its canaries and package-only samples must
+4. Let the examples canaries and package-only samples consume that authority;
+   they must
    restore from GitHub Packages; they must not clone or rebuild a producer.
-5. Merge the candidate-set change only after all Linux, NativeAOT, and Windows
+5. Accept the authority change only after all Linux, NativeAOT, and Windows
    consumer jobs pass.
 
 A missing package blocks the train. Do not substitute a source checkout or a

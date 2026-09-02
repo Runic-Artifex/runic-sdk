@@ -10,6 +10,6 @@ runs:
     - uses: actions/cache@v4
       with:
         path: ${{ github.workspace }}/.packages/nuget
-        key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', 'Directory.Packages.props', 'eng/runic.ci-candidates.json', '**/*.csproj') }}
+        key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', 'Directory.Packages.props', 'release-authority/runic.compatibility-set.json', '**/*.csproj') }}
         restore-keys: |
           nuget-${{ runner.os }}-${{ runner.arch }}-

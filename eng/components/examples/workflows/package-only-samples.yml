@@ -21,6 +21,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
   RUNIC_RELEASE_MANIFEST: ${{ github.workspace }}/release-authority/runic.release.json
+  RUNIC_COMPATIBILITY_SET: ${{ github.workspace }}/release-authority/runic.compatibility-set.json
   NUGET_CONFIG_FILE: ${{ github.workspace }}/eng/NuGet.ci.config
   NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 

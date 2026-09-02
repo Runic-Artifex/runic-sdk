@@ -22,6 +22,26 @@
           pkgs = import nixpkgs { inherit system; };
           inherit (pkgs) lib;
           dotnet = pkgs.dotnetCorePackages.sdk_10_0;
+          bunSource =
+            if system == "x86_64-linux" then
+              {
+                url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-linux-x64.zip";
+                hash = "sha256-Poy0vf7yJ/hzk33QiQj5gnshI5Q7dfbaMD7xgwiyDKw=";
+              }
+            else
+              {
+                url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-linux-aarch64.zip";
+                hash = "sha256-rIfaywTWWN3ELVH9DtPfrkuAGjrwi7DJYUeKPS1Zd04=";
+              };
+          bun = pkgs.stdenvNoCC.mkDerivation {
+            pname = "bun";
+            version = "1.4.0";
+            src = pkgs.fetchzip bunSource;
+            dontBuild = true;
+            installPhase = ''
+              install -Dm755 "$src/bun" "$out/bin/bun"
+            '';
+          };
           csWebUiNative = cs-webui.packages.${system}.webui-native;
           nativeLibraryName =
             if pkgs.stdenv.hostPlatform.isDarwin then
@@ -40,6 +60,7 @@
             packages = with pkgs; [
               dotnet
               nodejs_24
+              bun
               powershell
 
               # Required by the repository's Native AOT verification.
