@@ -198,7 +198,7 @@ internal static class DevApplication
         throw new DevDevelopmentException(
             "RTKDEV1007",
             completed == host.Completion
-                ? $"The CS-WebUI host watcher exited unexpectedly with code {exitCode}."
+                ? $"The Runic Desktop host watcher exited unexpectedly with code {exitCode}."
                 : completed == developmentServer?.Completion
                     ? $"The {configuration.DevelopmentServerKind} development server " +
                       $"exited unexpectedly with code {exitCode}."
@@ -211,20 +211,23 @@ internal static class DevApplication
         CancellationToken cancellationToken)
     {
         using PhaseTimer phase = PhaseTimer.Start("Installing and building Runic Assets frontend");
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            configuration.WorkspaceRoot,
+            configuration.FrontendPackageDirectory);
         if (installDependencies)
         {
             await RequireSuccessAsync(
-                "npm",
+                packageManager.Executable,
                 configuration.FrontendPackageDirectory,
-                ["ci", "--ignore-scripts"],
+                packageManager.InstallArguments(),
                 "RTKDEV1006",
-                "The Runic Assets frontend dependency restore failed. Run 'dotnet runic doctor' to verify the committed lock file and exact package train.",
+                $"The Runic Assets frontend dependency restore with {packageManager.Name} failed. Run 'dotnet runic doctor' to verify the committed lock file and package train.",
                 cancellationToken).ConfigureAwait(false);
         }
         await RequireSuccessAsync(
-            "npm",
+            packageManager.Executable,
             configuration.FrontendPackageDirectory,
-            ["run", "build"],
+            packageManager.RunScriptArguments("build", "."),
             "RTKDEV1006",
             "The Runic Assets frontend build failed.",
             cancellationToken).ConfigureAwait(false);
@@ -298,13 +301,14 @@ internal static class DevApplication
 
         if (configuration.HasNodeWorkspace)
         {
+            JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+                configuration.WorkspaceRoot,
+                configuration.FrontendPackageDirectory);
             return RunningProcess.Start(
                 "frontend",
-                "npm",
+                packageManager.Executable,
                 configuration.WorkspaceRoot,
-                configuration.Workspace == "."
-                    ? ["run", "dev"]
-                    : ["run", "dev", "--workspace", configuration.Workspace]);
+                packageManager.RunScriptArguments("dev", configuration.Workspace));
         }
 
         throw new InvalidOperationException("No frontend watcher is configured.");
@@ -444,13 +448,13 @@ internal static class DevApplication
                 : configuration.HasFrontendWatchTarget
                 ? $"[dev] Frontend: MSBuild target {configuration.FrontendWatchTarget}"
                 : configuration.HasNodeWorkspace
-                ? $"[dev] Frontend: npm workspace {configuration.Workspace}"
-                : "[dev] Frontend: Node-free external compiler/static assets");
+                ? $"[dev] Frontend: JavaScript workspace {configuration.Workspace}"
+                : "[dev] Frontend: external compiler/static assets");
         if (!string.IsNullOrWhiteSpace(configuration.FrontendOutputDirectory))
         {
             Console.WriteLine($"[dev] Assets: {configuration.FrontendOutputDirectory}");
         }
-        Console.WriteLine($"[dev] CS-WebUI root: {configuration.RuntimeWebRoot}");
+        Console.WriteLine($"[dev] Runtime web root: {configuration.RuntimeWebRoot}");
         if (configuration.HasContracts)
         {
             Console.WriteLine($"[dev] Contract: {configuration.ContractSource}");
@@ -480,7 +484,7 @@ internal static class DevApplication
             Options:
               --project PATH          Select a .csproj or a directory containing one.
               --configuration NAME    Build configuration (default: Debug).
-              --no-restore            Do not restore NuGet or npm dependencies.
+              --no-restore            Do not restore NuGet or frontend package dependencies.
               --no-contracts          Do not generate or watch the configured contract.
               --no-frontend-watch     Build once without starting the frontend watcher.
               --no-dotnet-watch       Run the managed application once (useful for gates).
@@ -489,10 +493,10 @@ internal static class DevApplication
 
             The selected project supplies frontend paths through
             optional RunicToolkit frontend-development MSBuild properties. The command generates and
-            verifies contracts, performs the initial build, starts the native CS-WebUI
+            verifies contracts, performs the initial build, starts the native Runic Desktop
             host and frontend tooling. Projects that opt into Vite development-server
             mode receive native-window CSS/JavaScript HMR without restarting .NET;
-            their private CS-WebUI bindings remain the application transport.
+            their private application-bridge bindings remain the transport.
             """);
     }
 }

@@ -47,9 +47,12 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         using PhaseTimer phase = PhaseTimer.Start("Starting Angular development server");
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            configuration.WorkspaceRoot,
+            configuration.FrontendPackageDirectory);
         RunningProcess process = RunningProcess.Start(
             "angular",
-            "npm",
+            packageManager.Executable,
             configuration.WorkspaceRoot,
             CreateArguments(configuration, port),
             new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -87,20 +90,23 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
 
     internal static IReadOnlyList<string> CreateArguments(
         DevProjectConfiguration configuration,
-        int port) =>
-        [
-            "run",
+        int port)
+    {
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            configuration.WorkspaceRoot,
+            configuration.FrontendPackageDirectory);
+        return packageManager.RunScriptArguments(
             "dev",
-            "--workspace",
             configuration.Workspace,
-            "--",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            port.ToString(CultureInfo.InvariantCulture),
-            "--hmr",
-            "--live-reload",
-        ];
+            [
+                "--host",
+                "127.0.0.1",
+                "--port",
+                port.ToString(CultureInfo.InvariantCulture),
+                "--hmr",
+                "--live-reload",
+            ]);
+    }
 
     private async Task WaitUntilReadyAsync(
         CancellationToken cancellationToken)

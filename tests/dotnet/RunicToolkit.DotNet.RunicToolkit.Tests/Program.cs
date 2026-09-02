@@ -22,6 +22,7 @@ internal static class Program
             ("project discovery accepts a directory", ProjectDiscoveryAcceptsDirectory),
             ("project discovery rejects ambiguity", ProjectDiscoveryRejectsAmbiguity),
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
+            ("package managers use frozen installs and portable scripts", PackageManagersUseFrozenPortableCommands),
             ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
             ("Vite startup skips the production frontend build", ViteStartupSkipsProductionBuild),
             ("Angular server arguments use the supported development builder", AngularArgumentsAreExplicit),
@@ -32,6 +33,7 @@ internal static class Program
             ("phase timings are concise and stable", PhaseTimingsAreConcise),
             ("doctor supports a healthy Node-free project", DoctorSupportsNodeFreeProject),
             ("doctor verifies a complete Node contract toolchain", DoctorVerifiesNodeContracts),
+            ("doctor supports Bun without a separate Node runtime", DoctorSupportsBunRuntime),
             ("doctor reports actionable frontend failures", DoctorReportsFrontendFailures),
             ("doctor rejects a skewed compatibility set", DoctorRejectsCompatibilitySkew),
             ("doctor rejects npm locks without exact portable integrity", DoctorRejectsNonPortableNpmLock),
@@ -109,6 +111,44 @@ internal static class Program
         Equal("a project.csproj", startInfo.ArgumentList[1]);
         Equal("-p:Value=$(not-a-shell)", startInfo.ArgumentList[2]);
         False(startInfo.UseShellExecute, "Commands unexpectedly use a shell.");
+    }
+
+    private static void PackageManagersUseFrozenPortableCommands()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.Write("npm/package.json", """{"packageManager":"npm@11.16.0"}""");
+        workspace.Write("npm/package-lock.json", "{}");
+        JavaScriptPackageManager npm = JavaScriptPackageManager.Resolve(
+            Path.Combine(workspace.Root, "npm"),
+            Path.Combine(workspace.Root, "npm"));
+        SequenceEqual(["ci", "--ignore-scripts"], npm.InstallArguments());
+        SequenceEqual(
+            ["run", "dev", "--workspace", "@example/app", "--", "--host", "127.0.0.1"],
+            npm.RunScriptArguments("dev", "@example/app", ["--host", "127.0.0.1"]));
+
+        workspace.Write("pnpm/package.json", """{"packageManager":"pnpm@11.25.0"}""");
+        workspace.Write("pnpm/pnpm-lock.yaml", "lockfileVersion: '9.0'");
+        JavaScriptPackageManager pnpm = JavaScriptPackageManager.Resolve(
+            Path.Combine(workspace.Root, "pnpm"),
+            Path.Combine(workspace.Root, "pnpm"));
+        SequenceEqual(
+            ["install", "--frozen-lockfile", "--ignore-scripts"],
+            pnpm.InstallArguments());
+        SequenceEqual(
+            ["--filter", "@example/app", "run", "dev", "--host", "127.0.0.1"],
+            pnpm.RunScriptArguments("dev", "@example/app", ["--host", "127.0.0.1"]));
+
+        workspace.Write("bun/package.json", """{"packageManager":"bun@1.4.0"}""");
+        workspace.Write("bun/bun.lock", "{}");
+        JavaScriptPackageManager bun = JavaScriptPackageManager.Resolve(
+            Path.Combine(workspace.Root, "bun"),
+            Path.Combine(workspace.Root, "bun"));
+        SequenceEqual(
+            ["install", "--frozen-lockfile", "--ignore-scripts"],
+            bun.InstallArguments());
+        SequenceEqual(
+            ["run", "--filter", "@example/app", "dev", "--host", "127.0.0.1"],
+            bun.RunScriptArguments("dev", "@example/app", ["--host", "127.0.0.1"]));
     }
 
     private static void MigrationEditsExactXmlIdentities()
@@ -483,9 +523,9 @@ internal static class Program
                 "A complete Node-free project was reported unhealthy.");
         }
 
-        DoctorCheck node = report.Checks.Single(check => check.Name == "node");
-        Equal(DoctorStatus.Pass, node.Status);
-        Contains(node.Message, "not required");
+        DoctorCheck runtimeCheck = report.Checks.Single(check => check.Name == "javascript-runtime");
+        Equal(DoctorStatus.Pass, runtimeCheck.Status);
+        Contains(runtimeCheck.Message, "not required");
         Equal(
             DoctorStatus.Pass,
             report.Checks.Single(check => check.Name == "package-manager").Status);
@@ -545,6 +585,38 @@ internal static class Program
         }
     }
 
+    private static void DoctorSupportsBunRuntime()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.Write("package.json", """{"packageManager":"bun@1.4.0"}""");
+        workspace.Write("bun.lock", "{}");
+        string browser = workspace.Write("bin/chromium", "browser");
+        DoctorProjectConfiguration project = CreateDoctorProject(
+            workspace,
+            nodeEnabled: true,
+            frontendCompilerEnabled: false);
+        var runtime = new FakeDoctorRuntime()
+            .WithEnvironment("RUNIC_BROWSER_PATH", browser)
+            .WithExecutable("dotnet", "/tools/dotnet")
+            .WithExecutable("bun", "/tools/bun")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
+            .WithResult("/tools/bun", "--version", 0, "1.4.0")
+            .WithResult(browser, "--version", 0, "Chromium 150");
+
+        DoctorReport report = InspectDoctor(project, runtime);
+        if (!report.IsHealthy)
+        {
+            throw new InvalidOperationException("A complete Bun frontend toolchain was reported unhealthy.");
+        }
+
+        Equal(
+            DoctorStatus.Pass,
+            report.Checks.Single(check => check.Name == "javascript-runtime").Status);
+        Equal(
+            DoctorStatus.Pass,
+            report.Checks.Single(check => check.Name == "package-manager").Status);
+    }
+
     private static void DoctorReportsFrontendFailures()
     {
         using var workspace = new TestWorkspace();
@@ -568,7 +640,7 @@ internal static class Program
         DoctorReport report = InspectDoctor(project, runtime);
         False(report.IsHealthy, "Missing Node frontend prerequisites were not failures.");
         foreach (string checkName in
-                 new[] { "node", "package-manager", "lock-file", "vite-config", "vite-entry" })
+                 new[] { "javascript-runtime", "package-manager", "lock-file", "vite-config", "vite-entry" })
         {
             DoctorCheck check = report.Checks.Single(item => item.Name == checkName);
             Equal(DoctorStatus.Failure, check.Status);

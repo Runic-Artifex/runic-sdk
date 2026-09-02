@@ -3,12 +3,26 @@
     <RunicTemplateFrontendBuild Condition="'$(RunicTemplateFrontendBuild)' == '' and '$(RunicToolkitFrontendBuild)' != 'false'">true</RunicTemplateFrontendBuild>
     <_RunicTemplateFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</_RunicTemplateFrontendDirectory>
     <_RunicTemplateFrontendBuildStamp>$(IntermediateOutputPath)runic-frontend.build.stamp</_RunicTemplateFrontendBuildStamp>
-    <_RunicTemplateNpm Condition="'$(OS)' == 'Windows_NT'">npm.cmd</_RunicTemplateNpm>
-    <_RunicTemplateNpm Condition="'$(_RunicTemplateNpm)' == ''">npm</_RunicTemplateNpm>
+    <_RunicTemplatePackageManager Condition="Exists('$(_RunicTemplateFrontendDirectory)/bun.lock')">bun</_RunicTemplatePackageManager>
+    <_RunicTemplatePackageManager Condition="'$(_RunicTemplatePackageManager)' == '' and Exists('$(_RunicTemplateFrontendDirectory)/pnpm-lock.yaml')">pnpm</_RunicTemplatePackageManager>
+    <_RunicTemplatePackageManager Condition="'$(_RunicTemplatePackageManager)' == '' and Exists('$(_RunicTemplateFrontendDirectory)/package-lock.json')">npm</_RunicTemplatePackageManager>
+    <_RunicTemplatePackageManagerExecutable Condition="'$(_RunicTemplatePackageManager)' == 'npm' and '$(OS)' == 'Windows_NT'">npm.cmd</_RunicTemplatePackageManagerExecutable>
+    <_RunicTemplatePackageManagerExecutable Condition="'$(_RunicTemplatePackageManager)' == 'pnpm' and '$(OS)' == 'Windows_NT'">pnpm.cmd</_RunicTemplatePackageManagerExecutable>
+    <_RunicTemplatePackageManagerExecutable Condition="'$(_RunicTemplatePackageManager)' == 'bun' and '$(OS)' == 'Windows_NT'">bun.exe</_RunicTemplatePackageManagerExecutable>
+    <_RunicTemplatePackageManagerExecutable Condition="'$(_RunicTemplatePackageManagerExecutable)' == ''">$(_RunicTemplatePackageManager)</_RunicTemplatePackageManagerExecutable>
+    <_RunicTemplateInstallArguments Condition="'$(_RunicTemplatePackageManager)' == 'npm'">ci --ignore-scripts</_RunicTemplateInstallArguments>
+    <_RunicTemplateInstallArguments Condition="'$(_RunicTemplatePackageManager)' != 'npm'">install --frozen-lockfile --ignore-scripts</_RunicTemplateInstallArguments>
+    <_RunicTemplateInstallStamp>$(IntermediateOutputPath)runic-frontend.$(_RunicTemplatePackageManager).install.stamp</_RunicTemplateInstallStamp>
   </PropertyGroup>
 
   <ItemGroup>
-    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/package.json;$(_RunicTemplateFrontendDirectory)/package-lock.json;$(_RunicTemplateFrontendDirectory)/.npmrc" />
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/package.json" />
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/package-lock.json" Condition="Exists('$(_RunicTemplateFrontendDirectory)/package-lock.json')" />
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/pnpm-lock.yaml" Condition="Exists('$(_RunicTemplateFrontendDirectory)/pnpm-lock.yaml')" />
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/bun.lock" Condition="Exists('$(_RunicTemplateFrontendDirectory)/bun.lock')" />
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/.npmrc" Condition="Exists('$(_RunicTemplateFrontendDirectory)/.npmrc')" />
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/bunfig.toml" Condition="Exists('$(_RunicTemplateFrontendDirectory)/bunfig.toml')" />
+    <_RunicTemplateFrontendInstallInput Include="$(_RunicTemplateFrontendDirectory)/pnpm-workspace.yaml" Condition="Exists('$(_RunicTemplateFrontendDirectory)/pnpm-workspace.yaml')" />
     <_RunicTemplateFrontendBuildInput Include="$(_RunicTemplateFrontendDirectory)/src/**/*;$(_RunicTemplateFrontendDirectory)/*index.html;$(_RunicTemplateFrontendDirectory)/vite.config.*;$(_RunicTemplateFrontendDirectory)/angular*.json;$(_RunicTemplateFrontendDirectory)/tsconfig*.json" />
   </ItemGroup>
 
@@ -16,11 +30,14 @@
           BeforeTargets="RunicTemplateFrontendBuild"
           Condition="'$(RunicTemplateFrontendBuild)' == 'true'"
           Inputs="@(_RunicTemplateFrontendInstallInput)"
-          Outputs="$(_RunicTemplateFrontendDirectory)/node_modules/.package-lock.json">
-    <Error Condition="!Exists('$(_RunicTemplateFrontendDirectory)/package-lock.json')"
-           Text="The generated frontend lock file is missing. Restore it from source control, then run dotnet runic doctor for the exact package-train prerequisite." />
+          Outputs="$(_RunicTemplateInstallStamp)">
+    <Error Condition="'$(_RunicTemplatePackageManager)' == ''"
+           Text="No supported frontend lock file was found. Commit package-lock.json, pnpm-lock.yaml, or bun.lock, then run dotnet runic doctor." />
+    <Error Condition="(Exists('$(_RunicTemplateFrontendDirectory)/package-lock.json') and Exists('$(_RunicTemplateFrontendDirectory)/pnpm-lock.yaml')) or (Exists('$(_RunicTemplateFrontendDirectory)/package-lock.json') and Exists('$(_RunicTemplateFrontendDirectory)/bun.lock')) or (Exists('$(_RunicTemplateFrontendDirectory)/pnpm-lock.yaml') and Exists('$(_RunicTemplateFrontendDirectory)/bun.lock'))"
+           Text="Multiple frontend lock files were found. Keep exactly one of package-lock.json, pnpm-lock.yaml, or bun.lock." />
     <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
-          Command="&quot;$(_RunicTemplateNpm)&quot; ci --ignore-scripts" />
+          Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; $(_RunicTemplateInstallArguments)" />
+    <Touch Files="$(_RunicTemplateInstallStamp)" AlwaysCreate="true" />
   </Target>
 
   <Target Name="RunicTemplateFrontendBuild"
@@ -31,7 +48,7 @@
           Outputs="$(_RunicTemplateFrontendBuildStamp)">
     <Message Importance="high" Text="[runic] Building managed frontend assets." />
     <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
-          Command="&quot;$(_RunicTemplateNpm)&quot; run build" />
+          Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; run build" />
     <Touch Files="$(_RunicTemplateFrontendBuildStamp)" AlwaysCreate="true" />
   </Target>
 </Project>

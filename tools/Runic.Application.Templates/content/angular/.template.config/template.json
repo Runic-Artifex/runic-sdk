@@ -8,7 +8,42 @@
   "sourceName": "RunicDesktopApp",
   "preferNameDirectory": true,
   "tags": { "language": "C#", "type": "project" },
+  "sources": [{
+    "source": "./",
+    "target": "./",
+    "modifiers": [
+      { "condition": "(packageManager != 'npm')", "exclude": ["Frontend/package-lock.json"] },
+      { "condition": "(packageManager != 'pnpm')", "exclude": ["Frontend/pnpm-lock.yaml"] },
+      { "condition": "(packageManager != 'bun')", "exclude": ["Frontend/bun.lock"] }
+    ]
+  }],
   "symbols": {
+    "packageManager": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "npm",
+      "replaces": "__PACKAGE_MANAGER_NAME__",
+      "description": "JavaScript package manager used for install, build, and development scripts.",
+      "choices": [
+        { "choice": "npm", "description": "npm with package-lock.json" },
+        { "choice": "pnpm", "description": "pnpm with pnpm-lock.yaml" },
+        { "choice": "bun", "description": "Bun with bun.lock" }
+      ]
+    },
+    "packageManagerDeclaration": {
+      "type": "generated",
+      "generator": "switch",
+      "replaces": "__PACKAGE_MANAGER__",
+      "parameters": {
+        "evaluator": "C++",
+        "datatype": "string",
+        "cases": [
+          { "condition": "(packageManager == 'pnpm')", "value": "pnpm@__PNPM_PACKAGE_MANAGER_VERSION__" },
+          { "condition": "(packageManager == 'bun')", "value": "bun@__BUN_PACKAGE_MANAGER_VERSION__" },
+          { "value": "npm@__NPM_PACKAGE_MANAGER_VERSION__" }
+        ]
+      }
+    },
     "runicApplicationVersion": {
       "type": "parameter",
       "datatype": "text",

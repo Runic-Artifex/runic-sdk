@@ -3,8 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "license": "MIT",
-  "packageManager": "npm@11.16.0",
-  "engines": { "node": "24.18.x", "npm": "11.16.x" },
+  "packageManager": "__PACKAGE_MANAGER__",
+  "engines": { "node": ">=24.18.0 <25" },
   "type": "module",
   "scripts": { "build": "vite build", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "svelte-check --tsconfig ./tsconfig.json" },
   "dependencies": {

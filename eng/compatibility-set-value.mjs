@@ -16,6 +16,9 @@ export function compatibilitySetValue(kind, identity) {
     const source = compatibility.sources.find((entry) => entry.repository === identity);
     if (source) return source.revision;
   }
+  if (kind === "toolchain" && identity && compatibility.toolchain[identity]) {
+    return compatibility.toolchain[identity];
+  }
   throw new Error(`Unknown compatibility-set value '${[kind, identity].filter(Boolean).join(" ")}'.`);
 }
 

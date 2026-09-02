@@ -140,7 +140,7 @@ internal static class DoctorChecks
             cancellationToken).ConfigureAwait(false);
         CheckFrontendMode(checks, project);
 
-        string? node = await CheckNodeAsync(
+        string? javaScriptRuntime = await CheckJavaScriptRuntimeAsync(
             checks,
             project,
             runtime,
@@ -166,7 +166,7 @@ internal static class DoctorChecks
         await CheckContractsAsync(
             checks,
             project,
-            node,
+            javaScriptRuntime,
             runtime,
             cancellationToken).ConfigureAwait(false);
         return new DoctorReport(checks);
@@ -216,18 +216,23 @@ internal static class DoctorChecks
             return;
         }
 
-        if (!StringComparer.Ordinal.Equals(versionText, Authority.Toolchain.DotNetSdk))
+        if (!IsCompatibleToolVersion(versionText, Authority.Toolchain.DotNetSdk))
         {
             checks.Add(Fail(
                 "dotnet-sdk",
-                $".NET SDK {versionText} does not match compatibility set {Authority.Id} ({Authority.Toolchain.DotNetSdk}).",
-                $"Install SDK {Authority.Toolchain.DotNetSdk} and let global.json select it."));
+                $".NET SDK {versionText} is outside the supported .NET {sdk.Major} range beginning at certified baseline {Authority.Toolchain.DotNetSdk}.",
+                $"Install SDK {Authority.Toolchain.DotNetSdk} or a newer .NET {Version.Parse(Authority.Toolchain.DotNetSdk).Major} SDK."));
             return;
         }
 
-        checks.Add(Pass(
-            "dotnet-sdk",
-            $".NET SDK {versionText} matches compatibility set {Authority.Id} and can build {project.TargetFramework}."));
+        checks.Add(StringComparer.Ordinal.Equals(versionText, Authority.Toolchain.DotNetSdk)
+            ? Pass(
+                "dotnet-sdk",
+                $".NET SDK {versionText} matches certified baseline {Authority.Id} and can build {project.TargetFramework}.")
+            : Warn(
+                "dotnet-sdk",
+                $".NET SDK {versionText} is compatible with {project.TargetFramework}; certified baseline {Authority.Id} used {Authority.Toolchain.DotNetSdk}.",
+                "No change is required. Reproduce certification-only issues with the exact baseline SDK."));
     }
 
     private static void CheckFrontendMode(
@@ -247,7 +252,7 @@ internal static class DoctorChecks
         {
             checks.Add(Fail(
                 "frontend-sdk",
-                "Neither the Node/Vite nor external compiler frontend pipeline is enabled.",
+                "Neither the JavaScript/Vite nor external compiler frontend pipeline is enabled.",
                 "Enable RunicToolkitFrontendNodeEnabled or RunicToolkitFrontendCompilerEnabled."));
             return;
         }
@@ -255,13 +260,13 @@ internal static class DoctorChecks
         checks.Add(Pass(
             "frontend-sdk",
             project.NodeEnabled && project.FrontendCompilerEnabled
-                ? "Node/Vite and external compiler frontend pipelines are enabled."
+                ? "JavaScript/Vite and external compiler frontend pipelines are enabled."
                 : project.NodeEnabled
-                    ? "The Node/Vite frontend pipeline is enabled."
+                    ? "The JavaScript/Vite frontend pipeline is enabled."
                     : "The Node-free external compiler/static-assets pipeline is enabled."));
     }
 
-    private static async Task<string?> CheckNodeAsync(
+    private static async Task<string?> CheckJavaScriptRuntimeAsync(
         List<DoctorCheck> checks,
         DoctorProjectConfiguration project,
         IDoctorRuntime runtime,
@@ -270,44 +275,69 @@ internal static class DoctorChecks
         bool required = project.NodeEnabled || project.HasContracts;
         if (!required)
         {
-            checks.Add(Pass("node", "Node is not required by this project."));
+            checks.Add(Pass("javascript-runtime", "A JavaScript runtime is not required by this project."));
             return null;
         }
 
-        string? node = runtime.FindExecutable("node");
-        if (node is null)
+        JavaScriptPackageManager packageManager;
+        try
+        {
+            packageManager = JavaScriptPackageManager.Resolve(
+                project.WorkspaceRoot,
+                project.FrontendPackageDirectory);
+        }
+        catch (DevUsageException exception)
         {
             checks.Add(Fail(
-                "node",
-                "Node is required but was not found on PATH.",
-                "Install the Node version declared by the workspace and rerun doctor."));
+                "javascript-runtime",
+                exception.Message,
+                "Set packageManager to npm, pnpm, or Bun and commit its matching lock file."));
+            return null;
+        }
+
+        string runtimeName = packageManager.Name == "bun" ? "bun" : "node";
+        string baseline = packageManager.Name == "bun"
+            ? Authority.Toolchain.Bun
+            : Authority.Toolchain.Node;
+        string? executable = runtime.FindExecutable(runtimeName);
+        if (executable is null)
+        {
+            checks.Add(Fail(
+                "javascript-runtime",
+                $"{runtimeName} is required by the {packageManager.Name} workflow but was not found on PATH.",
+                $"Install {runtimeName} {baseline} or a compatible newer release and rerun doctor."));
             return null;
         }
 
         CommandResult result = await runtime
-            .RunAsync(node, project.ProjectDirectory, ["--version"], cancellationToken)
+            .RunAsync(executable, project.ProjectDirectory, ["--version"], cancellationToken)
             .ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
             checks.Add(Fail(
-                "node",
-                $"Node at '{node}' could not report its version.",
-                "Repair the Node installation or select a working Node executable on PATH."));
+                "javascript-runtime",
+                $"{runtimeName} at '{executable}' could not report its version.",
+                $"Repair the {runtimeName} installation or select a working executable on PATH."));
             return null;
         }
 
         string version = result.StandardOutput.Trim().TrimStart('v');
-        if (!StringComparer.Ordinal.Equals(version, Authority.Toolchain.Node))
+        if (!IsCompatibleToolVersion(version, baseline))
         {
             checks.Add(Fail(
-                "node",
-                $"Node {version} does not match compatibility set {Authority.Id} ({Authority.Toolchain.Node}).",
-                $"Install Node {Authority.Toolchain.Node} and activate it for this workspace."));
+                "javascript-runtime",
+                $"{runtimeName} {version} is outside the supported range beginning at certified baseline {baseline}.",
+                $"Install {runtimeName} {baseline} or a newer release in the same major version."));
             return null;
         }
 
-        checks.Add(Pass("node", $"Node {version} matches compatibility set {Authority.Id}."));
-        return node;
+        checks.Add(StringComparer.Ordinal.Equals(version, baseline)
+            ? Pass("javascript-runtime", $"{runtimeName} {version} matches certified baseline {Authority.Id}.")
+            : Warn(
+                "javascript-runtime",
+                $"{runtimeName} {version} is supported; certified baseline {Authority.Id} used {baseline}.",
+                $"No change is required. Reproduce certification-only issues with {runtimeName} {baseline}."));
+        return executable;
     }
 
     private static async Task CheckPackageManagerAndLockFileAsync(
@@ -325,24 +355,33 @@ internal static class DoctorChecks
             return;
         }
 
-        string packageJson = Path.Combine(project.WorkspaceRoot, "package.json");
-        string packageManager = ReadPackageManager(packageJson)
-            ?? InferPackageManager(project.WorkspaceRoot)
-            ?? "npm";
-        string executableName = packageManager switch
+        JavaScriptPackageManager packageManager;
+        try
         {
-            "npm" => "npm",
-            "pnpm" => "pnpm",
-            "yarn" => "yarn",
-            _ => packageManager,
-        };
-        string? executable = runtime.FindExecutable(executableName);
+            packageManager = JavaScriptPackageManager.Resolve(
+                project.WorkspaceRoot,
+                project.FrontendPackageDirectory);
+        }
+        catch (DevUsageException exception)
+        {
+            checks.Add(Fail(
+                "package-manager",
+                exception.Message,
+                "Set packageManager to npm, pnpm, or Bun."));
+            checks.Add(Fail(
+                "lock-file",
+                "The expected JavaScript lock file could not be determined.",
+                "Choose a supported package manager and commit its lock file."));
+            return;
+        }
+
+        string? executable = runtime.FindExecutable(packageManager.Executable);
         if (executable is null)
         {
             checks.Add(Fail(
                 "package-manager",
-                $"The workspace selects '{packageManager}', but '{executableName}' is unavailable.",
-                $"Install/activate {packageManager} and ensure '{executableName}' is on PATH."));
+                $"The workspace selects '{packageManager.Name}', but '{packageManager.Executable}' is unavailable.",
+                $"Install/activate {packageManager.Name} and ensure '{packageManager.Executable}' is on PATH."));
         }
         else
         {
@@ -350,30 +389,39 @@ internal static class DoctorChecks
                 .RunAsync(executable, project.WorkspaceRoot, ["--version"], cancellationToken)
                 .ConfigureAwait(false);
             string version = result.StandardOutput.Trim().TrimStart('v');
-            if (!StringComparer.Ordinal.Equals(packageManager, "npm") ||
-                result.ExitCode != 0 ||
-                !StringComparer.Ordinal.Equals(version, Authority.Toolchain.Npm))
+            string baseline = packageManager.Name switch
+            {
+                "npm" => Authority.Toolchain.Npm,
+                "pnpm" => Authority.Toolchain.Pnpm,
+                "bun" => Authority.Toolchain.Bun,
+                _ => throw new InvalidOperationException(),
+            };
+            if (result.ExitCode != 0 || !IsCompatibleToolVersion(version, baseline))
             {
                 checks.Add(Fail(
                     "package-manager",
-                    $"The workspace package manager '{packageManager}' reported '{version}', but compatibility set {Authority.Id} requires npm {Authority.Toolchain.Npm}.",
-                    $"Activate npm {Authority.Toolchain.Npm} and keep packageManager set to npm@{Authority.Toolchain.Npm}."));
+                    $"The workspace package manager '{packageManager.Name}' reported '{version}', outside the supported range beginning at {baseline}.",
+                    $"Activate {packageManager.Name} {baseline} or a newer release in the same major version."));
             }
             else
             {
-                checks.Add(Pass(
-                    "package-manager",
-                    $"npm {version} matches compatibility set {Authority.Id}."));
+                string packageJson = Path.Combine(project.WorkspaceRoot, "package.json");
+                string? declaredVersion = JavaScriptPackageManager.ReadDeclaredVersion(packageJson);
+                checks.Add(StringComparer.Ordinal.Equals(version, baseline)
+                    && (declaredVersion is null || StringComparer.Ordinal.Equals(version, declaredVersion))
+                        ? Pass(
+                            "package-manager",
+                            $"{packageManager.Name} {version} matches certified baseline {Authority.Id}.")
+                        : Warn(
+                            "package-manager",
+                            $"{packageManager.Name} {version} is supported; certified baseline {Authority.Id} used {baseline}.",
+                            declaredVersion is not null && !StringComparer.Ordinal.Equals(version, declaredVersion)
+                                ? $"Activate the packageManager-declared {packageManager.Name} {declaredVersion} for fully reproducible results."
+                                : $"No change is required. Reproduce certification-only issues with {packageManager.Name} {baseline}."));
             }
         }
 
-        string expectedLock = packageManager switch
-        {
-            "pnpm" => "pnpm-lock.yaml",
-            "yarn" => "yarn.lock",
-            _ => "package-lock.json",
-        };
-        string lockPath = Path.Combine(project.WorkspaceRoot, expectedLock);
+        string lockPath = Path.Combine(project.WorkspaceRoot, packageManager.LockFileName);
         if (File.Exists(lockPath))
         {
             checks.Add(Pass("lock-file", $"Found reproducible workspace lock file '{lockPath}'."));
@@ -382,8 +430,8 @@ internal static class DoctorChecks
         {
             checks.Add(Fail(
                 "lock-file",
-                $"The {packageManager} workspace has no '{expectedLock}'.",
-                $"Run the package manager in '{project.WorkspaceRoot}' and commit {expectedLock}."));
+                $"The {packageManager.Name} workspace has no '{packageManager.LockFileName}'.",
+                $"Run {packageManager.Name} in '{project.WorkspaceRoot}' and commit {packageManager.LockFileName}."));
         }
     }
 
@@ -442,7 +490,8 @@ internal static class DoctorChecks
             return;
         }
 
-        CheckNpmCompatibility(project, mismatches, ref selected);
+        CheckJavaScriptManifestCompatibility(project, mismatches, ref selected);
+        CheckNpmLockCompatibility(project, mismatches);
         if (mismatches.Count != 0)
         {
             checks.Add(Fail(
@@ -465,10 +514,51 @@ internal static class DoctorChecks
         }
     }
 
-    private static void CheckNpmCompatibility(
+    private static void CheckJavaScriptManifestCompatibility(
         DoctorProjectConfiguration project,
         List<string> mismatches,
         ref int selected)
+    {
+        string packageJson = Path.Combine(project.WorkspaceRoot, "package.json");
+        if (!project.NodeEnabled || !File.Exists(packageJson)) return;
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(packageJson));
+            foreach (string sectionName in new[] { "dependencies", "devDependencies", "optionalDependencies" })
+            {
+                if (!document.RootElement.TryGetProperty(sectionName, out JsonElement section) ||
+                    section.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                foreach (JsonProperty package in section.EnumerateObject())
+                {
+                    string version = package.Value.GetString() ?? string.Empty;
+                    if (Authority.NpmPackages.TryGetValue(package.Name, out CompatibilityPackage? expected))
+                    {
+                        selected++;
+                        if (!StringComparer.Ordinal.Equals(version, expected.Version))
+                        {
+                            mismatches.Add($"{package.Name} {version} (expected {expected.Version})");
+                        }
+                    }
+                    else if (package.Name.StartsWith("@runic-artifex/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        mismatches.Add($"{package.Name} {version} (not selected by {Authority.Id})");
+                    }
+                }
+            }
+        }
+        catch (JsonException exception)
+        {
+            mismatches.Add($"package.json is unreadable ({Compact(exception.Message)})");
+        }
+    }
+
+    private static void CheckNpmLockCompatibility(
+        DoctorProjectConfiguration project,
+        List<string> mismatches)
     {
         string lockPath = Path.Combine(project.WorkspaceRoot, "package-lock.json");
         if (!project.NodeEnabled || !File.Exists(lockPath)) return;
@@ -497,7 +587,6 @@ internal static class DoctorChecks
                     : string.Empty;
                 if (Authority.NpmPackages.TryGetValue(identity, out CompatibilityPackage? expected))
                 {
-                    selected++;
                     if (!StringComparer.Ordinal.Equals(version, expected.Version))
                         mismatches.Add($"{identity} {version} (expected {expected.Version})");
                     if (!package.Value.TryGetProperty("integrity", out JsonElement integrity) ||
@@ -905,42 +994,6 @@ internal static class DoctorChecks
         }
     }
 
-    private static string? ReadPackageManager(string packageJson)
-    {
-        if (!File.Exists(packageJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(packageJson));
-            if (!document.RootElement.TryGetProperty(
-                    "packageManager",
-                    out JsonElement packageManager))
-            {
-                return null;
-            }
-
-            string? declaration = packageManager.GetString();
-            int separator = declaration?.IndexOf('@') ?? -1;
-            return separator > 0 ? declaration![..separator] : declaration;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    private static string? InferPackageManager(string workspaceRoot) =>
-        File.Exists(Path.Combine(workspaceRoot, "pnpm-lock.yaml"))
-            ? "pnpm"
-            : File.Exists(Path.Combine(workspaceRoot, "yarn.lock"))
-                ? "yarn"
-                : File.Exists(Path.Combine(workspaceRoot, "package-lock.json"))
-                    ? "npm"
-                    : null;
-
     private static int? ParseTargetFrameworkMajor(string targetFramework)
     {
         if (!targetFramework.StartsWith("net", StringComparison.OrdinalIgnoreCase))
@@ -962,6 +1015,17 @@ internal static class DoctorChecks
     {
         int separator = version.IndexOfAny(['-', '+']);
         return separator > 0 ? version[..separator] : version;
+    }
+
+    private static bool IsCompatibleToolVersion(string actual, string baseline)
+    {
+        if (!Version.TryParse(NormalizeVersion(actual), out Version? actualVersion) ||
+            !Version.TryParse(NormalizeVersion(baseline), out Version? baselineVersion))
+        {
+            return false;
+        }
+
+        return actualVersion.Major == baselineVersion.Major && actualVersion >= baselineVersion;
     }
 
     private static string Compact(string output)

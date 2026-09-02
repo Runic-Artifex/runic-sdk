@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
@@ -27,12 +28,13 @@ internal static class Program
             new ParseSettings(Environment.GetEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName)));
         if (parse.Kind == ParseOutcomeKind.Help)
         {
-            await console.WriteOutAsync(Help.AsMemory(), CancellationToken.None).ConfigureAwait(false);
+            string help = HelpFor(parse.HelpRequest?.Path) + "\n";
+            await console.WriteOutAsync(help.AsMemory(), CancellationToken.None).ConfigureAwait(false);
             return Success;
         }
         if (parse.Kind == ParseOutcomeKind.Version)
         {
-            await console.WriteOutAsync("dotnet-runic\n".AsMemory(), CancellationToken.None).ConfigureAwait(false);
+            await console.WriteOutAsync($"dotnet-runic {Version}\n".AsMemory(), CancellationToken.None).ConfigureAwait(false);
             return Success;
         }
         if (parse.Kind != ParseOutcomeKind.Invocation || parse.Invocation is null)
@@ -186,7 +188,7 @@ internal static class Program
                 : CommandOutcome.Failure<ToolCommandResult>(
                     CommandExitCategory.CommandFailure,
                     new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully."),
-                    diagnostics: null,
+                    diagnostics: [],
                     humanOutput: BoundedHumanOutput(output));
         }
         catch (DevUsageException exception)
@@ -220,17 +222,27 @@ internal static class Program
         CommandExitCategory category,
         string code,
         string message,
-        string? humanOutput = null) =>
-        CommandOutcome.Failure<ToolCommandResult>(
+        string? humanOutput = null)
+    {
+        bool containsPrivatePath =
+            message.Contains('\\') ||
+            message.Contains("/home/", StringComparison.Ordinal) ||
+            message.Contains("/Users/", StringComparison.Ordinal) ||
+            message.Contains("/root/", StringComparison.Ordinal) ||
+            message.Contains("/tmp/", StringComparison.Ordinal);
+        string? detail = containsPrivatePath
+            ? string.Concat(humanOutput, message, "\n")
+            : humanOutput;
+        return CommandOutcome.Failure<ToolCommandResult>(
             category,
-            new CommandFault(code, message),
-            [new CommandDiagnostic(
-                "RCLI9001",
-                "tool-validation",
-                message,
-                CommandDiagnosticPhase.Execution,
-                CommandDiagnosticSeverity.Error)],
-            humanOutput);
+            new CommandFault(
+                code,
+                containsPrivatePath
+                    ? "The command could not be completed. See the local detail above."
+                    : message),
+            diagnostics: [],
+            detail);
+    }
 
     private static async Task<int> PresentParseFailureAsync(ParseOutcome parse, ICommandConsole console)
     {
@@ -269,7 +281,29 @@ internal static class Program
         return text.Length <= maximum ? text : text[..maximum] + "\n[output truncated]\n";
     }
 
-    private const string Help = """
+    private static string Version
+    {
+        get
+        {
+            string value = typeof(Program).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion ?? "unknown";
+            int metadata = value.IndexOf('+');
+            return metadata < 0 ? value : value[..metadata];
+        }
+    }
+
+    private static string HelpFor(CommandPath? path) => path?.ToString() switch
+    {
+        "dev" => DevHelp,
+        "doctor" => DoctorHelp,
+        "inspect" => InspectHelp,
+        "migrate" => MigrateHelp,
+        "support" => SupportHelp,
+        _ => RootHelp,
+    };
+
+    private const string RootHelp = """
         Usage:
           dotnet runic dev [options] [-- <application-args>...]
           dotnet runic inspect [options]
@@ -277,7 +311,68 @@ internal static class Program
           dotnet runic support [--mode preview|collect|remove] [--editor-diagnostics <zip>] [--destination <path>]
           dotnet runic migrate [--project path] [--check|--dry-run|--apply]
 
-        Commands are generated with Runic Command Line.
+        Commands:
+          dev       Build the app and coordinate frontend and managed-host watches.
+          doctor    Check SDK, package-manager, lockfile, package-train, and platform prerequisites.
+          inspect   Render deterministic generated application diagnostics.
+          migrate   Inspect or apply the bounded CS-WebUI-to-Runic migration.
+          support   Preview, collect, or remove a private local support envelope.
+
+        Run 'dotnet runic <command> --help' for command options.
+        """;
+
+    private const string DevHelp = """
+        Usage:
+          dotnet runic dev [options] [-- <application-args>...]
+
+        Options:
+          -p, --project <path>       Project file or directory. Default: the current directory.
+          --configuration <name>    MSBuild configuration. Default: Debug.
+          --no-restore              Skip NuGet and frozen frontend dependency restore.
+          --no-contracts            Skip Application Bridge contract generation and verification.
+          --no-frontend-watch       Build frontend assets once without starting Vite or Angular watch.
+          --no-dotnet-watch         Run the managed host once without dotnet watch.
+          --dry-run                 Print the evaluated development plan without starting processes.
+        """;
+
+    private const string DoctorHelp = """
+        Usage:
+          dotnet runic doctor [options]
+
+        Options:
+          -p, --project <path>       Project file or directory. Default: the current directory.
+          --configuration <name>    MSBuild configuration to inspect. Default: Debug.
+        """;
+
+    private const string InspectHelp = """
+        Usage:
+          dotnet runic inspect [options]
+
+        Options:
+          -p, --project <path>       Project file or directory. Default: the current directory.
+          --configuration <name>    MSBuild configuration. Default: Debug.
+          --artifact <name>         Artifact to render. Default: manifest.
+        """;
+
+    private const string MigrateHelp = """
+        Usage:
+          dotnet runic migrate [options]
+
+        Options:
+          -p, --project <path>       Project file or directory. Default: the current directory.
+          --check                    Exit unsuccessfully when migration changes are required.
+          --dry-run                  Print the exact migration without writing files.
+          --apply                    Apply the bounded migration.
+        """;
+
+    private const string SupportHelp = """
+        Usage:
+          dotnet runic support [options]
+
+        Options:
+          --mode <mode>              preview, collect, or remove. Default: preview.
+          --editor-diagnostics <zip> Explicit Runic Translations Editor diagnostic archive.
+          --destination <path>       Local support-envelope output or removal path.
         """;
 }
 

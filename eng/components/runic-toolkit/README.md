@@ -6,16 +6,22 @@ Build a native desktop application with a modern web frontend without giving up 
 
 ## Start in five minutes
 
-Prerequisites: the .NET 10 SDK, Node.js 24.18 or later, npm, and a platform supported by [Runic Desktop](https://github.com/Runic-Artifex/runic-desktop).
+Prerequisites: the .NET 10 SDK, a platform supported by [Runic Desktop](https://github.com/Runic-Artifex/runic-desktop), and either Node.js 24.18 with npm 11.16 or pnpm 11.25, or Bun 1.4.
 
 ```bash
 dotnet new install Runic.Application.Templates::<VERSION>
-dotnet new runic-app-svelte --name MyApp
+dotnet new runic-app-svelte --name MyApp --packageManager pnpm
 cd MyApp
+dotnet tool restore
+dotnet runic doctor
 dotnet run
 ```
 
-Replace `<VERSION>` with the current preview shown on [NuGet](https://www.nuget.org/packages/Runic.Application.Templates). Choose `runic-app-react`, `runic-app-vue`, or `runic-app-angular` to start with another frontend. The templates include a working counter, a generated Application Bridge contract, and the matching frontend runtime. Run `dotnet run -- --smoke-test` to exercise the managed bridge without opening a window.
+Replace `<VERSION>` with the current preview shown on [NuGet](https://www.nuget.org/packages/Runic.Application.Templates). Choose `runic-app-react`, `runic-app-vue`, or `runic-app-angular` to start with another frontend, and select `npm`, `pnpm`, or `bun` with `--packageManager` (npm is the default). The generated project commits exactly one matching lock file and uses the selected manager for frozen install, typecheck, Vite or Angular development, and production build. The templates include a working counter, a generated Application Bridge contract, and the matching frontend integration. Run `dotnet run -- --smoke-test` to exercise the managed bridge without opening a window.
+
+The frontend toolchain is a build and development dependency. `dotnet publish` embeds the static production assets in the application, so the target machine does not need Node.js, Bun, npm, pnpm, Vite, or Angular CLI.
+
+[Vite+](https://viteplus.dev/) can be used as an optional facade without changing the generated lock choice: `vp install --frozen-lockfile`, `vp run dev`, `vp run build`, and `vp run typecheck` use the same project scripts. Keep `packageManager` set to npm, pnpm, or Bun because it remains the dependency-graph authority. Use `vp run dev` rather than the Vite+-built-in `vp dev` when you want the generated script—especially for Angular, where it delegates to `ng serve`.
 
 ## Choose your package
 
@@ -32,7 +38,7 @@ Replace `<VERSION>` with the current preview shown on [NuGet](https://www.nuget.
 | Development diagnostics and frontend build coordination | `dotnet-runic` |
 | Deterministic application assets | `Runic.Assets` |
 
-Install NuGet packages with `dotnet add package <PackageId> --prerelease`; install the TypeScript runtime with `npm install @runic-artifex/application-bridge`. Use the current Application packages above for new work.
+Install NuGet packages with `dotnet add package <PackageId> --prerelease`; install the TypeScript bridge with your selected package manager, for example `pnpm add @runic-artifex/application-bridge`. Use the current Application packages above for new work.
 
 ## Learn and get help
 

@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const [lockPath, ...archives] = process.argv.slice(2);
 if (!lockPath || archives.length === 0) {
-  throw new Error("Usage: bind-template-candidate-integrities.mjs <package-lock.json> <npm-archive>...");
+  throw new Error("Usage: bind-template-candidate-integrities.mjs <lockfile> <npm-archive>...");
 }
 
 const candidates = new Map();
@@ -14,6 +14,52 @@ for (const archive of archives) {
     version: manifest.version,
     integrity: `sha512-${createHash("sha512").update(readFileSync(archive)).digest("base64")}`,
   });
+}
+
+if (lockPath.endsWith("pnpm-lock.yaml")) {
+  let lock = readFileSync(lockPath, "utf8");
+  let bound = 0;
+  for (const [name, candidate] of candidates) {
+    const marker = `  '${name}@${candidate.version}':\n`;
+    const start = lock.indexOf(marker);
+    if (start < 0) continue;
+    const end = lock.indexOf("\n  '", start + marker.length);
+    const packageEntry = lock.slice(start, end < 0 ? lock.length : end);
+    if (!/resolution: \{integrity: sha512-[^}]+\}/.test(packageEntry)) {
+      throw new Error(`pnpm lock does not contain candidate integrity for ${name}.`);
+    }
+    const updatedEntry = packageEntry.replace(
+      /resolution: \{integrity: sha512-[^}]+\}/,
+      `resolution: {integrity: ${candidate.integrity}}`,
+    );
+    lock = `${lock.slice(0, start)}${updatedEntry}${lock.slice(start + packageEntry.length)}`;
+    bound += 1;
+  }
+  if (bound === 0) throw new Error("pnpm lock does not contain any supplied candidates.");
+  writeFileSync(lockPath, lock);
+  process.exit(0);
+}
+
+if (lockPath.endsWith("bun.lock")) {
+  const lines = readFileSync(lockPath, "utf8").split("\n");
+  let bound = 0;
+  for (const [name, candidate] of candidates) {
+    const prefix = `    "${name}": [`;
+    const lineIndex = lines.findIndex((line) => line.startsWith(prefix));
+    if (lineIndex < 0) continue;
+    if (!/"sha512-[^"]+"\],$/.test(lines[lineIndex])) {
+      throw new Error(`Bun lock does not contain candidate integrity for ${name}.`);
+    }
+    lines[lineIndex] = lines[lineIndex].replace(/"sha512-[^"]+"\],$/, `"${candidate.integrity}"],`);
+    bound += 1;
+  }
+  if (bound === 0) throw new Error("Bun lock does not contain any supplied candidates.");
+  writeFileSync(lockPath, lines.join("\n"));
+  process.exit(0);
+}
+
+if (!lockPath.endsWith("package-lock.json")) {
+  throw new Error(`Unsupported template lockfile: ${lockPath}`);
 }
 
 const lock = JSON.parse(readFileSync(lockPath, "utf8"));

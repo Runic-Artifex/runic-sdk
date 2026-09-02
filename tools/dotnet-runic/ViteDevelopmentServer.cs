@@ -67,9 +67,12 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             IReadOnlyList<string> arguments = CreateArguments(
                 configuration,
                 port);
+            JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+                configuration.WorkspaceRoot,
+                configuration.FrontendPackageDirectory);
             process = RunningProcess.Start(
                 "vite",
-                "npm",
+                packageManager.Executable,
                 configuration.WorkspaceRoot,
                 arguments,
                 new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -131,19 +134,22 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 
     internal static IReadOnlyList<string> CreateArguments(
         DevProjectConfiguration configuration,
-        int port) =>
-        [
-            "run",
+        int port)
+    {
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            configuration.WorkspaceRoot,
+            configuration.FrontendPackageDirectory);
+        return packageManager.RunScriptArguments(
             "dev",
-            "--workspace",
             configuration.Workspace,
-            "--",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            port.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--strictPort",
-        ];
+            [
+                "--host",
+                "127.0.0.1",
+                "--port",
+                port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--strictPort",
+            ]);
+    }
 
     private async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
     {

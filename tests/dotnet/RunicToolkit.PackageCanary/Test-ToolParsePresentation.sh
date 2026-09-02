@@ -52,3 +52,33 @@ assert_json_failure "transport-before-unknown" "$tool" --output=json definitely-
 assert_json_failure "transport-after-unknown" "$tool" definitely-invalid --output=json
 assert_json_failure "transport-before-syntax" "$tool" --output=json inspect --artifact
 assert_json_failure "transport-after-syntax" "$tool" inspect --artifact --output=json
+
+version_output="$("$tool" --version)"
+if [[ ! "$version_output" =~ ^dotnet-runic\ [0-9]+\.[0-9]+\.[0-9]+ ]]; then
+  echo "--version did not report the packaged tool version: $version_output" >&2
+  exit 1
+fi
+
+doctor_help="$probe_root/doctor-help.txt"
+"$tool" doctor --help > "$doctor_help"
+grep -Fq 'dotnet runic doctor [options]' "$doctor_help"
+grep -Fq -- '--configuration <name>' "$doctor_help"
+if [[ "$(tail -c 1 "$doctor_help" | od -An -tuC | tr -d ' ')" != "10" ]]; then
+  echo "Command help did not end with a newline." >&2
+  exit 1
+fi
+
+human_failure="$probe_root/human-failure.txt"
+if "$tool" doctor --project "$probe_root/missing.csproj" > "$human_failure" 2>&1; then
+  echo "doctor unexpectedly accepted a missing project." >&2
+  exit 1
+fi
+if [[ "$(grep -o 'RTKDEV1002' "$human_failure" | wc -l)" -ne 1 ]]; then
+  echo "doctor did not present its actionable failure exactly once." >&2
+  cat "$human_failure" >&2
+  exit 1
+fi
+if grep -Fq 'RCLI9001' "$human_failure"; then
+  echo "doctor leaked the generic execution diagnostic into its actionable failure." >&2
+  exit 1
+fi

@@ -81,7 +81,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine("[dev] Reloading the native CS-WebUI host.");
+            Console.WriteLine("[dev] Reloading the native Runic Desktop host.");
             _host = Start();
             ObserveExit(_host);
         }
