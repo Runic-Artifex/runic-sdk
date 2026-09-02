@@ -30,8 +30,8 @@ and next step.
 ## Prerequisites
 
 - .NET SDK 10.0.302 (the repository pins it in [`global.json`](global.json)).
-- Node.js 24.18 and npm 11.16 for samples 3–5. The current checkout retains
-  historical samples, so do not run its root `npm ci` as a package-acquisition
+- Node.js 24.18 and Bun 1.4.0 for samples 3–5. The current checkout retains
+  historical samples, so do not run its root `bun install` as a package-acquisition
   step.
 - A supported desktop browser or WebView for the interactive Desktop samples.
   The headless smoke checks do not open a window.
@@ -77,7 +77,7 @@ current package-only path, use the explicit-feed
 ```bash
 dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
 dotnet build samples/05-RunicTranslationsSetup/Runic.TranslationsSetup.csproj
-npm run verify
+bun run verify
 dotnet run --project samples/01-HelloLifecycle --configuration Release
 dotnet run --project samples/02-GreetingCommandLine --configuration Release -- greet Runic
 dotnet run --project samples/03-SetupApplication --configuration Release -- --smoke-test
@@ -88,6 +88,10 @@ dotnet run --project samples/05-RunicTranslationsSetup --configuration Release -
 The package-only [integration canaries](integrations/) provide focused checks
 for the broader Runic Toolkit family, including NativeAOT coverage where it is
 supported.
+
+Maintainers advance the immutable GitHub Packages integration set using the
+manual [CI candidate procedure](eng/CI.md). The examples CI downloads those
+exact candidates and never rebuilds producer repositories.
 
 ## Documentation and support
 
