@@ -101,9 +101,6 @@ jobs:
       - name: Verify frontend package consumers
         run: bun run verify
 
-      - name: Restore tracked npm inputs
-        run: node eng/restore-ci-npm-inputs.mjs
-
       - name: Upload translation bundle measurements
         uses: actions/upload-artifact@v7
         with:
@@ -129,6 +126,9 @@ jobs:
           dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --smoke-test
           dotnet run --project samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-build --configuration Release -- --smoke-test
           dotnet run --project samples/05-RunicTranslationsSetup/RunicTranslationsSetup.csproj --no-build --configuration Release -- --smoke-test
+
+      - name: Restore tracked package inputs
+        run: node eng/restore-ci-npm-inputs.mjs
 
       - name: Ensure package-only inputs are unchanged
         run: git diff --exit-code
@@ -186,9 +186,6 @@ jobs:
       - name: Verify and build frontend
         run: bun run verify
 
-      - name: Restore tracked npm inputs
-        run: node eng/restore-ci-npm-inputs.mjs
-
       - name: Publish NativeAOT Setup application
         run: >-
           dotnet publish samples/03-SetupApplication/SetupApplication.csproj
@@ -220,6 +217,9 @@ jobs:
 
       - name: Run NativeAOT SvelteKit smoke test
         run: "${{ runner.temp }}/native-sveltekit-setup/SvelteKitSetupApplication --smoke-test"
+
+      - name: Restore tracked package inputs
+        run: node eng/restore-ci-npm-inputs.mjs
 
   windows-native:
     name: Setup · Windows native host
@@ -277,9 +277,6 @@ jobs:
       - name: Verify and build frontend
         run: bun run verify
 
-      - name: Restore tracked npm inputs
-        run: node eng/restore-ci-npm-inputs.mjs
-
       - name: Build package-only Setup host
         shell: pwsh
         run: |
@@ -291,3 +288,6 @@ jobs:
         run: |
           dotnet run --project samples/03-SetupApplication/SetupApplication.csproj --no-build --configuration Release -- --native-e2e
           dotnet run --project samples/04-SvelteKitSetupApplication/SvelteKitSetupApplication.csproj --no-build --configuration Release -- --native-e2e
+
+      - name: Restore tracked package inputs
+        run: node eng/restore-ci-npm-inputs.mjs
