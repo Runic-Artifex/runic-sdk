@@ -1,0 +1,10 @@
+{
+  "schema": "runic.comparative-stress-workload/1",
+  "payloadBytes": 4096,
+  "warmupRequests": 20,
+  "repetitions": 5,
+  "requestsPerRepetition": 200,
+  "concurrency": 8,
+  "requestTimeoutMs": 10000,
+  "startupTimeoutMs": 30000
+}

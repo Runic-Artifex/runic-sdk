@@ -1,0 +1,117 @@
+{
+  "format": "runic.desktop.cs-webui-example-parity/1",
+  "oracles": {
+    "webUiExamplesRevision": "85043e9802d1f40cbc53c8bd63a5b7a85e362426",
+    "csWebUiRevision": "22b35f04e22c780f9903e9e5065d697aa9f8a625"
+  },
+  "entries": [
+    {
+      "id": "cs-webui.basic-sample",
+      "disposition": "desktop-sample",
+      "target": "samples/Runic.Desktop.Sample/Program.cs",
+      "rationale": "The Desktop sample owns the minimal managed window, local content, and lifecycle path."
+    },
+    {
+      "id": "cs-webui.high-level-sample",
+      "disposition": "suite-level-replacement",
+      "target": "contract/milestones.md",
+      "rationale": "Application composition, frontend assets, capabilities, and product UI are demonstrated by generated Runic Application templates and the Translations Editor."
+    },
+    {
+      "id": "cs-webui.native-aot-smoke",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "eng/verify-local-package.sh",
+      "rationale": "The exact-package consumer publishes and runs Runic Desktop with trimming and NativeAOT enabled."
+    },
+    {
+      "id": "webui.minimal",
+      "disposition": "desktop-sample",
+      "target": "samples/Runic.Desktop.Sample/Program.cs",
+      "rationale": "The Desktop sample covers the same minimal local-window outcome through the supported API."
+    },
+    {
+      "id": "webui.call-native-from-javascript",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/BrowserBridgeTests.cs",
+      "rationale": "A real Chromium bridge invokes typed managed capabilities and validates their results."
+    },
+    {
+      "id": "webui.call-javascript-from-native",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/BrowserBridgeTests.cs",
+      "rationale": "A real Chromium session exercises managed-to-JavaScript calls and correlated results."
+    },
+    {
+      "id": "webui.serve-a-folder",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "rationale": "Folder indexes, files, MIME types, HEAD, cache policy, and traversal rejection are tested."
+    },
+    {
+      "id": "webui.test-index-redirect",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "rationale": "Explicit file redirects and folder index fallback have independent behavioral coverage."
+    },
+    {
+      "id": "webui.virtual-file-system",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "rationale": "Virtual and streaming content handlers are tested with fallback, cancellation, disposal, and bridge priority."
+    },
+    {
+      "id": "webui.chatgpt-api",
+      "disposition": "documented-non-goal",
+      "target": "contract/ownership.md",
+      "rationale": "Third-party model credentials and network application semantics belong to the consuming application, not presentation hosting."
+    },
+    {
+      "id": "webui.custom-web-server",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/DesktopApiTests.cs",
+      "rationale": "Host-owned dependency injection and request-scoped content handling replace attaching a process-global custom server."
+    },
+    {
+      "id": "webui.frameless",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/EmbeddedHostTests.cs",
+      "rationale": "Typed embedded-window options and movement, sizing, visibility, and lifecycle capabilities cover frameless window behavior."
+    },
+    {
+      "id": "webui.public-network-access",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/DesktopApiTests.cs",
+      "rationale": "All-interface exposure fails closed unless the application supplies an explicit security policy."
+    },
+    {
+      "id": "webui.react",
+      "disposition": "suite-level-replacement",
+      "target": "contract/milestones.md",
+      "rationale": "The lock-backed generated React application is owned by Runic Application and Runic Vite rather than a Desktop-specific demo."
+    },
+    {
+      "id": "webui.stress-test",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "evidence/native-quality/linux-x64.json",
+      "rationale": "The retained native-quality workload covers window churn, bridge capacity, streaming, reconnect, cleanup, and restart."
+    },
+    {
+      "id": "webui.text-editor",
+      "disposition": "suite-level-replacement",
+      "target": "contract/milestones.md",
+      "rationale": "Runic Translations Editor is the maintained production editor experience and exercises the supported Desktop topology."
+    },
+    {
+      "id": "webui.web-app-multi-client",
+      "disposition": "automated-behavioral-equivalent",
+      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "rationale": "Single-client denial and explicit multi-client admission with stable session identities are tested."
+    },
+    {
+      "id": "webui.starter-kit",
+      "disposition": "suite-level-replacement",
+      "target": "contract/milestones.md",
+      "rationale": "Generated Runic Application templates own the supported starter experience, frontend toolchain, diagnostics, and packaging path."
+    }
+  ]
+}

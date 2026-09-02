@@ -55,6 +55,13 @@ CS-WebUI comparisons are classified in
 runner definition and current local evidence are recorded in
 [`evidence/platform-matrix.md`](../../evidence/platform-matrix.md).
 
+The closed example-parity catalog is retained in
+[`cs-webui-example-parity.json`](cs-webui-example-parity.json). It maps every
+example in the pinned upstream WebUI corpus plus every sample on the maintained
+CS-WebUI `main` revision to a Desktop sample, automated behavioral equivalent,
+suite-level replacement, or documented non-goal. Contract verification rejects
+missing, duplicate, unknown, or dangling mappings.
+
 An unsupported scenario is acceptable only when its capability is explicitly
 optional or the implementation profile is excluded. A required v1 capability
 reported as unsupported fails its milestone gate.
