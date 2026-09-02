@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
@@ -94,7 +94,7 @@ export default { protocol:{identity:"runic.core",version:1}, csharp:{namespace:"
 commands:[{schema:Initialize,receipt:Initialized,startsOperation:false,cancellable:false,advancesRevision:false}], events:[], errors:[], initialize:{_tag:"InitializeApplication"} };
 `, "utf8");
     const result = await compileApplicationBridge({ root, source: "application.bridge.ts", ir: "bridge.ir.json", facade: "generated.ts" });
-    assert.deepEqual(result.dependencies.map((path) => path.split("/").at(-1)), ["application.bridge.ts", "shared.ts"]);
+    assert.deepEqual(result.dependencies.map((path) => basename(path)), ["application.bridge.ts", "shared.ts"]);
     const payload = result.ir.wire.definitions["type:Payload"];
     assert.equal(payload.kind, "object");
     assert.deepEqual(payload.properties.bounded.type.constraints, { exclusiveMinimum: 0, maximum: 100, multipleOf: 0.5 });
