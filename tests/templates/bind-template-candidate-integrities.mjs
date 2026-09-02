@@ -109,7 +109,7 @@ for (const name of declared) {
   if (!entry) throw new Error(`Template lock does not contain candidate ${name}.`);
   entry.version = candidate.version;
   entry.integrity = candidate.integrity;
-  for (const field of ["dependencies", "optionalDependencies"]) {
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
     for (const dependency of Object.keys(entry[field] ?? {})) {
       if (candidates.has(dependency)) entry[field][dependency] = candidates.get(dependency).version;
     }
