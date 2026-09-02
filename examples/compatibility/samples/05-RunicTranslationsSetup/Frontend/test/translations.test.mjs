@@ -8,6 +8,15 @@ let server;
 let messages;
 let runtime;
 let transport;
+const projectRoot = fileURLToPath(new URL("../../", import.meta.url));
+const sourceCommandArguments = process.env.RUNIC_TRANSLATIONS_TOOL_VERSION
+  ? undefined
+  : [
+      "run",
+      "--project",
+      fileURLToPath(new URL("../../../../../runic-translations/dotnet/tools/dotnet-runic-translations/dotnet-runic-translations.csproj", import.meta.url)),
+      "--",
+    ];
 
 before(async () => {
   server = await createServer({
@@ -16,14 +25,10 @@ before(async () => {
     logLevel: "silent",
     plugins: [
       runicTranslations({
+        cwd: projectRoot,
         project: fileURLToPath(new URL("../../translations", import.meta.url)),
         output: fileURLToPath(new URL("../../obj/net10.0/translations", import.meta.url)),
-        commandArguments: [
-          "run",
-          "--project",
-          fileURLToPath(new URL("../../../../../runic-translations/dotnet/tools/dotnet-runic-translations/dotnet-runic-translations.csproj", import.meta.url)),
-          "--",
-        ],
+        ...(sourceCommandArguments ? { commandArguments: sourceCommandArguments } : {}),
       }),
     ],
     server: { middlewareMode: true },
