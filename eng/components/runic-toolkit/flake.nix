@@ -22,6 +22,26 @@
           pkgs = import nixpkgs { inherit system; };
           inherit (pkgs) lib;
           dotnet = pkgs.dotnetCorePackages.sdk_10_0;
+          bunArchive =
+            if system == "x86_64-linux" then
+              {
+                platform = "linux-x64";
+                hash = "sha256-Poy0vf7yJ/hzk33QiQj5gnshI5Q7dfbaMD7xgwiyDKw=";
+              }
+            else
+              {
+                platform = "linux-aarch64";
+                hash = "sha256-rIfaywTWWN3ELVH9DtPfrkuAGjrwi7DJYUeKPS1Zd04=";
+              };
+          bunSource = pkgs.fetchzip {
+            url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-${bunArchive.platform}.zip";
+            inherit (bunArchive) hash;
+          };
+          bun_1_4_0 = pkgs.runCommand "bun-1.4.0" { } ''
+            mkdir -p "$out/bin"
+            cp "${bunSource}/bun" "$out/bin/bun"
+            chmod +x "$out/bin/bun"
+          '';
           csWebUiNative = cs-webui.packages.${system}.webui-native;
           nativeLibraryName =
             if pkgs.stdenv.hostPlatform.isDarwin then
@@ -39,6 +59,7 @@
           default = pkgs.mkShell {
             packages = with pkgs; [
               dotnet
+              bun_1_4_0
               nodejs_24
               powershell
 

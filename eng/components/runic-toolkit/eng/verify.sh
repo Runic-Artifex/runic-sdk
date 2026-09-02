@@ -121,24 +121,13 @@ if [[ "$registry_dependencies" == "1" ]]; then
 else
   git -C "$repository_root/../runic-svelte" worktree add --detach "$svelte_worktree" "$svelte_revision"
   git -C "$repository_root/../runic-vite" worktree add --detach "$vite_worktree" "$vite_revision"
-  (
-    cd "$desktop_worktree"
-    npm ci
-    npm run build --workspace @runic-artifex/desktop
-    npm pack --workspace @runic-artifex/desktop --ignore-scripts --pack-destination "$integration_packages"
-  )
-  (
-    cd "$svelte_worktree"
-    npm ci
-    npm run build --workspace @runic-artifex/svelte
-    npm pack --workspace @runic-artifex/svelte --pack-destination "$integration_packages"
-  )
-  (
-    cd "$vite_worktree"
-    npm ci
-    npm run build
-    npm pack --ignore-scripts --pack-destination "$integration_packages"
-  )
+  bash eng/pack-integration-npm.sh \
+    "$bridge_npm_version" \
+    "$release_packages" \
+    "$integration_packages" \
+    "$desktop_worktree" \
+    "$svelte_worktree" \
+    "$vite_worktree"
 fi
 assert_npm_archive() {
   local archive="$1"
@@ -161,7 +150,7 @@ assert_npm_archive "$integration_packages/runic-artifex-desktop-$desktop_release
 if [[ "$registry_dependencies" != "1" ]]; then
   (
     cd "$svelte_worktree"
-    npm run test:package-consumers -- \
+    bun run test:package-consumers -- \
       "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" \
       "$integration_packages/runic-artifex-svelte-$svelte_release_version.tgz" \
       "$integration_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz"
