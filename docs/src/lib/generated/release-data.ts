@@ -2,7 +2,7 @@
 export const releaseData = {
   schemaVersion: 1,
   source: {
-    authorityRevision: 'ad14f837e0577ea90d687d6f0b7ea72d7a5a80ec',
+    authorityRevision: '1b806d64d9516ef376fe4ddab17a3e1dcc10e446',
     manifestSha256:
       '44509da940d238738427d2cce4a8d2d58863b21f1d976daf854c04be9c086b3f',
     schemaSha256:
@@ -10,7 +10,7 @@ export const releaseData = {
     verifierSha256:
       '8b6fdf5bb8e83446f7a92c00c3a1f4c8f277c2cfa8e7d56fb704f6653f486ec6',
     compatibilitySetSha256:
-      'ddf33b9db5e8c7ead315a70aae3cf8c57a34eb6d5289f09901e825b4558880d8',
+      'bf51314f9e939c4fc9e5baf37d5b1e034760a4d0c97b901b21923f88a669f88a',
     compatibilitySchemaSha256:
       '0be0b3566a5d8bcc9c72a170740287277002926eac865b835bd7de198645c23c',
     compatibilityVerifierSha256:
