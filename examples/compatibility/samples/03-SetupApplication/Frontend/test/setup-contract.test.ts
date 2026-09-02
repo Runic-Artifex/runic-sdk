@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Schema } from "effect";
-import { SetupCommand, SetupEvent, SetupSnapshot } from "../src/setup-contract.ts";
+import { SetupCommand, SetupEvent, SetupSnapshot } from "../src/application.bridge.ts";
 
 test("the Setup wire contract accepts named domain values", () => {
   const command = Schema.decodeUnknownSync(SetupCommand, { onExcessProperty: "error" })({

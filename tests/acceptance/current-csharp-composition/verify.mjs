@@ -65,10 +65,6 @@ function project(name, candidates = CANDIDATES) {
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
     <RunicAssetsDist>$(MSBuildProjectDirectory)/Frontend/dist</RunicAssetsDist>
-    <RunicToolkitFrontendContractSource>$(MSBuildProjectDirectory)/Contracts/contract.json</RunicToolkitFrontendContractSource>
-    <RunicToolkitFrontendContractCSharpOutput>$(MSBuildProjectDirectory)/Contracts/generated/Contract.g.cs</RunicToolkitFrontendContractCSharpOutput>
-    <RunicToolkitFrontendContractTypeScriptOutput>$(MSBuildProjectDirectory)/Contracts/generated/contract.g.ts</RunicToolkitFrontendContractTypeScriptOutput>
-    <RunicToolkitFrontendContractTool>$(MSBuildProjectDirectory)/Contracts/generate-contract.mjs</RunicToolkitFrontendContractTool>
   </PropertyGroup>
   <ItemGroup>${candidates.map((candidate) => `<PackageReference Include="${candidate.identity}" Version="${candidate.version}" />`).join('')}</ItemGroup>
   ${name === 'Negative' ? '' : '<ItemGroup><Compile Remove="negative/**/*.cs" /></ItemGroup>'}
@@ -107,6 +103,8 @@ const frontendPackage = JSON.stringify({
   scripts: {
     build: 'node -e "process.stdout.write(\'build\\n\')"',
     dev: 'node -e "process.stdout.write(\'dev\\n\')"',
+    'contract:generate': 'node ../Contracts/generate-contract.mjs generate',
+    'contract:check': 'node ../Contracts/generate-contract.mjs check',
   },
 }, null, 2) + '\n';
 
@@ -119,20 +117,22 @@ const frontendLock = JSON.stringify({
 
 const contractSource = JSON.stringify({ schema: 'runic.fixture.contract/1', value: 'current' }) + '\n';
 const contractGenerator = `import { readFile, writeFile } from 'node:fs/promises';
-const [sourceFlag, sourcePath, csharpFlag, csharpPath, typescriptFlag, typescriptPath, verifyFlag] = process.argv.slice(2);
-if (sourceFlag !== '--source' || csharpFlag !== '--csharp' || typescriptFlag !== '--typescript' || (verifyFlag && verifyFlag !== '--verify')) process.exit(2);
-const source = await readFile(sourcePath, 'utf8');
-const csharp = \`// generated contract: \${source.trim()}\\n\`;
-const typescript = \`// generated contract: \${source.trim()}\\n\`;
-if (verifyFlag) {
-  const [actualCsharp, actualTypescript] = await Promise.all([readFile(csharpPath, 'utf8'), readFile(typescriptPath, 'utf8')]);
-  if (actualCsharp !== csharp || actualTypescript !== typescript) process.exit(1);
-} else await Promise.all([writeFile(csharpPath, csharp), writeFile(typescriptPath, typescript)]);
+const command = process.argv[2];
+if (command !== 'generate' && command !== 'check') process.exit(2);
+const source = await readFile('src/application.bridge.ts', 'utf8');
+const ir = \`// generated IR: \${source.trim()}\\n\`;
+const facade = \`// generated facade: \${source.trim()}\\n\`;
+if (command === 'check') {
+  const [actualIr, actualFacade] = await Promise.all([readFile('../Contract/bridge.ir.json', 'utf8'), readFile('src/application.bridge.generated.ts', 'utf8')]);
+  if (actualIr !== ir || actualFacade !== facade) process.exit(1);
+} else await Promise.all([writeFile('../Contract/bridge.ir.json', ir), writeFile('src/application.bridge.generated.ts', facade)]);
 `;
 
 async function writeFixtureFiles(directory) {
   await Promise.all([
     mkdir(join(directory, 'Frontend', 'dist'), { recursive: true }),
+    mkdir(join(directory, 'Frontend', 'src'), { recursive: true }),
+    mkdir(join(directory, 'Contract'), { recursive: true }),
     mkdir(join(directory, 'Contracts', 'generated'), { recursive: true }),
     mkdir(join(directory, 'native'), { recursive: true }),
     mkdir(join(directory, 'bin'), { recursive: true }),
@@ -141,10 +141,10 @@ async function writeFixtureFiles(directory) {
     writeFile(join(directory, 'Frontend', 'package.json'), frontendPackage),
     writeFile(join(directory, 'Frontend', 'package-lock.json'), frontendLock),
     writeFile(join(directory, 'Frontend', 'dist', 'index.html'), '<!doctype html><title>Runic fixture</title>\n'),
-    writeFile(join(directory, 'Contracts', 'contract.json'), contractSource),
+    writeFile(join(directory, 'Frontend', 'src', 'application.bridge.ts'), contractSource),
     writeFile(join(directory, 'Contracts', 'generate-contract.mjs'), contractGenerator),
-    writeFile(join(directory, 'Contracts', 'generated', 'Contract.g.cs'), `// generated contract: ${contractSource.trim()}\n`),
-    writeFile(join(directory, 'Contracts', 'generated', 'contract.g.ts'), `// generated contract: ${contractSource.trim()}\n`),
+    writeFile(join(directory, 'Contract', 'bridge.ir.json'), `// generated IR: ${contractSource.trim()}\n`),
+    writeFile(join(directory, 'Frontend', 'src', 'application.bridge.generated.ts'), `// generated facade: ${contractSource.trim()}\n`),
     writeFile(join(directory, 'native', 'libwebui-fixture.so'), 'fixture native library\n'),
     writeFile(join(directory, 'bin', 'runic-browser'), '#!/usr/bin/env sh\nprintf "Runic Fixture Browser 1\\n"\n'),
   ]);
@@ -327,12 +327,12 @@ export async function runCurrentCSharpComposition(manifestPath) {
     const absentDoctor = await run(tool, ['doctor', '--project', 'CurrentComposition.csproj'], directory, doctorEnvironment);
     phases.push(phase('doctor-absent-contract-output', ['dotnet-runic', 'doctor', '--project', 'CurrentComposition.csproj'], absentDoctor));
     assertFailed('doctor absent contract output', absentDoctor, 'contract-outputs');
-    await writeFile(join(directory, 'Contracts', 'generated', 'contract.g.ts'), `// generated contract: ${contractSource.trim()}\n`);
+    await writeFile(join(directory, 'Frontend', 'src', 'application.bridge.generated.ts'), `// generated facade: ${contractSource.trim()}\n`);
     await writeFile(join(directory, 'Contracts', 'generated', 'Contract.g.cs'), '// stale contract\n');
     const staleDoctor = await run(tool, ['doctor', '--project', 'CurrentComposition.csproj'], directory, doctorEnvironment);
     phases.push(phase('doctor-stale-contract-output', ['dotnet-runic', 'doctor', '--project', 'CurrentComposition.csproj'], staleDoctor));
     assertFailed('doctor stale contract output', staleDoctor, 'contract-verify');
-    await writeFile(join(directory, 'Contracts', 'generated', 'Contract.g.cs'), `// generated contract: ${contractSource.trim()}\n`);
+    await writeFile(join(directory, 'Contract', 'bridge.ir.json'), `// generated IR: ${contractSource.trim()}\n`);
     const dryRun = await run(tool, ['dev', '--project', 'CurrentComposition.csproj', '--dry-run', '--', ...APPLICATION_ARGUMENTS], directory, nugetEnvironment);
     phases.push(phase('dev-dry-run', ['dotnet-runic', 'dev', '--project', 'CurrentComposition.csproj', '--dry-run', '--', ...APPLICATION_ARGUMENTS], dryRun));
     assertSucceeded('dev-dry-run', dryRun);

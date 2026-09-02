@@ -11,7 +11,10 @@ const editorDirectory = process.env.RUNIC_W50_NATIVE_SHELL_EDITOR_DIRECTORY && r
 const editorArchive = process.env.RUNIC_W50_NATIVE_SHELL_EDITOR_ARCHIVE && resolve(process.env.RUNIC_W50_NATIVE_SHELL_EDITOR_ARCHIVE);
 const schema = "runic.native-shell-consumer/1", repeatSchema = "runic.native-shell-consumer-repeat/1";
 const packages = ["CsWebUi", "CsWebUi.Native"];
-const fingerprint = "d7919f3d2ba1ec4af48bac5892dd25667f323d6341de212ae69c83b086224faf";
+export const bridgeContractFingerprint = JSON.parse(await readFile(
+  new URL("../../../runic-translations-editor/Contract/bridge.ir.json", import.meta.url),
+  "utf8",
+)).fingerprint.value;
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const hash = async path => createHash("sha256").update(await readFile(path)).digest("hex");
 const run = (command, args, cwd, env = {}) => new Promise(done => {
@@ -56,7 +59,7 @@ async function provenance() {
 }
 
 function expectedDetails(webViewAvailable, highContrast) { return {
-  allowedOrigin: "exact-loopback-origin", bridge: "generated-bridge-attached", cleanup: "closed-disposed-cleaned", contractFingerprint: fingerprint,
+  allowedOrigin: "exact-loopback-origin", bridge: "generated-bridge-attached", cleanup: "closed-disposed-cleaned", contractFingerprint: bridgeContractFingerprint,
   highContrast, highContrastPropagated: "true", listener: "private-loopback", loopbackAssetRequests: "0", outboundTransportAttempts: "0", privateFileHandlerStreaming: "false",
   protocolIdentity: "runic.translations.editor", protocolVersion: "1", schema: "runic.translations.editor-native-shell/1",
   webViewCapability: webViewAvailable ? "available" : "webview-prerequisite-missing"

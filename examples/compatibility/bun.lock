@@ -5,6 +5,7 @@
     "": {
       "name": "@runic-artifex/toolkit-examples",
       "devDependencies": {
+        "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
         "@vitejs/devtools": "0.4.12",
         "effect": "3.22.1",
         "vite": "8.2.1",
@@ -14,14 +15,15 @@
       "name": "@runic-artifex/setup-application",
       "version": "1.0.0",
       "dependencies": {
-        "@runic-artifex/application-bridge": "0.1.0",
-        "@runic-artifex/desktop": "0.1.0",
+        "@runic-artifex/application-bridge": "1.0.0-preview.1",
+        "@runic-artifex/desktop": "1.0.0-preview.1",
         "effect": "3.22.1",
         "react": "19.2.8",
         "react-dom": "19.2.8",
       },
       "devDependencies": {
-        "@runic-artifex/vite-plugin-runic": "0.2.0-preview.2",
+        "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "1.0.0-preview.1",
         "@types/node": "24.10.4",
         "@types/react": "19.2.17",
         "@types/react-dom": "19.2.3",
@@ -34,15 +36,16 @@
       "name": "@runic-artifex/sveltekit-setup-application",
       "version": "1.0.0",
       "dependencies": {
-        "@runic-artifex/application-bridge": "0.1.0",
-        "@runic-artifex/desktop": "0.1.0",
-        "@runic-artifex/svelte": "0.1.0-preview.15.0",
+        "@runic-artifex/application-bridge": "1.0.0-preview.1",
+        "@runic-artifex/desktop": "1.0.0-preview.1",
+        "@runic-artifex/svelte": "1.0.0-preview.1",
         "effect": "3.22.1",
         "svelte": "5.56.8",
       },
       "devDependencies": {
-        "@runic-artifex/sveltekit": "0.1.0-preview.15.0",
-        "@runic-artifex/vite-plugin-runic": "0.2.0-preview.2",
+        "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
+        "@runic-artifex/sveltekit": "1.0.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "1.0.0-preview.1",
         "@sveltejs/kit": "2.70.2",
         "@sveltejs/vite-plugin-svelte": "7.2.0",
         "@vitejs/devtools": "0.4.12",
@@ -58,7 +61,7 @@
         "svelte": "5.56.8",
       },
       "devDependencies": {
-        "@runic-artifex/vite-plugin-runic-translations": "0.1.0-preview.8.1",
+        "@runic-artifex/vite-plugin-runic-translations": "1.0.0-preview.1",
         "@sveltejs/kit": "2.70.2",
         "@sveltejs/vite-plugin-svelte": "7.2.0",
         "svelte-check": "4.7.5",
@@ -85,6 +88,58 @@
     "@devframes/plugin-messages": ["@devframes/plugin-messages@0.8.2", "", { "dependencies": { "cac": "^7.0.0", "nostics": "^1.2.0" }, "peerDependencies": { "@devframes/hub": "0.8.2", "devframe": "0.8.2", "vite": "^7.0.0 || ^8.0.0" }, "optionalPeers": ["vite"], "bin": { "devframe-messages": "bin.mjs" } }, "sha512-dhOZdENQBd1RWa+SNpn1vEijRaPzzE28YLj9owA2H0Sd5hQXIVQJkVLyTrSGnXtb7KLkNoMAvThD5cItABasDg=="],
 
     "@devframes/plugin-terminals": ["@devframes/plugin-terminals@0.8.2", "", { "dependencies": { "cac": "^7.0.0", "nostics": "^1.2.0", "zigpty": "^0.2.1" }, "peerDependencies": { "devframe": "0.8.2", "vite": "^8.0.0" }, "optionalPeers": ["vite"], "bin": { "devframe-terminals": "bin.mjs" } }, "sha512-Y2kVxnlmTThKoT3Ew3eGlItMEOFWzoK4XUb9oXmRu8rqFDd+yDYW2ZNy/kDwmClTblDFXSn6Q7Enjxo31f/2BA=="],
+
+    "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.28.1", "", { "os": "aix", "cpu": "ppc64" }, "sha512-Svl7tq8k/08+p6CXPpRjQ1fKX+1odH/BQbb48fV6fj3CWHhsoIOoY87w1oHXm0qEpkIK3ZfVgp0hed3XBXzXMQ=="],
+
+    "@esbuild/android-arm": ["@esbuild/android-arm@0.28.1", "", { "os": "android", "cpu": "arm" }, "sha512-0k2F129Xdio1TdJfzJ8sy1Q47vUD2NnwdhiAf7drUN1EBTfPf4hsFCtmMgu/6m8JSzsBrlmVjudMBQqOfG8usQ=="],
+
+    "@esbuild/android-arm64": ["@esbuild/android-arm64@0.28.1", "", { "os": "android", "cpu": "arm64" }, "sha512-34EGEbCIAgosYz6goLcopX6Mo7NyGv9tfwEM2/7Ce2VcVRk568iSvniGWcUXIy7wEDR1wzolcxcriFVrWYcwBg=="],
+
+    "@esbuild/android-x64": ["@esbuild/android-x64@0.28.1", "", { "os": "android", "cpu": "x64" }, "sha512-dbwY7ltSMDWsRatcRpCnES4F+im88OCUgGZjy52shC7GqHRE/cYlxNbB4Z4UpJswpcc4Qxd2oE/ufM0p61IKng=="],
+
+    "@esbuild/darwin-arm64": ["@esbuild/darwin-arm64@0.28.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-TZbWkQY7kvTAXbXUT7uVACR5cMHsDiSz9z7ZKAX/RTq/WJEk3QyRr0wZpNhBDX+/0CtdqUIJlOiodQcta6tY3Q=="],
+
+    "@esbuild/darwin-x64": ["@esbuild/darwin-x64@0.28.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-zfdzgK9ACBNZLI/CyHTOx81SyNbM6YXn7rxSgX97VjyiPl9W1i4Ka4fgKECEoFCKGpvBj5qArWIGgQjOwkgskQ=="],
+
+    "@esbuild/freebsd-arm64": ["@esbuild/freebsd-arm64@0.28.1", "", { "os": "freebsd", "cpu": "arm64" }, "sha512-wG2EA8ENdEI0qhkSZMjfqrdY+ziCYCPMmtZjjIwOmXFjmyzEHn+UUxk5of+SYsjtfs3VpnlC7QLzSI5hY/rOAw=="],
+
+    "@esbuild/freebsd-x64": ["@esbuild/freebsd-x64@0.28.1", "", { "os": "freebsd", "cpu": "x64" }, "sha512-i7dZ9vQgnvSCzi/rYCXNgtF/U+eKZNJBzu3eTQbRgHnM7tNSizLOkRFAl3qzVc/Op/u5YkHHa4pf/3DOYHthLQ=="],
+
+    "@esbuild/linux-arm": ["@esbuild/linux-arm@0.28.1", "", { "os": "linux", "cpu": "arm" }, "sha512-qVXBOHQS+d5Y722GwJzJUtOLlX7km3CraOaGormF1pDtPd2C/l1SHRPgjLunLGe51Sh5YYWKMFDyV4SxgMQYTQ=="],
+
+    "@esbuild/linux-arm64": ["@esbuild/linux-arm64@0.28.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-yHs+0uc8+nvEAfAfxrWQKK5peSNzBc4PegcMO0EJ2hT71uA7vB8Ihg2e77R2P7SG5uYjPbHlLLmve4LLLRCf0g=="],
+
+    "@esbuild/linux-ia32": ["@esbuild/linux-ia32@0.28.1", "", { "os": "linux", "cpu": "ia32" }, "sha512-d1z4ZuP0ajrfz/FhGT4vv278rX8KnPPJx8i5+AtK7TYbx9Le9F1hyzurZpkEyjkGa9dUGhQow4C1NmeGvqxN2w=="],
+
+    "@esbuild/linux-loong64": ["@esbuild/linux-loong64@0.28.1", "", { "os": "linux", "cpu": "none" }, "sha512-M5sRjUVZrkm1OAPR3dlOYzNmN+loZKGVi1VUQGrwuqLcbR6qeAz+famMhjASeH3YVKvZz+zT1jlh/keC3Rj/lg=="],
+
+    "@esbuild/linux-mips64el": ["@esbuild/linux-mips64el@0.28.1", "", { "os": "linux", "cpu": "none" }, "sha512-mRObBZeHh2OxcBFPWE/FjylkRgZdYuiTR3vaTozquCGOH14iP9oN4x4Ge81CoIDYQrXmIxpFumJBu5MtZpnQJQ=="],
+
+    "@esbuild/linux-ppc64": ["@esbuild/linux-ppc64@0.28.1", "", { "os": "linux", "cpu": "ppc64" }, "sha512-slScBsMAb3GFDcdrCgLwZtPYRoH2H/youv10QiZyRjmsP48fznoveWytSgCI/R0ZcUgpc0ZhIUEx6LHts8yrfQ=="],
+
+    "@esbuild/linux-riscv64": ["@esbuild/linux-riscv64@0.28.1", "", { "os": "linux", "cpu": "none" }, "sha512-kw0owk1o0GFETUJyW0jc0G4Yzs0BHZn0JDZ8JRT088vjJYX777BAs1fDGxAC+q831qOs2DTC96mNsG2opdfyyQ=="],
+
+    "@esbuild/linux-s390x": ["@esbuild/linux-s390x@0.28.1", "", { "os": "linux", "cpu": "s390x" }, "sha512-/lAIjX8aYFRByhh6L5rYtPEDRqa9de/4V/juOXcta5frjvzXO4/sqEtyytse0g3zZFuWu5cDN0MkLz2qRDD2Ag=="],
+
+    "@esbuild/linux-x64": ["@esbuild/linux-x64@0.28.1", "", { "os": "linux", "cpu": "x64" }, "sha512-u/anNYF2mmVOEDwLtnQ1wOr3EZ9sTNGLWrsYGYwHWzGA3Si84IOkHXlbWTD1NB+9/1lcnweYKO54uhxZydNzfA=="],
+
+    "@esbuild/netbsd-arm64": ["@esbuild/netbsd-arm64@0.28.1", "", { "os": "none", "cpu": "arm64" }, "sha512-oks0DYbLwWMmaakTsCb+zL4E+aHRVLom9IJZOAthMQEPiQmydXHkziYEsGYRx0uNV/IjEKGAV941JzH02pflqw=="],
+
+    "@esbuild/netbsd-x64": ["@esbuild/netbsd-x64@0.28.1", "", { "os": "none", "cpu": "x64" }, "sha512-aeL6lAnN89Hz43Mlh1G8ARasbuoYvSITDEx0tHh5b7jJnHcssqgjy9Yx430GDpmCa6OyrKoS0aNRjKundRizGg=="],
+
+    "@esbuild/openbsd-arm64": ["@esbuild/openbsd-arm64@0.28.1", "", { "os": "openbsd", "cpu": "arm64" }, "sha512-MEFJe5C3R8pwXdZ5Y21oo6m7ePiS0d9pWucn99O/wvyJZChoIQKrQDxKrGeW8F5+T0okTHesAmDeiHDTIq0V/Q=="],
+
+    "@esbuild/openbsd-x64": ["@esbuild/openbsd-x64@0.28.1", "", { "os": "openbsd", "cpu": "x64" }, "sha512-i/ZLIOafE0Z8cI/XANJAixoJL/uRAoS2xOA3rb0xN+KK0K177cMAsQYkzHtBrtMXAKuAc7HGgcWiZ/sRC1Nxgw=="],
+
+    "@esbuild/openharmony-arm64": ["@esbuild/openharmony-arm64@0.28.1", "", { "os": "none", "cpu": "arm64" }, "sha512-ge+Z7EXFNt2BO1oAMsVpiQ8EwndV9i1xXerAeTIK7AtPs3bKFXQM7nlRxDSIUIMeueR1CNXxqztLzdNeReKBJg=="],
+
+    "@esbuild/sunos-x64": ["@esbuild/sunos-x64@0.28.1", "", { "os": "sunos", "cpu": "x64" }, "sha512-BEjgtECkL3vY+SaSQ6nzVfiALUeFxpawyp8Jmf5PtYhf1Ug40N1h/hxlhts+f1FvSvarEigdxS3BlSMI2PJLcQ=="],
+
+    "@esbuild/win32-arm64": ["@esbuild/win32-arm64@0.28.1", "", { "os": "win32", "cpu": "arm64" }, "sha512-lCv9eK/H6ZJWbE7bh2nw54CZ9M2nupBxJcTsdk/QQnWkdSjKGuxmmH8/GWrlT1eMmZfn4dGcCjRte397WqfQXA=="],
+
+    "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.28.1", "", { "os": "win32", "cpu": "ia32" }, "sha512-zvb/mB2bSCoJOpoCBgYKKpX6YM6mJBlBUVUtVj41DlZJVEB6/0CKlRYxP5wWl1C1ILiCoAU5wZZ4q1P3qeS6Eg=="],
+
+    "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.1", "", { "os": "win32", "cpu": "x64" }, "sha512-bm4Mowrv+GXMlpWX++EcXw/iLyd1o3+bJkC2DkWXYVvgZCqD/bSj9ctZeAMC3cIxgjRVR2Dufaiu4YPxr5gW1A=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
@@ -132,23 +187,25 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.0-rc.7", "", {}, "sha512-qujRfC8sFVInYSPPMLQByRh7zhwkGFS4+tyMQ83srV1qrxL4g8E2tyxVVyxd0+8QeBM1mIk9KbWxkegRr76XzA=="],
 
-    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@0.1.0", "", { "dependencies": { "effect": "3.22.1" } }, "sha512-PETUiIOBSdGwZ5RVtbrxzUS1L0TmevaWEDMqlr+4r+bX02zmOzqBzBh+j/XGri81PeJzXj/sbUjnpufagbbQMg=="],
+    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@1.0.0-preview.1", "", { "dependencies": { "effect": "3.22.1" } }, "sha512-uTdJDKcy89lRxhtWqe1sz5S+Ldj/ZyoSA9mEe50sAcdYoRhpQa4Bpjc9aYKmvu5l4fvQcwJNN6NJMOD0O93CSA=="],
 
-    "@runic-artifex/desktop": ["@runic-artifex/desktop@0.1.0", "", { "dependencies": { "effect": "3.22.1" } }, "sha512-rMFetBx48Cfl3buMl4iE9fFNc67GJIHU050ZqBypUPRdCaBEegu/QWpVfOolOvziQ/uUsbnF/xL5u5yUi+fGQg=="],
+    "@runic-artifex/application-bridge-tooling": ["@runic-artifex/application-bridge-tooling@1.0.0-preview.1", "", { "dependencies": { "esbuild": "0.28.1" }, "peerDependencies": { "@runic-artifex/application-bridge": "1.0.0-preview.1", "effect": "3.22.1" }, "bin": { "runic-bridge": "./dist/esm/cli.js" } }, "sha512-BHL8EhfjE592YtE5KiZPxp/HyNxlB4ZH8k3dkUk0vG1/2UF//7CAo0TCSDhAv6VxJmUcCEO8Diph9nwD+wb+Yw=="],
+
+    "@runic-artifex/desktop": ["@runic-artifex/desktop@1.0.0-preview.1", "", { "dependencies": { "effect": "3.22.1" } }, "sha512-GsGqdlH4lhJySlcV33mbaUcK4t6IiZyEGXaNh82s3tuCofe20uVa3pqzKIpOjGjN0iryUkrHJ85/SwtIeAa6RQ=="],
 
     "@runic-artifex/setup-application": ["@runic-artifex/setup-application@workspace:samples/03-SetupApplication/Frontend"],
 
-    "@runic-artifex/svelte": ["@runic-artifex/svelte@0.1.0-preview.15.0", "", { "peerDependencies": { "@runic-artifex/application-bridge": ">=0.1.0-preview.30.1 <1", "@runic-artifex/vite-plugin-runic": ">=0.2.0-preview.1 <1", "effect": ">=3.22.1 <4", "svelte": ">=5.46.4 <6" }, "optionalPeers": ["@runic-artifex/application-bridge", "@runic-artifex/vite-plugin-runic"] }, "sha512-VWBfdlUyQC5sxm6+ey4UtwfUQ46aU/F+fyEQJcL0i4DEOh4bdRF7ZLKQvt1FfZdlcodmmuXytJdUcVdzykA95A=="],
+    "@runic-artifex/svelte": ["@runic-artifex/svelte@1.0.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge": ">=1.0.0-preview.1 <2", "@runic-artifex/vite-plugin-runic": ">=1.0.0-preview.1 <2", "effect": ">=3.22.1 <4", "svelte": ">=5.46.4 <6" }, "optionalPeers": ["@runic-artifex/application-bridge", "@runic-artifex/vite-plugin-runic"] }, "sha512-WFb+sJEhliAumWDcMoHmY9VvmwxRtqc+BiGpPSzlAdPWjoVAHHk4QaFIj+1h+w7GwKlNIwSRu8jE72ry9VEaxQ=="],
 
-    "@runic-artifex/sveltekit": ["@runic-artifex/sveltekit@0.1.0-preview.15.0", "", { "peerDependencies": { "@runic-artifex/svelte": ">=0.1.0-preview.0 <1", "@runic-artifex/vite-plugin-runic": ">=0.2.0-preview.1 <1", "@sveltejs/adapter-static": ">=3 <4", "@sveltejs/kit": ">=2.53.0 <3", "@sveltejs/vite-plugin-svelte": ">=7 <8", "svelte": ">=5.46.4 <6", "vite": ">=8 <9" }, "optionalPeers": ["@runic-artifex/svelte", "@runic-artifex/vite-plugin-runic"] }, "sha512-2DPp7VdHQRxlwWPIV2hhABU9X6oIxSyengk8oLgYhTDj/zGqRzmpCT25KQ98dKutM4/YLWqKqD/S9zPGVb+Iug=="],
+    "@runic-artifex/sveltekit": ["@runic-artifex/sveltekit@1.0.0-preview.1", "", { "peerDependencies": { "@runic-artifex/svelte": ">=1.0.0-preview.1 <2", "@runic-artifex/vite-plugin-runic": ">=1.0.0-preview.1 <2", "@sveltejs/adapter-static": ">=3 <4", "@sveltejs/kit": ">=2.53.0 <3", "@sveltejs/vite-plugin-svelte": ">=7 <8", "svelte": ">=5.46.4 <6", "vite": ">=8 <9" }, "optionalPeers": ["@runic-artifex/svelte", "@runic-artifex/vite-plugin-runic"] }, "sha512-4r6c7Xx5447kFtjtasJVtHXfEO5gJXEFsU93929CgeZn1NUOwXumx3PvbCLGxoMAHIR5NFphm6HBIUGWKKRLqg=="],
 
     "@runic-artifex/sveltekit-setup-application": ["@runic-artifex/sveltekit-setup-application@workspace:samples/04-SvelteKitSetupApplication/Frontend"],
 
     "@runic-artifex/translations-setup-application": ["@runic-artifex/translations-setup-application@workspace:samples/05-RunicTranslationsSetup/Frontend"],
 
-    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.2.0-preview.2", "", { "peerDependencies": { "@vitejs/devtools": "^0.4.12", "vite": "^8.0.0" }, "optionalPeers": ["@vitejs/devtools"] }, "sha512-zjjtvwU1pK6GPfKsCtraC85gXqI04g4HTOf33V5xJM6YY/4GGZn+tRRlGyCWQqSTfT40J++oLxh57hRtu8AWwQ=="],
+    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@1.0.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1", "@vitejs/devtools": "^0.4.12", "vite": "^8.0.0" }, "optionalPeers": ["@runic-artifex/application-bridge-tooling", "@vitejs/devtools"] }, "sha512-uHSxq3ADzVuQIHVOu3bwKtkV+In576HEjEbKwqJaOqJxh/FxSCPQyLwz/qjltCzidQY4AForf9XI2pfoZmAoeQ=="],
 
-    "@runic-artifex/vite-plugin-runic-translations": ["@runic-artifex/vite-plugin-runic-translations@0.1.0-preview.8.1", "", { "peerDependencies": { "vite": ">=6 <9" } }, "sha512-lBw1+ltEFnJIXmR94lqhp6iQHO4R4Sf0WOc83+VH4a6DKO7RW7JkgIVl7n10eTNf2vUazPrn3e/KyxUhyqEXrQ=="],
+    "@runic-artifex/vite-plugin-runic-translations": ["@runic-artifex/vite-plugin-runic-translations@1.0.0-preview.1", "", { "peerDependencies": { "vite": ">=6 <9" }, "optionalPeers": ["vite"] }, "sha512-zqR8Z9RH0B7FZxv/y6aKP2K4oWRiTvrM0hJQ4YLTBTsrWo3uoZ+8ExAnES6js37w/NnrhIdDN1mq0QMk32vTGQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
@@ -237,6 +294,8 @@
     "effect": ["effect@3.22.1", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-TNoXushmPOBAjJlthF5d2QwnX2xBPEtcNJr5XKNKbRLbDvBcOYkXlYDfvGfSA0zriwLFuCll5MDtNMAdZL17PQ=="],
 
     "entities": ["entities@7.0.1", "", {}, "sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA=="],
+
+    "esbuild": ["esbuild@0.28.1", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.28.1", "@esbuild/android-arm": "0.28.1", "@esbuild/android-arm64": "0.28.1", "@esbuild/android-x64": "0.28.1", "@esbuild/darwin-arm64": "0.28.1", "@esbuild/darwin-x64": "0.28.1", "@esbuild/freebsd-arm64": "0.28.1", "@esbuild/freebsd-x64": "0.28.1", "@esbuild/linux-arm": "0.28.1", "@esbuild/linux-arm64": "0.28.1", "@esbuild/linux-ia32": "0.28.1", "@esbuild/linux-loong64": "0.28.1", "@esbuild/linux-mips64el": "0.28.1", "@esbuild/linux-ppc64": "0.28.1", "@esbuild/linux-riscv64": "0.28.1", "@esbuild/linux-s390x": "0.28.1", "@esbuild/linux-x64": "0.28.1", "@esbuild/netbsd-arm64": "0.28.1", "@esbuild/netbsd-x64": "0.28.1", "@esbuild/openbsd-arm64": "0.28.1", "@esbuild/openbsd-x64": "0.28.1", "@esbuild/openharmony-arm64": "0.28.1", "@esbuild/sunos-x64": "0.28.1", "@esbuild/win32-arm64": "0.28.1", "@esbuild/win32-ia32": "0.28.1", "@esbuild/win32-x64": "0.28.1" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw=="],
 
     "esm-env": ["esm-env@1.2.2", "", {}, "sha512-Epxrv+Nr/CaL4ZcFGPJIYLWFom+YeV1DqMLHJoEd9SYRxNbaFruBwfEX/kkHUJf55j2+TUbmDcmuilbP1TmXHA=="],
 

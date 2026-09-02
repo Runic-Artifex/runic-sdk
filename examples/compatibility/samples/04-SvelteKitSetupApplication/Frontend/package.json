@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "contract:generate": "runic-bridge generate --source ../../03-SetupApplication/Frontend/src/application.bridge.ts --ir ../Contract/bridge.ir.json --facade src/lib/application.bridge.generated.ts",
+    "contract:check": "runic-bridge check --source ../../03-SetupApplication/Frontend/src/application.bridge.ts --ir ../Contract/bridge.ir.json --facade src/lib/application.bridge.generated.ts",
     "dev": "vite dev",
     "dev:mock": "vite dev --mode mock",
     "test": "node --test test/*.test.mjs",
@@ -13,15 +15,16 @@
     "verify:production": "node test/verify-production.mjs"
   },
   "dependencies": {
-    "@runic-artifex/application-bridge": "0.1.0",
-    "@runic-artifex/desktop": "0.1.0",
-    "@runic-artifex/svelte": "0.1.0-preview.15.0",
+    "@runic-artifex/application-bridge": "1.0.0-preview.1",
+    "@runic-artifex/desktop": "1.0.0-preview.1",
+    "@runic-artifex/svelte": "1.0.0-preview.1",
     "effect": "3.22.1",
     "svelte": "5.56.8"
   },
   "devDependencies": {
-    "@runic-artifex/sveltekit": "0.1.0-preview.15.0",
-    "@runic-artifex/vite-plugin-runic": "0.2.0-preview.2",
+    "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
+    "@runic-artifex/sveltekit": "1.0.0-preview.1",
+    "@runic-artifex/vite-plugin-runic": "1.0.0-preview.1",
     "@sveltejs/kit": "2.70.2",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
     "@vitejs/devtools": "0.4.12",

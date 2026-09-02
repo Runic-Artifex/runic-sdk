@@ -12,7 +12,6 @@ using Runic.Examples.Setup.Contract;
 [assembly: RunicApplicationManifest("runic-toolkit-react-setup", Version = "1.0.0", Provenance = "example")]
 [assembly: RunicApplicationCapability("desktop")]
 [assembly: RunicApplicationArtifact("assets", "runic.assets/1:Runic.Assets.StaticFiles", "Runic.Assets.StaticFiles")]
-[assembly: RunicApplicationArtifact("bridge-contract", SetupBridgeContract.ProtocolArtifactIdentity, SetupBridgeContract.Fingerprint)]
 [assembly: RunicApplicationBridgeComposition(typeof(SetupBridgeHandler), typeof(SetupBridgeDispatcher))]
 
 if (Array.Exists(args, static argument => argument == "--smoke-test"))

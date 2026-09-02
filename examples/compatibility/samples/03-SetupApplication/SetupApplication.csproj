@@ -30,8 +30,7 @@
                       Condition="!Exists('../../../runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj')" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="Contract/generated/bridge.manifest.json" />
-    <AdditionalFiles Include="Contract/generated/schemas/**/*.schema.json" />
+    <AdditionalFiles Include="Contract/bridge.ir.json" />
   </ItemGroup>
   <Import Project="../../../runic-assets/src/Runic.Assets/buildTransitive/Runic.Assets.targets"
           Condition="Exists('../../../runic-assets/src/Runic.Assets/buildTransitive/Runic.Assets.targets')" />
