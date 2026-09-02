@@ -2,7 +2,7 @@
 export const releaseData = {
   schemaVersion: 1,
   source: {
-    authorityRevision: 'dbafda21a892968cccac2d9f9f78120e150fce13',
+    authorityRevision: '724355893b33c745d5f6bdc2d8de607eab1d465c',
     manifestSha256:
       '44509da940d238738427d2cce4a8d2d58863b21f1d976daf854c04be9c086b3f',
     schemaSha256:
@@ -10,11 +10,11 @@ export const releaseData = {
     verifierSha256:
       '8b6fdf5bb8e83446f7a92c00c3a1f4c8f277c2cfa8e7d56fb704f6653f486ec6',
     compatibilitySetSha256:
-      'b2a16619f8a3f2a8a60df19d583ba7f531bda47886efdc4c1bbf9d440d62bce0',
+      '16b935531cad4a31bcebc880357d619d166bfd478beabf0afe0a10b307f1e38c',
     compatibilitySchemaSha256:
-      '0f5f2a8c2b2fad19a9fb1bac162ff65ea288bfbbc6d8533f59ddc72361775773',
+      'dc49e57728661aa01da6d51851519c411b4d8a448e32b1310dcf958843327e35',
     compatibilityVerifierSha256:
-      '7d2ec9e4200e6f5ee8e23d3a1aaeed77a3566ea0f40b524618a557e091f093c8',
+      'c5721fc29aba1a3bd944db8e8d47096dc7701198107d918fcd1a173590a506f7',
   },
   repositories: [
     {
@@ -992,6 +992,7 @@ export const releaseData = {
     toolchain: {
       dotnetSdk: '10.0.302',
       node: '24.18.0',
+      bun: '1.4.0',
       npm: '11.16.0',
     },
     languageProfiles: {
