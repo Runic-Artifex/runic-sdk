@@ -3,10 +3,9 @@
   "private": true,
   "version": "0.0.0-private",
   "license": "MIT",
-  "packageManager": "npm@11.16.0",
+  "packageManager": "bun@1.4.0",
   "engines": {
-    "node": "24.18.x",
-    "npm": "11.16.x"
+    "node": "24.18.x"
   },
   "workspaces": [
     "samples/03-SetupApplication/Frontend",
@@ -16,9 +15,9 @@
   "scripts": {
     "generate:setup-contract": "node eng/generate-setup-contract.mjs",
     "verify:setup-contract": "node eng/generate-setup-contract.mjs --check",
-    "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "node eng/verify-current-authority-boundary.mjs && node eng/v0.2-baselines/generate-schema.mjs --check && node --test eng/v0.2-baselines/baseline.test.mjs eng/current-clean-install/verify.test.mjs eng/current-csharp-composition/verify.test.mjs eng/current-csharp-composition/testing-profile.test.mjs eng/current-host-transport/verify.test.mjs eng/current-service-declaration/verify.test.mjs eng/current-authenticated-service/verify.test.mjs eng/current-hosted-sveltekit/verify.test.mjs eng/current-hosted-deployment/verify.test.mjs eng/current-hosted-product/verify.test.mjs eng/current-svelte-controller/verify.test.mjs eng/current-angular-controller/verify.test.mjs eng/current-host-boundary/verify.test.mjs eng/current-svelte-template/verify.test.mjs eng/current-mf2-subset-consumer/verify.test.mjs eng/current-localization-compatibility/verify.test.mjs eng/current-support-envelope/verify.test.mjs eng/current-recovery-capability/verify.test.mjs eng/current-native-shell/verify.test.mjs eng/current-native-shell-certification/verify.test.mjs eng/current-editor-quality/verify.test.mjs eng/current-unsigned-candidate-set/verify.test.mjs eng/current-unsigned-tool-staging/verify.test.mjs eng/current-manual-replacement-preflight/verify.test.mjs eng/current-controlled-clean-room/verify.test.mjs eng/current-support-certification/verify.test.mjs eng/current-readiness-audit/verify.test.mjs eng/current-operator-rehearsal/verify.test.mjs eng/current-readiness-index/verify.test.mjs eng/compatibility-matrix/verify.test.mjs && npm run test --workspaces --if-present",
+    "build": "bun run --cwd samples/03-SetupApplication/Frontend build && bun run --cwd samples/04-SvelteKitSetupApplication/Frontend build && bun run --cwd samples/05-RunicTranslationsSetup/Frontend build",
+    "typecheck": "bun run --cwd samples/03-SetupApplication/Frontend typecheck && bun run --cwd samples/04-SvelteKitSetupApplication/Frontend typecheck && bun run --cwd samples/05-RunicTranslationsSetup/Frontend typecheck",
+    "test": "node eng/verify-current-authority-boundary.mjs && node eng/v0.2-baselines/generate-schema.mjs --check && node --test eng/v0.2-baselines/baseline.test.mjs eng/current-clean-install/verify.test.mjs eng/current-csharp-composition/verify.test.mjs eng/current-csharp-composition/testing-profile.test.mjs eng/current-host-transport/verify.test.mjs eng/current-service-declaration/verify.test.mjs eng/current-authenticated-service/verify.test.mjs eng/current-hosted-sveltekit/verify.test.mjs eng/current-hosted-deployment/verify.test.mjs eng/current-hosted-product/verify.test.mjs eng/current-svelte-controller/verify.test.mjs eng/current-angular-controller/verify.test.mjs eng/current-host-boundary/verify.test.mjs eng/current-svelte-template/verify.test.mjs eng/current-mf2-subset-consumer/verify.test.mjs eng/current-localization-compatibility/verify.test.mjs eng/current-support-envelope/verify.test.mjs eng/current-recovery-capability/verify.test.mjs eng/current-native-shell/verify.test.mjs eng/current-native-shell-certification/verify.test.mjs eng/current-editor-quality/verify.test.mjs eng/current-unsigned-candidate-set/verify.test.mjs eng/current-unsigned-tool-staging/verify.test.mjs eng/current-manual-replacement-preflight/verify.test.mjs eng/current-controlled-clean-room/verify.test.mjs eng/current-support-certification/verify.test.mjs eng/current-readiness-audit/verify.test.mjs eng/current-operator-rehearsal/verify.test.mjs eng/current-readiness-index/verify.test.mjs eng/compatibility-matrix/verify.test.mjs && bun run --cwd samples/03-SetupApplication/Frontend test && bun run --cwd samples/04-SvelteKitSetupApplication/Frontend test && bun run --cwd samples/05-RunicTranslationsSetup/Frontend test",
     "verify:current-clean-install": "node eng/current-clean-install/verify.mjs run-twice --compatibility-set ../.github/runic.compatibility-set.json --nuget-feed \"${RUNIC_CURRENT_NUGET_FEED:?Set RUNIC_CURRENT_NUGET_FEED to the exact package feed}\" --npm-registry \"${RUNIC_CURRENT_NPM_REGISTRY:?Set RUNIC_CURRENT_NPM_REGISTRY to the exact Runic npm registry}\" --npm-public-registry \"${RUNIC_CURRENT_NPM_PUBLIC_REGISTRY:-https://registry.npmjs.org}\" --nuget-public-source \"${RUNIC_CURRENT_NUGET_PUBLIC_SOURCE:-https://api.nuget.org/v3/index.json}\"",
     "verify:current-csharp-composition": "node eng/current-csharp-composition/verify.mjs run-twice ../.github/runic.release.json",
     "verify:current-host-transport": "node eng/current-host-transport/verify.mjs run-twice ../.github/runic.release.json",
@@ -38,7 +37,7 @@
     "verify:current-editor-quality": "node eng/current-editor-quality/verify.mjs run-twice ../runic-toolkit ../runic-translations-editor",
     "verify:current-unsigned-candidate-set": "node eng/current-unsigned-candidate-set/verify.mjs run-twice",
     "verify:current-unsigned-tool-staging": "node eng/current-unsigned-tool-staging/verify.mjs run-twice",
-    "verify": "npm run verify:setup-contract && npm run typecheck && npm run test && npm run build && npm run verify:production --workspaces --if-present",
+    "verify": "bun run verify:setup-contract && bun run typecheck && bun run test && bun run build && bun run --cwd samples/03-SetupApplication/Frontend verify:production && bun run --cwd samples/04-SvelteKitSetupApplication/Frontend verify:production && bun run --cwd samples/05-RunicTranslationsSetup/Frontend verify:production",
     "verify:current-manual-replacement-preflight": "node eng/current-manual-replacement-preflight/verify.mjs run-twice",
     "verify:current-controlled-clean-room": "node eng/current-controlled-clean-room/verify.mjs run-twice",
     "verify:current-support-certification": "node eng/current-support-certification/verify.mjs run-twice",

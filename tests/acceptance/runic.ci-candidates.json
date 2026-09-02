@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "repository": "runic-command-line",
+      "revision": "5d6a9aa6be25e19640c797730c5984cad9c17bd5",
+      "nuget": ["Runic.CommandLine", "Runic.CommandLine.Processes"]
+    },
+    {
+      "repository": "runic-desktop",
+      "revision": "d1fe517f86890a7a25f6ae8d5092c53959c54b70",
+      "npm": ["@runic-artifex/desktop"]
+    },
+    {
+      "repository": "runic-vite",
+      "revision": "a24af5478954309bd31dffd6b0bcba0b2e978fc7",
+      "npm": ["@runic-artifex/vite-plugin-runic"]
+    },
+    {
+      "repository": "runic-assets",
+      "revision": "a41596944d746196295fd0e220c6a1a3fbbc5956",
+      "nuget": ["Runic.Assets", "Runic.Assets.AspNetCore", "Runic.Assets.Desktop"]
+    },
+    {
+      "repository": "runic-translations",
+      "revision": "4e5540a29c8333f48256b9f93692531b54480daf",
+      "nuget": ["Runic.Translations", "Runic.Translations.Build", "dotnet-runic-translations"],
+      "npm": ["@runic-artifex/vite-plugin-runic-translations"]
+    },
+    {
+      "repository": "runic-toolkit",
+      "revision": "17b337f9826d463f5fab9e1bcf299581c3e58b5c",
+      "nuget": ["Runic.Application", "Runic.Application.Bridge", "Runic.Application.Desktop"],
+      "npm": ["@runic-artifex/application-bridge"]
+    },
+    {
+      "repository": "runic-svelte",
+      "revision": "db4c793809657d00b541388cee545af95cd98ac5",
+      "npm": ["@runic-artifex/svelte", "@runic-artifex/sveltekit"]
+    }
+  ]
+}

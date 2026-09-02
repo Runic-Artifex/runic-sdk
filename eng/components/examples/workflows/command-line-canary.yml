@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: command-line-canary-${{ github.workflow }}-${{ github.ref }}
@@ -19,31 +20,29 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
+  NUGET_CONFIG_FILE: ${{ github.workspace }}/eng/NuGet.ci.config
+  NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   verify:
-    name: Consume local candidate packages
+    name: Consume exact registry candidates
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v6
         with:
-          global-json-file: global.json
+          persist-credentials: false
 
-      - name: Build isolated package candidates
-        shell: bash
-        env:
-          RUNIC_CANDIDATE_SET: command-line
-        run: bash eng/prepare-ci-candidates.sh
+      - uses: ./.github/actions/setup-dotnet
+
+      - name: Select exact registry candidates
+        run: node eng/export-ci-candidates.mjs >> "$GITHUB_ENV"
 
       - name: Restore package-only canary
         run: >-
           dotnet restore integrations/Runic.CommandLine.Canary/Runic.CommandLine.Canary.csproj
-          --configfile "$RUNIC_CANDIDATE_NUGET_CONFIG"
+          --configfile "$NUGET_CONFIG_FILE"
 
       - name: Build package-only canary
         run: dotnet build integrations/Runic.CommandLine.Canary/Runic.CommandLine.Canary.csproj --no-restore --configuration Release

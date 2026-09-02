@@ -8,10 +8,10 @@ const backup = process.env.RUNNER_TEMP ? join(process.env.RUNNER_TEMP, 'runic-ca
 if (!feed) throw new Error('RUNIC_CANDIDATE_NPM_FEED must name the local candidate archive directory');
 
 const inputs = [
-  'package-lock.json',
   'samples/03-SetupApplication/Frontend/package.json',
   'samples/04-SvelteKitSetupApplication/Frontend/package.json',
   'samples/05-RunicTranslationsSetup/Frontend/package.json',
+  'samples/05-RunicTranslationsSetup/.config/dotnet-tools.json',
 ];
 await mkdir(backup, { recursive: true });
 for (const input of inputs) {
@@ -48,6 +48,14 @@ for (const path of inputs.filter((input) => input.endsWith('/package.json'))) {
   }
   await writeFile(join(root, path), `${JSON.stringify(manifest, null, 2)}\n`);
 }
+
+const toolManifestPath = 'samples/05-RunicTranslationsSetup/.config/dotnet-tools.json';
+const toolManifest = JSON.parse(await readFile(join(root, toolManifestPath), 'utf8'));
+toolManifest.tools['dotnet-runic-translations'].version = process.env.RUNIC_TRANSLATIONS_TOOL_VERSION;
+if (!toolManifest.tools['dotnet-runic-translations'].version) {
+  throw new Error('RUNIC_TRANSLATIONS_TOOL_VERSION must select the exact tool candidate');
+}
+await writeFile(join(root, toolManifestPath), `${JSON.stringify(toolManifest, null, 2)}\n`);
 
 await writeFile(join(backup, 'manifest.json'), `${JSON.stringify({ inputs }, null, 2)}\n`);
 console.log(backup);
