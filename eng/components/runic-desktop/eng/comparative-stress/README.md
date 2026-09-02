@@ -5,6 +5,8 @@ same host with the same bounded HTTP workload. It retains raw per-request
 latencies alongside startup time, measured-workload completion time,
 throughput, managed allocations, peak working set, source revisions, managed
 assembly hashes, the CS-WebUI native-library hash, and a host fingerprint.
+The maintained CS-WebUI source baseline is the exact revision in
+`cs-webui-revision.txt`; a different checkout fails before measurement.
 
 The result is an observation, not a release SLA or a cross-host benchmark. The
 harness performs no publication, upload, tag, or release action. Both source
