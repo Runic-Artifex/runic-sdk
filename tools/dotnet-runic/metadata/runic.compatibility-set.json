@@ -28,12 +28,12 @@
     {
       "repository": "runic-svelte",
       "url": "https://github.com/Runic-Artifex/runic-svelte",
-      "revision": "0f2a1ebcd6a2afaafbc82012f4bbf2b661d353f6"
+      "revision": "6499d5e64d2b6e2a902a6ddf107c0e6216fd4139"
     },
     {
       "repository": "runic-vite",
       "url": "https://github.com/Runic-Artifex/runic-vite",
-      "revision": "460d092cf65f794ce01a7b06c31fb07324d072df"
+      "revision": "a1ace927ad5c738d5839fe28d960e97d268bbea9"
     },
     {
       "repository": "runic-command-line",
