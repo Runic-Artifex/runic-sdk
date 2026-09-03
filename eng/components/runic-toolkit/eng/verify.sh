@@ -6,6 +6,7 @@ cd "$repository_root"
 
 configuration="Release"
 registry_dependencies="${RUNIC_USE_REGISTRY_DEPENDENCIES:-0}"
+source_frontend_integrations="${RUNIC_SOURCE_FRONTEND_INTEGRATIONS:-0}"
 verification_root="$(mktemp -d /tmp/runic-application-verification.XXXXXXXXXX)"
 verification_feed="$verification_root/feed"
 verification_nuget="$verification_root/nuget"
@@ -116,8 +117,16 @@ bash tests/Runic.Application.PackageConsumer/Test-HostileGenerator.sh "$release_
 node eng/pack-npm.mjs "$bridge_npm_version" "$release_packages" github
 node eng/verify-npm-artifacts.mjs "$bridge_npm_version" "$release_packages"
 mkdir -p "$integration_packages"
-if [[ "$registry_dependencies" == "1" ]]; then
+if [[ "$registry_dependencies" == "1" && "$source_frontend_integrations" != "1" ]]; then
   node eng/download-github-npm.mjs dependencies "$integration_packages"
+elif [[ "$registry_dependencies" == "1" ]]; then
+  bash eng/pack-integration-npm.sh \
+    "$bridge_npm_version" \
+    "$release_packages" \
+    "$integration_packages" \
+    "$repository_root/../runic-desktop" \
+    "$repository_root/../runic-svelte" \
+    "$repository_root/../runic-vite"
 else
   git -C "$repository_root/../runic-svelte" worktree add --detach "$svelte_worktree" "$svelte_revision"
   git -C "$repository_root/../runic-vite" worktree add --detach "$vite_worktree" "$vite_revision"

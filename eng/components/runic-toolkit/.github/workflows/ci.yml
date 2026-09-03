@@ -22,6 +22,7 @@ env:
   DOTNET_NOLOGO: "1"
   NUGET_CONFIG_FILE: ${{ github.workspace }}/eng/NuGet.ci.config
   RUNIC_USE_REGISTRY_DEPENDENCIES: "1"
+  RUNIC_SOURCE_FRONTEND_INTEGRATIONS: "1"
   NuGetPackageSourceCredentials_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
