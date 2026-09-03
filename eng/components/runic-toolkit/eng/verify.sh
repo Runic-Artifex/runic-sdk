@@ -102,21 +102,16 @@ bash tests/RunicToolkit.PackageCanary/Test-ToolMigration.sh "$tool_native_publis
 # local bridge and Angular archives, and exact official Desktop/Svelte/Vite archives.
 release_train_version="$(node eng/compatibility-set-value.mjs release-train-version)"
 release_version="${RUNIC_PACKAGE_VERSION:-$release_train_version}"
-bridge_npm_version="$release_version"
-svelte_release_version="${RUNIC_SVELTE_NPM_VERSION:-$release_train_version}"
-vite_release_version="${RUNIC_VITE_NPM_VERSION:-$release_train_version}"
-desktop_release_version="${RUNIC_DESKTOP_NPM_VERSION:-$release_train_version}"
-if [[ "$source_frontend_integrations" == "1" ]]; then
-  svelte_release_version="$release_train_version"
-  vite_release_version="$release_train_version"
-  desktop_release_version="$release_train_version"
-fi
+source eng/frontend-package-versions.sh
+runic_resolve_frontend_package_versions \
+  "$release_train_version" \
+  "$release_version" \
+  "$source_frontend_integrations" \
+  "${RUNIC_SVELTE_NPM_VERSION:-}" \
+  "${RUNIC_VITE_NPM_VERSION:-}" \
+  "${RUNIC_DESKTOP_NPM_VERSION:-}"
 release_packages="${RUNIC_PACKAGE_OUTPUT:-$verification_root/packages}"
-RUNIC_SVELTE_NPM_VERSION="$svelte_release_version" \
-RUNIC_VITE_NPM_VERSION="$vite_release_version" \
-RUNIC_DESKTOP_NPM_VERSION="$desktop_release_version" \
-APPLICATION_BRIDGE_NPM_VERSION="$bridge_npm_version" \
-  bash eng/pack.sh "$release_version" "$release_packages"
+bash eng/pack.sh "$release_version" "$release_packages"
 bash tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh "$release_version" "$release_packages"
 bash tests/Runic.Application.Bridge.AotSmoke/Test-PackageAot.sh "$release_version" "$release_packages"
 bash tests/Runic.Application.PackageConsumer/Test-HostileGenerator.sh "$release_version" "$release_packages"
