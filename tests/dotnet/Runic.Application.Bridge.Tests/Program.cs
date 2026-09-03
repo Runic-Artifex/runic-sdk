@@ -37,6 +37,7 @@ internal static class Program
             ("session shutdown owns operation cancellation without disposal races", OperationShutdownOwnership),
             ("the strict codec rejects unknown and oversized input", CodecLimits),
             ("generated contract readers reject unknown and duplicate fields", GeneratedStrictness),
+            ("optional conversions distinguish missing from explicit null", OptionalConversions),
             ("declared application errors cross the session as typed payloads", DeclaredApplicationError),
             ("generated contract identity and fingerprints are embedded", GeneratedMetadata),
         ];
@@ -55,6 +56,21 @@ internal static class Program
             }
         }
         return 0;
+    }
+
+    private static Task OptionalConversions()
+    {
+        BridgeOptional<string> missing = (string?)null;
+        True(!missing.HasValue);
+
+        BridgeOptional<string> explicitNull = new(null);
+        True(explicitNull.HasValue);
+        Equal<string?>(null, explicitNull.Value);
+
+        BridgeOptional<string> present = "value";
+        True(present.HasValue);
+        Equal("value", present.Value);
+        return Task.CompletedTask;
     }
 
     private static async Task SessionRoundTrip()

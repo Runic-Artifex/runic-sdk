@@ -41,8 +41,12 @@ public readonly struct BridgeOptional<T> : IEquatable<BridgeOptional<T>>
         ? HashCode.Combine(true, value)
         : 0;
 
-    /// <summary>Creates a present property value.</summary>
-    public static implicit operator BridgeOptional<T>(T? value) => new(value);
+    /// <summary>
+    /// Converts a value to an optional property. A <see langword="null"/> value
+    /// becomes a missing property; use the constructor to represent an explicit
+    /// wire <see langword="null"/>.
+    /// </summary>
+    public static implicit operator BridgeOptional<T>(T? value) => value is null ? default : new(value);
 
     /// <summary>Gets the present value or the default value when the property is missing.</summary>
     public static implicit operator T?(BridgeOptional<T> optional) => optional.GetValueOrDefault();
