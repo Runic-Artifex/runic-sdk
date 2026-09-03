@@ -9,7 +9,7 @@ use the official Vite DevTools dock when you want it.
 ## Install
 
 ```sh
-npm install -D @runic-artifex/vite-plugin-runic@preview vite@^8
+npm install -D @runic-artifex/vite-plugin-runic@preview @runic-artifex/application-bridge-tooling@preview vite@^8
 ```
 
 The package is a public npm preview. The `preview` tag selects the current
@@ -42,6 +42,8 @@ export default defineConfig({
   plugins: [
     DevTools({ visibility: "passive" }),
     runic({
+      desktop: true,
+      applicationBridge: true,
       contract: {
         identity: "example.desktop-app",
         version: "1",
@@ -85,6 +87,7 @@ project declaration file such as `src/vite-env.d.ts`:
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `contract` | none | Initial diagnostic contract metadata: `identity`, `version`, and `fingerprint`. |
+| `applicationBridge` | `false` | Generates Bridge IR and the fingerprint facade at startup/build and watches imported contract modules. Pass `{ source, ir, facade }` for non-conventional paths. |
 | `devtools` | `"auto"` | Enables DevTools injection when `@vitejs/devtools` is installed. Set `false` to disable it; `true` also requests it when available. |
 | `devtoolsVisibility` | `"passive"` | DevTools injector visibility: `"normal"`, `"passive"`, or `"hidden"`. |
 | `maxTimelineEntries` | `200` | Maximum retained diagnostic timeline entries (clamped to `1`–`500`). |
@@ -138,6 +141,10 @@ runic.diagnostics.report({
 The DevTools client is injected only for `vite serve` when DevTools is
 available. It is not included in production builds. The virtual-client imports
 remain safe in production: without Vite HMR, reporting functions are no-ops.
+
+With `applicationBridge` enabled, generation failures fail production builds and
+appear in the development overlay while the last good IR and facade remain in
+place. A successful wire change triggers a full reload instead of ordinary HMR.
 
 Runic Desktop can coexist with Vite's own development server and HMR socket:
 

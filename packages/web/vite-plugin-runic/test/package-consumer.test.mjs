@@ -36,7 +36,7 @@ test("packed package is source-free and works from an isolated consumer", async 
       "utf8",
     );
     await execFile("npm", [
-      "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false",
+      "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=peer",
     ], { cwd: root });
     await writeFile(join(root, "index.html"), '<script type="module" src="/entry.js"></script>', "utf8");
     await writeFile(

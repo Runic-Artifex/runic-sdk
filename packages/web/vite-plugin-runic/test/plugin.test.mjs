@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { DevTools } from "@vitejs/devtools";
@@ -173,6 +174,108 @@ test("runs the Vite, HMR, and SSR fixtures without browser-only state", async ()
     assert.equal(await ssrRevisionAfterUpdate(server), 2);
   } finally {
     await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("generates bridge IR on startup and regenerates imported schema changes with a full reload", async () => {
+  const root = await fixtureRoot();
+  await linkBridgeFixtureDependencies(root);
+  await writeFile(join(root, "src", "snapshot.ts"), `
+import { Schema } from "effect";
+export const Snapshot = Schema.Struct({ value: Schema.Int });
+`, "utf8");
+  await writeFile(join(root, "src", "application.bridge.ts"), `
+import { Schema } from "effect";
+import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
+import { Snapshot } from "./snapshot.js";
+const Initialize = Schema.TaggedStruct("InitializeApplication", {});
+const Initialized = Schema.TaggedStruct("ApplicationInitialized", { snapshot: Snapshot });
+export default defineApplicationBridgeContract({
+  protocol: { identity: "runic.test", version: 1 },
+  csharp: { namespace: "Runic.Test", contractName: "Test" },
+  snapshot: Snapshot,
+  commands: [bridge.command(Initialize, { receipt: Initialized, advancesRevision: true })],
+  events: [], errors: [], initialize: { _tag: "InitializeApplication" }
+});
+`, "utf8");
+  const plugin = runic({
+    devtools: false,
+    applicationBridge: { ir: "Contract/bridge.ir.json" },
+  });
+  const messages = [];
+  const server = await createServer({
+    root,
+    configFile: false,
+    logLevel: "silent",
+    plugins: [plugin],
+    server: { host: "127.0.0.1", port: 0, strictPort: false },
+  });
+  try {
+    server.ws.on = server.ws.on.bind(server.ws);
+    const send = server.ws.send.bind(server.ws);
+    server.ws.send = (message) => { messages.push(message); return send(message); };
+    await server.listen();
+    const irPath = join(root, "Contract", "bridge.ir.json");
+    const facadePath = join(root, "src", "application.bridge.generated.ts");
+    const first = JSON.parse(await readFile(irPath, "utf8"));
+    assert.equal(first.wire.protocol.identity, "runic.test");
+    assert.doesNotMatch(await readFile(facadePath, "utf8"), /Schema\./);
+    const changed = new Promise((resolve) => server.watcher.once("change", resolve));
+    await writeFile(join(root, "src", "snapshot.ts"), `
+import { Schema } from "effect";
+export const Snapshot = Schema.Struct({ value: Schema.Int, label: Schema.String });
+`, "utf8");
+    await changed;
+    for (let attempt = 0; attempt < 40 && !messages.some((message) => message.type === "full-reload"); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const second = JSON.parse(await readFile(irPath, "utf8"));
+    assert.notEqual(second.fingerprint.value, first.fingerprint.value);
+    assert.equal(messages.some((message) => message.type === "full-reload"), true);
+  } finally {
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("waits for the matching managed-host fingerprint before reloading", async () => {
+  const root = await fixtureRoot();
+  const readyPath = join(root, "host-ready.fingerprint");
+  const previousReadyPath = process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
+  process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY = readyPath;
+  try {
+    await linkBridgeFixtureDependencies(root);
+    const sourcePath = join(root, "src", "application.bridge.ts");
+    await writeFile(sourcePath, bridgeFixtureSource("Schema.Struct({ value: Schema.Int })"), "utf8");
+    const messages = [];
+    const plugin = runic({ devtools: false, applicationBridge: { ir: "Contract/bridge.ir.json" } });
+    plugin.configResolved({ command: "serve", mode: "development", root });
+    await plugin.configureServer({
+      ws: { on: () => undefined, send: (message) => messages.push(message) },
+      watcher: { add: () => undefined },
+      middlewares: { use: () => undefined },
+      httpServer: undefined,
+    });
+    const irPath = join(root, "Contract", "bridge.ir.json");
+    const first = JSON.parse(await readFile(irPath, "utf8"));
+    await writeFile(readyPath, `${first.fingerprint.value}\n`, "utf8");
+    await writeFile(sourcePath, bridgeFixtureSource("Schema.Struct({ value: Schema.Int, label: Schema.String })"), "utf8");
+    const update = plugin.handleHotUpdate({ file: sourcePath });
+    let second;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      second = JSON.parse(await readFile(irPath, "utf8"));
+      if (second.fingerprint.value !== first.fingerprint.value) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.notEqual(second.fingerprint.value, first.fingerprint.value);
+    assert.equal(messages.some((message) => message.type === "full-reload"), false);
+    await writeFile(readyPath, `${second.fingerprint.value}\n`, "utf8");
+    await update;
+    assert.equal(messages.some((message) => message.type === "full-reload"), true);
+  } finally {
+    if (previousReadyPath === undefined) delete process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
+    else process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY = previousReadyPath;
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -362,6 +465,23 @@ test("accepts bridge, asset, and translation summaries through one bounded timel
   );
 });
 
+function bridgeFixtureSource(snapshot) {
+  return `
+import { Schema } from "effect";
+import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
+const Snapshot = ${snapshot}.annotations({ identifier: "Snapshot" });
+const Initialize = Schema.TaggedStruct("InitializeApplication", {});
+const Initialized = Schema.TaggedStruct("ApplicationInitialized", { snapshot: Snapshot });
+export default defineApplicationBridgeContract({
+  protocol: { identity: "runic.test", version: 1 },
+  csharp: { namespace: "Runic.Test", contractName: "Test" },
+  snapshot: Snapshot,
+  commands: [bridge.command(Initialize, { receipt: Initialized })],
+  events: [], errors: [], initialize: { _tag: "InitializeApplication" }
+});
+`;
+}
+
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-fixture-"));
   await cp(join(process.cwd(), "test", "fixtures", "vite"), root, { recursive: true });
@@ -369,6 +489,35 @@ async function fixtureRoot() {
   await mkdir(packageDirectory, { recursive: true });
   await symlink(process.cwd(), join(packageDirectory, "vite-plugin-runic"), "dir");
   return root;
+}
+
+async function linkBridgeFixtureDependencies(root) {
+  const toolingRequire = createRequire(import.meta.resolve("@runic-artifex/application-bridge-tooling"));
+  const runicPackages = join(root, "node_modules", "@runic-artifex");
+  await symlink(
+    await installedPackageRoot(toolingRequire, "@runic-artifex/application-bridge"),
+    join(runicPackages, "application-bridge"),
+    "dir",
+  );
+  await symlink(
+    await installedPackageRoot(toolingRequire, "effect"),
+    join(root, "node_modules", "effect"),
+    "dir",
+  );
+}
+
+async function installedPackageRoot(require, packageName) {
+  let directory = dirname(require.resolve(packageName));
+  while (dirname(directory) !== directory) {
+    try {
+      const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
+      if (manifest.name === packageName) return directory;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    directory = dirname(directory);
+  }
+  throw new Error(`Could not locate installed package root for ${packageName}.`);
 }
 
 function serverPort(server) {
