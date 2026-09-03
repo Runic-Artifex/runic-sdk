@@ -9,6 +9,7 @@ export default defineConfig({
     runic({
       contract: { identity: "runic.artifex.counter", version: "1" },
       desktop: true,
+      applicationBridge: true,
     }),
     svelte(),
   ],

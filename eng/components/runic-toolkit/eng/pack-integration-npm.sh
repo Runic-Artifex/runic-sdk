@@ -40,7 +40,37 @@ mkdir -p "$output_directory"
 )
 (
   cd "$vite_worktree"
-  bun install --frozen-lockfile
+  original_manifest="$(mktemp)"
+  cp package.json "$original_manifest"
+  trap 'cp "$original_manifest" package.json; rm -f "$original_manifest"' EXIT
+  APPLICATION_BRIDGE_TOOLING_ARCHIVE="$package_directory/runic-artifex-application-bridge-tooling-$package_version.tgz" \
+  APPLICATION_BRIDGE_ARCHIVE="$package_directory/runic-artifex-application-bridge-$package_version.tgz" \
+    node --input-type=module --eval '
+      import { readFileSync, writeFileSync } from "node:fs";
+      const path = "package.json";
+      const manifest = JSON.parse(readFileSync(path, "utf8"));
+      manifest.devDependencies["@runic-artifex/application-bridge"] =
+        `file:${process.env.APPLICATION_BRIDGE_ARCHIVE}`;
+      manifest.devDependencies["@runic-artifex/application-bridge-tooling"] =
+        `file:${process.env.APPLICATION_BRIDGE_TOOLING_ARCHIVE}`;
+      manifest.overrides = {
+        ...(manifest.overrides ?? {}),
+        "@runic-artifex/application-bridge": `file:${process.env.APPLICATION_BRIDGE_ARCHIVE}`,
+        "@runic-artifex/application-bridge-tooling": `file:${process.env.APPLICATION_BRIDGE_TOOLING_ARCHIVE}`,
+      };
+      writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+    '
+  bun install --ignore-scripts
   bun run build
+  cp "$original_manifest" package.json
+  APPLICATION_BRIDGE_TOOLING_VERSION="$package_version" \
+    node --input-type=module --eval '
+      import { readFileSync, writeFileSync } from "node:fs";
+      const path = "package.json";
+      const manifest = JSON.parse(readFileSync(path, "utf8"));
+      manifest.peerDependencies["@runic-artifex/application-bridge-tooling"] =
+        process.env.APPLICATION_BRIDGE_TOOLING_VERSION;
+      writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+    '
   bun pm pack --ignore-scripts --destination "$output_directory"
 )

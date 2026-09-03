@@ -46,7 +46,7 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValueProvider<ImmutableArray<AdditionalText>> bridgeManifests = context.AdditionalTextsProvider
-            .Where(static file => file.Path.EndsWith("bridge.manifest.json", StringComparison.OrdinalIgnoreCase))
+            .Where(static file => file.Path.EndsWith("bridge.ir.json", StringComparison.OrdinalIgnoreCase))
             .Collect();
         context.RegisterSourceOutput(context.CompilationProvider.Combine(bridgeManifests), static (productionContext, input) =>
         {
@@ -113,7 +113,7 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
         ImmutableArray<AttributeData> artifactAttributes = attributes
             .Where(static attribute => string.Equals(attribute.AttributeClass?.ToDisplayString(), ArtifactAttribute, StringComparison.Ordinal))
             .ToImmutableArray();
-        ImmutableArray<(string Kind, string Identity, string Fingerprint)> artifacts = artifactAttributes
+        ImmutableArray<(string Kind, string Identity, string Fingerprint)> declaredArtifacts = artifactAttributes
             .Select(static attribute => (Argument(attribute, 0), Argument(attribute, 1), Argument(attribute, 2)))
             .Where(static value => !string.IsNullOrWhiteSpace(value.Item1) && !string.IsNullOrWhiteSpace(value.Item2) && !string.IsNullOrWhiteSpace(value.Item3))
             .Select(static value => (value.Item1!, value.Item2!, value.Item3!))
@@ -122,7 +122,17 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
             .ThenBy(static value => value.Item3, StringComparer.Ordinal)
             .Distinct()
             .ToImmutableArray();
-        if (capabilities.Length != capabilityAttributes.Length || artifacts.Length != artifactAttributes.Length)
+        ImmutableArray<(string Kind, string Identity, string Fingerprint)> artifacts = declaredArtifacts
+            .Concat(bridgeContracts.Select(static contract => (
+                "bridge-contract",
+                contract.Identity,
+                contract.Fingerprint)))
+            .Distinct()
+            .OrderBy(static value => value.Item1, StringComparer.Ordinal)
+            .ThenBy(static value => value.Item2, StringComparer.Ordinal)
+            .ThenBy(static value => value.Item3, StringComparer.Ordinal)
+            .ToImmutableArray();
+        if (capabilities.Length != capabilityAttributes.Length || declaredArtifacts.Length != artifactAttributes.Length)
         {
             context.ReportDiagnostic(Diagnostic.Create(InvalidDeclaration, AttributeLocation(manifest), "Capabilities and artifacts must be non-blank and declared at most once."));
             return;
@@ -371,21 +381,27 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
             JsonElement csharp = document.RootElement.GetProperty("csharp");
             string? typeNamespace = csharp.GetProperty("namespace").GetString();
             string? name = csharp.GetProperty("contractName").GetString();
-            return !string.IsNullOrWhiteSpace(typeNamespace) && !string.IsNullOrWhiteSpace(name)
-                ? [new(typeNamespace, name)]
+            JsonElement wire = document.RootElement.GetProperty("wire");
+            JsonElement protocol = wire.GetProperty("protocol");
+            string? identity = protocol.GetProperty("identity").GetString();
+            int version = protocol.GetProperty("version").GetInt32();
+            string? fingerprint = document.RootElement.GetProperty("fingerprint").GetProperty("value").GetString();
+            return !string.IsNullOrWhiteSpace(typeNamespace) && !string.IsNullOrWhiteSpace(name) &&
+                   !string.IsNullOrWhiteSpace(identity) && !string.IsNullOrWhiteSpace(fingerprint)
+                ? [new(typeNamespace, name, $"{identity}/{version}", fingerprint)]
                 : [];
         }
         catch (JsonException)
         {
-            // The Bridge generator owns bridge-manifest diagnostics.
+            // The Bridge generator owns Bridge IR diagnostics.
         }
         catch (KeyNotFoundException)
         {
-            // The Bridge generator owns bridge-manifest diagnostics.
+            // The Bridge generator owns Bridge IR diagnostics.
         }
         catch (InvalidOperationException)
         {
-            // The Bridge generator owns bridge-manifest diagnostics.
+            // The Bridge generator owns Bridge IR diagnostics.
         }
         return [];
     }
@@ -462,7 +478,7 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
         }
     }
 
-    private sealed record BridgeContract(string Namespace, string Name);
+    private sealed record BridgeContract(string Namespace, string Name, string Identity, string Fingerprint);
 
     private static string JsonLiteral(string value) => "\"" + System.Text.Json.JsonEncodedText.Encode(value).ToString() + "\"";
 }

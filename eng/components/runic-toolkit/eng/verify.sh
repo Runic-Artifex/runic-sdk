@@ -6,6 +6,8 @@ cd "$repository_root"
 
 configuration="Release"
 registry_dependencies="${RUNIC_USE_REGISTRY_DEPENDENCIES:-0}"
+source_frontend_integrations="${RUNIC_SOURCE_FRONTEND_INTEGRATIONS:-0}"
+npm_registry_target="${RUNIC_NPM_REGISTRY_TARGET:-github}"
 verification_root="$(mktemp -d /tmp/runic-application-verification.XXXXXXXXXX)"
 verification_feed="$verification_root/feed"
 verification_nuget="$verification_root/nuget"
@@ -101,23 +103,32 @@ bash tests/RunicToolkit.PackageCanary/Test-ToolMigration.sh "$tool_native_publis
 # local bridge and Angular archives, and exact official Desktop/Svelte/Vite archives.
 release_train_version="$(node eng/compatibility-set-value.mjs release-train-version)"
 release_version="${RUNIC_PACKAGE_VERSION:-$release_train_version}"
-bridge_npm_version="$release_version"
-svelte_release_version="${RUNIC_SVELTE_NPM_VERSION:-$release_train_version}"
-vite_release_version="${RUNIC_VITE_NPM_VERSION:-$release_train_version}"
-desktop_release_version="${RUNIC_DESKTOP_NPM_VERSION:-$release_train_version}"
+source eng/frontend-package-versions.sh
+runic_resolve_frontend_package_versions \
+  "$release_train_version" \
+  "$release_version" \
+  "$source_frontend_integrations" \
+  "${RUNIC_SVELTE_NPM_VERSION:-}" \
+  "${RUNIC_VITE_NPM_VERSION:-}" \
+  "${RUNIC_DESKTOP_NPM_VERSION:-}"
 release_packages="${RUNIC_PACKAGE_OUTPUT:-$verification_root/packages}"
-RUNIC_SVELTE_NPM_VERSION="$svelte_release_version" \
-RUNIC_VITE_NPM_VERSION="$vite_release_version" \
-APPLICATION_BRIDGE_NPM_VERSION="$bridge_npm_version" \
-  bash eng/pack.sh "$release_version" "$release_packages"
+bash eng/pack.sh "$release_version" "$release_packages"
 bash tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh "$release_version" "$release_packages"
 bash tests/Runic.Application.Bridge.AotSmoke/Test-PackageAot.sh "$release_version" "$release_packages"
 bash tests/Runic.Application.PackageConsumer/Test-HostileGenerator.sh "$release_version" "$release_packages"
-node eng/pack-npm.mjs "$bridge_npm_version" "$release_packages" github
+node eng/pack-npm.mjs "$bridge_npm_version" "$release_packages" "$npm_registry_target"
 node eng/verify-npm-artifacts.mjs "$bridge_npm_version" "$release_packages"
 mkdir -p "$integration_packages"
-if [[ "$registry_dependencies" == "1" ]]; then
+if [[ "$registry_dependencies" == "1" && "$source_frontend_integrations" != "1" ]]; then
   node eng/download-github-npm.mjs dependencies "$integration_packages"
+elif [[ "$registry_dependencies" == "1" ]]; then
+  bash eng/pack-integration-npm.sh \
+    "$bridge_npm_version" \
+    "$release_packages" \
+    "$integration_packages" \
+    "$repository_root/../runic-desktop" \
+    "$repository_root/../runic-svelte" \
+    "$repository_root/../runic-vite"
 else
   git -C "$repository_root/../runic-svelte" worktree add --detach "$svelte_worktree" "$svelte_revision"
   git -C "$repository_root/../runic-vite" worktree add --detach "$vite_worktree" "$vite_revision"
@@ -143,6 +154,7 @@ assert_npm_archive() {
   ' "$archive" "$expected_name"
 }
 assert_npm_archive "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" "@runic-artifex/application-bridge"
+assert_npm_archive "$release_packages/runic-artifex-application-bridge-tooling-$bridge_npm_version.tgz" "@runic-artifex/application-bridge-tooling"
 assert_npm_archive "$release_packages/runic-artifex-angular-$bridge_npm_version.tgz" "@runic-artifex/angular"
 assert_npm_archive "$integration_packages/runic-artifex-svelte-$svelte_release_version.tgz" "@runic-artifex/svelte"
 assert_npm_archive "$integration_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz" "@runic-artifex/vite-plugin-runic"
@@ -166,6 +178,7 @@ bash tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh \
   "$release_version" \
   "$release_packages" \
   "$release_packages/runic-artifex-application-bridge-$bridge_npm_version.tgz" \
+  "$release_packages/runic-artifex-application-bridge-tooling-$bridge_npm_version.tgz" \
   "$release_packages/runic-artifex-angular-$bridge_npm_version.tgz" \
   "$integration_packages/runic-artifex-svelte-$svelte_release_version.tgz" \
   "$integration_packages/runic-artifex-vite-plugin-runic-$vite_release_version.tgz" \

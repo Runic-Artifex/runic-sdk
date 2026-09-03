@@ -4,6 +4,9 @@
 - Updated: 2026-08-07
 - Tracks: [issue #5](https://github.com/Runic-Artifex/runic-toolkit/issues/5)
 
+The JSON Schema and bridge-manifest projection in this decision is superseded
+by [ADR 0019](0019-runic-bridge-ir-contract-toolchain.md).
+
 ## Context
 
 The prerelease MVVM bridge proved bounded binary CS-WebUI transport,

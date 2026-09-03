@@ -33,9 +33,11 @@ internal static class Program
             ("transport-neutral conformance fixtures carry paired reconnect epochs", ConformanceFixtures),
             ("the duplicate-command ledger remains bounded at capacity", CommandLedgerCapacity),
             ("operations publish progress and support explicit cancellation", OperationLifecycle),
+            ("non-cancellable operations reject explicit cancellation", NonCancellableOperation),
             ("session shutdown owns operation cancellation without disposal races", OperationShutdownOwnership),
             ("the strict codec rejects unknown and oversized input", CodecLimits),
             ("generated contract readers reject unknown and duplicate fields", GeneratedStrictness),
+            ("declared application errors cross the session as typed payloads", DeclaredApplicationError),
             ("generated contract identity and fingerprints are embedded", GeneratedMetadata),
         ];
         foreach ((string name, Func<Task> run) in tests)
@@ -104,6 +106,21 @@ internal static class Program
             0,
             """{"_tag":"Navigate","target":"Destination","expectedRevision":0}"""));
         Equal("CommandRejected", wrongSession.Payload.GetProperty("_tag").GetString());
+    }
+
+    private static async Task DeclaredApplicationError()
+    {
+        await using var session = new ApplicationBridgeSession(new FailingDispatcher());
+        BridgeHostEnvelope response = await session.DispatchAsync(Envelope(
+            "initialize",
+            Guid.Parse("00000000-0000-4000-8000-000000000099"),
+            null,
+            null,
+            """{"_tag":"InitializeApplication"}""")).ConfigureAwait(false);
+        Equal("error", response.Kind);
+        Equal(0L, response.Sequence);
+        Equal("QuotaExceeded", response.Payload.GetProperty("_tag").GetString());
+        Equal(2L, response.Payload.GetProperty("limit").GetInt64());
     }
 
     private static async Task AtomicRevisionAdvance()
@@ -420,6 +437,36 @@ internal static class Program
         }
     }
 
+    private static async Task NonCancellableOperation()
+    {
+        var dispatcher = new NonCancellableOperationDispatcher();
+        await using var session = new ApplicationBridgeSession(dispatcher);
+        _ = await session.DispatchAsync(Envelope(
+            "initialize",
+            Guid.Parse("00000000-0000-4000-8000-000000000024"),
+            null,
+            null,
+            """{"_tag":"InitializeApplication"}"""));
+        BridgeHostEnvelope started = await session.DispatchAsync(Envelope(
+            "dispatch",
+            Guid.Parse("00000000-0000-4000-8000-000000000025"),
+            session.Id.Value,
+            session.Revision,
+            """{"_tag":"StartBackgroundWork"}"""));
+        await dispatcher.Started.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Guid operationId = started.OperationId!.Value;
+
+        BridgeHostEnvelope cancelled = await session.DispatchAsync(Envelope(
+            "cancelOperation",
+            Guid.Parse("00000000-0000-4000-8000-000000000026"),
+            session.Id.Value,
+            session.Revision,
+            $$"""{"operationId":"{{operationId}}"}"""));
+
+        False(cancelled.Payload.GetProperty("accepted").GetBoolean());
+        False(dispatcher.OperationToken.IsCancellationRequested);
+    }
+
     private static async Task CommandLedgerCapacity()
     {
         var limits = new BridgeLimits { MaxPendingCommands = 1, MaxCommandLedgerEntries = 2 };
@@ -451,15 +498,15 @@ internal static class Program
 
     private static Task CodecLimits()
     {
-        byte[] valid = Encoding.UTF8.GetBytes("""{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{"_tag":"InitializeApplication"}}""");
+        byte[] valid = Frame("""{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"FINGERPRINT","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{"_tag":"InitializeApplication"}}""");
         True(ApplicationBridgeCodec.TryDecodeClient(valid, out BridgeClientEnvelope? decoded));
         Equal("initialize", decoded!.Kind);
-        byte[] unknown = Encoding.UTF8.GetBytes("""{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{},"rawFrame":"secret"}""");
+        byte[] unknown = Frame("""{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"FINGERPRINT","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{},"rawFrame":"secret"}""");
         False(ApplicationBridgeCodec.TryDecodeClient(unknown, out _));
-        byte[] duplicate = Encoding.UTF8.GetBytes("""{"protocol":"runic.artifex.setup","protocol":"attacker","version":1,"contractFingerprint":"a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{}}""");
+        byte[] duplicate = Frame("""{"protocol":"runic.artifex.setup","protocol":"attacker","version":1,"contractFingerprint":"FINGERPRINT","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{}}""");
         False(ApplicationBridgeCodec.TryDecodeClient(duplicate, out _));
-        byte[] longString = Encoding.UTF8.GetBytes(
-            """{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{"value":"VALUE"}}"""
+        byte[] longString = Frame(
+            """{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"FINGERPRINT","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{"value":"VALUE"}}"""
                 .Replace("VALUE", new string('x', 65), StringComparison.Ordinal));
         False(ApplicationBridgeCodec.TryDecodeClient(longString, out _, new BridgeLimits { MaxStringBytes = 64 }));
         False(ApplicationBridgeCodec.TryDecodeClient(new byte[2048], out _, new BridgeLimits { MaxFrameBytes = 1024 }));
@@ -469,7 +516,7 @@ internal static class Program
         {
             Protocol = "runic.artifex.setup",
             Version = 1,
-            ContractFingerprint = "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725",
+            ContractFingerprint = SetupBridgeContract.Fingerprint,
             ConnectionEpoch = 0,
             Kind = "event",
             SessionId = Guid.Parse("11111111-1111-4111-8111-111111111111"),
@@ -500,6 +547,13 @@ internal static class Program
             null,
             """{"_tag":"InitializeApplication","_tag":"InitializeApplication"}"""));
         Equal("CommandRejected", duplicate.Payload.GetProperty("_tag").GetString());
+        BridgeHostEnvelope wrongInitializeCommand = await session.DispatchAsync(Envelope(
+            "initialize",
+            Guid.Parse("00000000-0000-4000-8000-000000000043"),
+            null,
+            null,
+            """{"_tag":"Navigate","target":"Destination","expectedRevision":0}"""));
+        Equal("CommandRejected", wrongInitializeCommand.Payload.GetProperty("_tag").GetString());
     }
 
     private static Task GeneratedMetadata()
@@ -521,7 +575,7 @@ internal static class Program
         {
             Protocol = "runic.artifex.setup",
             Version = 1,
-            ContractFingerprint = "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725",
+            ContractFingerprint = SetupBridgeContract.Fingerprint,
             ConnectionEpoch = connectionEpoch,
             Kind = kind,
             CommandId = commandId,
@@ -537,6 +591,8 @@ internal static class Program
     }
     private static void True(bool value) { if (!value) throw new InvalidOperationException("Expected true."); }
     private static void False(bool value) { if (value) throw new InvalidOperationException("Expected false."); }
+    private static byte[] Frame(string json) => Encoding.UTF8.GetBytes(
+        json.Replace("FINGERPRINT", SetupBridgeContract.Fingerprint, StringComparison.Ordinal));
 }
 
 internal sealed class BlockingMutationDispatcher : IApplicationBridgeDispatcher
@@ -546,7 +602,7 @@ internal sealed class BlockingMutationDispatcher : IApplicationBridgeDispatcher
     internal int Mutations { get; private set; }
     public string ProtocolIdentity => "runic.artifex.setup";
     public int ProtocolVersion => 1;
-    public string ManifestFingerprint => "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725";
+    public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
 
     public async ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
     {
@@ -564,11 +620,57 @@ internal sealed class BlockingMutationDispatcher : IApplicationBridgeDispatcher
     }
 }
 
+internal sealed class FailingDispatcher : IApplicationBridgeDispatcher
+{
+    public string ProtocolIdentity => "runic.artifex.setup";
+    public int ProtocolVersion => 1;
+    public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
+
+    public ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken) =>
+        throw new BridgeCommandFailureException(JsonDocument.Parse(
+            """{"_tag":"QuotaExceeded","limit":2}""").RootElement.Clone());
+
+    public JsonElement ValidateError(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object ||
+            payload.GetRawText() != """{"_tag":"QuotaExceeded","limit":2}""")
+        {
+            throw new JsonException("Invalid declared error.");
+        }
+        return payload.Clone();
+    }
+}
+
+internal sealed class NonCancellableOperationDispatcher : IApplicationBridgeDispatcher
+{
+    internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal CancellationToken OperationToken { get; private set; }
+    public string ProtocolIdentity => "runic.artifex.setup";
+    public int ProtocolVersion => 1;
+    public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
+
+    public ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
+    {
+        if (command.GetProperty("_tag").GetString() == "InitializeApplication")
+            return ValueTask.FromResult(new BridgeDispatchResult(JsonDocument.Parse("""{"snapshot":{"revision":0,"viewId":"Welcome"}}""").RootElement.Clone()));
+        BridgeOperationId operation = context.Operations.Start(async (_, token) =>
+        {
+            OperationToken = token;
+            Started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token).ConfigureAwait(false);
+        }, cancellationToken);
+        return ValueTask.FromResult(new BridgeDispatchResult(
+            JsonDocument.Parse("""{"_tag":"BackgroundWorkStarted"}""").RootElement.Clone(),
+            OperationId: operation,
+            Cancellable: false));
+    }
+}
+
 internal sealed class DisposedPayloadDispatcher : IApplicationBridgeDispatcher
 {
     public string ProtocolIdentity => "runic.artifex.setup";
     public int ProtocolVersion => 1;
-    public string ManifestFingerprint => "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725";
+    public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
 
     public async ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
     {
@@ -584,7 +686,7 @@ internal sealed class InitializeEventDispatcher : IApplicationBridgeDispatcher
 {
     public string ProtocolIdentity => "runic.artifex.setup";
     public int ProtocolVersion => 1;
-    public string ManifestFingerprint => "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725";
+    public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
     public async ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
     {
         await context.Events.PublishAsync(new(JsonDocument.Parse("""{"_tag":"InitializedEvent"}""").RootElement.Clone()), cancellationToken);

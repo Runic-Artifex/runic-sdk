@@ -16,6 +16,7 @@
     <Project Path="tests/Runic.Application.Desktop.Tests/Runic.Application.Desktop.Tests.csproj" />
     <Project Path="tests/Runic.Application.Bridge.AotSmoke/Runic.Application.Bridge.AotSmoke.csproj" />
     <Project Path="tests/Runic.Application.Bridge.Tests/Runic.Application.Bridge.Tests.csproj" />
+    <Project Path="tests/Runic.Application.Bridge.PortableCore.Tests/Runic.Application.Bridge.PortableCore.Tests.csproj" />
     <Project Path="tests/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

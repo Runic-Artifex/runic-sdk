@@ -41,26 +41,28 @@ export interface ApplicationBridgeDiagnostic {
 }
 
 /** Effect programs backed by the controller's single owned ManagedRuntime. */
-export interface ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot> {
-  readonly initialize: Effect.Effect<Snapshot, BridgeError, ApplicationBridgeService>;
+export type ApplicationBridgeFailure<DomainError = never> = BridgeError | DomainError;
+
+export interface ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot, Failure = BridgeError> {
+  readonly initialize: Effect.Effect<Snapshot, Failure, ApplicationBridgeService>;
   readonly dispatch: (
     command: Command,
-  ) => Effect.Effect<Receipt, BridgeError, ApplicationBridgeService>;
+  ) => Effect.Effect<Receipt, Failure, ApplicationBridgeService>;
   readonly cancel: (
     operationId: string,
-  ) => Effect.Effect<void, BridgeError, ApplicationBridgeService>;
-  readonly reconnect: Effect.Effect<Snapshot, BridgeError, ApplicationBridgeService>;
-  readonly uiReady: Effect.Effect<void, BridgeError, ApplicationBridgeService>;
-  readonly uiRendered: Effect.Effect<void, BridgeError, ApplicationBridgeService>;
-  readonly events: Stream.Stream<HostEvent, BridgeError, ApplicationBridgeService>;
+  ) => Effect.Effect<void, Failure, ApplicationBridgeService>;
+  readonly reconnect: Effect.Effect<Snapshot, Failure, ApplicationBridgeService>;
+  readonly uiReady: Effect.Effect<void, Failure, ApplicationBridgeService>;
+  readonly uiRendered: Effect.Effect<void, Failure, ApplicationBridgeService>;
+  readonly events: Stream.Stream<HostEvent, Failure, ApplicationBridgeService>;
 }
 
 /**
  * Promise convenience methods plus an opt-in Effect surface. All programs run
  * in the same ManagedRuntime; adapters must not construct a renderer runtime.
  */
-export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot> {
-  readonly effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot>;
+export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot, Failure = BridgeError> {
+  readonly effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot, Failure>;
   initialize(): Promise<Snapshot>;
   dispatch(command: Command): Promise<Receipt>;
   cancel(operationId: string): Promise<void>;
@@ -69,7 +71,7 @@ export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapsh
   uiRendered(): Promise<void>;
   subscribe(
     onEvent: (event: HostEvent) => void,
-    onError?: (error: BridgeError) => void,
+    onError?: (error: Failure) => void,
   ): () => void;
   run<A, E>(program: Effect.Effect<A, E, ApplicationBridgeService>): Promise<A>;
   runExit<A, E>(
@@ -83,10 +85,10 @@ export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapsh
   dispose(): Promise<void>;
 }
 
-interface Pending {
+interface Pending<Failure> {
   readonly kind: "initialize" | "dispatch" | "cancel" | "uiReady" | "uiRendered";
   readonly resolve: (value: unknown) => void;
-  readonly reject: (error: BridgeError) => void;
+  readonly reject: (error: Failure) => void;
   readonly connectionEpoch: number;
 }
 
@@ -104,11 +106,33 @@ const UiReadyReceiptSchema = Schema.TaggedStruct("UiReadyAccepted", {});
 const UiRenderedReceiptSchema = Schema.TaggedStruct("UiRenderedAccepted", {});
 
 /** Transport-neutral Application Bridge layer over any structural FrameChannel. */
-export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
-  contract: ApplicationContract<Command, Receipt, HostEvent, Snapshot>,
+export function ApplicationBridgeLive<
+  Command,
+  Receipt,
+  HostEvent,
+  Snapshot,
+  DomainError = never,
+  CommandEncoded = unknown,
+  ReceiptEncoded = unknown,
+  HostEventEncoded = unknown,
+  SnapshotEncoded = unknown,
+  FailureEncoded = unknown,
+>(
+  contract: ApplicationContract<
+    Command,
+    Receipt,
+    HostEvent,
+    Snapshot,
+    ApplicationBridgeFailure<DomainError>,
+    CommandEncoded,
+    ReceiptEncoded,
+    HostEventEncoded,
+    SnapshotEncoded,
+    FailureEncoded
+  >,
   channel: FrameChannel,
   options: ApplicationBridgeOptions = {},
-): Layer.Layer<ApplicationBridgeService> {
+): Layer.Layer<ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, ApplicationBridgeFailure<DomainError>>> {
   return Layer.scoped(
     ApplicationBridge,
     Effect.gen(function*() {
@@ -118,9 +142,9 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
       const maxBufferedEvents = positiveInteger(options.maxBufferedEvents ?? 1_024, "maxBufferedEvents");
       const maxBatchFrames = positiveInteger(options.maxBatchFrames ?? 4_096, "maxBatchFrames");
       const events = yield* PubSub.dropping<HostEvent>(maxBufferedEvents);
-      const failures = yield* PubSub.unbounded<BridgeError>();
+      const failures = yield* PubSub.unbounded<ApplicationBridgeFailure<DomainError>>();
       const rawFrames = yield* PubSub.dropping<BufferedFrame>(maxBufferedFrames);
-      const pending = new Map<string, Pending>();
+      const pending = new Map<string, Pending<ApplicationBridgeFailure<DomainError>>>();
       const nextCommandId = options.commandIdFactory ?? (() => crypto.randomUUID());
       let sessionId: string | undefined;
       let revision = 0;
@@ -134,11 +158,11 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
       const runPromise = Runtime.runPromise(effectRuntime);
       const runSync = Runtime.runSync(effectRuntime);
 
-      const disposePending = (error: BridgeError): void => {
+      const disposePending = (error: ApplicationBridgeFailure<DomainError>): void => {
         for (const item of pending.values()) item.reject(error);
         pending.clear();
       };
-      const failAll = (error: BridgeError): Effect.Effect<void> => Effect.sync(() => disposePending(error)).pipe(
+      const failAll = (error: ApplicationBridgeFailure<DomainError>): Effect.Effect<void> => Effect.sync(() => disposePending(error)).pipe(
         Effect.zipRight(PubSub.publish(failures, error)),
         Effect.asVoid,
       );
@@ -287,7 +311,9 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
         }
         let json: unknown;
         try {
-          json = JSON.parse(decoder.decode(event.bytes));
+          const text = decoder.decode(event.bytes);
+          assertNoDuplicateJsonProperties(text);
+          json = JSON.parse(text);
         } catch {
           return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host frame was not valid UTF-8 JSON."));
         }
@@ -330,8 +356,8 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
         yield* Effect.promise(() => channel.close("Application Bridge runtime disposed"));
       }));
 
-      const request = <A>(kind: ClientEnvelope["kind"], payload: unknown, expectedRevision?: number): Effect.Effect<A, BridgeError> =>
-        Effect.async<A, BridgeError>((resume) => {
+      const request = <A>(kind: ClientEnvelope["kind"], payload: unknown, expectedRevision?: number): Effect.Effect<A, ApplicationBridgeFailure<DomainError>> =>
+        Effect.async<A, ApplicationBridgeFailure<DomainError>>((resume) => {
           if (stopped) {
             resume(Effect.fail(bridgeError("TransportClosed", "The Application Bridge runtime is disposed.")));
             return;
@@ -354,7 +380,7 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
           }
           let commandId = nextCommandId();
           while (pending.has(commandId)) commandId = crypto.randomUUID();
-          const item: Pending = {
+          const item: Pending<ApplicationBridgeFailure<DomainError>> = {
             kind: kind === "initialize"
               ? "initialize"
               : kind === "dispatch"
@@ -427,11 +453,11 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
       const initialize = connect().pipe(
         Effect.zipRight(request<Snapshot>("initialize", contract.initialize)),
       );
-      const reconnect: Effect.Effect<Snapshot, BridgeError> = Effect.async((resume) => {
+      const reconnect: Effect.Effect<Snapshot, ApplicationBridgeFailure<DomainError>> = Effect.async((resume) => {
         if (reconnectPromise !== undefined) {
           reconnectPromise.then(
             (snapshot) => resume(Effect.succeed(snapshot)),
-            (error: BridgeError) => resume(Effect.fail(error)),
+            (error: ApplicationBridgeFailure<DomainError>) => resume(Effect.fail(error)),
           );
           return;
         }
@@ -462,12 +488,12 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
         reconnectPromise = current;
         current.then(
           (snapshot) => resume(Effect.succeed(snapshot)),
-          (error: BridgeError) => resume(Effect.fail(error)),
+          (error: ApplicationBridgeFailure<DomainError>) => resume(Effect.fail(error)),
         ).finally(() => { reconnectPromise = undefined; });
       });
-      const service: ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot> = {
+      const service: ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, ApplicationBridgeFailure<DomainError>> = {
         initialize,
-        dispatch: (command) => Schema.encode(contract.command)(command).pipe(
+        dispatch: (command) => Schema.encode(contract.command, { onExcessProperty: "error" })(command).pipe(
           Effect.mapError(() => bridgeError("ProtocolDecodeError", "The command did not satisfy its Effect Schema.")),
           Effect.flatMap((payload) => request<Receipt>("dispatch", payload, revision)),
         ),
@@ -482,7 +508,7 @@ export function ApplicationBridgeLive<Command, Receipt, HostEvent, Snapshot>(
       };
       return service as ApplicationBridgeService;
     }),
-  );
+  ) as unknown as Layer.Layer<ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, ApplicationBridgeFailure<DomainError>>>;
 }
 
 function isReconnectable(channel: FrameChannel): channel is ReconnectableFrameChannel {
@@ -496,7 +522,84 @@ function positiveInteger(value: number, name: string): number {
   return value;
 }
 
-export function createApplicationBridgeRuntime(layer: Layer.Layer<ApplicationBridgeService>) {
+/** JSON.parse discards duplicate members before Effect can validate them. */
+function assertNoDuplicateJsonProperties(text: string): void {
+  let index = 0;
+  const whitespace = (): void => {
+    while (index < text.length && /\s/.test(text[index]!)) index++;
+  };
+  const string = (): string => {
+    const start = index;
+    if (text[index++] !== '"') throw new SyntaxError("Expected a JSON string.");
+    while (index < text.length) {
+      const character = text[index++]!;
+      if (character === '"') return JSON.parse(text.slice(start, index)) as string;
+      if (character === "\\") {
+        if (index >= text.length) throw new SyntaxError("Invalid JSON escape.");
+        index++;
+      }
+    }
+    throw new SyntaxError("Unterminated JSON string.");
+  };
+  const value = (): void => {
+    whitespace();
+    if (text[index] === '"') {
+      string();
+      return;
+    }
+    if (text[index] === "{") {
+      index++;
+      whitespace();
+      const names = new Set<string>();
+      if (text[index] === "}") {
+        index++;
+        return;
+      }
+      while (index < text.length) {
+        whitespace();
+        const name = string();
+        if (names.has(name)) throw new SyntaxError("A JSON property was duplicated.");
+        names.add(name);
+        whitespace();
+        if (text[index++] !== ":") throw new SyntaxError("Expected a JSON property value.");
+        value();
+        whitespace();
+        if (text[index] === "}") {
+          index++;
+          return;
+        }
+        if (text[index++] !== ",") throw new SyntaxError("Expected another JSON property.");
+      }
+      throw new SyntaxError("Unterminated JSON object.");
+    }
+    if (text[index] === "[") {
+      index++;
+      whitespace();
+      if (text[index] === "]") {
+        index++;
+        return;
+      }
+      while (index < text.length) {
+        value();
+        whitespace();
+        if (text[index] === "]") {
+          index++;
+          return;
+        }
+        if (text[index++] !== ",") throw new SyntaxError("Expected another JSON array item.");
+      }
+      throw new SyntaxError("Unterminated JSON array.");
+    }
+    const start = index;
+    while (index < text.length && !/[\s,}\]]/.test(text[index]!)) index++;
+    if (start === index) throw new SyntaxError("Expected a JSON value.");
+  };
+  value();
+  whitespace();
+  if (index !== text.length) throw new SyntaxError("Unexpected JSON content.");
+}
+
+export function createApplicationBridgeRuntime<Service>(layer: Layer.Layer<Service>) {
   const managed = ManagedRuntime.make(layer);
   return {
     runPromise: managed.runPromise.bind(managed),
@@ -510,17 +613,39 @@ export function createApplicationBridgeRuntime(layer: Layer.Layer<ApplicationBri
  * UI components call this controller; Effect services and fibers remain at the
  * composition boundary.
  */
-export function createApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>(
-  contract: ApplicationContract<Command, Receipt, HostEvent, Snapshot>,
-  layer: Layer.Layer<ApplicationBridgeService>,
-): ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot> {
+export function createApplicationBridgeController<
+  Command,
+  Receipt,
+  HostEvent,
+  Snapshot,
+  Failure = BridgeError,
+  CommandEncoded = unknown,
+  ReceiptEncoded = unknown,
+  HostEventEncoded = unknown,
+  SnapshotEncoded = unknown,
+  FailureEncoded = unknown,
+>(
+  contract: ApplicationContract<
+    Command,
+    Receipt,
+    HostEvent,
+    Snapshot,
+    Failure,
+    CommandEncoded,
+    ReceiptEncoded,
+    HostEventEncoded,
+    SnapshotEncoded,
+    FailureEncoded
+  >,
+  layer: Layer.Layer<ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, Failure>>,
+): ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot, Failure> {
   void contract;
-  const runtime = createApplicationBridgeRuntime(layer);
+  const runtime = createApplicationBridgeRuntime(layer as unknown as Layer.Layer<ApplicationBridgeService>);
   const service = Effect.map(
     ApplicationBridge,
-    (value) => value as ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot>,
+    (value) => value as ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, Failure>,
   );
-  const effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot> = {
+  const effects: ApplicationBridgeEffects<Command, Receipt, HostEvent, Snapshot, Failure> = {
     initialize: Effect.flatMap(service, (bridge) => bridge.initialize),
     dispatch: (command) => Effect.flatMap(service, (bridge) => bridge.dispatch(command)),
     cancel: (operationId) => Effect.flatMap(service, (bridge) => bridge.cancel(operationId)),
@@ -542,7 +667,7 @@ export function createApplicationBridgeController<Command, Receipt, HostEvent, S
     uiRendered: () => run(effects.uiRendered),
     subscribe: (
       onEvent: (event: HostEvent) => void,
-      onError: (error: BridgeError) => void = () => undefined,
+      onError: (error: Failure) => void = () => undefined,
     ) => {
       const consume = (): Effect.Effect<void, never, ApplicationBridgeService> =>
         Effect.flatMap(service, (bridge) =>

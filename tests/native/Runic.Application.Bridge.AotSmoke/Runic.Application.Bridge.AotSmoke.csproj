@@ -23,8 +23,7 @@
                       Include="Runic.Application.Bridge" Version="$(PackageVersion)" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="$(ApplicationBridgeContractDirectory)/bridge.manifest.json" />
-    <AdditionalFiles Include="$(ApplicationBridgeContractDirectory)/schemas/**/*.schema.json" />
+    <AdditionalFiles Include="$(ApplicationBridgeContractDirectory)/bridge.ir.json" />
   </ItemGroup>
   <PropertyGroup>
     <ApplicationBridgeContractDirectory Condition="'$(ApplicationBridgeContractDirectory)' == ''">../../protocol/application-bridge/setup/generated</ApplicationBridgeContractDirectory>

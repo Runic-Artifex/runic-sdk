@@ -14,8 +14,7 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="../../protocol/application-bridge/setup/generated/bridge.manifest.json" />
-    <AdditionalFiles Include="../../protocol/application-bridge/setup/generated/schemas/**/*.schema.json" />
+    <AdditionalFiles Include="../../protocol/application-bridge/setup/generated/bridge.ir.json" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../protocol/application-bridge/setup/fixtures/*.json"

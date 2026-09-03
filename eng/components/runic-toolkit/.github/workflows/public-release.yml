@@ -13,6 +13,13 @@ on:
       - Directory.Packages.props
       - eng/pack.sh
       - eng/pack-integration-npm.sh
+      - eng/application-npm-packages.mjs
+      - eng/download-github-npm.mjs
+      - eng/frontend-package-versions.sh
+      - eng/publish-github-npm.mjs
+      - eng/test-application-npm-package-inventory.mjs
+      - eng/test-frontend-package-versions.sh
+      - eng/verify-release-pipeline-preflight.sh
       - eng/verify-release-candidate.sh
       - eng/checkout-ci-candidates.mjs
       - eng/compatibility-set-value.mjs
@@ -21,6 +28,7 @@ on:
       - eng/publish-npm.sh
       - eng/verify-package-artifacts.ps1
       - eng/verify-npm-artifacts.mjs
+      - package.json
       - src/**/*.csproj
       - templates/**
       - protocol/application-bridge/**
@@ -55,8 +63,8 @@ permissions:
   packages: read
 
 concurrency:
-  group: public-release-${{ inputs.version }}
-  cancel-in-progress: false
+  group: public-release-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('version-{0}', inputs.version) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -101,6 +109,10 @@ jobs:
             exit 1
           fi
 
+      - name: Validate release pipeline inventory
+        id: release-inventory
+        run: bash eng/verify-release-pipeline-preflight.sh --github-output
+
       - uses: ./.github/actions/setup-dotnet
       - uses: ./.github/actions/setup-bun
 
@@ -118,15 +130,24 @@ jobs:
       - name: Run verification pipeline
         env:
           WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          RUNIC_NPM_REGISTRY_TARGET: public
+          RUNIC_PACKAGE_OUTPUT: ${{ runner.temp }}/packages
         run: ./eng/verify.sh
 
       - name: Ensure verification is reproducible
         run: git diff --exit-code
 
-      - name: Verify the complete public release candidate locally
-        run: >-
-          ./eng/verify-release-candidate.sh
-          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages" public
+      - name: Validate public release candidate
+        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
+        with:
+          version: ${{ env.PACKAGE_VERSION }}
+          artifact-directory: ${{ runner.temp }}/packages
+          repository-url: https://github.com/Runic-Artifex/runic-toolkit
+          repository-commit: ${{ github.sha }}
+          expected-nuget-count: "7"
+          expected-npm-count: ${{ steps.release-inventory.outputs.npm-count }}
+          npm-registry: https://registry.npmjs.org
+          npm-access: public
 
       - name: Record package digests
         working-directory: ${{ runner.temp }}/packages

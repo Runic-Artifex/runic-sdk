@@ -6,9 +6,11 @@
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": { "node": ">=24.18.0 <25" },
   "scripts": {
-    "build": "ng build frontend",
-    "dev": "ng serve frontend --configuration development",
-    "dev:mock": "ng serve frontend --configuration mock",
+    "build": "runic-bridge generate && ng build frontend",
+    "contract:generate": "runic-bridge generate",
+    "contract:check": "runic-bridge check",
+    "dev": "runic-bridge generate && ng serve frontend --configuration development",
+    "dev:mock": "runic-bridge generate && ng serve frontend --configuration mock",
     "typecheck": "ngc --project tsconfig.app.json --noEmit"
   },
   "dependencies": {
@@ -16,6 +18,7 @@
     "@angular/core": "22.0.8",
     "@angular/platform-browser": "22.0.8",
     "@fortawesome/fontawesome-free": "7.3.1",
+    "@popperjs/core": "2.11.8",
     "@runic-artifex/angular": "__RUNIC_ANGULAR_NPM__",
     "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
     "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
@@ -24,6 +27,7 @@
     "rxjs": "7.8.2"
   },
   "devDependencies": {
+    "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",
     "@angular/build": "22.0.8",
     "@angular/cli": "22.0.8",
     "@angular/compiler": "22.0.8",

@@ -15,13 +15,18 @@ if (!authorityRef) {
 const compatibility = JSON.parse(
   readFileSync(resolve(repository, "eng/runic.compatibility-set.json"), "utf8"),
 );
+const sourceCandidates = process.env.RUNIC_USE_REGISTRY_DEPENDENCIES !== "1"
+  ? compatibility.sources
+  : process.env.RUNIC_SOURCE_FRONTEND_INTEGRATIONS === "1"
+    ? compatibility.sources.filter(({ repository }) => ["runic-desktop", "runic-svelte", "runic-vite"].includes(repository))
+    : [];
 const candidates = [
   {
     repository: ".github",
     url: "https://github.com/Runic-Artifex/.github.git",
     revision: authorityRef,
   },
-  ...(process.env.RUNIC_USE_REGISTRY_DEPENDENCIES === "1" ? [] : compatibility.sources),
+  ...sourceCandidates,
 ];
 
 for (const candidate of candidates) {

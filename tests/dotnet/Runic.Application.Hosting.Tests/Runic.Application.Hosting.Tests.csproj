@@ -22,7 +22,6 @@
           Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="../../protocol/application-bridge/refresh/generated/bridge.manifest.json" />
-    <AdditionalFiles Include="../../protocol/application-bridge/refresh/generated/schemas/**/*.schema.json" />
+    <AdditionalFiles Include="../../protocol/application-bridge/refresh/generated/bridge.ir.json" />
   </ItemGroup>
 </Project>

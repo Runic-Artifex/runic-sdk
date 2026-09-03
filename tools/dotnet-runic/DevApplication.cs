@@ -42,15 +42,15 @@ internal static class DevApplication
         Console.CancelKeyPress += cancelHandler;
         try
         {
+            if (configuration.NodeEnabled)
+            {
+                await BuildCanonicalFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
+            }
+
             if (options.GenerateContracts && configuration.HasContracts)
             {
                 await GenerateAndVerifyContractsAsync(configuration, stop.Token)
                     .ConfigureAwait(false);
-            }
-
-            if (configuration.NodeEnabled)
-            {
-                await BuildCanonicalFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
             }
 
             await BuildAsync(dotnetHost, configuration, options, stop.Token)
@@ -119,8 +119,17 @@ internal static class DevApplication
         Task assetMonitor = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         Task contractMonitor = options.GenerateContracts && configuration.HasContracts
             ? FilePoller.WatchAsync(
-                configuration.ContractSource,
-                token => GenerateAndVerifyContractsAsync(configuration, token),
+                configuration.DevelopmentServerKind == "vite"
+                    ? configuration.BridgeIr
+                    : configuration.BridgeSource,
+                async token =>
+                {
+                    if (configuration.DevelopmentServerKind != "vite")
+                    {
+                        await GenerateAndVerifyContractsAsync(configuration, token).ConfigureAwait(false);
+                    }
+                    await host.RestartAsync(token).ConfigureAwait(false);
+                },
                 cancellationToken)
             : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         var compilerReloadMonitors = new List<Task>();
@@ -372,32 +381,24 @@ internal static class DevApplication
         DevProjectConfiguration configuration,
         CancellationToken cancellationToken)
     {
-        string[] commonArguments =
-        [
-            configuration.ContractTool,
-            "--source",
-            configuration.ContractSource,
-            "--csharp",
-            configuration.ContractCSharpOutput,
-            "--typescript",
-            configuration.ContractTypeScriptOutput,
-        ];
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            configuration.WorkspaceRoot,
+            configuration.FrontendPackageDirectory);
         using PhaseTimer phase = PhaseTimer.Start("Generating and verifying contracts");
         await RequireSuccessAsync(
-            "node",
-            configuration.WorkspaceRoot,
-            commonArguments,
+            packageManager.Executable,
+            configuration.FrontendPackageDirectory,
+            packageManager.RunScriptArguments("contract:generate", "."),
             "RTKDEV1006",
-            $"Contract generation failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect the configured toolchain.",
+            $"Bridge IR generation failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect the configured toolchain.",
             cancellationToken).ConfigureAwait(false);
 
-        var verifyArguments = new List<string>(commonArguments) { "--verify" };
         await RequireSuccessAsync(
-            "node",
-            configuration.WorkspaceRoot,
-            verifyArguments,
+            packageManager.Executable,
+            configuration.FrontendPackageDirectory,
+            packageManager.RunScriptArguments("contract:check", "."),
             "RTKDEV1006",
-            $"Generated contract verification failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect stale outputs.",
+            $"Bridge IR verification failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect stale outputs.",
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
     }
@@ -457,7 +458,8 @@ internal static class DevApplication
         Console.WriteLine($"[dev] Runtime web root: {configuration.RuntimeWebRoot}");
         if (configuration.HasContracts)
         {
-            Console.WriteLine($"[dev] Contract: {configuration.ContractSource}");
+            Console.WriteLine($"[dev] Contract: {configuration.BridgeSource}");
+            Console.WriteLine($"[dev] Bridge IR: {configuration.BridgeIr}");
         }
 
         if (configuration.HasFrontendCompiler)

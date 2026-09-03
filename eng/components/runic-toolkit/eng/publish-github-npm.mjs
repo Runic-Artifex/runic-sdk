@@ -5,9 +5,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { applicationNpmPackageIdentities } from "./application-npm-packages.mjs";
 
 const registry = "https://npm.pkg.github.com";
-const expected = new Set(["@runic-artifex/application-bridge", "@runic-artifex/angular"]);
+const expected = new Set(applicationNpmPackageIdentities);
 const [, , suppliedDirectory, tag = "ci"] = process.argv;
 const token = process.env.NODE_AUTH_TOKEN;
 

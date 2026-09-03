@@ -22,15 +22,15 @@ const sourceRevisions = Object.fromEntries(
 );
 const templateManifest = json(resolve(
   toolkit,
-  "templates/RunicToolkit.Templates/content/svelte/Contract/bridge.manifest.json",
+  "templates/RunicToolkit.Templates/content/svelte/Contract/bridge.ir.json",
 ));
 const setupManifest = json(resolve(
   suite,
-  "runic-toolkit-examples/samples/03-SetupApplication/Contract/generated/bridge.manifest.json",
+  "runic-toolkit-examples/samples/03-SetupApplication/Contract/bridge.ir.json",
 ));
 const editorManifest = json(resolve(
   suite,
-  "runic-translations-editor/Contract/bridge.manifest.json",
+  "runic-translations-editor/Contract/bridge.ir.json",
 ));
 const bridgePackage = json(resolve(toolkit, "web/packages/application-bridge/package.json"));
 const desktopPackage = json(resolve(suite, "runic-desktop/web/packages/desktop/package.json"));
@@ -89,7 +89,7 @@ function json(path) {
 }
 
 function contract(manifest) {
-  const fingerprint = manifest.contractFingerprint;
+  const fingerprint = manifest.fingerprint.value;
   if (typeof fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(fingerprint)) {
     throw new Error("A W100 contract manifest has no canonical fingerprint.");
   }

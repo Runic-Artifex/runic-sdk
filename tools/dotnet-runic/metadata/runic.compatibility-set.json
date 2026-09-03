@@ -13,7 +13,7 @@
     {
       "repository": "runic-desktop",
       "url": "https://github.com/Runic-Artifex/runic-desktop",
-      "revision": "a7d025d6090e7461d679f9b88af39d0b23099d2e"
+      "revision": "ffe377a4d4eb798e3487670b2a079c6aebadeaa4"
     },
     {
       "repository": "runic-assets",
@@ -23,17 +23,17 @@
     {
       "repository": "runic-translations",
       "url": "https://github.com/Runic-Artifex/runic-translations",
-      "revision": "4e5540a29c8333f48256b9f93692531b54480daf"
+      "revision": "3597a29ed9b078f6db8bdab0946e4fd2de0ebbcd"
     },
     {
       "repository": "runic-svelte",
       "url": "https://github.com/Runic-Artifex/runic-svelte",
-      "revision": "db4c793809657d00b541388cee545af95cd98ac5"
+      "revision": "6499d5e64d2b6e2a902a6ddf107c0e6216fd4139"
     },
     {
       "repository": "runic-vite",
       "url": "https://github.com/Runic-Artifex/runic-vite",
-      "revision": "a24af5478954309bd31dffd6b0bcba0b2e978fc7"
+      "revision": "d138ec8dc2aaaad48603dcadec634d7f1a24b4e6"
     },
     {
       "repository": "runic-command-line",
@@ -165,6 +165,12 @@
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/application-bridge",
+      "version": "1.0.0-preview.1",
+      "source": "runic-toolkit"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/application-bridge-tooling",
       "version": "1.0.0-preview.1",
       "source": "runic-toolkit"
     },

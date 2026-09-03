@@ -17,10 +17,9 @@ internal sealed record DoctorProjectConfiguration(
     string WorkspaceRoot,
     string Workspace,
     string FrontendPackageDirectory,
-    string ContractSource,
-    string ContractCSharpOutput,
-    string ContractTypeScriptOutput,
-    string ContractTool,
+    string BridgeSource,
+    string BridgeIr,
+    string BridgeFacade,
     bool ViteDevServerEnabled,
     string ViteDevServerEntry,
     string ViteConfigurationPath,
@@ -41,10 +40,9 @@ internal sealed record DoctorProjectConfiguration(
         "RunicToolkitFrontendWorkspaceRoot",
         "RunicToolkitFrontendWorkspace",
         "RunicToolkitFrontendPackageDirectory",
-        "RunicToolkitFrontendContractSource",
-        "RunicToolkitFrontendContractCSharpOutput",
-        "RunicToolkitFrontendContractTypeScriptOutput",
-        "RunicToolkitFrontendContractTool",
+        "RunicApplicationBridgeSource",
+        "RunicApplicationBridgeIr",
+        "RunicApplicationBridgeFacade",
         "RunicToolkitFrontendViteDevServerEnabled",
         "RunicToolkitFrontendViteDevServerEntry",
         "RunicToolkitFrontendViteConfiguration",
@@ -53,7 +51,7 @@ internal sealed record DoctorProjectConfiguration(
         "RuntimeIdentifier",
     ];
 
-    internal bool HasContracts => !string.IsNullOrWhiteSpace(ContractSource);
+    internal bool HasContracts => !string.IsNullOrWhiteSpace(BridgeSource);
 
     internal static async Task<DoctorProjectConfiguration> EvaluateAsync(
         string dotnetHost,
@@ -122,6 +120,22 @@ internal sealed record DoctorProjectConfiguration(
                     ? frameworks[0]
                     : string.Empty;
         }
+        string conventionalBridgeSource = Path.Combine(canonicalFrontendDirectory, "src", "application.bridge.ts");
+        string bridgeSource = NormalizeOptional(Value("RunicApplicationBridgeSource"), evaluatedProjectDirectory);
+        if (bridgeSource.Length == 0 && File.Exists(conventionalBridgeSource))
+        {
+            bridgeSource = conventionalBridgeSource;
+        }
+        string bridgeIr = NormalizeOptional(Value("RunicApplicationBridgeIr"), evaluatedProjectDirectory);
+        if (bridgeIr.Length == 0 && bridgeSource.Length != 0)
+        {
+            bridgeIr = Path.Combine(evaluatedProjectDirectory, "Contract", "bridge.ir.json");
+        }
+        string bridgeFacade = NormalizeOptional(Value("RunicApplicationBridgeFacade"), evaluatedProjectDirectory);
+        if (bridgeFacade.Length == 0 && bridgeSource.Length != 0)
+        {
+            bridgeFacade = Path.Combine(canonicalFrontendDirectory, "src", "application.bridge.generated.ts");
+        }
 
         return new(
             evaluatedProject,
@@ -133,18 +147,9 @@ internal sealed record DoctorProjectConfiguration(
             workspaceRoot,
             canonicalFrontend ? "." : Value("RunicToolkitFrontendWorkspace"),
             canonicalFrontend ? canonicalFrontendDirectory : packageDirectory,
-            NormalizeOptional(
-                Value("RunicToolkitFrontendContractSource"),
-                evaluatedProjectDirectory),
-            NormalizeOptional(
-                Value("RunicToolkitFrontendContractCSharpOutput"),
-                evaluatedProjectDirectory),
-            NormalizeOptional(
-                Value("RunicToolkitFrontendContractTypeScriptOutput"),
-                evaluatedProjectDirectory),
-            NormalizeOptional(
-                Value("RunicToolkitFrontendContractTool"),
-                evaluatedProjectDirectory),
+            bridgeSource,
+            bridgeIr,
+            bridgeFacade,
             Flag("RunicToolkitFrontendViteDevServerEnabled"),
             Value("RunicToolkitFrontendViteDevServerEntry"),
             NormalizeOptional(

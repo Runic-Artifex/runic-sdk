@@ -1,7 +1,7 @@
 {
   "protocol": "runic.artifex.setup",
   "version": 1,
-  "contractFingerprint": "a95762f0da02103aa9198c6cfff1f247596d48c9f3154adb3cd97ea31cb39725",
+  "contractFingerprint": "0eaf4741bb21028295ff4a248be59a86558ba1921804b14ef198994a83492763",
   "connectionEpoch": 0,
   "kind": "initialize",
   "commandId": "00000000-0000-4000-8000-000000000001",

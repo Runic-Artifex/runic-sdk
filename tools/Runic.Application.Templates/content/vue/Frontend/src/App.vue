@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import { counterBridge } from "./counter-bridge";
-import type { CounterSnapshot } from "./counter-contract";
+import type { CounterSnapshot } from "./application.bridge";
 
 const snapshot = ref<CounterSnapshot>({ count: 0, history: [0], revision: 0 });
 const step = ref(1);

@@ -4,8 +4,8 @@ The Application Bridge is Runic Application's official boundary between a
 frontend and an application host.
 
 1. Author the encoded wire contract with Effect Schema.
-2. Generate and commit JSON Schema plus the canonical bridge manifest.
-3. Let the C# analyzer generate wire records, handler interfaces, typed event
+2. Generate and commit the canonical Runic Bridge IR and fingerprint facade.
+3. Let the C# analyzer consume that IR to generate wire records, handler interfaces, typed event
    publishers, and exhaustive dispatch.
 4. Implement the generated handler with domain services.
 5. Host one caller-owned `ApplicationBridgeSession` through Runic Desktop or

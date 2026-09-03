@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 7 ]]; then
-  echo "Usage: $0 <package-version> <package-directory> <application-bridge-tgz> <runic-angular-tgz> <runic-svelte-tgz> <runic-vite-tgz> <runic-desktop-tgz>" >&2
+if [[ $# -ne 8 ]]; then
+  echo "Usage: $0 <package-version> <package-directory> <application-bridge-tgz> <application-bridge-tooling-tgz> <runic-angular-tgz> <runic-svelte-tgz> <runic-vite-tgz> <runic-desktop-tgz>" >&2
   exit 2
 fi
 
 package_version="$1"
 package_directory="$(cd "$2" && pwd)"
 npm_archive="$(realpath "$3")"
-angular_archive="$(realpath "$4")"
-svelte_archive="$(realpath "$5")"
-vite_archive="$(realpath "$6")"
-desktop_archive="$(realpath "$7")"
+tooling_archive="$(realpath "$4")"
+angular_archive="$(realpath "$5")"
+svelte_archive="$(realpath "$6")"
+vite_archive="$(realpath "$7")"
+desktop_archive="$(realpath "$8")"
 runic_assets_version="${RunicAssetsPackageVersion:-1.0.0-preview.1}"
 runic_desktop_version="${RunicDesktopPackageVersion:-1.0.0-preview.1}"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,13 +34,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ ! -f "$template_package" || ! -f "$npm_archive" || ! -f "$angular_archive" || ! -f "$svelte_archive" || ! -f "$vite_archive" || ! -f "$desktop_archive" ]]; then
+if [[ ! -f "$template_package" || ! -f "$npm_archive" || ! -f "$tooling_archive" || ! -f "$angular_archive" || ! -f "$svelte_archive" || ! -f "$vite_archive" || ! -f "$desktop_archive" ]]; then
   echo "One or more template npm archives are missing." >&2
   exit 1
 fi
 
 export DOTNET_CLI_HOME="$template_tmp/dotnet-home"
 export NUGET_PACKAGES="$template_tmp/nuget"
+export BUN_INSTALL_CACHE_DIR="$template_tmp/bun-cache"
 restore_sources=(--source "$package_directory" --source https://api.nuget.org/v3/index.json)
 tool_restore_options=()
 tool_source_options=(--add-source "$package_directory")
@@ -81,7 +83,7 @@ vite_npm_version="$(npm_archive_version "$vite_archive")"
 
 bind_candidate_integrities() {
   node "$script_directory/bind-template-candidate-integrities.mjs" "$1" \
-    "$npm_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
+    "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
 }
 
 configure_candidate_registry() {
@@ -93,7 +95,7 @@ configure_candidate_registry() {
 
 registry_ready="$template_tmp/template-npm-registry.url"
 node "$script_directory/template-npm-registry.mjs" \
-  "$registry_ready" "$npm_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive" &
+  "$registry_ready" "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive" &
 registry_pid=$!
 for _ in $(seq 1 100); do
   [[ -s "$registry_ready" ]] && break
@@ -127,6 +129,7 @@ node -e '
   const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   const expected = new Map([
     ["@runic-artifex/application-bridge", process.argv[2]],
+    ["@runic-artifex/application-bridge-tooling", process.argv[2]],
     ["@runic-artifex/svelte", process.argv[3]],
     ["@runic-artifex/vite-plugin-runic", process.argv[4]],
   ]);
@@ -141,10 +144,13 @@ dotnet build "$default_svelte_output/PackagedSvelteDefaults.csproj" --configurat
 dotnet run --project "$default_svelte_output/PackagedSvelteDefaults.csproj" \
   --configuration Release --no-build -- --smoke-test
 
-for framework in react vue svelte angular; do
-  project_name="Acceptance${framework^}"
-  output="$template_tmp/$framework"
-  template_arguments=(
+verify_framework() {
+  local framework="$1"
+  local project_name="Acceptance${framework^}"
+  local output="$template_tmp/$framework"
+  local first_manifest
+  local second_manifest
+  local -a template_arguments=(
     --name "$project_name"
     --output "$output"
     --runicApplicationVersion "$package_version"
@@ -168,19 +174,24 @@ for framework in react vue svelte angular; do
   touch "$output/Frontend/src/main.ts" "$output/Frontend/src/main.tsx" 2>/dev/null || true
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/rebuild.log"
   grep -Fq '[runic] Building managed frontend assets.' "$output/rebuild.log"
-  first_manifest="$($tool_directory/dotnet-runic inspect --project "$output/$project_name.csproj" --configuration Release)"
-  second_manifest="$($tool_directory/dotnet-runic inspect --project "$output/$project_name.csproj" --configuration Release)"
+  first_manifest="$("$tool_directory/dotnet-runic" inspect --project "$output/$project_name.csproj" --configuration Release)"
+  second_manifest="$("$tool_directory/dotnet-runic" inspect --project "$output/$project_name.csproj" --configuration Release)"
   [[ "$first_manifest" == "$second_manifest" ]]
   grep -Fq '"schema":"runic.application/1"' <<< "$first_manifest"
   grep -Fq '"provenance":"template"' <<< "$first_manifest"
   dotnet run --project "$output/$project_name.csproj" \
     --configuration Release --no-build -- --smoke-test
-done
+}
 
-for selection in "svelte pnpm" "angular bun"; do
-  read -r framework package_manager <<< "$selection"
-  project_name="Acceptance${framework^}${package_manager^}"
-  output="$template_tmp/$framework-$package_manager"
+verify_package_manager_framework() {
+  local framework="$1"
+  local package_manager="$2"
+  local project_name="Acceptance${framework^}${package_manager^}"
+  local output="$template_tmp/$framework-$package_manager"
+  local lock_file
+  local other_lock_file
+  local expected_version
+  local bun_only_path
   dotnet new "runic-app-$framework" \
     --name "$project_name" \
     --output "$output" \
@@ -232,4 +243,48 @@ for selection in "svelte pnpm" "angular bun"; do
   fi
   dotnet run --project "$output/$project_name.csproj" \
     --configuration Release --no-build -- --smoke-test
-done
+}
+
+run_parallel_acceptance_group() {
+  local group="$1"
+  shift
+  local log_directory="$template_tmp/logs/$group"
+  local -a pids=()
+  local -a labels=()
+  local failure=0
+  mkdir -p "$log_directory"
+
+  while [[ $# -gt 0 ]]; do
+    local label="$1"
+    local function="$2"
+    shift 2
+    local argument_count="$1"
+    shift
+    local -a arguments=("${@:1:argument_count}")
+    shift "$argument_count"
+    "$function" "${arguments[@]}" > "$log_directory/$label.log" 2>&1 &
+    pids+=("$!")
+    labels+=("$label")
+  done
+
+  for index in "${!pids[@]}"; do
+    if wait "${pids[$index]}"; then
+      cat "$log_directory/${labels[$index]}.log"
+    else
+      cat "$log_directory/${labels[$index]}.log" >&2
+      echo "Template acceptance failed for ${labels[$index]}." >&2
+      failure=1
+    fi
+  done
+  return "$failure"
+}
+
+run_parallel_acceptance_group frameworks \
+  react verify_framework 1 react \
+  vue verify_framework 1 vue \
+  svelte verify_framework 1 svelte \
+  angular verify_framework 1 angular
+
+run_parallel_acceptance_group package-managers \
+  svelte-pnpm verify_package_manager_framework 2 svelte pnpm \
+  angular-bun verify_package_manager_framework 2 angular bun
