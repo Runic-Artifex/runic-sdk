@@ -114,6 +114,7 @@ fi
 release_packages="${RUNIC_PACKAGE_OUTPUT:-$verification_root/packages}"
 RUNIC_SVELTE_NPM_VERSION="$svelte_release_version" \
 RUNIC_VITE_NPM_VERSION="$vite_release_version" \
+RUNIC_DESKTOP_NPM_VERSION="$desktop_release_version" \
 APPLICATION_BRIDGE_NPM_VERSION="$bridge_npm_version" \
   bash eng/pack.sh "$release_version" "$release_packages"
 bash tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh "$release_version" "$release_packages"
