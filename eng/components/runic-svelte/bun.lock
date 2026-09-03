@@ -5,7 +5,7 @@
     "": {
       "name": "@runic-artifex/runic-svelte-workspace",
       "devDependencies": {
-        "@runic-artifex/application-bridge": "^0.1.0-preview.30.1",
+        "@runic-artifex/application-bridge": "1.0.0-preview.1",
         "@runic-artifex/svelte": "workspace:*",
         "@runic-artifex/vite-plugin-runic": "file:./test/fixtures/vite-plugin-runic",
         "@sveltejs/adapter-static": "3.0.10",
@@ -98,7 +98,7 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@0.1.0-preview.30.1", "", { "dependencies": { "effect": "3.22.1" } }, "sha512-KGzBMVFGNdq7JijA92s2exHBf5m1c9JdXO3RlBYV43naKN+rg5SsAQzie4C1mWrAfedDKjkyPqdD254q9MPicQ=="],
+    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@1.0.0-preview.1", "", { "dependencies": { "effect": "3.22.1" } }, "sha512-uTdJDKcy89lRxhtWqe1sz5S+Ldj/ZyoSA9mEe50sAcdYoRhpQa4Bpjc9aYKmvu5l4fvQcwJNN6NJMOD0O93CSA=="],
 
     "@runic-artifex/svelte": ["@runic-artifex/svelte@workspace:packages/svelte"],
 

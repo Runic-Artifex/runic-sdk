@@ -5,11 +5,13 @@ import { mount, tick, unmount } from "svelte";
 import { Cause, Effect, Exit, Schema } from "effect";
 import {
   MockApplicationBridge,
+  bridge,
   bridgeError,
   createApplicationBridgeController,
-  defineApplicationContract,
+  defineApplicationBridgeContract,
+  materializeApplicationBridgeContract,
 } from "@runic-artifex/application-bridge";
-import type { ApplicationContract } from "@runic-artifex/application-bridge";
+import type { BridgeError } from "@runic-artifex/application-bridge";
 import type { ApplicationBridgeController } from "../src/types.js";
 import { createSvelteApplicationBridge } from "../src/bridge.svelte.js";
 import { createEffectSvelteApplicationBridge } from "../src/effect-bridge.svelte.js";
@@ -25,26 +27,22 @@ type Command = typeof Command.Type;
 type Receipt = typeof Receipt.Type;
 type Event = typeof Event.Type;
 
-const contract: ApplicationContract<Command, Receipt, Event, Snapshot> = defineApplicationContract<
-  Command,
-  Receipt,
-  Event,
-  Snapshot
->({
-  identity: "runic-svelte-test",
-  version: 1,
-  command: Command,
-  receipt: Receipt,
-  event: Event,
+const definition = defineApplicationBridgeContract({
+  protocol: { identity: "runic-svelte-test", version: 1 },
+  csharp: { namespace: "Runic.Svelte.Tests", contractName: "SvelteTest" },
   snapshot: Snapshot,
+  commands: [bridge.command(Command, { receipt: Receipt })],
+  events: [Event],
+  errors: [],
   initialize: { _tag: "Increment", step: 0 },
 });
+const contract = materializeApplicationBridgeContract(definition, "0".repeat(64));
 
 function controller() {
   let revision = -1;
   return createApplicationBridgeController(
     contract,
-    MockApplicationBridge<Command, Receipt, Event, Snapshot>({
+    MockApplicationBridge<Command, Receipt, Event, Snapshot, BridgeError>({
       initialize: () => Effect.sync(() => ({ count: 0, revision: ++revision })),
       dispatch: (command, publish) => command.step < 0
         ? Effect.fail(bridgeError("CommandRejected", "The step was negative."))
