@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { DevTools } from "@vitejs/devtools";
@@ -179,14 +180,7 @@ test("runs the Vite, HMR, and SSR fixtures without browser-only state", async ()
 
 test("generates bridge IR on startup and regenerates imported schema changes with a full reload", async () => {
   const root = await fixtureRoot();
-  const toolkitRoot = join(process.cwd(), "..", "runic-toolkit");
-  const runicPackages = join(root, "node_modules", "@runic-artifex");
-  await symlink(
-    join(toolkitRoot, "web", "packages", "application-bridge"),
-    join(runicPackages, "application-bridge"),
-    "dir",
-  );
-  await symlink(join(toolkitRoot, "node_modules", "effect"), join(root, "node_modules", "effect"), "dir");
+  await linkBridgeFixtureDependencies(root);
   await writeFile(join(root, "src", "snapshot.ts"), `
 import { Schema } from "effect";
 export const Snapshot = Schema.Struct({ value: Schema.Int });
@@ -247,14 +241,11 @@ export const Snapshot = Schema.Struct({ value: Schema.Int, label: Schema.String 
 
 test("waits for the matching managed-host fingerprint before reloading", async () => {
   const root = await fixtureRoot();
-  const toolkitRoot = join(process.cwd(), "..", "runic-toolkit");
-  const runicPackages = join(root, "node_modules", "@runic-artifex");
   const readyPath = join(root, "host-ready.fingerprint");
   const previousReadyPath = process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
   process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY = readyPath;
   try {
-    await symlink(join(toolkitRoot, "web", "packages", "application-bridge"), join(runicPackages, "application-bridge"), "dir");
-    await symlink(join(toolkitRoot, "node_modules", "effect"), join(root, "node_modules", "effect"), "dir");
+    await linkBridgeFixtureDependencies(root);
     const sourcePath = join(root, "src", "application.bridge.ts");
     await writeFile(sourcePath, bridgeFixtureSource("Schema.Struct({ value: Schema.Int })"), "utf8");
     const messages = [];
@@ -498,6 +489,35 @@ async function fixtureRoot() {
   await mkdir(packageDirectory, { recursive: true });
   await symlink(process.cwd(), join(packageDirectory, "vite-plugin-runic"), "dir");
   return root;
+}
+
+async function linkBridgeFixtureDependencies(root) {
+  const toolingRequire = createRequire(import.meta.resolve("@runic-artifex/application-bridge-tooling"));
+  const runicPackages = join(root, "node_modules", "@runic-artifex");
+  await symlink(
+    await installedPackageRoot(toolingRequire, "@runic-artifex/application-bridge"),
+    join(runicPackages, "application-bridge"),
+    "dir",
+  );
+  await symlink(
+    await installedPackageRoot(toolingRequire, "effect"),
+    join(root, "node_modules", "effect"),
+    "dir",
+  );
+}
+
+async function installedPackageRoot(require, packageName) {
+  let directory = dirname(require.resolve(packageName));
+  while (dirname(directory) !== directory) {
+    try {
+      const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
+      if (manifest.name === packageName) return directory;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    directory = dirname(directory);
+  }
+  throw new Error(`Could not locate installed package root for ${packageName}.`);
 }
 
 function serverPort(server) {
