@@ -1,0 +1,13 @@
+{
+  "pull_request": {
+    "head": {
+      "ref": "local-ci",
+      "repo": {
+        "full_name": "local/runic-toolkit"
+      }
+    }
+  },
+  "repository": {
+    "full_name": "Runic-Artifex/runic-toolkit"
+  }
+}

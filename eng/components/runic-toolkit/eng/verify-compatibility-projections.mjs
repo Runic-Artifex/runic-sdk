@@ -81,6 +81,31 @@ for (const [propertyName, toolchainName] of [
 }
 
 const sourceRevisions = new Map(compatibility.sources.map((source) => [source.repository, source.revision]));
+const ciDependencies = JSON.parse(text("eng/runic.ci-dependencies.json"));
+const ciDependencySources = new Map([
+  ["Runic.CommandLine", "runic-command-line"],
+  ["Runic.Assets", "runic-assets"],
+  ["Runic.Translations", "runic-translations"],
+  ["Runic.Desktop", "runic-desktop"],
+  ["@runic-artifex/desktop", "runic-desktop"],
+  ["@runic-artifex/svelte", "runic-svelte"],
+  ["@runic-artifex/vite-plugin-runic", "runic-vite"],
+]);
+for (const dependency of ciDependencies.packages ?? []) {
+  const source = ciDependencySources.get(dependency.identity);
+  if (!source) fail(`CI dependency '${dependency.identity}' has no source mapping.`);
+  const revision = sourceRevisions.get(source);
+  if (!revision) fail(`authority does not pin CI dependency source '${source}'.`);
+  expect(
+    dependency.version,
+    `1.0.0-ci.sha${revision.slice(0, 16)}`,
+    `${dependency.identity} immutable CI candidate`,
+  );
+  ciDependencySources.delete(dependency.identity);
+}
+if (ciDependencySources.size !== 0) {
+  fail(`CI dependency set omits ${[...ciDependencySources.keys()].join(", ")}.`);
+}
 const verificationScript = text("eng/verify.sh");
 const packScript = text("eng/pack.sh");
 for (const repositoryName of ["runic-command-line", "runic-assets", "runic-translations", "runic-desktop", "runic-svelte", "runic-vite"]) {

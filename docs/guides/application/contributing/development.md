@@ -26,3 +26,26 @@ separate exact NuGet dependency feed, isolated NuGet/npm consumers, NativeAOT,
 and cold local-registry template acceptance. Use `public` instead of `github`
 to validate public NuGet/npm metadata with the exact compatibility-authority
 validator used in CI.
+
+## Run the GitHub Actions job locally
+
+On Linux, the repository can execute the real `verify` job in a pinned Ubuntu
+24.04 runner container before pushing:
+
+```bash
+systemctl --user start podman.socket
+./eng/run-ci-local.sh
+```
+
+The wrapper obtains `act` from the repository's locked Nixpkgs input, copies the
+current working tree into the container, and prints the total elapsed time. It
+always uses a synthetic fork pull-request event, which runs verification but
+cannot enter the workflow's candidate publication or registry round-trip
+steps. A GitHub token is still required for read-only action and private
+package downloads; set `GITHUB_TOKEN`, or authenticate `gh` locally.
+
+The first invocation builds a small repository runner layer with PowerShell and
+Chrome's Linux libraries on the pinned base image, then downloads the actions.
+Use `./eng/run-ci-local.sh --offline` after they are cached, or `--dry-run` to
+validate workflow expansion without running the job. The Windows job remains a
+real Windows-runner gate and is not emulated by this wrapper.

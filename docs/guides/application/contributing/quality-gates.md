@@ -2,6 +2,11 @@
 
 The required pull-request gate is `./eng/verify.sh`.
 
+`./eng/run-ci-local.sh` executes that gate through the actual GitHub Actions
+workflow in a pinned Ubuntu 24.04 container. It is the closest local check for
+runner-image, action, environment, and workflow-wiring differences; its
+synthetic pull-request event deliberately disables every publishing step.
+
 The prerelease and public-release workflows invoke the same
 `eng/verify-release-candidate.sh` command available locally. It:
 

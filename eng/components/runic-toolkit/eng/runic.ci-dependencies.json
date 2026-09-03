@@ -16,31 +16,31 @@
     {
       "ecosystem": "nuget",
       "identity": "Runic.Translations",
-      "version": "1.0.0-ci.sha4e5540a29c8333f4",
+      "version": "1.0.0-ci.sha3597a29ed9b078f6",
       "environment": "RunicTranslationsPackageVersion"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Desktop",
-      "version": "1.0.0-ci.shad1fe517f86890a7a",
+      "version": "1.0.0-ci.shaffe377a4d4eb798e",
       "environment": "RunicDesktopPackageVersion"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/desktop",
-      "version": "1.0.0-ci.shad1fe517f86890a7a",
+      "version": "1.0.0-ci.shaffe377a4d4eb798e",
       "environment": "RUNIC_DESKTOP_NPM_VERSION"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/svelte",
-      "version": "1.0.0-ci.shadb4c793809657d00",
+      "version": "1.0.0-ci.shacfdf3078a473d58a",
       "environment": "RUNIC_SVELTE_NPM_VERSION"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/vite-plugin-runic",
-      "version": "1.0.0-ci.shaa24af5478954309b",
+      "version": "1.0.0-ci.shaf043095cf898bdf4",
       "environment": "RUNIC_VITE_NPM_VERSION"
     }
   ]
