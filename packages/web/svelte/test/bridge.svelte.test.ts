@@ -11,7 +11,7 @@ import {
   defineApplicationBridgeContract,
   materializeApplicationBridgeContract,
 } from "@runic-artifex/application-bridge";
-import type { ApplicationContract } from "@runic-artifex/application-bridge";
+import type { BridgeError } from "@runic-artifex/application-bridge";
 import type { ApplicationBridgeController } from "../src/types.js";
 import { createSvelteApplicationBridge } from "../src/bridge.svelte.js";
 import { createEffectSvelteApplicationBridge } from "../src/effect-bridge.svelte.js";
@@ -36,14 +36,13 @@ const definition = defineApplicationBridgeContract({
   errors: [],
   initialize: { _tag: "Increment", step: 0 },
 });
-const contract: ApplicationContract<Command, Receipt, Event, Snapshot> =
-  materializeApplicationBridgeContract(definition, "0".repeat(64));
+const contract = materializeApplicationBridgeContract(definition, "0".repeat(64));
 
 function controller() {
   let revision = -1;
   return createApplicationBridgeController(
     contract,
-    MockApplicationBridge<Command, Receipt, Event, Snapshot>({
+    MockApplicationBridge<Command, Receipt, Event, Snapshot, BridgeError>({
       initialize: () => Effect.sync(() => ({ count: 0, revision: ++revision })),
       dispatch: (command, publish) => command.step < 0
         ? Effect.fail(bridgeError("CommandRejected", "The step was negative."))
