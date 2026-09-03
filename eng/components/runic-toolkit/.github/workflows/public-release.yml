@@ -130,15 +130,24 @@ jobs:
       - name: Run verification pipeline
         env:
           WEBUI_BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          RUNIC_NPM_REGISTRY_TARGET: public
+          RUNIC_PACKAGE_OUTPUT: ${{ runner.temp }}/packages
         run: ./eng/verify.sh
 
       - name: Ensure verification is reproducible
         run: git diff --exit-code
 
-      - name: Verify the complete public release candidate locally
-        run: >-
-          ./eng/verify-release-candidate.sh
-          "$PACKAGE_VERSION" "$RUNNER_TEMP/packages" public
+      - name: Validate public release candidate
+        uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
+        with:
+          version: ${{ env.PACKAGE_VERSION }}
+          artifact-directory: ${{ runner.temp }}/packages
+          repository-url: https://github.com/Runic-Artifex/runic-toolkit
+          repository-commit: ${{ github.sha }}
+          expected-nuget-count: "7"
+          expected-npm-count: ${{ steps.release-inventory.outputs.npm-count }}
+          npm-registry: https://registry.npmjs.org
+          npm-access: public
 
       - name: Record package digests
         working-directory: ${{ runner.temp }}/packages
