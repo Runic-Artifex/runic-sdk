@@ -212,14 +212,18 @@ internal sealed class SetupBridgeHandler(bool failInstallation = false) : ISetup
     {
         ViewId = _viewId,
         Revision = _revision,
-        Destination = _destination is null ? null : new ApplicationInitializedSnapshotDestination
-        {
-            SelectionId = _destination.SelectionId,
-            DisplayName = _destination.DisplayName,
-            AvailableBytes = _destination.AvailableBytes,
-        },
+        Destination = _destination is { } destination
+            ? new BridgeOptional<ApplicationInitializedSnapshotDestination>(new()
+            {
+                SelectionId = destination.SelectionId,
+                DisplayName = destination.DisplayName,
+                AvailableBytes = destination.AvailableBytes,
+            })
+            : default,
         SelectedFeatures = _selectedFeatures,
-        ActiveOperationId = _activeOperationId,
+        ActiveOperationId = _activeOperationId is { } activeOperationId
+            ? new BridgeOptional<Guid>(activeOperationId)
+            : default,
         CanNavigateBack = CanNavigateBack(),
         CanNavigateNext = CanNavigateNext(),
     };
@@ -228,14 +232,18 @@ internal sealed class SetupBridgeHandler(bool failInstallation = false) : ISetup
     {
         ViewId = _viewId,
         Revision = _revision,
-        Destination = _destination is null ? null : new NavigationAcceptedSnapshotDestination
-        {
-            SelectionId = _destination.SelectionId,
-            DisplayName = _destination.DisplayName,
-            AvailableBytes = _destination.AvailableBytes,
-        },
+        Destination = _destination is { } destination
+            ? new BridgeOptional<NavigationAcceptedSnapshotDestination>(new()
+            {
+                SelectionId = destination.SelectionId,
+                DisplayName = destination.DisplayName,
+                AvailableBytes = destination.AvailableBytes,
+            })
+            : default,
         SelectedFeatures = _selectedFeatures,
-        ActiveOperationId = _activeOperationId,
+        ActiveOperationId = _activeOperationId is { } activeOperationId
+            ? new BridgeOptional<Guid>(activeOperationId)
+            : default,
         CanNavigateBack = CanNavigateBack(),
         CanNavigateNext = CanNavigateNext(),
     };

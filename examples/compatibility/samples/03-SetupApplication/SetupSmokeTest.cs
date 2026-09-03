@@ -22,7 +22,7 @@ internal static class SetupSmokeTest
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine(exception.Message);
+            Console.Error.WriteLine(exception);
             return 1;
         }
     }
