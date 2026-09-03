@@ -73,7 +73,7 @@ if [[ "$registry" == "public" ]]; then
     "$package_directory" \
     "https://github.com/Runic-Artifex/runic-toolkit" \
     "$repository_commit" \
-    2 \
+    3 \
     "https://registry.npmjs.org" \
     public
 fi
@@ -91,6 +91,7 @@ RUNIC_VERIFICATION_FEED="$verification_feed" \
     "$package_version" \
     "$package_directory" \
     "$package_directory/runic-artifex-application-bridge-$package_version.tgz" \
+    "$package_directory/runic-artifex-application-bridge-tooling-$package_version.tgz" \
     "$package_directory/runic-artifex-angular-$package_version.tgz" \
     "$integration_packages/runic-artifex-svelte-$integration_version.tgz" \
     "$integration_packages/runic-artifex-vite-plugin-runic-$integration_version.tgz" \
