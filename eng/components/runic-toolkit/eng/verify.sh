@@ -106,6 +106,11 @@ bridge_npm_version="$release_version"
 svelte_release_version="${RUNIC_SVELTE_NPM_VERSION:-$release_train_version}"
 vite_release_version="${RUNIC_VITE_NPM_VERSION:-$release_train_version}"
 desktop_release_version="${RUNIC_DESKTOP_NPM_VERSION:-$release_train_version}"
+if [[ "$source_frontend_integrations" == "1" ]]; then
+  svelte_release_version="$release_train_version"
+  vite_release_version="$release_train_version"
+  desktop_release_version="$release_train_version"
+fi
 release_packages="${RUNIC_PACKAGE_OUTPUT:-$verification_root/packages}"
 RUNIC_SVELTE_NPM_VERSION="$svelte_release_version" \
 RUNIC_VITE_NPM_VERSION="$vite_release_version" \

@@ -63,5 +63,14 @@ mkdir -p "$output_directory"
   bun install --ignore-scripts
   bun run build
   cp "$original_manifest" package.json
+  APPLICATION_BRIDGE_TOOLING_VERSION="$package_version" \
+    node --input-type=module --eval '
+      import { readFileSync, writeFileSync } from "node:fs";
+      const path = "package.json";
+      const manifest = JSON.parse(readFileSync(path, "utf8"));
+      manifest.peerDependencies["@runic-artifex/application-bridge-tooling"] =
+        process.env.APPLICATION_BRIDGE_TOOLING_VERSION;
+      writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+    '
   bun pm pack --ignore-scripts --destination "$output_directory"
 )
