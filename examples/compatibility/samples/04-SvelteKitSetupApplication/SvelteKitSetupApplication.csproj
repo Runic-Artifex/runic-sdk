@@ -30,11 +30,9 @@
                       Condition="!Exists('../../../runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj')" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="../03-SetupApplication/Contract/generated/bridge.manifest.json" />
-    <AdditionalFiles Include="../03-SetupApplication/Contract/generated/schemas/**/*.schema.json" />
+    <AdditionalFiles Include="Contract/bridge.ir.json" />
     <Compile Include="../03-SetupApplication/SetupBridgeHandler.cs" Link="SetupBridgeHandler.cs" />
     <Compile Include="../03-SetupApplication/SetupSmokeTest.cs" Link="SetupSmokeTest.cs" />
-    <Compile Include="../03-SetupApplication/Contract/generated/SetupBridgeContract.cs" Link="Contract/SetupBridgeContract.cs" />
   </ItemGroup>
   <Import Project="../../../runic-assets/src/Runic.Assets/buildTransitive/Runic.Assets.targets"
           Condition="Exists('../../../runic-assets/src/Runic.Assets/buildTransitive/Runic.Assets.targets')" />

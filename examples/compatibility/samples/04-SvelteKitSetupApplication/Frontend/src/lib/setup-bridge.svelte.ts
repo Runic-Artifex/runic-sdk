@@ -11,13 +11,13 @@ import {
   preserveRunicHmrResource,
 } from "virtual:runic/client";
 import {
-  SetupContract,
   type DestinationSelection,
   type SetupCommand,
   type SetupEvent,
   type SetupReceipt,
   type SetupSnapshot,
 } from "./setup-contract";
+import SetupContract from "./application.bridge.generated";
 
 const destination: DestinationSelection = {
   selectionId: "7e510a78-3c9a-4bed-8c31-2d93e5bbb835",

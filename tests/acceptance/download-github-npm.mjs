@@ -3,6 +3,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { CI_NPM_CANDIDATES } from "./ci-npm-candidates.mjs";
 
 const registry = "https://npm.pkg.github.com";
 const outputDirectory = process.argv[2];
@@ -16,14 +17,7 @@ if (!outputDirectory || !token) {
 
 const candidateSet = JSON.parse(fs.readFileSync(path.resolve(authorityPath), "utf8"));
 const revisions = new Map(candidateSet.sources.map((source) => [source.repository, source.revision]));
-const required = new Set([
-  "@runic-artifex/application-bridge",
-  "@runic-artifex/desktop",
-  "@runic-artifex/svelte",
-  "@runic-artifex/sveltekit",
-  "@runic-artifex/vite-plugin-runic",
-  "@runic-artifex/vite-plugin-runic-translations",
-]);
+const required = new Set(CI_NPM_CANDIDATES);
 const packages = candidateSet.packages
   .filter(({ ecosystem, identity }) => ecosystem === "npm" && required.has(identity))
   .map(({ identity, source }) => {

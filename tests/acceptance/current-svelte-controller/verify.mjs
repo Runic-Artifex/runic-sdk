@@ -14,9 +14,9 @@ const archives = (process.env.RUNIC_CURRENT_SVELTE_CONTROLLER_NPM_ARCHIVES ?? ''
 export const NPM_FEED = 'w20-003-local-candidate-npm-feed';
 export const CANDIDATE_NAMES = ['@runic-artifex/application-bridge', '@runic-artifex/svelte'];
 const hostTransport = resolve(import.meta.dirname, '../current-host-transport');
-const bridgeManifestPath = join(hostTransport, 'generated', 'bridge.manifest.json');
+const bridgeManifestPath = join(hostTransport, 'generated', 'bridge.ir.json');
 const bridgeManifest = JSON.parse(await readFile(bridgeManifestPath, 'utf8'));
-export const BRIDGE_CONTRACT = { identity: bridgeManifest.protocol.identity, version: bridgeManifest.protocol.version, fingerprint: bridgeManifest.contractFingerprint };
+export const BRIDGE_CONTRACT = { identity: bridgeManifest.wire.protocol.identity, version: bridgeManifest.wire.protocol.version, fingerprint: bridgeManifest.fingerprint.value };
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const sha256 = async (path) => createHash('sha256').update(await readFile(path)).digest('hex');
 

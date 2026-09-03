@@ -11,7 +11,6 @@ const editorDirectory = process.env.RUNIC_W50_NATIVE_SHELL_EDITOR_DIRECTORY && r
 const editorArchive = process.env.RUNIC_W50_NATIVE_SHELL_EDITOR_ARCHIVE && resolve(process.env.RUNIC_W50_NATIVE_SHELL_EDITOR_ARCHIVE);
 const schema = "runic.native-shell-consumer/1", repeatSchema = "runic.native-shell-consumer-repeat/1";
 const packages = ["CsWebUi", "CsWebUi.Native"];
-const fingerprint = "d7919f3d2ba1ec4af48bac5892dd25667f323d6341de212ae69c83b086224faf";
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const hash = async path => createHash("sha256").update(await readFile(path)).digest("hex");
 const run = (command, args, cwd, env = {}) => new Promise(done => {
@@ -55,8 +54,8 @@ async function provenance() {
   return { packages: packed, editor: { archive: basename(editorArchive), archiveSha256: await hash(editorArchive), binary: "RunicTranslations.Editor.dll", binarySha256: await hash(join(editorDirectory, "RunicTranslations.Editor.dll")), nativeLibrary: "libwebui-2.so", nativeLibrarySha256: await hash(join(editorDirectory, "libwebui-2.so")) } };
 }
 
-function expectedDetails(webViewAvailable, highContrast) { return {
-  allowedOrigin: "exact-loopback-origin", bridge: "generated-bridge-attached", cleanup: "closed-disposed-cleaned", contractFingerprint: fingerprint,
+function expectedDetails(webViewAvailable, highContrast, contractFingerprint) { return {
+  allowedOrigin: "exact-loopback-origin", bridge: "generated-bridge-attached", cleanup: "closed-disposed-cleaned", contractFingerprint,
   highContrast, highContrastPropagated: "true", listener: "private-loopback", loopbackAssetRequests: "0", outboundTransportAttempts: "0", privateFileHandlerStreaming: "false",
   protocolIdentity: "runic.translations.editor", protocolVersion: "1", schema: "runic.translations.editor-native-shell/1",
   webViewCapability: webViewAvailable ? "available" : "webview-prerequisite-missing"
@@ -64,6 +63,8 @@ function expectedDetails(webViewAvailable, highContrast) { return {
 
 export function verifyReceipt(receipt, supplied) {
   const errors = [];
+  const contractFingerprint = receipt?.journeys?.[0]?.nativeShell?.details?.contractFingerprint;
+  if (!/^[a-f0-9]{64}$/.test(contractFingerprint ?? "")) errors.push("bridge contract fingerprint malformed");
   if (receipt?.schema !== repeatSchema || !Array.isArray(receipt?.journeys) || receipt.journeys.length !== 2) errors.push("two native-shell journeys required");
   for (const journey of receipt?.journeys ?? []) {
     if (journey?.schema !== schema || !same(journey?.isolation, { dotnetCliHome: ".dotnet", nugetPackages: ".nuget/packages", nugetHttpCache: ".nuget/http" }) || !same(journey?.projectReferences, [])) errors.push("consumer isolation or source-reference evidence mismatch");
@@ -71,7 +72,7 @@ export function verifyReceipt(receipt, supplied) {
     const managed = journey?.managed;
     if (managed?.schema !== "runic.cswebui-managed-capability/1" || managed?.capabilities?.freePort !== true || managed?.capabilities?.privateFileHandlerStreaming !== false || typeof managed?.capabilities?.webViewAvailable !== "boolean" || typeof managed?.runtime?.framework !== "string" || typeof managed?.runtime?.os !== "string" || typeof managed?.runtime?.architecture !== "string") errors.push("managed capability facts mismatch");
     const details = journey?.nativeShell?.details;
-    if (journey?.nativeShell?.faultCode !== "REDIT0008" || journey?.nativeShell?.capability !== "private-file-handler-streaming-unavailable" || journey?.nativeShell?.retryable !== false || !same(details, expectedDetails(managed?.capabilities?.webViewAvailable, details?.highContrast))) errors.push("native shell failed-closed evidence mismatch");
+    if (journey?.nativeShell?.faultCode !== "REDIT0008" || journey?.nativeShell?.capability !== "private-file-handler-streaming-unavailable" || journey?.nativeShell?.retryable !== false || !same(details, expectedDetails(managed?.capabilities?.webViewAvailable, details?.highContrast, contractFingerprint))) errors.push("native shell failed-closed evidence mismatch");
     if (details?.highContrast !== "true" && details?.highContrast !== "false") errors.push("high-contrast fact malformed");
     if (supplied && (!same(journey?.packages, supplied.packages) || !same(journey?.editor, supplied.editor))) errors.push("artifact provenance mismatch");
     else if (!Array.isArray(journey?.packages) || journey.packages.length !== 2 || journey.packages.some(item => !/^[a-f0-9]{64}$/.test(item?.sha256 ?? "")) || !/^[a-f0-9]{64}$/.test(journey?.editor?.archiveSha256 ?? "") || !/^[a-f0-9]{64}$/.test(journey?.editor?.binarySha256 ?? "") || !/^[a-f0-9]{64}$/.test(journey?.editor?.nativeLibrarySha256 ?? "")) errors.push("artifact provenance malformed");

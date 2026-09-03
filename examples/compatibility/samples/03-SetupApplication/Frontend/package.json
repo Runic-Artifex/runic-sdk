@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "contract:generate": "runic-bridge generate",
+    "contract:check": "runic-bridge check",
     "dev": "vite",
     "dev:mock": "vite --mode mock",
     "test": "node --test --experimental-strip-types test/*.test.ts",
@@ -13,17 +15,18 @@
     "verify:production": "node test/verify-production.mjs"
   },
   "dependencies": {
-    "@runic-artifex/application-bridge": "0.1.0",
-    "@runic-artifex/desktop": "0.1.0",
+    "@runic-artifex/application-bridge": "1.0.0-preview.1",
+    "@runic-artifex/desktop": "1.0.0-preview.1",
     "effect": "3.22.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
     "@types/node": "24.10.4",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@runic-artifex/vite-plugin-runic": "0.2.0-preview.2",
+    "@runic-artifex/vite-plugin-runic": "1.0.0-preview.1",
     "@vitejs/plugin-react": "6.0.1",
     "typescript": "5.9.3",
     "vite": "8.2.1"

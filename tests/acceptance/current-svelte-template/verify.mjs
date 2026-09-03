@@ -30,7 +30,7 @@ export const NUGET_CANDIDATES = [
   { identity: 'Runic.Assets.Desktop', version: assetsVersion },
   { identity: 'dotnet-runic', version: packageVersion },
 ];
-export const NPM_CANDIDATE_NAMES = ['@runic-artifex/application-bridge', '@runic-artifex/svelte', '@runic-artifex/vite-plugin-runic'];
+export const NPM_CANDIDATE_NAMES = ['@runic-artifex/application-bridge', '@runic-artifex/application-bridge-tooling', '@runic-artifex/svelte', '@runic-artifex/vite-plugin-runic'];
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 function run(command, args, cwd, env = {}) {
@@ -65,7 +65,7 @@ const server = createServer((request, response) => { const path = new URL(reques
 server.listen(0, '127.0.0.1', () => process.stdout.write('http://127.0.0.1:' + server.address().port + '\\n')); process.on('SIGTERM', () => server.close(() => process.exit(0)));`;
 
 async function startRegistry() {
-  if (archives.length !== NPM_CANDIDATE_NAMES.length) throw new Error('RUNIC_CURRENT_SVELTE_TEMPLATE_NPM_ARCHIVES must name the three current Runic npm archives');
+  if (archives.length !== NPM_CANDIDATE_NAMES.length) throw new Error('RUNIC_CURRENT_SVELTE_TEMPLATE_NPM_ARCHIVES must name the four current Runic npm archives');
   const manifests = await Promise.all(archives.map(archiveManifest));
   if (!same(manifests.map(({ name }) => name).sort(), [...NPM_CANDIDATE_NAMES].sort())) throw new Error('npm candidate archives must contain exactly the supported Runic packages');
   const child = spawn('node', ['--input-type=module', '--eval', registryScript, ...archives], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -171,10 +171,10 @@ export async function runCurrentSvelteTemplate(manifestPath) {
     const first = await run(tool, inspectArgs, projectDirectory, environment); phases.push(phase('inspect-first', ['dotnet-runic', ...inspectArgs], first)); assertSucceeded('inspect-first', first);
     const second = await run(tool, inspectArgs, projectDirectory, environment); phases.push(phase('inspect-second', ['dotnet-runic', ...inspectArgs], second)); assertSucceeded('inspect-second', second);
     const manifest = JSON.parse(first.message.trim()); if (!same(manifest, JSON.parse(second.message.trim()))) throw new Error('dotnet runic inspection is not deterministic');
-    const bridge = JSON.parse(await readFile(join(projectDirectory, 'Contract', 'bridge.manifest.json'), 'utf8'));
+    const bridge = JSON.parse(await readFile(join(projectDirectory, 'Contract', 'bridge.ir.json'), 'utf8'));
     const toolCandidate = NUGET_CANDIDATES.at(-1);
     const templateCandidate = NUGET_CANDIDATES[0];
-    const receipt = { schema: RECEIPT_SCHEMA, feeds: { nuget: NUGET_FEED, npm: NPM_FEED }, isolation: { nugetGlobalPackagesFolder: '.nuget/packages', nugetHttpCachePath: '.nuget/http-cache', dotnetCliHome: '.dotnet', npmCache: '.npm-cache' }, releaseManifest: await releaseManifestAfter(manifestPath, authority), template: { identity: 'runic-app-svelte', version: packageVersion, assetsVersion }, manifest, bridgeManifest: { protocol: bridge.protocol?.identity, version: bridge.protocol?.version, fingerprint: bridge.contractFingerprint }, nugetCandidates: [{ ...templateCandidate, source: NUGET_FEED, contentHash: await sha256(join(CANDIDATE_FEED_PATH, `${templateCandidate.identity}.${templateCandidate.version}.nupkg`)) }, ...nugetCandidates, { ...toolCandidate, source: NUGET_FEED, contentHash: await sha256(join(CANDIDATE_FEED_PATH, `${toolCandidate.identity}.${toolCandidate.version}.nupkg`)) }], npmCandidates: await npmMetadata(directory, registry.url, registry.manifests), phases };
+    const receipt = { schema: RECEIPT_SCHEMA, feeds: { nuget: NUGET_FEED, npm: NPM_FEED }, isolation: { nugetGlobalPackagesFolder: '.nuget/packages', nugetHttpCachePath: '.nuget/http-cache', dotnetCliHome: '.dotnet', npmCache: '.npm-cache' }, releaseManifest: await releaseManifestAfter(manifestPath, authority), template: { identity: 'runic-app-svelte', version: packageVersion, assetsVersion }, manifest, bridgeManifest: { protocol: bridge.wire.protocol?.identity, version: bridge.wire.protocol?.version, fingerprint: bridge.fingerprint?.value }, nugetCandidates: [{ ...templateCandidate, source: NUGET_FEED, contentHash: await sha256(join(CANDIDATE_FEED_PATH, `${templateCandidate.identity}.${templateCandidate.version}.nupkg`)) }, ...nugetCandidates, { ...toolCandidate, source: NUGET_FEED, contentHash: await sha256(join(CANDIDATE_FEED_PATH, `${toolCandidate.identity}.${toolCandidate.version}.nupkg`)) }], npmCandidates: await npmMetadata(directory, registry.url, registry.manifests), phases };
     const report = verifyReceipt(receipt, receipt.releaseManifest); if (!report.ok) throw new Error(report.errors.join('\n'));
     return receipt;
   } finally { if (registry) registry.child.kill('SIGTERM'); await rm(directory, { recursive: true, force: true }); }

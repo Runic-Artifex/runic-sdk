@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { createServer } from "vite";
 
 test("SvelteKit dev server exposes the official bounded Runic DevTools state", async () => {
+  const bridgeIr = JSON.parse(
+    await readFile(new URL("../../Contract/bridge.ir.json", import.meta.url), "utf8"),
+  );
   const server = await createServer({
     mode: "mock",
     logLevel: "silent",
@@ -19,11 +23,17 @@ test("SvelteKit dev server exposes the official bounded Runic DevTools state", a
     assert.deepEqual(state.contract, {
       identity: "runic.artifex.setup",
       version: "1",
-      fingerprint: "",
+      fingerprint: bridgeIr.fingerprint.value,
     });
     assert.equal(state.vite.mode, "mock");
     assert.deepEqual(state.operations, []);
-    assert.deepEqual(state.timeline, []);
+    assert.ok(state.timeline.length > 0);
+    for (const entry of state.timeline) {
+      assert.equal(entry.source, "application-bridge");
+      assert.equal(entry.kind, "event");
+      assert.equal(entry.label, "Application bridge contract is current");
+      assert.deepEqual(entry.detail, { status: "current" });
+    }
 
     const virtualClient = await server.transformRequest("virtual:runic/client");
     assert.match(

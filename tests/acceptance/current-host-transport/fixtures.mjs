@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
+
 const protocol = 'runic.artifex.setup';
-const contractFingerprint = 'f92970461e801b80f1e8b8fbf7bab346dece692b61c3c4c167b093ce6bc29336';
+const contractFingerprint = JSON.parse(readFileSync(
+  new URL('./generated/bridge.ir.json', import.meta.url),
+  'utf8',
+)).fingerprint.value;
 
 export default {
   'initialize.client.json': { protocol, version: 1, contractFingerprint, connectionEpoch: 0, kind: 'initialize', commandId: '00000000-0000-4000-8000-000000000001', payload: { _tag: 'InitializeApplication' } },

@@ -15,12 +15,12 @@ function receipt() {
     nugetCandidates: CANDIDATES.map((candidate) => ({ ...candidate, source: NUGET_FEED, contentHash: 'sha512-fixture' })),
     npmCandidate: { ...NPM_CANDIDATE, source: NPM_FEED, integrity: 'sha512-fixture', archiveSha256: 'e'.repeat(64) },
     phases: [
-      phase('generated-contract', ['node', '<authoritative-generator>', 'contract.mjs', 'generated', '--check']),
+      phase('generated-contract', ['node', '<authoritative-generator>', 'check', '--source', 'application.bridge.ts', '--ir', 'generated/bridge.ir.json', '--facade', 'generated/application.bridge.generated.ts']),
       phase('generated-fixtures', ['node', 'verify-fixtures.mjs']),
       phase('restore', ['dotnet', 'restore', 'HostConsumer.csproj', '--configfile', 'NuGet.config', '--no-cache', '--force-evaluate', '--nologo']),
       phase('build', ['dotnet', 'build', 'HostConsumer.csproj', '--no-restore', '--configuration', 'Release', '--nologo']),
       phase('npm-install', ['npm', 'install', '--ignore-scripts']),
-      phase('transport', ['node', 'client.mjs', '<local-host>', 'generated/bridge.manifest.json', 'fixtures']),
+      phase('transport', ['node', 'client.mjs', '<local-host>', 'generated/bridge.ir.json', 'fixtures']),
       phase('controlled-teardown', ['POST', '<local-host>/shutdown']),
     ],
   };
@@ -49,7 +49,7 @@ test('host transport receipt rejects forged provenance and incomplete transport 
 test('host transport repeated receipts require byte-identical journeys', () => {
   const value = { schema: REPEAT_RECEIPT_SCHEMA, journeys: [receipt(), receipt()] };
   assert.deepEqual(verifyRepeatedReceipt(value, authority), { ok: true, errors: [] });
-  value.journeys[1].bridgeManifest.protocol.identity = 'forged';
+  value.journeys[1].bridgeManifest.wire.protocol.identity = 'forged';
   const report = verifyRepeatedReceipt(value, authority);
   assert.equal(report.ok, false);
   assert.match(report.errors.join('\n'), /bridge manifest mismatch/);

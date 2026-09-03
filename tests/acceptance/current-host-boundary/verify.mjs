@@ -4,9 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
 export const RECEIPT_SCHEMA = 'runic.current-host-boundary/1';
-const manifest = JSON.parse(await readFile(join(import.meta.dirname, '../current-host-transport/generated/bridge.manifest.json'), 'utf8'));
-export const BRIDGE_CONTRACT = { identity: manifest.protocol.identity, version: manifest.protocol.version, fingerprint: manifest.contractFingerprint };
-export const BRIDGE_MANIFEST_SHA256 = createHash('sha256').update(await readFile(join(import.meta.dirname, '../current-host-transport/generated/bridge.manifest.json'))).digest('hex');
+const manifest = JSON.parse(await readFile(join(import.meta.dirname, '../current-host-transport/generated/bridge.ir.json'), 'utf8'));
+export const BRIDGE_CONTRACT = { identity: manifest.wire.protocol.identity, version: manifest.wire.protocol.version, fingerprint: manifest.fingerprint.value };
+export const BRIDGE_MANIFEST_SHA256 = createHash('sha256').update(await readFile(join(import.meta.dirname, '../current-host-transport/generated/bridge.ir.json'))).digest('hex');
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const hash = async (path) => createHash('sha256').update(await readFile(path)).digest('hex');
 

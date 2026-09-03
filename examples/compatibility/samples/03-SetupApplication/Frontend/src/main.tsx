@@ -6,7 +6,7 @@ import type {
   SetupEvent,
   SetupSnapshot,
   SetupViewId,
-} from "./setup-contract";
+} from "./application.bridge";
 import "./styles.css";
 
 const initialSnapshot: SetupSnapshot = {

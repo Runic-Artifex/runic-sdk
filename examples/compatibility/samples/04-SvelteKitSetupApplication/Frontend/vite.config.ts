@@ -8,6 +8,11 @@ export default defineConfig({
     DevTools({ visibility: "passive" }),
     runic({
       contract: { identity: "runic.artifex.setup", version: "1" },
+      applicationBridge: {
+        source: "../../03-SetupApplication/Frontend/src/application.bridge.ts",
+        ir: "../Contract/bridge.ir.json",
+        facade: "src/lib/application.bridge.generated.ts",
+      },
     }),
     sveltekit(),
   ],
