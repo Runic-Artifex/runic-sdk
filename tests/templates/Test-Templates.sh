@@ -144,10 +144,13 @@ dotnet build "$default_svelte_output/PackagedSvelteDefaults.csproj" --configurat
 dotnet run --project "$default_svelte_output/PackagedSvelteDefaults.csproj" \
   --configuration Release --no-build -- --smoke-test
 
-for framework in react vue svelte angular; do
-  project_name="Acceptance${framework^}"
-  output="$template_tmp/$framework"
-  template_arguments=(
+verify_framework() {
+  local framework="$1"
+  local project_name="Acceptance${framework^}"
+  local output="$template_tmp/$framework"
+  local first_manifest
+  local second_manifest
+  local -a template_arguments=(
     --name "$project_name"
     --output "$output"
     --runicApplicationVersion "$package_version"
@@ -171,19 +174,24 @@ for framework in react vue svelte angular; do
   touch "$output/Frontend/src/main.ts" "$output/Frontend/src/main.tsx" 2>/dev/null || true
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/rebuild.log"
   grep -Fq '[runic] Building managed frontend assets.' "$output/rebuild.log"
-  first_manifest="$($tool_directory/dotnet-runic inspect --project "$output/$project_name.csproj" --configuration Release)"
-  second_manifest="$($tool_directory/dotnet-runic inspect --project "$output/$project_name.csproj" --configuration Release)"
+  first_manifest="$("$tool_directory/dotnet-runic" inspect --project "$output/$project_name.csproj" --configuration Release)"
+  second_manifest="$("$tool_directory/dotnet-runic" inspect --project "$output/$project_name.csproj" --configuration Release)"
   [[ "$first_manifest" == "$second_manifest" ]]
   grep -Fq '"schema":"runic.application/1"' <<< "$first_manifest"
   grep -Fq '"provenance":"template"' <<< "$first_manifest"
   dotnet run --project "$output/$project_name.csproj" \
     --configuration Release --no-build -- --smoke-test
-done
+}
 
-for selection in "svelte pnpm" "angular bun"; do
-  read -r framework package_manager <<< "$selection"
-  project_name="Acceptance${framework^}${package_manager^}"
-  output="$template_tmp/$framework-$package_manager"
+verify_package_manager_framework() {
+  local framework="$1"
+  local package_manager="$2"
+  local project_name="Acceptance${framework^}${package_manager^}"
+  local output="$template_tmp/$framework-$package_manager"
+  local lock_file
+  local other_lock_file
+  local expected_version
+  local bun_only_path
   dotnet new "runic-app-$framework" \
     --name "$project_name" \
     --output "$output" \
@@ -235,4 +243,48 @@ for selection in "svelte pnpm" "angular bun"; do
   fi
   dotnet run --project "$output/$project_name.csproj" \
     --configuration Release --no-build -- --smoke-test
-done
+}
+
+run_parallel_acceptance_group() {
+  local group="$1"
+  shift
+  local log_directory="$template_tmp/logs/$group"
+  local -a pids=()
+  local -a labels=()
+  local failure=0
+  mkdir -p "$log_directory"
+
+  while [[ $# -gt 0 ]]; do
+    local label="$1"
+    local function="$2"
+    shift 2
+    local argument_count="$1"
+    shift
+    local -a arguments=("${@:1:argument_count}")
+    shift "$argument_count"
+    "$function" "${arguments[@]}" > "$log_directory/$label.log" 2>&1 &
+    pids+=("$!")
+    labels+=("$label")
+  done
+
+  for index in "${!pids[@]}"; do
+    if wait "${pids[$index]}"; then
+      cat "$log_directory/${labels[$index]}.log"
+    else
+      cat "$log_directory/${labels[$index]}.log" >&2
+      echo "Template acceptance failed for ${labels[$index]}." >&2
+      failure=1
+    fi
+  done
+  return "$failure"
+}
+
+run_parallel_acceptance_group frameworks \
+  react verify_framework 1 react \
+  vue verify_framework 1 vue \
+  svelte verify_framework 1 svelte \
+  angular verify_framework 1 angular
+
+run_parallel_acceptance_group package-managers \
+  svelte-pnpm verify_package_manager_framework 2 svelte pnpm \
+  angular-bun verify_package_manager_framework 2 angular bun
