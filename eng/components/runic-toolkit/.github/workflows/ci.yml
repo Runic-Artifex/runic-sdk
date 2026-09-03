@@ -41,6 +41,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Validate release pipeline inventory
+        id: release-inventory
+        run: bash eng/verify-release-pipeline-preflight.sh --github-output
+
       - uses: ./.github/actions/setup-dotnet
       - uses: ./.github/actions/setup-bun
 
@@ -83,7 +87,7 @@ jobs:
           repository-url: https://github.com/Runic-Artifex/runic-toolkit
           repository-commit: ${{ github.sha }}
           expected-nuget-count: "7"
-          expected-npm-count: "3"
+          expected-npm-count: ${{ steps.release-inventory.outputs.npm-count }}
           npm-registry: https://npm.pkg.github.com
           npm-access: restricted
 
@@ -119,7 +123,7 @@ jobs:
           repository-url: https://github.com/Runic-Artifex/runic-toolkit
           repository-commit: ${{ github.sha }}
           expected-nuget-count: "7"
-          expected-npm-count: "3"
+          expected-npm-count: ${{ steps.release-inventory.outputs.npm-count }}
           npm-registry: https://npm.pkg.github.com
           npm-access: restricted
 

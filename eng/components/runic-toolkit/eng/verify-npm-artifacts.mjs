@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { applicationNpmPackageIdentities } from "./application-npm-packages.mjs";
 
 const [, , version, suppliedDirectory] = process.argv;
 if (version === undefined || suppliedDirectory === undefined) {
@@ -12,11 +13,7 @@ if (version === undefined || suppliedDirectory === undefined) {
 }
 
 const directory = resolve(suppliedDirectory);
-const expected = new Set([
-  "@runic-artifex/application-bridge",
-  "@runic-artifex/application-bridge-tooling",
-  "@runic-artifex/angular",
-]);
+const expected = new Set(applicationNpmPackageIdentities);
 const packageArchives = new Map();
 const archives = readdirSync(directory).filter((file) => file.endsWith(".tgz"));
 if (archives.length !== expected.size) throw new Error(`Expected ${expected.size} npm archives, found ${archives.length}.`);

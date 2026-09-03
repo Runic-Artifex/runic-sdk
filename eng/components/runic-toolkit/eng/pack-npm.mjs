@@ -4,6 +4,7 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { applicationNpmPackages } from "./application-npm-packages.mjs";
 
 const [, , version, suppliedOutput, suppliedRegistry = "github"] = process.argv;
 if (version === undefined || suppliedOutput === undefined) {
@@ -21,7 +22,6 @@ if (!new Set(["github", "public"]).has(suppliedRegistry)) {
 
 const root = resolve(import.meta.dirname, "..");
 const output = resolve(suppliedOutput);
-const packages = ["application-bridge", "application-bridge-tooling", "angular"];
 const staging = mkdtempSync(join(tmpdir(), "runic-toolkit-npm-pack."));
 mkdirSync(output, { recursive: true });
 const revisionResult = spawnSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
@@ -31,7 +31,7 @@ if (revisionResult.status !== 0) {
 const revision = revisionResult.stdout.trim();
 
 try {
-  for (const directory of packages) {
+  for (const { directory } of applicationNpmPackages) {
     const source = join(root, "web", "packages", directory);
     const target = join(staging, directory);
     cpSync(source, target, {

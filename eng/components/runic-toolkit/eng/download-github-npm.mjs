@@ -3,9 +3,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { applicationNpmPackageIdentities } from "./application-npm-packages.mjs";
 
 const registry = "https://npm.pkg.github.com";
-const ownPackages = ["@runic-artifex/application-bridge", "@runic-artifex/angular"];
 const [, , mode, outputDirectory, candidateVersion] = process.argv;
 const token = process.env.NODE_AUTH_TOKEN;
 
@@ -16,7 +16,7 @@ if (!new Set(["candidate", "dependencies"]).has(mode) || !outputDirectory || !to
 let packages;
 if (mode === "candidate") {
   if (!candidateVersion) throw new Error("candidate mode requires an exact version");
-  packages = ownPackages.map((identity) => ({ identity, version: candidateVersion }));
+  packages = applicationNpmPackageIdentities.map((identity) => ({ identity, version: candidateVersion }));
 } else {
   const dependencySet = JSON.parse(
     fs.readFileSync(path.join(import.meta.dirname, "runic.ci-dependencies.json"), "utf8"),

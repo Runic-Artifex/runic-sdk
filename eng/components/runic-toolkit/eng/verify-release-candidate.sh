@@ -43,6 +43,7 @@ desktop_revision="$(node "$repository_root/eng/compatibility-set-value.mjs" sour
 svelte_revision="$(node "$repository_root/eng/compatibility-set-value.mjs" source runic-svelte)"
 vite_revision="$(node "$repository_root/eng/compatibility-set-value.mjs" source runic-vite)"
 integration_version="$(node "$repository_root/eng/compatibility-set-value.mjs" release-train-version)"
+expected_npm_count="$(node "$repository_root/eng/application-npm-packages.mjs")"
 
 git -C "$workspace_root/runic-desktop" worktree add --detach "$desktop_worktree" "$desktop_revision"
 git -C "$workspace_root/runic-svelte" worktree add --detach "$svelte_worktree" "$svelte_revision"
@@ -73,7 +74,7 @@ if [[ "$registry" == "public" ]]; then
     "$package_directory" \
     "https://github.com/Runic-Artifex/runic-toolkit" \
     "$repository_commit" \
-    3 \
+    "$expected_npm_count" \
     "https://registry.npmjs.org" \
     public
 fi

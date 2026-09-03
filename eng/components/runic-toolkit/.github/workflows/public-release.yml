@@ -13,6 +13,13 @@ on:
       - Directory.Packages.props
       - eng/pack.sh
       - eng/pack-integration-npm.sh
+      - eng/application-npm-packages.mjs
+      - eng/download-github-npm.mjs
+      - eng/frontend-package-versions.sh
+      - eng/publish-github-npm.mjs
+      - eng/test-application-npm-package-inventory.mjs
+      - eng/test-frontend-package-versions.sh
+      - eng/verify-release-pipeline-preflight.sh
       - eng/verify-release-candidate.sh
       - eng/checkout-ci-candidates.mjs
       - eng/compatibility-set-value.mjs
@@ -21,6 +28,7 @@ on:
       - eng/publish-npm.sh
       - eng/verify-package-artifacts.ps1
       - eng/verify-npm-artifacts.mjs
+      - package.json
       - src/**/*.csproj
       - templates/**
       - protocol/application-bridge/**
@@ -100,6 +108,10 @@ jobs:
             echo "npm bootstrap is meaningful only for public publication." >&2
             exit 1
           fi
+
+      - name: Validate release pipeline inventory
+        id: release-inventory
+        run: bash eng/verify-release-pipeline-preflight.sh --github-output
 
       - uses: ./.github/actions/setup-dotnet
       - uses: ./.github/actions/setup-bun
