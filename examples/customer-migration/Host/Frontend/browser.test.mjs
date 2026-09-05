@@ -81,6 +81,11 @@ try {
       .isDisabled(),
     true,
   );
+  assert.equal(
+    await page.evaluate(() => window.confirmCustomerClose()),
+    true,
+    "Clean editor can close",
+  );
   await page.getByLabel("Find a customer").fill("fieldwork");
   assert.equal(await page.locator(".customer").count(), 1);
   await page.getByLabel("Find a customer").fill("");
@@ -88,6 +93,31 @@ try {
   await page.getByLabel("Email address").focus();
   await page.getByText("Enter a name with 2–100 characters.").waitFor();
   await page.getByLabel("Full name", { exact: true }).fill("Alex Browser");
+  await page.evaluate(() => {
+    window.closeResult = window.confirmCustomerClose();
+  });
+  const closePrompt = page.getByRole("dialog", {
+    name: "Close without saving?",
+  });
+  await closePrompt.waitFor();
+  await closePrompt.getByRole("button", { name: "Keep editing" }).click();
+  assert.equal(await page.evaluate(() => window.closeResult), false);
+  assert.equal(
+    await page.getByLabel("Full name", { exact: true }).inputValue(),
+    "Alex Browser",
+  );
+  await page.evaluate(() => {
+    window.closeResult = window.confirmCustomerClose();
+  });
+  await closePrompt.waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(await page.evaluate(() => window.closeResult), false);
+  await page.evaluate(() => {
+    window.closeResult = window.confirmCustomerClose();
+  });
+  await closePrompt.waitFor();
+  await closePrompt.getByRole("button", { name: "Discard and close" }).click();
+  assert.equal(await page.evaluate(() => window.closeResult), true);
   await page.getByRole("button", { name: /Sam Rivera/ }).click();
   await page.getByRole("dialog").waitFor();
   await page.getByRole("button", { name: "Keep editing" }).click();
@@ -107,6 +137,11 @@ try {
   await page
     .getByRole("button", { name: "Save customer", exact: true })
     .click();
+  assert.equal(
+    await page.evaluate(() => window.confirmCustomerClose()),
+    false,
+    "Saving editor denies close",
+  );
   await page.getByRole("button", { name: "Cancel save", exact: true }).click();
   await page
     .getByText("Save cancelled; your draft is unchanged", { exact: true })
@@ -138,19 +173,17 @@ try {
     await page.getByLabel("Company", { exact: true }).inputValue(),
     "Northstar Studio",
   );
-  await page
-    .getByLabel("Import contact details")
-    .setInputFiles({
-      name: "contact.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(
-        JSON.stringify({
-          name: "Imported Person",
-          email: "import@example.com",
-          company: "Imported Studio",
-        }),
-      ),
-    });
+  await page.getByLabel("Import contact details").setInputFiles({
+    name: "contact.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        name: "Imported Person",
+        email: "import@example.com",
+        company: "Imported Studio",
+      }),
+    ),
+  });
   await page.waitForFunction(
     () => document.querySelector("#name")?.value === "Imported Person",
   );
@@ -191,7 +224,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Customer migration browser acceptance passed: live C# bridge, validation, save, cancel, dirty navigation, reconnect, import, uniqueness, responsive layout.",
+    "Customer migration browser acceptance passed: live C# bridge, validation, save, cancel, dirty navigation, close confirmation, reconnect, import, uniqueness, responsive layout.",
   );
 } catch (error) {
   if (page) console.error("Page:", (await page.content()).slice(0, 5000));

@@ -23,6 +23,34 @@ Node 24.19.0, Bun 1.4.0 and Chromium 152.
 - The built Runic host dependency graph contains neither CommunityToolkit nor
   the original viewmodel assembly.
 
-This evidence does not certify native close interception, OS dialog parity,
-accessibility on all native hosts, or MAUI/mobile support. Those limits and the
-next SDK work are recorded in the README and migration RFC.
+This original evidence did not certify native close interception. The follow-up
+below adds native GTK evidence; OS dialog parity, accessibility across hosts and
+MAUI/mobile support remain outside these checks.
+
+## Native close follow-up — 2026-09-06
+
+- Managed Desktop suite: 69 tests passed. New cases cover shared close decisions,
+  veto/retry, callback failure/cancellation, caller cancellation, forced shutdown,
+  late approvals, surface/window reuse, custom hosts and unsupported browser policy.
+- A regression test holds an authenticated socket open after native destruction:
+  `IsOpen` and `WaitForClose` now follow native window lifetime, not socket teardown.
+- Native Linux smoke passed in a disposable Ubuntu 24.04 container with .NET SDK
+  10.0.400, GTK 3.24.41, WebKitGTK 2.52.6 and Xvfb. It exercised actual GTK
+  `delete-event` requests, an asynchronous pending decision with a responsive live
+  JavaScript bridge, veto, retry, approval, destruction and subsequent window startup.
+  Source compilation used the development SDK 10.0.302. The virtual display emitted
+  a DRI3 acceleration warning; this was a lifecycle check, not a rendering benchmark.
+- Live customer browser acceptance passed against the real C# host, including clean
+  close, dirty close, Keep editing, Escape, discard and denial during an active save,
+  alongside the existing business flows. This tests presentation policy; it does not
+  claim a complete native customer UI automation run.
+- Application/Desktop integration checks passed for bridge reconnect semantics,
+  cancellation and deterministic teardown. Frontend state and workspace checks:
+  10 tests passed (6 state tests and 4 workspace invariants).
+- Customer host and native smoke builds passed with zero warnings/errors.
+- Root CI now runs native close smoke on Linux, Windows and both macOS architectures.
+  Windows/macOS native execution was not performed in this local Linux session.
+  The current asynchronous Application host still needs a macOS main-thread runner;
+  the lower-level Desktop smoke test supplies its own runner.
+
+The next structural task is the [repository reorganisation](../../../eng/repository-reorganisation.md).

@@ -17,6 +17,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private int _isOpen;
     private int _disposed;
 
+    public bool SupportsCloseConfirmation => true;
+
     public event EventHandler? Closed;
 
     internal static bool IsSupported => OperatingSystem.IsLinux() && Api.IsAvailable;
@@ -145,7 +147,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             {
                 if (_window != 0)
                 {
-                    Api.GtkWindowClose(_window);
+                    Api.GtkWidgetDestroy(_window);
                 }
             }, cancellationToken).ConfigureAwait(false);
             await _closed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -200,6 +202,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             Api.GtkWindowSetIconFromFile(_window, options.IconFile);
         }
 
+        Api.Connect(_window, "delete-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnDelete, this);
         Api.Connect(_window, "destroy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnDestroyed, this);
         Api.Connect(_webView, "notify::title", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitleChanged, this);
         Api.Connect(_webView, "permission-request", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnPermissionRequest, this);
@@ -233,6 +236,17 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         _webView = 0;
         _closed.TrySetResult();
         Closed?.Invoke(this, EventArgs.Empty);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnDelete(nint window, nint nativeEvent, nint context)
+    {
+        if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost host && host._options?.CloseRequested is { } requestClose)
+        {
+            requestClose();
+            return 1;
+        }
+        return 0;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -482,7 +496,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkWindowSetPositionPointer = Required(_gtk, "gtk_window_set_position");
                 GtkWindowSetDecoratedPointer = Required(_gtk, "gtk_window_set_decorated");
                 GtkWindowSetResizablePointer = Required(_gtk, "gtk_window_set_resizable");
-                GtkWindowClosePointer = Required(_gtk, "gtk_window_close");
+                GtkWidgetDestroyPointer = Required(_gtk, "gtk_widget_destroy");
                 GtkWindowPresentPointer = Required(_gtk, "gtk_window_present");
                 GtkWindowIconifyPointer = Required(_gtk, "gtk_window_iconify");
                 GtkWindowMaximizePointer = Required(_gtk, "gtk_window_maximize");
@@ -538,7 +552,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWindowSetPositionPointer { get; }
         private nint GtkWindowSetDecoratedPointer { get; }
         private nint GtkWindowSetResizablePointer { get; }
-        private nint GtkWindowClosePointer { get; }
+        private nint GtkWidgetDestroyPointer { get; }
         private nint GtkWindowPresentPointer { get; }
         private nint GtkWindowIconifyPointer { get; }
         private nint GtkWindowMaximizePointer { get; }
@@ -584,7 +598,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal void GtkWindowSetPosition(nint window, int position) => ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWindowSetPositionPointer)(window, position);
         internal void GtkWindowSetDecorated(nint window, bool decorated) => ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWindowSetDecoratedPointer)(window, decorated ? 1 : 0);
         internal void GtkWindowSetResizable(nint window, bool resizable) => ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWindowSetResizablePointer)(window, resizable ? 1 : 0);
-        internal void GtkWindowClose(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowClosePointer)(window);
+        internal void GtkWidgetDestroy(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWidgetDestroyPointer)(window);
         internal void GtkWindowPresent(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowPresentPointer)(window);
         internal void GtkWindowIconify(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowIconifyPointer)(window);
         internal void GtkWindowMaximize(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowMaximizePointer)(window);

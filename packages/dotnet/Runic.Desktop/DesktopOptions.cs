@@ -144,11 +144,18 @@ public enum DesktopWindowCapabilities
     Maximize = 1 << 3,
     Resize = 1 << 4,
     Move = 1 << 5,
+    CloseConfirmation = 1 << 6,
 }
 
 /// <summary>Configures one browser or embedded-WebView presentation.</summary>
 public sealed record DesktopWindowOptions
 {
+    /// <summary>Asynchronously approves a user close request. Requires an embedded host without browser fallback.</summary>
+    /// <remarks>Runs on the thread pool. Return false to keep the window open. Exceptions and cancellation deny
+    /// closing. Concurrent requests share a decision. The token is cancelled when the window is forcibly closed.
+    /// CloseAsync and disposal bypass confirmation; marshal native UI work to its owning thread.</remarks>
+    public Func<CancellationToken, ValueTask<bool>>? ConfirmCloseAsync { get; init; }
+
     public BrowserKind Browser { get; init; } = BrowserKind.Any;
     public DesktopPresentationPolicy PresentationPolicy { get; init; }
     public DesktopPermissionGrant AllowedPermissions { get; init; }

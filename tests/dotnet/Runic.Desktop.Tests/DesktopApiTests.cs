@@ -541,15 +541,151 @@ public sealed class DesktopApiTests
         }
     }
 
+    [Fact]
+    public async Task NativeAndManagedCloseRequestsUseTheConfiguredGuard()
+    {
+        var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new RecordingWindowHostFactory { SupportsCloseConfirmation = true };
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            ConfirmCloseAsync = _ => { entered.TrySetResult(); return new(decision.Task); },
+        });
+        Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation));
+        Assert.NotNull(factory.Host?.Options?.CloseRequested);
+        factory.Host!.Options!.CloseRequested!();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var request = window.RequestCloseAsync();
+        decision.SetResult(false);
+        Assert.False(await request);
+        Assert.True(window.IsOpen);
+        decision = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        decision.SetResult(true);
+        Assert.True(await window.RequestCloseAsync());
+        Assert.False(window.IsOpen);
+        Assert.False(factory.Host.IsOpen);
+        await using var reopened = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        Assert.False(window.IsOpen);
+        Assert.Equal(0, window.NativeHandle);
+        Assert.True(await window.RequestCloseAsync());
+        Assert.True(reopened.IsOpen);
+    }
+
+    [Fact]
+    public async Task ClosedNativeWindowDoesNotRemainOpenBecauseItsSocketIsStillAuthenticated()
+    {
+        var factory = new RecordingWindowHostFactory { SupportsCloseConfirmation = true };
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory, WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded, ConfirmCloseAsync = _ => ValueTask.FromResult(true),
+        });
+        using var client = new HttpClient();
+        var bootstrap = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
+        var token = ExtractUnsigned(bootstrap, "const TOKEN = ");
+        var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL = \"");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("Origin", $"{surface.Url.Scheme}://{surface.Url.Authority}");
+        socket.Options.AddSubProtocol($"runic-desktop.{credential}");
+        await socket.ConnectAsync(ToWebSocketUrl(surface.Url), timeout.Token);
+        await SendPacketAsync(socket, CreatePacket(token, 0, 0xF5, [0]), timeout.Token);
+        _ = await ReceivePacketAsync(socket, timeout.Token);
+        Assert.True(await window.RequestCloseAsync(timeout.Token));
+        Assert.Equal(WebSocketState.Open, socket.State);
+        Assert.False(window.IsOpen);
+        Assert.Equal(0, window.NativeHandle);
+        window.WaitForClose(timeout.Token);
+    }
+
+    [Fact]
+    public async Task ForcedCloseBypassesPendingConfirmationAndNewWindowHasNoStaleGuard()
+    {
+        var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new RecordingWindowHostFactory { SupportsCloseConfirmation = true };
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            ConfirmCloseAsync = _ => { entered.TrySetResult(); return new(decision.Task); },
+        });
+        var request = window.RequestCloseAsync();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await window.CloseAsync();
+        Assert.False(await request);
+        await using var reopened = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        decision.SetResult(true);
+        Assert.Null(factory.Host?.Options?.CloseRequested);
+        Assert.True(reopened.IsOpen);
+        Assert.True(await reopened.RequestCloseAsync());
+        Assert.False(reopened.IsOpen);
+        using var client = new HttpClient();
+        Assert.Equal(System.Net.HttpStatusCode.OK, (await client.GetAsync(new Uri(surface.Url, "webui.js"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task UnsupportedCustomHostCannotSilentlyIgnoreConfirmation()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        var error = await Assert.ThrowsAsync<DesktopException>(async () => await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            ConfirmCloseAsync = _ => ValueTask.FromResult(false),
+        }));
+        Assert.IsType<NotSupportedException>(error.InnerException);
+        Assert.False(factory.Host!.IsOpen);
+        Assert.Null(factory.Host.Options);
+        await using var unguarded = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        Assert.False(unguarded.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation));
+    }
+
+    [Theory]
+    [InlineData(BrowserKind.Any, (DesktopPresentationPolicy)0)]
+    [InlineData(BrowserKind.Embedded, DesktopPresentationPolicy.EmbeddedThenBrowser)]
+    public void BrowserPresentationCannotSilentlyIgnoreConfirmation(BrowserKind browser, DesktopPresentationPolicy policy)
+    {
+        Assert.Throws<ArgumentException>(() => DesktopSurface.ValidateWindowOptions(new DesktopWindowOptions
+        {
+            Browser = browser,
+            PresentationPolicy = policy,
+            ConfirmCloseAsync = _ => ValueTask.FromResult(false),
+        }));
+    }
+
     private sealed class RecordingWindowHostFactory : IDesktopWindowHostFactory
     {
         internal RecordingWindowHost? Host { get; private set; }
         public bool IsSupported => true;
-        public IDesktopWindowHost Create() => Host = new RecordingWindowHost();
+        public bool SupportsCloseConfirmation { get; init; }
+        public IDesktopWindowHost Create() => Host = new RecordingWindowHost { SupportsCloseConfirmation = SupportsCloseConfirmation };
     }
 
     private sealed class RecordingWindowHost : IDesktopWindowHost
     {
+        public bool SupportsCloseConfirmation { get; init; }
         public event EventHandler? Closed;
         public bool IsOpen { get; private set; }
         public nint NativeHandle => IsOpen ? 1 : 0;

@@ -87,6 +87,19 @@ jobs:
         run: |
           dotnet build RunicSdk.Core.slnx -c Release
           dotnet test packages/runic-desktop/tests/Runic.Desktop.Tests -c Release --no-build
+      - name: Install Linux native WebView prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-0 xvfb
+      - name: Build native window smoke
+        run: dotnet build packages/runic-desktop/tests/Runic.Desktop.WebViewSmoke -c Release
+      - name: Exercise native window close interception on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a dotnet packages/runic-desktop/tests/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+      - name: Exercise native window close interception on Windows and macOS
+        if: runner.os != 'Linux'
+        run: dotnet packages/runic-desktop/tests/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
       - name: Compile the original WPF migration example
         if: runner.os == 'Windows'
         run: dotnet build examples/current/customer-migration/Wpf/CustomerWpf.csproj -c Release

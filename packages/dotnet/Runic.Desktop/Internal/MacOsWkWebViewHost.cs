@@ -27,8 +27,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private nint _window;
     private nint _webView;
     private nint _delegate;
+    private Action? _closeRequested;
     private int _isOpen;
     private int _disposed;
+
+    public bool SupportsCloseConfirmation => true;
 
     public event EventHandler? Closed;
 
@@ -64,6 +67,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             return ValueTask.CompletedTask;
         }
 
+        _closeRequested = options.CloseRequested;
         Create(url, options);
         return ValueTask.CompletedTask;
     }
@@ -362,8 +366,20 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             return 0;
         }
         Api.AddMethod(type, "windowWillClose:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowWillClose, "v@:@");
+        Api.AddMethod(type, "windowShouldClose:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&WindowShouldClose, RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
         Api.RegisterClassPair(type);
         return type;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static byte WindowShouldClose(nint self, nint selector, nint window)
+    {
+        if (Hosts.TryGetValue(window, out var host) && host._closeRequested is { } requestClose)
+        {
+            requestClose();
+            return 0;
+        }
+        return 1;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

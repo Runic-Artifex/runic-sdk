@@ -25,3 +25,7 @@ needs to be deleted. Preserve imported branch tips too if their additional branc
 history is wanted remotely. Then run the root CI on the new remote before preparing
 new compatibility and release attestations. Archiving old repositories or publishing
 packages is a separate decision.
+
+The next structural task is the [repository reorganisation](repository-reorganisation.md),
+sequenced after native close interception. It defines the destination layout, move
+order and verification criteria without rewriting import or release evidence.

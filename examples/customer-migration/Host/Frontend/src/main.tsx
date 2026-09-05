@@ -15,6 +15,12 @@ import {
 } from "./editor-state";
 import "./style.css";
 
+declare global {
+  interface Window {
+    confirmCustomerClose?: () => Promise<boolean>;
+  }
+}
+
 function Customers() {
   const [editor, setEditor] = useState(emptyEditor);
   const [search, setSearch] = useState("");
@@ -22,12 +28,20 @@ function Customers() {
   const [error, setError] = useState("");
   const [destination, setDestination] = useState<string>();
   const dialog = useRef<HTMLDialogElement>(null);
+  const closeDialog = useRef<HTMLDialogElement>(null);
+  const [closing, setClosing] = useState(false);
+  const closeDecision = useRef<{
+    promise: Promise<boolean>;
+    resolve: (allow: boolean) => void;
+  } | null>(null);
+  const closeState = useRef({ busy: false, navigating: false });
   const form = useRef<HTMLFormElement>(null);
   const editSequence = useRef(0);
   const current = useRef(editor);
   current.current = editor;
   const busy = pending || editor.snapshot?.save.status === "saving";
   const changed = dirty(editor);
+  closeState.current = { busy, navigating: !!destination };
   const receive = (snapshot: CustomerSnapshot) =>
     setEditor((state) => receiveSnapshot(state, snapshot));
   const failure = (value: unknown) => {
@@ -66,6 +80,44 @@ function Customers() {
   useEffect(() => {
     if (destination) dialog.current?.showModal();
   }, [destination]);
+
+  // Application-specific presentation policy, called through the authenticated Desktop script channel.
+  // It never sends drafts into an MVVM adapter or duplicates their ownership in the host.
+  useEffect(() => {
+    const confirm = async () => {
+      if (closeState.current.busy) {
+        setError("Finish or cancel the current operation before closing.");
+        return false;
+      }
+      if (!current.current.snapshot || closeState.current.navigating)
+        return false;
+      if (closeDecision.current) return closeDecision.current.promise;
+      if (!dirty(current.current)) return true;
+      let resolve!: (allow: boolean) => void;
+      const promise = new Promise<boolean>((accept) => {
+        resolve = accept;
+      });
+      closeDecision.current = { promise, resolve };
+      setClosing(true);
+      return promise;
+    };
+    window.confirmCustomerClose = confirm;
+    return () => {
+      if (window.confirmCustomerClose === confirm)
+        delete window.confirmCustomerClose;
+      closeDecision.current?.resolve(false);
+      closeDecision.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    if (closing) closeDialog.current?.showModal();
+  }, [closing]);
+  function finishClose(allow: boolean) {
+    closeDialog.current?.close();
+    setClosing(false);
+    closeDecision.current?.resolve(allow);
+    closeDecision.current = null;
+  }
 
   async function validate() {
     const draft = current.current.draft;
@@ -273,6 +325,7 @@ function Customers() {
                       setError("Choose a contact JSON file smaller than 4 KB.");
                       return;
                     }
+                    setPending(true);
                     void file
                       .text()
                       .then((text) => {
@@ -285,7 +338,8 @@ function Customers() {
                         }));
                         setError("");
                       })
-                      .catch(failure);
+                      .catch(failure)
+                      .finally(() => setPending(false));
                   }}
                 />
               </div>
@@ -357,6 +411,25 @@ function Customers() {
           Reconnect
         </button>
       </div>
+      <dialog
+        ref={closeDialog}
+        aria-labelledby="close-title"
+        onCancel={(event) => {
+          event.preventDefault();
+          finishClose(false);
+        }}
+      >
+        <h2 id="close-title">Close without saving?</h2>
+        <p>Your unsaved edits will be lost.</p>
+        <div className="dialog-actions">
+          <button autoFocus onClick={() => finishClose(false)}>
+            Keep editing
+          </button>
+          <button className="primary" onClick={() => finishClose(true)}>
+            Discard and close
+          </button>
+        </div>
+      </dialog>
       <dialog
         ref={dialog}
         onCancel={() => setDestination(undefined)}

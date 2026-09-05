@@ -44,6 +44,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly string _sessionCredential;
     private Process? _browserProcess;
     private IWebUiEmbeddedHost? _embeddedHost;
+    private Func<CancellationToken, ValueTask<bool>>? _confirmClose;
+    private WindowCloseController? _closeController;
+
     private TaskCompletionSource _browserConnected = NewCompletionSource();
     private string _rootFolder;
     private string? _profileName;
@@ -127,6 +130,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     public nuint BrowserProcessId => _browserProcess is { HasExited: false } process
         ? checked((nuint)process.Id)
         : 0;
+
+    internal bool IsEmbeddedWindowOpen => _embeddedHost?.IsOpen == true;
 
     /// <summary>Gets the native embedded-window handle, or zero outside WebView mode.</summary>
     public nint NativeWindowHandle => _embeddedHost?.NativeHandle ?? 0;
@@ -473,10 +478,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 connection = _browserConnected.Task;
                 try
                 {
+                    ConfigureCloseConfirmation(host);
                     await host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken).ConfigureAwait(false);
                 }
                 catch
                 {
+                    StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
@@ -544,11 +551,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 connection = _browserConnected.Task;
                 try
                 {
+                    ConfigureCloseConfirmation(host);
                     host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken)
                         .AsTask().GetAwaiter().GetResult();
                 }
                 catch
                 {
+                    StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
@@ -1225,6 +1234,35 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             : throw new InvalidOperationException("This window is not using an embedded WebView host.");
     }
 
+    internal bool HasCloseConfirmation => _closeController is not null;
+
+    internal bool SupportsCloseConfirmation => _embeddedHost?.SupportsCloseConfirmation == true;
+
+    internal void SetCloseConfirmation(Func<CancellationToken, ValueTask<bool>>? confirm) => _confirmClose = confirm;
+
+    internal async Task<bool> RequestCloseAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_closeController is { } controller)
+        {
+            return await controller.RequestAsync(cancellationToken).ConfigureAwait(false);
+        }
+        await ClosePresentationAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    private void ConfigureCloseConfirmation(IWebUiEmbeddedHost host)
+    {
+        if (_confirmClose is null) return;
+        if (!host.SupportsCloseConfirmation)
+        {
+            throw new NotSupportedException("The embedded host does not support close confirmation.");
+        }
+        _closeController = new WindowCloseController(_confirmClose, () => host.CloseAsync());
+    }
+
+    private void StopCloseConfirmation() => Interlocked.Exchange(ref _closeController, null)?.Dispose();
+
     private WebUiEmbeddedHostOptions CreateEmbeddedHostOptions()
     {
         string? profilePath = null;
@@ -1239,6 +1277,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         return new WebUiEmbeddedHostOptions
         {
+            CloseRequested = _closeController is { } close ? close.RequestFromPlatform : null,
             Width = _width ?? 800,
             Height = _height ?? 600,
             MinimumWidth = _minimumWidth,
@@ -1269,13 +1308,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private async Task HandleEmbeddedHostClosedAsync(IWebUiEmbeddedHost host)
     {
-        if (!ReferenceEquals(Interlocked.CompareExchange(ref _embeddedHost, null, host), host))
+        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            return;
+            if (!ReferenceEquals(Interlocked.CompareExchange(ref _embeddedHost, null, host), host))
+            {
+                return;
+            }
+            StopCloseConfirmation();
+            host.Closed -= EmbeddedHostClosed;
+            _currentBrowser = WebUiBrowser.NoBrowser;
+            await host.DisposeAsync().ConfigureAwait(false);
         }
-        host.Closed -= EmbeddedHostClosed;
-        await host.DisposeAsync().ConfigureAwait(false);
-        _currentBrowser = WebUiBrowser.NoBrowser;
+        finally
+        {
+            _lifecycleGate.Release();
+        }
         if (_runtimeOptions is null)
         {
             await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
@@ -1347,6 +1395,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private async Task StopBrowserAsync()
     {
+        StopCloseConfirmation();
         var embeddedHost = Interlocked.Exchange(ref _embeddedHost, null);
         if (embeddedHost is not null)
         {

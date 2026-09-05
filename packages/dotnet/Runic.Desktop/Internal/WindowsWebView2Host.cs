@@ -60,6 +60,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private int _disposed;
     private int _maximized;
 
+    public bool SupportsCloseConfirmation => true;
+
     public event EventHandler? Closed;
 
     internal static bool IsSupported
@@ -190,7 +192,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     {
         if (IsOpen)
         {
-            await InvokeAsync(() => Native.PostMessage(_window, WmClose, 0, 0), cancellationToken).ConfigureAwait(false);
+            await InvokeAsync(() => Native.DestroyWindow(_window), cancellationToken).ConfigureAwait(false);
             await _closed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
@@ -438,6 +440,11 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 }
                 return 0;
             case WmClose:
+                if (host?._options?.CloseRequested is { } requestClose)
+                {
+                    requestClose();
+                    return 0;
+                }
                 Native.DestroyWindow(window);
                 return 0;
             case WmDestroy:

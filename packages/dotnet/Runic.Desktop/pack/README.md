@@ -23,6 +23,7 @@ WebView. It does not load the native WebUI library.
 - Structured browser/WebView preflight with actionable prerequisite diagnostics
 - Sensitive permissions denied by default and explicit, typed presentation opt-in
 - Window geometry, framing, transparency, visibility, focus, and native handles
+- [Asynchronous native close confirmation](docs/window-close-lifecycle.md) for unsaved work
 - Trimming and NativeAOT-compatible managed core
 
 ## Example

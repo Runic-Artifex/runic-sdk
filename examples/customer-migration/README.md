@@ -10,15 +10,23 @@ From the SDK root, after `bun run bootstrap`:
 
 ```sh
 bun run example:customers
+# Embedded WebView with native close confirmation (Windows/Linux):
+bun run example:customers --native
 # Serve the same application without opening a native window:
 bun run example:customers --serve
 ```
 
-The first command builds the SDK and application, then opens Runic Desktop.
-The second prints a local URL for the real C# bridge. Keep that process running
+The default builds the SDK and application, then opens an installed browser through
+Runic Desktop. `--native` selects the embedded WebView and enables close confirmation.
+`--serve` prints a local URL for the real C# bridge. Keep that process running
 while using the URL. The page does not have a mock backend or duplicate C# rules.
 For faster subsequent starts use `dotnet run --project
 examples/current/customer-migration/Host/CustomerDesktop.csproj --no-build`.
+
+The native reference requires WebView2 on Windows or GTK 3/WebKitGTK on Linux.
+The current asynchronous Application host does not provide the main-thread runner
+required by AppKit; use browser/serve mode for this example on macOS. The lower-level
+Desktop API has an AppKit close hook and a dedicated main-thread native smoke test.
 
 On Windows, the original WPF implementation is runnable with:
 
@@ -53,6 +61,10 @@ repository serializes writes within one process, not across processes.
    are imported; the file cannot select a different customer or record version.
 8. Give another customer the same email. The backend rejects the duplicate and
    returns a field error. A stale record version similarly prevents an overwrite.
+
+9. In `--native` mode, edit a field and click the OS close button. Keep editing or
+   press Escape to retain the draft; Discard and close approves shutdown. While an
+   operation is active, close is denied until it finishes or is cancelled.
 
 Save deliberately includes three 300 ms staging delays so progress/cancellation
 are visible. Those delays are sample behavior, not a Runic requirement.
@@ -95,7 +107,7 @@ bun run verify:customers
 
 `verify:customers` builds the application, starts its real host with an isolated
 temporary data file, and exercises search, validation, dirty navigation, saving,
-cancellation, reconnect, import, duplicate-email errors, and a narrow layout.
+cancellation, reconnect, import, duplicate-email errors, close decisions, and a narrow layout.
 Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to use an existing Chromium installation.
 No application data or runtime mocks are injected into the frontend.
 
@@ -108,9 +120,13 @@ certification is still separate from these automated checks.
 
 - HTML file selection demonstrates an OS picker through the WebView. It is not a
   Runic native file-dialog API, retained file permission, or arbitrary path access.
-- The discard dialog guards in-app navigation. `beforeunload` is a browser best
-  effort; Runic native window closure is not certified to honor it. Native closing
-  interception is a priority gap, and unsaved drafts are not crash durable.
+- `--native` uses `DesktopWindowOptions.ConfirmCloseAsync` to ask the frontend through
+  the authenticated script channel. Failed or missing UI replies keep the window
+  open. Its script request times out after ten minutes; a new close attempt can retry.
+  `CloseAsync`, disposal and process termination bypass this policy. Unsaved drafts
+  are not crash durable. Browser mode uses `beforeunload` as a best effort.
+- See the [close lifecycle contract](../../../packages/runic-desktop/docs/window-close-lifecycle.md)
+  for platform support, custom hosts, cancellation and native verification limits.
 - Keyboard labels, error associations, focus restoration, and responsive layout
   are present. This does not establish screen-reader parity on every native host.
 - The directory is small and loaded as a snapshot. Large lists require paging,

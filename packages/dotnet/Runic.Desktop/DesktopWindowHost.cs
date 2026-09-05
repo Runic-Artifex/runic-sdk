@@ -13,6 +13,9 @@ public interface IDesktopWindowHostFactory
 /// <summary>Hosts one Desktop surface in a platform-native window.</summary>
 public interface IDesktopWindowHost : IAsyncDisposable
 {
+    /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
+    bool SupportsCloseConfirmation => false;
+
     event EventHandler? Closed;
     bool IsOpen { get; }
     nint NativeHandle { get; }
@@ -31,6 +34,9 @@ public interface IDesktopWindowHost : IAsyncDisposable
 /// <summary>Describes the immutable initial state of an embedded window host.</summary>
 public sealed record DesktopWindowHostOptions
 {
+    /// <summary>When set, suppress user close requests and invoke this callback. CloseAsync must bypass it.</summary>
+    public Action? CloseRequested { get; init; }
+
     public uint Width { get; init; } = 800;
     public uint Height { get; init; } = 600;
     public uint? MinimumWidth { get; init; }
@@ -71,6 +77,8 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
 
     public bool IsOpen => _host.IsOpen;
 
+    public bool SupportsCloseConfirmation => _host.SupportsCloseConfirmation;
+
     public nint NativeHandle => _host.NativeHandle;
 
     public ValueTask ShowAsync(
@@ -79,6 +87,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         CancellationToken cancellationToken = default) =>
         _host.OpenAsync(url, new DesktopWindowHostOptions
         {
+            CloseRequested = options.CloseRequested,
             Width = options.Width,
             Height = options.Height,
             MinimumWidth = options.MinimumWidth,

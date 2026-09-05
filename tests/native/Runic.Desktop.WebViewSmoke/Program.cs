@@ -19,10 +19,12 @@ Console.WriteLine("Runic Desktop embedded WebView smoke passed.");
 static async Task RunAsyncSmoke()
 {
     await using var host = await DesktopHost.StartAsync(CreateHostOptions());
+    var closeGuard = new SmokeCloseGuard();
     await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = FirstPage() }))
-    await using (var window = await surface.OpenWindowAsync(FirstWindowOptions()))
+    await using (var window = await surface.OpenWindowAsync(FirstWindowOptions() with { ConfirmCloseAsync = closeGuard.ConfirmAsync }))
     {
         await ExerciseFirstWindowAsync(surface, window);
+        await ExerciseCloseGuardAsync(surface, window, closeGuard);
         await window.CloseAsync();
         AssertClosed(window);
     }
@@ -43,7 +45,13 @@ static void RunMacOsSmoke()
     var host = DesktopHost.StartAsync(CreateHostOptions()).AsTask().GetAwaiter().GetResult();
     try
     {
-        RunMacOsWindow(host, FirstPage(), FirstWindowOptions(), ExerciseFirstWindowAsync);
+        var closeGuard = new SmokeCloseGuard();
+        RunMacOsWindow(host, FirstPage(), FirstWindowOptions() with { ConfirmCloseAsync = closeGuard.ConfirmAsync },
+            async (surface, window) =>
+            {
+                await ExerciseFirstWindowAsync(surface, window);
+                await ExerciseCloseGuardAsync(surface, window, closeGuard);
+            });
         RunMacOsWindow(
             host,
             RestartedPage(),
@@ -110,6 +118,30 @@ static async Task ExerciseFirstWindowAsync(DesktopSurface surface, DesktopWindow
     await window.ToggleMaximizedAsync();
 }
 
+static async Task ExerciseCloseGuardAsync(DesktopSurface surface, DesktopWindow window, SmokeCloseGuard guard)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation))
+        throw new InvalidOperationException("The native host did not advertise close confirmation.");
+    await NativeCloseRequest.SendAsync(window.NativeHandle).WaitAsync(timeout.Token);
+    await guard.Entered.Task.WaitAsync(timeout.Token);
+    // The native loop and bridge must remain responsive while the decision is outstanding.
+    if (await surface.ExecuteJavaScriptAsync("return 42;", cancellationToken: timeout.Token) != "42")
+        throw new InvalidOperationException("The close request blocked the presentation.");
+    var denied = window.RequestCloseAsync(timeout.Token).AsTask();
+    guard.Decision.SetResult(false);
+    if (await denied || !window.IsOpen)
+        throw new InvalidOperationException("A denied native close request closed the window.");
+    guard.Reset();
+    await NativeCloseRequest.SendAsync(window.NativeHandle).WaitAsync(timeout.Token);
+    await guard.Entered.Task.WaitAsync(timeout.Token);
+    var allowed = window.RequestCloseAsync(timeout.Token).AsTask();
+    guard.Decision.SetResult(true);
+    if (!await allowed) throw new InvalidOperationException("An approved native close request was denied.");
+    AssertClosed(window);
+    Console.WriteLine("Native close interception passed: deferred decision, responsive bridge, veto, retry, approval.");
+}
+
 static async Task ExerciseRestartedWindowAsync(DesktopSurface surface)
 {
     if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "restarted")
@@ -153,3 +185,22 @@ static string RestartedPage() =>
     <!doctype html><html><head><script src="webui.js"></script>
     <title>restarted</title></head><body></body></html>
     """;
+
+internal sealed class SmokeCloseGuard
+{
+    internal TaskCompletionSource Entered { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource<bool> Decision { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal ValueTask<bool> ConfirmAsync(CancellationToken cancellationToken)
+    {
+        var decision = Decision;
+        Entered.TrySetResult();
+        return new(decision.Task.WaitAsync(cancellationToken));
+    }
+
+    internal void Reset()
+    {
+        Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Decision = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+}

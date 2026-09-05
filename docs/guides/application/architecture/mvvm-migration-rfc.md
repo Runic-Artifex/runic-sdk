@@ -76,7 +76,7 @@ migration CLI or large code-fix API.
 | Ordering | Projection generations ignore late receipts; edit sequences reject stale validation | Decide whether controller metadata or shared helpers should own these mechanics |
 | Reconnect | Confirmed data and operation outcome recover; draft preserved in memory | Consistent reconnect affordances and optional durable draft recovery |
 | Debugging | Named contracts and testable headless feature | Command/state inspector, traces and source navigation |
-| Platform | WPF native dialogs versus WebView file input/HTML dialog | Native closing interception, owned dialogs, capability reporting, dispatching |
+| Platform | WPF native dialogs versus WebView file input/HTML dialog | Close confirmation implemented; owned dialogs, dispatching and broader capability reporting remain |
 
 Do not promote the sample's helpers to public packages until another feature tests
 those abstractions. The reference is evidence for API design, not a claim that the
@@ -84,7 +84,9 @@ full proposed DX exists today.
 
 ## OS integration priorities driven by migration
 
-1. Window ownership/lifecycle and asynchronous close veto for unsaved work.
+1. Asynchronous close veto is implemented with native hooks and capability reporting;
+   finish platform runner evidence and the Application host's macOS main-thread runner.
+   See the [lifecycle contract](../../../runic-desktop/docs/window-close-lifecycle.md).
 2. File dialogs and access lifetimes; clipboard; UI dispatching with explicit thread rules.
 3. Navigation/back, activation, menus and keyboard shortcuts.
 4. Notifications and background work lifecycle where supported.
@@ -101,3 +103,12 @@ first-success time, handwritten coordination code, source diagnostics, startup,
 input latency and recovery behavior. Introduce reusable forms/operation APIs only
 where both implementations demonstrate the same need. Verify native close and file
 flows on the supported OS runners before describing them as migration guarantees.
+
+## Sequenced follow-up
+
+After the close-interception follow-up, restructure the monorepo before broadening
+OS APIs. The [repository reorganisation plan](../../../../eng/repository-reorganisation.md)
+replaces imported repository boundaries with package, tool, application and test
+ownership. Preserve package identities and Git ancestry; verify standalone consumers
+and generated artifacts after moves. File dialogs and reusable migration DX remain
+subsequent feature work, informed by the second reference feature.

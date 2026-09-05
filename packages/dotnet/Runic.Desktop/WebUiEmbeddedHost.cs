@@ -13,6 +13,9 @@ internal interface IWebUiEmbeddedHostFactory
 /// <summary>Hosts one Runic Desktop page in a platform-native embedded WebView window.</summary>
 internal interface IWebUiEmbeddedHost : IAsyncDisposable
 {
+    /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
+    bool SupportsCloseConfirmation => false;
+
     /// <summary>Occurs after the platform window has closed.</summary>
     event EventHandler? Closed;
 
@@ -56,6 +59,9 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
 /// <summary>Describes the initial state of an embedded platform WebView window.</summary>
 internal sealed record WebUiEmbeddedHostOptions
 {
+    /// <summary>When set, suppress user close requests and invoke this callback. CloseAsync must bypass it.</summary>
+    public Action? CloseRequested { get; init; }
+
     public uint Width { get; init; } = 800;
 
     public uint Height { get; init; } = 600;

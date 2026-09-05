@@ -51,6 +51,10 @@ translation compiler pin remains local. Product-specific analyzer/build policies
 remain with their product. Template lockfiles and historical fixtures are independent
 consumer evidence, not additional development workspaces.
 
+The next structural follow-up is the [repository reorganisation](eng/repository-reorganisation.md):
+replace imported repository boundaries with a consistent package and tool layout,
+then consolidate active tests, documentation and engineering scripts.
+
 ## Migrating existing applications
 
 The [customer migration reference](examples/current/customer-migration/README.md)
@@ -78,8 +82,9 @@ requires Bash, npm 11.16.0, and pnpm 11.25.0. Artifacts are written to
 `eng/Versions.props` defines the .NET release version. npm packages retain explicit
 versions, checked against the inventory. Coordinate version changes in a single PR.
 CI runs the integrated verification and template consumers on Linux, plus managed
-desktop contracts and NativeAOT bridge checks on Linux, Windows, and both macOS
-architectures. Native UI certification remains a separate platform test concern.
+desktop contracts, native window/close smoke tests, and NativeAOT bridge checks on
+Linux, Windows, and both macOS architectures. Broader native UI certification remains
+a separate platform test concern.
 
 Root CI creates downloadable
 candidates only. The root `.github/workflows/ci.yml` owns this checkout's CI.

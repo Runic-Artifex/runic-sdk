@@ -168,6 +168,31 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsExecutingCallback => _engine.IsExecutingCallback;
 
+    internal bool IsCurrentWindow(DesktopWindow window) => ReferenceEquals(Volatile.Read(ref _window), window);
+
+    internal async ValueTask<bool> RequestCloseWindowAsync(DesktopWindow window, CancellationToken cancellationToken)
+    {
+        Task<bool> decision;
+        await _windowGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!ReferenceEquals(_window, window) || !window.IsOpen) return true;
+            if (!_engine.HasCloseConfirmation)
+            {
+                await _engine.ClosePresentationAsync().ConfigureAwait(false);
+                _window = null;
+                return true;
+            }
+            decision = _engine.RequestCloseAsync(cancellationToken);
+        }
+        finally
+        {
+            _windowGate.Release();
+        }
+        // The application's decision must not hold the gate needed by forced shutdown.
+        return await decision.ConfigureAwait(false);
+    }
+
     internal async ValueTask CloseWindowAsync(DesktopWindow window)
     {
         await _windowGate.WaitAsync().ConfigureAwait(false);
@@ -253,6 +278,7 @@ public sealed class DesktopSurface : IAsyncDisposable
             _engine.SetCustomParameters(arguments);
         }
         _engine.SetAllowedPermissions(options.AllowedPermissions);
+        _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
     }
 
     private async Task OpenCheckedAsync(BrowserKind browser, CancellationToken cancellationToken)
@@ -311,6 +337,11 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal static void ValidateWindowOptions(DesktopWindowOptions options)
     {
+        if (options.ConfirmCloseAsync is not null &&
+            (options.Browser != BrowserKind.Embedded || options.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser))
+        {
+            throw new ArgumentException("Close confirmation requires BrowserKind.Embedded without browser fallback.", nameof(options));
+        }
         const DesktopPermissionGrant supported = DesktopPermissionGrant.MediaCapture;
         if (!Enum.IsDefined(options.Browser))
         {
@@ -386,16 +417,18 @@ public sealed class DesktopWindow : IAsyncDisposable
     public BrowserKind RequestedBrowser { get; }
     public BrowserKind Browser { get; }
     public bool FellBack { get; }
-    public bool IsOpen => Volatile.Read(ref _disposed) == 0 && _engine.IsShown;
+    public bool IsOpen => Volatile.Read(ref _disposed) == 0 && _surface.IsCurrentWindow(this)
+        && (Browser == BrowserKind.Embedded ? _engine.IsEmbeddedWindowOpen : _engine.IsShown);
     public ulong ProcessId => _engine.BrowserProcessId;
-    public nint NativeHandle => _engine.NativeWindowHandle;
+    public nint NativeHandle => IsOpen ? _engine.NativeWindowHandle : 0;
     public DesktopWindowCapabilities Capabilities => Browser == BrowserKind.Embedded
         ? DesktopWindowCapabilities.NativeHandle |
           DesktopWindowCapabilities.Focus |
           DesktopWindowCapabilities.Minimize |
           DesktopWindowCapabilities.Maximize |
           DesktopWindowCapabilities.Resize |
-          DesktopWindowCapabilities.Move
+          DesktopWindowCapabilities.Move |
+          (_engine.SupportsCloseConfirmation ? DesktopWindowCapabilities.CloseConfirmation : DesktopWindowCapabilities.None)
         : DesktopWindowCapabilities.None;
 
     public Task FocusAsync(CancellationToken cancellationToken = default)
@@ -426,7 +459,7 @@ public sealed class DesktopWindow : IAsyncDisposable
     public void WaitForClose(CancellationToken cancellationToken = default)
     {
         while ((Volatile.Read(ref _disposed) != 0 && !_closed.Task.IsCompleted)
-            || (Volatile.Read(ref _disposed) == 0 && _engine.IsShown))
+            || IsOpen)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (OperatingSystem.IsMacOS())
@@ -443,6 +476,12 @@ public sealed class DesktopWindow : IAsyncDisposable
         }
     }
 
+    /// <summary>Requests closing, awaiting the same confirmation as the native close button.</summary>
+    /// <remarks>Cancelling the caller stops its wait, without cancelling another caller's shared decision.</remarks>
+    public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
+        => IsOpen ? _surface.RequestCloseWindowAsync(this, cancellationToken) : ValueTask.FromResult(true);
+
+    /// <summary>Forcibly closes this window without awaiting confirmation. Use RequestCloseAsync for user actions.</summary>
     public async ValueTask CloseAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)

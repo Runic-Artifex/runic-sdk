@@ -16,11 +16,27 @@ using Runic.Desktop;
 string? data = Environment.GetEnvironmentVariable("RUNIC_CUSTOMERS_FILE");
 data ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Runic", "CustomerMigration", "customers.json");
 var assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly());
-var desktop = new DesktopApplicationHost(new()
+DesktopApplicationHost? desktop = null;
+var native = args.Contains("--native");
+desktop = new DesktopApplicationHost(new()
 {
     Title = "Customers · Runic",
     OpenWindow = !args.Contains("--serve"),
     Surface = new DesktopSurfaceOptions { ContentHandler = assets.ToDesktopContentHandler() },
+    Window = new DesktopWindowOptions
+    {
+        Browser = native ? BrowserKind.Embedded : BrowserKind.Any,
+        ConfirmCloseAsync = native ? async cancellationToken =>
+        {
+            var surface = desktop?.Surface;
+            if (surface is null) return false;
+            // Only the presentation owns its draft. Missing/disconnected UI must not imply permission to discard it.
+            return await surface.ExecuteJavaScriptAsync(
+                "return await window.confirmCustomerClose?.() === true;",
+                TimeSpan.FromMinutes(10), cancellationToken: cancellationToken) == "true";
+        }
+        : null,
+    },
 });
 var builder = RunicApplication.CreateBuilder(args).UseHost(desktop);
 builder.Services.AddSingleton(_ => new CustomerDirectory(data));

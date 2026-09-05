@@ -53,8 +53,13 @@ with an explicit reconciliation policy.
 Replace direct `Dispatcher`, `Shell`, dialog or application-singleton references with
 services that match the feature's actual needs. A web file input can obtain selected
 file contents without granting arbitrary path access, but it does not reproduce all
-native file-picker capabilities. HTML dialogs guard in-app navigation; native window
-closing requires host integration. Document those differences while migrating.
+native file-picker capabilities. For embedded-window closing, configure
+`DesktopWindowOptions.ConfirmCloseAsync` and answer from the state owner. The customer
+reference's `--native` mode asks its React draft through the authenticated script
+channel. Use `RequestCloseAsync` for application close buttons; `CloseAsync` and
+disposal intentionally bypass confirmation. See the
+[close lifecycle contract](../../../runic-desktop/docs/window-close-lifecycle.md)
+for custom-host, browser and platform limitations.
 
 ## 6. Verify and remove the old dependency
 
