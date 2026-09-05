@@ -62,9 +62,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
-    "directory": "packages/runic-vite"
+    "directory": "packages/web/vite-plugin-runic"
   },
-  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-vite#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/vite-plugin-runic#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },

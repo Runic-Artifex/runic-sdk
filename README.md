@@ -39,7 +39,7 @@ platform webview runtime described in `packages/runic-desktop/README.md`.
 | `packages/runic-assets` | Imported assets guides and engineering checks |
 | `packages/runic-translations` | Vite integration, schemas and imported support files |
 | `packages/runic-command-line` | Contract corpus and imported support files |
-| `packages/runic-vite` | Vite application integration |
+| `packages/web/vite-plugin-runic` | Vite application integration |
 | `packages/runic-svelte` | Svelte and SvelteKit adapters |
 | `apps/translations-editor` | First-party editor consuming workspace packages |
 | `examples/current` | Maintained examples; older imported samples are historical fixtures |

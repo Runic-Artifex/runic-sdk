@@ -4,13 +4,13 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
-    "directory": "packages/runic-desktop/web/packages/desktop"
+    "directory": "packages/web/desktop"
   },
   "publishConfig": {
     "access": "public"
   },
   "description": "Effect-native browser transport for Runic Desktop presentation hosts.",
-  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-desktop/web/packages/desktop#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/desktop#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },

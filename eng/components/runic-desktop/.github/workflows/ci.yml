@@ -97,7 +97,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/packages"
           node eng/prepare-web-package.mjs "$PACKAGE_VERSION" "$GITHUB_SHA"
-          (cd web/packages/desktop && bun pm pack --destination "$RUNNER_TEMP/packages" --quiet)
+          (cd ../web/desktop && bun pm pack --destination "$RUNNER_TEMP/packages" --quiet)
           dotnet pack ../dotnet/Runic.Desktop/Runic.Desktop.csproj \
             --configuration Release \
             --output "$RUNNER_TEMP/packages" \

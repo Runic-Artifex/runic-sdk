@@ -56,19 +56,19 @@ if (
 }
 for (const gate of Object.values(matrix.sharedGates)) requirePath(gate);
 
-const package_ = json("web/packages/application-bridge/package.json");
+const package_ = json("../web/application-bridge/package.json");
 if (package_.name !== matrix.protocolOwner || package_.license !== "MIT") {
   fail("The Application Bridge npm package has inconsistent identity metadata.");
 }
 if (package_.dependencies?.effect === undefined) {
   fail("The Application Bridge runtime must have an explicit Effect dependency.");
 }
-const runtime = text("web/packages/application-bridge/src/runtime.ts");
+const runtime = text("../web/application-bridge/src/runtime.ts");
 contains(runtime, "ManagedRuntime", "single owned Effect runtime");
 contains(runtime, "Stream.fromPubSub", "Effect host event stream");
 contains(runtime, "ApplicationBridgeLive", "transport-neutral production Layer");
-contains(text("web/packages/application-bridge/src/mock.ts"), "MockApplicationBridge", "mock Layer");
-contains(text("web/packages/application-bridge/src/mock.ts"), "TestApplicationBridge", "fault-injection Layer");
+contains(text("../web/application-bridge/src/mock.ts"), "MockApplicationBridge", "mock Layer");
+contains(text("../web/application-bridge/src/mock.ts"), "TestApplicationBridge", "fault-injection Layer");
 
 const svelteTemplatePackage = json(
   "../../tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",

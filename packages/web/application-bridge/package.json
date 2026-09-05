@@ -4,13 +4,13 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
-    "directory": "packages/runic-toolkit/web/packages/application-bridge"
+    "directory": "packages/web/application-bridge"
   },
   "publishConfig": {
     "access": "public"
   },
   "description": "Effect-based, schema-first application bridge for Runic Application hosts.",
-  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-toolkit/web/packages/application-bridge#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/application-bridge#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },

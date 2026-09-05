@@ -70,8 +70,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/packages"
           node eng/prepare-packages.mjs "$PACKAGE_VERSION" "$GITHUB_SHA" public
-          bun pm --cwd packages/svelte pack --destination "$RUNNER_TEMP/packages" --quiet
-          bun pm --cwd packages/sveltekit pack --destination "$RUNNER_TEMP/packages" --quiet
+          bun pm --cwd ../web/svelte pack --destination "$RUNNER_TEMP/packages" --quiet
+          bun pm --cwd ../web/sveltekit pack --destination "$RUNNER_TEMP/packages" --quiet
       - uses: Runic-Artifex/.github/.github/actions/validate-release-artifacts@main
         with:
           version: ${{ env.PACKAGE_VERSION }}

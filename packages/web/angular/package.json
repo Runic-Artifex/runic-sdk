@@ -4,13 +4,13 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
-    "directory": "packages/runic-toolkit/web/packages/angular"
+    "directory": "packages/web/angular"
   },
   "publishConfig": {
     "access": "public"
   },
   "description": "Angular DI and signal adapter for the Runic Application Bridge.",
-  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-toolkit/web/packages/angular#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/angular#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },

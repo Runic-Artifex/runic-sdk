@@ -4,35 +4,35 @@
   "npm": [
     {
       "name": "@runic-artifex/application-bridge",
-      "path": "packages/runic-toolkit/web/packages/application-bridge"
+      "path": "packages/web/application-bridge"
     },
     {
       "name": "@runic-artifex/application-bridge-tooling",
-      "path": "packages/runic-toolkit/web/packages/application-bridge-tooling"
+      "path": "packages/web/application-bridge-tooling"
     },
     {
       "name": "@runic-artifex/angular",
-      "path": "packages/runic-toolkit/web/packages/angular"
+      "path": "packages/web/angular"
     },
     {
       "name": "@runic-artifex/desktop",
-      "path": "packages/runic-desktop/web/packages/desktop"
+      "path": "packages/web/desktop"
     },
     {
       "name": "@runic-artifex/vite-plugin-runic-translations",
-      "path": "packages/runic-translations/web"
+      "path": "packages/web/vite-plugin-runic-translations"
     },
     {
       "name": "@runic-artifex/vite-plugin-runic",
-      "path": "packages/runic-vite"
+      "path": "packages/web/vite-plugin-runic"
     },
     {
       "name": "@runic-artifex/svelte",
-      "path": "packages/runic-svelte/packages/svelte"
+      "path": "packages/web/svelte"
     },
     {
       "name": "@runic-artifex/sveltekit",
-      "path": "packages/runic-svelte/packages/sveltekit"
+      "path": "packages/web/sveltekit"
     }
   ],
   "nuget": [
@@ -143,11 +143,15 @@
         "tests/dotnet/Runic.Desktop.Tests",
         "tests/native/Runic.Desktop.WebViewSmoke",
         "eng/build/desktop.props",
-        "eng/build/desktop.targets"
+        "eng/build/desktop.targets",
+        "packages/web/desktop"
       ]
     },
     "assets": {
-      "dependsOn": ["command-line", "desktop"],
+      "dependsOn": [
+        "command-line",
+        "desktop"
+      ],
       "paths": [
         "packages/runic-assets",
         "packages/dotnet/Runic.Assets",
@@ -162,7 +166,9 @@
       ]
     },
     "translations": {
-      "dependsOn": ["command-line"],
+      "dependsOn": [
+        "command-line"
+      ],
       "paths": [
         "packages/runic-translations",
         "packages/dotnet/Runic.Translations",
@@ -183,11 +189,17 @@
         "tests/dotnet/Runic.Translations.Tooling.Tests",
         "tools/dotnet-runic-translations",
         "eng/build/translations.props",
-        "eng/build/translations.targets"
+        "eng/build/translations.targets",
+        "packages/web/vite-plugin-runic-translations"
       ]
     },
     "application": {
-      "dependsOn": ["command-line", "desktop", "assets", "translations"],
+      "dependsOn": [
+        "command-line",
+        "desktop",
+        "assets",
+        "translations"
+      ],
       "paths": [
         "packages/runic-toolkit",
         "packages/dotnet/Runic.Application",
@@ -218,28 +230,60 @@
         "tools/Runic.Application.Bridge.Inspector",
         "tools/dotnet-runic-toolkit",
         "eng/build/application.props",
-        "eng/build/application.targets"
+        "eng/build/application.targets",
+        "packages/web/application-bridge",
+        "packages/web/application-bridge-tooling",
+        "packages/web/angular"
       ]
     },
     "vite": {
-      "dependsOn": ["application"],
-      "paths": ["packages/runic-vite"]
+      "dependsOn": [
+        "application"
+      ],
+      "paths": [
+        "packages/web/vite-plugin-runic"
+      ]
     },
     "svelte": {
-      "dependsOn": ["application", "vite"],
-      "paths": ["packages/runic-svelte"]
+      "dependsOn": [
+        "application",
+        "vite"
+      ],
+      "paths": [
+        "packages/runic-svelte",
+        "packages/web/svelte",
+        "packages/web/sveltekit"
+      ]
     },
     "editor": {
-      "dependsOn": ["application", "assets", "translations", "svelte", "vite"],
-      "paths": ["apps/translations-editor"]
+      "dependsOn": [
+        "application",
+        "assets",
+        "translations",
+        "svelte",
+        "vite"
+      ],
+      "paths": [
+        "apps/translations-editor"
+      ]
     },
     "examples": {
-      "dependsOn": ["application", "assets", "translations", "svelte", "vite"],
-      "paths": ["examples"]
+      "dependsOn": [
+        "application",
+        "assets",
+        "translations",
+        "svelte",
+        "vite"
+      ],
+      "paths": [
+        "examples"
+      ]
     },
     "docs": {
       "dependsOn": [],
-      "paths": ["docs"]
+      "paths": [
+        "docs"
+      ]
     }
   }
 }

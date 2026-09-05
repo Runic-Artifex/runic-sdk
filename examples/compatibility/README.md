@@ -14,11 +14,11 @@ install commands become valid only after those exact packages are published.
 
 | Step | Sample | Outcome |
 | --- | --- | --- |
-| 1 | [Hello lifecycle](samples/01-HelloLifecycle/) | Compose startup work, a UI launch mode, and orderly shutdown. |
-| 2 | [Greeting command line](samples/02-GreetingCommandLine/) | Parse a typed command and present human or JSON output. |
-| 3 | [React Setup Application](samples/03-SetupApplication/) | Drive a native Runic Desktop setup wizard through the Application Bridge. |
-| 4 | [SvelteKit Setup Application](samples/04-SvelteKitSetupApplication/) | Use the same native bridge contract with Svelte 5 runes and SvelteKit. |
-| 5 | [Runic Translations Setup](samples/05-RunicTranslationsSetup/) | Generate typed .NET and ESM translations with isolated request locales. |
+| 1 | [Hello lifecycle](samples/01-HelloLifecycle) | Compose startup work, a UI launch mode, and orderly shutdown. |
+| 2 | [Greeting command line](samples/02-GreetingCommandLine) | Parse a typed command and present human or JSON output. |
+| 3 | [React Setup Application](samples/03-SetupApplication) | Drive a native Runic Desktop setup wizard through the Application Bridge. |
+| 4 | [SvelteKit Setup Application](samples/04-SvelteKitSetupApplication) | Use the same native bridge contract with Svelte 5 runes and SvelteKit. |
+| 5 | [Runic Translations Setup](samples/05-RunicTranslationsSetup) | Generate typed .NET and ESM translations with isolated request locales. |
 
 Start with the first sample:
 
@@ -44,7 +44,7 @@ and next step.
 
 The historical package pins in this repository are retained for receipt
 verification, not for local package acquisition. The current package-only
-[Desktop clean-room journey](eng/current-clean-install/) takes its exact NuGet
+[Desktop clean-room journey](eng/current-clean-install) takes its exact NuGet
 and npm inputs from the compatibility set and requires all feeds explicitly.
 
 The older W10–W70 receipt artifacts remain available as historical engineering
@@ -63,7 +63,7 @@ against your supported runtime before production use.
 | Application lifecycle and generated manifests | `dotnet add package Runic.Application --prerelease` | [Runic Toolkit](https://docs.runic-artifex.eu/products/runic-toolkit) |
 | Typed command-line applications | `dotnet add package Runic.CommandLine --prerelease` | [Runic Command Line](https://docs.runic-artifex.eu/products/runic-command-line) |
 | A validated application bridge contract | `dotnet add package Runic.Application.Bridge --prerelease` | [Application Bridge](https://docs.runic-artifex.eu/application-bridge) |
-| A current Svelte/Vite application template | `dotnet new install Runic.Application.Templates::<candidate>` | [Current Svelte template consumer](eng/current-svelte-template/) |
+| A current Svelte/Vite application template | `dotnet new install Runic.Application.Templates::<candidate>` | [Current Svelte template consumer](eng/current-svelte-template) |
 | Typed localization for .NET and ESM | `dotnet add package Runic.Translations --prerelease` | [Runic Translations](https://docs.runic-artifex.eu/products/runic-translations) |
 | Application Bridge in a browser frontend | `npm install @runic-artifex/application-bridge` | [JavaScript packages](https://docs.runic-artifex.eu/packages) |
 
@@ -78,7 +78,7 @@ those pins when reproducing a sample, not as a general version-selection policy.
 The commands below document the frozen examples receipt and must not be used
 for local package acquisition. Its pinned package graph is historical. For the
 current package-only path, use the explicit-feed
-[Desktop clean-room journey](eng/current-clean-install/).
+[Desktop clean-room journey](eng/current-clean-install).
 
 ```bash
 dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
@@ -91,7 +91,7 @@ dotnet run --project samples/04-SvelteKitSetupApplication --configuration Releas
 dotnet run --project samples/05-RunicTranslationsSetup --configuration Release -- --smoke-test
 ```
 
-The package-only [integration canaries](integrations/) provide focused checks
+The package-only [integration canaries](integrations) provide focused checks
 for the broader Runic Toolkit family, including NativeAOT coverage where it is
 supported.
 

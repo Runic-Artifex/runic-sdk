@@ -32,7 +32,7 @@ const editorManifest = json(resolve(
   suite,
   "runic-translations-editor/Contract/bridge.ir.json",
 ));
-const bridgePackage = json(resolve(toolkit, "web/packages/application-bridge/package.json"));
+const bridgePackage = json(resolve(toolkit, "../web/application-bridge/package.json"));
 const desktopPackage = json(resolve(suite, "runic-desktop/web/packages/desktop/package.json"));
 const vitePackage = json(resolve(suite, "runic-vite/package.json"));
 const sveltePackage = json(resolve(suite, "runic-svelte/packages/svelte/package.json"));

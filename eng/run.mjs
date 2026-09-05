@@ -135,8 +135,8 @@ function test() {
     resolve(root, "examples/current/customer-migration/Host/Frontend"),
   );
   for (const path of [
-    "packages/runic-svelte/packages/svelte",
-    "packages/runic-svelte/packages/sveltekit",
+    "packages/web/svelte",
+    "packages/web/sveltekit",
     "apps/translations-editor/Frontend",
   ]) {
     run(

@@ -5,9 +5,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
-    "directory": "packages/runic-toolkit/web/packages/application-bridge-tooling"
+    "directory": "packages/web/application-bridge-tooling"
   },
-  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-toolkit/web/packages/application-bridge-tooling#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/application-bridge-tooling#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },

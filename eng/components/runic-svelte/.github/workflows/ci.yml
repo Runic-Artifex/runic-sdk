@@ -41,8 +41,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/packages"
           node eng/prepare-packages.mjs "$PACKAGE_VERSION" "$GITHUB_SHA" github
-          bun pm --cwd packages/svelte pack --destination "$RUNNER_TEMP/packages" --quiet
-          bun pm --cwd packages/sveltekit pack --destination "$RUNNER_TEMP/packages" --quiet
+          bun pm --cwd ../web/svelte pack --destination "$RUNNER_TEMP/packages" --quiet
+          bun pm --cwd ../web/sveltekit pack --destination "$RUNNER_TEMP/packages" --quiet
           sha256sum "$RUNNER_TEMP"/packages/*.tgz
       - name: Publish candidate to GitHub Packages
         if: ${{ github.event_name == 'push' }}

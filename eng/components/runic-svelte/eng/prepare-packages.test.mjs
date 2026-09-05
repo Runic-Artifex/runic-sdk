@@ -9,7 +9,7 @@ const revision = "0123456789abcdef0123456789abcdef01234567";
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "runic-svelte-pack-"));
-  for (const directory of ["packages/svelte", "packages/sveltekit"]) {
+  for (const directory of ["../web/svelte", "../web/sveltekit"]) {
     fs.mkdirSync(path.join(root, directory), { recursive: true });
     const name = directory.endsWith("sveltekit")
       ? "@runic-artifex/sveltekit"
@@ -28,10 +28,10 @@ test("GitHub candidates are private and carry exact provenance", (context) => {
   preparePackages(root, "1.0.0-ci.sha0123456789abcdef", revision, "github");
 
   const svelte = JSON.parse(
-    fs.readFileSync(path.join(root, "packages/svelte/package.json"), "utf8"),
+    fs.readFileSync(path.join(root, "../web/svelte/package.json"), "utf8"),
   );
   const sveltekit = JSON.parse(
-    fs.readFileSync(path.join(root, "packages/sveltekit/package.json"), "utf8"),
+    fs.readFileSync(path.join(root, "../web/sveltekit/package.json"), "utf8"),
   );
   assert.equal(svelte.publishConfig.access, "restricted");
   assert.equal(svelte.publishConfig.registry, "https://npm.pkg.github.com");
@@ -50,7 +50,7 @@ test("public packages preserve provenance and use npmjs.org", (context) => {
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   preparePackages(root, "1.0.0-preview.2", revision, "public");
   const manifest = JSON.parse(
-    fs.readFileSync(path.join(root, "packages/svelte/package.json"), "utf8"),
+    fs.readFileSync(path.join(root, "../web/svelte/package.json"), "utf8"),
   );
   assert.equal(manifest.publishConfig.access, "public");
   assert.equal(manifest.publishConfig.registry, "https://registry.npmjs.org");

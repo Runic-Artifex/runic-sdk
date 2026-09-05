@@ -116,7 +116,7 @@ async function readPackageFacts() {
   const [buildProps, packageProps, transport, contract] = await Promise.all([
     readFile(join(repositoryRoot, "Directory.Build.props"), "utf8"),
     readFile(join(repositoryRoot, "Directory.Packages.props"), "utf8"),
-    readFile(join(repositoryRoot, "web/packages/desktop/package.json"), "utf8"),
+    readFile(join(repositoryRoot, "../web/desktop/package.json"), "utf8"),
     readFile(join(repositoryRoot, "contract/README.md"), "utf8"),
   ]);
   const prefix = match(buildProps, /<VersionPrefix[^>]*>([^<]+)<\/VersionPrefix>/, "Runic.Desktop version prefix");
@@ -211,8 +211,8 @@ async function readInputs() {
       "Directory.Build.props",
       "Directory.Packages.props",
       "../dotnet/Runic.Desktop",
-      "web/packages/desktop/package.json",
-      "web/packages/desktop/src",
+      "../web/desktop/package.json",
+      "../web/desktop/src",
     ]),
     evidenceSha256: await hashPaths([
       "../../tests/dotnet/Runic.Desktop.Tests/BrowserBridgeTests.cs",

@@ -17,7 +17,7 @@ mkdir -p "$package_dir" "$consumer_dir"
 cd "$repository_dir"
 package_version=$(node --input-type=module --eval '
   import { readFileSync } from "node:fs";
-  process.stdout.write(JSON.parse(readFileSync("web/packages/desktop/package.json", "utf8")).version);
+  process.stdout.write(JSON.parse(readFileSync("../web/desktop/package.json", "utf8")).version);
 ')
 cd "$repository_dir/web/packages/desktop"
 bun pm pack \

@@ -347,7 +347,7 @@ internal static class Program
         await using var session = new ApplicationBridgeSession(new TestDispatcher());
         await using var transport = new ApplicationBridgeWebSocketTransport(session);
         await using TestServer server = await TestServer.StartAsync(transport).ConfigureAwait(false);
-        string module = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "packages/runic-toolkit/web/packages/application-bridge", "dist", "esm", "index.js"));
+        string module = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "packages/web/application-bridge", "dist", "esm", "index.js"));
         if (!File.Exists(module)) throw new InvalidOperationException("Build @runic-artifex/application-bridge before running the hosted-web client test.");
         var start = new ProcessStartInfo("node")
         {
@@ -639,7 +639,7 @@ internal sealed class TestServer : IAsyncDisposable
         application.MapGet("/", () => Results.Content(
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "hosted-web-browser.html")), "text/html"));
         application.MapGet("/application-bridge/transport.js", () => Results.Content(
-            File.ReadAllText(Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "packages/runic-toolkit/web/packages/application-bridge", "dist", "esm", "transport.js"))), "text/javascript"));
+            File.ReadAllText(Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "packages/web/application-bridge", "dist", "esm", "transport.js"))), "text/javascript"));
         if (triggerRefresh is not null)
         {
             application.MapPost("/test/refresh", async (HttpContext context) =>

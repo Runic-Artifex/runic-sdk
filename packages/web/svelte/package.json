@@ -2,7 +2,7 @@
   "name": "@runic-artifex/svelte",
   "version": "1.0.0-preview.1",
   "description": "Svelte 5 integration for the Runic Toolkit Application Bridge",
-  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-svelte/packages/svelte#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },
@@ -78,10 +78,26 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
-    "directory": "packages/runic-svelte/packages/svelte"
+    "directory": "packages/web/svelte"
   },
   "packageManager": "bun@1.4.0",
   "engines": {
     "node": ">=24.18.0 <25"
+  },
+  "devDependencies": {
+    "@runic-artifex/application-bridge": "workspace:*",
+    "@runic-artifex/vite-plugin-runic": "workspace:*",
+    "@sveltejs/adapter-static": "3.0.10",
+    "@sveltejs/kit": "2.70.2",
+    "@sveltejs/package": "2.5.8",
+    "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "@types/node": "24.10.12",
+    "effect": "3.22.1",
+    "happy-dom": "^20.11.2",
+    "svelte": "5.56.8",
+    "svelte-check": "4.7.5",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "vite": "8.2.1"
   }
 }

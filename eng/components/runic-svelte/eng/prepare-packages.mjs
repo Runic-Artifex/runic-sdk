@@ -6,7 +6,7 @@ const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const packageDirectories = ["packages/svelte", "packages/sveltekit"];
+const packageDirectories = ["../web/svelte", "../web/sveltekit"];
 const versionPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const revisionPattern = /^[0-9a-f]{40}$/;

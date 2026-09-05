@@ -23,7 +23,7 @@ export const CANDIDATES = ['Runic.Application', 'Runic.Application.Bridge', 'Run
 export const NPM_CANDIDATE = { identity: '@runic-artifex/application-bridge', version: process.env.RUNIC_CURRENT_HOST_TRANSPORT_NPM_VERSION ?? '0.1.0' };
 export const MANIFEST = JSON.parse(await readFile(join(import.meta.dirname, 'generated', 'bridge.ir.json'), 'utf8'));
 const archive = process.env.RUNIC_CURRENT_HOST_TRANSPORT_NPM_ARCHIVE && resolve(process.env.RUNIC_CURRENT_HOST_TRANSPORT_NPM_ARCHIVE);
-const contractGenerator = resolve(process.env.RUNIC_CURRENT_HOST_TRANSPORT_CONTRACT_GENERATOR ?? join(root, '../packages/runic-toolkit/web/packages/application-bridge-tooling/dist/esm/cli.js'));
+const contractGenerator = resolve(process.env.RUNIC_CURRENT_HOST_TRANSPORT_CONTRACT_GENERATOR ?? join(root, '../packages/web/application-bridge-tooling/dist/esm/cli.js'));
 const fixtureNames = ['initialize.client.json', 'resynchronized.host.json', 'late-old-admission-error.host.json', 'future-admission-error.host.json'];
 const isolation = { nugetGlobalPackagesFolder: '.nuget/packages', nugetHttpCachePath: '.nuget/http-cache', dotnetCliHome: '.dotnet', npmCache: '.npm-cache' };
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);

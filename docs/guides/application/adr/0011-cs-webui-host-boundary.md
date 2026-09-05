@@ -45,4 +45,4 @@ browser, while the concrete adapter owns the unavoidable native and
 process-global behavior. HTMX support remains a view/transport integration and
 does not redefine the desktop host. The accepted frontend, asset, styling, and
 repository-scope direction is recorded in
-[ADR 0012](./0012-native-html-and-frontend-direction.md).
+[ADR 0012](0012-native-html-and-frontend-direction.md).

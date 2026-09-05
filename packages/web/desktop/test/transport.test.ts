@@ -42,7 +42,7 @@ test("authenticates, negotiates the capability, and matches the portable check-t
   socket.open();
 
   const vector = JSON.parse(await readFile(
-    new URL("../../../../contract/conformance/vectors/protocol.webui-compat-check-token.json", import.meta.url),
+    new URL("../../../runic-desktop/contract/conformance/vectors/protocol.webui-compat-check-token.json", import.meta.url),
     "utf8",
   )) as { input: { value: string } };
   assert.deepEqual(socket.sent[0], Uint8Array.from(Buffer.from(vector.input.value, "base64")));

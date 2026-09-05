@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkApplicationBridge, generateApplicationBridge } from "../web/packages/application-bridge-tooling/dist/esm/index.js";
+import { checkApplicationBridge, generateApplicationBridge } from "../../web/application-bridge-tooling/dist/esm/index.js";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const check = process.argv.includes("--check");

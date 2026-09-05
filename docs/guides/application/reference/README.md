@@ -12,4 +12,4 @@
 ## Tools and web packages
 
 - [`dotnet-runic`](../../../../tools/dotnet-runic-toolkit/README.md)
-- [`@runic-artifex/application-bridge`](../../web/packages/application-bridge/README.md)
+- [`@runic-artifex/application-bridge`](../../../web/application-bridge/README.md)
