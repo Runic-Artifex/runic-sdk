@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <CsWebUiRepository>$(MSBuildThisFileDirectory)..\..\..\..\cs-webui</CsWebUiRepository>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ComparisonContent.cs" Link="ComparisonContent.cs" />
+    <ProjectReference Include="$(CsWebUiRepository)\src\CsWebUi\CsWebUi.csproj" />
+    <None Include="$(CsWebUiRepository)\artifacts\native\linux-x64\libwebui-2.so"
+          Link="libwebui-2.so"
+          CopyToPublishDirectory="PreserveNewest"
+          Condition="'$(RuntimeIdentifier)' == 'linux-x64' and Exists('$(CsWebUiRepository)\artifacts\native\linux-x64\libwebui-2.so')" />
+  </ItemGroup>
+
+  <Target Name="RequireLinuxWebUiNativeLibrary" BeforeTargets="PrepareForPublish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+    <Error Condition="!Exists('$(CsWebUiRepository)\artifacts\native\linux-x64\libwebui-2.so')"
+           Text="Build or restore the cs-webui linux-x64 native library before running this comparison." />
+  </Target>
+</Project>

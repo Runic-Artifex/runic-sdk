@@ -117,20 +117,26 @@ internal static class DevApplication
         // Runic Assets owns archive refresh. Phase 1 has no parallel legacy
         // manifest/mirror watcher.
         Task assetMonitor = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        await using RunningProcess? contractWatcher = options.GenerateContracts && configuration.HasContracts &&
+            configuration.DevelopmentServerKind != "vite"
+                ? StartContractWatcher(configuration)
+                : null;
+        string? contractFingerprint = ReadContractFingerprint(configuration.BridgeIr);
         Task contractMonitor = options.GenerateContracts && configuration.HasContracts
-            ? FilePoller.WatchAsync(
-                configuration.DevelopmentServerKind == "vite"
-                    ? configuration.BridgeIr
-                    : configuration.BridgeSource,
-                async token =>
+            ? FilePoller.WatchAsync(configuration.BridgeIr, async token =>
                 {
-                    if (configuration.DevelopmentServerKind != "vite")
+                    string? candidate = ReadContractFingerprint(configuration.BridgeIr);
+                    if (candidate is null || candidate == contractFingerprint) return;
+                    try
                     {
-                        await GenerateAndVerifyContractsAsync(configuration, token).ConfigureAwait(false);
+                        await host.RestartAsync(token).ConfigureAwait(false);
+                        contractFingerprint = candidate;
                     }
-                    await host.RestartAsync(token).ConfigureAwait(false);
-                },
-                cancellationToken)
+                    catch (DevUsageException error)
+                    {
+                        Console.Error.WriteLine($"[bridge] {error.Message}");
+                    }
+                }, cancellationToken)
             : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         var compilerReloadMonitors = new List<Task>();
         if (compilerReload is not null)
@@ -172,6 +178,7 @@ internal static class DevApplication
             cancellation,
         };
         observed.AddRange(compilerReloadMonitors);
+        if (contractWatcher is not null) observed.Add(contractWatcher.Completion);
         if (frontend is not null)
         {
             observed.Add(frontend.Completion);
@@ -375,6 +382,29 @@ internal static class DevApplication
         }
 
         return arguments;
+    }
+
+    private static string? ReadContractFingerprint(string path)
+    {
+        try
+        {
+            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.GetProperty("fingerprint").GetProperty("value").GetString();
+        }
+        catch (Exception error) when (error is IOException or System.Text.Json.JsonException or KeyNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    private static RunningProcess StartContractWatcher(DevProjectConfiguration configuration)
+    {
+        string cli = Path.Combine(configuration.FrontendPackageDirectory, "node_modules", "@runic-artifex", "application-bridge-tooling", "dist", "esm", "cli.js");
+        bool csharp = configuration.BridgeSource.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(configuration.WorkspaceRoot, configuration.FrontendPackageDirectory);
+        return RunningProcess.Start("bridge", packageManager.Name == "bun" ? "bun" : "node", configuration.FrontendPackageDirectory,
+            [cli, "watch", "--authority", csharp ? "csharp" : "effect", csharp ? "--project" : "--source",
+             configuration.BridgeSource, "--ir", configuration.BridgeIr, "--facade", configuration.BridgeFacade]);
     }
 
     private static async Task GenerateAndVerifyContractsAsync(

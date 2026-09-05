@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="..\ComparisonContent.cs" Link="ComparisonContent.cs" />
+    <ProjectReference Include="..\..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj" />
+  </ItemGroup>
+</Project>

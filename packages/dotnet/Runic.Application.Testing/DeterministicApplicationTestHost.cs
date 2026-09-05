@@ -76,7 +76,7 @@ public sealed class DeterministicApplicationTestHost : IApplicationHost, IApplic
     }
 
     /// <inheritdoc />
-    public ValueTask StartAsync(ApplicationCompositionManifest manifest, ReadOnlyMemory<string> arguments, CancellationToken cancellationToken)
+    public ValueTask StartAsync(ApplicationCompositionManifest manifest, ReadOnlyMemory<string> arguments, IServiceProvider services, CancellationToken cancellationToken)
     {
         Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
         Transition(ApplicationLifecycleState.Created, ApplicationLifecycleState.Starting, "start");

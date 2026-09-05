@@ -24,7 +24,7 @@ internal static class Program
             ("pending-capacity rejection does not consume a command identifier", PendingCapacityRetry),
             ("a full event budget rejects mutation before its handler runs", FullEventBudgetRejectsMutation),
             ("staged event payloads survive their source document disposal", StagedPayloadOwnership),
-            ("initialize publication follows its snapshot in the same epoch", InitializePublication),
+            ("built-in initialization invokes the snapshot provider directly", InitializePublication),
             ("event subscribers can reenter dispatch without a revision deadlock", ReentrantSubscriber),
             ("a staged command event permits synchronous reentrant dispatch", ReentrantCommandEvent),
             ("synchronous subscribers can publish into the bounded event queue", SynchronousReentrantPublish),
@@ -103,8 +103,8 @@ internal static class Program
         var handler = new SetupHandler();
         await using var session = new ApplicationBridgeSession(new SetupBridgeDispatcher(handler));
         Guid command = Guid.Parse("00000000-0000-4000-8000-000000000011");
-        _ = await session.DispatchAsync(Envelope("initialize", command, null, null, """{"_tag":"InitializeApplication"}"""));
-        BridgeHostEnvelope duplicate = await session.DispatchAsync(Envelope("initialize", command, null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", command, null, null, """{}"""));
+        BridgeHostEnvelope duplicate = await session.DispatchAsync(Envelope("initialize", command, null, null, """{}"""));
         Equal("CommandRejected", duplicate.Payload.GetProperty("_tag").GetString());
 
         BridgeHostEnvelope stale = await session.DispatchAsync(Envelope(
@@ -128,13 +128,13 @@ internal static class Program
     {
         await using var session = new ApplicationBridgeSession(new FailingDispatcher());
         BridgeHostEnvelope response = await session.DispatchAsync(Envelope(
-            "initialize",
+            "dispatch",
             Guid.Parse("00000000-0000-4000-8000-000000000099"),
+            session.Id.Value,
             null,
-            null,
-            """{"_tag":"InitializeApplication"}""")).ConfigureAwait(false);
+            """{}""")).ConfigureAwait(false);
         Equal("error", response.Kind);
-        Equal(0L, response.Sequence);
+        Equal(1L, response.Sequence);
         Equal("QuotaExceeded", response.Payload.GetProperty("_tag").GetString());
         Equal(2L, response.Payload.GetProperty("limit").GetInt64());
     }
@@ -145,7 +145,7 @@ internal static class Program
         await using var session = new ApplicationBridgeSession(dispatcher);
         _ = await session.DispatchAsync(Envelope(
             "initialize", Guid.Parse("00000000-0000-4000-8000-000000000014"), null, null,
-            """{"_tag":"InitializeApplication"}"""));
+            """{}"""));
         var events = new List<BridgeHostEnvelope>();
         var eventProduced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         session.EventProduced += (_, message) =>
@@ -177,15 +177,15 @@ internal static class Program
         {
             Protocol = "runic.artifex.setup", Version = 1, ContractFingerprint = new('0', 64), ConnectionEpoch = 0,
             Kind = "initialize", CommandId = Guid.Parse("00000000-0000-4000-8000-000000000017"),
-            Payload = JsonDocument.Parse("""{"_tag":"InitializeApplication"}""").RootElement.Clone(),
+            Payload = JsonDocument.Parse("""{}""").RootElement.Clone(),
         });
         Equal("ProtocolVersionMismatch", mismatch.Payload.GetProperty("_tag").GetString());
         _ = await session.DispatchAsync(Envelope(
             "initialize", Guid.Parse("00000000-0000-4000-8000-000000000018"), null, null,
-            """{"_tag":"InitializeApplication"}"""));
+            """{}"""));
         BridgeHostEnvelope staleConnection = await session.DispatchAsync(Envelope(
             "initialize", Guid.Parse("00000000-0000-4000-8000-000000000019"), null, null,
-            """{"_tag":"InitializeApplication"}""", connectionEpoch: 1));
+            """{}""", connectionEpoch: 1));
         Equal("snapshot", staleConnection.Kind);
         Equal(1L, staleConnection.Sequence);
         BridgeHostEnvelope oldConnection = await session.DispatchAsync(Envelope(
@@ -198,7 +198,7 @@ internal static class Program
     {
         var dispatcher = new BlockingMutationDispatcher();
         await using var session = new ApplicationBridgeSession(dispatcher);
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000081"), null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000081"), null, null, """{}"""));
         Task<BridgeHostEnvelope> oldCommand = session.DispatchAsync(Envelope(
             "dispatch", Guid.Parse("00000000-0000-4000-8000-000000000082"), session.Id.Value, 0, """{"_tag":"Mutate"}""")).AsTask();
         await dispatcher.MutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -213,7 +213,7 @@ internal static class Program
         await external;
         Equal(0L, (await externalPublished.Task.WaitAsync(TimeSpan.FromSeconds(2))).ConnectionEpoch);
         BridgeHostEnvelope snapshot = await session.DispatchAsync(Envelope(
-            "initialize", Guid.Parse("00000000-0000-4000-8000-000000000083"), null, null, """{"_tag":"InitializeApplication"}""", connectionEpoch: 1));
+            "initialize", Guid.Parse("00000000-0000-4000-8000-000000000083"), null, null, """{}""", connectionEpoch: 1));
         Equal("snapshot", snapshot.Kind);
         Equal(1L, snapshot.ConnectionEpoch);
         Equal(1L, snapshot.Sequence);
@@ -223,7 +223,7 @@ internal static class Program
     {
         var dispatcher = new BlockingMutationDispatcher();
         await using var session = new ApplicationBridgeSession(dispatcher, new BridgeLimits { MaxPendingCommands = 1 });
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000085"), null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000085"), null, null, """{}"""));
         Task<BridgeHostEnvelope> occupying = session.DispatchAsync(Envelope(
             "dispatch", Guid.Parse("00000000-0000-4000-8000-000000000086"), session.Id.Value, 0, """{"_tag":"Mutate"}""")).AsTask();
         await dispatcher.MutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -245,7 +245,7 @@ internal static class Program
         await using var session = new ApplicationBridgeSession(dispatcher, new BridgeLimits { MaxPendingCommands = 1 });
         using var pumpGate = new ManualResetEventSlim(false);
         session.EventProduced += (_, _) => pumpGate.Wait(TimeSpan.FromSeconds(2));
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000088"), null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000088"), null, null, """{}"""));
         await session.PublishAsync(new(JsonDocument.Parse("""{"_tag":"Queued"}""").RootElement.Clone()));
         BridgeHostEnvelope rejected = await session.DispatchAsync(Envelope(
             "dispatch", Guid.Parse("00000000-0000-4000-8000-000000000089"), session.Id.Value, 0, """{"_tag":"Mutate"}"""));
@@ -257,7 +257,7 @@ internal static class Program
     private static async Task StagedPayloadOwnership()
     {
         await using var session = new ApplicationBridgeSession(new DisposedPayloadDispatcher());
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000090"), null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000090"), null, null, """{}"""));
         var produced = new TaskCompletionSource<BridgeHostEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.EventProduced += (_, message) => produced.TrySetResult(message);
         _ = await session.DispatchAsync(Envelope("dispatch", Guid.Parse("00000000-0000-4000-8000-000000000091"), session.Id.Value, 0, """{"_tag":"Mutate"}"""));
@@ -266,21 +266,18 @@ internal static class Program
 
     private static async Task InitializePublication()
     {
-        await using var session = new ApplicationBridgeSession(new InitializeEventDispatcher());
-        var eventFrame = new TaskCompletionSource<BridgeHostEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
-        session.EventProduced += (_, message) => eventFrame.TrySetResult(message);
-        BridgeHostEnvelope snapshot = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000092"), null, null, """{"_tag":"InitializeApplication"}"""));
+        var dispatcher = new DirectSnapshotDispatcher();
+        await using var session = new ApplicationBridgeSession(dispatcher);
+        BridgeHostEnvelope snapshot = await session.DispatchAsync(Envelope("initialize", Guid.NewGuid(), null, null, "{}"));
         Equal("snapshot", snapshot.Kind);
         Equal(1L, snapshot.Sequence);
-        BridgeHostEnvelope published = await eventFrame.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Equal(2L, published.Sequence);
-        Equal(snapshot.Revision, published.Revision);
+        Equal(1, dispatcher.Snapshots);
     }
 
     private static async Task ReentrantSubscriber()
     {
         await using var session = new ApplicationBridgeSession(new SetupBridgeDispatcher(new SetupHandler()));
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000071"), null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000071"), null, null, """{}"""));
         Task<BridgeHostEnvelope>? reentrant = null;
         var reentered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         session.EventProduced += (_, _) =>
@@ -298,8 +295,8 @@ internal static class Program
     private static async Task HigherEpochInitializeFailure()
     {
         await using var session = new ApplicationBridgeSession(new SetupBridgeDispatcher(new SetupHandler()), new BridgeLimits { MaxPendingCommands = 1, MaxCommandLedgerEntries = 1 });
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000093"), null, null, """{"_tag":"InitializeApplication"}"""));
-        BridgeHostEnvelope rejected = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000094"), null, null, """{"_tag":"InitializeApplication"}""", connectionEpoch: 1));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000093"), null, null, """{}"""));
+        BridgeHostEnvelope rejected = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000094"), null, null, """{}""", connectionEpoch: 1));
         Equal("error", rejected.Kind);
         Equal(1L, rejected.ConnectionEpoch);
         Equal(0L, rejected.Sequence);
@@ -307,13 +304,13 @@ internal static class Program
         Equal(0L, oldEpoch.ConnectionEpoch);
 
         await using var contractSession = new ApplicationBridgeSession(new SetupBridgeDispatcher(new SetupHandler()));
-        BridgeHostEnvelope mismatch = await contractSession.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000096"), null, null, """{"_tag":"InitializeApplication"}""", connectionEpoch: 1) with { ContractFingerprint = new('0', 64) });
+        BridgeHostEnvelope mismatch = await contractSession.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000096"), null, null, """{}""", connectionEpoch: 1) with { ContractFingerprint = new('0', 64) });
         Equal(1L, mismatch.ConnectionEpoch);
         Equal(0L, mismatch.Sequence);
 
         await using var revisionSession = new ApplicationBridgeSession(new SetupBridgeDispatcher(new SetupHandler()));
-        _ = await revisionSession.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000097"), null, null, """{"_tag":"InitializeApplication"}"""));
-        BridgeHostEnvelope stale = await revisionSession.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000098"), null, 99, """{"_tag":"InitializeApplication"}""", connectionEpoch: 1));
+        _ = await revisionSession.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000097"), null, null, """{}"""));
+        BridgeHostEnvelope stale = await revisionSession.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000098"), null, 99, """{}""", connectionEpoch: 1));
         Equal(1L, stale.ConnectionEpoch);
         Equal(0L, stale.Sequence);
     }
@@ -322,7 +319,7 @@ internal static class Program
     {
         var limits = new BridgeLimits { MaxPendingCommands = 2 };
         await using var session = new ApplicationBridgeSession(new SetupBridgeDispatcher(new SetupHandler()), limits);
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000073"), null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000073"), null, null, """{}"""));
         int received = 0;
         var nestedDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         session.EventProduced += (_, _) =>
@@ -343,7 +340,7 @@ internal static class Program
     {
         var dispatcher = new BlockingMutationDispatcher();
         await using var session = new ApplicationBridgeSession(dispatcher);
-        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000074"), null, null, """{"_tag":"InitializeApplication"}"""));
+        _ = await session.DispatchAsync(Envelope("initialize", Guid.Parse("00000000-0000-4000-8000-000000000074"), null, null, """{}"""));
         var nested = new TaskCompletionSource<BridgeHostEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.EventProduced += (_, _) =>
         {
@@ -388,7 +385,7 @@ internal static class Program
             Guid.Parse("00000000-0000-4000-8000-000000000021"),
             null,
             null,
-            """{"_tag":"InitializeApplication"}"""));
+            """{}"""));
         var events = new List<BridgeHostEnvelope>();
         var progressEvent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         session.EventProduced += (_, message) =>
@@ -462,7 +459,7 @@ internal static class Program
             Guid.Parse("00000000-0000-4000-8000-000000000024"),
             null,
             null,
-            """{"_tag":"InitializeApplication"}"""));
+            """{}"""));
         BridgeHostEnvelope started = await session.DispatchAsync(Envelope(
             "dispatch",
             Guid.Parse("00000000-0000-4000-8000-000000000025"),
@@ -489,7 +486,7 @@ internal static class Program
         await using var session = new ApplicationBridgeSession(new SetupBridgeDispatcher(new SetupHandler()), limits);
         Guid first = Guid.Parse("00000000-0000-4000-8000-000000000061");
         _ = await session.DispatchAsync(Envelope(
-            "initialize", first, null, null, """{"_tag":"InitializeApplication"}"""));
+            "initialize", first, null, null, """{}"""));
         _ = await session.DispatchAsync(Envelope(
             "uiReady",
             Guid.Parse("00000000-0000-4000-8000-000000000062"),
@@ -507,14 +504,14 @@ internal static class Program
         True(full.Payload.GetProperty("message").GetString()!.Contains("ledger is full", StringComparison.Ordinal));
 
         BridgeHostEnvelope duplicate = await session.DispatchAsync(Envelope(
-            "initialize", first, null, null, """{"_tag":"InitializeApplication"}"""));
+            "initialize", first, null, null, """{}"""));
         Equal("CommandRejected", duplicate.Payload.GetProperty("_tag").GetString());
         True(duplicate.Payload.GetProperty("message").GetString()!.Contains("already been processed", StringComparison.Ordinal));
     }
 
     private static Task CodecLimits()
     {
-        byte[] valid = Frame("""{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"FINGERPRINT","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{"_tag":"InitializeApplication"}}""");
+        byte[] valid = Frame("""{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"FINGERPRINT","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{}}""");
         True(ApplicationBridgeCodec.TryDecodeClient(valid, out BridgeClientEnvelope? decoded));
         Equal("initialize", decoded!.Kind);
         byte[] unknown = Frame("""{"protocol":"runic.artifex.setup","version":1,"contractFingerprint":"FINGERPRINT","connectionEpoch":0,"kind":"initialize","commandId":"00000000-0000-4000-8000-000000000031","payload":{},"rawFrame":"secret"}""");
@@ -613,6 +610,8 @@ internal static class Program
 
 internal sealed class BlockingMutationDispatcher : IApplicationBridgeDispatcher
 {
+    public ValueTask<JsonElement> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(JsonDocument.Parse("""{"revision":0,"viewId":"Welcome"}""").RootElement.Clone());
     internal TaskCompletionSource MutationEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource ReleaseMutation { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal int Mutations { get; private set; }
@@ -622,10 +621,6 @@ internal sealed class BlockingMutationDispatcher : IApplicationBridgeDispatcher
 
     public async ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
     {
-        if (command.GetProperty("_tag").GetString() == "InitializeApplication")
-        {
-            return new(JsonDocument.Parse("""{"snapshot":{"revision":0,"viewId":"Welcome"}}""").RootElement.Clone());
-        }
         MutationEntered.TrySetResult();
         await ReleaseMutation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         Mutations++;
@@ -638,6 +633,8 @@ internal sealed class BlockingMutationDispatcher : IApplicationBridgeDispatcher
 
 internal sealed class FailingDispatcher : IApplicationBridgeDispatcher
 {
+    public ValueTask<JsonElement> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(JsonDocument.Parse("""{"revision":0,"viewId":"Welcome"}""").RootElement.Clone());
     public string ProtocolIdentity => "runic.artifex.setup";
     public int ProtocolVersion => 1;
     public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
@@ -659,6 +656,8 @@ internal sealed class FailingDispatcher : IApplicationBridgeDispatcher
 
 internal sealed class NonCancellableOperationDispatcher : IApplicationBridgeDispatcher
 {
+    public ValueTask<JsonElement> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(JsonDocument.Parse("""{"revision":0,"viewId":"Welcome"}""").RootElement.Clone());
     internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal CancellationToken OperationToken { get; private set; }
     public string ProtocolIdentity => "runic.artifex.setup";
@@ -667,8 +666,6 @@ internal sealed class NonCancellableOperationDispatcher : IApplicationBridgeDisp
 
     public ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
     {
-        if (command.GetProperty("_tag").GetString() == "InitializeApplication")
-            return ValueTask.FromResult(new BridgeDispatchResult(JsonDocument.Parse("""{"snapshot":{"revision":0,"viewId":"Welcome"}}""").RootElement.Clone()));
         BridgeOperationId operation = context.Operations.Start(async (_, token) =>
         {
             OperationToken = token;
@@ -684,30 +681,32 @@ internal sealed class NonCancellableOperationDispatcher : IApplicationBridgeDisp
 
 internal sealed class DisposedPayloadDispatcher : IApplicationBridgeDispatcher
 {
+    public ValueTask<JsonElement> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(JsonDocument.Parse("""{"revision":0,"viewId":"Welcome"}""").RootElement.Clone());
     public string ProtocolIdentity => "runic.artifex.setup";
     public int ProtocolVersion => 1;
     public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
 
     public async ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
     {
-        if (command.GetProperty("_tag").GetString() == "InitializeApplication")
-            return new(JsonDocument.Parse("""{"snapshot":{"revision":0,"viewId":"Welcome"}}""").RootElement.Clone());
         using (JsonDocument document = JsonDocument.Parse("""{"_tag":"Owned"}"""))
             await context.Events.PublishAsync(new(document.RootElement), cancellationToken).ConfigureAwait(false);
         return new(JsonDocument.Parse("""{"_tag":"Mutated"}""").RootElement.Clone());
     }
 }
 
-internal sealed class InitializeEventDispatcher : IApplicationBridgeDispatcher
+internal sealed class DirectSnapshotDispatcher : IApplicationBridgeDispatcher
 {
     public string ProtocolIdentity => "runic.artifex.setup";
     public int ProtocolVersion => 1;
     public string ManifestFingerprint => SetupBridgeContract.Fingerprint;
-    public async ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
+    public int Snapshots { get; private set; }
+    public ValueTask<JsonElement> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken)
     {
-        await context.Events.PublishAsync(new(JsonDocument.Parse("""{"_tag":"InitializedEvent"}""").RootElement.Clone()), cancellationToken);
-        return new(JsonDocument.Parse("""{"snapshot":{"revision":0,"viewId":"Welcome"}}""").RootElement.Clone());
+        Snapshots++;
+        return ValueTask.FromResult(JsonDocument.Parse("{}" ).RootElement.Clone());
     }
+    public ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken) => throw new InvalidOperationException("Initialization must call the snapshot provider directly.");
 }
 
 internal sealed class SetupHandler : ISetupBridgeHandler
@@ -715,15 +714,8 @@ internal sealed class SetupHandler : ISetupBridgeHandler
     internal TaskCompletionSource ProgressPublished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ValueTask<ApplicationInitialized> InitializeApplicationAsync(
-        InitializeApplication command,
-        BridgeCommandContext context,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new ApplicationInitialized
-        {
-            Tag = "ApplicationInitialized",
-            Snapshot = Snapshot<ApplicationInitializedSnapshot>(0),
-        });
+    public ValueTask<SetupSnapshot> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(Snapshot(context.CurrentRevision, "Welcome"));
 
     public ValueTask<DestinationSelected> SelectDestinationAsync(
         SelectDestination command,
@@ -732,7 +724,7 @@ internal sealed class SetupHandler : ISetupBridgeHandler
         ValueTask.FromResult(new DestinationSelected
         {
             Tag = "DestinationSelected",
-            Destination = new DestinationSelectedDestination
+            Destination = new DestinationSelection
             {
                 SelectionId = Guid.Parse("11111111-1111-4111-8111-111111111111"),
                 DisplayName = "Recommended destination",
@@ -748,7 +740,7 @@ internal sealed class SetupHandler : ISetupBridgeHandler
         ValueTask.FromResult(new NavigationAccepted
         {
             Tag = "NavigationAccepted",
-            Snapshot = Snapshot<NavigationAcceptedSnapshot>(context.CurrentRevision + 1),
+            Snapshot = Snapshot(context.CurrentRevision + 1, "Destination"),
         });
 
     public ValueTask<InstallationStarted> StartInstallationAsync(
@@ -803,11 +795,10 @@ internal sealed class SetupHandler : ISetupBridgeHandler
             Revision = context.CurrentRevision,
         });
 
-    private static T Snapshot<T>(long revision) where T : class
+    private static SetupSnapshot Snapshot(long revision, string viewId) => new()
     {
-        object value = typeof(T) == typeof(ApplicationInitializedSnapshot)
-            ? new ApplicationInitializedSnapshot { ViewId = "Welcome", Revision = revision, SelectedFeatures = [], CanNavigateBack = false, CanNavigateNext = true }
-            : new NavigationAcceptedSnapshot { ViewId = "Destination", Revision = revision, SelectedFeatures = [], CanNavigateBack = true, CanNavigateNext = true };
-        return (T)value;
-    }
+        ViewId = viewId, Revision = revision, SelectedFeatures = [],
+        CanNavigateBack = viewId == "Destination", CanNavigateNext = true,
+    };
+
 }

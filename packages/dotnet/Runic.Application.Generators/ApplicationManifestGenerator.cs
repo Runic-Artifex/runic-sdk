@@ -19,7 +19,6 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
     private const string ManifestAttribute = "Runic.Application.RunicApplicationManifestAttribute";
     private const string CapabilityAttribute = "Runic.Application.RunicApplicationCapabilityAttribute";
     private const string ArtifactAttribute = "Runic.Application.RunicApplicationArtifactAttribute";
-    private const string BridgeCompositionAttribute = "Runic.Application.RunicApplicationBridgeCompositionAttribute";
     private static readonly DiagnosticDescriptor MissingManifest = new(
         "RAPP0000",
         "Application manifest is required",
@@ -79,17 +78,6 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
             return;
         }
         AttributeData manifest = manifests[0];
-
-        ImmutableArray<AttributeData> bridgeCompositions = attributes.Where(static attribute =>
-            string.Equals(attribute.AttributeClass?.ToDisplayString(), BridgeCompositionAttribute, StringComparison.Ordinal)).ToImmutableArray();
-        if (bridgeCompositions.Length > 1)
-        {
-            foreach (AttributeData duplicate in bridgeCompositions)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(InvalidDeclaration, AttributeLocation(duplicate), "Declare at most one RunicApplicationBridgeComposition attribute."));
-            }
-            return;
-        }
 
         string? entryPoint = Argument(manifest, 0);
         string version = Named(manifest, "Version") ?? "0.0.0";
@@ -162,46 +150,6 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
         }
 
         source.Append(" }));\n}\n");
-        if (bridgeCompositions.Length == 1)
-        {
-            AttributeData composition = bridgeCompositions[0];
-            INamedTypeSymbol? handler = TypeArgument(composition, 0);
-            INamedTypeSymbol? dispatcher = TypeArgument(composition, 1);
-            string? handlerFailure = null;
-            bool validHandler = handler is not null && CanConstructHandler(handler, out handlerFailure);
-            if (!validHandler)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    InvalidDeclaration,
-                    AttributeLocation(composition),
-                    handlerFailure ?? "RunicApplicationBridgeComposition requires a concrete handler type."));
-                return;
-            }
-            string? dispatcherFailure = null;
-            bool validDispatcher = dispatcher is not null && CanConstructDispatcher(dispatcher, handler!, compilation, out dispatcherFailure);
-            if (!validDispatcher)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    InvalidDeclaration,
-                    AttributeLocation(composition),
-                    dispatcherFailure ?? "RunicApplicationBridgeComposition requires a compatible dispatcher type."));
-                return;
-            }
-
-            string bridgeRegistration = "Runic.Application.Generated.BridgeCompositionRegistration_" + typeSuffix;
-            if (compilation.GetTypeByMetadataName(bridgeRegistration) is not null)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    InvalidDeclaration,
-                    AttributeLocation(composition),
-                    $"The generated bridge composition registration type '{bridgeRegistration}' already exists. Rename the conflicting user type."));
-                return;
-            }
-
-            source.Append("internal static class BridgeCompositionRegistration_").Append(typeSuffix).Append("\n{\n    [global::System.Runtime.CompilerServices.ModuleInitializer]\n    internal static void Register() => global::Runic.Application.RunicApplicationBridgeCompositionRegistry.Register(static () => new global::Runic.Application.Bridge.ApplicationBridgeSession(new ")
-                .Append(DeclaredTypeName(dispatcher!, handler!, bridgeContracts)).Append("(new ")
-                .Append(DeclaredTypeName(handler!, null, bridgeContracts)).Append("())));\n}\n");
-        }
         context.AddSource("Runic.Application.GeneratedManifest.g.cs", SourceText.From(source.ToString(), Encoding.UTF8));
     }
 

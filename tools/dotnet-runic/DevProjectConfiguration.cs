@@ -54,6 +54,7 @@ internal sealed record DevProjectConfiguration(
         "RunicToolkitFrontendPackageDirectory",
         "RunicToolkitFrontendOutputDirectory",
         "RunicToolkitFrontendWebRoot",
+        "RunicApplicationBridgeAuthority",
         "RunicApplicationBridgeSource",
         "RunicApplicationBridgeIr",
         "RunicApplicationBridgeFacade",
@@ -167,6 +168,8 @@ internal sealed record DevProjectConfiguration(
         {
             bridgeSource = conventionalBridgeSource;
         }
+        if (bridgeSource.Length == 0 && Value("RunicApplicationBridgeAuthority") == "csharp")
+            bridgeSource = evaluatedProject;
         string bridgeIr = NormalizeOptional(Value("RunicApplicationBridgeIr"), evaluatedProjectDirectory);
         if (bridgeIr.Length == 0 && bridgeSource.Length != 0)
         {

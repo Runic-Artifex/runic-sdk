@@ -11,7 +11,7 @@ public sealed class GenericHostApplicationHost(IHost host) : IApplicationHost
     private readonly IHost _host = host ?? throw new ArgumentNullException(nameof(host));
 
     /// <inheritdoc />
-    public async ValueTask StartAsync(ApplicationCompositionManifest manifest, ReadOnlyMemory<string> arguments, CancellationToken cancellationToken)
+    public async ValueTask StartAsync(ApplicationCompositionManifest manifest, ReadOnlyMemory<string> arguments, IServiceProvider services, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         await _host.StartAsync(cancellationToken).ConfigureAwait(false);

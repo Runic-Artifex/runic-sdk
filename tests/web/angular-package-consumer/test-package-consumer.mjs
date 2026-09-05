@@ -167,10 +167,10 @@ function contractSource() {
   return `import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
 export const CounterSnapshot = Schema.Struct({ count: Schema.Int, revision: Schema.Int.pipe(Schema.nonNegative()) });
-export const CounterCommand = Schema.TaggedStruct("InitializeApplication", {});
-export const CounterReceipt = Schema.TaggedStruct("ApplicationInitialized", { snapshot: CounterSnapshot });
+export const CounterCommand = Schema.TaggedStruct("ReadCounter", {});
+export const CounterReceipt = Schema.TaggedStruct("CounterRead", { snapshot: CounterSnapshot });
 export const CounterEvent = Schema.TaggedStruct("CounterChanged", { snapshot: CounterSnapshot });
-const definition = defineApplicationBridgeContract({ protocol: { identity: "customer.counter", version: 1 }, csharp: { namespace: "Customer.Counter", contractName: "Counter" }, snapshot: CounterSnapshot, commands: [bridge.command(CounterCommand, { receipt: CounterReceipt })], events: [CounterEvent], errors: [], initialize: { _tag: "InitializeApplication" } as const });
+const definition = defineApplicationBridgeContract({ protocol: { identity: "customer.counter", version: 1 }, csharp: { namespace: "Customer.Counter", contractName: "Counter" }, snapshot: CounterSnapshot, commands: [bridge.command(CounterCommand, { receipt: CounterReceipt })], events: [CounterEvent], errors: [] });
 export const CounterContract = materializeApplicationBridgeContract(definition, "c".repeat(64));
 export type CounterCommand = typeof CounterCommand.Type;
 export type CounterReceipt = typeof CounterReceipt.Type;
@@ -186,7 +186,7 @@ import { MockApplicationBridge, createApplicationBridgeController } from "@runic
 import { injectApplicationBridge, provideApplicationBridge } from "@runic-artifex/angular";
 import { Effect } from "effect";
 import { CounterCommand, CounterContract, m, type CounterEvent, type CounterReceipt, type CounterSnapshot } from "@customer/contracts";
-const bridge = createApplicationBridgeController(CounterContract, MockApplicationBridge({ initialize: () => Effect.succeed({ count: 0, revision: 0 }), dispatch: () => Effect.succeed({ _tag: "ApplicationInitialized", snapshot: { count: 0, revision: 0 } }) }));
+const bridge = createApplicationBridgeController(CounterContract, MockApplicationBridge({ initialize: () => Effect.succeed({ count: 0, revision: 0 }), dispatch: () => Effect.succeed({ _tag: "CounterRead", snapshot: { count: 0, revision: 0 } }) }));
 @Component({ selector: "customer-root", standalone: true, template: "{{ title }} {{ client.snapshot()?.count }}" })
 class CustomerApp { readonly title = m.counterTitle(); readonly client = injectApplicationBridge<CounterCommand, CounterReceipt, CounterEvent, CounterSnapshot>(); constructor() { void this.client.initialize(); } }
 void bootstrapApplication(CustomerApp, { providers: [provideZonelessChangeDetection(), provideApplicationBridge({ controller: bridge, snapshotFromEvent: event => event._tag === "CounterChanged" ? event.snapshot : undefined })] });

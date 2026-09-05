@@ -9,6 +9,12 @@
     <Project Path="src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Runic.Application.Bridge.CounterTests/Runic.Application.Bridge.CounterTests.csproj" />
+    <Project Path="tests/Runic.Application.Bridge.GeneratorTests/Runic.Application.Bridge.GeneratorTests.csproj" />
+    <Project Path="tests/Runic.Application.Bridge.MemberAotSmoke/Runic.Application.Bridge.MemberAotSmoke.csproj" />
+    <Project Path="tests/Runic.Application.Bridge.MemberTests/Runic.Application.Bridge.MemberTests.csproj" />
+    <Project Path="tests/Fixtures/BridgeModule/BridgeModule.csproj" />
+    <Project Path="tests/Fixtures/CounterMembers/CounterMembers.csproj" />
     <Project Path="tests/Runic.Application.Tests/Runic.Application.Tests.csproj" />
     <Project Path="tests/Runic.Application.AotSmoke/Runic.Application.AotSmoke.csproj" />
     <Project Path="tests/Runic.Application.Hosting.Tests/Runic.Application.Hosting.Tests.csproj" />
@@ -19,7 +25,9 @@
     <Project Path="tests/Runic.Application.Bridge.PortableCore.Tests/Runic.Application.Bridge.PortableCore.Tests.csproj" />
     <Project Path="tests/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/Fixtures/" />
   <Folder Name="/tools/">
+    <Project Path="tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" />
     <Project Path="tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj" />
   </Folder>
   <Folder Name="/templates/">

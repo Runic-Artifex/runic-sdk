@@ -13,10 +13,9 @@ import type { BridgeIr } from "./model.js";
 
 const args = process.argv.slice(2);
 const command = args.shift();
-const parsed = parseArguments(args);
-const options = parsed.options;
-
 try {
+  const parsed = parseArguments(args);
+  const options = parsed.options;
   if (command === "generate") {
     const result = await generateApplicationBridge(options);
     process.stdout.write(`${result.changed ? "Generated" : "Current"}: ${result.irPath}\n`);
@@ -55,11 +54,11 @@ function parseArguments(values: readonly string[]): Readonly<{
   options: ApplicationBridgeCompilerOptions;
   positionals: readonly string[];
 }> {
-  const result: { root?: string; source?: string; ir?: string; facade?: string } = {};
+  const result: { authority?: string; project?: string; root?: string; source?: string; ir?: string; facade?: string } = {};
   const positionals: string[] = [];
   for (let index = 0; index < values.length; index++) {
     const name = values[index];
-    if (name !== "--root" && name !== "--source" && name !== "--ir" && name !== "--facade") {
+    if (name !== "--authority" && name !== "--project" && name !== "--root" && name !== "--source" && name !== "--ir" && name !== "--facade") {
       if (name?.startsWith("--")) usage();
       if (name !== undefined) positionals.push(name);
       continue;
@@ -68,12 +67,17 @@ function parseArguments(values: readonly string[]): Readonly<{
     if (value === undefined) usage();
     result[name.slice(2) as keyof typeof result] = value;
   }
-  return { options: result, positionals };
+  if (command === "diff") return { options: result as ApplicationBridgeCompilerOptions, positionals };
+  if (result.authority !== "csharp" && result.authority !== "effect") usage();
+  if (result.authority === "csharp"
+    ? result.project === undefined || result.source !== undefined
+    : result.source === undefined || result.project !== undefined) usage();
+  return { options: result as ApplicationBridgeCompilerOptions, positionals };
 }
 
 function usage(): never {
   throw new ApplicationBridgeCompilerError(
     "RTKAB1008",
-    "Usage: runic-bridge <generate|check|watch|diff> [--source PATH] [--ir PATH] [--facade PATH]",
+    "Usage: runic-bridge <generate|check|watch|diff> --authority <csharp|effect> [--project PATH | --source PATH] [--ir PATH] [--facade PATH]",
   );
 }

@@ -451,7 +451,7 @@ export function ApplicationBridgeLive<
         });
       };
       const initialize = connect().pipe(
-        Effect.zipRight(request<Snapshot>("initialize", contract.initialize)),
+        Effect.zipRight(request<Snapshot>("initialize", {})),
       );
       const reconnect: Effect.Effect<Snapshot, ApplicationBridgeFailure<DomainError>> = Effect.async((resume) => {
         if (reconnectPromise !== undefined) {
@@ -483,7 +483,7 @@ export function ApplicationBridgeLive<
           if (channel.state !== "connected") {
             throw bridgeError("TransportUnavailable", "The Application Bridge transport could not reconnect.", true);
           }
-          return await runPromise(request<Snapshot>("initialize", contract.initialize));
+          return await runPromise(request<Snapshot>("initialize", {}));
         })();
         reconnectPromise = current;
         current.then(

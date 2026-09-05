@@ -1,17 +1,11 @@
 # Runic.Application.Bridge.Generators
 
-Generate reflection-free C# Application Bridge contracts and dispatchers from committed Runic Bridge IR.
+The analyzer bundled in `Runic.Application.Bridge` generates reflection-free adapters, strict codecs, dispatchers, and dependency injection registration. It requires the .NET 10 SDK.
 
-```bash
-dotnet add package Runic.Application.Bridge.Generators --prerelease
-```
+C# is the default authority. Annotate commands and a snapshot provider on partial classes, declare immutable request and receipt DTOs, and put one `ApplicationBridgeContract` attribute on the entry assembly. Referenced projects contribute generated module metadata and registrars, including adapters for private members. The application uses its own DTO types directly.
 
-Requires the .NET 10 SDK and `Contract/bridge.ir.json` generated from the handwritten Effect Schema contract. Use it with `Runic.Application.Bridge`; the [templates](https://www.nuget.org/packages/Runic.Application.Templates) demonstrate the complete layout.
+For Effect authority, set `RunicApplicationBridgeAuthority` to `effect` and include the generated `Contract/bridge.ir.json` as an `AdditionalFiles` item. The generator emits C# DTOs, a typed snapshot provider and command-handler interface, codecs, and composition from that IR.
 
-```xml
-<ItemGroup>
-  <AdditionalFiles Include="Contract/bridge.ir.json" />
-</ItemGroup>
-```
+Source generators never write committed artifacts or start JavaScript tooling. The Node compiler orchestrates the IR and frontend facade, using the managed Roslyn inspector for C# authority. The build targets run generation before compilation. Invalid contracts produce source-located `RTKAB` diagnostics; generated runtime code supports trimming and NativeAOT.
 
-The generator never starts Node or npm. It verifies the IR format and canonical wire fingerprint before emitting strict codecs, typed domain-error helpers, and exhaustive dispatch. Invalid IR produces stable `RTKAB` diagnostics, preserving trim and NativeAOT compatibility. See the [bridge guide](https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/guides/application-bridge.md), [examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).
+See the [bridge guide](../../docs/guides/application-bridge.md) for authoring, DI scopes, project modules, and frontend schema enrichment.

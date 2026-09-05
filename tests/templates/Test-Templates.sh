@@ -42,6 +42,9 @@ fi
 export DOTNET_CLI_HOME="$template_tmp/dotnet-home"
 export NUGET_PACKAGES="$template_tmp/nuget"
 export BUN_INSTALL_CACHE_DIR="$template_tmp/bun-cache"
+export PNPM_CONFIG_STORE_DIR="$template_tmp/pnpm-store"
+# Package acceptance must exercise the inspector shipped with dotnet-runic.
+unset RUNIC_BRIDGE_INSPECTOR
 restore_sources=(--source "$package_directory" --source https://api.nuget.org/v3/index.json)
 tool_restore_options=()
 tool_source_options=(--add-source "$package_directory")
@@ -166,6 +169,7 @@ verify_framework() {
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   test -f "$output/Frontend/dist/index.html"
   test -f "$output/Frontend/node_modules/.package-lock.json"
+  (cd "$output/Frontend" && npm run typecheck)
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/incremental.log"
   if grep -Fq '[runic] Building managed frontend assets.' "$output/incremental.log"; then
     echo "The unchanged $framework frontend was rebuilt by the managed project." >&2
@@ -227,12 +231,18 @@ verify_package_manager_framework() {
   ) || true
   grep -Fq "PASS package-manager: $package_manager $expected_version matches certified baseline" "$output/doctor.txt"
   if [[ "$package_manager" == "bun" ]]; then
-    bun_only_path="$template_tmp/bun-only-path"
+    bun_only_path="$output/bun-only-path"
     mkdir -p "$bun_only_path"
-    ln -s "$(command -v bun)" "$bun_only_path/bun"
+    ln -sf "$(command -v bun)" "$bun_only_path/bun"
+    ln -sf "$(command -v dotnet)" "$bun_only_path/dotnet"
     (
       cd "$output/Frontend"
-      env PATH="$bun_only_path" "$bun_only_path/bun" run typecheck
+      # vue-tsc requires Node (vuejs/language-tools#6090); Bun still runs the build.
+      if [[ "$framework" == "vue" ]]; then
+        bun run typecheck
+      else
+        env PATH="$bun_only_path" "$bun_only_path/bun" run typecheck
+      fi
       env PATH="$bun_only_path" "$bun_only_path/bun" run build
     )
   else
@@ -285,6 +295,14 @@ run_parallel_acceptance_group frameworks \
   svelte verify_framework 1 svelte \
   angular verify_framework 1 angular
 
-run_parallel_acceptance_group package-managers \
+run_parallel_acceptance_group pnpm \
+  react-pnpm verify_package_manager_framework 2 react pnpm \
+  vue-pnpm verify_package_manager_framework 2 vue pnpm \
   svelte-pnpm verify_package_manager_framework 2 svelte pnpm \
+  angular-pnpm verify_package_manager_framework 2 angular pnpm
+
+run_parallel_acceptance_group bun \
+  react-bun verify_package_manager_framework 2 react bun \
+  vue-bun verify_package_manager_framework 2 vue bun \
+  svelte-bun verify_package_manager_framework 2 svelte bun \
   angular-bun verify_package_manager_framework 2 angular bun

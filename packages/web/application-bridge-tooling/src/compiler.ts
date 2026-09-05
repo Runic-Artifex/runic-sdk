@@ -27,22 +27,15 @@ const builtInErrorNames = [
   "TransportUnavailable",
 ] as const;
 
-// These standard Effect transformations are total over their encoded schema:
-// they normalize values but do not reject any additional wire input.
-const totalStandardTransformations = new Set([
-  "Capitalize",
-  "Lowercase",
-  "Trim",
-  "Uncapitalize",
-  "Uppercase",
-]);
-
-export interface ApplicationBridgeCompilerOptions {
+interface ApplicationBridgeCompilerCommonOptions {
   readonly root?: string;
-  readonly source?: string;
   readonly ir?: string;
   readonly facade?: string;
 }
+export type ApplicationBridgeCompilerOptions = ApplicationBridgeCompilerCommonOptions & (
+  | Readonly<{ authority: "csharp"; project: string; source?: never }>
+  | Readonly<{ authority: "effect"; source: string; project?: never }>
+);
 
 export interface ApplicationBridgeCompilation {
   readonly ir: BridgeIr;
@@ -66,8 +59,9 @@ export class ApplicationBridgeCompilerError extends Error {
 }
 
 export async function compileApplicationBridge(
-  options: ApplicationBridgeCompilerOptions = {},
+  options: ApplicationBridgeCompilerOptions,
 ): Promise<ApplicationBridgeCompilation> {
+  if (options.authority === "csharp") return (await import("./csharp.js")).compileCSharp(options);
   const paths = resolvePaths(options);
   const loaded = await loadDefinition(paths.source);
   const definition = validateDefinition(loaded.value);
@@ -145,10 +139,6 @@ export async function compileApplicationBridge(
   for (const name of builtInErrorNames) definitions[`error:${name}`] = builtInError(name);
 
   const commandNames = new Set(commands.map((command) => command.name));
-  const initializeTag = valueTag(definition.initialize);
-  if (commands.length > 0 && (initializeTag === undefined || !commandNames.has(initializeTag))) {
-    throw new ApplicationBridgeCompilerError("RTKAB1006", "The initialize value must be one of the declared commands.", "$.initialize");
-  }
   if (commandNames.size !== commands.length || events.length !== new Set(events).size ||
       domainErrors.length !== new Set(domainErrors).size) {
     throw new ApplicationBridgeCompilerError("RTKAB1005", "Command, event, and error tags must be unique.");
@@ -158,7 +148,8 @@ export async function compileApplicationBridge(
     protocol: definition.protocol,
     envelopeVersion: 1 as const,
     limits: { ...defaultLimits, ...definition.limits },
-    ...(initializeTag === undefined ? {} : { initialize: initializeTag }),
+    initialization: { kind: "snapshot" as const, payload: "empty-object" as const },
+    canonicalEncoding: "runic-json-v1" as const,
     snapshot: snapshotId,
     definitions: Object.fromEntries(Object.entries(definitions).sort(([left], [right]) => compare(left, right))),
     commands: commands.sort((left, right) => compare(left.name, right.name)),
@@ -169,6 +160,7 @@ export async function compileApplicationBridge(
   const ir: BridgeIr = {
     format: "runic.application-bridge-ir",
     formatVersion: 1,
+    authority: "effect",
     fingerprint: { algorithm: "sha256", scope: "wire", value: contractFingerprint },
     wire,
     csharp: definition.csharp,
@@ -198,23 +190,24 @@ export async function compileApplicationBridge(
 }
 
 export async function generateApplicationBridge(
-  options: ApplicationBridgeCompilerOptions = {},
+  options: ApplicationBridgeCompilerOptions,
 ): Promise<ApplicationBridgeCompilation & { readonly changed: boolean }> {
   const compilation = await compileApplicationBridge(options);
   const [irChanged, facadeChanged] = await Promise.all([
     differs(compilation.irPath, compilation.irText),
     differs(compilation.facadePath, compilation.facadeText),
   ]);
-  await Promise.all([
-    ...(irChanged ? [replaceFile(compilation.irPath, compilation.irText)] : []),
-    ...(facadeChanged ? [replaceFile(compilation.facadePath, compilation.facadeText)] : []),
+  // Publish the IR last: it is the host's commit signal for a matching facade.
+  await replaceArtifacts([
+    ...(facadeChanged ? [{ path: compilation.facadePath, text: compilation.facadeText }] : []),
+    ...(irChanged ? [{ path: compilation.irPath, text: compilation.irText }] : []),
   ]);
   const changed = irChanged || facadeChanged;
   return { ...compilation, changed };
 }
 
 export async function checkApplicationBridge(
-  options: ApplicationBridgeCompilerOptions = {},
+  options: ApplicationBridgeCompilerOptions,
 ): Promise<ApplicationBridgeCompilation> {
   const compilation = await compileApplicationBridge(options);
   const stale = [];
@@ -227,18 +220,24 @@ export async function checkApplicationBridge(
 }
 
 export async function watchApplicationBridge(
-  options: ApplicationBridgeCompilerOptions = {},
+  options: ApplicationBridgeCompilerOptions,
   onResult?: (result: ApplicationBridgeCompilation | ApplicationBridgeCompilerError) => void,
 ): Promise<{ close(): void }> {
   let watchers: FSWatcher[] = [];
   let timer: NodeJS.Timeout | undefined;
   let closed = false;
+  let generation = Promise.resolve();
+  const observe = (dependencies: readonly string[]): FSWatcher[] => options.authority === "csharp"
+    ? [...new Set(dependencies.filter(file => file.endsWith(".csproj")).map(dirname))].map(directory => watch(directory, { recursive: true }, (_event, file) => {
+        if (file !== null && /\.(?:cs|csproj|props|targets)$/.test(file) && !file.split(sep).some(part => part === "obj" || part === "bin" || part === "node_modules")) schedule();
+      }))
+    : dependencies.map(dependency => watch(dependency, schedule));
   const refresh = async (): Promise<void> => {
     try {
       const result = await generateApplicationBridge(options);
       if (closed) return;
       for (const watcher of watchers) watcher.close();
-      watchers = result.dependencies.map((dependency) => watch(dependency, schedule));
+      watchers = observe(result.dependencies);
       onResult?.(result);
     } catch (error) {
       const failure = error instanceof ApplicationBridgeCompilerError
@@ -246,14 +245,14 @@ export async function watchApplicationBridge(
         : new ApplicationBridgeCompilerError("RTKAB1000", error instanceof Error ? error.message : String(error));
       if (watchers.length === 0) {
         const source = resolvePaths(options).source;
-        watchers = [watch(source, schedule)];
+        watchers = observe([source]);
       }
       onResult?.(failure);
     }
   };
   const schedule = (): void => {
     if (timer !== undefined) clearTimeout(timer);
-    timer = setTimeout(() => void refresh(), 50);
+    timer = setTimeout(() => { generation = generation.then(() => closed ? undefined : refresh()); }, 80);
   };
   await refresh();
   return {
@@ -293,8 +292,8 @@ export function compareApplicationBridgeIr(baseline: BridgeIr, candidate: Bridge
     diagnostics.push("Snapshot declaration changed.");
     breaking = true;
   }
-  if (baseline.wire.initialize !== candidate.wire.initialize) {
-    diagnostics.push("Initialization command changed.");
+  if (serialize(baseline.wire.initialization) !== serialize(candidate.wire.initialization)) {
+    diagnostics.push("Initialization protocol changed.");
     breaking = true;
   }
 
@@ -366,7 +365,7 @@ export function validateApplicationBridgeIr(value: unknown): BridgeIr {
       candidate.format !== "runic.application-bridge-ir" || candidate.formatVersion !== 1 ||
       candidate.fingerprint?.algorithm !== "sha256" || candidate.fingerprint.scope !== "wire" ||
       !/^[a-f0-9]{64}$/.test(candidate.fingerprint.value) ||
-      candidate.wire === undefined || candidate.csharp === undefined || candidate.documentation === undefined) {
+      candidate.wire === undefined || candidate.wire.initialization?.kind !== "snapshot" || candidate.wire.initialization.payload !== "empty-object" || candidate.wire.canonicalEncoding !== "runic-json-v1" || "initialize" in candidate.wire || (candidate.authority !== "effect" && candidate.authority !== "csharp") || candidate.csharp === undefined || candidate.documentation === undefined) {
     throw new ApplicationBridgeCompilerError("RTKAB1003", "The input is not Runic Application Bridge IR version 1.");
   }
   const actual = sha256(serialize(candidate.wire));
@@ -391,7 +390,6 @@ interface Definition {
   }[];
   readonly events: readonly WireSchema[];
   readonly errors?: readonly WireSchema[];
-  readonly initialize: unknown;
 }
 
 function validateDefinition(value: unknown): Definition {
@@ -414,6 +412,7 @@ function validateDefinition(value: unknown): Definition {
   if (!candidate.events.every(isSchema) || !(candidate.errors ?? []).every(isSchema)) {
     throw new ApplicationBridgeCompilerError("RTKAB1001", "An event or error declaration is invalid.");
   }
+  if ("initialize" in candidate) throw new ApplicationBridgeCompilerError("RTKAB1001", "Initialization is built in; remove the application initialize declaration.");
   return candidate as Definition;
 }
 
@@ -466,7 +465,8 @@ function lower(
   if (ast._tag === "Suspend") return lowerWithoutName(ast, path, definitions, active);
   const named = identifier(ast);
   const namedId = named === undefined ? undefined : `type:${named}`;
-  if (namedId !== undefined && definitions[namedId] === undefined) {
+  if (namedId !== undefined) {
+    if (definitions[namedId] !== undefined) return { kind: "ref", name: namedId };
     active.add(ast);
     definitions[namedId] = { kind: "null" };
     const value = lowerWithoutName(ast, path, definitions, active);
@@ -492,10 +492,10 @@ function lowerWithoutName(
       return ast.literal === null ? { kind: "null" } : { kind: "literal", value: ast.literal };
     }
     case "Enums":
-      return { kind: "union", members: ast.enums.map(([, value]) => {
+      return orderedUnion(ast.enums.map(([, value]): BridgeIrNode => {
         if (typeof value === "bigint") throw unsupported("BigInt enum values are not JSON values.", path);
         return { kind: "literal", value };
-      }) };
+      }));
     case "Refinement": {
       const node = lowerWithoutName(ast.from, path, definitions, active);
       const annotation = option(SchemaAST.getJSONSchemaAnnotation(ast));
@@ -558,7 +558,7 @@ function lowerWithoutName(
       const members = ast.types.filter((member) => member._tag !== "UndefinedKeyword")
         .map((member, index) => lower(member, `${path}|${index}`, definitions, active));
       if (members.length === 0) throw unsupported("Undefined is not a JSON wire value.", path);
-      return members.length === 1 ? members[0]! : { kind: "union", members };
+      return orderedUnion(members);
     }
     case "Suspend": {
       const name = identifier(ast);
@@ -584,6 +584,12 @@ function lowerWithoutName(
   }
 }
 
+function orderedUnion(members: readonly BridgeIrNode[]): BridgeIrNode {
+  const unique = [...new Map(members.map(member => [serialize(member), member])).entries()]
+    .sort(([left], [right]) => compare(left, right)).map(([, member]) => member);
+  return unique.length === 1 ? unique[0]! : { kind: "union", members: unique };
+}
+
 function constrain(node: BridgeIrNode, raw: object, path: string): BridgeIrNode {
   const value = raw as Record<string, unknown>;
   const supported = new Set([
@@ -601,6 +607,10 @@ function constrain(node: BridgeIrNode, raw: object, path: string): BridgeIrNode 
   }
   if (typeof value.pattern === "string") validatePattern(value.pattern, path);
   const constraints = Object.fromEntries(Object.entries(value).filter(([key]) => key !== "type")) as BridgeIrConstraints;
+  if (constrained.kind === "string" && constraints.pattern === "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$") {
+    const { pattern: _, ...remaining } = constraints;
+    return { kind: "string", format: "uuid", ...(Object.keys(remaining).length === 0 ? {} : { constraints: remaining }) };
+  }
   if (Object.keys(constraints).length === 0) return constrained;
   if (constrained.kind === "string" || constrained.kind === "number" || constrained.kind === "integer" ||
       constrained.kind === "array" || constrained.kind === "tuple") {
@@ -614,10 +624,8 @@ function assertPortableSource(ast: SchemaAST.AST, path: string, seen: Set<Schema
   seen.add(ast);
   switch (ast._tag) {
     case "Transformation": {
-      const transformationName = identifier(ast);
-      if (ast.transformation._tag !== "TypeLiteralTransformation" &&
-          (transformationName === undefined || !totalStandardTransformations.has(transformationName))) {
-        throw unsupported("Custom and effectful transformations require a Runic wire adapter.", path);
+      if (ast.transformation._tag !== "TypeLiteralTransformation" || ast.transformation.propertySignatureTransformations.length > 0) {
+        throw unsupported("Observable transformations are not supported in a V1 bridge contract; layer them above the contract.", path);
       }
       assertPortableSource(ast.from, path, seen);
       return;
@@ -768,7 +776,7 @@ function unsupported(message: string, path: string): ApplicationBridgeCompilerEr
 function resolvePaths(options: ApplicationBridgeCompilerOptions): { source: string; ir: string; facade: string } {
   const root = resolve(options.root ?? process.cwd());
   return {
-    source: resolve(root, options.source ?? "src/application.bridge.ts"),
+    source: resolve(root, options.source ?? options.project),
     ir: resolve(root, options.ir ?? "../Contract/bridge.ir.json"),
     facade: resolve(root, options.facade ?? "src/application.bridge.generated.ts"),
   };
@@ -792,6 +800,32 @@ function sha256(value: string): string {
 
 async function differs(path: string, expected: string): Promise<boolean> {
   return await readFile(path, "utf8").catch(() => undefined) !== expected;
+}
+
+async function replaceArtifacts(changes: readonly { path: string; text: string }[]): Promise<void> {
+  const prepared: { path: string; temporary: string; previous: string | undefined }[] = [];
+  const committed: typeof prepared = [];
+  try {
+    for (const change of changes) {
+      const previous = await readFile(change.path, "utf8").catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+        return undefined;
+      });
+      await mkdir(dirname(change.path), { recursive: true });
+      const temporary = `${change.path}.${process.pid}.${randomUUID()}.tmp`;
+      prepared.push({ path: change.path, temporary, previous });
+      await writeFile(temporary, change.text, "utf8");
+    }
+    for (const file of prepared) { await rename(file.temporary, file.path); committed.push(file); }
+  } catch (error) {
+    for (const file of committed.reverse()) {
+      if (file.previous === undefined) await rm(file.path, { force: true });
+      else await replaceFile(file.path, file.previous);
+    }
+    throw error;
+  } finally {
+    await Promise.all(prepared.map(file => rm(file.temporary, { force: true })));
+  }
 }
 
 async function replaceFile(path: string, contents: string): Promise<void> {

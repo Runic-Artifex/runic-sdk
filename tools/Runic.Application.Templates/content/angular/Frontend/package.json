@@ -6,11 +6,11 @@
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": { "node": ">=24.18.0 <25" },
   "scripts": {
-    "build": "runic-bridge generate && ng build frontend",
-    "contract:generate": "runic-bridge generate",
-    "contract:check": "runic-bridge check",
-    "dev": "runic-bridge generate && ng serve frontend --configuration development",
-    "dev:mock": "runic-bridge generate && ng serve frontend --configuration mock",
+    "build": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj && ng build frontend",
+    "contract:generate": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj",
+    "contract:check": "runic-bridge check --authority csharp --project ../RunicDesktopApp.csproj",
+    "dev": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj && ng serve frontend --configuration development",
+    "dev:mock": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj && ng serve frontend --configuration mock",
     "typecheck": "ngc --project tsconfig.app.json --noEmit"
   },
   "dependencies": {

@@ -11,7 +11,7 @@ import {
   type CounterEvent,
   type CounterReceipt,
   type CounterSnapshot,
-} from "./application.bridge";
+} from "./application.bridge.generated";
 
 let count = 0;
 let revision = 0;

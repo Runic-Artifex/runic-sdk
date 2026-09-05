@@ -11,7 +11,7 @@ dotnet runic doctor
 dotnet run
 ```
 
-Requires the .NET 10 SDK, either Node.js 24.18 with npm 11.16 or pnpm 11.25, or Bun 1.4, plus the platform prerequisite reported by `dotnet runic doctor`. Replace `<VERSION>` with the current preview shown on [NuGet](https://www.nuget.org/packages/Runic.Application.Templates), and replace `svelte` with `react`, `vue`, or `angular` to select the frontend. Select `npm`, `pnpm`, or `bun` with `--packageManager`; npm is the default. The explicit preview version is intentional: a template must create a version-matched NuGet/npm package set.
+Requires the .NET 10 SDK, either Node.js 24.18 with npm 11.16 or pnpm 11.25, or Bun 1.4, plus the platform prerequisite reported by `dotnet runic doctor`. Replace `<VERSION>` with the current preview shown on [NuGet](https://www.nuget.org/packages/Runic.Application.Templates), and replace `svelte` with `react`, `vue`, or `angular` to select the frontend. Vue type checking additionally requires Node.js when using Bun because the pinned `vue-tsc` does not support the Bun runtime ([upstream issue](https://github.com/vuejs/language-tools/issues/6090)). Select `npm`, `pnpm`, or `bun` with `--packageManager`; npm is the default. The explicit preview version is intentional: a template must create a version-matched NuGet/npm package set.
 
 Every generated project contains a local `dotnet-runic` tool manifest and exactly one package-manager lock file. Standard `dev`, `build`, and `typecheck` scripts hide the underlying Vite or Angular CLI syntax, while frozen installs keep the selected graph deterministic. Publishing embeds the static frontend output, so no JavaScript runtime or package manager is required on the target machine.
 

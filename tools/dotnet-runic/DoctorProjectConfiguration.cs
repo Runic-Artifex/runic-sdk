@@ -40,6 +40,7 @@ internal sealed record DoctorProjectConfiguration(
         "RunicToolkitFrontendWorkspaceRoot",
         "RunicToolkitFrontendWorkspace",
         "RunicToolkitFrontendPackageDirectory",
+        "RunicApplicationBridgeAuthority",
         "RunicApplicationBridgeSource",
         "RunicApplicationBridgeIr",
         "RunicApplicationBridgeFacade",
@@ -126,6 +127,8 @@ internal sealed record DoctorProjectConfiguration(
         {
             bridgeSource = conventionalBridgeSource;
         }
+        if (bridgeSource.Length == 0 && Value("RunicApplicationBridgeAuthority") == "csharp")
+            bridgeSource = evaluatedProject;
         string bridgeIr = NormalizeOptional(Value("RunicApplicationBridgeIr"), evaluatedProjectDirectory);
         if (bridgeIr.Length == 0 && bridgeSource.Length != 0)
         {

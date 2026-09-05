@@ -20,6 +20,11 @@ public interface IApplicationBridgeDispatcher
         BridgeCommandContext context,
         CancellationToken cancellationToken);
 
+    /// <summary>Produces the authoritative snapshot for initialization or reconnection.</summary>
+    ValueTask<JsonElement> GetSnapshotAsync(
+        BridgeSnapshotContext context,
+        CancellationToken cancellationToken);
+
     /// <summary>Validates and canonically re-encodes one declared bridge error.</summary>
     JsonElement ValidateError(JsonElement payload) =>
         throw new JsonException("This dispatcher does not declare application errors.");

@@ -25,7 +25,6 @@ export const SetupSnapshot = Schema.Struct({
   canNavigateNext: Schema.Boolean,
 }).annotations({ identifier: "SetupSnapshot" });
 
-const InitializeApplication = Schema.TaggedStruct("InitializeApplication", {});
 const SelectDestination = Schema.TaggedStruct("SelectDestination", { currentSelectionId: Schema.optional(Uuid) });
 const Navigate = Schema.TaggedStruct("Navigate", { target: SetupViewId, expectedRevision: Revision });
 const StartInstallation = Schema.TaggedStruct("StartInstallation", {
@@ -33,7 +32,6 @@ const StartInstallation = Schema.TaggedStruct("StartInstallation", {
   selectedFeatures: Schema.Array(FeatureId),
 });
 const CancelOperation = Schema.TaggedStruct("CancelOperation", { operationId: Uuid });
-const ApplicationInitialized = Schema.TaggedStruct("ApplicationInitialized", { snapshot: SetupSnapshot });
 const DestinationSelected = Schema.TaggedStruct("DestinationSelected", { destination: DestinationSelection, revision: Revision });
 const NavigationAccepted = Schema.TaggedStruct("NavigationAccepted", { snapshot: SetupSnapshot });
 const InstallationStarted = Schema.TaggedStruct("InstallationStarted", { commandId: Uuid, operationId: Uuid, revision: Revision });
@@ -56,7 +54,6 @@ export default defineApplicationBridgeContract({
   csharp: { namespace: "Runic.Application.Setup.Contract", contractName: "Setup" },
   snapshot: SetupSnapshot,
   commands: [
-    bridge.command(InitializeApplication, { receipt: ApplicationInitialized }),
     bridge.command(SelectDestination, { receipt: DestinationSelected, advancesRevision: true }),
     bridge.command(Navigate, { receipt: NavigationAccepted, advancesRevision: true }),
     bridge.command(StartInstallation, { receipt: InstallationStarted, startsOperation: true, cancellable: true, advancesRevision: true }),
@@ -64,5 +61,4 @@ export default defineApplicationBridgeContract({
   ],
   events: [SnapshotReplaced, NavigationChanged, OperationProgress, OperationCompleted, InstallationFailed, InstallationCancelled],
   errors: [],
-  initialize: { _tag: "InitializeApplication" },
 });

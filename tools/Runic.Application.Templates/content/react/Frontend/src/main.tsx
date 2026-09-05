@@ -4,7 +4,7 @@ import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { counterBridge } from "./counter-bridge";
-import type { CounterSnapshot } from "./application.bridge";
+import type { CounterSnapshot } from "./application.bridge.generated";
 
 const root = createRoot(document.querySelector("#app")!);
 root.render(<Counter />);

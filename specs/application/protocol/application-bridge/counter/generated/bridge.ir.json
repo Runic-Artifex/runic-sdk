@@ -1,4 +1,5 @@
 {
+  "authority": "effect",
   "csharp": {
     "contractName": "Counter",
     "namespace": "Runic.Application.Template.Contract"
@@ -6,37 +7,33 @@
   "documentation": {
     "command:IncrementCounter.step": "a number",
     "event:CounterChanged.snapshot.count": "a number",
-    "event:CounterChanged.snapshot.revision": "a non-negative number",
-    "receipt:ApplicationInitialized.snapshot.count": "a number",
-    "receipt:ApplicationInitialized.snapshot.revision": "a non-negative number",
+    "event:CounterChanged.snapshot.history[]": "an integer",
+    "event:CounterChanged.snapshot.revision": "an integer",
     "receipt:CounterIncremented.snapshot.count": "a number",
-    "receipt:CounterIncremented.snapshot.revision": "a non-negative number",
+    "receipt:CounterIncremented.snapshot.history[]": "an integer",
+    "receipt:CounterIncremented.snapshot.revision": "an integer",
     "receipt:CounterReset.snapshot.count": "a number",
-    "receipt:CounterReset.snapshot.revision": "a non-negative number",
+    "receipt:CounterReset.snapshot.history[]": "an integer",
+    "receipt:CounterReset.snapshot.revision": "an integer",
     "type:CounterSnapshot.count": "a number",
-    "type:CounterSnapshot.revision": "a non-negative number"
+    "type:CounterSnapshot.history[]": "an integer",
+    "type:CounterSnapshot.revision": "an integer"
   },
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",
-    "value": "aa75f8fc0c45307c21de52460f5ba5b75e2a278e016a4bcd32bf8ef15a6b73b2"
+    "value": "58a0dda63c7e4b41ebce179913af55c0e53b5d17d627e8fd7116da40414a11d5"
   },
   "format": "runic.application-bridge-ir",
   "formatVersion": 1,
   "wire": {
+    "canonicalEncoding": "runic-json-v1",
     "commands": [
       {
         "advancesRevision": true,
         "cancellable": false,
         "name": "IncrementCounter",
         "receipt": "CounterIncremented",
-        "startsOperation": false
-      },
-      {
-        "advancesRevision": false,
-        "cancellable": false,
-        "name": "InitializeApplication",
-        "receipt": "ApplicationInitialized",
         "startsOperation": false
       },
       {
@@ -66,18 +63,6 @@
                 "minimum": 1
               },
               "kind": "integer"
-            }
-          }
-        }
-      },
-      "command:InitializeApplication": {
-        "kind": "object",
-        "properties": {
-          "_tag": {
-            "optional": false,
-            "type": {
-              "kind": "literal",
-              "value": "InitializeApplication"
             }
           }
         }
@@ -323,77 +308,8 @@
           "snapshot": {
             "optional": false,
             "type": {
-              "kind": "object",
-              "properties": {
-                "count": {
-                  "optional": false,
-                  "type": {
-                    "kind": "integer"
-                  }
-                },
-                "history": {
-                  "optional": false,
-                  "type": {
-                    "items": {
-                      "kind": "integer"
-                    },
-                    "kind": "array"
-                  }
-                },
-                "revision": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "receipt:ApplicationInitialized": {
-        "kind": "object",
-        "properties": {
-          "_tag": {
-            "optional": false,
-            "type": {
-              "kind": "literal",
-              "value": "ApplicationInitialized"
-            }
-          },
-          "snapshot": {
-            "optional": false,
-            "type": {
-              "kind": "object",
-              "properties": {
-                "count": {
-                  "optional": false,
-                  "type": {
-                    "kind": "integer"
-                  }
-                },
-                "history": {
-                  "optional": false,
-                  "type": {
-                    "items": {
-                      "kind": "integer"
-                    },
-                    "kind": "array"
-                  }
-                },
-                "revision": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                }
-              }
+              "kind": "ref",
+              "name": "type:CounterSnapshot"
             }
           }
         }
@@ -411,33 +327,8 @@
           "snapshot": {
             "optional": false,
             "type": {
-              "kind": "object",
-              "properties": {
-                "count": {
-                  "optional": false,
-                  "type": {
-                    "kind": "integer"
-                  }
-                },
-                "history": {
-                  "optional": false,
-                  "type": {
-                    "items": {
-                      "kind": "integer"
-                    },
-                    "kind": "array"
-                  }
-                },
-                "revision": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                }
-              }
+              "kind": "ref",
+              "name": "type:CounterSnapshot"
             }
           }
         }
@@ -455,33 +346,8 @@
           "snapshot": {
             "optional": false,
             "type": {
-              "kind": "object",
-              "properties": {
-                "count": {
-                  "optional": false,
-                  "type": {
-                    "kind": "integer"
-                  }
-                },
-                "history": {
-                  "optional": false,
-                  "type": {
-                    "items": {
-                      "kind": "integer"
-                    },
-                    "kind": "array"
-                  }
-                },
-                "revision": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                }
-              }
+              "kind": "ref",
+              "name": "type:CounterSnapshot"
             }
           }
         }
@@ -492,14 +358,21 @@
           "count": {
             "optional": false,
             "type": {
-              "kind": "ref",
-              "name": "type:Int"
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": -2147483648
+              },
+              "kind": "integer"
             }
           },
           "history": {
             "optional": false,
             "type": {
               "items": {
+                "constraints": {
+                  "maximum": 2147483647,
+                  "minimum": -2147483648
+                },
                 "kind": "integer"
               },
               "kind": "array"
@@ -509,15 +382,13 @@
             "optional": false,
             "type": {
               "constraints": {
+                "maximum": 9007199254740991,
                 "minimum": 0
               },
               "kind": "integer"
             }
           }
         }
-      },
-      "type:Int": {
-        "kind": "integer"
       }
     },
     "envelopeVersion": 1,
@@ -535,7 +406,10 @@
     "events": [
       "CounterChanged"
     ],
-    "initialize": "InitializeApplication",
+    "initialization": {
+      "kind": "snapshot",
+      "payload": "empty-object"
+    },
     "limits": {
       "maxCollectionItems": 4096,
       "maxDepth": 32,

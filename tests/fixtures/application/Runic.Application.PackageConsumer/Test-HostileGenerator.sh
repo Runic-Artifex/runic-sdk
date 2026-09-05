@@ -37,17 +37,17 @@ dotnet restore "$hostile_root/Hostile.csproj" "${restore_options[@]}" "${restore
 if dotnet build "$hostile_root/Hostile.csproj" --no-restore \
   -p:PackageVersion="$package_version" \
   -p:PackageDirectory="$package_directory" > "$hostile_root/build.log" 2>&1; then
-  echo "The hostile bridge composition unexpectedly compiled." >&2
+  echo "The invalid bridge command unexpectedly compiled." >&2
   exit 1
 fi
 
-if ! grep -Fq 'RAPP0002' "$hostile_root/build.log"; then
-  echo "The hostile bridge composition did not produce RAPP0002." >&2
+if ! grep -Fq 'RTKAB2001' "$hostile_root/build.log"; then
+  echo "The invalid bridge command did not produce RTKAB2001." >&2
   cat "$hostile_root/build.log" >&2
   exit 1
 fi
 if grep -Eq 'error CS(1503|1729|0144)' "$hostile_root/build.log"; then
-  echo "Bridge composition exposed an unowned compiler error." >&2
+  echo "Member generation exposed an unowned compiler error." >&2
   cat "$hostile_root/build.log" >&2
   exit 1
 fi

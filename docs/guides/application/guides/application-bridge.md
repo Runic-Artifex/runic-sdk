@@ -3,15 +3,89 @@
 The Application Bridge is Runic Application's official boundary between a
 frontend and an application host.
 
-1. Author the encoded wire contract with Effect Schema.
-2. Generate and commit the canonical Runic Bridge IR and fingerprint facade.
-3. Let the C# analyzer consume that IR to generate wire records, handler interfaces, typed event
-   publishers, and exhaustive dispatch.
-4. Implement the generated handler with domain services.
-5. Host one caller-owned `ApplicationBridgeSession` through Runic Desktop or
-   the local `Runic.Application.Hosting` WebSocket transport.
-6. Bootstrap one `ApplicationBridgeLive` or `MockApplicationBridge`
-   `Layer`, then expose one `createApplicationBridgeController(...)` to the UI.
+C# members define new application contracts. Declare the root once:
+
+```csharp
+[assembly: ApplicationBridgeContract("example.counter", 1, ContractName = "Counter")]
+
+public sealed partial class CounterState
+{
+    private int count;
+    [BridgeSnapshot] private CounterSnapshot Snapshot => new(count);
+    public int Increment(int amount) => count += amount;
+}
+
+public sealed partial class CounterCommands(CounterState state)
+{
+    [BridgeCommand(AdvancesRevision = true)]
+    private CounterIncremented Increment(IncrementCounter command) =>
+        new(state.Increment(command.Amount));
+}
+
+public sealed record CounterSnapshot(int Count);
+public sealed record IncrementCounter([property: BridgeMinimum(1)] int Amount);
+public sealed record CounterIncremented(int Count);
+```
+
+The four desktop templates split state and commands this way. No handler
+interface, manual registry, copied fingerprint or handwritten JSON is needed.
+The frontend imports the generated facade and creates one bridge controller.
+
+## Members and wire models
+
+A command has exactly one request DTO, an optional `BridgeCommandContext` and
+optional `CancellationToken`. Returns are a receipt DTO, `Task<T>` or
+`ValueTask<T>`. Snapshot properties or methods return the snapshot directly;
+methods can accept `BridgeSnapshotContext` (session ID and current revision) and
+a cancellation token, synchronously or asynchronously. Private members work
+through generated adapters in the same partial class. Bridge parts in V1 must
+be concrete, nongeneric, top-level partial classes.
+
+Records and sealed init-only classes are supported. Wire properties use camel
+case or `JsonPropertyName`; codecs synthesize and validate `_tag` on tagged DTOs.
+Use `BridgeTag` and `BridgeName` to stabilize tags and definition names. Nullable
+properties are required and accept null. `BridgeOptional<T?>` distinguishes
+missing, null and a present value. Bounds, multiples, patterns, string/collection
+length and structural uniqueness use the `Bridge*` attributes. `long` and `ulong`
+require `BridgeSafeInteger`; `Guid` uses canonical lowercase UUID strings. Enums
+use string member names, optionally `JsonStringEnumMemberName`. Mutable setters,
+custom converters, decimal, float, date/time, URI and polymorphic models are
+outside the portable V1 core. Use double for JSON numbers.
+
+Declare events with `[BridgeEvent]` and errors with `[BridgeError]`. Generated
+extensions in `Runic.Application.Bridge.Generated` provide
+`context.Events.Publish<Tag>Async(value, cancellationToken)` and
+`throw value.ToBridgeError()`. Events retain transactional ordering and
+backpressure. Cancellable commands must start an operation and their receipt must
+include a required operation identifier.
+
+## Dependency injection and modules
+
+Each bridge part is registered with `TryAddScoped` using a generated constructor
+factory. Register dependencies and overrides through `builder.Services` before
+building the application. Each logical session owns one asynchronous scope;
+reconnections retain its state and independent sessions receive separate state.
+Closing the session disposes scoped services, including `IAsyncDisposable`.
+The application disposes its root service provider.
+
+Put bridge parts in referenced class libraries with the bridge analyzer enabled.
+Their generated metadata and registrars participate through `ProjectReference`;
+arbitrary package assemblies do not. Keep one contract root in the entry project
+and exactly one snapshot across the graph. Duplicate tags or conflicting module
+definitions fail compilation. Constructor dependencies must be registered before
+session activation.
+
+## Initialization and frontend ownership
+
+The runtime sends the built-in initialize envelope with `{}`. The host invokes
+the snapshot provider for the first connection and each accepted reconnection,
+and returns its snapshot directly. Initialization failures use built-in errors;
+there are no application initialization DTOs.
+
+[Frontend contracts](frontend-contracts.md) describes generated Effect schemas,
+CLI/Vite generation and the explicit whole-contract Effect alternative. The
+latter preserves handwritten Effect schema objects and generates a typed C#
+snapshot provider alongside command handlers.
 
 The host owns sessions, authoritative revisions, operation lifetimes,
 cancellation, privileged resources, and sanitized failures. The frontend owns

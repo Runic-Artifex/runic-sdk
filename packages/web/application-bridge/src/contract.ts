@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import { BridgeErrorSchema, type BridgeError } from "./errors.js";
 
 export const UuidSchema = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
+  Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
 );
 export const RevisionSchema = Schema.Int.pipe(Schema.nonNegative());
 export const SequenceSchema = Schema.Int.pipe(Schema.positive());
@@ -29,7 +29,6 @@ export interface ApplicationContract<
   readonly event: Schema.Schema<HostEvent, HostEventEncoded, never>;
   readonly snapshot: Schema.Schema<Snapshot, SnapshotEncoded, never>;
   readonly error: Schema.Schema<Failure, FailureEncoded, never>;
-  readonly initialize: Command;
 }
 
 export interface ApplicationBridgeCommand<
@@ -63,7 +62,6 @@ export interface ApplicationBridgeDefinition<
   readonly commands: Commands;
   readonly events: Events;
   readonly errors?: Errors;
-  readonly initialize?: CommandType<Commands[number]>;
 }
 
 type CommandType<Item> = Item extends ApplicationBridgeCommand<infer Command, Schema.Schema.AnyNoContext>
@@ -109,8 +107,7 @@ export function defineApplicationBridgeContract<
   const Events extends readonly Schema.Schema.AnyNoContext[],
   const Errors extends readonly Schema.Schema.AnyNoContext[] = readonly [],
 >(
-  definition: ApplicationBridgeDefinition<Snapshot, Commands, Events, Errors> &
-    (Commands extends readonly [] ? object : Readonly<{ initialize: CommandType<Commands[number]> }>),
+  definition: ApplicationBridgeDefinition<Snapshot, Commands, Events, Errors>,
 ): ApplicationBridgeDefinition<Snapshot, Commands, Events, Errors> {
   if (definition.protocol.identity.length === 0 ||
       !Number.isSafeInteger(definition.protocol.version) || definition.protocol.version < 1 ||
@@ -143,9 +140,6 @@ export function materializeApplicationBridgeContract<
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
     throw new TypeError("An Application Bridge contract requires a generated SHA-256 fingerprint.");
   }
-  if (definition.commands.length > 0 && definition.initialize === undefined) {
-    throw new TypeError("A materialized Application Bridge contract with commands requires an initialize command.");
-  }
   const commandSchemas = definition.commands.map((item) => item.schema);
   const receiptSchemas = [...new Set(definition.commands.map((item) => item.receipt))];
   const domainErrors = definition.errors ?? [];
@@ -162,7 +156,6 @@ export function materializeApplicationBridgeContract<
       Schema.Schema.Encoded<typeof BridgeErrorSchema> | ErrorEncoded<Errors>,
       never
     >,
-    initialize: definition.initialize as CommandType<Commands[number]>,
   });
 }
 

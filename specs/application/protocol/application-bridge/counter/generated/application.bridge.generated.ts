@@ -2,5 +2,5 @@
 import definition from "../application.bridge.js";
 import { materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
 
-export const applicationBridge = materializeApplicationBridgeContract(definition, "aa75f8fc0c45307c21de52460f5ba5b75e2a278e016a4bcd32bf8ef15a6b73b2");
+export const applicationBridge = materializeApplicationBridgeContract(definition, "58a0dda63c7e4b41ebce179913af55c0e53b5d17d627e8fd7116da40414a11d5");
 export default applicationBridge;

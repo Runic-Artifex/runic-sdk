@@ -22,8 +22,6 @@ const PortableSnapshot = Schema.Struct({
   node: RecursiveNode,
   nullableNote: Schema.NullOr(Schema.String),
 }).annotations({ identifier: "PortableSnapshot" });
-const InitializeApplication = Schema.TaggedStruct("InitializeApplication", {});
-const ApplicationInitialized = Schema.TaggedStruct("ApplicationInitialized", { snapshot: PortableSnapshot });
 const QuotaExceeded = Schema.TaggedStruct("QuotaExceeded", {
   limit: Schema.Int.pipe(Schema.positive()),
 });
@@ -32,8 +30,7 @@ export default defineApplicationBridgeContract({
   protocol: { identity: "runic.artifex.portable-core", version: 1 },
   csharp: { namespace: "Runic.Application.PortableCore.Contract", contractName: "PortableCore" },
   snapshot: PortableSnapshot,
-  commands: [bridge.command(InitializeApplication, { receipt: ApplicationInitialized })],
+  commands: [],
   events: [],
   errors: [QuotaExceeded],
-  initialize: { _tag: "InitializeApplication" },
 });

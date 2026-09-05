@@ -21,6 +21,8 @@ internal static class Program
     internal static async Task<int> Main(string[] arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
+        if (arguments.Length > 0 && arguments[0] == "__bridge-inspect")
+            return await BridgeInspectionClient.RunAsync(arguments[1..]).ConfigureAwait(false);
         var console = new ProcessCommandConsole();
         ParseOutcome parse = PortableCommandSyntaxAdapter.Instance.Parse(
             GeneratedCommandCatalog.Create(),

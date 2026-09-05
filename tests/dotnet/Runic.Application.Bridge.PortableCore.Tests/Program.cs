@@ -9,7 +9,7 @@ var snapshot = new PortableSnapshot
     Pair = new PortableSnapshotPair { Item1 = "count", Item2 = 2 },
     OptionalPair = new PortableSnapshotOptionalPair { Item1 = "optional" },
     ValuesByName = new Dictionary<string, long> { ["one"] = 1 },
-    Choice = PortableSnapshotChoice.FromCase1(new PortableSnapshotChoice0 { Tag = "TextChoice", Value = "selected" }),
+    Choice = PortableSnapshotChoice.FromCase2(new PortableSnapshotChoice1 { Tag = "TextChoice", Value = "selected" }),
     UniqueChoices = [new PortableSnapshotUniqueChoicesItem { Tag = "TextChoice", Value = "unique" }],
     Node = new RecursiveNode { Value = "root" },
     NullableNote = null,
@@ -53,8 +53,7 @@ Console.WriteLine("PASS: generated tuple, record, union, nullable, optional, and
 
 file sealed class PortableCoreHandler : IPortableCoreBridgeHandler
 {
-    public ValueTask<ApplicationInitialized> InitializeApplicationAsync(
-        InitializeApplication command,
-        Runic.Application.Bridge.BridgeCommandContext context,
+    public ValueTask<PortableSnapshot> GetSnapshotAsync(
+        Runic.Application.Bridge.BridgeSnapshotContext context,
         CancellationToken cancellationToken) => throw new NotSupportedException();
 }

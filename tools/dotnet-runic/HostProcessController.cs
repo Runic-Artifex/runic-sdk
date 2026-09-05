@@ -73,6 +73,15 @@ internal sealed class HostProcessController : IAsyncDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            CommandResult build = await CommandRunner.RunAsync(_dotnetHost, _configuration.ProjectDirectory,
+                ["build", _configuration.ProjectPath, "--configuration", _options.Configuration, "--no-restore",
+                 "-p:RunicToolkitFrontendBuild=false", "-p:RunicToolkitFrontendInstall=false"], cancellationToken).ConfigureAwait(false);
+            if (build.ExitCode != 0)
+            {
+                Console.Error.Write(build.StandardError);
+                Console.Error.Write(build.StandardOutput);
+                throw new DevUsageException("RTKDEV1006", "Host rebuild failed; the running host has been retained.");
+            }
             if (_host is not null)
             {
                 RunningProcess previous = _host;

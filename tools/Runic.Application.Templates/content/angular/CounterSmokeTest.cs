@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Runic.Application.Bridge;
-using Runic.Application.Template.Contract;
+using Runic.Application.Generated;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace RunicDesktopApp;
 
@@ -8,10 +9,12 @@ internal static class CounterSmokeTest
 {
     internal static async Task<int> RunAsync()
     {
-        await using var session = new ApplicationBridgeSession(
-            new CounterBridgeDispatcher(new CounterBridgeHandler()));
+        var services = new ServiceCollection();
+        CounterBridgeContract.ConfigureServices(services);
+        await using var provider = services.BuildServiceProvider();
+        await using var session = ApplicationBridgeSessionFactory.Create(provider);
         BridgeHostEnvelope snapshot = await session.DispatchAsync(Envelope(
-            "initialize", null, null, """{"_tag":"InitializeApplication"}"""));
+            "initialize", null, null, """{}"""));
         BridgeHostEnvelope incremented = await session.DispatchAsync(Envelope(
             "dispatch", session.Id.Value, 0, """{"_tag":"IncrementCounter","step":2}"""));
         bool passed = snapshot.Kind == "snapshot" &&

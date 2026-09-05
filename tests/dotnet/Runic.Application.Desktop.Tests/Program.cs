@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Extensions.DependencyInjection;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -79,7 +80,7 @@ internal static class Program
             throw new InvalidOperationException("The Desktop surface did not advertise the Application Bridge capability.");
 
         byte[] frame = Encoding.UTF8.GetBytes($$$"""
-            {"protocol":"runic.test","version":1,"contractFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","connectionEpoch":{{{epoch}}},"kind":"initialize","commandId":"{{{Guid.NewGuid()}}}","payload":{"_tag":"InitializeApplication"}}
+            {"protocol":"runic.test","version":1,"contractFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","connectionEpoch":{{{epoch}}},"kind":"initialize","commandId":"{{{Guid.NewGuid()}}}","payload":{}}
             """);
         await SendAsync(socket, CreateCall(token, 1, DesktopApplicationBridgeOptions.Capability, frame), cancellationToken).ConfigureAwait(false);
         while (true)
@@ -111,7 +112,7 @@ internal static class Program
                 "test",
                 [],
                 []);
-            await applicationHost.StartAsync(manifest, ReadOnlyMemory<string>.Empty, CancellationToken.None).ConfigureAwait(false);
+            await applicationHost.StartAsync(manifest, ReadOnlyMemory<string>.Empty, new ServiceCollection().BuildServiceProvider(), CancellationToken.None).ConfigureAwait(false);
             if (applicationHost.Surface is null) throw new InvalidOperationException("The Desktop surface did not start.");
             await using DesktopSurface additional = await applicationHost.Host!.CreateSurfaceAsync(
                 new DesktopSurfaceOptions { Content = "additional-window-surface" }).ConfigureAwait(false);
@@ -205,6 +206,8 @@ internal static class Program
 
 internal sealed class FakeDispatcher : IApplicationBridgeDispatcher
 {
+    public ValueTask<JsonElement> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(JsonDocument.Parse("""{"revision":0,"view":"Welcome"}""").RootElement.Clone());
     public string ProtocolIdentity => "runic.test";
     public int ProtocolVersion => 1;
     public string ManifestFingerprint => new('a', 64);
@@ -214,5 +217,5 @@ internal sealed class FakeDispatcher : IApplicationBridgeDispatcher
         BridgeCommandContext context,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(new BridgeDispatchResult(
-            JsonDocument.Parse("""{"_tag":"ApplicationInitialized","snapshot":{"revision":0}}""").RootElement.Clone()));
+            JsonDocument.Parse("""{"_tag":"NavigationAccepted","revision":0}""").RootElement.Clone()));
 }

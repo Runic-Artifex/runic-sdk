@@ -20,7 +20,7 @@ if (!normalHost.Lifecycle.SequenceEqual(["start", "wait", "stop"]) ||
     application.Capabilities.GetRequired("headless").Availability != ApplicationCapabilityAvailability.Available ||
     application.Capabilities.GetRequired("desktop").UnavailableReason != "headless-package-consumer") return 2;
 var faultHost = new DeterministicApplicationTestHost { WaitFailure = new InvalidOperationException("primary"), StopFailure = new InvalidOperationException("cleanup") };
-await using (var faultApplication = new ApplicationHost(application.Manifest, [], faultHost))
+await using (var faultApplication = new RunicApplicationBuilder(application.Manifest, []).UseHost(faultHost).Build())
 {
     try
     {
@@ -33,7 +33,7 @@ await using (var faultApplication = new ApplicationHost(application.Manifest, []
     }
 }
 var cancelledHost = new DeterministicApplicationTestHost(completeShutdownOnWait: false);
-await using (var cancelledApplication = new ApplicationHost(application.Manifest, [], cancelledHost))
+await using (var cancelledApplication = new RunicApplicationBuilder(application.Manifest, []).UseHost(cancelledHost).Build())
 using (var cancellation = new CancellationTokenSource())
 {
     cancellation.Cancel();
@@ -49,7 +49,7 @@ using (var cancellation = new CancellationTokenSource())
 }
 var controlledStopHost = new DeterministicApplicationTestHost(completeShutdownOnWait: false);
 controlledStopHost.CompleteShutdown();
-await using (var controlledStopApplication = new ApplicationHost(application.Manifest, [], controlledStopHost))
+await using (var controlledStopApplication = new RunicApplicationBuilder(application.Manifest, []).UseHost(controlledStopHost).Build())
 {
     await controlledStopApplication.RunAsync();
 }

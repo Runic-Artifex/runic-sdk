@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { runic } from "@runic-artifex/vite-plugin-runic";
 
 export default defineConfig({
-  plugins: [runic({ desktop: true, applicationBridge: true }), react()],
+  plugins: [runic({ desktop: true, applicationBridge: { authority: "csharp", project: "../RunicDesktopApp.csproj" } }), react()],
   build: {
     outDir: "dist",
     emptyOutDir: true,

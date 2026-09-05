@@ -6,7 +6,7 @@
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": { "node": ">=24.18.0 <25" },
   "type": "module",
-  "scripts": { "build": "vite build", "contract:generate": "runic-bridge generate", "contract:check": "runic-bridge check", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "svelte-check --tsconfig ./tsconfig.json" },
+  "scripts": { "build": "vite build", "contract:generate": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj", "contract:check": "runic-bridge check --authority csharp --project ../RunicDesktopApp.csproj", "dev": "vite", "dev:mock": "vite --mode mock", "typecheck": "svelte-check --tsconfig ./tsconfig.json" },
   "dependencies": {
     "@fortawesome/fontawesome-free": "7.3.1",
     "@popperjs/core": "2.11.8",

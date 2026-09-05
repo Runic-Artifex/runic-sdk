@@ -36,7 +36,7 @@
       kind, commandId: crypto.randomUUID(), payload, ...extra,
     });
     const send = (message) => channel.send(text.encode(JSON.stringify(message)));
-    const initialize = () => send(command("initialize", { _tag: "InitializeApplication" }));
+    const initialize = () => send(command("initialize", {}));
     const triggerRefresh = async () => {
       const response = await fetch("/test/refresh", { method: "POST" });
       if (!response.ok) throw new Error("The refresh test endpoint rejected the request.");

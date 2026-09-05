@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import { counterBridge } from "./counter-bridge";
-import type { CounterSnapshot } from "./application.bridge";
+import type { CounterSnapshot } from "./application.bridge.generated";
 
 const snapshot = ref<CounterSnapshot>({ count: 0, history: [0], revision: 0 });
 const step = ref(1);
 const error = ref<string>();
-let unsubscribe = () => undefined;
+let unsubscribe: () => void = () => undefined;
 onMounted(() => {
   unsubscribe = counterBridge.subscribe(
     (event) => { snapshot.value = event.snapshot; },

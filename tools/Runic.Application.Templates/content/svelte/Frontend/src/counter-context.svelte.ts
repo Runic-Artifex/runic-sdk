@@ -4,7 +4,7 @@ import type {
   CounterEvent,
   CounterReceipt,
   CounterSnapshot,
-} from "./application.bridge";
+} from "./application.bridge.generated";
 
 export const counterBridgeContext = createApplicationBridgeContext<
   CounterCommand,

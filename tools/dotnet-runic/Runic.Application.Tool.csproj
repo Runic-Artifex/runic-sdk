@@ -14,6 +14,25 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot;PublishTrimmed;RuntimeIdentifier;SelfContained" />
+  </ItemGroup>
+  <Target Name="IncludeBridgeInspector" BeforeTargets="GetCopyToOutputDirectoryItems;_GetPackageFiles;GenerateNuspec" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <Content Include="../Runic.Application.Bridge.Inspector/bin/$(Configuration)/net10.0/**/*" Exclude="../Runic.Application.Bridge.Inspector/bin/$(Configuration)/net10.0/**/*.pdb">
+        <Link>bridge-inspector/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        <TargetPath>bridge-inspector/%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <Pack>false</Pack>
+      </Content>
+    </ItemGroup>
+  </Target>
+  <Target Name="CopyBridgeInspector" AfterTargets="Build;Publish">
+    <ItemGroup><_BridgeInspectorOutput Include="../Runic.Application.Bridge.Inspector/bin/$(Configuration)/net10.0/**/*" /></ItemGroup>
+    <Copy SourceFiles="@(_BridgeInspectorOutput)" DestinationFiles="@(_BridgeInspectorOutput->'$(TargetDir)bridge-inspector/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_BridgeInspectorOutput)" DestinationFiles="@(_BridgeInspectorOutput->'$(PublishDir)bridge-inspector/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+  </Target>
+  <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="../../eng/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />

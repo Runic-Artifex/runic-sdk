@@ -1,0 +1,108 @@
+[
+  {
+    "schema": "IncrementCounter",
+    "input": {
+      "step": 2,
+      "_tag": "IncrementCounter"
+    },
+    "canonical": "{\"_tag\":\"IncrementCounter\",\"step\":2}"
+  },
+  {
+    "schema": "IncrementCounter",
+    "input": {
+      "step": 0,
+      "_tag": "IncrementCounter"
+    },
+    "reject": true
+  },
+  {
+    "schema": "IncrementCounter",
+    "input": {
+      "step": 11,
+      "_tag": "IncrementCounter"
+    },
+    "reject": true
+  },
+  {
+    "schema": "IncrementCounter",
+    "input": {
+      "step": 1.5,
+      "_tag": "IncrementCounter"
+    },
+    "reject": true
+  },
+  {
+    "schema": "IncrementCounter",
+    "input": {
+      "step": 2,
+      "_tag": "Wrong"
+    },
+    "reject": true
+  },
+  {
+    "schema": "IncrementCounter",
+    "input": {
+      "_tag": "IncrementCounter"
+    },
+    "reject": true
+  },
+  {
+    "schema": "IncrementCounter",
+    "input": {
+      "step": 2,
+      "_tag": "IncrementCounter",
+      "extra": 1
+    },
+    "reject": true
+  },
+  {
+    "schema": "CounterSnapshot",
+    "input": {
+      "revision": 0,
+      "history": [
+        -1,
+        2
+      ],
+      "count": 2
+    },
+    "canonical": "{\"count\":2,\"history\":[-1,2],\"revision\":0}"
+  },
+  {
+    "schema": "CounterSnapshot",
+    "input": {
+      "revision": -1,
+      "history": [],
+      "count": 2
+    },
+    "reject": true
+  },
+  {
+    "schema": "CounterSnapshot",
+    "input": {
+      "revision": 9007199254740992,
+      "history": [],
+      "count": 2
+    },
+    "reject": true
+  },
+  {
+    "schema": "CounterSnapshot",
+    "input": {
+      "revision": 0,
+      "history": [
+        2147483648
+      ],
+      "count": 2
+    },
+    "reject": true
+  },
+  {
+    "schema": "CounterSnapshot",
+    "input": {
+      "revision": 0,
+      "history": null,
+      "count": 2
+    },
+    "reject": true
+  }
+]

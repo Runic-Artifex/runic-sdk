@@ -118,7 +118,6 @@ test("the WebSocket channel settles failed and interrupted reconnect attempts", 
 });
 
 const Snapshot = Schema.Struct({ revision: Schema.Int, view: Schema.String });
-const InitializeApplication = Schema.TaggedStruct("InitializeApplication", {});
 const Navigate = Schema.TaggedStruct("Navigate", { target: Schema.String });
 const NavigationAccepted = Schema.TaggedStruct("NavigationAccepted", { revision: Schema.Int });
 const HostEvent = Schema.TaggedStruct("NavigationChanged", { revision: Schema.Int, view: Schema.String });
@@ -127,12 +126,10 @@ const definition = defineApplicationBridgeContract({
   csharp: { namespace: "Runic.Test", contractName: "Test" },
   snapshot: Snapshot,
   commands: [
-    bridge.command(InitializeApplication, { receipt: NavigationAccepted }),
     bridge.command(Navigate, { receipt: NavigationAccepted }),
   ],
   events: [HostEvent],
   errors: [],
-  initialize: { _tag: "InitializeApplication" } as const,
 });
 const contract = materializeApplicationBridgeContract(
   definition,

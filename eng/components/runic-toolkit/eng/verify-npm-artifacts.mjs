@@ -48,11 +48,11 @@ try {
   writeFileSync(join(consumer, "verify.mjs"), `
 import { Effect, Schema } from "effect";
 import { MockApplicationBridge, bridge, createApplicationBridgeController, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
-const Command = Schema.TaggedStruct("InitializeApplication", {});
+const Command = Schema.TaggedStruct("Ping", {});
 const Snapshot = Schema.Struct({ ready: Schema.Boolean });
 const Receipt = Schema.TaggedStruct("Accepted", {});
 const Event = Schema.TaggedStruct("Changed", {});
-const definition = defineApplicationBridgeContract({ protocol: { identity: "runic.consumer", version: 1 }, csharp: { namespace: "Runic.Consumer", contractName: "Consumer" }, snapshot: Snapshot, commands: [bridge.command(Command, { receipt: Receipt })], events: [Event], errors: [], initialize: { _tag: "InitializeApplication" } });
+const definition = defineApplicationBridgeContract({ protocol: { identity: "runic.consumer", version: 1 }, csharp: { namespace: "Runic.Consumer", contractName: "Consumer" }, snapshot: Snapshot, commands: [bridge.command(Command, { receipt: Receipt })], events: [Event], errors: [] });
 const contract = materializeApplicationBridgeContract(definition, "c".repeat(64));
 const layer = MockApplicationBridge({ initialize: () => Effect.succeed({ ready: true }), dispatch: () => Effect.succeed({ _tag: "Accepted" }) });
 const controller = createApplicationBridgeController(contract, layer);
@@ -64,13 +64,13 @@ if (snapshot.ready !== true) throw new Error("The installed Application Bridge p
   writeFileSync(join(consumer, "src", "application.bridge.ts"), `
 import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
-const Command = Schema.TaggedStruct("InitializeApplication", {});
-const Receipt = Schema.TaggedStruct("Initialized", {});
-export default defineApplicationBridgeContract({ protocol:{identity:"runic.consumer",version:1}, csharp:{namespace:"Runic.Consumer",contractName:"Consumer"}, snapshot:Schema.Struct({ready:Schema.Boolean}).annotations({identifier:"Snapshot"}), commands:[bridge.command(Command,{receipt:Receipt})], events:[], errors:[], initialize:{_tag:"InitializeApplication"} });
+const Command = Schema.TaggedStruct("Ping", {});
+const Receipt = Schema.TaggedStruct("Accepted", {});
+export default defineApplicationBridgeContract({ protocol:{identity:"runic.consumer",version:1}, csharp:{namespace:"Runic.Consumer",contractName:"Consumer"}, snapshot:Schema.Struct({ready:Schema.Boolean}).annotations({identifier:"Snapshot"}), commands:[bridge.command(Command,{receipt:Receipt})], events:[], errors:[] });
 `, "utf8");
-  const generate = spawnSync(join(consumer, "node_modules", ".bin", "runic-bridge"), ["generate", "--ir", "Contract/bridge.ir.json"], { cwd: consumer, encoding: "utf8" });
+  const generate = spawnSync(join(consumer, "node_modules", ".bin", "runic-bridge"), ["generate", "--authority", "effect", "--source", "src/application.bridge.ts", "--ir", "Contract/bridge.ir.json"], { cwd: consumer, encoding: "utf8" });
   if (generate.status !== 0) throw new Error(`The isolated compiler failed:\n${generate.stderr}`);
-  const check = spawnSync(join(consumer, "node_modules", ".bin", "runic-bridge"), ["check", "--ir", "Contract/bridge.ir.json"], { cwd: consumer, encoding: "utf8" });
+  const check = spawnSync(join(consumer, "node_modules", ".bin", "runic-bridge"), ["check", "--authority", "effect", "--source", "src/application.bridge.ts", "--ir", "Contract/bridge.ir.json"], { cwd: consumer, encoding: "utf8" });
   if (check.status !== 0) throw new Error(`The isolated compiler check failed:\n${check.stderr}`);
   const execute = spawnSync(process.execPath, [join(consumer, "verify.mjs")], { cwd: consumer, encoding: "utf8" });
   if (execute.status !== 0) throw new Error(`The isolated npm consumer failed:\n${execute.stderr}`);

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><DefineConstants>$(DefineConstants);EFFECT</DefineConstants><GenerateDocumentationFile>false</GenerateDocumentationFile></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="../../protocol/application-bridge/counter/generated/bridge.ir.json" />
+    <Compile Include="../Fixtures/CounterMembers/Program.cs" Link="Program.cs" />
+    <Content Include="../../protocol/application-bridge/conformance/counter-members.json" CopyToOutputDirectory="PreserveNewest" Link="counter-members.json" />
+  </ItemGroup>
+</Project>

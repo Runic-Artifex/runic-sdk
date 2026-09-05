@@ -14,17 +14,15 @@ const {
   materializeApplicationBridgeContract,
 } = await import(pathToFileURL(modulePath).href);
 
-const Initialize = Schema.TaggedStruct("InitializeApplication", {});
 const Navigate = Schema.TaggedStruct("Navigate", { target: Schema.String });
 const Receipt = Schema.TaggedStruct("NavigationAccepted", { revision: Schema.Int });
 const definition = defineApplicationBridgeContract({
   protocol: { identity: "runic.test", version: 1 },
   csharp: { namespace: "Runic.Test", contractName: "Test" },
   snapshot: Schema.Struct({ revision: Schema.Int, view: Schema.String }),
-  commands: [bridge.command(Initialize, { receipt: Receipt }), bridge.command(Navigate, { receipt: Receipt })],
+  commands: [bridge.command(Navigate, { receipt: Receipt })],
   events: [Schema.TaggedStruct("NavigationChanged", { revision: Schema.Int, view: Schema.String })],
   errors: [],
-  initialize: { _tag: "InitializeApplication" },
 });
 const contract = materializeApplicationBridgeContract(definition, "a".repeat(64));
 

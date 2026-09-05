@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <RunicApplicationBridgeAuthority>csharp</RunicApplicationBridgeAuthority>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>RunicDesktopApp</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>

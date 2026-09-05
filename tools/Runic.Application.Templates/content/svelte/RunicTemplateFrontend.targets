@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <RunicApplicationBridgeGenerate>false</RunicApplicationBridgeGenerate>
     <RunicTemplateFrontendBuild Condition="'$(RunicTemplateFrontendBuild)' == '' and '$(RunicToolkitFrontendBuild)' != 'false'">true</RunicTemplateFrontendBuild>
     <_RunicTemplateFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</_RunicTemplateFrontendDirectory>
     <_RunicTemplateFrontendBuildStamp>$(IntermediateOutputPath)runic-frontend.build.stamp</_RunicTemplateFrontendBuildStamp>
@@ -28,9 +29,17 @@
     <_RunicTemplateFrontendBuildInput Include="$(_RunicTemplateFrontendDirectory)/src/**/*;$(_RunicTemplateFrontendDirectory)/*index.html;$(_RunicTemplateFrontendDirectory)/vite.config.*;$(_RunicTemplateFrontendDirectory)/angular*.json;$(_RunicTemplateFrontendDirectory)/tsconfig*.json" />
   </ItemGroup>
 
+  <Target Name="RunicTemplateToolsRestore"
+          Condition="'$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'"
+          Inputs="$(MSBuildProjectDirectory)/.config/dotnet-tools.json"
+          Outputs="$(IntermediateOutputPath)runic-tools.restore.stamp">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)" Command="dotnet tool restore" />
+    <Touch Files="$(IntermediateOutputPath)runic-tools.restore.stamp" AlwaysCreate="true" />
+  </Target>
+
   <Target Name="RunicTemplateFrontendInstall"
           BeforeTargets="RunicTemplateFrontendBuild"
-          Condition="'$(RunicTemplateFrontendBuild)' == 'true'"
+          Condition="'$(RunicTemplateFrontendBuild)' == 'true' and '$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'"
           Inputs="@(_RunicTemplateFrontendInstallInput)"
           Outputs="$(_RunicTemplateInstallStamp)">
     <Error Condition="'$(_RunicTemplatePackageManager)' == ''"
@@ -44,10 +53,9 @@
 
   <Target Name="RunicTemplateBridgeGenerate"
           BeforeTargets="CoreCompile"
-          DependsOnTargets="RunicTemplateFrontendInstall"
-          Condition="'$(RunicTemplateFrontendBuild)' == 'true'"
-          Inputs="$(_RunicTemplateFrontendDirectory)/src/**/*.ts"
-          Outputs="$(_RunicTemplateBridgeIr);$(_RunicTemplateBridgeFacade)">
+          DependsOnTargets="RunicTemplateToolsRestore;RunicTemplateFrontendInstall"
+          Condition="'$(RunicTemplateFrontendBuild)' == 'true' and '$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'"
+>
     <Message Importance="high" Text="[runic] Generating Application Bridge IR." />
     <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
           Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; run contract:generate" />
@@ -55,8 +63,8 @@
 
   <Target Name="RunicTemplateFrontendBuild"
           BeforeTargets="RunicAssetsPackFileSystem"
-          DependsOnTargets="RunicTemplateFrontendInstall"
-          Condition="'$(RunicTemplateFrontendBuild)' == 'true'"
+          DependsOnTargets="RunicTemplateToolsRestore;RunicTemplateFrontendInstall"
+          Condition="'$(RunicTemplateFrontendBuild)' == 'true' and '$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'"
           Inputs="@(_RunicTemplateFrontendInstallInput);@(_RunicTemplateFrontendBuildInput)"
           Outputs="$(_RunicTemplateFrontendBuildStamp)">
     <Message Importance="high" Text="[runic] Building managed frontend assets." />

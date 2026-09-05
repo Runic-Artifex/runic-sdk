@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Runic.Application;
 
@@ -40,6 +41,7 @@ public sealed class RunicApplicationBuilder
     private readonly string[] _arguments;
     private readonly ApplicationCompositionManifest _manifest;
     private IApplicationHost? _host;
+    private readonly ServiceCollection _services = new();
     private bool _built;
 
     /// <summary>Initializes a builder from one immutable manifest.</summary>
@@ -48,10 +50,14 @@ public sealed class RunicApplicationBuilder
         _manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
         ArgumentNullException.ThrowIfNull(arguments);
         _arguments = (string[])arguments.Clone();
+        RunicApplicationBridgeCompositionRegistry.ConfigureServices(_services);
     }
 
     /// <summary>Gets the authoritative manifest consumed by this builder.</summary>
     public ApplicationCompositionManifest Manifest => _manifest;
+
+    /// <summary>Gets application services, including generated bridge parts.</summary>
+    public IServiceCollection Services => _services;
 
     /// <summary>Uses the one concrete host selected by platform integration.</summary>
     public RunicApplicationBuilder UseHost(IApplicationHost host)
@@ -65,9 +71,14 @@ public sealed class RunicApplicationBuilder
     public ApplicationHost Build()
     {
         ObjectDisposedException.ThrowIf(_built, this);
+        IApplicationHost host = _host ?? throw new InvalidOperationException("Select a platform host such as UseDesktop before building the application.");
         _built = true;
-        return new ApplicationHost(_manifest, _arguments, _host ?? throw new InvalidOperationException(
-            "Select a platform host such as UseDesktop before building the application."));
+        ServiceProvider services = _services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true,
+        });
+        return new ApplicationHost(_manifest, _arguments, host, services);
     }
 }
 
@@ -76,14 +87,20 @@ public sealed class ApplicationHost : IAsyncDisposable
 {
     private readonly string[] _arguments;
     private readonly IApplicationHost _host;
+    private readonly ServiceProvider _services;
     private int _run;
 
     /// <summary>Initializes a host from the generated manifest and selected integration.</summary>
-    public ApplicationHost(ApplicationCompositionManifest manifest, string[] arguments, IApplicationHost host)
+    public ApplicationHost(
+        ApplicationCompositionManifest manifest,
+        string[] arguments,
+        IApplicationHost host,
+        ServiceProvider services)
     {
         Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
         _arguments = arguments is null ? throw new ArgumentNullException(nameof(arguments)) : (string[])arguments.Clone();
         _host = host ?? throw new ArgumentNullException(nameof(host));
+        _services = services ?? throw new ArgumentNullException(nameof(services));
         Capabilities = new ApplicationCapabilityProjection(Manifest, _host);
     }
 
@@ -106,7 +123,7 @@ public sealed class ApplicationHost : IAsyncDisposable
 
         try
         {
-            await _host.StartAsync(Manifest, _arguments, cancellationToken).ConfigureAwait(false);
+            await _host.StartAsync(Manifest, _arguments, _services, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -144,14 +161,22 @@ public sealed class ApplicationHost : IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public ValueTask DisposeAsync() => _host.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        try { await _host.DisposeAsync().ConfigureAwait(false); }
+        finally { await _services.DisposeAsync().ConfigureAwait(false); }
+    }
 }
 
 /// <summary>Defines the minimal platform host boundary.</summary>
 public interface IApplicationHost : IAsyncDisposable
 {
     /// <summary>Starts from the generated manifest and snapshotted arguments.</summary>
-    ValueTask StartAsync(ApplicationCompositionManifest manifest, ReadOnlyMemory<string> arguments, CancellationToken cancellationToken);
+    ValueTask StartAsync(
+        ApplicationCompositionManifest manifest,
+        ReadOnlyMemory<string> arguments,
+        IServiceProvider services,
+        CancellationToken cancellationToken);
 
     /// <summary>Completes only after the host's owned lifetime has ended.</summary>
     ValueTask WaitForShutdownAsync(CancellationToken cancellationToken);

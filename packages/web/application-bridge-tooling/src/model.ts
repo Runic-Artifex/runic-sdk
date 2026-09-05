@@ -15,7 +15,7 @@ export interface BridgeIrConstraints {
 }
 
 export type BridgeIrNode =
-  | Readonly<{ kind: "string"; constraints?: BridgeIrConstraints }>
+  | Readonly<{ kind: "string"; format?: "uuid"; constraints?: BridgeIrConstraints }>
   | Readonly<{ kind: "number"; constraints?: BridgeIrConstraints }>
   | Readonly<{ kind: "integer"; constraints?: BridgeIrConstraints }>
   | Readonly<{ kind: "boolean" }>
@@ -54,7 +54,8 @@ export interface BridgeIr {
       maxCollectionItems: number;
       maxPendingCommands: number;
     }>;
-    initialize?: string;
+    initialization: Readonly<{ kind: "snapshot"; payload: "empty-object" }>;
+    canonicalEncoding: "runic-json-v1";
     snapshot: string;
     definitions: Readonly<Record<string, BridgeIrNode>>;
     commands: readonly Readonly<{
@@ -67,6 +68,8 @@ export interface BridgeIr {
     events: readonly string[];
     errors: readonly string[];
   }>;
+  readonly authority: "csharp" | "effect";
+  readonly bindings?: Readonly<Record<string, unknown>>;
   readonly csharp: Readonly<{ namespace: string; contractName: string }>;
   readonly documentation: Readonly<Record<string, string>>;
 }

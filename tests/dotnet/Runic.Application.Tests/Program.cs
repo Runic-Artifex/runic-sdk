@@ -3,16 +3,20 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Runic.Application;
+using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Bridge;
 using Runic.Application.Testing;
 
 [assembly: RunicApplicationManifest("tests.application", Version = "1.0.0", Provenance = "test")]
-[assembly: RunicApplicationBridgeComposition(typeof(Runic.Application.Tests.BridgeCompositionHandler), typeof(Runic.Application.Tests.BridgeCompositionDispatcher))]
+[assembly: ApplicationBridgeContract("runic.application.tests", 1, ContractName = "Test")]
 [assembly: RunicApplicationCapability("desktop")]
 [assembly: RunicApplicationCapability("headless")]
 [assembly: RunicApplicationArtifact("bridge", "runic.bridge/1", "abc123")]
 
-object? bridgeComposition = RunicApplicationBridgeCompositionRegistry.CreateSession();
+var bridgeServices = new ServiceCollection();
+Runic.Application.Generated.TestBridgeContract.ConfigureServices(bridgeServices);
+await using var bridgeProvider = bridgeServices.BuildServiceProvider();
+object? bridgeComposition = RunicApplicationBridgeCompositionRegistry.CreateSession(bridgeProvider);
 if (bridgeComposition is not ApplicationBridgeSession bridgeSession)
 {
     return 18;
@@ -155,7 +159,7 @@ catch (ArgumentOutOfRangeException)
     // Retained media type metadata is independently bounded.
 }
 var faultHost = new DeterministicApplicationTestHost { WaitFailure = new InvalidOperationException("wait"), StopFailure = new InvalidOperationException("stop") };
-var faultApplication = new ApplicationHost(application.Manifest, [], faultHost);
+var faultApplication = new ApplicationHost(application.Manifest, [], faultHost, new ServiceCollection().BuildServiceProvider());
 try
 {
     await faultApplication.RunAsync();
@@ -166,7 +170,7 @@ catch (InvalidOperationException exception) when (exception.Message == "wait")
     // Wait is the primary lifecycle failure even when cleanup also faults.
 }
 var cancelledHost = new DeterministicApplicationTestHost(completeShutdownOnWait: false);
-var cancelledApplication = new ApplicationHost(application.Manifest, [], cancelledHost);
+var cancelledApplication = new ApplicationHost(application.Manifest, [], cancelledHost, new ServiceCollection().BuildServiceProvider());
 using (var cancellation = new CancellationTokenSource())
 {
     cancellation.Cancel();
@@ -183,7 +187,7 @@ using (var cancellation = new CancellationTokenSource())
 await cancelledApplication.DisposeAsync();
 var controlledStopHost = new DeterministicApplicationTestHost(completeShutdownOnWait: false);
 controlledStopHost.CompleteShutdown();
-await using (var controlledStopApplication = new ApplicationHost(application.Manifest, [], controlledStopHost))
+await using (var controlledStopApplication = new ApplicationHost(application.Manifest, [], controlledStopHost, new ServiceCollection().BuildServiceProvider()))
 {
     await controlledStopApplication.RunAsync();
 }

@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <RunicApplicationBridgeAuthority Condition="'$(RunicApplicationBridgeAuthority)' == ''">csharp</RunicApplicationBridgeAuthority>
+    <RunicApplicationBridgeFrontendDirectory Condition="'$(RunicApplicationBridgeFrontendDirectory)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicApplicationBridgeFrontendDirectory>
+    <RunicApplicationBridgeIr Condition="'$(RunicApplicationBridgeIr)' == ''">$(MSBuildProjectDirectory)/Contract/bridge.ir.json</RunicApplicationBridgeIr>
+    <RunicApplicationBridgeFacade Condition="'$(RunicApplicationBridgeFacade)' == ''">$(RunicApplicationBridgeFrontendDirectory)/src/application.bridge.generated.ts</RunicApplicationBridgeFacade>
+    <RunicApplicationBridgeSource Condition="'$(RunicApplicationBridgeSource)' == '' and '$(RunicApplicationBridgeAuthority)' == 'effect'">$(RunicApplicationBridgeFrontendDirectory)/src/application.bridge.ts</RunicApplicationBridgeSource>
+    <RunicApplicationBridgeRuntime Condition="'$(RunicApplicationBridgeRuntime)' == '' and Exists('$(RunicApplicationBridgeFrontendDirectory)/bun.lock')">bun</RunicApplicationBridgeRuntime>
+    <RunicApplicationBridgeRuntime Condition="'$(RunicApplicationBridgeRuntime)' == ''">node</RunicApplicationBridgeRuntime>
+  </PropertyGroup>
+  <ItemGroup>
+    <CompilerVisibleProperty Include="RunicBridgeProjectAssemblies" />
+  </ItemGroup>
+  <Target Name="RunicBridgeProjectModules" BeforeTargets="GenerateMSBuildEditorConfigFileCore" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <_RunicBridgeProjectAssembly Include="@(ReferencePath)" Condition="'%(ReferencePath.ReferenceSourceTarget)' == 'ProjectReference'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <RunicBridgeProjectAssemblies>@(_RunicBridgeProjectAssembly->'%(Filename)')</RunicBridgeProjectAssemblies>
+    </PropertyGroup>
+  </Target>
+  <Target Name="RunicGenerateApplicationBridge" BeforeTargets="CoreCompile"
+          Condition="'$(RunicApplicationBridgeGenerate)' != 'false' and '$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true' and Exists('$(RunicApplicationBridgeFrontendDirectory)/package.json')">
+    <PropertyGroup>
+      <_RunicBridgeInput Condition="'$(RunicApplicationBridgeAuthority)' == 'csharp'">--project &quot;$(MSBuildProjectFullPath)&quot;</_RunicBridgeInput>
+      <_RunicBridgeInput Condition="'$(RunicApplicationBridgeAuthority)' == 'effect'">--source &quot;$(RunicApplicationBridgeSource)&quot;</_RunicBridgeInput>
+    </PropertyGroup>
+    <Exec WorkingDirectory="$(RunicApplicationBridgeFrontendDirectory)"
+          Command="&quot;$(RunicApplicationBridgeRuntime)&quot; &quot;$(RunicApplicationBridgeFrontendDirectory)/node_modules/@runic-artifex/application-bridge-tooling/dist/esm/cli.js&quot; generate --authority $(RunicApplicationBridgeAuthority) $(_RunicBridgeInput) --root &quot;$(RunicApplicationBridgeFrontendDirectory)&quot; --ir &quot;$(RunicApplicationBridgeIr)&quot; --facade &quot;$(RunicApplicationBridgeFacade)&quot;" />
+  </Target>
+</Project>

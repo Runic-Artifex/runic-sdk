@@ -14,7 +14,7 @@ namespace Runic.Application.Bridge.Generators;
 
 /// <summary>Generates one closed, reflection-free Application Bridge contract.</summary>
 [Generator(LanguageNames.CSharp)]
-public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
+public sealed partial class ApplicationBridgeGenerator : IIncrementalGenerator
 {
     private static readonly HashSet<string> BuiltInErrors = new(StringComparer.Ordinal)
     {
@@ -50,10 +50,12 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
             .Where(static file => file.Path.EndsWith("bridge.ir.json", StringComparison.OrdinalIgnoreCase))
             .Collect()
             .Select(static (files, _) => files.OrderBy(static file => file.Path, StringComparer.Ordinal).FirstOrDefault());
-        context.RegisterSourceOutput(ir, static (productionContext, input) => Emit(productionContext, input));
+        var memberInput = context.CompilationProvider.Combine(context.AnalyzerConfigOptionsProvider.Select(static (options, _) => options.GlobalOptions.TryGetValue("build_property.RunicBridgeProjectAssemblies", out var names) ? names : ""));
+        context.RegisterSourceOutput(memberInput, static (ctx, input) => EmitMembers(ctx, input.Left, input.Right));
+        context.RegisterSourceOutput(ir.Combine(context.CompilationProvider), static (productionContext, input) => Emit(productionContext, input.Left, input.Right));
     }
 
-    private static void Emit(SourceProductionContext context, AdditionalText? irFile)
+    private static void Emit(SourceProductionContext context, AdditionalText? irFile, Compilation compilation)
     {
         if (irFile is null)
         {
@@ -70,10 +72,16 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         try
         {
             using JsonDocument document = JsonDocument.Parse(irText.ToString());
+            string? authority = document.RootElement.GetProperty("authority").GetString();
+            if (authority is not ("csharp" or "effect")) throw new InvalidOperationException("unsupported contract authority");
+            if (authority == "csharp") return;
+            if (compilation.Assembly.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == MemberBridgeLowerer.Prefix + "ApplicationBridgeContractAttribute"))
+                throw new InvalidOperationException("A contract cannot combine C# and Effect authority.");
             (ContractModel model, List<SchemaModel> schemas) = ParseIr(document.RootElement);
             context.AddSource(
                 $"{model.ContractName}.ApplicationBridge.g.cs",
                 SourceText.From(Render(model, schemas), Encoding.UTF8));
+            EmitEffectComposition(context, compilation, model);
         }
         catch (UnsupportedSchemaException exception)
         {
@@ -108,6 +116,10 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
                 item.GetProperty("advancesRevision").GetBoolean()))
             .OrderBy(static item => item.Tag, StringComparer.Ordinal)
             .ToImmutableArray();
+        if (wire.TryGetProperty("initialize", out _) || wire.GetProperty("canonicalEncoding").GetString() != "runic-json-v1" ||
+            wire.GetProperty("initialization").GetProperty("kind").GetString() != "snapshot" ||
+            wire.GetProperty("initialization").GetProperty("payload").GetString() != "empty-object")
+            throw new InvalidOperationException("unsupported V1 initialization or canonical encoding");
         JsonElement fingerprint = root.GetProperty("fingerprint");
         if (fingerprint.GetProperty("algorithm").GetString() != "sha256" ||
             fingerprint.GetProperty("scope").GetString() != "wire")
@@ -152,7 +164,7 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         var contract = new ContractModel(
             protocol.GetProperty("identity").GetString()!,
             protocol.GetProperty("version").GetInt32(),
-            wire.TryGetProperty("initialize", out JsonElement initialize) ? initialize.GetString() : null,
+            wire.GetProperty("snapshot").GetString()!,
             csharp.GetProperty("namespace").GetString()!,
             csharp.GetProperty("contractName").GetString()!,
             contractFingerprint,
@@ -161,7 +173,7 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         return (contract, schemas);
     }
 
-    private static string Canonicalize(JsonElement root)
+    internal static string Canonicalize(JsonElement root)
     {
         var source = new StringBuilder();
         WriteCanonicalJson(source, root, 0);
@@ -297,6 +309,8 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         Constraints constraints = ParseConstraints(element);
         switch (kind)
         {
+            case "string" when element.TryGetProperty("format", out JsonElement format) && format.GetString() == "uuid":
+                return new("global::System.Guid", "guid", constraints, [], null, false);
             case "string" when constraints.Pattern == "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$":
                 return new("global::System.Guid", "guid", constraints, [], null, false);
             case "string": return new("string", "string", constraints, [], null, false);
@@ -332,7 +346,6 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
             {
                 string id = element.GetProperty("name").GetString()!;
                 if (!definitions.TryGetValue(id, out JsonElement target)) throw new UnsupportedSchemaException(schema, name + ".ref");
-                if (id == "type:Uuid") return new("global::System.Guid", "guid", constraints, [], null, false);
                 if (target.GetProperty("kind").GetString() == "object") return new(typeNames[id], "object", constraints, [], null, false);
                 return ParseType(schema, name, target, nested, typeNames, definitions);
             }
@@ -460,6 +473,8 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         }
 
         source.Append("public interface I").Append(contract.ContractName).AppendLine("BridgeHandler").AppendLine("{");
+        source.Append("    global::System.Threading.Tasks.ValueTask<").Append(typeNames[contract.SnapshotId])
+            .AppendLine("> GetSnapshotAsync(global::Runic.Application.Bridge.BridgeSnapshotContext context, global::System.Threading.CancellationToken cancellationToken);");
         foreach (CommandModel command in contract.Commands)
         {
             source.Append("    global::System.Threading.Tasks.ValueTask<")
@@ -480,6 +495,9 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
             .Append("    public string ProtocolIdentity => \"").Append(Escape(contract.Protocol)).AppendLine("\";")
             .Append("    public int ProtocolVersion => ").Append(contract.Version.ToString(CultureInfo.InvariantCulture)).AppendLine(";")
             .Append("    public string ManifestFingerprint => \"").Append(contract.ManifestFingerprint).AppendLine("\";")
+            .AppendLine("    public async global::System.Threading.Tasks.ValueTask<global::System.Text.Json.JsonElement> GetSnapshotAsync(global::Runic.Application.Bridge.BridgeSnapshotContext context, global::System.Threading.CancellationToken cancellationToken) =>")
+            .Append("        ").Append(contract.ContractName).Append("BridgeContractCodec.Encode").Append(typeNames[contract.SnapshotId])
+            .AppendLine("(await _handler.GetSnapshotAsync(context, cancellationToken).ConfigureAwait(false));")
             .AppendLine("    public async global::System.Threading.Tasks.ValueTask<global::Runic.Application.Bridge.BridgeDispatchResult> DispatchAsync(")
             .AppendLine("        global::System.Text.Json.JsonElement command,")
             .AppendLine("        global::Runic.Application.Bridge.BridgeCommandContext context,")
@@ -487,12 +505,6 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
             .AppendLine("    {")
             .AppendLine("        if (!command.TryGetProperty(\"_tag\", out global::System.Text.Json.JsonElement tagElement))")
             .AppendLine("            throw new global::System.Text.Json.JsonException(\"The command tag is missing.\");");
-        if (contract.InitializeTag is not null)
-        {
-            source.Append("        if (context.IsInitialization && !global::System.String.Equals(tagElement.GetString(), \"")
-                .Append(Escape(contract.InitializeTag)).AppendLine("\", global::System.StringComparison.Ordinal))")
-                .AppendLine("            throw new global::System.Text.Json.JsonException(\"The initialization envelope contains the wrong command.\");");
-        }
         source.AppendLine("        return tagElement.GetString() switch")
             .AppendLine("        {");
         foreach (CommandModel command in contract.Commands)
@@ -681,12 +693,26 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         source.AppendLine("                default: throw new global::System.Text.Json.JsonException(\"The contract value contains an unknown property.\");")
             .AppendLine("            }")
             .AppendLine("        }")
-            .Append("        return new ").Append(model.Name).AppendLine().AppendLine("        {");
+            ;
+        if (model.Handwritten)
+        {
+            foreach (PropertyModel tag in model.Properties.Where(p => p.JsonName == "_tag"))
+                source.Append("        _ = ").Append(DecodeExpression(tag.Type, "element.GetProperty(\"_tag\")")).AppendLine(";");
+        }
+        source.Append("        return new ").Append(model.Name);
+        if (!model.Constructor.IsDefaultOrEmpty)
+        {
+            source.Append('(');
+            source.Append(string.Join(", ", model.Constructor.Select(name => DecodeProperty(model.Properties.Single(p => p.Name == name)))));
+            source.Append(')');
+        }
+        source.AppendLine().AppendLine("        {");
         foreach (PropertyModel property in model.Properties)
         {
+            if (model.Handwritten && (property.JsonName == "_tag" || model.Constructor.Contains(property.Name))) continue;
             string element = property.Required
                 ? $"element.GetProperty(\"{Escape(property.JsonName)}\")"
-                : $"optional{property.Name}";
+                : $"optional{property.Name.TrimStart('@')}";
             source.Append("            ").Append(property.Name).Append(" = ");
             if (!property.Required)
             {
@@ -701,6 +727,13 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         source.AppendLine("        };").AppendLine("    }");
     }
 
+    private static string DecodeProperty(PropertyModel property)
+    {
+        string element = "element.GetProperty(\"" + Escape(property.JsonName) + "\")";
+        if (property.Required) return DecodeExpression(property.Type, element);
+        return "element.TryGetProperty(\"" + Escape(property.JsonName) + "\", out var optional" + property.Name.TrimStart('@') + ") ? new global::Runic.Application.Bridge.BridgeOptional<" + property.Type.DeclarationType + ">(" + DecodeExpression(property.Type, "optional" + property.Name.TrimStart('@')) + ") : default";
+    }
+
     private static string DecodeExpression(TypeModel type, string element)
     {
         if (type.Nullable)
@@ -708,6 +741,8 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
             return element + ".ValueKind == global::System.Text.Json.JsonValueKind.Null ? null : " +
                 DecodeExpression(type with { Nullable = false }, element);
         }
+        if (type.NumericCast is not null) return "checked((" + type.NumericCast + ")(" + DecodeExpression(type with { NumericCast = null }, element) + "))";
+        if (type.Kind == "enum") return element + ".GetString() switch { " + string.Join(", ", type.EnumValues.Select(v => v.Value + " => " + type.CSharpType + "." + v.Name)) + ", _ => throw new global::System.Text.Json.JsonException(\"Invalid enum value.\") }";
         if (type.Kind == "string")
         {
             return "ValidateString(" + element + ".GetString() ?? throw new global::System.Text.Json.JsonException(\"A required string was null.\"), " +
@@ -717,7 +752,7 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         if (type.Kind == "boolean") return "ValidateBoolean(" + element + ".GetBoolean(), " + LiteralArray(type.Literals, "bool") + ")";
         if (type.Kind == "integer")
         {
-            return "ValidateInteger(" + element + ".GetInt64(), " + Number(type.Constraints.Minimum) + ", " + Number(type.Constraints.Maximum) + ", " +
+            return "ValidateInteger(ReadInteger(" + element + "), " + Number(type.Constraints.Minimum) + ", " + Number(type.Constraints.Maximum) + ", " +
                 Number(type.Constraints.ExclusiveMinimum) + ", " + Number(type.Constraints.ExclusiveMaximum) + ", " + Number(type.Constraints.MultipleOf) + ", " +
                 LiteralArray(type.Literals, "long") + ")";
         }
@@ -727,7 +762,7 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
                 Number(type.Constraints.ExclusiveMinimum) + ", " + Number(type.Constraints.ExclusiveMaximum) + ", " + Number(type.Constraints.MultipleOf) + ", " +
                 LiteralArray(type.Literals, "double") + ")";
         }
-        if (type.Kind == "guid") return element + ".GetGuid()";
+        if (type.Kind == "guid") return "ReadUuid(" + element + ", " + NullableString(type.Constraints.Pattern) + ")";
         if (type.Kind == "array")
         {
             string item = DecodeExpression(type.Item!, "item");
@@ -770,7 +805,9 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
             {
                 source.Append("        if (value.").Append(property.Name).AppendLine(".HasValue)").AppendLine("        {");
             }
-            RenderWriteProperty(source, property, optional ? "            " : "        ");
+            if (model.Handwritten && property.JsonName == "_tag")
+                source.Append("        writer.WriteString(\"_tag\", ").Append(property.Type.Literals[0]).AppendLine(");");
+            else RenderWriteProperty(source, property, optional ? "            " : "        ");
             if (optional) source.AppendLine("        }");
         }
         source.AppendLine("        writer.WriteEndObject();").AppendLine("    }");
@@ -895,11 +932,11 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
                 .Append(indent).Append("if (").Append(unwrapped).AppendLine(" is null) writer.WriteNullValue();")
                 .Append(indent).AppendLine("else")
                 .Append(indent).AppendLine("{");
-            RenderWriteValue(source, type with { Nullable = false }, unwrapped + "!", indent + "    ");
+            RenderWriteValue(source, type with { Nullable = false }, NonNull(type, unwrapped), indent + "    ");
             source.Append(indent).AppendLine("}");
             return;
         }
-        if (type.Kind == "string")
+        if (type.Kind is "string" or "enum")
         {
             source.Append(indent).Append("writer.WriteString(\"").Append(Escape(property.JsonName)).Append("\", ")
                 .Append(ValidateExpression(type, unwrapped)).AppendLine(");");
@@ -951,6 +988,8 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         }
     }
 
+    private static string NonNull(TypeModel type, string access) => type.Kind is "integer" or "number" or "boolean" or "guid" or "enum" ? "(" + access + ").GetValueOrDefault()" : access.TrimEnd('!') + "!";
+
     private static void RenderWriteValue(StringBuilder source, TypeModel type, string access, string indent)
     {
         if (type.Nullable)
@@ -958,11 +997,11 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
             source.Append(indent).Append("if (").Append(access).AppendLine(" is null) writer.WriteNullValue();")
                 .Append(indent).AppendLine("else")
                 .Append(indent).AppendLine("{");
-            RenderWriteValue(source, type with { Nullable = false }, access + "!", indent + "    ");
+            RenderWriteValue(source, type with { Nullable = false }, NonNull(type, access), indent + "    ");
             source.Append(indent).AppendLine("}");
             return;
         }
-        if (type.Kind == "string" || type.Kind == "guid") source.Append(indent).Append("writer.WriteStringValue(").Append(ValidateExpression(type, access)).AppendLine(");");
+        if (type.Kind is "string" or "guid" or "enum") source.Append(indent).Append("writer.WriteStringValue(").Append(ValidateExpression(type, access)).AppendLine(");");
         else if (type.Kind == "boolean") source.Append(indent).Append("writer.WriteBooleanValue(").Append(ValidateExpression(type, access)).AppendLine(");");
         else if (type.Kind is "integer" or "number") source.Append(indent).Append("writer.WriteNumberValue(").Append(ValidateExpression(type, access)).AppendLine(");");
         else if (type.Kind == "null") source.Append(indent).AppendLine("writer.WriteNullValue();");
@@ -991,6 +1030,8 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
 
     private static string ValidateExpression(TypeModel type, string access) => type.Kind switch
     {
+        "enum" => access + " switch { " + string.Join(", ", type.EnumValues.Select(v => type.CSharpType + "." + v.Name + " => " + v.Value)) + ", _ => throw new global::System.Text.Json.JsonException(\"Invalid enum value.\") }",
+        "guid" => access + ".ToString(\"D\")",
         "string" => "ValidateString(" + access + ", " + NullableInteger(type.Constraints.MinLength) + ", " +
             NullableInteger(type.Constraints.MaxLength) + ", " + NullableString(type.Constraints.Pattern) + ", " +
             LiteralArray(type.Literals, "string") + ")",
@@ -1006,7 +1047,7 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
 
     private static string ValidateArrayExpression(TypeModel type, string access) =>
         "ValidateCollection(" + access + ", " + NullableInteger(type.Constraints.MinItems) + ", " +
-        NullableInteger(type.Constraints.MaxItems) + ", " + (type.Constraints.UniqueItems ? "true" : "false") + ")";
+        NullableInteger(type.Constraints.MaxItems) + ")";
 
     private static string NullableInteger(int? value) => value?.ToString(CultureInfo.InvariantCulture) ?? "null";
     private static string Number(double? value) => value?.ToString("R", CultureInfo.InvariantCulture) ?? "null";
@@ -1017,6 +1058,14 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
 
     private static void RenderValidationHelpers(StringBuilder source)
     {
+        source.AppendLine("    private static global::System.Guid ReadUuid(global::System.Text.Json.JsonElement value, string? pattern)")
+            .AppendLine("    {")
+            .AppendLine("        string text = value.GetString() ?? throw new global::System.Text.Json.JsonException(\"UUID must be a string.\");")
+            .AppendLine("        if (!global::System.Guid.TryParseExact(text, \"D\", out var id) || text != id.ToString(\"D\")) throw new global::System.Text.Json.JsonException(\"UUID must use canonical lowercase form.\");")
+            .AppendLine("        _ = ValidateString(text, null, null, pattern, null);")
+            .AppendLine("        return id;")
+            .AppendLine("    }");
+
         source.AppendLine(
             """
                 private static string ValidateString(string value, int? minimum, int? maximum, string? pattern, string[]? allowed)
@@ -1034,9 +1083,19 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
                         throw new global::System.Text.Json.JsonException("A boolean violated its Application Bridge contract.");
                     return value;
                 }
+                private static long ReadInteger(global::System.Text.Json.JsonElement element)
+                {
+                    if (element.TryGetInt64(out long integer)) return integer;
+                    double value = element.GetDouble();
+                    if (!double.IsFinite(value) || global::System.Math.Truncate(value) != value || global::System.Math.Abs(value) > 9007199254740991d)
+                        throw new global::System.Text.Json.JsonException("Expected a safe JSON integer.");
+                    return (long)value;
+                }
                 private static long ValidateInteger(long value, double? minimum, double? maximum, double? exclusiveMinimum, double? exclusiveMaximum, double? multipleOf, long[]? allowed)
                 {
                     ValidateNumber(value, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, null);
+                    if (value < -9007199254740991L || value > 9007199254740991L)
+                        throw new global::System.Text.Json.JsonException("Expected a safe JSON integer.");
                     if (allowed is not null && !global::System.Array.Exists(allowed, item => item == value))
                         throw new global::System.Text.Json.JsonException("An integer violated its Application Bridge contract.");
                     return value;
@@ -1051,15 +1110,16 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
                         throw new global::System.Text.Json.JsonException("A number violated its Application Bridge contract.");
                     return value;
                 }
-                private static T[] ValidateArray<T>(T[] value, int? minimum, int? maximum, bool unique)
+                private static T[] ValidateArray<T>(T[] value, int? minimum, int? maximum)
                 {
-                    ValidateCollection(value, minimum, maximum, unique);
+                    ValidateCollection(value, minimum, maximum);
                     return value;
                 }
-                private static global::System.Collections.Generic.IReadOnlyList<T> ValidateCollection<T>(global::System.Collections.Generic.IReadOnlyList<T> value, int? minimum, int? maximum, bool unique)
+                private static global::System.Collections.Generic.IReadOnlyCollection<T> ValidateCollection<T>(global::System.Collections.Generic.IReadOnlyCollection<T> value, int? minimum, int? maximum)
                 {
-                    if ((minimum.HasValue && value.Count < minimum.Value) || (maximum.HasValue && value.Count > maximum.Value) ||
-                        (unique && new global::System.Collections.Generic.HashSet<T>(value).Count != value.Count))
+                    // Uniqueness is checked against canonical JSON by Decode after encoding.
+                    // Application-defined equality must not change the wire contract.
+                    if ((minimum.HasValue && value.Count < minimum.Value) || (maximum.HasValue && value.Count > maximum.Value))
                         throw new global::System.Text.Json.JsonException("A collection violated its Application Bridge contract.");
                     return value;
                 }
@@ -1186,7 +1246,7 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
     private static string Escape(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
     private static string Safe(string value) => value.Replace('\r', ' ').Replace('\n', ' ').Trim();
 
-    private sealed record ContractModel(string Protocol, int Version, string? InitializeTag, string Namespace, string ContractName, string ManifestFingerprint, ImmutableArray<SchemaEntry> Schemas, ImmutableArray<CommandModel> Commands);
+    private sealed record ContractModel(string Protocol, int Version, string SnapshotId, string Namespace, string ContractName, string ManifestFingerprint, ImmutableArray<SchemaEntry> Schemas, ImmutableArray<CommandModel> Commands);
     private sealed record SchemaEntry(string Id, string Name, string Kind)
     {
         internal static SchemaEntry Parse(string id)
@@ -1198,7 +1258,7 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
     }
     private sealed record CommandModel(string Tag, string Receipt, bool StartsOperation, bool Cancellable, bool AdvancesRevision);
     private sealed record SchemaModel(SchemaEntry Entry, ObjectModel Root, ImmutableArray<ObjectModel> Nested);
-    private sealed record ObjectModel(string Name, ImmutableArray<PropertyModel> Properties);
+    private sealed record ObjectModel(string Name, ImmutableArray<PropertyModel> Properties, ImmutableArray<string> Constructor = default, bool Handwritten = false);
     private sealed record PropertyModel(string JsonName, string Name, TypeModel Type, bool Required);
     private sealed record TypeModel(
         string CSharpType,
@@ -1209,7 +1269,9 @@ public sealed class ApplicationBridgeGenerator : IIncrementalGenerator
         bool Nullable,
         ImmutableArray<TupleElementModel> Elements = default,
         TypeModel? Rest = null,
-        ImmutableArray<TypeModel> Members = default)
+        ImmutableArray<TypeModel> Members = default,
+        string? NumericCast = null,
+        ImmutableArray<(string Name, string Value)> EnumValues = default)
     {
         internal string DeclarationType => Nullable && !CSharpType.EndsWith('?')
             ? CSharpType + "?"

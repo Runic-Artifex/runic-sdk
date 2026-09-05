@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Text.Json;
+using System.Linq;
 using System.Threading.Channels;
 
 namespace Runic.Application.Bridge;
@@ -9,6 +10,7 @@ namespace Runic.Application.Bridge;
 public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPublisher, IBridgeOperationFactory
 {
     private readonly IApplicationBridgeDispatcher _dispatcher;
+    private readonly IAsyncDisposable? _ownedScope;
     private readonly BridgeLimits _limits;
     private readonly SemaphoreSlim _admission;
     private readonly SemaphoreSlim _dispatchGate = new(1, 1);
@@ -25,11 +27,17 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
     private int _queuedEvents;
     private int _reservedEvents;
     private int _disposed;
+    private int _activeDispatches;
+    private readonly TaskCompletionSource _dispatchesDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>Creates an isolated logical application session.</summary>
-    public ApplicationBridgeSession(IApplicationBridgeDispatcher dispatcher, BridgeLimits? limits = null)
+    public ApplicationBridgeSession(
+        IApplicationBridgeDispatcher dispatcher,
+        BridgeLimits? limits = null,
+        IAsyncDisposable? ownedScope = null)
     {
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        _ownedScope = ownedScope;
         ReportDevelopmentFingerprint(dispatcher.ManifestFingerprint);
         _limits = limits ?? BridgeLimits.Default;
         _limits.Validate();
@@ -79,7 +87,9 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
     public async ValueTask<BridgeHostEnvelope> DispatchAsync(BridgeClientEnvelope envelope, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(envelope);
-        ThrowIfDisposed();
+        lock (_gate) { ThrowIfDisposed(); _activeDispatches++; }
+        using var dispatchCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
+        cancellationToken = dispatchCancellation.Token;
         var commandId = new BridgeCommandId(envelope.CommandId);
         bool isInitializeAtCurrentOrFutureEpoch = envelope.Kind == "initialize" && envelope.ConnectionEpoch >= Interlocked.Read(ref _connectionEpoch);
         bool dispatchGateHeld = false;
@@ -142,7 +152,12 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
             {
                 _currentDispatch.Value = transaction;
                 var context = new BridgeCommandContext(Id, commandId, envelope.Kind == "initialize", envelope.ExpectedRevision, admission.Revision, this, this);
-                result = await _dispatcher.DispatchAsync(envelope.Payload, context, cancellationToken).ConfigureAwait(false);
+                if (envelope.Kind == "initialize" &&
+                    (envelope.Payload.ValueKind != JsonValueKind.Object || envelope.Payload.EnumerateObject().Any()))
+                    throw new JsonException("Initialization requires an empty object payload.");
+                result = envelope.Kind == "initialize"
+                    ? new BridgeDispatchResult(await _dispatcher.GetSnapshotAsync(new BridgeSnapshotContext(Id, admission.Revision), cancellationToken).ConfigureAwait(false))
+                    : await _dispatcher.DispatchAsync(envelope.Payload, context, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -151,7 +166,7 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
             }
 
             string kind = envelope.Kind == "initialize" ? "snapshot" : "receipt";
-            JsonElement payload = envelope.Kind == "initialize" && result.Receipt.TryGetProperty("snapshot", out JsonElement snapshot) ? snapshot : result.Receipt;
+            JsonElement payload = result.Receipt;
             if (result.Cancellable && result.OperationId is null)
                 throw new InvalidOperationException("A cancellable dispatch result must identify its operation.");
             if (result.OperationId is BridgeOperationId operationId &&
@@ -168,6 +183,7 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
         }
         catch (BridgeCommandFailureException exception)
         {
+            if (envelope.Kind == "initialize") return AdmissionError(commandId, "The snapshot provider failed.", connectionEpoch: envelope.ConnectionEpoch);
             try
             {
                 JsonElement error = _dispatcher.ValidateError(exception.Error);
@@ -199,6 +215,7 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
             if (eventBudget != 0 && !eventBudgetConsumed) ReleaseEventBudget(eventBudget);
             if (admissionHeld) _admission.Release();
             if (dispatchGateHeld) _dispatchGate.Release();
+            lock (_gate) { if (--_activeDispatches == 0 && _disposed != 0) _dispatchesDrained.TrySetResult(); }
         }
     }
 
@@ -232,8 +249,14 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_gate)
+        {
+            if (_disposed != 0) return;
+            _disposed = 1;
+            if (_activeDispatches == 0) _dispatchesDrained.TrySetResult();
+        }
         _shutdown.Cancel();
+        await _dispatchesDrained.Task.ConfigureAwait(false);
         foreach (OperationRegistration operation in _operations.Values) operation.Cancel();
         long deadline = Environment.TickCount64 + (long)_limits.ShutdownTimeout.TotalMilliseconds;
         while (!_operations.IsEmpty && Environment.TickCount64 < deadline) await Task.Delay(10).ConfigureAwait(false);
@@ -241,6 +264,7 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
         await _eventPump.ConfigureAwait(false);
         _admission.Dispose();
         _shutdown.Dispose();
+        if (_ownedScope is not null) await _ownedScope.DisposeAsync().ConfigureAwait(false);
     }
 
     private bool MatchesContract(BridgeClientEnvelope envelope) => string.Equals(envelope.Protocol, _dispatcher.ProtocolIdentity, StringComparison.Ordinal) && envelope.Version == _dispatcher.ProtocolVersion && string.Equals(envelope.ContractFingerprint, _dispatcher.ManifestFingerprint, StringComparison.Ordinal);

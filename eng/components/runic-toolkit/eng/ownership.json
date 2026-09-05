@@ -1,7 +1,11 @@
 {
   "schemaVersion": 1,
   "allowedProjectReferences": [
-    { "from": "application", "to": "application-bridge", "reason": "Runic Desktop and local hosting transport framework-neutral Application Bridge sessions." }
+    {
+      "from": "application",
+      "to": "application-bridge",
+      "reason": "Runic Desktop and local hosting transport framework-neutral Application Bridge sessions."
+    }
   ],
   "tasks": [
     {
@@ -21,10 +25,32 @@
         "tests/Runic.Application.PackageConsumer/*",
         "tools/dotnet-runic-toolkit/*",
         "tests/RunicToolkit.DotNet.RunicToolkit.Tests/*",
-        "tests/RunicToolkit.PackageCanary/*"
+        "tests/RunicToolkit.PackageCanary/*",
+        "tools/Runic.Application.Bridge.Inspector/*",
+        "tests/Runic.Application.Bridge.MemberTests/*",
+        "tests/Runic.Application.Bridge.MemberAotSmoke/*"
       ]
     },
-    { "name": "application-bridge", "branch": "work/application-bridge", "paths": ["protocol/application-bridge/*", "src/Runic.Application.Bridge*/*", "tests/Runic.Application.Bridge.*/*"] },
-    { "name": "templates", "branch": "work/templates", "paths": ["templates/RunicToolkit.Templates/*"] }
+    {
+      "name": "application-bridge",
+      "branch": "work/application-bridge",
+      "paths": [
+        "protocol/application-bridge/*",
+        "src/Runic.Application.Bridge*/*",
+        "tests/Runic.Application.Bridge.Tests/*",
+        "tests/Runic.Application.Bridge.GeneratorTests/*",
+        "tests/Runic.Application.Bridge.PortableCore.Tests/*",
+        "tests/Runic.Application.Bridge.AotSmoke/*",
+        "tests/Fixtures/*",
+        "tests/Runic.Application.Bridge.CounterTests/*"
+      ]
+    },
+    {
+      "name": "templates",
+      "branch": "work/templates",
+      "paths": [
+        "templates/RunicToolkit.Templates/*"
+      ]
+    }
   ]
 }

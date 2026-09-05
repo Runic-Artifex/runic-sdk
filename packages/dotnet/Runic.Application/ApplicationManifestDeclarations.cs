@@ -38,15 +38,3 @@ public sealed class RunicApplicationArtifactAttribute(string kind, string identi
     /// <summary>Gets the externally supplied fingerprint.</summary>
     public string Fingerprint { get; } = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
 }
-
-/// <summary>Declares the AOT-safe generated Application Bridge composition for this application.</summary>
-[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = false)]
-public sealed class RunicApplicationBridgeCompositionAttribute(Type handlerType, Type dispatcherType) : Attribute
-{
-    /// <summary>Gets the generated-contract handler type.</summary>
-    public Type HandlerType { get; } = handlerType ?? throw new ArgumentNullException(nameof(handlerType));
-
-    /// <summary>Gets the generated contract dispatcher type.</summary>
-    public Type DispatcherType { get; } = dispatcherType ?? throw new ArgumentNullException(nameof(dispatcherType));
-
-}

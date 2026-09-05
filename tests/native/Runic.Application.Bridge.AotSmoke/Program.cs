@@ -15,7 +15,7 @@ BridgeHostEnvelope initialized = await session.DispatchAsync(new BridgeClientEnv
     ConnectionEpoch = 0,
     Kind = "initialize",
     CommandId = Guid.Parse("00000000-0000-4000-8000-000000000001"),
-    Payload = JsonDocument.Parse("""{"_tag":"InitializeApplication"}""").RootElement.Clone(),
+    Payload = JsonDocument.Parse("""{}""").RootElement.Clone(),
 });
 if (initialized.Kind != "snapshot" || initialized.Payload.GetProperty("viewId").GetString() != "Welcome")
 {
@@ -26,16 +26,8 @@ return 0;
 
 internal sealed class AotSetupHandler : ISetupBridgeHandler
 {
-    public ValueTask<ApplicationInitialized> InitializeApplicationAsync(InitializeApplication command, BridgeCommandContext context, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new ApplicationInitialized
-        {
-            Tag = "ApplicationInitialized",
-            Snapshot = new ApplicationInitializedSnapshot
-            {
-                ViewId = "Welcome", Revision = 0, SelectedFeatures = [],
-                CanNavigateBack = false, CanNavigateNext = true,
-            },
-        });
+    public ValueTask<SetupSnapshot> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new SetupSnapshot { ViewId = "Welcome", Revision = context.CurrentRevision, SelectedFeatures = [], CanNavigateBack = false, CanNavigateNext = true });
 
     public ValueTask<OperationCancellationAccepted> CancelOperationAsync(CancelOperation command, BridgeCommandContext context, CancellationToken cancellationToken) =>
         ValueTask.FromResult(new OperationCancellationAccepted { Tag = "OperationCancellationAccepted", OperationId = command.OperationId, Accepted = false, Revision = context.CurrentRevision });
@@ -44,7 +36,7 @@ internal sealed class AotSetupHandler : ISetupBridgeHandler
         ValueTask.FromResult(new NavigationAccepted
         {
             Tag = "NavigationAccepted",
-            Snapshot = new NavigationAcceptedSnapshot
+            Snapshot = new SetupSnapshot
             {
                 ViewId = command.Target, Revision = context.CurrentRevision + 1, SelectedFeatures = [],
                 CanNavigateBack = true, CanNavigateNext = true,
@@ -55,7 +47,7 @@ internal sealed class AotSetupHandler : ISetupBridgeHandler
         ValueTask.FromResult(new DestinationSelected
         {
             Tag = "DestinationSelected",
-            Destination = new DestinationSelectedDestination { SelectionId = Guid.NewGuid(), DisplayName = "AOT", AvailableBytes = 1 },
+            Destination = new DestinationSelection { SelectionId = Guid.NewGuid(), DisplayName = "AOT", AvailableBytes = 1 },
             Revision = context.CurrentRevision + 1,
         });
 

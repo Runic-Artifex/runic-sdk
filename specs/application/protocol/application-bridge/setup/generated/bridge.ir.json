@@ -1,4 +1,5 @@
 {
+  "authority": "effect",
   "csharp": {
     "contractName": "Setup",
     "namespace": "Runic.Application.Setup.Contract"
@@ -25,12 +26,6 @@
     "event:SnapshotReplaced.snapshot.destination|0.displayName": "a string",
     "event:SnapshotReplaced.snapshot.destination|0.selectionId": "a string",
     "event:SnapshotReplaced.snapshot.revision": "a number",
-    "receipt:ApplicationInitialized.snapshot.canNavigateBack": "a boolean",
-    "receipt:ApplicationInitialized.snapshot.canNavigateNext": "a boolean",
-    "receipt:ApplicationInitialized.snapshot.destination|0.availableBytes": "a non-negative number",
-    "receipt:ApplicationInitialized.snapshot.destination|0.displayName": "a string",
-    "receipt:ApplicationInitialized.snapshot.destination|0.selectionId": "a string",
-    "receipt:ApplicationInitialized.snapshot.revision": "a number",
     "receipt:DestinationSelected.destination.availableBytes": "a number",
     "receipt:DestinationSelected.destination.displayName": "a string",
     "receipt:DestinationSelected.destination.selectionId": "a string",
@@ -57,24 +52,18 @@
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",
-    "value": "0eaf4741bb21028295ff4a248be59a86558ba1921804b14ef198994a83492763"
+    "value": "479a4fcf933665f739e9808d6cdac29694c14ec3eba36226f41fc809a960cedd"
   },
   "format": "runic.application-bridge-ir",
   "formatVersion": 1,
   "wire": {
+    "canonicalEncoding": "runic-json-v1",
     "commands": [
       {
         "advancesRevision": false,
         "cancellable": false,
         "name": "CancelOperation",
         "receipt": "OperationCancellationAccepted",
-        "startsOperation": false
-      },
-      {
-        "advancesRevision": false,
-        "cancellable": false,
-        "name": "InitializeApplication",
-        "receipt": "ApplicationInitialized",
         "startsOperation": false
       },
       {
@@ -113,22 +102,8 @@
           "operationId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
-            }
-          }
-        }
-      },
-      "command:InitializeApplication": {
-        "kind": "object",
-        "properties": {
-          "_tag": {
-            "optional": false,
-            "type": {
-              "kind": "literal",
-              "value": "InitializeApplication"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           }
         }
@@ -146,10 +121,8 @@
           "expectedRevision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           },
           "target": {
@@ -159,7 +132,7 @@
               "members": [
                 {
                   "kind": "literal",
-                  "value": "Welcome"
+                  "value": "Complete"
                 },
                 {
                   "kind": "literal",
@@ -175,7 +148,7 @@
                 },
                 {
                   "kind": "literal",
-                  "value": "Complete"
+                  "value": "Welcome"
                 }
               ]
             }
@@ -195,10 +168,8 @@
           "currentSelectionId": {
             "optional": true,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           }
         }
@@ -216,10 +187,8 @@
           "destinationSelectionId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "selectedFeatures": {
@@ -476,10 +445,8 @@
           "revision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           },
           "viewId": {
@@ -489,7 +456,7 @@
               "members": [
                 {
                   "kind": "literal",
-                  "value": "Welcome"
+                  "value": "Complete"
                 },
                 {
                   "kind": "literal",
@@ -505,7 +472,7 @@
                 },
                 {
                   "kind": "literal",
-                  "value": "Complete"
+                  "value": "Welcome"
                 }
               ]
             }
@@ -525,19 +492,15 @@
           "operationId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "revision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           }
         }
@@ -555,19 +518,15 @@
           "operationId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "revision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           }
         }
@@ -591,19 +550,15 @@
           "operationId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "revision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           }
         }
@@ -636,10 +591,8 @@
           "operationId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "total": {
@@ -666,255 +619,8 @@
           "snapshot": {
             "optional": false,
             "type": {
-              "kind": "object",
-              "properties": {
-                "activeOperationId": {
-                  "optional": true,
-                  "type": {
-                    "constraints": {
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    },
-                    "kind": "string"
-                  }
-                },
-                "canNavigateBack": {
-                  "optional": false,
-                  "type": {
-                    "kind": "boolean"
-                  }
-                },
-                "canNavigateNext": {
-                  "optional": false,
-                  "type": {
-                    "kind": "boolean"
-                  }
-                },
-                "destination": {
-                  "optional": true,
-                  "type": {
-                    "kind": "object",
-                    "properties": {
-                      "availableBytes": {
-                        "optional": false,
-                        "type": {
-                          "constraints": {
-                            "minimum": 0
-                          },
-                          "kind": "integer"
-                        }
-                      },
-                      "displayName": {
-                        "optional": false,
-                        "type": {
-                          "kind": "string"
-                        }
-                      },
-                      "selectionId": {
-                        "optional": false,
-                        "type": {
-                          "constraints": {
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                          },
-                          "kind": "string"
-                        }
-                      }
-                    }
-                  }
-                },
-                "revision": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                },
-                "selectedFeatures": {
-                  "optional": false,
-                  "type": {
-                    "items": {
-                      "kind": "union",
-                      "members": [
-                        {
-                          "kind": "literal",
-                          "value": "core"
-                        },
-                        {
-                          "kind": "literal",
-                          "value": "desktop-shortcut"
-                        },
-                        {
-                          "kind": "literal",
-                          "value": "examples"
-                        }
-                      ]
-                    },
-                    "kind": "array"
-                  }
-                },
-                "viewId": {
-                  "optional": false,
-                  "type": {
-                    "kind": "union",
-                    "members": [
-                      {
-                        "kind": "literal",
-                        "value": "Welcome"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Destination"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Features"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Installing"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Complete"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "receipt:ApplicationInitialized": {
-        "kind": "object",
-        "properties": {
-          "_tag": {
-            "optional": false,
-            "type": {
-              "kind": "literal",
-              "value": "ApplicationInitialized"
-            }
-          },
-          "snapshot": {
-            "optional": false,
-            "type": {
-              "kind": "object",
-              "properties": {
-                "activeOperationId": {
-                  "optional": true,
-                  "type": {
-                    "constraints": {
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    },
-                    "kind": "string"
-                  }
-                },
-                "canNavigateBack": {
-                  "optional": false,
-                  "type": {
-                    "kind": "boolean"
-                  }
-                },
-                "canNavigateNext": {
-                  "optional": false,
-                  "type": {
-                    "kind": "boolean"
-                  }
-                },
-                "destination": {
-                  "optional": true,
-                  "type": {
-                    "kind": "object",
-                    "properties": {
-                      "availableBytes": {
-                        "optional": false,
-                        "type": {
-                          "constraints": {
-                            "minimum": 0
-                          },
-                          "kind": "integer"
-                        }
-                      },
-                      "displayName": {
-                        "optional": false,
-                        "type": {
-                          "kind": "string"
-                        }
-                      },
-                      "selectionId": {
-                        "optional": false,
-                        "type": {
-                          "constraints": {
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                          },
-                          "kind": "string"
-                        }
-                      }
-                    }
-                  }
-                },
-                "revision": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                },
-                "selectedFeatures": {
-                  "optional": false,
-                  "type": {
-                    "items": {
-                      "kind": "union",
-                      "members": [
-                        {
-                          "kind": "literal",
-                          "value": "core"
-                        },
-                        {
-                          "kind": "literal",
-                          "value": "desktop-shortcut"
-                        },
-                        {
-                          "kind": "literal",
-                          "value": "examples"
-                        }
-                      ]
-                    },
-                    "kind": "array"
-                  }
-                },
-                "viewId": {
-                  "optional": false,
-                  "type": {
-                    "kind": "union",
-                    "members": [
-                      {
-                        "kind": "literal",
-                        "value": "Welcome"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Destination"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Features"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Installing"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Complete"
-                      }
-                    ]
-                  }
-                }
-              }
+              "kind": "ref",
+              "name": "type:SetupSnapshot"
             }
           }
         }
@@ -932,42 +638,15 @@
           "destination": {
             "optional": false,
             "type": {
-              "kind": "object",
-              "properties": {
-                "availableBytes": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                },
-                "displayName": {
-                  "optional": false,
-                  "type": {
-                    "kind": "string"
-                  }
-                },
-                "selectionId": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    },
-                    "kind": "string"
-                  }
-                }
-              }
+              "kind": "ref",
+              "name": "type:DestinationSelection"
             }
           },
           "revision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           }
         }
@@ -985,28 +664,22 @@
           "commandId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "operationId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "revision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           }
         }
@@ -1024,122 +697,8 @@
           "snapshot": {
             "optional": false,
             "type": {
-              "kind": "object",
-              "properties": {
-                "activeOperationId": {
-                  "optional": true,
-                  "type": {
-                    "constraints": {
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                    },
-                    "kind": "string"
-                  }
-                },
-                "canNavigateBack": {
-                  "optional": false,
-                  "type": {
-                    "kind": "boolean"
-                  }
-                },
-                "canNavigateNext": {
-                  "optional": false,
-                  "type": {
-                    "kind": "boolean"
-                  }
-                },
-                "destination": {
-                  "optional": true,
-                  "type": {
-                    "kind": "object",
-                    "properties": {
-                      "availableBytes": {
-                        "optional": false,
-                        "type": {
-                          "constraints": {
-                            "minimum": 0
-                          },
-                          "kind": "integer"
-                        }
-                      },
-                      "displayName": {
-                        "optional": false,
-                        "type": {
-                          "kind": "string"
-                        }
-                      },
-                      "selectionId": {
-                        "optional": false,
-                        "type": {
-                          "constraints": {
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                          },
-                          "kind": "string"
-                        }
-                      }
-                    }
-                  }
-                },
-                "revision": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "minimum": 0
-                    },
-                    "kind": "integer"
-                  }
-                },
-                "selectedFeatures": {
-                  "optional": false,
-                  "type": {
-                    "items": {
-                      "kind": "union",
-                      "members": [
-                        {
-                          "kind": "literal",
-                          "value": "core"
-                        },
-                        {
-                          "kind": "literal",
-                          "value": "desktop-shortcut"
-                        },
-                        {
-                          "kind": "literal",
-                          "value": "examples"
-                        }
-                      ]
-                    },
-                    "kind": "array"
-                  }
-                },
-                "viewId": {
-                  "optional": false,
-                  "type": {
-                    "kind": "union",
-                    "members": [
-                      {
-                        "kind": "literal",
-                        "value": "Welcome"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Destination"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Features"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Installing"
-                      },
-                      {
-                        "kind": "literal",
-                        "value": "Complete"
-                      }
-                    ]
-                  }
-                }
-              }
+              "kind": "ref",
+              "name": "type:SetupSnapshot"
             }
           }
         }
@@ -1163,19 +722,15 @@
           "operationId": {
             "optional": false,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "revision": {
             "optional": false,
             "type": {
-              "constraints": {
-                "minimum": 0
-              },
-              "kind": "integer"
+              "kind": "ref",
+              "name": "type:Revision"
             }
           }
         }
@@ -1219,10 +774,8 @@
           "activeOperationId": {
             "optional": true,
             "type": {
-              "constraints": {
-                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-              },
-              "kind": "string"
+              "kind": "ref",
+              "name": "type:Uuid"
             }
           },
           "canNavigateBack": {
@@ -1281,7 +834,7 @@
               "members": [
                 {
                   "kind": "literal",
-                  "value": "Welcome"
+                  "value": "Complete"
                 },
                 {
                   "kind": "literal",
@@ -1297,7 +850,7 @@
                 },
                 {
                   "kind": "literal",
-                  "value": "Complete"
+                  "value": "Welcome"
                 }
               ]
             }
@@ -1331,7 +884,10 @@
       "OperationProgress",
       "SnapshotReplaced"
     ],
-    "initialize": "InitializeApplication",
+    "initialization": {
+      "kind": "snapshot",
+      "payload": "empty-object"
+    },
     "limits": {
       "maxCollectionItems": 4096,
       "maxDepth": 32,

@@ -1,23 +1,8 @@
-using System;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Runic.Application.Bridge;
-
 namespace Runic.Application.Tests;
-
-internal sealed class BridgeCompositionHandler;
-
-internal sealed class BridgeCompositionDispatcher(BridgeCompositionHandler handler) : IApplicationBridgeDispatcher
+internal sealed partial class BridgeCompositionState
 {
-    public string ProtocolIdentity => "runic.application.tests";
-    public int ProtocolVersion => 1;
-    public string ManifestFingerprint => new('0', 64);
-    internal BridgeCompositionHandler Handler { get; } = handler;
-
-    public ValueTask<BridgeDispatchResult> DispatchAsync(
-        JsonElement command,
-        BridgeCommandContext context,
-        CancellationToken cancellationToken) =>
-        throw new NotSupportedException();
+    private readonly TestSnapshot _snapshot = new();
+    [BridgeSnapshot] private TestSnapshot Snapshot => _snapshot;
 }
+internal sealed record TestSnapshot;

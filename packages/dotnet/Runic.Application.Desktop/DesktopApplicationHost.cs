@@ -73,6 +73,7 @@ public sealed class DesktopApplicationHost : IApplicationHost
     public async ValueTask StartAsync(
         ApplicationCompositionManifest manifest,
         ReadOnlyMemory<string> arguments,
+        IServiceProvider services,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(manifest);
@@ -83,7 +84,7 @@ public sealed class DesktopApplicationHost : IApplicationHost
         {
             _host = await DesktopHost.StartAsync(_options.Host, cancellationToken).ConfigureAwait(false);
             _surface = await _host.CreateSurfaceAsync(_options.Surface, cancellationToken).ConfigureAwait(false);
-            object? composition = _options.CreateBridgeSession?.Invoke() ?? RunicApplicationBridgeCompositionRegistry.CreateSession();
+            object? composition = _options.CreateBridgeSession?.Invoke() ?? RunicApplicationBridgeCompositionRegistry.CreateSession(services);
             if (composition is not null)
             {
                 ApplicationBridgeSession session = composition as ApplicationBridgeSession

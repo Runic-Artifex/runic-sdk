@@ -518,7 +518,7 @@ internal static class Program
     }
 
     private static byte[] Initialize(Guid commandId, long epoch) => Encoding.UTF8.GetBytes($$$"""
-        {"protocol":"runic.test","version":1,"contractFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","connectionEpoch":{{{epoch}}},"kind":"initialize","commandId":"{{{commandId}}}","payload":{"_tag":"InitializeApplication"}}
+        {"protocol":"runic.test","version":1,"contractFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","connectionEpoch":{{{epoch}}},"kind":"initialize","commandId":"{{{commandId}}}","payload":{}}
         """);
 
     private static byte[] Dispatch(string sessionId, Guid commandId, long expectedRevision) => Encoding.UTF8.GetBytes($$$"""
@@ -561,14 +561,14 @@ internal static class Program
 
 internal sealed class TestDispatcher : IApplicationBridgeDispatcher
 {
+    public ValueTask<JsonElement> GetSnapshotAsync(BridgeSnapshotContext context, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(JsonDocument.Parse("""{"revision":0,"view":"Welcome"}""").RootElement.Clone());
     public string ProtocolIdentity => "runic.test";
     public int ProtocolVersion => 1;
     public string ManifestFingerprint => new('a', 64);
 
     public async ValueTask<BridgeDispatchResult> DispatchAsync(JsonElement command, BridgeCommandContext context, CancellationToken cancellationToken)
     {
-        if (command.GetProperty("_tag").GetString() == "InitializeApplication")
-            return new(JsonDocument.Parse("""{"_tag":"ApplicationInitialized","snapshot":{"revision":0,"view":"Welcome"}}""").RootElement.Clone());
         await context.Events.PublishAsync(new(JsonDocument.Parse("""{"_tag":"NavigationChanged","revision":1,"view":"Complete"}""").RootElement.Clone(), AdvancesRevision: true), cancellationToken).ConfigureAwait(false);
         return new(JsonDocument.Parse("""{"_tag":"NavigationAccepted","revision":1}""").RootElement.Clone(), AdvancesRevision: true);
     }

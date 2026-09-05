@@ -1,7 +1,8 @@
 # Public API
 
-Applications implement a generated contract handler and host it in an
-`ApplicationBridgeSession`. Handlers receive `BridgeCommandContext`, which
+Applications annotate snapshot providers and command methods on partial classes.
+Effect-authored contracts instead expose a generated handler interface. Each
+logical `ApplicationBridgeSession` owns a DI scope. Commands receive `BridgeCommandContext`, which
 provides only session metadata, a safe event publisher, and an operation factory.
 Raw transport frames and native callbacks never cross the handler boundary.
 
@@ -14,3 +15,16 @@ Transport implementations can encode one envelope with
 `ApplicationBridgeCodec.EncodeHost`, or write envelopes directly into an owned
 bounded `Utf8JsonWriter` with `ApplicationBridgeCodec.WriteHost` to avoid an
 intermediate byte array when constructing a correlated batch.
+
+`ApplicationBridgeContractAttribute` declares the root. `BridgeSnapshotAttribute`,
+`BridgeCommandAttribute`, `BridgeEventAttribute` and `BridgeErrorAttribute`
+declare behavior and payloads. `BridgeTagAttribute` and `BridgeNameAttribute`
+stabilize wire identity. `BridgeSnapshotContext` exposes session ID and revision.
+The `Bridge*` constraint attributes express portable value/collection limits.
+`IApplicationBridgeDispatcher.GetSnapshotAsync` returns the encoded snapshot
+without routing initialization through an application command.
+
+`ApplicationBridgeSessionFactory.Create(IServiceProvider)` resolves the generated
+dispatcher in an owned async scope. `BridgeModuleAttribute`, `BridgeModuleRegistry`
+and `MemberApplicationBridgeDispatcher` support statically generated module
+registration and dispatch; they do not discover handlers at runtime.

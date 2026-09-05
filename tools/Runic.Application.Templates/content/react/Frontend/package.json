@@ -8,8 +8,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "contract:generate": "runic-bridge generate",
-    "contract:check": "runic-bridge check",
+    "contract:generate": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj",
+    "contract:check": "runic-bridge check --authority csharp --project ../RunicDesktopApp.csproj",
     "dev": "vite",
     "dev:mock": "vite --mode mock",
     "typecheck": "tsc --noEmit"

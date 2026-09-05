@@ -1,4 +1,5 @@
 {
+  "authority": "effect",
   "csharp": {
     "contractName": "Refresh",
     "namespace": "Runic.Application.Hosting.RefreshContract"
@@ -14,11 +15,12 @@
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",
-    "value": "ab5f2a5a95b870fdec5c4dda6da1264c4b0b0f86e5c7db4e330d797b55e760b8"
+    "value": "48acab1d700306d3cfae862b602d40a60ef98bbdf3676d39cb401b050103516e"
   },
   "format": "runic.application-bridge-ir",
   "formatVersion": 1,
   "wire": {
+    "canonicalEncoding": "runic-json-v1",
     "commands": [],
     "definitions": {
       "error:CommandRejected": {
@@ -321,6 +323,10 @@
       "AssetSourceChanged",
       "TranslationLocaleChanged"
     ],
+    "initialization": {
+      "kind": "snapshot",
+      "payload": "empty-object"
+    },
     "limits": {
       "maxCollectionItems": 4096,
       "maxDepth": 32,

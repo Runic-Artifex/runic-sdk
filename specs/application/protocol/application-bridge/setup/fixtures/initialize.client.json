@@ -1,11 +1,9 @@
 {
   "protocol": "runic.artifex.setup",
   "version": 1,
-  "contractFingerprint": "0eaf4741bb21028295ff4a248be59a86558ba1921804b14ef198994a83492763",
+  "contractFingerprint": "479a4fcf933665f739e9808d6cdac29694c14ec3eba36226f41fc809a960cedd",
   "connectionEpoch": 0,
   "kind": "initialize",
   "commandId": "00000000-0000-4000-8000-000000000001",
-  "payload": {
-    "_tag": "InitializeApplication"
-  }
+  "payload": {}
 }

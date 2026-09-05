@@ -10,7 +10,8 @@ Requires Node.js 24.18 or later, TypeScript, and Effect. This preview runtime is
 
 ## Bootstrap a controller
 
-Define the contract once, then create exactly one controller at your application boundary:
+New C# applications import generated schemas from the facade. For the explicit
+Effect-authority alternative, define the contract once:
 
 ```ts
 import { Schema } from "effect";
@@ -23,8 +24,8 @@ import {
 } from "@runic-artifex/application-bridge";
 
 const Snapshot = Schema.Struct({ count: Schema.Int });
-const Command = Schema.TaggedStruct("InitializeApplication", {});
-const Receipt = Schema.TaggedStruct("ApplicationInitialized", { snapshot: Snapshot });
+const Command = Schema.TaggedStruct("IncrementCounter", { amount: Schema.Int });
+const Receipt = Schema.TaggedStruct("CounterIncremented", { count: Schema.Int });
 const Event = Schema.TaggedStruct("CounterChanged", { snapshot: Snapshot });
 
 export default defineApplicationBridgeContract({
@@ -34,11 +35,10 @@ export default defineApplicationBridgeContract({
   commands: [bridge.command(Command, { receipt: Receipt })],
   events: [Event],
   errors: [],
-  initialize: { _tag: "InitializeApplication" },
 });
 ```
 
-Run `runic-bridge generate`, then import the generated facade when constructing
+Run `runic-bridge generate --authority effect --source src/application.bridge.ts`, then import the generated facade when constructing
 the controller:
 
 ```ts

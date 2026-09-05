@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><PublishTrimmed>true</PublishTrimmed><TrimMode>full</TrimMode><EnableTrimAnalyzer>true</EnableTrimAnalyzer><EnableAotAnalyzer>true</EnableAotAnalyzer><InvariantGlobalization>true</InvariantGlobalization><ImplicitUsings>enable</ImplicitUsings><GenerateDocumentationFile>false</GenerateDocumentationFile></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Runic.Application.Bridge.MemberTests/Program.cs" Link="Program.cs" />
+    <ProjectReference Include="../Fixtures/BridgeModule/BridgeModule.csproj" />
+    <ProjectReference Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../../src/Runic.Application/Runic.Application.csproj" />
+    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

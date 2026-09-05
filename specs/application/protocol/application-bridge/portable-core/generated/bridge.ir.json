@@ -1,15 +1,11 @@
 {
+  "authority": "effect",
   "csharp": {
     "contractName": "PortableCore",
     "namespace": "Runic.Application.PortableCore.Contract"
   },
   "documentation": {
     "error:QuotaExceeded.limit": "a number",
-    "receipt:ApplicationInitialized.snapshot.choice|0.value": "a string",
-    "receipt:ApplicationInitialized.snapshot.choice|1.value": "an integer",
-    "receipt:ApplicationInitialized.snapshot.node.value": "a string",
-    "receipt:ApplicationInitialized.snapshot.pair[0]": "a string",
-    "receipt:ApplicationInitialized.snapshot.pair[1]": "a number",
     "type:PortableSnapshot.choice|0.value": "a string",
     "type:PortableSnapshot.choice|1.value": "an integer",
     "type:PortableSnapshot.node.value": "a string",
@@ -19,33 +15,14 @@
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",
-    "value": "116b3af58761c17050df5165b5c725647ca5cc6d299dcd81001793aab55b093e"
+    "value": "91e4385361e5d88ac7854053c1bc7bf31dd2d7eb79cb173c830821cef28549b0"
   },
   "format": "runic.application-bridge-ir",
   "formatVersion": 1,
   "wire": {
-    "commands": [
-      {
-        "advancesRevision": false,
-        "cancellable": false,
-        "name": "InitializeApplication",
-        "receipt": "ApplicationInitialized",
-        "startsOperation": false
-      }
-    ],
+    "canonicalEncoding": "runic-json-v1",
+    "commands": [],
     "definitions": {
-      "command:InitializeApplication": {
-        "kind": "object",
-        "properties": {
-          "_tag": {
-            "optional": false,
-            "type": {
-              "kind": "literal",
-              "value": "InitializeApplication"
-            }
-          }
-        }
-      },
       "error:CommandRejected": {
         "kind": "object",
         "properties": {
@@ -283,168 +260,6 @@
           }
         }
       },
-      "receipt:ApplicationInitialized": {
-        "kind": "object",
-        "properties": {
-          "_tag": {
-            "optional": false,
-            "type": {
-              "kind": "literal",
-              "value": "ApplicationInitialized"
-            }
-          },
-          "snapshot": {
-            "optional": false,
-            "type": {
-              "kind": "object",
-              "properties": {
-                "choice": {
-                  "optional": false,
-                  "type": {
-                    "kind": "union",
-                    "members": [
-                      {
-                        "kind": "object",
-                        "properties": {
-                          "_tag": {
-                            "optional": false,
-                            "type": {
-                              "kind": "literal",
-                              "value": "TextChoice"
-                            }
-                          },
-                          "value": {
-                            "optional": false,
-                            "type": {
-                              "kind": "string"
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "kind": "object",
-                        "properties": {
-                          "_tag": {
-                            "optional": false,
-                            "type": {
-                              "kind": "literal",
-                              "value": "NumericChoice"
-                            }
-                          },
-                          "value": {
-                            "optional": false,
-                            "type": {
-                              "kind": "integer"
-                            }
-                          }
-                        }
-                      }
-                    ]
-                  }
-                },
-                "node": {
-                  "optional": false,
-                  "type": {
-                    "kind": "ref",
-                    "name": "type:RecursiveNode"
-                  }
-                },
-                "nullableNote": {
-                  "optional": false,
-                  "type": {
-                    "kind": "union",
-                    "members": [
-                      {
-                        "kind": "string"
-                      },
-                      {
-                        "kind": "null"
-                      }
-                    ]
-                  }
-                },
-                "optionalPair": {
-                  "optional": false,
-                  "type": {
-                    "elements": [
-                      {
-                        "optional": false,
-                        "type": {
-                          "kind": "string"
-                        }
-                      },
-                      {
-                        "optional": true,
-                        "type": {
-                          "kind": "integer"
-                        }
-                      }
-                    ],
-                    "kind": "tuple"
-                  }
-                },
-                "pair": {
-                  "optional": false,
-                  "type": {
-                    "elements": [
-                      {
-                        "optional": false,
-                        "type": {
-                          "kind": "string"
-                        }
-                      },
-                      {
-                        "optional": false,
-                        "type": {
-                          "kind": "integer"
-                        }
-                      }
-                    ],
-                    "kind": "tuple"
-                  }
-                },
-                "uniqueChoices": {
-                  "optional": false,
-                  "type": {
-                    "constraints": {
-                      "uniqueItems": true
-                    },
-                    "items": {
-                      "kind": "object",
-                      "properties": {
-                        "_tag": {
-                          "optional": false,
-                          "type": {
-                            "kind": "literal",
-                            "value": "TextChoice"
-                          }
-                        },
-                        "value": {
-                          "optional": false,
-                          "type": {
-                            "kind": "string"
-                          }
-                        }
-                      }
-                    },
-                    "kind": "array"
-                  }
-                },
-                "valuesByName": {
-                  "optional": false,
-                  "type": {
-                    "keyPattern": "^[a-z]+$",
-                    "kind": "record",
-                    "values": {
-                      "kind": "integer"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
       "type:Int": {
         "kind": "integer"
       },
@@ -463,13 +278,14 @@
                       "optional": false,
                       "type": {
                         "kind": "literal",
-                        "value": "TextChoice"
+                        "value": "NumericChoice"
                       }
                     },
                     "value": {
                       "optional": false,
                       "type": {
-                        "kind": "string"
+                        "kind": "ref",
+                        "name": "type:Int"
                       }
                     }
                   }
@@ -481,13 +297,13 @@
                       "optional": false,
                       "type": {
                         "kind": "literal",
-                        "value": "NumericChoice"
+                        "value": "TextChoice"
                       }
                     },
                     "value": {
                       "optional": false,
                       "type": {
-                        "kind": "integer"
+                        "kind": "string"
                       }
                     }
                   }
@@ -508,10 +324,10 @@
               "kind": "union",
               "members": [
                 {
-                  "kind": "string"
+                  "kind": "null"
                 },
                 {
-                  "kind": "null"
+                  "kind": "string"
                 }
               ]
             }
@@ -529,7 +345,8 @@
                 {
                   "optional": true,
                   "type": {
-                    "kind": "integer"
+                    "kind": "ref",
+                    "name": "type:Int"
                   }
                 }
               ],
@@ -590,7 +407,8 @@
               "keyPattern": "^[a-z]+$",
               "kind": "record",
               "values": {
-                "kind": "integer"
+                "kind": "ref",
+                "name": "type:Int"
               }
             }
           }
@@ -629,7 +447,10 @@
       "TransportUnavailable"
     ],
     "events": [],
-    "initialize": "InitializeApplication",
+    "initialization": {
+      "kind": "snapshot",
+      "payload": "empty-object"
+    },
     "limits": {
       "maxCollectionItems": 4096,
       "maxDepth": 32,
