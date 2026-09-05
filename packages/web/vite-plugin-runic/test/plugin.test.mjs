@@ -189,19 +189,17 @@ export const Snapshot = Schema.Struct({ value: Schema.Int });
 import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
 import { Snapshot } from "./snapshot.js";
-const Initialize = Schema.TaggedStruct("InitializeApplication", {});
-const Initialized = Schema.TaggedStruct("ApplicationInitialized", { snapshot: Snapshot });
 export default defineApplicationBridgeContract({
   protocol: { identity: "runic.test", version: 1 },
   csharp: { namespace: "Runic.Test", contractName: "Test" },
   snapshot: Snapshot,
-  commands: [bridge.command(Initialize, { receipt: Initialized, advancesRevision: true })],
-  events: [], errors: [], initialize: { _tag: "InitializeApplication" }
+  commands: [],
+  events: [], errors: []
 });
 `, "utf8");
   const plugin = runic({
     devtools: false,
-    applicationBridge: { ir: "Contract/bridge.ir.json" },
+    applicationBridge: { authority: "effect", source: "src/application.bridge.ts", ir: "Contract/bridge.ir.json" },
   });
   const messages = [];
   const server = await createServer({
@@ -249,7 +247,7 @@ test("waits for the matching managed-host fingerprint before reloading", async (
     const sourcePath = join(root, "src", "application.bridge.ts");
     await writeFile(sourcePath, bridgeFixtureSource("Schema.Struct({ value: Schema.Int })"), "utf8");
     const messages = [];
-    const plugin = runic({ devtools: false, applicationBridge: { ir: "Contract/bridge.ir.json" } });
+    const plugin = runic({ devtools: false, applicationBridge: { authority: "effect", source: "src/application.bridge.ts", ir: "Contract/bridge.ir.json" } });
     plugin.configResolved({ command: "serve", mode: "development", root });
     await plugin.configureServer({
       ws: { on: () => undefined, send: (message) => messages.push(message) },
@@ -470,14 +468,12 @@ function bridgeFixtureSource(snapshot) {
 import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
 const Snapshot = ${snapshot}.annotations({ identifier: "Snapshot" });
-const Initialize = Schema.TaggedStruct("InitializeApplication", {});
-const Initialized = Schema.TaggedStruct("ApplicationInitialized", { snapshot: Snapshot });
 export default defineApplicationBridgeContract({
   protocol: { identity: "runic.test", version: 1 },
   csharp: { namespace: "Runic.Test", contractName: "Test" },
   snapshot: Snapshot,
-  commands: [bridge.command(Initialize, { receipt: Initialized })],
-  events: [], errors: [], initialize: { _tag: "InitializeApplication" }
+  commands: [],
+  events: [], errors: []
 });
 `;
 }
@@ -589,3 +585,64 @@ async function ssrRevisionAfterUpdate(server) {
   }
   return (await server.ssrLoadModule("/src/ssr-entry.js")).revision;
 }
+
+test("watches C# source modules outside the frontend, coalesces edits and retains last-good files", async () => {
+  const { EventEmitter } = await import("node:events");
+  const { generateApplicationBridge } = await import("@runic-artifex/application-bridge-tooling");
+  const root = await fixtureRoot();
+  const previous = { dotnet: process.env.DOTNET_HOST_PATH, inspector: process.env.RUNIC_BRIDGE_INSPECTOR, ready: process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY };
+  const watcher = new EventEmitter();
+  const watched = [];
+  watcher.add = value => watched.push(value);
+  let cleanup;
+  try {
+    await linkBridgeFixtureDependencies(root);
+    await writeFile(join(root, "src/application.bridge.ts"), bridgeFixtureSource("Schema.Struct({ value: Schema.Int })"));
+    const baseline = await generateApplicationBridge({ authority: "effect", root, source: "src/application.bridge.ts", ir: "baseline.json" });
+    const project = join(root, "App.csproj");
+    const module = join(root, "module", "Module.csproj");
+    const source = join(root, "module", "Commands.cs");
+    await mkdir(dirname(module));
+    await writeFile(project, "<Project />"); await writeFile(module, "<Project />"); await writeFile(source, "1");
+    const fake = join(root, "inspector.mjs");
+    await writeFile(fake, `
+import fs from "node:fs"; import crypto from "node:crypto";
+const ir = JSON.parse(fs.readFileSync(${JSON.stringify(join(root, "baseline.json"))}, "utf8"));
+const source = fs.readFileSync(${JSON.stringify(source)}, "utf8");
+if (source === "invalid") { console.error("Commands.cs(1): RTKAB2001: invalid command"); process.exit(1); }
+ir.authority = "csharp"; ir.wire.protocol.version = Number(source.split(":")[0]);
+ir.bindings = { source };
+const canonical = value => value === null || typeof value !== "object" ? value : Array.isArray(value) ? value.map(canonical) : Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
+ir.fingerprint.value = crypto.createHash("sha256").update(JSON.stringify(canonical(ir.wire), null, 2) + "\\n").digest("hex");
+console.log(JSON.stringify({ ir, dependencies: ${JSON.stringify([project, module, source])} }));
+`);
+    process.env.DOTNET_HOST_PATH = process.execPath;
+    process.env.RUNIC_BRIDGE_INSPECTOR = fake;
+    delete process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
+    const messages = [];
+    const plugin = runic({ devtools: false, applicationBridge: { authority: "csharp", project, ir: "Contract/bridge.ir.json" } });
+    plugin.configResolved({ command: "serve", mode: "development", root });
+    cleanup = await plugin.configureServer({ ws: { on() {}, send: message => messages.push(message) }, watcher, middlewares: { use() {} }, httpServer: undefined });
+    assert.ok(watched.flat().includes(dirname(module)));
+    const irPath = join(root, "Contract/bridge.ir.json");
+    const initial = await readFile(irPath, "utf8");
+    const waitFor = async predicate => { for (let i = 0; i < 200; i++) { if (await predicate()) return; await new Promise(resolve => setTimeout(resolve, 10)); } assert.fail("C# watcher did not settle"); };
+    await writeFile(source, "invalid"); watcher.emit("change", source);
+    await waitFor(() => messages.some(message => message.type === "error"));
+    assert.equal(await readFile(irPath, "utf8"), initial);
+    await writeFile(source, "2"); watcher.emit("change", source); watcher.emit("change", source); watcher.emit("change", module);
+    await waitFor(() => messages.some(message => message.type === "full-reload"));
+    assert.equal(messages.filter(message => message.type === "full-reload").length, 1);
+    const fingerprint = JSON.parse(await readFile(irPath, "utf8")).fingerprint.value;
+    await writeFile(source, "2:renamed"); watcher.emit("change", source);
+    await waitFor(async () => JSON.parse(await readFile(irPath, "utf8")).bindings.source === "2:renamed");
+    assert.equal(JSON.parse(await readFile(irPath, "utf8")).fingerprint.value, fingerprint);
+    assert.equal(messages.filter(message => message.type === "full-reload").length, 1);
+  } finally {
+    if (typeof cleanup === "function") cleanup();
+    for (const [key, value] of [["DOTNET_HOST_PATH", previous.dotnet], ["RUNIC_BRIDGE_INSPECTOR", previous.inspector], ["RUNIC_APPLICATION_BRIDGE_HOST_READY", previous.ready]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
