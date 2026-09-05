@@ -1,4 +1,4 @@
-> This package is now developed in the [Runic SDK workspace](../README.md). Use its root build and verification commands.
+> This package is now developed in the [Runic SDK workspace](../../../README.md). Use its root build and verification commands.
 
 ![Runic Toolkit banner](.github/assets/brand/banner.png)
 
@@ -44,12 +44,12 @@ and next step.
 
 The historical package pins in this repository are retained for receipt
 verification, not for local package acquisition. The current package-only
-[Desktop clean-room journey](eng/current-clean-install) takes its exact NuGet
+[Desktop clean-room journey](../../engineering/acceptance/current-clean-install) takes its exact NuGet
 and npm inputs from the compatibility set and requires all feeds explicitly.
 
 The older W10–W70 receipt artifacts remain available as historical engineering
 evidence. Their retired package identities and feeds are constrained by
-[`eng/current-evidence-allowlist.json`](eng/current-evidence-allowlist.json);
+[`eng/current-evidence-allowlist.json`](../../engineering/acceptance/current-evidence-allowlist.json);
 they are not a competing current-release definition.
 
 ## Choose a package
@@ -63,7 +63,7 @@ against your supported runtime before production use.
 | Application lifecycle and generated manifests | `dotnet add package Runic.Application --prerelease` | [Runic Toolkit](https://docs.runic-artifex.eu/products/runic-toolkit) |
 | Typed command-line applications | `dotnet add package Runic.CommandLine --prerelease` | [Runic Command Line](https://docs.runic-artifex.eu/products/runic-command-line) |
 | A validated application bridge contract | `dotnet add package Runic.Application.Bridge --prerelease` | [Application Bridge](https://docs.runic-artifex.eu/application-bridge) |
-| A current Svelte/Vite application template | `dotnet new install Runic.Application.Templates::<candidate>` | [Current Svelte template consumer](eng/current-svelte-template) |
+| A current Svelte/Vite application template | `dotnet new install Runic.Application.Templates::<candidate>` | [Current Svelte template consumer](../../engineering/acceptance/current-svelte-template) |
 | Typed localization for .NET and ESM | `dotnet add package Runic.Translations --prerelease` | [Runic Translations](https://docs.runic-artifex.eu/products/runic-translations) |
 | Application Bridge in a browser frontend | `npm install @runic-artifex/application-bridge` | [JavaScript packages](https://docs.runic-artifex.eu/packages) |
 
@@ -78,7 +78,7 @@ those pins when reproducing a sample, not as a general version-selection policy.
 The commands below document the frozen examples receipt and must not be used
 for local package acquisition. Its pinned package graph is historical. For the
 current package-only path, use the explicit-feed
-[Desktop clean-room journey](eng/current-clean-install).
+[Desktop clean-room journey](../../engineering/acceptance/current-clean-install).
 
 ```bash
 dotnet tool restore --tool-manifest samples/05-RunicTranslationsSetup/.config/dotnet-tools.json
@@ -96,7 +96,7 @@ for the broader Runic Toolkit family, including NativeAOT coverage where it is
 supported.
 
 Maintainers advance the immutable GitHub Packages integration set using the
-manual [CI candidate procedure](eng/CI.md). The examples CI downloads those
+manual [CI candidate procedure](../../engineering/acceptance/CI.md). The examples CI downloads those
 exact candidates and never rebuilds producer repositories.
 
 ## Documentation and support

@@ -22,7 +22,7 @@ await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
 bool closed = await window.RequestCloseAsync(cancellationToken);
 ```
 
-The [customer reference](../../../examples/current/customer-migration/README.md)
+The [customer reference](../../../examples/customer-migration/README.md)
 provides a complete draft-owned dialog through `--native` mode. A clean editor
 approves immediately; a dirty editor offers Keep editing or Discard and close.
 Escape denies closing. An active operation denies closing and asks the user to
@@ -89,5 +89,5 @@ covers clean/dirty decisions, Keep editing, Escape, discard and an active save.
 thread. It checks bridge responsiveness during the pending decision, veto, retry and
 approved destruction. Root CI runs this smoke on Linux, Windows and both macOS
 architectures. Local execution evidence is recorded in the
-[reference verification record](../../../examples/current/customer-migration/VERIFICATION.md);
+[reference verification record](../../../examples/customer-migration/VERIFICATION.md);
 adding CI coverage is not evidence that a remote platform run has passed.

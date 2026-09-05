@@ -120,7 +120,7 @@ internal static class CorpusContractTests
             throw new InvalidOperationException("Could not find the repository root containing spec/command-line.");
         }
 
-        string path = Path.Combine(root, "packages", "runic-command-line", "spec", "command-line", fileName);
+        string path = Path.Combine(root, "specs", "command-line", "command-line", fileName);
         if (!File.Exists(path))
         {
             throw new InvalidOperationException($"Required command-line corpus was not found: {path}");

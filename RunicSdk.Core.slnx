@@ -1,10 +1,10 @@
 <Solution>
   <Folder Name="/examples/">
-    <Project Path="examples/current/counter/Counter.csproj" />
-    <Project Path="examples/current/customer-migration/After/CustomerApplication.csproj" />
-    <Project Path="examples/current/customer-migration/Before/CustomerMvvm.csproj" />
-    <Project Path="examples/current/customer-migration/Domain/CustomerDomain.csproj" />
-    <Project Path="examples/current/customer-migration/Tests/CustomerMigration.Tests.csproj" />
+    <Project Path="examples/counter/Counter.csproj" />
+    <Project Path="examples/customer-migration/After/CustomerApplication.csproj" />
+    <Project Path="examples/customer-migration/Before/CustomerMvvm.csproj" />
+    <Project Path="examples/customer-migration/Domain/CustomerDomain.csproj" />
+    <Project Path="examples/customer-migration/Tests/CustomerMigration.Tests.csproj" />
   </Folder>
   <Folder Name="/packages/dotnet/">
     <Project Path="packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
@@ -28,8 +28,8 @@
     <Project Path="packages/dotnet/Runic.Translations.Tooling/Runic.Translations.Tooling.csproj" />
     <Project Path="packages/dotnet/Runic.Translations/Runic.Translations.csproj" />
   </Folder>
-  <Folder Name="/packages/runic-desktop/">
-    <Project Path="packages/runic-desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
+  <Folder Name="/tests/fixtures/desktop/">
+    <Project Path="tests/fixtures/desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
   </Folder>
   <Folder Name="/tests/dotnet/">
     <Project Path="tests/dotnet/Runic.Application.Bridge.CounterTests/Runic.Application.Bridge.CounterTests.csproj" />

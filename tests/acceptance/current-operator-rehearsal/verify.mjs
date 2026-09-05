@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const schema = 'runic.local-operator-rehearsal/1';
 const repeatSchema = 'runic.local-operator-rehearsal-repeat/1';
 const profiles = ['csharp-host', 'local-application-bridge', 'editor-desktop', 'd008-hosted-product'];

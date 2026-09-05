@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const examplesRoot = resolve(here, "../..");
+const examplesRoot = resolve(here, "../../../fixtures/legacy-examples");
 const editorRoot = resolve(examplesRoot, "../apps/translations-editor");
 
 export const RECEIPT_SCHEMA = "runic.w40-localization-compatibility/1";

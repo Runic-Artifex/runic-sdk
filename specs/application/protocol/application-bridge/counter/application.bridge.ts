@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import {
   bridge,
   defineApplicationBridgeContract,
-} from "../../../../web/application-bridge/dist/esm/index.js";
+} from "../../../../../packages/web/application-bridge/dist/esm/index.js";
 
 export const CounterSnapshot = Schema.Struct({
   count: Schema.Number.pipe(Schema.int(), Schema.between(-2147483648, 2147483647)),

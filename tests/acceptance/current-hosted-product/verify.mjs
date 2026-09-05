@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, "../..");
+const root = resolve(here, "../../../fixtures/legacy-examples");
 const schema = "runic.current-hosted-product/1";
 const repeatSchema = "runic.current-hosted-product-repeat/1";
 const translationsVersion = "1.0.0-preview.1";

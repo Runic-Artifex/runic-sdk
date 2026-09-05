@@ -9,7 +9,7 @@ import { releaseManifestAfter, releaseManifestFacts } from '../v0.2-baselines/me
 
 export const RECEIPT_SCHEMA = 'runic.current-host-transport/1';
 export const REPEAT_RECEIPT_SCHEMA = 'runic.current-host-transport-repeat/1';
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const configuredNugetFeed = process.env.RUNIC_CURRENT_HOST_TRANSPORT_NUGET_FEED;
 export const FEED_PATH = configuredNugetFeed && resolve(configuredNugetFeed);
 export const APPLICATION_VERSION = process.env.RUNIC_CURRENT_HOST_TRANSPORT_APPLICATION_VERSION ?? '0.2.0-preview.1e8fff0';

@@ -49,11 +49,11 @@ outside this directory as implementation evidence:
 - performance and accessibility measurements.
 
 The .NET M6 receipt is retained at
-[`evidence/conformance/dotnet-m6.json`](../../evidence/conformance/dotnet-m6.json).
+[`evidence/conformance/dotnet-m6.json`](../../../tests/fixtures/desktop/evidence/conformance/dotnet-m6.json).
 CS-WebUI comparisons are classified in
 [`cs-webui-classification.md`](cs-webui-classification.md), and the native
 runner definition and current local evidence are recorded in
-[`evidence/platform-matrix.md`](../../evidence/platform-matrix.md).
+[`evidence/platform-matrix.md`](../../../tests/fixtures/desktop/evidence/platform-matrix.md).
 
 The closed example-parity catalog is retained in
 [`cs-webui-example-parity.json`](cs-webui-example-parity.json). It maps every

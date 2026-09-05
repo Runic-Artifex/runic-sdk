@@ -9,7 +9,7 @@ import { SCHEMA_ID } from './contract.mjs';
 import { verifyReceipt } from './verify.mjs';
 
 const harness = path.dirname(fileURLToPath(import.meta.url));
-const examplesDefault = path.resolve(harness, '../..');
+const examplesDefault = path.resolve(harness, '../../../fixtures/legacy-examples');
 export function parseArguments(argv) {
   const options = { examplesRoot: examplesDefault, editorRoot: null, releaseManifest: null, dynamic: false, verify: false, help: false };
   for (let index = 0; index < argv.length; index += 1) {

@@ -224,7 +224,7 @@ Before committing ASP.NET Core as the centre of every Runic Desktop
 application, compare the real deployment cost of the old and new approaches.
 
 The first Linux x64 result is recorded in
-[`experiments/native-aot-size/results/linux-x64-2026-09-03.md`](../../experiments/native-aot-size/results/linux-x64-2026-09-03.md).
+[`experiments/native-aot-size/results/linux-x64-2026-09-03.md`](../../../../tests/fixtures/application/experiments/native-aot-size/results/linux-x64-2026-09-03.md).
 The matched runtime payload was 1.79 MiB for cs-webui and 8.25 MiB for Runic
 Desktop, a 4.61-times ratio and 6.46 MiB absolute difference. This passes the
 size gate provisionally; the remaining platform measurements are follow-up

@@ -9,3 +9,13 @@
 /.cache/
 .DS_Store
 /.direnv/
+**/.packages/
+**/artifacts/
+**/coverage/
+**/Frontend/build/
+**/.direnv/
+*.binlog
+*.trx
+*.nupkg
+*.snupkg
+**/.nuget/

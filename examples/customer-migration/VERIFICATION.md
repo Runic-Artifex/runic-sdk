@@ -53,4 +53,4 @@ MAUI/mobile support remain outside these checks.
   The current asynchronous Application host still needs a macOS main-thread runner;
   the lower-level Desktop smoke test supplies its own runner.
 
-The next structural task is the [repository reorganisation](../../../eng/repository-reorganisation.md).
+The next structural task is the [repository reorganisation](../../eng/repository-reorganisation.md).

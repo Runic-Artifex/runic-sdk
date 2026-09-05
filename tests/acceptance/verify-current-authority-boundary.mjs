@@ -3,7 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = new URL('../', import.meta.url);
+const root = new URL('../../fixtures/legacy-examples/', import.meta.url);
 const rootPath = fileURLToPath(root);
 const allowlist = JSON.parse(await readFile(new URL('./current-evidence-allowlist.json', import.meta.url), 'utf8'));
 if (allowlist.schema !== 'runic.examples-historical-evidence-allowlist/1' || typeof allowlist.purpose !== 'string' || !Array.isArray(allowlist.paths) || new Set(allowlist.paths).size !== allowlist.paths.length || allowlist.paths.some((path) => typeof path !== 'string' || !path.startsWith('eng/current-') || path.includes('..'))) throw new Error('Historical evidence allowlist is malformed');

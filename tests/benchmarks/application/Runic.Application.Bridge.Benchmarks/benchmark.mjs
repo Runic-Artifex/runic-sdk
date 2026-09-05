@@ -7,7 +7,7 @@ import {
   createApplicationBridgeController,
   defineApplicationBridgeContract,
   materializeApplicationBridgeContract,
-} from "../../../web/application-bridge/dist/esm/index.js";
+} from "../../../../packages/web/application-bridge/dist/esm/index.js";
 
 const modes = new Map([
   ["--quick", { sizes: [1, 32, 256], repetitions: 5 }],

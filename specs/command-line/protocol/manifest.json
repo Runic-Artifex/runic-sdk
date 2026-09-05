@@ -24,11 +24,11 @@
     "diagnosticArgumentBytes": 1024
   },
   "fixtures": [
-    { "id": "protocol.success", "class": "valid", "path": "examples/success.json", "outcome": "success" },
-    { "id": "protocol.command-fault", "class": "valid", "path": "examples/command-fault.json", "outcome": "command-failure" },
-    { "id": "protocol.validation", "class": "valid", "path": "examples/validation.json", "outcome": "validation" },
-    { "id": "protocol.host-fault", "class": "valid", "path": "examples/host-fault.json", "outcome": "host-failure" },
-    { "id": "protocol.cancelled", "class": "valid", "path": "examples/cancelled.json", "outcome": "cancelled" },
+    { "id": "protocol.success", "class": "valid", "path": "tests/fixtures/legacy-examples/success.json", "outcome": "success" },
+    { "id": "protocol.command-fault", "class": "valid", "path": "tests/fixtures/legacy-examples/command-fault.json", "outcome": "command-failure" },
+    { "id": "protocol.validation", "class": "valid", "path": "tests/fixtures/legacy-examples/validation.json", "outcome": "validation" },
+    { "id": "protocol.host-fault", "class": "valid", "path": "tests/fixtures/legacy-examples/host-fault.json", "outcome": "host-failure" },
+    { "id": "protocol.cancelled", "class": "valid", "path": "tests/fixtures/legacy-examples/cancelled.json", "outcome": "cancelled" },
     { "id": "protocol.invalid-structures", "class": "semantic-corpus", "path": "invalid-structures.json", "caseCount": 23 },
     { "id": "protocol.wire-inputs", "class": "malformed-or-hostile", "path": "wire-inputs.json", "caseCount": 15 }
   ]

@@ -21,7 +21,7 @@ Runic Desktop. `--native` selects the embedded WebView and enables close confirm
 `--serve` prints a local URL for the real C# bridge. Keep that process running
 while using the URL. The page does not have a mock backend or duplicate C# rules.
 For faster subsequent starts use `dotnet run --project
-examples/current/customer-migration/Host/CustomerDesktop.csproj --no-build`.
+examples/customer-migration/Host/CustomerDesktop.csproj --no-build`.
 
 The native reference requires WebView2 on Windows or GTK 3/WebKitGTK on Linux.
 The current asynchronous Application host does not provide the main-thread runner
@@ -31,7 +31,7 @@ Desktop API has an AppKit close hook and a dedicated main-thread native smoke te
 On Windows, the original WPF implementation is runnable with:
 
 ```sh
-dotnet run --project examples/current/customer-migration/Wpf/CustomerWpf.csproj
+dotnet run --project examples/customer-migration/Wpf/CustomerWpf.csproj
 ```
 
 The portable viewmodel is also usable as a MAUI migration reference, but this
@@ -98,10 +98,10 @@ reusable SDK design, rather than claims that Runic already has a forms package.
 ## Verification
 
 ```sh
-dotnet run --project examples/current/customer-migration/Tests/CustomerMigration.Tests.csproj
-bun run --cwd examples/current/customer-migration/Host/Frontend test
+dotnet run --project examples/customer-migration/Tests/CustomerMigration.Tests.csproj
+bun run --cwd examples/customer-migration/Host/Frontend test
 # Install Chromium once, then run full browser acceptance:
-bun run --cwd examples/current/customer-migration/Host/Frontend browser:install
+bun run --cwd examples/customer-migration/Host/Frontend browser:install
 bun run verify:customers
 ```
 
@@ -125,7 +125,7 @@ certification is still separate from these automated checks.
   open. Its script request times out after ten minutes; a new close attempt can retry.
   `CloseAsync`, disposal and process termination bypass this policy. Unsaved drafts
   are not crash durable. Browser mode uses `beforeunload` as a best effort.
-- See the [close lifecycle contract](../../../packages/runic-desktop/docs/window-close-lifecycle.md)
+- See the [close lifecycle contract](../../docs/guides/desktop/window-close-lifecycle.md)
   for platform support, custom hosts, cancellation and native verification limits.
 - Keyboard labels, error associations, focus restoration, and responsive layout
   are present. This does not establish screen-reader parity on every native host.
@@ -136,5 +136,5 @@ certification is still separate from these automated checks.
 - Native clipboard, menus, notifications, navigation/back integration, and mobile
   services remain roadmap work. They are not emulated by an MVVM adapter.
 
-See the [migration RFC](../../../packages/runic-toolkit/docs/architecture/mvvm-migration-rfc.md)
-and [step-by-step guide](../../../packages/runic-toolkit/docs/guides/migrate-mvvm-to-runic.md).
+See the [migration RFC](../../docs/guides/application/architecture/mvvm-migration-rfc.md)
+and [step-by-step guide](../../docs/guides/application/guides/migrate-mvvm-to-runic.md).

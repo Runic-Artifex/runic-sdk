@@ -83,17 +83,9 @@ async function archive(path) {
 }
 
 async function packDependency() {
-  const packed = await execFile("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", root], {
-    cwd: "node_modules/@runic-artifex/application-bridge",
-  });
-  const [{ filename }] = JSON.parse(packed.stdout);
-  return join(root, filename);
+  return pack("@runic-artifex/application-bridge");
 }
 
 async function packFixture() {
-  const packed = await execFile("npm", ["pack", "--json", "--pack-destination", root], {
-    cwd: "test/fixtures/vite-plugin-runic",
-  });
-  const [{ filename }] = JSON.parse(packed.stdout);
-  return join(root, filename);
+  return pack("@runic-artifex/vite-plugin-runic");
 }

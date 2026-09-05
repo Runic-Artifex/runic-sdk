@@ -15,12 +15,12 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="../../../packages/runic-toolkit/protocol/application-bridge/setup/generated/bridge.ir.json" />
+    <AdditionalFiles Include="../../../specs/application/protocol/application-bridge/setup/generated/bridge.ir.json" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="../../../packages/runic-toolkit/protocol/application-bridge/setup/fixtures/*.json"
+    <None Include="../../../specs/application/protocol/application-bridge/setup/fixtures/*.json"
           Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../../packages/runic-toolkit/protocol/application-bridge/conformance/*.json"
+    <None Include="../../../specs/application/protocol/application-bridge/conformance/*.json"
           Link="conformance/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

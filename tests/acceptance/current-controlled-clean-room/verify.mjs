@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const schema = 'runic.controlled-clean-room-conformance/1';
 const repeatSchema = 'runic.controlled-clean-room-conformance-repeat/1';
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);

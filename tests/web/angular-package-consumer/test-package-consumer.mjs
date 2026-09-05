@@ -60,7 +60,7 @@ try {
     },
   });
   await write(root, "projects/contracts/tsconfig.lib.json", {
-    extends: "../../tsconfig.json", compilerOptions: { outDir: "../../out-tsc/contracts" },
+    extends: "../../../eng/archive/runic-toolkit/tsconfig.json", compilerOptions: { outDir: "../../../eng/archive/runic-toolkit/out-tsc/contracts" },
     include: ["src/**/*.ts"],
   });
   await write(root, "projects/contracts/package.json", {
@@ -68,8 +68,8 @@ try {
     peerDependencies: { "@angular/core": "22.0.8" },
   });
   await write(root, "projects/contracts/ng-package.json", {
-    $schema: "../../node_modules/ng-packagr/ng-package.schema.json",
-    dest: "../../dist/contracts",
+    $schema: "../../../eng/archive/runic-toolkit/node_modules/ng-packagr/ng-package.schema.json",
+    dest: "../../../eng/archive/runic-toolkit/dist/contracts",
     lib: { entryFile: "src/public-api.ts" },
     allowedNonPeerDependencies: ["@runic-artifex/application-bridge", "effect"],
   });
@@ -77,7 +77,7 @@ try {
   await write(root, "projects/contracts/src/lib/generated-translations.ts", "// Generated catalog output; application code imports it as a normal ESM dependency.\nexport const m = Object.freeze({ counterTitle: () => 'Customer counter' });\n");
   await write(root, "projects/contracts/src/lib/counter-contract.ts", contractSource());
   await write(root, "projects/customer-app/tsconfig.app.json", {
-    extends: "../../tsconfig.json", compilerOptions: { outDir: "../../out-tsc/customer-app" },
+    extends: "../../../eng/archive/runic-toolkit/tsconfig.json", compilerOptions: { outDir: "../../../eng/archive/runic-toolkit/out-tsc/customer-app" },
     files: ["src/main.ts"],
   });
   await write(root, "projects/customer-app/src/index.html", "<customer-root></customer-root>\n");

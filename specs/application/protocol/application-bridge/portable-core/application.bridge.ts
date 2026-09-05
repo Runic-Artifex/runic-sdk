@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import {
   bridge,
   defineApplicationBridgeContract,
-} from "../../../../web/application-bridge/dist/esm/index.js";
+} from "../../../../../packages/web/application-bridge/dist/esm/index.js";
 
 const RecursiveNode = Schema.suspend(() => Schema.Struct({
   value: Schema.String,

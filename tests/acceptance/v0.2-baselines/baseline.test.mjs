@@ -10,7 +10,7 @@ import { dynamicMeasurements, helpText, measure } from './measure.mjs';
 import { EXAMPLES_REVISION, exec, isReleaseAuthorityRoot, releaseManifestFacts } from './metrics.mjs';
 import { verifyReceipt } from './verify.mjs';
 
-const examplesRoot = path.resolve(import.meta.dirname, '../..');
+const examplesRoot = path.resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const authorityFixturePackages = [
   { identity: 'Runic.Application', ecosystem: 'nuget', state: 'approved' },
   { identity: 'Runic.Assets', ecosystem: 'nuget', state: 'approved' },

@@ -25,26 +25,20 @@ bun run dev:editor      # Build and launch the translations editor
 Open `RunicSdk.slnx` for the complete solution or `RunicSdk.Core.slnx` for SDK
 and test work without the editor frontend. Builds use Debug by default; set
 `CONFIGURATION=Release` for release builds. Native editor execution requires the
-platform webview runtime described in `packages/runic-desktop/README.md`.
+platform webview runtime described in [Desktop guidance](docs/guides/desktop/window-close-lifecycle.md).
 
 ## Layout
 
 | Directory | Ownership |
 | --- | --- |
-| `packages/dotnet/<package>` | Managed runtimes, generators and adapters |
-| `tools/<tool>` | CLI, bridge inspector, packer, translation compiler and templates |
-| `tests/dotnet`, `tests/native`, `tests/fixtures` | Managed suites, native acceptance and consumer fixtures |
-| `packages/runic-toolkit` | Frontend packages, protocol inputs and imported support files (next relocation wave) |
-| `packages/runic-desktop` | Browser transport, contract inputs and imported support files |
-| `packages/runic-assets` | Imported assets guides and engineering checks |
-| `packages/runic-translations` | Vite integration, schemas and imported support files |
-| `packages/runic-command-line` | Contract corpus and imported support files |
-| `packages/web/vite-plugin-runic` | Vite application integration |
-| `packages/runic-svelte` | Svelte and SvelteKit adapters |
-| `apps/translations-editor` | First-party editor consuming workspace packages |
-| `examples/current` | Maintained examples; older imported samples are historical fixtures |
-| `docs` | Framework documentation site |
-| `eng` | Workspace commands, package inventory, release authority and migration provenance |
+| `packages/dotnet`, `packages/web` | Published libraries, generators and framework integrations |
+| `tools` | CLI, bridge inspector, asset packer, translation compiler and templates |
+| `apps` | First-party applications |
+| `examples` | Maintained counter and customer migration references |
+| `tests` | Managed/native suites, package/template consumers and required fixtures |
+| `specs` | Shared protocols, schemas and conformance corpora |
+| `docs` | Documentation site and product/architecture guides |
+| `eng` | Shared build policy, verification, inventory and release/migration evidence |
 
 Source dependencies use explicit `ProjectReference` and `workspace:*` links.
 They never fall back to a published Runic package when a sibling project is missing.
@@ -54,15 +48,13 @@ translation compiler pin remains local. Product-specific analyzer/build policies
 are explicitly imported from `eng/build`. Template lockfiles and historical fixtures are independent
 consumer evidence, not additional development workspaces.
 
-The next structural follow-up is the [repository reorganisation](eng/repository-reorganisation.md):
-replace imported repository boundaries with a consistent package and tool layout,
-then consolidate active tests, documentation and engineering scripts.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership and verification.
 
 ## Migrating existing applications
 
-The [customer migration reference](examples/current/customer-migration/README.md)
+The [customer migration reference](examples/customer-migration/README.md)
 includes an original WPF/CommunityToolkit implementation, shared business rules,
-and an idiomatic Runic replacement. Its [migration RFC](packages/runic-toolkit/docs/architecture/mvvm-migration-rfc.md)
+and an idiomatic Runic replacement. Its [migration RFC](docs/guides/application/architecture/mvvm-migration-rfc.md)
 records the accepted direction and the remaining DX and OS-integration work.
 
 ## Verify packages and releases

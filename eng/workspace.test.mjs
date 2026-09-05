@@ -27,7 +27,7 @@ test("active npm consumers resolve internal dependencies from the workspace", ()
   const names = new Set(workspace.npm.map((p) => p.name));
   for (const path of paths) {
     assert.ok(
-      !path.startsWith("examples/samples/"),
+      !path.startsWith("tests/fixtures/legacy-examples/samples/"),
       "historical examples must remain excluded",
     );
     assert.ok(
@@ -108,4 +108,41 @@ test("affected detection follows relocated code and its dependents", () => {
     affectedComponents(["Directory.Build.props"]).sort(),
     Object.keys(workspace.components).sort(),
   );
+});
+
+test("development workspaces and CI exclude imported engineering archives", () => {
+  for (const path of json("package.json").workspaces) {
+    assert.ok(
+      /^(packages\/web\/|apps\/|docs$|examples\/(counter|customer-migration)\/)/.test(
+        path,
+      ),
+      `unexpected development workspace: ${path}`,
+    );
+  }
+  const files = spawnSync("git", ["ls-files"], { cwd: root, encoding: "utf8" });
+  assert.equal(files.status, 0);
+  for (const path of files.stdout.trim().split("\n")) {
+    if (path.startsWith("eng/archive/")) continue;
+    assert.ok(
+      !path.startsWith("packages/runic-"),
+      `retired package root: ${path}`,
+    );
+    assert.ok(
+      !path.includes("/.github/workflows/"),
+      `nested active CI: ${path}`,
+    );
+  }
+});
+
+test("solution projects do not import archived engineering files", () => {
+  const solution = readFileSync(resolve(root, "RunicSdk.slnx"), "utf8");
+  for (const [, path] of solution.matchAll(/<Project Path="([^"]+)"/g)) {
+    assert.ok(!path.startsWith("eng/archive/"), path);
+    const project = readFileSync(resolve(root, path), "utf8");
+    assert.doesNotMatch(
+      project,
+      /(?:eng[\\/]archive|packages[\\/]runic-)/,
+      path,
+    );
+  }
 });

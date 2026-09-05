@@ -74,7 +74,7 @@ components, then deeper platform expansion based on demonstrated demand.
 The accepted migration direction is to replace MVVM presentation architecture with
 idiomatic Runic, preserving domain logic. Do not build a CommunityToolkit adapter.
 The [migration RFC](mvvm-migration-rfc.md) and
-[customer reference](../../../../examples/current/customer-migration/README.md)
+[customer reference](../../../../examples/customer-migration/README.md)
 provide the first concrete evidence. Use its forms, operation, ordering and native
 lifecycle gaps to shape SDK work alongside OS integration. Follow with a MAUI-derived
 feature before investing in automated migration scaffolding.

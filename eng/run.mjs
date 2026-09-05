@@ -54,6 +54,9 @@ function web(command) {
     if (manifest(p.path).scripts?.[command])
       run("bun", ["run", command], resolve(root, p.path));
   }
+  // On a clean checkout Bun cannot link workspace executables until their
+  // compiled entry files exist. Refresh links before building consuming apps.
+  if (command === "build") run("bun", ["install", "--frozen-lockfile"]);
 }
 function core() {
   run("dotnet", [
@@ -76,7 +79,7 @@ function build() {
   ]);
   run("dotnet", [
     "build",
-    "examples/current/customer-migration/Host/CustomerDesktop.csproj",
+    "examples/customer-migration/Host/CustomerDesktop.csproj",
     "-c",
     configuration,
     "--nologo",
@@ -85,7 +88,7 @@ function build() {
 }
 function test() {
   run("node", ["--test", "eng/workspace.test.mjs"]);
-  run("node", ["--test", "examples/eng/current-*/*.test.mjs"]);
+  run("node", ["--test", "tests/engineering/acceptance/current-*/*.test.mjs"]);
   run("dotnet", [
     "test",
     "tests/dotnet/Runic.Desktop.Tests",
@@ -118,21 +121,22 @@ function test() {
   run("dotnet", [
     "run",
     "--project",
-    "examples/current/counter/Counter.csproj",
+    "examples/counter/Counter.csproj",
     "-c",
     configuration,
     "--no-build",
   ]);
   web("test");
+  run("node", ["tests/web/svelte-package-consumers/package-consumers.mjs"]);
   run(
     "bun",
     ["run", "test"],
-    resolve(root, "examples/current/customer-migration/Host/Frontend"),
+    resolve(root, "examples/customer-migration/Host/Frontend"),
   );
   run(
     "bun",
     ["run", "contract:check"],
-    resolve(root, "examples/current/customer-migration/Host/Frontend"),
+    resolve(root, "examples/customer-migration/Host/Frontend"),
   );
   for (const path of [
     "packages/web/svelte",
@@ -141,7 +145,10 @@ function test() {
   ]) {
     run(
       "bun",
-      ["run", "check"],
+      [
+        "run",
+        path === "apps/translations-editor/Frontend" ? "verify:built" : "check",
+      ],
       resolve(root, path),
       path === "apps/translations-editor/Frontend"
         ? {
@@ -153,11 +160,14 @@ function test() {
         : {},
     );
   }
-  run(
-    "bun",
-    ["run", "verify:application-bridge-artifacts"],
-    resolve(root, "packages/runic-toolkit"),
-  );
+  const editor = `apps/translations-editor/bin/${configuration}/net10.0/Runic.Translations.Editor.dll`;
+  run("dotnet", [editor, "--smoke-test"]);
+  run("dotnet", [
+    editor,
+    "validate",
+    "apps/translations-editor/ExampleWorkspace",
+  ]);
+  run("node", ["eng/bridge/verify-artifacts.mjs"]);
   run("bun", ["run", "check"], resolve(root, "docs"));
   run("bun", ["run", "test"], resolve(root, "docs"));
 }
@@ -267,7 +277,7 @@ async function main() {
       run("dotnet", [
         "run",
         "--project",
-        "examples/current/customer-migration/Host/CustomerDesktop.csproj",
+        "examples/customer-migration/Host/CustomerDesktop.csproj",
         "-c",
         configuration,
         "--",
@@ -279,14 +289,14 @@ async function main() {
       web("build");
       run("dotnet", [
         "build",
-        "examples/current/customer-migration/Host/CustomerDesktop.csproj",
+        "examples/customer-migration/Host/CustomerDesktop.csproj",
         "-c",
         configuration,
       ]);
       run(
         "bun",
         ["run", "test:browser"],
-        resolve(root, "examples/current/customer-migration/Host/Frontend"),
+        resolve(root, "examples/customer-migration/Host/Frontend"),
       );
       break;
     case "dev:docs":

@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../../../eng/archive/runic-command-line'))
 $runRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'runic-cli-consumer-' + [Guid]::NewGuid().ToString('N'))
 $feed = Join-Path $runRoot 'feed'

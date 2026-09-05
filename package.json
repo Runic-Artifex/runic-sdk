@@ -7,20 +7,17 @@
     "node": ">=24.18.0 <25"
   },
   "workspaces": [
-    "packages/runic-toolkit",
     "packages/web/application-bridge",
     "packages/web/application-bridge-tooling",
     "packages/web/angular",
-    "packages/runic-desktop",
     "packages/web/desktop",
     "packages/web/vite-plugin-runic-translations",
     "packages/web/vite-plugin-runic",
-    "packages/runic-svelte",
     "packages/web/svelte",
     "packages/web/sveltekit",
     "apps/translations-editor/Frontend",
     "docs",
-    "examples/current/customer-migration/Host/Frontend"
+    "examples/customer-migration/Host/Frontend"
   ],
   "scripts": {
     "bootstrap": "node eng/run.mjs bootstrap",
@@ -32,13 +29,16 @@
     "dev:docs": "node eng/run.mjs dev:docs",
     "dev:editor": "node eng/run.mjs dev:editor",
     "affected": "node eng/run.mjs affected",
-    "example:counter": "dotnet run --project examples/current/counter/Counter.csproj",
+    "example:counter": "dotnet run --project examples/counter/Counter.csproj",
     "verify:templates": "node eng/verify-templates.mjs",
     "example:customers": "node eng/run.mjs example:customers",
-    "verify:customers": "node eng/run.mjs verify:customers"
+    "verify:customers": "node eng/run.mjs verify:customers",
+    "verify:bridge": "node eng/bridge/verify-artifacts.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",
-    "effect": "3.22.1"
+    "effect": "3.22.1",
+    "esbuild": "0.28.1",
+    "playwright-core": "1.62.1"
   }
 }

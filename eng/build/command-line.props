@@ -41,6 +41,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)../../packages/runic-command-line/.github/assets/brand/icon.png" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../branding/command-line/icon.png" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 </Project>

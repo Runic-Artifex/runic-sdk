@@ -18,7 +18,7 @@ export const NPM_CANDIDATES = [
   { identity: "@runic-artifex/svelte", version: "0.1.0-preview.0" },
   { identity: "@runic-artifex/sveltekit", version: "0.1.0-preview.0" },
 ];
-const root = resolve(import.meta.dirname, "../..");
+const root = resolve(import.meta.dirname, "../../../fixtures/legacy-examples");
 const topologyPath = join(import.meta.dirname, "topology.json");
 export const TOPOLOGY = JSON.parse(await readFile(topologyPath, "utf8"));
 export const TOPOLOGY_SHA256 = createHash("sha256").update(await readFile(topologyPath)).digest("hex");
@@ -56,7 +56,7 @@ await app.WaitForShutdownAsync();
 `;
 
 const svelteConfig = `import adapter from "@sveltejs/adapter-node";
-export default { kit: { adapter: adapter({ out: "../../ejected/frontend/build", precompress: false }) } };
+export default { kit: { adapter: adapter({ out: "../../../fixtures/legacy-examples/ejected/frontend/build", precompress: false }) } };
 `;
 const viteConfig = `import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";

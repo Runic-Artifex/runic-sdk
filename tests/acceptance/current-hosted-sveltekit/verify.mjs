@@ -10,7 +10,7 @@ export const RECEIPT_SCHEMA = "runic.current-hosted-sveltekit/1";
 export const REPEAT_RECEIPT_SCHEMA = "runic.current-hosted-sveltekit-repeat/1";
 export const NPM_FEED = "w30-003-local-candidate-npm-feed";
 export const CANDIDATE_NAMES = ["@runic-artifex/svelte", "@runic-artifex/sveltekit"];
-const root = resolve(import.meta.dirname, "../..");
+const root = resolve(import.meta.dirname, "../../../fixtures/legacy-examples");
 const archives = (process.env.RUNIC_CURRENT_HOSTED_SVELTEKIT_NPM_ARCHIVES ?? "").split(",").filter(Boolean).map((path) => resolve(path));
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const sha256 = async (path) => createHash("sha256").update(await readFile(path)).digest("hex");

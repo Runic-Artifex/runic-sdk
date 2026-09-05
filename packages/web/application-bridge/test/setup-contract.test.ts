@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Effect, Schema } from "effect";
-import { SetupSnapshot } from "../../../runic-toolkit/protocol/application-bridge/setup/application.bridge.ts";
+import { SetupSnapshot } from "../../../../specs/application/protocol/application-bridge/setup/application.bridge.ts";
 import { ClientEnvelopeSchema, HostEnvelopeSchema } from "../dist/esm/index.js";
 
 const fixture = (name: string) => new URL(
-  `../../../runic-toolkit/protocol/application-bridge/setup/fixtures/${name}`,
+  `../../../../specs/application/protocol/application-bridge/setup/fixtures/${name}`,
   import.meta.url,
 );
 

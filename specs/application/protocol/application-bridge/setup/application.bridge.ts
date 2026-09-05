@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import {
   bridge,
   defineApplicationBridgeContract,
-} from "../../../../web/application-bridge/dist/esm/index.js";
+} from "../../../../../packages/web/application-bridge/dist/esm/index.js";
 
 const Uuid = Schema.String.pipe(
   Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),

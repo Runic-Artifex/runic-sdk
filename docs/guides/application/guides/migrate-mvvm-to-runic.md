@@ -1,6 +1,6 @@
 # Move a feature from CommunityToolkit.Mvvm to Runic
 
-Use the [runnable customer editor](../../../../examples/current/customer-migration/README.md)
+Use the [runnable customer editor](../../../../examples/customer-migration/README.md)
 as the complete before/after implementation. This is a refactoring guide, not an
 adapter installation guide. Runic does not interpret XAML or execute remote bindings.
 
@@ -58,7 +58,7 @@ native file-picker capabilities. For embedded-window closing, configure
 reference's `--native` mode asks its React draft through the authenticated script
 channel. Use `RequestCloseAsync` for application close buttons; `CloseAsync` and
 disposal intentionally bypass confirmation. See the
-[close lifecycle contract](../../../runic-desktop/docs/window-close-lifecycle.md)
+[close lifecycle contract](../../desktop/window-close-lifecycle.md)
 for custom-host, browser and platform limitations.
 
 ## 6. Verify and remove the old dependency

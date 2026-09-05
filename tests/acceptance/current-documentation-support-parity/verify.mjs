@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const schema = 'runic.local-documentation-support-parity/1';
 const repeatSchema = 'runic.local-documentation-support-parity-repeat/1';
 const profiles = ['csharp-host', 'local-application-bridge', 'editor-desktop', 'd008-hosted-product'];

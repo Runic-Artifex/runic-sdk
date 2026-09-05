@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const schema = 'runic.local-nonpublic-readiness-audit/1';
 const repeatSchema = 'runic.local-nonpublic-readiness-audit-repeat/1';
 const profiles = ['csharp-host', 'local-application-bridge', 'editor-desktop', 'd008-hosted-product'];

@@ -19,11 +19,11 @@
   <ItemGroup>
     <None Include="hosted-web-browser.html" CopyToOutputDirectory="PreserveNewest" />
     <None Include="hosted-web-client.mjs" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../../packages/runic-toolkit/protocol/application-bridge/refresh/fixtures/*.json"
+    <None Include="../../../specs/application/protocol/application-bridge/refresh/fixtures/*.json"
           Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="../../../packages/runic-toolkit/protocol/application-bridge/refresh/generated/bridge.ir.json" />
+    <AdditionalFiles Include="../../../specs/application/protocol/application-bridge/refresh/generated/bridge.ir.json" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

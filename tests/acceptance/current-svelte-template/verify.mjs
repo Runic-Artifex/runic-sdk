@@ -9,7 +9,7 @@ import { releaseManifestAfter, releaseManifestFacts } from '../v0.2-baselines/me
 
 export const RECEIPT_SCHEMA = 'runic.current-svelte-template/1';
 export const REPEAT_RECEIPT_SCHEMA = 'runic.current-svelte-template-repeat/1';
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const configuredNugetFeed = process.env.RUNIC_CURRENT_SVELTE_TEMPLATE_NUGET_FEED;
 export const CANDIDATE_FEED_PATH = configuredNugetFeed && resolve(configuredNugetFeed);
 const packageVersion = process.env.RUNIC_CURRENT_SVELTE_TEMPLATE_APPLICATION_VERSION ?? '0.2.0-preview.1e8fff0';

@@ -4,9 +4,9 @@
   <ItemGroup>
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <AdditionalFiles Include="../../../packages/runic-toolkit/protocol/application-bridge/counter/generated/bridge.ir.json" />
+    <AdditionalFiles Include="../../../specs/application/protocol/application-bridge/counter/generated/bridge.ir.json" />
     <Compile Include="../../fixtures/application/CounterMembers/Program.cs" Link="Program.cs" />
-    <Content Include="../../../packages/runic-toolkit/protocol/application-bridge/conformance/counter-members.json" CopyToOutputDirectory="PreserveNewest" Link="counter-members.json" />
+    <Content Include="../../../specs/application/protocol/application-bridge/conformance/counter-members.json" CopyToOutputDirectory="PreserveNewest" Link="counter-members.json" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

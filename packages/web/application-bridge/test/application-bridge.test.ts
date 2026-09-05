@@ -38,7 +38,7 @@ test("event-only contracts materialize without inventing an initialization schem
 });
 
 test("transport-neutral conformance fixtures validate paired reconnect epochs", async () => {
-  const decode = async (path: string) => JSON.parse(await readFile(new URL(`../../../runic-toolkit/protocol/application-bridge/conformance/${path}`, import.meta.url), "utf8"));
+  const decode = async (path: string) => JSON.parse(await readFile(new URL(`../../../../specs/application/protocol/application-bridge/conformance/${path}`, import.meta.url), "utf8"));
   const initial = await decode("initialize.client.json");
   const resync = await decode("resynchronize.client.json");
   const snapshot = await decode("resynchronized.host.json");

@@ -12,7 +12,7 @@ intentionally evolving toward APIs and implementation choices that fit managed
 applications better.
 
 M5 and later are governed by the language-neutral
-[Runic Desktop presentation contract](../../contract/README.md). WebUI parity
+[Runic Desktop presentation contract](../../../../specs/desktop/README.md). WebUI parity
 remains compatibility evidence rather than the definition of new Runic-owned
 behavior.
 
@@ -198,7 +198,7 @@ Implemented as the managed hosting foundation:
   managed default.
 
 M5 exits only when the .NET implementation satisfies the shared
-[M5 contract gate](../../contract/milestones.md#m5-managed-hosting-foundation)
+[M5 contract gate](../../../../specs/desktop/milestones.md#m5-managed-hosting-foundation)
 and its portable lifecycle, streaming/cancellation, security, error, and
 shared-listener scenarios.
 
@@ -206,7 +206,7 @@ shared-listener scenarios.
 
 Implemented by replacing the transitional WebUI-shaped public identity with an
 idiomatic, async-first .NET API over the M5 ownership model. The public API
-satisfies the [M6 contract gate](../../contract/milestones.md#m6-net-api-reset)
+satisfies the [M6 contract gate](../../../../specs/desktop/milestones.md#m6-net-api-reset)
 without turning CLR types into cross-language contract authority.
 
 ### M7: TypeScript+Effect frontend transport
@@ -216,14 +216,14 @@ scopes, interruption, streams, and typed errors. It supplies the existing
 Application Bridge `FrameChannel` and does not create another application
 controller or schema system. The selected wire profile and portable evidence
 must satisfy the
-[M7 contract gate](../../contract/milestones.md#m7-typescripteffect-frontend-transport).
+[M7 contract gate](../../../../specs/desktop/milestones.md#m7-typescripteffect-frontend-transport).
 
 ### M8: suite adoption and v1 certification
 
 Update affected Runic products and first-party applications through their
 owned integration seams, then bind exact C# and TypeScript+Effect packages to
 the v1 golden path. Completion follows the
-[M8 contract gate](../../contract/milestones.md#m8-suite-adoption-and-v1-certification).
+[M8 contract gate](../../../../specs/desktop/milestones.md#m8-suite-adoption-and-v1-certification).
 Rust and modern C++ remain post-v1 implementation programs.
 
 ## Validation strategy

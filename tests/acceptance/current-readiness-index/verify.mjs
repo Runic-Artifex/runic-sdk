@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const schema = 'runic.local-1.0-readiness-index/1', repeatSchema = 'runic.local-1.0-readiness-index-repeat/1';
 const profiles = ['csharp-host', 'local-application-bridge', 'editor-desktop', 'd008-hosted-product'];
 const required = ['audit', 'documentation', 'operator', 'freeze', 'clean-room', 'support-certification', 'native', 'w04', 'w30', 'w40', 'w50-support', 'w50-recovery', 'w50-quality', 'w60-candidate', 'w60-tool', 'w60-preflight', 'w60-handoff', 'package-gate'];

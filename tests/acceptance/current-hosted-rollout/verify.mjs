@@ -14,7 +14,7 @@ export const NPM_FEED = "w30-005-local-candidate-npm-feed";
 const version = process.env.RUNIC_CURRENT_HOSTED_ROLLOUT_VERSION ?? "0.2.0-w30.4";
 export const NUGET_CANDIDATES = ["Runic.Application", "Runic.Application.Bridge", "Runic.Application.Hosting"].map((identity) => ({ identity, version }));
 export const NPM_CANDIDATES = [{ identity: "@runic-artifex/svelte", version: "0.1.0-preview.0" }, { identity: "@runic-artifex/sveltekit", version: "0.1.0-preview.0" }];
-const root = resolve(import.meta.dirname, "../..");
+const root = resolve(import.meta.dirname, "../../../fixtures/legacy-examples");
 const rolloutPath = join(import.meta.dirname, "rollout.json");
 export const ROLLOUT = JSON.parse(await readFile(rolloutPath, "utf8"));
 export const ROLLOUT_SHA256 = createHash("sha256").update(await readFile(rolloutPath)).digest("hex");

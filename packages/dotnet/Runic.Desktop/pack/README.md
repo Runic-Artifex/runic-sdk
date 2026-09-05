@@ -1,4 +1,4 @@
-> This package is now developed in the [Runic SDK workspace](../../README.md). Use its root build and verification commands.
+> This package is now developed in the [Runic SDK workspace](../../../../README.md). Use its root build and verification commands.
 
 # Runic Desktop
 
@@ -23,7 +23,7 @@ WebView. It does not load the native WebUI library.
 - Structured browser/WebView preflight with actionable prerequisite diagnostics
 - Sensitive permissions denied by default and explicit, typed presentation opt-in
 - Window geometry, framing, transparency, visibility, focus, and native handles
-- [Asynchronous native close confirmation](docs/window-close-lifecycle.md) for unsaved work
+- [Asynchronous native close confirmation](../../../../docs/guides/desktop/window-close-lifecycle.md) for unsaved work
 - Trimming and NativeAOT-compatible managed core
 
 ## Example
@@ -109,17 +109,17 @@ production dependency on CS-WebUI or the WebUI native library.
 
 The internal WebUI-profile engine remains differential evidence; it is not part
 of the public API. Existing source-preview consumers can use the
-[M6 migration guide](docs/migrations/webui-compat-to-desktop.md). Compatibility
+[M6 migration guide](../../../../docs/guides/desktop/migrations/webui-compat-to-desktop.md). Compatibility
 work and intentional differences are recorded in the
-[roadmap](docs/design/runic-desktop-roadmap.md).
+[roadmap](../../../../docs/guides/desktop/design/runic-desktop-roadmap.md).
 
 ## Product contract
 
 M5 and later implement the language-neutral
-[Runic Desktop presentation contract](contract/README.md). The contract defines
+[Runic Desktop presentation contract](../../../../specs/desktop/README.md). The contract defines
 host, surface, window, session, request, streaming, cancellation, security, and
 error semantics independently of .NET and TypeScript APIs. Its
-[ownership map](contract/ownership.md) keeps Application Bridge, Assets,
+[ownership map](../../../../specs/desktop/ownership.md) keeps Application Bridge, Assets,
 Translations, Vite, and framework responsibilities with their existing Runic
 products.
 

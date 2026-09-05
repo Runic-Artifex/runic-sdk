@@ -27,7 +27,7 @@
     <AdditionalFiles Include="$(ApplicationBridgeContractDirectory)/bridge.ir.json" />
   </ItemGroup>
   <PropertyGroup>
-    <ApplicationBridgeContractDirectory Condition="'$(ApplicationBridgeContractDirectory)' == ''">../../../packages/runic-toolkit/protocol/application-bridge/setup/generated</ApplicationBridgeContractDirectory>
+    <ApplicationBridgeContractDirectory Condition="'$(ApplicationBridgeContractDirectory)' == ''">../../../specs/application/protocol/application-bridge/setup/generated</ApplicationBridgeContractDirectory>
     <RestoreAdditionalProjectSources Condition="'$(ApplicationBridgeUsePackages)' == 'true'">$(PackageDirectory)</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <Import Project="../../../eng/build/application.targets" />

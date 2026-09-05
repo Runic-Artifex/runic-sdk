@@ -6,7 +6,7 @@ const npm = (name) =>
 run(
   "bash",
   [
-    "packages/runic-toolkit/tests/RunicToolkit.TemplateAcceptance/Test-Templates.sh",
+    "tests/templates/Test-Templates.sh",
     workspace.version,
     resolve(root, "artifacts/packages/nuget"),
     npm("runic-artifex-application-bridge"),

@@ -17,7 +17,7 @@ dependency. Existing domain libraries may be shared during the transition.
 
 ## Reference and evidence
 
-The [customer migration](../../../../examples/current/customer-migration/README.md)
+The [customer migration](../../../../examples/customer-migration/README.md)
 contains a compiled CommunityToolkit viewmodel and WPF host, shared domain rules and
 persistence, a member-authored Runic application module, and a React frontend.
 Live acceptance exposed a protocol bug: cancellation acknowledgements were decoded
@@ -86,7 +86,7 @@ full proposed DX exists today.
 
 1. Asynchronous close veto is implemented with native hooks and capability reporting;
    finish platform runner evidence and the Application host's macOS main-thread runner.
-   See the [lifecycle contract](../../../runic-desktop/docs/window-close-lifecycle.md).
+   See the [lifecycle contract](../../desktop/window-close-lifecycle.md).
 2. File dialogs and access lifetimes; clipboard; UI dispatching with explicit thread rules.
 3. Navigation/back, activation, menus and keyboard shortcuts.
 4. Notifications and background work lifecycle where supported.

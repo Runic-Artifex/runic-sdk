@@ -8,4 +8,4 @@ For Effect authority, set `RunicApplicationBridgeAuthority` to `effect` and incl
 
 Source generators never write committed artifacts or start JavaScript tooling. The Node compiler orchestrates the IR and frontend facade, using the managed Roslyn inspector for C# authority. The build targets run generation before compilation. Invalid contracts produce source-located `RTKAB` diagnostics; generated runtime code supports trimming and NativeAOT.
 
-See the [bridge guide](../../runic-toolkit/docs/guides/application-bridge.md) for authoring, DI scopes, project modules, and frontend schema enrichment.
+See the [bridge guide](../../../docs/guides/application/guides/application-bridge.md) for authoring, DI scopes, project modules, and frontend schema enrichment.

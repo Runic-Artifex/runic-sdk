@@ -15,7 +15,7 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="../../../packages/runic-toolkit/protocol/application-bridge/portable-core/generated/bridge.ir.json" />
+    <AdditionalFiles Include="../../../specs/application/protocol/application-bridge/portable-core/generated/bridge.ir.json" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

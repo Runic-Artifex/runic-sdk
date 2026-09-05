@@ -5,7 +5,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const compatibility = JSON.parse(
-  readFileSync(resolve(repository, "../../eng/release/runic.compatibility-set.json"), "utf8"),
+  readFileSync(
+    resolve(repository, "eng/release/runic.compatibility-set.json"),
+    "utf8",
+  ),
 );
 
 export function compatibilitySetValue(kind, identity) {
@@ -13,16 +16,23 @@ export function compatibilitySetValue(kind, identity) {
     return compatibility.releaseTrainVersion;
   }
   if (kind === "source" && identity) {
-    const source = compatibility.sources.find((entry) => entry.repository === identity);
+    const source = compatibility.sources.find(
+      (entry) => entry.repository === identity,
+    );
     if (source) return source.revision;
   }
   if (kind === "toolchain" && identity && compatibility.toolchain[identity]) {
     return compatibility.toolchain[identity];
   }
-  throw new Error(`Unknown compatibility-set value '${[kind, identity].filter(Boolean).join(" ")}'.`);
+  throw new Error(
+    `Unknown compatibility-set value '${[kind, identity].filter(Boolean).join(" ")}'.`,
+  );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
   try {
     console.log(compatibilitySetValue(...process.argv.slice(2)));
   } catch (error) {

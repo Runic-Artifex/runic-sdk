@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { defineApplicationBridgeContract } from "../../../../web/application-bridge/dist/esm/index.js";
+import { defineApplicationBridgeContract } from "../../../../../packages/web/application-bridge/dist/esm/index.js";
 
 const RefreshSnapshot = Schema.Struct({}).annotations({ identifier: "RefreshSnapshot" });
 const ManifestFingerprint = Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/));

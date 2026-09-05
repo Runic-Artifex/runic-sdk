@@ -9,7 +9,7 @@ import { releaseManifestAfter, releaseManifestFacts } from '../v0.2-baselines/me
 
 export const RECEIPT_SCHEMA = 'runic.current-svelte-controller/1';
 export const REPEAT_RECEIPT_SCHEMA = 'runic.current-svelte-controller-repeat/1';
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const archives = (process.env.RUNIC_CURRENT_SVELTE_CONTROLLER_NPM_ARCHIVES ?? '').split(',').filter(Boolean).map((path) => resolve(path));
 export const NPM_FEED = 'w20-003-local-candidate-npm-feed';
 export const CANDIDATE_NAMES = ['@runic-artifex/application-bridge', '@runic-artifex/svelte'];

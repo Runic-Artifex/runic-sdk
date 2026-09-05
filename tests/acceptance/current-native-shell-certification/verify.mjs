@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../../fixtures/legacy-examples');
 const schema = 'runic.native-shell-capability-certification/1';
 const repeatSchema = 'runic.native-shell-capability-certification-repeat/1';
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
