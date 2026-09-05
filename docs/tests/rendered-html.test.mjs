@@ -414,6 +414,9 @@ test('uses the canonical Runic Translations identifiers', async () => {
   assert.match(html, /Runic\.Translations\.\*/);
   assert.match(html, /Runic\.Translations\.Tooling/);
   assert.match(html, /@runic-artifex\/vite-plugin-runic-translations/);
+  assert.match(html, /translations\/runic\.json/);
+  assert.match(html, /m\.message_id\(\)/);
+  assert.match(html, /language server is planned for 2\.0/);
 });
 
 test('renders availability from release authority records', async () => {

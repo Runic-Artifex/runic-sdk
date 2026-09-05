@@ -186,19 +186,21 @@ export const products: Product[] = [
     icon: '/products/runic-translations.png',
     kicker: 'Localization',
     summary:
-      'Turn portable translation resources into strongly typed, NativeAOT-ready .NET APIs.',
+      'Turn a conventional MessageFormat 2 project into typed C# and tree-shakable TypeScript APIs.',
     description:
-      'Runic Translations defines source schemas, message grammar, generated artifacts, and its runtime ABI as portable contracts. Its deterministic compiler, authoring API, generators, build integration, CLI, and NativeAOT runtime begin with .NET without making .NET the boundary of the system.',
+      'Runic Translations discovers one translations/runic.json project with locale-scoped MessageFormat 2 files. Its deterministic compiler generates identifier-safe message calls, locale metadata, request-local SSR support, typed C# and tree-shakable ESM while keeping its runtime ABI portable and NativeAOT-ready.',
     ...releaseMetadata('translations'),
     source: 'https://github.com/Runic-Artifex/runic-translations',
     bestFor: [
       'Deterministic localization builds',
-      'Generated strongly typed accessors',
+      'MessageFormat 2 authoring with generated m.message_id() calls',
+      'Generated locale configuration and request-safe SSR',
       'Cross-language resource contracts',
       'Supported translation workspace tooling',
     ],
     boundaries: [
       'Independent of every UI framework',
+      'The general IDE language server is planned for 2.0, not 1.0',
       'The canonical protocol identifier is runic.translations/1',
       'The canonical .NET package family is Runic.Translations.*',
       'The desktop authoring experience and its releases belong to Runic Translations Editor',
@@ -217,11 +219,11 @@ export const products: Product[] = [
     summary:
       'Create, translate, review, and validate Runic Translations workspaces in a focused desktop editor.',
     description:
-      'Runic Translations Editor gives translators a focused workspace for natural text, variables, variants, workflow status, and validation. It preserves the deterministic Runic Translations resource model without requiring people to edit resource files directly.',
+      'Runic Translations Editor opens the same runic.json and MessageFormat 2 files as the compiler. It gives translators a focused workspace for natural text, variables, variants, workflow status, and validation without defining a second authoring format.',
     ...releaseMetadata('editor'),
     source: 'https://github.com/Runic-Artifex/runic-translations-editor',
     bestFor: [
-      'Translating and reviewing messages without editing JSON directly',
+      'Translating and reviewing MessageFormat 2 projects visually',
       'Managing locales, message structure, variables, and plural variants',
       'Validating a workspace before application builds consume it',
     ],
