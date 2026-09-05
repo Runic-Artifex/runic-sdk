@@ -50,21 +50,23 @@
     "@vitejs/devtools": "0.4.12",
     "@vitejs/devtools-kit": "0.4.12",
     "typescript": "5.9.3",
-    "vite": "8.2.1"
+    "vite": "8.2.1",
+    "@runic-artifex/application-bridge-tooling": "workspace:*"
   },
   "engines": {
-    "node": ">=24.18.0"
+    "node": ">=24.18.0 <25"
   },
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Runic-Artifex/runic-vite.git"
+    "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
+    "directory": "packages/runic-vite"
   },
-  "homepage": "https://github.com/Runic-Artifex/runic-vite#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-vite#readme",
   "bugs": {
-    "url": "https://github.com/Runic-Artifex/runic-vite/issues"
+    "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },
   "keywords": [
     "runic-artifex",

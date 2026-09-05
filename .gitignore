@@ -1,0 +1,11 @@
+**/node_modules/
+**/bin/
+**/obj/
+**/dist/
+**/.svelte-kit/
+**/.angular/
+**/TestResults/
+/artifacts/
+/.cache/
+.DS_Store
+/.direnv/

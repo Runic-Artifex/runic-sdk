@@ -4,14 +4,20 @@
   "description": "Compiler and development tooling for Runic Application Bridge contracts.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Runic-Artifex/runic-toolkit.git",
-    "directory": "web/packages/application-bridge-tooling"
+    "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
+    "directory": "packages/runic-toolkit/web/packages/application-bridge-tooling"
   },
-  "homepage": "https://github.com/Runic-Artifex/runic-toolkit/tree/main/web/packages/application-bridge-tooling",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-toolkit/web/packages/application-bridge-tooling#readme",
   "bugs": {
-    "url": "https://github.com/Runic-Artifex/runic-toolkit/issues"
+    "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },
-  "keywords": ["runic-artifex", "application-bridge", "effect", "compiler", "code-generation"],
+  "keywords": [
+    "runic-artifex",
+    "application-bridge",
+    "effect",
+    "compiler",
+    "code-generation"
+  ],
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -27,13 +33,16 @@
   "bin": {
     "runic-bridge": "./dist/esm/cli.js"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "engines": {
-    "node": ">=24.18.0"
+    "node": ">=24.18.0 <25"
   },
   "scripts": {
     "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
-    "build": "npm run clean && tsc --project tsconfig.json",
+    "build": "npm run clean && tsc --project tsconfig.json && node -e \"require('node:fs').chmodSync('dist/esm/cli.js', 0o755)\"",
     "test": "npm run build && node --test test/*.test.mjs",
     "prepack": "npm run build"
   },
@@ -52,5 +61,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "packageManager": "bun@1.4.0"
 }

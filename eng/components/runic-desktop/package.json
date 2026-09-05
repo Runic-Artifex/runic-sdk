@@ -4,11 +4,8 @@
   "type": "module",
   "packageManager": "bun@1.4.0",
   "engines": {
-    "node": ">=24.18.0"
+    "node": ">=24.18.0 <25"
   },
-  "workspaces": [
-    "web/packages/*"
-  ],
   "scripts": {
     "build": "bun run --filter @runic-artifex/desktop build && bun run build:browser-fixture",
     "build:browser-fixture": "esbuild web/packages/desktop/test/browser-entry.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=artifacts/browser/runic-desktop-test.js",

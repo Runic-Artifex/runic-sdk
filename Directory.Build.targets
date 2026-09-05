@@ -1,0 +1,3 @@
+<Project>
+  <Import Project="packages/runic-desktop/src/Runic.Desktop/buildTransitive/Runic.Desktop.targets" />
+</Project>

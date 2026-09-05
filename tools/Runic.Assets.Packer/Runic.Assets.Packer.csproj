@@ -12,14 +12,10 @@
 
   <ItemGroup>
     <ProjectReference Include="../Runic.Assets/Runic.Assets.csproj" />
-    <ProjectReference Include="$(RunicAssetsDependencyRoot)/runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj"
-                      Condition="Exists('$(RunicAssetsDependencyRoot)/runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
+    <ProjectReference Include="$(RunicAssetsDependencyRoot)/runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj" />
     <ProjectReference Include="$(RunicAssetsDependencyRoot)/runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
-                      Condition="Exists('$(RunicAssetsDependencyRoot)/runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj')"
                       PrivateAssets="all"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Analyzer" />
-    <PackageReference Include="Runic.CommandLine"
-                      Condition="!Exists('$(RunicAssetsDependencyRoot)/runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
   </ItemGroup>
 </Project>

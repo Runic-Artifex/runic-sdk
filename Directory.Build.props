@@ -1,0 +1,7 @@
+<Project>
+  <Import Project="eng/Versions.props" />
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/Runic-Artifex/runic-sdk</RepositoryUrl>
+    <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
+  </PropertyGroup>
+</Project>

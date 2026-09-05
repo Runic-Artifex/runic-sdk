@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const examplesRoot = resolve(here, "../..");
-const editorRoot = resolve(examplesRoot, "../runic-translations-editor");
+const editorRoot = resolve(examplesRoot, "../apps/translations-editor");
 
 export const RECEIPT_SCHEMA = "runic.w40-localization-compatibility/1";
 export const REPEAT_RECEIPT_SCHEMA = "runic.w40-localization-compatibility-repeat/1";

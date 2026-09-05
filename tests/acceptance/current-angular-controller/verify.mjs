@@ -19,7 +19,7 @@ export const BRIDGE_CONTRACT = {
   version: bridgeIr.wire.protocol.version,
   fingerprint: bridgeIr.fingerprint.value,
 };
-const generator = resolve(root, '../runic-toolkit/web/packages/application-bridge-tooling/dist/esm/cli.js');
+const generator = resolve(root, '../packages/runic-toolkit/web/packages/application-bridge-tooling/dist/esm/cli.js');
 const archives = (process.env.RUNIC_CURRENT_ANGULAR_CONTROLLER_NPM_ARCHIVES ?? '').split(',').filter(Boolean).map((path) => resolve(path));
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const sha256 = async (path) => createHash('sha256').update(await readFile(path)).digest('hex');

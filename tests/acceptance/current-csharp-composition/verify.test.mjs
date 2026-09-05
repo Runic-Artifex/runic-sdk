@@ -28,7 +28,7 @@ test('current C# composition receipt accepts the exact package-only fixture', ()
 
 test('current C# composition receipt rejects source projects, forged candidates, changed authority, and a forged tool', () => {
   const value = receipt();
-  value.projectReferences.push('../runic-toolkit/Runic.Application.csproj');
+  value.projectReferences.push('../packages/runic-toolkit/Runic.Application.csproj');
   value.candidates[0].source = 'https://api.nuget.org/v3/index.json';
   value.tool.version = '0.0.0-forged';
   value.releaseManifest.revision = '0'.repeat(40);

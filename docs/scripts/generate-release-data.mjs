@@ -10,7 +10,7 @@ import { authorityRevision } from './release-authority.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const defaultManifest = resolve(
-  process.env.RUNIC_RELEASE_MANIFEST ?? '../.github/runic.release.json',
+  process.env.RUNIC_RELEASE_MANIFEST ?? resolve(repositoryRoot, '../eng/release/runic.release.json'),
 );
 const configuredCompatibilitySet = process.env.RUNIC_COMPATIBILITY_SET ?? null;
 const defaultOutput = resolve(

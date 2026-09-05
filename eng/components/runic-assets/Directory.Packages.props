@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="../../Directory.Packages.props" />
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
@@ -8,7 +9,5 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="Runic.CommandLine" Version="$(RunicCommandLineVersion)" />
-    <PackageVersion Include="Runic.Desktop" Version="$(RunicDesktopVersion)" />
   </ItemGroup>
 </Project>

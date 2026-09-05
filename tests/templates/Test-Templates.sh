@@ -241,9 +241,9 @@ verify_package_manager_framework() {
       if [[ "$framework" == "vue" ]]; then
         bun run typecheck
       else
-        env PATH="$bun_only_path" "$bun_only_path/bun" run typecheck
+        env PATH="$bun_only_path" "$bun_only_path/bun" --bun run typecheck
       fi
-      env PATH="$bun_only_path" "$bun_only_path/bun" run build
+      env PATH="$bun_only_path" "$bun_only_path/bun" --bun run build
     )
   else
     (

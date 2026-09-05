@@ -1,0 +1,1 @@
+Synthetic valid input for the frozen W80 claim-validator unit tests. This is not a release receipt or a claim about current SDK support. Current documentation has advanced beyond this four-profile contract and is tested in the docs workspace.

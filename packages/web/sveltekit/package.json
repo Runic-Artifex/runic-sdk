@@ -2,9 +2,9 @@
   "name": "@runic-artifex/sveltekit",
   "version": "1.0.0-preview.1",
   "description": "SvelteKit integration for Runic Toolkit applications",
-  "homepage": "https://github.com/Runic-Artifex/runic-svelte#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-svelte/packages/sveltekit#readme",
   "bugs": {
-    "url": "https://github.com/Runic-Artifex/runic-svelte/issues"
+    "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },
   "keywords": [
     "runic-artifex",
@@ -73,7 +73,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Runic-Artifex/runic-svelte.git",
-    "directory": "packages/sveltekit"
+    "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
+    "directory": "packages/runic-svelte/packages/sveltekit"
+  },
+  "packageManager": "bun@1.4.0",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "dependencies": {
+    "@types/cookie": "0.6.0"
   }
 }

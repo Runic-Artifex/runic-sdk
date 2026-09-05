@@ -36,14 +36,10 @@
     <None Update="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="../../eng/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
-    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj"
-                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
+    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj" />
     <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
-                      Condition="Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')"
                       PrivateAssets="all"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Analyzer" />
-    <PackageReference Include="Runic.CommandLine"
-                      Condition="!Exists('../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj')" />
   </ItemGroup>
 </Project>

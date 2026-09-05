@@ -30,7 +30,7 @@ test('testing profile receipt accepts the package-only deterministic contract', 
 
 test('testing profile receipt rejects source projects, forged inputs, and non-isolated candidates', () => {
   const value = receipt();
-  value.projectReferences.push('../runic-toolkit/src/Runic.Application.Testing/Runic.Application.Testing.csproj');
+  value.projectReferences.push('../packages/runic-toolkit/src/Runic.Application.Testing/Runic.Application.Testing.csproj');
   value.inputs.idSeed = 0;
   value.candidates[1].source = 'https://api.nuget.org/v3/index.json';
   const report = verifyReceipt(value, authority);

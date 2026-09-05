@@ -9,10 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Runic.Assets\Runic.Assets.csproj" />
-    <ProjectReference Include="$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj"
-                      Condition="Exists('$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj')" />
-    <PackageReference Include="Runic.Desktop"
-                      Condition="!Exists('$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj')" />
+    <ProjectReference Include="$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj" />
   </ItemGroup>
   <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
 </Project>

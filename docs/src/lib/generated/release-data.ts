@@ -2,15 +2,15 @@
 export const releaseData = {
   schemaVersion: 1,
   source: {
-    authorityRevision: '1b806d64d9516ef376fe4ddab17a3e1dcc10e446',
+    authorityRevision: '009be7c0be0f834a5af0b7e063750065cf45f766',
     manifestSha256:
-      '44509da940d238738427d2cce4a8d2d58863b21f1d976daf854c04be9c086b3f',
+      '8d9add4f00f6a26acae40bdb053acdd637654fc26b3f9fb3a968245ad0840013',
     schemaSha256:
       '32b46fd971d70e7b830802101745076f401bf201571834f8b57856686b8950e6',
     verifierSha256:
       '8b6fdf5bb8e83446f7a92c00c3a1f4c8f277c2cfa8e7d56fb704f6653f486ec6',
     compatibilitySetSha256:
-      'bf51314f9e939c4fc9e5baf37d5b1e034760a4d0c97b901b21923f88a669f88a',
+      '559478f1dc494a64167ecc58612aaec4d7b3b6a98a86f41680a20ba34d18040b',
     compatibilitySchemaSha256:
       '0be0b3566a5d8bcc9c72a170740287277002926eac865b835bd7de198645c23c',
     compatibilityVerifierSha256:
@@ -336,6 +336,13 @@ export const releaseData = {
     },
     {
       identity: '@runic-artifex/application-bridge',
+      ecosystem: 'npm',
+      product: 'application',
+      state: 'approved',
+      installKind: 'npm-package',
+    },
+    {
+      identity: '@runic-artifex/application-bridge-tooling',
       ecosystem: 'npm',
       product: 'application',
       state: 'approved',
@@ -669,6 +676,20 @@ export const releaseData = {
       migration: {
         kind: 'package',
         target: '@runic-artifex/application-bridge',
+        guidance: 'Keep imports.',
+      },
+    },
+    {
+      identity: '@runic-artifex/application-bridge-tooling',
+      ecosystem: 'npm',
+      product: 'application',
+      stableOwner: 'Runic Application',
+      support: 'supported',
+      disposition: 'keep',
+      target: '@runic-artifex/application-bridge-tooling',
+      migration: {
+        kind: 'package',
+        target: '@runic-artifex/application-bridge-tooling',
         guidance: 'Keep imports.',
       },
     },
@@ -1147,6 +1168,12 @@ export const releaseData = {
       {
         ecosystem: 'npm',
         identity: '@runic-artifex/application-bridge',
+        version: '1.0.0-preview.1',
+        source: 'runic-toolkit',
+      },
+      {
+        ecosystem: 'npm',
+        identity: '@runic-artifex/application-bridge-tooling',
         version: '1.0.0-preview.1',
         source: 'runic-toolkit',
       },

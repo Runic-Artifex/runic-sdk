@@ -1,0 +1,88 @@
+name: SDK CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sdk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  CONFIGURATION: Release
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache/nuget
+            ~/.bun/install/cache
+          key: sdk-${{ runner.os }}-${{ hashFiles('bun.lock', '**/Directory.Packages.props', '**/*.csproj', 'global.json') }}
+      - run: npm install --global npm@11.16.0 pnpm@11.25.0
+      - run: bun run bootstrap
+      - run: bun run verify
+      - run: bun run verify:templates
+      - name: Check generated files and lockfile
+        run: git diff --exit-code
+      - name: Retain local package candidates
+        uses: actions/upload-artifact@v7
+        with:
+          name: runic-sdk-${{ github.sha }}
+          path: artifacts/packages
+          if-no-files-found: error
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            rid: linux-x64
+            extension: ""
+          - os: windows-latest
+            rid: win-x64
+            extension: .exe
+          - os: macos-15-intel
+            rid: osx-x64
+            extension: ""
+          - os: macos-15
+            rid: osx-arm64
+            extension: ""
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Build and test managed desktop contracts
+        shell: bash
+        run: |
+          dotnet build RunicSdk.Core.slnx -c Release
+          dotnet test packages/runic-desktop/tests/Runic.Desktop.Tests -c Release --no-build
+      - name: Publish generated member bridge with NativeAOT
+        shell: bash
+        run: |
+          dotnet publish packages/runic-toolkit/tests/Runic.Application.Bridge.MemberAotSmoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/native
+          ./artifacts/native/Runic.Application.Bridge.MemberAotSmoke${{ matrix.extension }}

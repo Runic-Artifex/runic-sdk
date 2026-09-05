@@ -1,3 +1,5 @@
+> This package is now developed in the [Runic SDK workspace](../../README.md). Use its root build and verification commands.
+
 ![Runic Artifex banner](https://raw.githubusercontent.com/Runic-Artifex/runic-vite/main/.github/assets/brand/banner.png)
 
 # Runic Vite

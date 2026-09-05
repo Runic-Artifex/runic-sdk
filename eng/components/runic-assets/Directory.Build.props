@@ -1,5 +1,7 @@
 <Project>
+  <Import Project="../../Directory.Build.props" />
   <PropertyGroup>
+    <RunicAssetsDependencyRoot>$(MSBuildThisFileDirectory)..</RunicAssetsDependencyRoot>
     <!--
       Development is the approachable inner loop. Verification is selected by CI
       and eng/verify.ps1 for release-grade analysis.
@@ -8,8 +10,6 @@
     <RunicAssetsBuildMode Condition="'$(RunicAssetsBuildMode)' == ''">Development</RunicAssetsBuildMode>
     <RunicAssetsVerificationBuild Condition="'$(RunicAssetsBuildMode)' == 'Verification'">true</RunicAssetsVerificationBuild>
     <RunicAssetsVerificationBuild Condition="'$(RunicAssetsVerificationBuild)' == ''">false</RunicAssetsVerificationBuild>
-    <RunicAssetsDependencyRoot Condition="'$(RunicAssetsDependencyRoot)' == '' and '$(RUNIC_ASSETS_DEPENDENCY_ROOT)' != ''">$(RUNIC_ASSETS_DEPENDENCY_ROOT)</RunicAssetsDependencyRoot>
-    <RunicAssetsDependencyRoot Condition="'$(RunicAssetsDependencyRoot)' == ''">$(MSBuildThisFileDirectory)..</RunicAssetsDependencyRoot>
 
     <LangVersion>14.0</LangVersion>
     <Nullable>enable</Nullable>
@@ -27,10 +27,8 @@
     <Authors>RunicArtifex</Authors>
     <Company>RunicArtifex</Company>
     <Copyright>Copyright (c) 2026 Viktor Jannicke</Copyright>
-    <RepositoryUrl>https://github.com/Runic-Artifex/runic-assets</RepositoryUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <PackageProjectUrl>https://github.com/Runic-Artifex/runic-assets</PackageProjectUrl>
     <PackageIcon>icon.png</PackageIcon>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags Condition="'$(PackageTags)' == ''">runic-artifex;assets;dotnet;nativeaot</PackageTags>

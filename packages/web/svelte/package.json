@@ -2,9 +2,9 @@
   "name": "@runic-artifex/svelte",
   "version": "1.0.0-preview.1",
   "description": "Svelte 5 integration for the Runic Toolkit Application Bridge",
-  "homepage": "https://github.com/Runic-Artifex/runic-svelte#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-svelte/packages/svelte#readme",
   "bugs": {
-    "url": "https://github.com/Runic-Artifex/runic-svelte/issues"
+    "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },
   "keywords": [
     "runic-artifex",
@@ -77,7 +77,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Runic-Artifex/runic-svelte.git",
-    "directory": "packages/svelte"
+    "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
+    "directory": "packages/runic-svelte/packages/svelte"
+  },
+  "packageManager": "bun@1.4.0",
+  "engines": {
+    "node": ">=24.18.0 <25"
   }
 }

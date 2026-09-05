@@ -34,7 +34,6 @@ const definition = defineApplicationBridgeContract({
   commands: [bridge.command(Command, { receipt: Receipt })],
   events: [Event],
   errors: [],
-  initialize: { _tag: "Increment", step: 0 },
 });
 const contract = materializeApplicationBridgeContract(definition, "0".repeat(64));
 

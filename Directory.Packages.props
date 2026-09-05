@@ -1,0 +1,39 @@
+<Project>
+  <Import Project="eng/Versions.props" Condition="'$(RunicSdkVersion)' == ''" />
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Build.Framework" Version="17.11.48" />
+    <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.300" />
+    <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+    <PackageVersion Include="ReactiveUI" Version="23.2.28" />
+    <PackageVersion Include="ReactiveUI.SourceGenerators" Version="3.1.0" />
+    <PackageVersion Include="Runic.Application" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Bridge" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Desktop" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Hosting" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Assets" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Assets.AspNetCore" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Assets.Desktop" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.CommandLine" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Desktop" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Translations" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Translations.Build" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Translations.Tooling" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>

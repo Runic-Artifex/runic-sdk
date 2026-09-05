@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="../../Directory.Build.targets" />
   <PropertyGroup Condition="'$(RunicCommandLineShippingProject)' == 'true'">
     <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == '' and ('$(RunicCommandLineVerificationBuild)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true')">true</EnableTrimAnalyzer>
     <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == ''">false</EnableTrimAnalyzer>

@@ -85,7 +85,7 @@ test('rejects authority sources that differ from the pinned commit', async () =>
   const fixture = await mkdtemp(join(tmpdir(), 'runic-release-authority-'));
   const authority = join(fixture, 'authority');
   const sourceManifest = resolve(
-    process.env.RUNIC_RELEASE_MANIFEST ?? '../.github/runic.release.json',
+    process.env.RUNIC_RELEASE_MANIFEST ?? '../eng/release/runic.release.json',
   );
   const sourceAuthority = dirname(sourceManifest);
   const sources = [

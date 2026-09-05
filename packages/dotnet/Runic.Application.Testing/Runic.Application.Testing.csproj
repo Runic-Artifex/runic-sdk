@@ -10,10 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Runic.Application\Runic.Application.csproj" />
-    <ProjectReference Include="..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj"
-                      Condition="Exists('..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj') and '$(RunicToolkitVerificationBuild)' != 'true'" />
-    <PackageReference Include="Runic.Assets"
-                      Condition="!Exists('..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj') or '$(RunicToolkitVerificationBuild)' == 'true'" />
+    <ProjectReference Include="..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj" />
   </ItemGroup>
   <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
 </Project>

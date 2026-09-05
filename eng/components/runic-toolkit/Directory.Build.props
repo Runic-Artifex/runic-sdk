@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="../../Directory.Build.props" />
   <PropertyGroup>
     <!--
       Development is the approachable inner loop. Verification is selected by CI
@@ -25,10 +26,8 @@
     <Authors>RunicArtifex</Authors>
     <Company>RunicArtifex</Company>
     <Copyright>Copyright (c) 2026 Viktor Jannicke</Copyright>
-    <RepositoryUrl>https://github.com/Runic-Artifex/runic-toolkit</RepositoryUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <PackageProjectUrl>https://github.com/Runic-Artifex/runic-toolkit</PackageProjectUrl>
     <PackageIcon>icon.png</PackageIcon>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags Condition="'$(PackageTags)' == ''">runic-artifex;toolkit;webui;desktop;dotnet;nativeaot</PackageTags>
@@ -40,7 +39,7 @@
     <RunicToolkitDefaultTargetFramework>net10.0</RunicToolkitDefaultTargetFramework>
     <RunicToolkitCompatibilityTargetFramework>net10.0</RunicToolkitCompatibilityTargetFramework>
     <RunicToolkitGeneratorTargetFramework>net10.0</RunicToolkitGeneratorTargetFramework>
-    <!-- Verification injects a temporary package-only sibling-product feed. -->
+    <!-- Package consumer verification supplies an isolated artifact feed. -->
     <RestoreAdditionalProjectSources Condition="'$(RunicVerificationFeed)' != ''">$(RunicVerificationFeed)</RestoreAdditionalProjectSources>
     <IsPackable Condition="'$(MSBuildProjectName)' == 'Runic.Application.Bridge.Generators'">false</IsPackable>
   </PropertyGroup>

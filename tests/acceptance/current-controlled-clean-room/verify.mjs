@@ -50,7 +50,7 @@ async function verifiers() {
     portable: await import(pathToFileURL(join(root, 'eng/current-mf2-subset-consumer/verify.mjs')).href),
     hosted: await import(pathToFileURL(join(root, 'eng/current-hosted-product/verify.mjs')).href),
     localization: await import(pathToFileURL(join(root, 'eng/current-localization-compatibility/verify.mjs')).href),
-    desktop: await import(pathToFileURL(join(root, '../runic-translations-editor/eng/verify-localized-desktop-product.mjs')).href),
+    desktop: await import(pathToFileURL(join(root, '../apps/translations-editor/eng/verify-localized-desktop-product.mjs')).href),
   };
 }
 

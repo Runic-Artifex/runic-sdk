@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const compatibility = JSON.parse(
-  readFileSync(resolve(repository, "eng/runic.compatibility-set.json"), "utf8"),
+  readFileSync(resolve(repository, "../../eng/release/runic.compatibility-set.json"), "utf8"),
 );
 
 export function compatibilitySetValue(kind, identity) {

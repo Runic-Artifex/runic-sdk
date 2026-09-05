@@ -1,0 +1,41 @@
+{
+  "name": "@runic-artifex/sdk-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "workspaces": [
+    "packages/runic-toolkit",
+    "packages/runic-toolkit/web/packages/application-bridge",
+    "packages/runic-toolkit/web/packages/application-bridge-tooling",
+    "packages/runic-toolkit/web/packages/angular",
+    "packages/runic-desktop",
+    "packages/runic-desktop/web/packages/desktop",
+    "packages/runic-translations/web",
+    "packages/runic-vite",
+    "packages/runic-svelte",
+    "packages/runic-svelte/packages/svelte",
+    "packages/runic-svelte/packages/sveltekit",
+    "apps/translations-editor/Frontend",
+    "docs"
+  ],
+  "scripts": {
+    "bootstrap": "node eng/run.mjs bootstrap",
+    "build": "node eng/run.mjs build",
+    "test": "node eng/run.mjs test",
+    "verify": "node eng/run.mjs verify",
+    "pack": "node eng/run.mjs pack",
+    "verify-packages": "node eng/run.mjs verify-packages",
+    "dev:docs": "node eng/run.mjs dev:docs",
+    "dev:editor": "node eng/run.mjs dev:editor",
+    "affected": "node eng/run.mjs affected",
+    "example:counter": "dotnet run --project examples/current/counter/Counter.csproj",
+    "verify:templates": "node eng/verify-templates.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "effect": "3.22.1"
+  }
+}

@@ -3,18 +3,24 @@
   "version": "1.0.0-preview.1",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Runic-Artifex/runic-desktop.git",
-    "directory": "web/packages/desktop"
+    "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
+    "directory": "packages/runic-desktop/web/packages/desktop"
   },
   "publishConfig": {
     "access": "public"
   },
   "description": "Effect-native browser transport for Runic Desktop presentation hosts.",
-  "homepage": "https://github.com/Runic-Artifex/runic-desktop/tree/main/web/packages/desktop",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/runic-desktop/web/packages/desktop#readme",
   "bugs": {
-    "url": "https://github.com/Runic-Artifex/runic-desktop/issues"
+    "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },
-  "keywords": ["runic-artifex", "desktop", "effect", "typescript", "webview"],
+  "keywords": [
+    "runic-artifex",
+    "desktop",
+    "effect",
+    "typescript",
+    "webview"
+  ],
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -29,9 +35,12 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "engines": {
-    "node": ">=24.18.0"
+    "node": ">=24.18.0 <25"
   },
   "scripts": {
     "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
@@ -44,5 +53,6 @@
   },
   "devDependencies": {
     "typescript": "7.0.2"
-  }
+  },
+  "packageManager": "bun@1.4.0"
 }

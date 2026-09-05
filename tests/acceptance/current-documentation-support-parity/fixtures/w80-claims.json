@@ -1,0 +1,75 @@
+{
+  "schema": "runic.local-nonpublic-documentation-claims/1",
+  "publication": "forbidden",
+  "profiles": [
+    "csharp-host",
+    "local-application-bridge",
+    "editor-desktop",
+    "d008-hosted-product"
+  ],
+  "claims": [
+    {
+      "id": "csharp-host",
+      "anchor": "csharp-host",
+      "evidence": "w70-clean-room",
+      "text": "The C# host retains its recorded local clean-room profile."
+    },
+    {
+      "id": "local-application-bridge",
+      "anchor": "local-application-bridge",
+      "evidence": "w70-clean-room",
+      "text": "The bridge retains its recorded local frame boundary."
+    },
+    {
+      "id": "editor-interchange",
+      "anchor": "editor-interchange",
+      "evidence": "w70-clean-room",
+      "text": "The editor retains its recorded interchange profile."
+    },
+    {
+      "id": "hosted-locale",
+      "anchor": "hosted-locale",
+      "evidence": "w70-clean-room",
+      "text": "The hosted product retains its recorded locale profile."
+    },
+    {
+      "id": "support-envelope",
+      "anchor": "support-envelope",
+      "evidence": "w70-support",
+      "text": "The support envelope is local and non-public."
+    },
+    {
+      "id": "manual-replacement",
+      "anchor": "manual-replacement",
+      "evidence": "w60-preflight",
+      "text": "Replacement requires the recorded manual preflight."
+    },
+    {
+      "id": "recovery",
+      "anchor": "recovery",
+      "evidence": "w70-support",
+      "text": "Recovery retains the recorded rollback boundary."
+    },
+    {
+      "id": "native-refusal",
+      "anchor": "native-refusal",
+      "evidence": "w70-native",
+      "text": "The recorded result is a managed refusal, not browser or native platform success."
+    }
+  ],
+  "nonClaims": [
+    "source-content",
+    "translation-content",
+    "review-content",
+    "session-content",
+    "cookie-content",
+    "token-content",
+    "version-assignment",
+    "publication",
+    "signing",
+    "notarization",
+    "upload",
+    "updates",
+    "telemetry"
+  ]
+}

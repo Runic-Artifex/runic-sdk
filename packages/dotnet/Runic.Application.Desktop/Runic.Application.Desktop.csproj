@@ -11,10 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Runic.Application\Runic.Application.csproj" />
     <ProjectReference Include="..\Runic.Application.Bridge\Runic.Application.Bridge.csproj" />
-    <ProjectReference Include="..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj"
-                      Condition="Exists('..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj') and '$(RunicToolkitVerificationBuild)' != 'true'" />
-    <PackageReference Include="Runic.Desktop"
-                      Condition="!Exists('..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj') or '$(RunicToolkitVerificationBuild)' == 'true'" />
+    <ProjectReference Include="..\..\..\runic-desktop\src\Runic.Desktop\Runic.Desktop.csproj" />
   </ItemGroup>
   <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
 </Project>

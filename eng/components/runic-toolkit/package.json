@@ -5,11 +5,8 @@
   "license": "MIT",
   "packageManager": "bun@1.4.0",
   "engines": {
-    "node": "24.18.x"
+    "node": ">=24.18.0 <25"
   },
-  "workspaces": [
-    "web/packages/*"
-  ],
   "scripts": {
     "generate:application-bridge": "bun run --filter @runic-artifex/application-bridge build && bun run --filter @runic-artifex/application-bridge-tooling build && node web/packages/application-bridge-tooling/dist/esm/cli.js generate --authority effect --source protocol/application-bridge/setup/application.bridge.ts --ir protocol/application-bridge/setup/generated/bridge.ir.json --facade protocol/application-bridge/setup/generated/application.bridge.generated.ts && node web/packages/application-bridge-tooling/dist/esm/cli.js generate --authority effect --source protocol/application-bridge/counter/application.bridge.ts --ir protocol/application-bridge/counter/generated/bridge.ir.json --facade protocol/application-bridge/counter/generated/application.bridge.generated.ts && node web/packages/application-bridge-tooling/dist/esm/cli.js generate --authority effect --source protocol/application-bridge/refresh/application.bridge.ts --ir protocol/application-bridge/refresh/generated/bridge.ir.json --facade protocol/application-bridge/refresh/generated/application.bridge.generated.ts && node web/packages/application-bridge-tooling/dist/esm/cli.js generate --authority effect --source protocol/application-bridge/portable-core/application.bridge.ts --ir protocol/application-bridge/portable-core/generated/bridge.ir.json --facade protocol/application-bridge/portable-core/generated/application.bridge.generated.ts && node eng/generate-application-bridge-templates.mjs",
     "verify:application-bridge-artifacts": "bun run --filter @runic-artifex/application-bridge build && bun run --filter @runic-artifex/application-bridge-tooling build && node web/packages/application-bridge-tooling/dist/esm/cli.js check --authority effect --source protocol/application-bridge/setup/application.bridge.ts --ir protocol/application-bridge/setup/generated/bridge.ir.json --facade protocol/application-bridge/setup/generated/application.bridge.generated.ts && node web/packages/application-bridge-tooling/dist/esm/cli.js check --authority effect --source protocol/application-bridge/counter/application.bridge.ts --ir protocol/application-bridge/counter/generated/bridge.ir.json --facade protocol/application-bridge/counter/generated/application.bridge.generated.ts && node web/packages/application-bridge-tooling/dist/esm/cli.js check --authority effect --source protocol/application-bridge/refresh/application.bridge.ts --ir protocol/application-bridge/refresh/generated/bridge.ir.json --facade protocol/application-bridge/refresh/generated/application.bridge.generated.ts && node web/packages/application-bridge-tooling/dist/esm/cli.js check --authority effect --source protocol/application-bridge/portable-core/application.bridge.ts --ir protocol/application-bridge/portable-core/generated/bridge.ir.json --facade protocol/application-bridge/portable-core/generated/application.bridge.generated.ts && node eng/verify-application-bridge-templates.mjs",
@@ -30,5 +27,6 @@
     "playwright-core": "1.62.1",
     "typescript": "5.9.3",
     "vite": "8.1.5"
-  }
+  },
+  "type": "module"
 }
