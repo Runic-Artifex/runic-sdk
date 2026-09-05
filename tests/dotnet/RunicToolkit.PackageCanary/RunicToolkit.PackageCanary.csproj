@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -19,4 +20,5 @@
     <PackageReference Include="Runic.Application.Hosting" Version="$(PackageVersion)" />
     <PackageReference Include="Runic.Application.Testing" Version="$(PackageVersion)" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

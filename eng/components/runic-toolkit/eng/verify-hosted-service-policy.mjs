@@ -3,9 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const policy = text("src/Runic.Application.Hosting/HostedServiceAdmissionPolicy.cs");
+const policy = text("../dotnet/Runic.Application.Hosting/HostedServiceAdmissionPolicy.cs");
 const guide = text("docs/guides/hosted-service.md");
-const deployment = text("src/Runic.Application.Hosting/HostedDeploymentConfiguration.cs");
+const deployment = text("../dotnet/Runic.Application.Hosting/HostedDeploymentConfiguration.cs");
 const deploymentGuide = text("docs/guides/hosted-deployment.md");
 for (const value of ["oidc-authorization-code", "__Host-runic-session", "X-Runic-CSRF", "/runic/service", "/signin-oidc"]) {
   requireText(policy, value, "C# admission policy");

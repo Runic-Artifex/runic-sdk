@@ -86,7 +86,7 @@ pwsh -NoProfile \
 bash eng/run-hosted-browser-e2e.sh
 pwsh -NoProfile -File eng/verify-native-aot.ps1 -RuntimeIdentifier linux-x64 -Configuration "$configuration"
 tool_native_publish="$verification_root/dotnet-runic-native"
-dotnet publish tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj \
+dotnet publish ../../tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj \
   --configuration "$configuration" \
   --runtime linux-x64 \
   --self-contained true \
@@ -96,8 +96,8 @@ dotnet publish tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj \
   -p:IlcTreatWarningsAsErrors=true \
   -p:PublishDir="$tool_native_publish" \
   "${build_properties[@]}"
-bash tests/RunicToolkit.PackageCanary/Test-ToolParsePresentation.sh "$tool_native_publish/dotnet-runic"
-bash tests/RunicToolkit.PackageCanary/Test-ToolMigration.sh "$tool_native_publish/dotnet-runic"
+bash ../../tests/dotnet/RunicToolkit.PackageCanary/Test-ToolParsePresentation.sh "$tool_native_publish/dotnet-runic"
+bash ../../tests/dotnet/RunicToolkit.PackageCanary/Test-ToolMigration.sh "$tool_native_publish/dotnet-runic"
 
 # Release-facing acceptance is package-only: the canonical seven NuGet artifacts,
 # local bridge and Angular archives, and exact official Desktop/Svelte/Vite archives.
@@ -113,9 +113,9 @@ runic_resolve_frontend_package_versions \
   "${RUNIC_DESKTOP_NPM_VERSION:-}"
 release_packages="${RUNIC_PACKAGE_OUTPUT:-$verification_root/packages}"
 bash eng/pack.sh "$release_version" "$release_packages"
-bash tests/RunicToolkit.PackageCanary/Test-PackageCanary.sh "$release_version" "$release_packages"
-bash tests/Runic.Application.Bridge.AotSmoke/Test-PackageAot.sh "$release_version" "$release_packages"
-bash tests/Runic.Application.PackageConsumer/Test-HostileGenerator.sh "$release_version" "$release_packages"
+bash ../../tests/dotnet/RunicToolkit.PackageCanary/Test-PackageCanary.sh "$release_version" "$release_packages"
+bash ../../tests/native/Runic.Application.Bridge.AotSmoke/Test-PackageAot.sh "$release_version" "$release_packages"
+bash ../../tests/fixtures/application/Runic.Application.PackageConsumer/Test-HostileGenerator.sh "$release_version" "$release_packages"
 node eng/pack-npm.mjs "$bridge_npm_version" "$release_packages" "$npm_registry_target"
 node eng/verify-npm-artifacts.mjs "$bridge_npm_version" "$release_packages"
 mkdir -p "$integration_packages"

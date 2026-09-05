@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
     <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
@@ -10,7 +11,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Runic.Application\Runic.Application.csproj" />
-    <ProjectReference Include="..\..\..\runic-assets\src\Runic.Assets\Runic.Assets.csproj" />
+    <ProjectReference Include="..\Runic.Assets\Runic.Assets.csproj" />
   </ItemGroup>
   <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

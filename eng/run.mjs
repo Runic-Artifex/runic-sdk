@@ -88,7 +88,7 @@ function test() {
   run("node", ["--test", "examples/eng/current-*/*.test.mjs"]);
   run("dotnet", [
     "test",
-    "packages/runic-desktop/tests/Runic.Desktop.Tests",
+    "tests/dotnet/Runic.Desktop.Tests",
     "-c",
     configuration,
     "--no-build",
@@ -111,7 +111,7 @@ function test() {
           configuration,
           "--no-build",
         ],
-        resolve(root, path.split("/").slice(0, 2).join("/")),
+        root,
       );
     }
   }
@@ -139,7 +139,19 @@ function test() {
     "packages/runic-svelte/packages/sveltekit",
     "apps/translations-editor/Frontend",
   ]) {
-    run("bun", ["run", "check"], resolve(root, path));
+    run(
+      "bun",
+      ["run", "check"],
+      resolve(root, path),
+      path === "apps/translations-editor/Frontend"
+        ? {
+            RUNIC_TRANSLATIONS_MANIFEST: resolve(
+              root,
+              `apps/translations-editor/obj/${configuration}/net10.0/translations/editor.esm/web-module-manifest-v1.json`,
+            ),
+          }
+        : {},
+    );
   }
   run(
     "bun",
@@ -190,16 +202,21 @@ function affected() {
     .trim()
     .split("\n")
     .filter(Boolean);
+  console.log(JSON.stringify(affectedComponents(files), null, 2));
+}
+
+export function affectedComponents(files) {
   const components = Object.entries(workspace.components);
+  const owns = (component, file) =>
+    component.paths.some(
+      (path) => file === path || file.startsWith(`${path}/`),
+    );
   const global = files.some(
-    (file) => !components.some(([, c]) => file.startsWith(`${c.path}/`)),
+    (file) => !components.some(([, c]) => owns(c, file)),
   );
   const selected = new Set(
     components
-      .filter(
-        ([, c]) =>
-          global || files.some((file) => file.startsWith(`${c.path}/`)),
-      )
+      .filter(([, c]) => global || files.some((file) => owns(c, file)))
       .map(([name]) => name),
   );
   let previous;
@@ -208,7 +225,7 @@ function affected() {
     for (const [name, c] of components)
       if (c.dependsOn.some((d) => selected.has(d))) selected.add(name);
   } while (selected.size !== previous);
-  console.log(JSON.stringify([...selected], null, 2));
+  return [...selected];
 }
 async function main() {
   const command = process.argv[2];
@@ -216,7 +233,7 @@ async function main() {
   // Always use this checkout's compiler, even if an older checkout exported an override.
   process.env.RUNIC_BRIDGE_INSPECTOR = resolve(
     root,
-    `packages/runic-toolkit/tools/Runic.Application.Bridge.Inspector/bin/${configuration}/net10.0/Runic.Application.Bridge.Inspector.dll`,
+    `tools/Runic.Application.Bridge.Inspector/bin/${configuration}/net10.0/Runic.Application.Bridge.Inspector.dll`,
   );
   switch (command) {
     case "bootstrap":

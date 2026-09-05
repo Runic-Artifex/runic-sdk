@@ -12,23 +12,23 @@
       "name": "application",
       "branch": "work/application",
       "paths": [
-        "src/Runic.Application/*",
-        "src/Runic.Application.Generators/*",
-        "src/Runic.Application.Hosting/*",
-        "src/Runic.Application.Desktop/*",
-        "src/Runic.Application.Testing/*",
-        "tests/Runic.Application.Tests/*",
-        "tests/Runic.Application.AotSmoke/*",
-        "tests/Runic.Application.Hosting.Tests/*",
-        "tests/Runic.Application.Hosting.AotSmoke/*",
-        "tests/Runic.Application.Desktop.Tests/*",
-        "tests/Runic.Application.PackageConsumer/*",
-        "tools/dotnet-runic-toolkit/*",
-        "tests/RunicToolkit.DotNet.RunicToolkit.Tests/*",
-        "tests/RunicToolkit.PackageCanary/*",
-        "tools/Runic.Application.Bridge.Inspector/*",
-        "tests/Runic.Application.Bridge.MemberTests/*",
-        "tests/Runic.Application.Bridge.MemberAotSmoke/*"
+        "../dotnet/Runic.Application/*",
+        "../dotnet/Runic.Application.Generators/*",
+        "../dotnet/Runic.Application.Hosting/*",
+        "../dotnet/Runic.Application.Desktop/*",
+        "../dotnet/Runic.Application.Testing/*",
+        "../../tests/dotnet/Runic.Application.Tests/*",
+        "../../tests/native/Runic.Application.AotSmoke/*",
+        "../../tests/dotnet/Runic.Application.Hosting.Tests/*",
+        "../../tests/native/Runic.Application.Hosting.AotSmoke/*",
+        "../../tests/dotnet/Runic.Application.Desktop.Tests/*",
+        "../../tests/fixtures/application/Runic.Application.PackageConsumer/*",
+        "../../tools/dotnet-runic-toolkit/*",
+        "../../tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests/*",
+        "../../tests/dotnet/RunicToolkit.PackageCanary/*",
+        "../../tools/Runic.Application.Bridge.Inspector/*",
+        "../../tests/dotnet/Runic.Application.Bridge.MemberTests/*",
+        "../../tests/native/Runic.Application.Bridge.MemberAotSmoke/*"
       ]
     },
     {
@@ -37,19 +37,19 @@
       "paths": [
         "protocol/application-bridge/*",
         "src/Runic.Application.Bridge*/*",
-        "tests/Runic.Application.Bridge.Tests/*",
-        "tests/Runic.Application.Bridge.GeneratorTests/*",
-        "tests/Runic.Application.Bridge.PortableCore.Tests/*",
-        "tests/Runic.Application.Bridge.AotSmoke/*",
+        "../../tests/dotnet/Runic.Application.Bridge.Tests/*",
+        "../../tests/dotnet/Runic.Application.Bridge.GeneratorTests/*",
+        "../../tests/dotnet/Runic.Application.Bridge.PortableCore.Tests/*",
+        "../../tests/native/Runic.Application.Bridge.AotSmoke/*",
         "tests/Fixtures/*",
-        "tests/Runic.Application.Bridge.CounterTests/*"
+        "../../tests/dotnet/Runic.Application.Bridge.CounterTests/*"
       ]
     },
     {
       "name": "templates",
       "branch": "work/templates",
       "paths": [
-        "templates/RunicToolkit.Templates/*"
+        "../../tools/RunicToolkit.Templates/*"
       ]
     }
   ]

@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/assets.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
     <AssemblyName>Runic.Assets.Desktop</AssemblyName>
@@ -9,7 +10,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Runic.Assets\Runic.Assets.csproj" />
-    <ProjectReference Include="$(RunicAssetsDependencyRoot)/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj" />
+    <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
   </ItemGroup>
   <ItemGroup><None Include="README.md" Pack="true" PackagePath="\" /></ItemGroup>
+  <Import Project="../../../eng/build/assets.targets" />
 </Project>

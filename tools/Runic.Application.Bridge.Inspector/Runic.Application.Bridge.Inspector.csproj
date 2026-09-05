@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
     <AssemblyName>Runic.Application.Bridge.Inspector</AssemblyName>
@@ -10,6 +11,7 @@
     <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
-    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
+    <ProjectReference Include="../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
   </ItemGroup>
+  <Import Project="../../eng/build/application.targets" />
 </Project>

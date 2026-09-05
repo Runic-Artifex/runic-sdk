@@ -22,7 +22,7 @@ const sourceRevisions = Object.fromEntries(
 );
 const templateManifest = json(resolve(
   toolkit,
-  "templates/RunicToolkit.Templates/content/svelte/Contract/bridge.ir.json",
+  "../../tools/RunicToolkit.Templates/content/svelte/Contract/bridge.ir.json",
 ));
 const setupManifest = json(resolve(
   suite,

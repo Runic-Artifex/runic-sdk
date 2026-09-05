@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
@@ -9,19 +10,20 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="../../src/Runic.Application.Hosting/Runic.Application.Hosting.csproj" />
-    <ProjectReference Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
-    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj"
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Hosting/Runic.Application.Hosting.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <None Include="hosted-web-browser.html" CopyToOutputDirectory="PreserveNewest" />
     <None Include="hosted-web-client.mjs" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../protocol/application-bridge/refresh/fixtures/*.json"
+    <None Include="../../../packages/runic-toolkit/protocol/application-bridge/refresh/fixtures/*.json"
           Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <AdditionalFiles Include="../../protocol/application-bridge/refresh/generated/bridge.ir.json" />
+    <AdditionalFiles Include="../../../packages/runic-toolkit/protocol/application-bridge/refresh/generated/bridge.ir.json" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

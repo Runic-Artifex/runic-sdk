@@ -14,7 +14,7 @@ on:
       - eng/verify-package-artifacts.ps1
       - src/**/*.csproj
       - integrations/**/*.csproj
-      - tests/Runic.Assets.PackageConsumer/**
+      - ../../tests/fixtures/assets/Runic.Assets.PackageConsumer/**
   workflow_dispatch:
     inputs:
       version:

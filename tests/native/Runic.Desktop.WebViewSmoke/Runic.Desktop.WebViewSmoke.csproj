@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Desktop/Runic.Desktop.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/assets.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -7,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Assets/Runic.Assets.csproj" />
-    <ProjectReference Include="../../src/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj" />
     <EmbeddedResource Include="TestAssets/index.html" LogicalName="Runic.Assets.Tests.index.html" />
     <EmbeddedResource Include="TestAssets/app.css" LogicalName="Runic.Assets.Tests.app.css" />
   </ItemGroup>
@@ -16,4 +17,5 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+  <Import Project="../../../eng/build/assets.targets" />
 </Project>

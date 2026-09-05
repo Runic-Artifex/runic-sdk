@@ -73,13 +73,13 @@ fi
 
 mkdir -p "$output_directory"
 package_projects=(
-  src/Runic.Application/Runic.Application.csproj
-  src/Runic.Application.Hosting/Runic.Application.Hosting.csproj
-  src/Runic.Application.Desktop/Runic.Application.Desktop.csproj
-  src/Runic.Application.Testing/Runic.Application.Testing.csproj
-  src/Runic.Application.Bridge/Runic.Application.Bridge.csproj
-  tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj
-  templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj
+  ../dotnet/Runic.Application/Runic.Application.csproj
+  ../dotnet/Runic.Application.Hosting/Runic.Application.Hosting.csproj
+  ../dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj
+  ../dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj
+  ../dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj
+  ../../tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj
+  ../../tools/RunicToolkit.Templates/RunicToolkit.Templates.csproj
 )
 
 restore_options=()

@@ -108,4 +108,4 @@ Use `CreateAdmissionPolicy` to bind the deployment origin and proxy snapshot to
 the existing admission surface, and `MapRunicHostedDeploymentHealth` to map the
 service-only `/runic/health` and `/runic/ready` responses. The full topology,
 ejection boundary, and deferred rollout concerns are documented in
-[`hosted-deployment.md`](../../docs/guides/hosted-deployment.md).
+[`hosted-deployment.md`](../../runic-toolkit/docs/guides/hosted-deployment.md).

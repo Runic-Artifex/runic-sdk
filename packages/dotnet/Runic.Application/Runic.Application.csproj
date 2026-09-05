@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
     <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
@@ -22,4 +23,5 @@
           Pack="true"
           PackagePath="analyzers/dotnet/cs" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

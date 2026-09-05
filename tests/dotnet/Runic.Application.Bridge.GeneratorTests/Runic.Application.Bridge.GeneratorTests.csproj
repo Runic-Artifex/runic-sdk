@@ -1,9 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><GenerateDocumentationFile>false</GenerateDocumentationFile></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
-    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
     <Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath></Reference>
     <Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference>
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

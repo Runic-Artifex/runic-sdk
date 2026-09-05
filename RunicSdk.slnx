@@ -1,83 +1,85 @@
 <Solution>
-  <Folder Name="/runic-command-line/">
-    <Project Path="packages/runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj" />
-    <Project Path="packages/runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj" />
-    <Project Path="packages/runic-command-line/src/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" />
-    <Project Path="packages/runic-command-line/src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj" />
-    <Project Path="packages/runic-command-line/tests/Runic.CommandLine.AotSmoke/Runic.CommandLine.AotSmoke.csproj" />
-    <Project Path="packages/runic-command-line/tests/Runic.CommandLine.Contracts.Tests/Runic.CommandLine.Contracts.Tests.csproj" />
-    <Project Path="packages/runic-command-line/tests/Runic.CommandLine.Hosting.Tests/Runic.CommandLine.Hosting.Tests.csproj" />
-    <Project Path="packages/runic-command-line/tests/Runic.CommandLine.Processes.Tests/Runic.CommandLine.Processes.Tests.csproj" />
-    <Project Path="packages/runic-command-line/tests/Runic.CommandLine.Tests/Runic.CommandLine.Tests.csproj" />
-  </Folder>
-  <Folder Name="/runic-desktop/">
-    <Project Path="packages/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj" />
-    <Project Path="packages/runic-desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
-    <Project Path="packages/runic-desktop/tests/Runic.Desktop.ComparativeStressAdapter/Runic.Desktop.ComparativeStressAdapter.csproj" />
-    <Project Path="packages/runic-desktop/tests/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj" />
-    <Project Path="packages/runic-desktop/tests/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj" />
-  </Folder>
-  <Folder Name="/runic-assets/">
-    <Project Path="packages/runic-assets/src/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
-    <Project Path="packages/runic-assets/src/Runic.Assets/Runic.Assets.csproj" />
-    <Project Path="packages/runic-assets/src/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj" />
-    <Project Path="packages/runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
-    <Project Path="packages/runic-assets/tests/Runic.Assets.Tests/Runic.Assets.Tests.csproj" />
-    <Project Path="packages/runic-assets/tests/Runic.Assets.Desktop.Tests/Runic.Assets.Desktop.Tests.csproj" />
-  </Folder>
-  <Folder Name="/runic-translations/">
-    <Project Path="packages/runic-translations/dotnet/src/Runic.Translations/Runic.Translations.csproj" />
-    <Project Path="packages/runic-translations/dotnet/src/Runic.Translations.Authoring/Runic.Translations.Authoring.csproj" />
-    <Project Path="packages/runic-translations/dotnet/src/Runic.Translations.Compiler/Runic.Translations.Compiler.csproj" />
-    <Project Path="packages/runic-translations/dotnet/src/Runic.Translations.Tooling/Runic.Translations.Tooling.csproj" />
-    <Project Path="packages/runic-translations/dotnet/src/Runic.Translations.Generator/Runic.Translations.Generator.csproj" />
-    <Project Path="packages/runic-translations/dotnet/src/Runic.Translations.Build/Runic.Translations.Build.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tools/dotnet-runic-translations/dotnet-runic-translations.csproj" />
-    <Project Path="packages/runic-translations/dotnet/templates/Runic.Translations.Templates/Runic.Translations.Templates.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tests/Runic.Translations.ApiTests/Runic.Translations.ApiTests.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tests/Runic.Translations.Authoring.Tests/Runic.Translations.Authoring.Tests.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tests/Runic.Translations.Build.Tests/Runic.Translations.Build.Tests.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tests/Runic.Translations.Compiler.Tests/Runic.Translations.Compiler.Tests.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tests/Runic.Translations.Generator.Tests/Runic.Translations.Generator.Tests.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tests/Runic.Translations.Runtime.Tests/Runic.Translations.Runtime.Tests.csproj" />
-    <Project Path="packages/runic-translations/dotnet/tests/Runic.Translations.Tooling.Tests/Runic.Translations.Tooling.Tests.csproj" />
-  </Folder>
-  <Folder Name="/runic-toolkit/">
-    <Project Path="packages/runic-toolkit/src/Runic.Application.Generators/Runic.Application.Generators.csproj" />
-    <Project Path="packages/runic-toolkit/src/Runic.Application/Runic.Application.csproj" />
-    <Project Path="packages/runic-toolkit/src/Runic.Application.Hosting/Runic.Application.Hosting.csproj" />
-    <Project Path="packages/runic-toolkit/src/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
-    <Project Path="packages/runic-toolkit/src/Runic.Application.Testing/Runic.Application.Testing.csproj" />
-    <Project Path="packages/runic-toolkit/src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
-    <Project Path="packages/runic-toolkit/src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Bridge.CounterTests/Runic.Application.Bridge.CounterTests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Bridge.GeneratorTests/Runic.Application.Bridge.GeneratorTests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Bridge.MemberAotSmoke/Runic.Application.Bridge.MemberAotSmoke.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Bridge.MemberTests/Runic.Application.Bridge.MemberTests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Fixtures/BridgeModule/BridgeModule.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Fixtures/CounterMembers/CounterMembers.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Tests/Runic.Application.Tests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.AotSmoke/Runic.Application.AotSmoke.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Hosting.Tests/Runic.Application.Hosting.Tests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Hosting.AotSmoke/Runic.Application.Hosting.AotSmoke.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Desktop.Tests/Runic.Application.Desktop.Tests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Bridge.AotSmoke/Runic.Application.Bridge.AotSmoke.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Bridge.Tests/Runic.Application.Bridge.Tests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/Runic.Application.Bridge.PortableCore.Tests/Runic.Application.Bridge.PortableCore.Tests.csproj" />
-    <Project Path="packages/runic-toolkit/tests/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
-    <Project Path="packages/runic-toolkit/tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" />
-    <Project Path="packages/runic-toolkit/tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj" />
-    <Project Path="packages/runic-toolkit/templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj" />
-  </Folder>
   <Folder Name="/apps/">
     <Project Path="apps/translations-editor/Runic.Translations.Editor.csproj" />
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/current/counter/Counter.csproj" />
-    <Project Path="examples/current/customer-migration/Domain/CustomerDomain.csproj" />
-    <Project Path="examples/current/customer-migration/Before/CustomerMvvm.csproj" />
     <Project Path="examples/current/customer-migration/After/CustomerApplication.csproj" />
-    <Project Path="examples/current/customer-migration/Tests/CustomerMigration.Tests.csproj" />
+    <Project Path="examples/current/customer-migration/Before/CustomerMvvm.csproj" />
+    <Project Path="examples/current/customer-migration/Domain/CustomerDomain.csproj" />
     <Project Path="examples/current/customer-migration/Host/CustomerDesktop.csproj" />
+    <Project Path="examples/current/customer-migration/Tests/CustomerMigration.Tests.csproj" />
+  </Folder>
+  <Folder Name="/packages/dotnet/">
+    <Project Path="packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Generators/Runic.Application.Generators.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Hosting/Runic.Application.Hosting.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" />
+    <Project Path="packages/dotnet/Runic.Application/Runic.Application.csproj" />
+    <Project Path="packages/dotnet/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj" />
+    <Project Path="packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
+    <Project Path="packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
+    <Project Path="packages/dotnet/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj" />
+    <Project Path="packages/dotnet/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj" />
+    <Project Path="packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" />
+    <Project Path="packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
+    <Project Path="packages/dotnet/Runic.Translations.Authoring/Runic.Translations.Authoring.csproj" />
+    <Project Path="packages/dotnet/Runic.Translations.Build/Runic.Translations.Build.csproj" />
+    <Project Path="packages/dotnet/Runic.Translations.Generator/Runic.Translations.Generator.csproj" />
+    <Project Path="packages/dotnet/Runic.Translations.Tooling/Runic.Translations.Tooling.csproj" />
+    <Project Path="packages/dotnet/Runic.Translations/Runic.Translations.csproj" />
+  </Folder>
+  <Folder Name="/packages/runic-desktop/">
+    <Project Path="packages/runic-desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
+  </Folder>
+  <Folder Name="/tests/dotnet/">
+    <Project Path="tests/dotnet/Runic.Application.Bridge.CounterTests/Runic.Application.Bridge.CounterTests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Bridge.GeneratorTests/Runic.Application.Bridge.GeneratorTests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Bridge.MemberTests/Runic.Application.Bridge.MemberTests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Bridge.PortableCore.Tests/Runic.Application.Bridge.PortableCore.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Bridge.Tests/Runic.Application.Bridge.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Desktop.Tests/Runic.Application.Desktop.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Hosting.Tests/Runic.Application.Hosting.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Tests/Runic.Application.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Assets.Desktop.Tests/Runic.Assets.Desktop.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Assets.Tests/Runic.Assets.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.CommandLine.Contracts.Tests/Runic.CommandLine.Contracts.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.CommandLine.Hosting.Tests/Runic.CommandLine.Hosting.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.CommandLine.Processes.Tests/Runic.CommandLine.Processes.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.CommandLine.Tests/Runic.CommandLine.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.ApiTests/Runic.Translations.ApiTests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Authoring.Tests/Runic.Translations.Authoring.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Build.Tests/Runic.Translations.Build.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Compiler.Tests/Runic.Translations.Compiler.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Generator.Tests/Runic.Translations.Generator.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Runtime.Tests/Runic.Translations.Runtime.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Tooling.Tests/Runic.Translations.Tooling.Tests.csproj" />
+    <Project Path="tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/fixtures/">
+    <Project Path="tests/fixtures/application/BridgeModule/BridgeModule.csproj" />
+    <Project Path="tests/fixtures/application/CounterMembers/CounterMembers.csproj" />
+  </Folder>
+  <Folder Name="/tests/native/">
+    <Project Path="tests/native/Runic.Application.AotSmoke/Runic.Application.AotSmoke.csproj" />
+    <Project Path="tests/native/Runic.Application.Bridge.AotSmoke/Runic.Application.Bridge.AotSmoke.csproj" />
+    <Project Path="tests/native/Runic.Application.Bridge.MemberAotSmoke/Runic.Application.Bridge.MemberAotSmoke.csproj" />
+    <Project Path="tests/native/Runic.Application.Hosting.AotSmoke/Runic.Application.Hosting.AotSmoke.csproj" />
+    <Project Path="tests/native/Runic.CommandLine.AotSmoke/Runic.CommandLine.AotSmoke.csproj" />
+    <Project Path="tests/native/Runic.Desktop.ComparativeStressAdapter/Runic.Desktop.ComparativeStressAdapter.csproj" />
+    <Project Path="tests/native/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" />
+    <Project Path="tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
+    <Project Path="tools/Runic.Translations.Compiler/Runic.Translations.Compiler.csproj" />
+    <Project Path="tools/Runic.Translations.Templates/Runic.Translations.Templates.csproj" />
+    <Project Path="tools/RunicToolkit.Templates/RunicToolkit.Templates.csproj" />
+    <Project Path="tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj" />
+    <Project Path="tools/dotnet-runic-translations/dotnet-runic-translations.csproj" />
   </Folder>
 </Solution>

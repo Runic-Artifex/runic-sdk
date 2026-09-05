@@ -17,7 +17,7 @@ dotnet restore "$solution" -p:RunicAssetsBuildMode=Verification "${restore_optio
 dotnet build "$solution" --configuration "$configuration" --no-restore \
   -p:RunicAssetsBuildMode=Verification
 dotnet run \
-  --project tests/Runic.Assets.Tests/Runic.Assets.Tests.csproj \
+  --project ../../tests/dotnet/Runic.Assets.Tests/Runic.Assets.Tests.csproj \
   --configuration "$configuration" \
   --no-build
 
@@ -27,12 +27,12 @@ packer_fixture="$aot_publish_root/packer-fixture"
 mkdir -p "$packer_fixture"
 printf '<main>NativeAOT packer</main>' > "$packer_fixture/index.html"
 dotnet restore \
-  src/Runic.Assets.Packer/Runic.Assets.Packer.csproj \
+  ../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj \
   -p:RunicAssetsBuildMode=Verification \
   -p:PublishAot=true \
   "${restore_options[@]}"
 dotnet publish \
-  src/Runic.Assets.Packer/Runic.Assets.Packer.csproj \
+  ../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj \
   --configuration "$configuration" \
   --no-restore \
   -p:PublishAot=true \

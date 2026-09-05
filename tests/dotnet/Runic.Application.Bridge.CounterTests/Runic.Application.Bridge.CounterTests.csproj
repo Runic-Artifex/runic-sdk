@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><DefineConstants>$(DefineConstants);EFFECT</DefineConstants><GenerateDocumentationFile>false</GenerateDocumentationFile></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
-    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <AdditionalFiles Include="../../protocol/application-bridge/counter/generated/bridge.ir.json" />
-    <Compile Include="../Fixtures/CounterMembers/Program.cs" Link="Program.cs" />
-    <Content Include="../../protocol/application-bridge/conformance/counter-members.json" CopyToOutputDirectory="PreserveNewest" Link="counter-members.json" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="../../../packages/runic-toolkit/protocol/application-bridge/counter/generated/bridge.ir.json" />
+    <Compile Include="../../fixtures/application/CounterMembers/Program.cs" Link="Program.cs" />
+    <Content Include="../../../packages/runic-toolkit/protocol/application-bridge/conformance/counter-members.json" CopyToOutputDirectory="PreserveNewest" Link="counter-members.json" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

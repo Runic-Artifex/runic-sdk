@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/assets.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
     <RunicAssetsShippingProject>true</RunicAssetsShippingProject>
@@ -14,26 +15,27 @@
   <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="\" />
     <None Include="buildTransitive/Runic.Assets.targets" Pack="true" PackagePath="buildTransitive/" />
-    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.dll"
+    <None Include="../../../tools/Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.dll"
           Pack="true"
           PackagePath="tools/net10.0/" />
     <None Include="bin/$(Configuration)/net10.0/Runic.Assets.dll"
           Pack="true"
           PackagePath="tools/net10.0/" />
-    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.CommandLine.dll"
+    <None Include="../../../tools/Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.CommandLine.dll"
           Pack="true"
           PackagePath="tools/net10.0/" />
-    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.deps.json"
+    <None Include="../../../tools/Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.deps.json"
           Pack="true"
           PackagePath="tools/net10.0/" />
-    <None Include="../Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.runtimeconfig.json"
+    <None Include="../../../tools/Runic.Assets.Packer/bin/$(Configuration)/net10.0/Runic.Assets.Packer.runtimeconfig.json"
           Pack="true"
           PackagePath="tools/net10.0/" />
   </ItemGroup>
 
   <Target Name="BuildRunicAssetsPackerForPackage" BeforeTargets="GenerateNuspec">
-    <MSBuild Projects="../Runic.Assets.Packer/Runic.Assets.Packer.csproj"
+    <MSBuild Projects="../../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj"
              Targets="Build"
              Properties="Configuration=$(Configuration);RunicAssetsBuildMode=$(RunicAssetsBuildMode)" />
   </Target>
+  <Import Project="../../../eng/build/assets.targets" />
 </Project>

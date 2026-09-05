@@ -59,7 +59,7 @@ for (const [identity, propertyName] of [
   if (!match) fail(`missing ${identity} central package pin.`);
 }
 
-const templateProject = text("templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj");
+const templateProject = text("../../tools/RunicToolkit.Templates/RunicToolkit.Templates.csproj");
 expect(property(templateProject, "PackageVersion"), expectedNuget("Runic.Application.Templates"), "template package version");
 for (const [propertyName, identity] of [
   ["ApplicationBridgeTemplateVersion", "@runic-artifex/application-bridge"],
@@ -129,8 +129,8 @@ const profilePackages = {
 };
 
 for (const [profile, selectedPackages] of Object.entries(profilePackages)) {
-  const base = `templates/RunicToolkit.Templates/content/${profile}/Frontend`;
-  if (existsSync(resolve(repository, `templates/RunicToolkit.Templates/content/${profile}/package.json`))) {
+  const base = `../../tools/RunicToolkit.Templates/content/${profile}/Frontend`;
+  if (existsSync(resolve(repository, `../../tools/RunicToolkit.Templates/content/${profile}/package.json`))) {
     fail(`${profile} template must not wrap Frontend in an ancestor npm workspace.`);
   }
   const manifest = JSON.parse(text(`${base}/package.json`));
@@ -173,21 +173,21 @@ for (const [profile, selectedPackages] of Object.entries(profilePackages)) {
     }
   }
 
-  const project = text(`templates/RunicToolkit.Templates/content/${profile}/RunicDesktopApp.csproj`);
+  const project = text(`../../tools/RunicToolkit.Templates/content/${profile}/RunicDesktopApp.csproj`);
   if (!project.includes('<Import Project="RunicTemplateFrontend.targets" />')) {
     fail(`${profile} template does not import the incremental frontend build target.`);
   }
-  const target = text(`templates/RunicToolkit.Templates/content/${profile}/RunicTemplateFrontend.targets`);
+  const target = text(`../../tools/RunicToolkit.Templates/content/${profile}/RunicTemplateFrontend.targets`);
   for (const requirement of ["ci --ignore-scripts", "install --frozen-lockfile --ignore-scripts", "pnpm-lock.yaml", "bun.lock", "BeforeTargets=\"RunicAssetsPackFileSystem\"", "Inputs=", "Outputs=", "RunicToolkitFrontendBuild"]) {
     if (!target.includes(requirement)) fail(`${profile} frontend target is missing '${requirement}'.`);
   }
 
-  const template = JSON.parse(text(`templates/RunicToolkit.Templates/content/${profile}/.template.config/template.json`));
+  const template = JSON.parse(text(`../../tools/RunicToolkit.Templates/content/${profile}/.template.config/template.json`));
   const choices = template.symbols?.packageManager?.choices?.map(({ choice }) => choice);
   if (JSON.stringify(choices) !== JSON.stringify(["npm", "pnpm", "bun"])) {
     fail(`${profile} template does not expose the npm, pnpm, and Bun choices.`);
   }
-  const toolManifest = JSON.parse(text(`templates/RunicToolkit.Templates/content/${profile}/.config/dotnet-tools.json`));
+  const toolManifest = JSON.parse(text(`../../tools/RunicToolkit.Templates/content/${profile}/.config/dotnet-tools.json`));
   expect(toolManifest.tools?.["dotnet-runic"]?.version, "__RUNIC_TOOLKIT_VERSION__", `${profile} local dotnet-runic manifest`);
 
   const serialized = JSON.stringify(manifest);

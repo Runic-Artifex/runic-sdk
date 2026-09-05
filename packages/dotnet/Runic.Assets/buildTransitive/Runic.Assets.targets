@@ -4,7 +4,7 @@
     <RunicAssetsEntryPoint Condition="'$(RunicAssetsEntryPoint)' == ''">index.html</RunicAssetsEntryPoint>
     <RunicAssetsDistExclude Condition="'$(RunicAssetsDistExclude)' == ''">runic-assets.zip</RunicAssetsDistExclude>
     <RunicAssetsPackerPath Condition="'$(RunicAssetsPackerPath)' == '' and Exists('$(MSBuildThisFileDirectory)..\tools\net10.0\Runic.Assets.Packer.dll')">$(MSBuildThisFileDirectory)..\tools\net10.0\Runic.Assets.Packer.dll</RunicAssetsPackerPath>
-    <RunicAssetsPackerPath Condition="'$(RunicAssetsPackerPath)' == ''">$(MSBuildThisFileDirectory)..\..\Runic.Assets.Packer\bin\$(Configuration)\net10.0\Runic.Assets.Packer.dll</RunicAssetsPackerPath>
+    <RunicAssetsPackerPath Condition="'$(RunicAssetsPackerPath)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\tools\Runic.Assets.Packer\bin\$(Configuration)\net10.0\Runic.Assets.Packer.dll</RunicAssetsPackerPath>
     <_RunicAssetsDotNetHost Condition="'$(DotNetHostPath)' != ''">$(DotNetHostPath)</_RunicAssetsDotNetHost>
     <_RunicAssetsDotNetHost Condition="'$(_RunicAssetsDotNetHost)' == ''">dotnet</_RunicAssetsDotNetHost>
   </PropertyGroup>

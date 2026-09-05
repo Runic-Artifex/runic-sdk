@@ -26,7 +26,7 @@ for project in Runic.Assets Runic.Assets.AspNetCore Runic.Assets.Desktop; do
   grep -Fq "<PackageId>$project</PackageId>" "$project_file"
 done
 
-grep -Fq 'runic.assets/1' src/Runic.Assets/AssetContracts.cs
-grep -Fq 'runic.assets.archive/1' src/Runic.Assets/AssetArchive.cs
+grep -Fq 'runic.assets/1' ../dotnet/Runic.Assets/AssetContracts.cs
+grep -Fq 'runic.assets.archive/1' ../dotnet/Runic.Assets/AssetArchive.cs
 
 echo "Runic Assets identity boundary verified."

@@ -21,9 +21,9 @@ $publishDirectory = Join-Path $runRoot "publish/$RuntimeIdentifier"
 $consumerProject = Join-Path $consumerDirectory 'Consumer.csproj'
 
 $ownedProjects = @(
-    (Join-Path $repositoryRoot 'src/Runic.CommandLine/Runic.CommandLine.csproj'),
-    (Join-Path $repositoryRoot 'src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj'),
-    (Join-Path $repositoryRoot 'src/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj')
+    (Join-Path $repositoryRoot '../dotnet/Runic.CommandLine/Runic.CommandLine.csproj'),
+    (Join-Path $repositoryRoot '../dotnet/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj'),
+    (Join-Path $repositoryRoot '../dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj')
 )
 
 function Invoke-DotNet {

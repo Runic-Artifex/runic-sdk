@@ -85,7 +85,7 @@ jobs:
       - name: Embedded WebView smoke
         run: >-
           xvfb-run -a dotnet run
-          --project tests/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj
+          --project ../../tests/native/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj
           --configuration Release --no-build
 
       - run: git diff --exit-code
@@ -98,7 +98,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/packages"
           node eng/prepare-web-package.mjs "$PACKAGE_VERSION" "$GITHUB_SHA"
           (cd web/packages/desktop && bun pm pack --destination "$RUNNER_TEMP/packages" --quiet)
-          dotnet pack src/Runic.Desktop/Runic.Desktop.csproj \
+          dotnet pack ../dotnet/Runic.Desktop/Runic.Desktop.csproj \
             --configuration Release \
             --output "$RUNNER_TEMP/packages" \
             -p:PackageVersion="$PACKAGE_VERSION" \
@@ -148,7 +148,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           node eng/download-github-npm.mjs "$RUNNER_TEMP/registry-npm" "$PACKAGE_VERSION"
-          cp -R tests/Runic.Desktop.PackageConsumer "$RUNNER_TEMP/registry-nuget-consumer"
+          cp -R ../../tests/fixtures/desktop/Runic.Desktop.PackageConsumer "$RUNNER_TEMP/registry-nuget-consumer"
           dotnet restore "$RUNNER_TEMP/registry-nuget-consumer/Runic.Desktop.PackageConsumer.csproj" \
             --packages "$RUNNER_TEMP/registry-nuget" \
             --configfile "$RUNNER_TEMP/NuGet.Config" \
@@ -273,7 +273,7 @@ jobs:
       - name: Embedded WebView smoke
         run: >-
           dotnet run
-          --project tests/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj
+          --project ../../tests/native/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj
           --configuration Release --no-build
 
       - name: Same-host comparative stress observation

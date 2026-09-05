@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
@@ -8,6 +9,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

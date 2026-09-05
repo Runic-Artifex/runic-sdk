@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -18,14 +19,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Desktop/Runic.Desktop.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="../../eng/Runic.Desktop.PublicApi.txt" Link="Runic.Desktop.PublicApi.txt" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../contract/conformance/scenarios/*.json" Link="conformance/scenarios/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../contract/conformance/vectors/*.json" Link="conformance/vectors/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../evidence/conformance/dotnet-m6.json" Link="conformance/dotnet-m6.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../packages/runic-desktop/eng/Runic.Desktop.PublicApi.txt" Link="Runic.Desktop.PublicApi.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../packages/runic-desktop/contract/conformance/scenarios/*.json" Link="conformance/scenarios/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../packages/runic-desktop/contract/conformance/vectors/*.json" Link="conformance/vectors/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../packages/runic-desktop/evidence/conformance/dotnet-m6.json" Link="conformance/dotnet-m6.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../artifacts/browser/runic-desktop-test.js"
           Link="runic-desktop-browser-test.js"
           CopyToOutputDirectory="PreserveNewest"

@@ -5,7 +5,7 @@ member discovery, generated codecs, scoped dependency injection, initialization,
 command dispatch without requiring a native webview.
 
 For complete React, Vue, Svelte, and Angular applications, the maintained source is
-`packages/runic-toolkit/templates/RunicToolkit.Templates/content`. Run
+`tools/RunicToolkit.Templates/content`. Run
 `bun run verify:templates` after `bun run pack` to create fresh applications from the
 packed templates and build them with npm, pnpm, and Bun. This tests the public installation
 path separately from workspace project references.

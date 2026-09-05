@@ -210,16 +210,16 @@ async function readInputs() {
     implementationSha256: await hashPaths([
       "Directory.Build.props",
       "Directory.Packages.props",
-      "src/Runic.Desktop",
+      "../dotnet/Runic.Desktop",
       "web/packages/desktop/package.json",
       "web/packages/desktop/src",
     ]),
     evidenceSha256: await hashPaths([
-      "tests/Runic.Desktop.Tests/BrowserBridgeTests.cs",
-      "tests/Runic.Desktop.Tests/BrowserHostTests.cs",
-      "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
-      "tests/Runic.Desktop.Tests/ManagedWindowTests.cs",
-      "tests/Runic.Desktop.WebViewSmoke/Program.cs",
+      "../../tests/dotnet/Runic.Desktop.Tests/BrowserBridgeTests.cs",
+      "../../tests/dotnet/Runic.Desktop.Tests/BrowserHostTests.cs",
+      "../../tests/dotnet/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "../../tests/dotnet/Runic.Desktop.Tests/ManagedWindowTests.cs",
+      "../../tests/native/Runic.Desktop.WebViewSmoke/Program.cs",
     ]),
   };
 }
@@ -268,7 +268,7 @@ async function oneJourney() {
     await run("dotnet", ["build", "RunicDesktop.slnx", "--configuration", "Release", "--no-restore"]);
     completed.push("managed-build");
     await run("dotnet", [
-      "test", "tests/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj",
+      "test", "../../tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj",
       "--configuration", "Release", "--no-build",
       "--filter", filter,
       "--logger", "trx;LogFileName=quality.trx",
@@ -278,7 +278,7 @@ async function oneJourney() {
     completed.push("representative-managed-quality-tests");
     await run("xvfb-run", [
       "-a", "dotnet", "run",
-      "--project", "tests/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj",
+      "--project", "../../tests/native/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj",
       "--configuration", "Release", "--no-build",
     ]);
     completed.push("embedded-webview-smoke");

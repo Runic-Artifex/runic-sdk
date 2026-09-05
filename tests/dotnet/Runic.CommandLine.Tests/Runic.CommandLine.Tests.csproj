@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/command-line.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -8,12 +9,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Runic.CommandLine\Runic.CommandLine.csproj" />
+    <ProjectReference Include="..\..\..\packages\dotnet\Runic.CommandLine\Runic.CommandLine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\spec\command-line\grammar-corpus.json" Link="Corpus\grammar-corpus.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\spec\command-line\output-classification-corpus.json" Link="Corpus\output-classification-corpus.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\spec\command-line\protocol\**\*.json" Link="Corpus\protocol\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\packages\runic-command-line\spec\command-line\grammar-corpus.json" Link="Corpus\grammar-corpus.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\packages\runic-command-line\spec\command-line\output-classification-corpus.json" Link="Corpus\output-classification-corpus.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\packages\runic-command-line\spec\command-line\protocol\**\*.json" Link="Corpus\protocol\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Import Project="../../../eng/build/command-line.targets" />
 </Project>

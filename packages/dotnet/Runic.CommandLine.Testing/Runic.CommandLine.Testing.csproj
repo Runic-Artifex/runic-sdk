@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/command-line.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicCommandLineDefaultTargetFramework)</TargetFramework>
     <RunicCommandLineShippingProject>true</RunicCommandLineShippingProject>
@@ -18,4 +19,5 @@
     <None Include="PublicAPI.Unshipped.txt" Pack="true" PackagePath="" />
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
+  <Import Project="../../../eng/build/command-line.targets" />
 </Project>

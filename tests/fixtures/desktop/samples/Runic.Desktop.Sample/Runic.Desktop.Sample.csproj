@@ -4,6 +4,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Desktop/Runic.Desktop.csproj" />
+    <ProjectReference Include="../../../dotnet/Runic.Desktop/Runic.Desktop.csproj" />
   </ItemGroup>
 </Project>

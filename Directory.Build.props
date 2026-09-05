@@ -1,6 +1,7 @@
 <Project>
   <Import Project="eng/Versions.props" />
   <PropertyGroup>
+    <RunicSdkRoot>$(MSBuildThisFileDirectory)</RunicSdkRoot>
     <RepositoryUrl>https://github.com/Runic-Artifex/runic-sdk</RepositoryUrl>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
   </PropertyGroup>

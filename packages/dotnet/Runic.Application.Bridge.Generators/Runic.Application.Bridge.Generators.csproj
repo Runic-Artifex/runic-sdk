@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicToolkitGeneratorTargetFramework)</TargetFramework>
     <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
@@ -24,4 +25,5 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers\dotnet\cs\$(TargetFileName)" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

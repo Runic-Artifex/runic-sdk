@@ -120,7 +120,7 @@ internal static class CorpusContractTests
             throw new InvalidOperationException("Could not find the repository root containing spec/command-line.");
         }
 
-        string path = Path.Combine(root, "spec", "command-line", fileName);
+        string path = Path.Combine(root, "packages", "runic-command-line", "spec", "command-line", fileName);
         if (!File.Exists(path))
         {
             throw new InvalidOperationException($"Required command-line corpus was not found: {path}");
@@ -139,7 +139,7 @@ internal static class CorpusContractTests
         DirectoryInfo? directory = new(startPath);
         while (directory is not null)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, "spec", "command-line")))
+            if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx")))
             {
                 return directory.FullName;
             }

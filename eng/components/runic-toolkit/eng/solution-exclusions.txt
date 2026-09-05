@@ -1,9 +1,9 @@
 # Projects intentionally exercised by dedicated package-consumer or RID/AOT gates.
-tests/Runic.Application.PackageConsumer/Runic.Application.PackageConsumer.csproj
-tests/RunicToolkit.PackageCanary/RunicToolkit.PackageCanary.csproj
+../../tests/fixtures/application/Runic.Application.PackageConsumer/Runic.Application.PackageConsumer.csproj
+../../tests/dotnet/RunicToolkit.PackageCanary/RunicToolkit.PackageCanary.csproj
 
 # Source projects embedded in the template package and instantiated by its acceptance test.
-templates/RunicToolkit.Templates/content/angular/RunicDesktopApp.csproj
-templates/RunicToolkit.Templates/content/react/RunicDesktopApp.csproj
-templates/RunicToolkit.Templates/content/svelte/RunicDesktopApp.csproj
-templates/RunicToolkit.Templates/content/vue/RunicDesktopApp.csproj
+../../tools/RunicToolkit.Templates/content/angular/RunicDesktopApp.csproj
+../../tools/RunicToolkit.Templates/content/react/RunicDesktopApp.csproj
+../../tools/RunicToolkit.Templates/content/svelte/RunicDesktopApp.csproj
+../../tools/RunicToolkit.Templates/content/vue/RunicDesktopApp.csproj

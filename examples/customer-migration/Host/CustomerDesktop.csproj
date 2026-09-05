@@ -10,17 +10,17 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../After/CustomerApplication.csproj" />
-    <ProjectReference Include="../../../../packages/runic-toolkit/src/Runic.Application/Runic.Application.csproj" />
-    <ProjectReference Include="../../../../packages/runic-toolkit/src/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
-    <ProjectReference Include="../../../../packages/runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
-    <ProjectReference Include="../../../../packages/runic-toolkit/src/Runic.Application.Generators/Runic.Application.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../../../../packages/runic-toolkit/src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../../../../packages/runic-assets/src/Runic.Assets.Packer/Runic.Assets.Packer.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application/Runic.Application.csproj" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Generators/Runic.Application.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
-  <Import Project="../../../../packages/runic-toolkit/src/Runic.Application.Bridge/buildTransitive/Runic.Application.Bridge.targets" />
+  <Import Project="../../../../packages/dotnet/Runic.Application.Bridge/buildTransitive/Runic.Application.Bridge.targets" />
   <Target Name="CustomerFrontend" BeforeTargets="RunicAssetsPackFileSystem;CoreCompile" Condition="'$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'">
     <Exec WorkingDirectory="Frontend" Command="bun run contract:generate" />
     <Exec WorkingDirectory="Frontend" Command="bun run build" />
   </Target>
-  <Import Project="../../../../packages/runic-assets/src/Runic.Assets/buildTransitive/Runic.Assets.targets" />
+  <Import Project="../../../../packages/dotnet/Runic.Assets/buildTransitive/Runic.Assets.targets" />
 </Project>

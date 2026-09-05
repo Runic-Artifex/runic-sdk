@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
@@ -34,12 +35,13 @@
   </Target>
   <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="\" />
-    <EmbeddedResource Include="../../eng/runic.compatibility-set.json"
+    <EmbeddedResource Include="../../packages/runic-toolkit/eng/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
-    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj" />
-    <ProjectReference Include="../../../runic-command-line/src/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
+    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
+    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
                       PrivateAssets="all"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Analyzer" />
   </ItemGroup>
+  <Import Project="../../eng/build/application.targets" />
 </Project>

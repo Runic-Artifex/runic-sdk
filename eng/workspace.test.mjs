@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { root, workspace } from "./run.mjs";
+import { root, workspace, affectedComponents } from "./run.mjs";
 
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace contains every SDK artifact with unchanged package identities", () => {
@@ -69,4 +69,43 @@ test("component dependency graph is closed and acyclic", () => {
     complete.add(name);
   }
   for (const name of Object.keys(workspace.components)) visit(name);
+});
+
+test("relocated artifacts have exactly one component owner", () => {
+  for (const artifact of [...workspace.npm, ...workspace.nuget]) {
+    const path = artifact.path ?? artifact.project;
+    const owners = Object.entries(workspace.components).filter(
+      ([, component]) =>
+        component.paths.some(
+          (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+        ),
+    );
+    assert.equal(owners.length, 1, `${path}: ${owners.map(([name]) => name)}`);
+  }
+});
+test("affected detection follows relocated code and its dependents", () => {
+  assert.deepEqual(
+    affectedComponents([
+      "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
+    ]).sort(),
+    [
+      "desktop",
+      "assets",
+      "application",
+      "vite",
+      "svelte",
+      "editor",
+      "examples",
+    ].sort(),
+  );
+  assert.deepEqual(
+    affectedComponents(["eng/build/desktop.props"]).sort(),
+    affectedComponents([
+      "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
+    ]).sort(),
+  );
+  assert.deepEqual(
+    affectedComponents(["Directory.Build.props"]).sort(),
+    Object.keys(workspace.components).sort(),
+  );
 });

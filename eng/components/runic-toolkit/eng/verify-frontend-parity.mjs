@@ -18,7 +18,7 @@ for (const renderer of ["react", "vue", "svelte", "angular"]) {
 }
 
 for (const renderer of ["react", "vue", "svelte", "angular"]) {
-  const templateRoot = `templates/RunicToolkit.Templates/content/${renderer}`;
+  const templateRoot = `../../tools/RunicToolkit.Templates/content/${renderer}`;
   const project = text(`${templateRoot}/RunicDesktopApp.csproj`);
   const program = text(`${templateRoot}/Program.cs`);
   const frontendPackage = json(`${templateRoot}/Frontend/package.json`);
@@ -71,7 +71,7 @@ contains(text("web/packages/application-bridge/src/mock.ts"), "MockApplicationBr
 contains(text("web/packages/application-bridge/src/mock.ts"), "TestApplicationBridge", "fault-injection Layer");
 
 const svelteTemplatePackage = json(
-  "templates/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+  "../../tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
 );
 if (svelteTemplatePackage.dependencies?.["@runic-artifex/svelte"] === undefined) {
   fail("The Svelte template must consume the official Svelte integration package.");
@@ -82,13 +82,13 @@ if (
 ) {
   fail("The Svelte template must consume the Runic Vite plugin and official Vite DevTools.");
 }
-const viteConfig = text("templates/RunicToolkit.Templates/content/svelte/Frontend/vite.config.ts");
+const viteConfig = text("../../tools/RunicToolkit.Templates/content/svelte/Frontend/vite.config.ts");
 contains(viteConfig, "DevTools({ visibility: \"passive\" })", "official Vite DevTools plugin");
 contains(viteConfig, "runic({", "Runic Vite plugin");
-if (existsSync(resolve(root, "tools/dotnet-runic-toolkit/ViteConfigurationBridge.cs"))) {
+if (existsSync(resolve(root, "../../tools/dotnet-runic-toolkit/ViteConfigurationBridge.cs"))) {
   fail("The CLI must not generate or own a synthetic Vite configuration.");
 }
-if (text("tools/dotnet-runic-toolkit/ViteDevelopmentServer.cs").includes('"--config"')) {
+if (text("../../tools/dotnet-runic-toolkit/ViteDevelopmentServer.cs").includes('"--config"')) {
   fail("The CLI must launch the project's normal Vite configuration.");
 }
 

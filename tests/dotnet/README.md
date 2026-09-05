@@ -6,5 +6,5 @@ managed suite after one solution build.
 
 NativeAOT, real-browser, package-consumer, and template-acceptance projects are
 separate gates because they require additional runtime or published-package
-inputs. `tests/RunicToolkit.PackageCanary` is the release workflow’s isolated
+inputs. `../../tests/dotnet/RunicToolkit.PackageCanary` is the release workflow’s isolated
 NuGet consumer.

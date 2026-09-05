@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -6,12 +7,13 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../../src/Runic.Application/Runic.Application.csproj" />
-    <ProjectReference Include="../../src/Runic.Application.Generators/Runic.Application.Generators.csproj"
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application/Runic.Application.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Generators/Runic.Application.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
-    <ProjectReference Include="../../src/Runic.Application.Testing/Runic.Application.Testing.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -15,9 +16,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Condition="'$(ApplicationBridgeUsePackages)' != 'true'"
-                      Include="../../src/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+                      Include="../../../packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
     <ProjectReference Condition="'$(ApplicationBridgeUsePackages)' != 'true'"
-                      Include="../../src/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj"
+                      Include="../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <PackageReference Condition="'$(ApplicationBridgeUsePackages)' == 'true'"
                       Include="Runic.Application.Bridge" Version="$(PackageVersion)" />
@@ -26,7 +27,8 @@
     <AdditionalFiles Include="$(ApplicationBridgeContractDirectory)/bridge.ir.json" />
   </ItemGroup>
   <PropertyGroup>
-    <ApplicationBridgeContractDirectory Condition="'$(ApplicationBridgeContractDirectory)' == ''">../../protocol/application-bridge/setup/generated</ApplicationBridgeContractDirectory>
+    <ApplicationBridgeContractDirectory Condition="'$(ApplicationBridgeContractDirectory)' == ''">../../../packages/runic-toolkit/protocol/application-bridge/setup/generated</ApplicationBridgeContractDirectory>
     <RestoreAdditionalProjectSources Condition="'$(ApplicationBridgeUsePackages)' == 'true'">$(PackageDirectory)</RestoreAdditionalProjectSources>
   </PropertyGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

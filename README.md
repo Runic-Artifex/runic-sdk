@@ -31,11 +31,14 @@ platform webview runtime described in `packages/runic-desktop/README.md`.
 
 | Directory | Ownership |
 | --- | --- |
-| `packages/runic-toolkit` | Application runtime, bridge compiler, hosting, testing, CLI, templates, Angular |
-| `packages/runic-desktop` | Desktop host and browser transport |
-| `packages/runic-assets` | Assets runtime, packer, ASP.NET Core and desktop adapters |
-| `packages/runic-translations` | Translation runtime, compiler, build tools and Vite integration |
-| `packages/runic-command-line` | Command line runtime, generators, process runner and testing |
+| `packages/dotnet/<package>` | Managed runtimes, generators and adapters |
+| `tools/<tool>` | CLI, bridge inspector, packer, translation compiler and templates |
+| `tests/dotnet`, `tests/native`, `tests/fixtures` | Managed suites, native acceptance and consumer fixtures |
+| `packages/runic-toolkit` | Frontend packages, protocol inputs and imported support files (next relocation wave) |
+| `packages/runic-desktop` | Browser transport, contract inputs and imported support files |
+| `packages/runic-assets` | Imported assets guides and engineering checks |
+| `packages/runic-translations` | Vite integration, schemas and imported support files |
+| `packages/runic-command-line` | Contract corpus and imported support files |
 | `packages/runic-vite` | Vite application integration |
 | `packages/runic-svelte` | Svelte and SvelteKit adapters |
 | `apps/translations-editor` | First-party editor consuming workspace packages |
@@ -48,7 +51,7 @@ They never fall back to a published Runic package when a sibling project is miss
 The root Bun lockfile and NuGet configuration own active workspace restores.
 Root `Directory.Packages.props` centralizes shared .NET dependencies; a documented
 translation compiler pin remains local. Product-specific analyzer/build policies
-remain with their product. Template lockfiles and historical fixtures are independent
+are explicitly imported from `eng/build`. Template lockfiles and historical fixtures are independent
 consumer evidence, not additional development workspaces.
 
 The next structural follow-up is the [repository reorganisation](eng/repository-reorganisation.md):

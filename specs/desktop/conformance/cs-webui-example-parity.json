@@ -32,31 +32,31 @@
     {
       "id": "webui.call-native-from-javascript",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/BrowserBridgeTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/BrowserBridgeTests.cs",
       "rationale": "A real Chromium bridge invokes typed managed capabilities and validates their results."
     },
     {
       "id": "webui.call-javascript-from-native",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/BrowserBridgeTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/BrowserBridgeTests.cs",
       "rationale": "A real Chromium session exercises managed-to-JavaScript calls and correlated results."
     },
     {
       "id": "webui.serve-a-folder",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
       "rationale": "Folder indexes, files, MIME types, HEAD, cache policy, and traversal rejection are tested."
     },
     {
       "id": "webui.test-index-redirect",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
       "rationale": "Explicit file redirects and folder index fallback have independent behavioral coverage."
     },
     {
       "id": "webui.virtual-file-system",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
       "rationale": "Virtual and streaming content handlers are tested with fallback, cancellation, disposal, and bridge priority."
     },
     {
@@ -68,19 +68,19 @@
     {
       "id": "webui.custom-web-server",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/DesktopApiTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/DesktopApiTests.cs",
       "rationale": "Host-owned dependency injection and request-scoped content handling replace attaching a process-global custom server."
     },
     {
       "id": "webui.frameless",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/EmbeddedHostTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/EmbeddedHostTests.cs",
       "rationale": "Typed embedded-window options and movement, sizing, visibility, and lifecycle capabilities cover frameless window behavior."
     },
     {
       "id": "webui.public-network-access",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/DesktopApiTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/DesktopApiTests.cs",
       "rationale": "All-interface exposure fails closed unless the application supplies an explicit security policy."
     },
     {
@@ -104,7 +104,7 @@
     {
       "id": "webui.web-app-multi-client",
       "disposition": "automated-behavioral-equivalent",
-      "target": "tests/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
+      "target": "../../tests/dotnet/Runic.Desktop.Tests/ContentAndLifecycleTests.cs",
       "rationale": "Single-client denial and explicit multi-client admission with stable session identities are tested."
     },
     {

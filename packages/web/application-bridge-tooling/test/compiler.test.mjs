@@ -230,11 +230,11 @@ export default {
 test("C# and Effect authorities share fingerprints, accepted values and canonical JSON", async () => {
   const { Schema } = await import("effect");
   const temporary = new URL(`.member-conformance-${process.pid}.ts`, import.meta.url);
-  await writeFile(temporary, await readFile(new URL("../../../../tests/Fixtures/CounterMembers/Frontend/src/application.bridge.generated.ts", import.meta.url)));
+  await writeFile(temporary, await readFile(new URL("../../../../../../tests/fixtures/application/CounterMembers/Frontend/src/application.bridge.generated.ts", import.meta.url)));
   let generated;
   try { generated = await import(temporary.href); } finally { await rm(temporary); }
   const handwritten = await import("../../../../protocol/application-bridge/counter/application.bridge.ts");
-  const csharp = JSON.parse(await readFile(new URL("../../../../tests/Fixtures/CounterMembers/Contract/bridge.ir.json", import.meta.url)));
+  const csharp = JSON.parse(await readFile(new URL("../../../../../../tests/fixtures/application/CounterMembers/Contract/bridge.ir.json", import.meta.url)));
   const effectIr = JSON.parse(await readFile(new URL("../../../../protocol/application-bridge/counter/generated/bridge.ir.json", import.meta.url)));
   assert.deepEqual(csharp.wire, effectIr.wire);
   assert.equal(csharp.fingerprint.value, effectIr.fingerprint.value);

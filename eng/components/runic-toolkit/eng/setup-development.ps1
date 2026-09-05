@@ -8,9 +8,9 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $packageDirectory = Join-Path $repositoryRoot 'artifacts/local-development/packages'
 $toolProject = Join-Path $repositoryRoot (
-    'tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj')
+    '../../tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj')
 $templateProject = Join-Path $repositoryRoot (
-    'templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj')
+    '../../tools/RunicToolkit.Templates/RunicToolkit.Templates.csproj')
 $templatePackage = Join-Path $packageDirectory (
     'Runic.Application.Templates.1.0.0-preview.1.nupkg')
 

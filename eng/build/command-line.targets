@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup Condition="'$(RunicCommandLineShippingProject)' == 'true'">
+    <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == '' and ('$(RunicCommandLineVerificationBuild)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true')">true</EnableTrimAnalyzer>
+    <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == ''">false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer Condition="'$(EnableAotAnalyzer)' == '' and ('$(RunicCommandLineVerificationBuild)' == 'true' or '$(PublishAot)' == 'true')">true</EnableAotAnalyzer>
+    <EnableAotAnalyzer Condition="'$(EnableAotAnalyzer)' == ''">false</EnableAotAnalyzer>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <Target Name="ValidateRunicCommandLineBuildMode" BeforeTargets="PrepareForBuild">
+    <Error
+      Condition="'$(RunicCommandLineBuildMode)' != 'Development' and '$(RunicCommandLineBuildMode)' != 'Verification'"
+      Text="RunicCommandLineBuildMode must be either Development or Verification." />
+  </Target>
+</Project>

@@ -10,7 +10,7 @@ if [[ -z "${WEBUI_BROWSER_PATH:-}" || ! -x "$WEBUI_BROWSER_PATH" ]]; then
 fi
 
 RUNIC_HOSTED_BROWSER_E2E=1 dotnet run \
-  --project tests/Runic.Application.Hosting.Tests/Runic.Application.Hosting.Tests.csproj \
+  --project ../../tests/dotnet/Runic.Application.Hosting.Tests/Runic.Application.Hosting.Tests.csproj \
   --configuration Release \
   --no-build \
   --no-restore

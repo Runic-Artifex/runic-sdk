@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/command-line.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicCommandLineGeneratorTargetFramework)</TargetFramework>
     <AssemblyName>Runic.CommandLine.Generators</AssemblyName>
@@ -17,4 +18,5 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+  <Import Project="../../../eng/build/command-line.targets" />
 </Project>

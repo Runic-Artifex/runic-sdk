@@ -165,15 +165,15 @@ jobs:
       - name: Verify Effect contract and managed Desktop bridge suites
         shell: pwsh
         run: |
-          dotnet run --project tests/Runic.Application.Bridge.Tests -c Release --no-restore
-          dotnet run --project tests/Runic.Application.Desktop.Tests -c Release --no-restore
+          dotnet run --project ../../tests/dotnet/Runic.Application.Bridge.Tests -c Release --no-restore
+          dotnet run --project ../../tests/dotnet/Runic.Application.Desktop.Tests -c Release --no-restore
 
       - name: Publish and execute Windows NativeAOT consumer
         shell: pwsh
         run: |
-          dotnet restore tests/Runic.Application.Bridge.AotSmoke --runtime win-x64 --configfile "$env:NUGET_CONFIG_FILE" `
+          dotnet restore ../../tests/native/Runic.Application.Bridge.AotSmoke --runtime win-x64 --configfile "$env:NUGET_CONFIG_FILE" `
             -p:RunicToolkitBuildMode=Verification -p:RunicToolkitFrontendBuild=false -p:RunicToolkitFrontendInstall=false `
             -p:ApplicationBridgeNativeAot=true
-          dotnet publish tests/Runic.Application.Bridge.AotSmoke -c Release -r win-x64 --no-restore `
+          dotnet publish ../../tests/native/Runic.Application.Bridge.AotSmoke -c Release -r win-x64 --no-restore `
             -p:ApplicationBridgeNativeAot=true -o "$env:RUNNER_TEMP\application-bridge-aot"
           & "$env:RUNNER_TEMP\application-bridge-aot\Runic.Application.Bridge.AotSmoke.exe"

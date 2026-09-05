@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
     <AssemblyName>Runic.Desktop</AssemblyName>
     <RootNamespace>Runic.Desktop</RootNamespace>
@@ -19,9 +20,9 @@
     <PackageReference Include="Microsoft.Web.WebView2" PrivateAssets="compile;contentfiles;analyzers" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Runic.Desktop.Tests" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\README.md" Pack="true" PackagePath="" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\NOTICE" Pack="true" PackagePath="" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\eng\licenses\WebUI-LICENSE.txt" Pack="true" PackagePath="licenses/WebUI/" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\runic-desktop\README.md" Pack="true" PackagePath="" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\runic-desktop\NOTICE" Pack="true" PackagePath="" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\runic-desktop\eng\licenses\WebUI-LICENSE.txt" Pack="true" PackagePath="licenses/WebUI/" />
     <None Include="buildTransitive\Runic.Desktop.targets" Pack="true" PackagePath="buildTransitive\Runic.Desktop.targets" />
   </ItemGroup>
 

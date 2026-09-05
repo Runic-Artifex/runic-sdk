@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repositoryRoot "tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj"
+$project = Join-Path $repositoryRoot "../../tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj"
 $feed = (Resolve-Path $CommandLineFeed).Path
 $revision = (& git -C $repositoryRoot rev-parse HEAD).Trim()
 $tree = (& git -C $repositoryRoot rev-parse 'HEAD^{tree}').Trim()
@@ -91,7 +91,7 @@ try {
         schema = 'runic.dotnet-runic-unsigned-staging/1'
         publication = 'forbidden'
         canonicalReleaseApproval = 'seven-package-release-gate-required'
-        producer = [ordered]@{ operation = 'direct-dotnet-pack'; script = 'eng/stage-dotnet-runic-unsigned.ps1'; scriptSha256 = Get-Digest $PSCommandPath; project = 'tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj'; fullPackInvoked = $false; sourceProjectReferences = @() }
+        producer = [ordered]@{ operation = 'direct-dotnet-pack'; script = 'eng/stage-dotnet-runic-unsigned.ps1'; scriptSha256 = Get-Digest $PSCommandPath; project = '../../tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj'; fullPackInvoked = $false; sourceProjectReferences = @() }
         source = [ordered]@{ repository = 'https://github.com/Runic-Artifex/runic-toolkit'; revision = $revision; tree = $tree }
         prerequisiteFeed = [ordered]@{ packages = $feedMetadata; remoteSources = @() }
         package = [ordered]@{ archive = [IO.Path]::GetFileName($archive); sha256 = Get-Digest $archive; metadata = $metadata }

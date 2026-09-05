@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "version": "1.0.0-preview.1",
   "npm": [
     {
@@ -38,148 +38,208 @@
   "nuget": [
     {
       "name": "Runic.Assets",
-      "project": "packages/runic-assets/src/Runic.Assets/Runic.Assets.csproj"
+      "project": "packages/dotnet/Runic.Assets/Runic.Assets.csproj"
     },
     {
       "name": "Runic.Assets.AspNetCore",
-      "project": "packages/runic-assets/src/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj"
+      "project": "packages/dotnet/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj"
     },
     {
       "name": "Runic.Assets.Desktop",
-      "project": "packages/runic-assets/src/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj"
+      "project": "packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj"
     },
     {
       "name": "Runic.CommandLine",
-      "project": "packages/runic-command-line/src/Runic.CommandLine/Runic.CommandLine.csproj"
+      "project": "packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj"
     },
     {
       "name": "Runic.CommandLine.Processes",
-      "project": "packages/runic-command-line/src/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj"
+      "project": "packages/dotnet/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj"
     },
     {
       "name": "Runic.CommandLine.Testing",
-      "project": "packages/runic-command-line/src/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj"
+      "project": "packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj"
     },
     {
       "name": "Runic.Desktop",
-      "project": "packages/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj"
+      "project": "packages/dotnet/Runic.Desktop/Runic.Desktop.csproj"
     },
     {
       "name": "Runic.Application",
-      "project": "packages/runic-toolkit/src/Runic.Application/Runic.Application.csproj"
+      "project": "packages/dotnet/Runic.Application/Runic.Application.csproj"
     },
     {
       "name": "Runic.Application.Bridge",
-      "project": "packages/runic-toolkit/src/Runic.Application.Bridge/Runic.Application.Bridge.csproj"
+      "project": "packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj"
     },
     {
       "name": "Runic.Application.Desktop",
-      "project": "packages/runic-toolkit/src/Runic.Application.Desktop/Runic.Application.Desktop.csproj"
+      "project": "packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj"
     },
     {
       "name": "Runic.Application.Hosting",
-      "project": "packages/runic-toolkit/src/Runic.Application.Hosting/Runic.Application.Hosting.csproj"
+      "project": "packages/dotnet/Runic.Application.Hosting/Runic.Application.Hosting.csproj"
     },
     {
       "name": "Runic.Application.Testing",
-      "project": "packages/runic-toolkit/src/Runic.Application.Testing/Runic.Application.Testing.csproj"
+      "project": "packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj"
     },
     {
       "name": "Runic.Application.Templates",
-      "project": "packages/runic-toolkit/templates/RunicToolkit.Templates/RunicToolkit.Templates.csproj"
+      "project": "tools/RunicToolkit.Templates/RunicToolkit.Templates.csproj"
     },
     {
       "name": "dotnet-runic",
-      "project": "packages/runic-toolkit/tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj"
+      "project": "tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj"
     },
     {
       "name": "Runic.Translations",
-      "project": "packages/runic-translations/dotnet/src/Runic.Translations/Runic.Translations.csproj"
+      "project": "packages/dotnet/Runic.Translations/Runic.Translations.csproj"
     },
     {
       "name": "Runic.Translations.Build",
-      "project": "packages/runic-translations/dotnet/src/Runic.Translations.Build/Runic.Translations.Build.csproj"
+      "project": "packages/dotnet/Runic.Translations.Build/Runic.Translations.Build.csproj"
     },
     {
       "name": "Runic.Translations.Tooling",
-      "project": "packages/runic-translations/dotnet/src/Runic.Translations.Tooling/Runic.Translations.Tooling.csproj"
+      "project": "packages/dotnet/Runic.Translations.Tooling/Runic.Translations.Tooling.csproj"
     },
     {
       "name": "Runic.Translations.Templates",
-      "project": "packages/runic-translations/dotnet/templates/Runic.Translations.Templates/Runic.Translations.Templates.csproj"
+      "project": "tools/Runic.Translations.Templates/Runic.Translations.Templates.csproj"
     },
     {
       "name": "dotnet-runic-translations",
-      "project": "packages/runic-translations/dotnet/tools/dotnet-runic-translations/dotnet-runic-translations.csproj"
+      "project": "tools/dotnet-runic-translations/dotnet-runic-translations.csproj"
     }
   ],
   "components": {
     "command-line": {
-      "path": "packages/runic-command-line",
-      "dependsOn": []
+      "dependsOn": [],
+      "paths": [
+        "packages/runic-command-line",
+        "packages/dotnet/Runic.CommandLine",
+        "packages/dotnet/Runic.CommandLine.Generators",
+        "packages/dotnet/Runic.CommandLine.Processes",
+        "packages/dotnet/Runic.CommandLine.Testing",
+        "tests/fixtures/command-line/CommandLine.Kernel",
+        "tests/native/Runic.CommandLine.AotSmoke",
+        "tests/dotnet/Runic.CommandLine.Contracts.Tests",
+        "tests/dotnet/Runic.CommandLine.Hosting.Tests",
+        "tests/dotnet/Runic.CommandLine.Processes.Tests",
+        "tests/dotnet/Runic.CommandLine.Tests",
+        "eng/build/command-line.props",
+        "eng/build/command-line.targets"
+      ]
     },
     "desktop": {
-      "path": "packages/runic-desktop",
-      "dependsOn": []
+      "dependsOn": [],
+      "paths": [
+        "packages/runic-desktop",
+        "packages/dotnet/Runic.Desktop",
+        "tests/native/Runic.Desktop.ComparativeStressAdapter",
+        "tests/fixtures/desktop/Runic.Desktop.PackageConsumer",
+        "tests/fixtures/desktop/Runic.Desktop.PackageConsumer.Windows",
+        "tests/dotnet/Runic.Desktop.Tests",
+        "tests/native/Runic.Desktop.WebViewSmoke",
+        "eng/build/desktop.props",
+        "eng/build/desktop.targets"
+      ]
     },
     "assets": {
-      "path": "packages/runic-assets",
-      "dependsOn": [
-        "command-line",
-        "desktop"
+      "dependsOn": ["command-line", "desktop"],
+      "paths": [
+        "packages/runic-assets",
+        "packages/dotnet/Runic.Assets",
+        "packages/dotnet/Runic.Assets.AspNetCore",
+        "packages/dotnet/Runic.Assets.Desktop",
+        "tools/Runic.Assets.Packer",
+        "tests/dotnet/Runic.Assets.Desktop.Tests",
+        "tests/fixtures/assets/Runic.Assets.PackageConsumer",
+        "tests/dotnet/Runic.Assets.Tests",
+        "eng/build/assets.props",
+        "eng/build/assets.targets"
       ]
     },
     "translations": {
-      "path": "packages/runic-translations",
-      "dependsOn": [
-        "command-line"
+      "dependsOn": ["command-line"],
+      "paths": [
+        "packages/runic-translations",
+        "packages/dotnet/Runic.Translations",
+        "packages/dotnet/Runic.Translations.Authoring",
+        "packages/dotnet/Runic.Translations.Build",
+        "tools/Runic.Translations.Compiler",
+        "packages/dotnet/Runic.Translations.Generator",
+        "packages/dotnet/Runic.Translations.Tooling",
+        "tools/Runic.Translations.Templates",
+        "tests/dotnet/Runic.Translations.AotTests",
+        "tests/dotnet/Runic.Translations.ApiTests",
+        "tests/dotnet/Runic.Translations.Authoring.Tests",
+        "tests/dotnet/Runic.Translations.Build.Tests",
+        "tests/dotnet/Runic.Translations.Compiler.Tests",
+        "tests/dotnet/Runic.Translations.Generator.Tests",
+        "tests/dotnet/Runic.Translations.PackageTests",
+        "tests/dotnet/Runic.Translations.Runtime.Tests",
+        "tests/dotnet/Runic.Translations.Tooling.Tests",
+        "tools/dotnet-runic-translations",
+        "eng/build/translations.props",
+        "eng/build/translations.targets"
       ]
     },
     "application": {
-      "path": "packages/runic-toolkit",
-      "dependsOn": [
-        "command-line",
-        "desktop",
-        "assets",
-        "translations"
+      "dependsOn": ["command-line", "desktop", "assets", "translations"],
+      "paths": [
+        "packages/runic-toolkit",
+        "packages/dotnet/Runic.Application",
+        "packages/dotnet/Runic.Application.Bridge",
+        "packages/dotnet/Runic.Application.Bridge.Generators",
+        "packages/dotnet/Runic.Application.Desktop",
+        "packages/dotnet/Runic.Application.Generators",
+        "packages/dotnet/Runic.Application.Hosting",
+        "packages/dotnet/Runic.Application.Testing",
+        "tools/RunicToolkit.Templates",
+        "tests/fixtures/application/BridgeModule",
+        "tests/fixtures/application/CounterMembers",
+        "tests/native/Runic.Application.AotSmoke",
+        "tests/native/Runic.Application.Bridge.AotSmoke",
+        "tests/dotnet/Runic.Application.Bridge.CounterTests",
+        "tests/dotnet/Runic.Application.Bridge.GeneratorTests",
+        "tests/native/Runic.Application.Bridge.MemberAotSmoke",
+        "tests/dotnet/Runic.Application.Bridge.MemberTests",
+        "tests/dotnet/Runic.Application.Bridge.PortableCore.Tests",
+        "tests/dotnet/Runic.Application.Bridge.Tests",
+        "tests/dotnet/Runic.Application.Desktop.Tests",
+        "tests/native/Runic.Application.Hosting.AotSmoke",
+        "tests/dotnet/Runic.Application.Hosting.Tests",
+        "tests/fixtures/application/Runic.Application.PackageConsumer",
+        "tests/dotnet/Runic.Application.Tests",
+        "tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests",
+        "tests/dotnet/RunicToolkit.PackageCanary",
+        "tools/Runic.Application.Bridge.Inspector",
+        "tools/dotnet-runic-toolkit",
+        "eng/build/application.props",
+        "eng/build/application.targets"
       ]
     },
     "vite": {
-      "path": "packages/runic-vite",
-      "dependsOn": [
-        "application"
-      ]
+      "dependsOn": ["application"],
+      "paths": ["packages/runic-vite"]
     },
     "svelte": {
-      "path": "packages/runic-svelte",
-      "dependsOn": [
-        "application",
-        "vite"
-      ]
+      "dependsOn": ["application", "vite"],
+      "paths": ["packages/runic-svelte"]
     },
     "editor": {
-      "path": "apps/translations-editor",
-      "dependsOn": [
-        "application",
-        "assets",
-        "translations",
-        "svelte",
-        "vite"
-      ]
+      "dependsOn": ["application", "assets", "translations", "svelte", "vite"],
+      "paths": ["apps/translations-editor"]
     },
     "examples": {
-      "path": "examples",
-      "dependsOn": [
-        "application",
-        "assets",
-        "translations",
-        "svelte",
-        "vite"
-      ]
+      "dependsOn": ["application", "assets", "translations", "svelte", "vite"],
+      "paths": ["examples"]
     },
     "docs": {
-      "path": "docs",
-      "dependsOn": []
+      "dependsOn": [],
+      "paths": ["docs"]
     }
   }
 }

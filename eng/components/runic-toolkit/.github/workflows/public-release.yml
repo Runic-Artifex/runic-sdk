@@ -34,8 +34,8 @@ on:
       - protocol/application-bridge/**
       - tools/**/*.csproj
       - web/packages/**
-      - tests/Runic.Application.Bridge.AotSmoke/**
-      - tests/RunicToolkit.PackageCanary/**
+      - ../../tests/native/Runic.Application.Bridge.AotSmoke/**
+      - ../../tests/dotnet/RunicToolkit.PackageCanary/**
       - tests/RunicToolkit.TemplateAcceptance/**
   workflow_dispatch:
     inputs:

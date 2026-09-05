@@ -1,0 +1,4 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets"
+          Condition="Exists('$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets')" />
+</Project>

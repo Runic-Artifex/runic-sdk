@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../eng/build/application.props" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <PackageId>Runic.Application.Templates</PackageId>
@@ -72,4 +73,5 @@
       <Content Include="$(TemplatePackContentRoot)angular/.template.config/template.json" Pack="true" PackagePath="content/content/angular/.template.config/" />
     </ItemGroup>
   </Target>
+  <Import Project="../../eng/build/application.targets" />
 </Project>

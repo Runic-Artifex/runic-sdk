@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup Condition="'$(RunicToolkitShippingProject)' == 'true'">
+    <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == '' and ('$(RunicToolkitVerificationBuild)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true')">true</EnableTrimAnalyzer>
+    <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == ''">false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer Condition="'$(EnableAotAnalyzer)' == '' and ('$(RunicToolkitVerificationBuild)' == 'true' or '$(PublishAot)' == 'true')">true</EnableAotAnalyzer>
+    <EnableAotAnalyzer Condition="'$(EnableAotAnalyzer)' == ''">false</EnableAotAnalyzer>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <Target Name="ValidateRunicToolkitBuildMode" BeforeTargets="PrepareForBuild">
+    <Error
+      Condition="'$(RunicToolkitBuildMode)' != 'Development' and '$(RunicToolkitBuildMode)' != 'Verification'"
+      Text="RunicToolkitBuildMode must be either Development or Verification." />
+  </Target>
+  <Import Project="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Bridge/buildTransitive/Runic.Application.Bridge.targets" />
+</Project>

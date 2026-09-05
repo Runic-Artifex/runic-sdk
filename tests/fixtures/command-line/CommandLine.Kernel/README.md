@@ -18,11 +18,11 @@ project references. It demonstrates the intended separation of concerns:
 Run from the repository root:
 
 ```powershell
-dotnet restore tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj
-dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo
-dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo --output=json
+dotnet restore ../../tests/fixtures/command-line/CommandLine.Kernel/CommandLine.Kernel.csproj
+dotnet run --project ../../tests/fixtures/command-line/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo
+dotnet run --project ../../tests/fixtures/command-line/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe --label demo --output=json
 $env:RUNIC_COMMANDLINE_OUTPUT = 'json'
-dotnet run --project tests/Fixtures/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe
+dotnet run --project ../../tests/fixtures/command-line/CommandLine.Kernel/CommandLine.Kernel.csproj -- probe
 ```
 
 The machine protocol remains `runic.commandline/1`. Output selection remains
