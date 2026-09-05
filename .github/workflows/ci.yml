@@ -40,6 +40,12 @@ jobs:
       - run: npm install --global npm@11.16.0 pnpm@11.25.0
       - run: bun run bootstrap
       - run: bun run verify
+      - name: Install browser for the migration reference
+        working-directory: examples/current/customer-migration/Host/Frontend
+        run: bunx playwright-core install --with-deps chromium
+      - name: Verify the customer migration through the live bridge
+        working-directory: examples/current/customer-migration/Host/Frontend
+        run: bun run test:browser
       - run: bun run verify:templates
       - name: Check generated files and lockfile
         run: git diff --exit-code
@@ -81,6 +87,9 @@ jobs:
         run: |
           dotnet build RunicSdk.Core.slnx -c Release
           dotnet test packages/runic-desktop/tests/Runic.Desktop.Tests -c Release --no-build
+      - name: Compile the original WPF migration example
+        if: runner.os == 'Windows'
+        run: dotnet build examples/current/customer-migration/Wpf/CustomerWpf.csproj -c Release
       - name: Publish generated member bridge with NativeAOT
         shell: bash
         run: |

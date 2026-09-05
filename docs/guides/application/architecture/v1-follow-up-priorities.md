@@ -1,6 +1,6 @@
 # Priorities after the member-based bridge
 
-## 1. Reunify the SDK development workspace
+## 1. Reunify the SDK development workspace — implemented
 
 Return the core SDK to a monorepo: Application/Bridge, Desktop, Assets,
 Translations, CommandLine, Vite and framework adapters. Keep their NuGet/npm
@@ -68,3 +68,13 @@ headless protocol tests; Avalonia's layered testing model is a useful reference.
 
 Suggested order: monorepo and unified CI, desktop delivery guarantees, accessible
 components, then deeper platform expansion based on demonstrated demand.
+
+## Parallel focus: native Runic DX for MVVM migrations
+
+The accepted migration direction is to replace MVVM presentation architecture with
+idiomatic Runic, preserving domain logic. Do not build a CommunityToolkit adapter.
+The [migration RFC](mvvm-migration-rfc.md) and
+[customer reference](../../../../examples/current/customer-migration/README.md)
+provide the first concrete evidence. Use its forms, operation, ordering and native
+lifecycle gaps to shape SDK work alongside OS integration. Follow with a MAUI-derived
+feature before investing in automated migration scaffolding.

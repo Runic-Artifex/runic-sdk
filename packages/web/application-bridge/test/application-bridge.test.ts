@@ -540,6 +540,8 @@ class LoopbackChannel implements FrameChannel {
   public sentFrames = 0;
   public failNextSend = false;
   public holdDispatch = false;
+  public cancellationPayload: Record<string, unknown> | undefined;
+  public cancellationAccepted = true;
   public holdInitialize = false;
   public receiptBeforeEvent = false;
   public admissionRejectNextDispatch = false;
@@ -629,6 +631,9 @@ class LoopbackChannel implements FrameChannel {
       }
       this.emit(this.envelope("event", undefined, { _tag: "NavigationChanged", revision: this.revision, view: "Complete" }));
       response = this.envelope("receipt", commandId, { _tag: "NavigationAccepted", revision: this.revision });
+    } else if (kind === "cancelOperation") {
+      const operationId = (request.payload as { operationId: string }).operationId;
+      response = this.envelope("receipt", commandId, this.cancellationPayload ?? { _tag: "OperationCancellationAccepted", operationId, accepted: this.cancellationAccepted, revision: this.revision });
     } else if (kind === "uiReady") {
       response = this.envelope("receipt", commandId, { _tag: "UiReadyAccepted" });
     } else if (kind === "uiRendered") {
@@ -816,4 +821,32 @@ class ReturnedBatchChannel implements FrameChannel {
       payload,
     };
   }
+}
+
+for (const accepted of [true, false]) {
+  test(`cancellation acknowledgement (${accepted}) is protocol-owned and leaves dispatch usable`, async () => {
+    const channel = new LoopbackChannel();
+    channel.cancellationAccepted = accepted;
+    const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, channel));
+    try {
+      await controller.initialize();
+      await controller.cancel("33333333-3333-4333-8333-333333333333");
+      await controller.dispatch({ _tag: "Navigate", target: "Complete" });
+    } finally { await controller.dispose(); }
+  });
+}
+for (const payload of [
+  { _tag: "OperationCancellationAccepted", operationId: "33333333-3333-4333-8333-333333333333", accepted: "yes", revision: 0 },
+  { _tag: "OperationCancellationAccepted", operationId: "44444444-4444-4444-8444-444444444444", accepted: true, revision: 0 },
+  { _tag: "OperationCancellationAccepted", operationId: "33333333-3333-4333-8333-333333333333", accepted: true, revision: 0, extra: true },
+]) {
+  test(`invalid cancellation receipt rejects its pending promise and requires recovery: ${JSON.stringify(payload)}`, { timeout: 2000 }, async () => {
+    const channel = new LoopbackChannel(); channel.cancellationPayload = payload;
+    const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, channel));
+    try {
+      await controller.initialize();
+      await assert.rejects(controller.cancel("33333333-3333-4333-8333-333333333333"), /cancellation acknowledgement/);
+      await assert.rejects(controller.dispatch({ _tag: "Navigate", target: "Complete" }), /requires authoritative recovery/);
+    } finally { await controller.dispose(); }
+  });
 }

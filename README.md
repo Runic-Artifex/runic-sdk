@@ -17,6 +17,7 @@ bun run bootstrap       # One frozen npm workspace install and .NET restore
 bun run build           # SDK, editor, current example, and documentation
 bun run test            # Managed contracts, frontend tests, generated artifacts, docs
 bun run example:counter # Small member-based bridge example
+bun run example:customers # Customer editor migrated away from CommunityToolkit MVVM
 bun run dev:docs        # Documentation development server
 bun run dev:editor      # Build and launch the translations editor
 ```
@@ -49,6 +50,13 @@ Root `Directory.Packages.props` centralizes shared .NET dependencies; a document
 translation compiler pin remains local. Product-specific analyzer/build policies
 remain with their product. Template lockfiles and historical fixtures are independent
 consumer evidence, not additional development workspaces.
+
+## Migrating existing applications
+
+The [customer migration reference](examples/current/customer-migration/README.md)
+includes an original WPF/CommunityToolkit implementation, shared business rules,
+and an idiomatic Runic replacement. Its [migration RFC](packages/runic-toolkit/docs/architecture/mvvm-migration-rfc.md)
+records the accepted direction and the remaining DX and OS-integration work.
 
 ## Verify packages and releases
 

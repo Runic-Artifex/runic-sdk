@@ -12,6 +12,8 @@ import {
 import {
   ClientEnvelopeSchema,
   HostEnvelopeSchema,
+  UuidSchema,
+  RevisionSchema,
   type ApplicationContract,
   type ClientEnvelope,
   type HostEnvelope,
@@ -86,6 +88,7 @@ export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapsh
 }
 
 interface Pending<Failure> {
+  readonly operationId?: string;
   readonly kind: "initialize" | "dispatch" | "cancel" | "uiReady" | "uiRendered";
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Failure) => void;
@@ -102,6 +105,11 @@ interface BufferedFrame {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
+const CancellationReceiptSchema = Schema.TaggedStruct("OperationCancellationAccepted", {
+  operationId: UuidSchema,
+  accepted: Schema.Boolean,
+  revision: RevisionSchema,
+});
 const UiReadyReceiptSchema = Schema.TaggedStruct("UiReadyAccepted", {});
 const UiRenderedReceiptSchema = Schema.TaggedStruct("UiRenderedAccepted", {});
 
@@ -258,11 +266,11 @@ export function ApplicationBridgeLive<
         }
         const item = pending.get(commandId);
         if (item === undefined || item.connectionEpoch !== connectionEpoch) return;
-        pending.delete(commandId);
         if (envelope.kind === "error") {
           const error = yield* Schema.decodeUnknown(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host error was invalid.")),
           );
+          pending.delete(commandId);
           item.reject(error);
           return;
         }
@@ -273,11 +281,23 @@ export function ApplicationBridgeLive<
           const snapshot = yield* Schema.decodeUnknown(contract.snapshot, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
           );
+          pending.delete(commandId);
           item.resolve(snapshot);
           return;
         }
         if (envelope.kind !== "receipt") {
           return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host command response was not a receipt."));
+        }
+        if (item.kind === "cancel") {
+          const receipt = yield* Schema.decodeUnknown(CancellationReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
+            Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host cancellation acknowledgement was invalid.")),
+          );
+          if (receipt.operationId !== item.operationId || (envelope.operationId !== undefined && envelope.operationId !== receipt.operationId)) {
+            return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host cancellation acknowledgement identified a different operation."));
+          }
+          pending.delete(commandId);
+          item.resolve(receipt);
+          return;
         }
         const value: unknown = item.kind === "uiReady"
           ? yield* Schema.decodeUnknown(UiReadyReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
@@ -290,6 +310,7 @@ export function ApplicationBridgeLive<
             : yield* Schema.decodeUnknown(contract.receipt, { onExcessProperty: "error" })(envelope.payload).pipe(
               Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
             );
+        pending.delete(commandId);
         item.resolve(value);
       });
 
@@ -381,6 +402,7 @@ export function ApplicationBridgeLive<
           let commandId = nextCommandId();
           while (pending.has(commandId)) commandId = crypto.randomUUID();
           const item: Pending<ApplicationBridgeFailure<DomainError>> = {
+            ...(kind === "cancelOperation" ? { operationId: (payload as { operationId: string }).operationId } : {}),
             kind: kind === "initialize"
               ? "initialize"
               : kind === "dispatch"

@@ -19,7 +19,8 @@
     "packages/runic-svelte/packages/svelte",
     "packages/runic-svelte/packages/sveltekit",
     "apps/translations-editor/Frontend",
-    "docs"
+    "docs",
+    "examples/current/customer-migration/Host/Frontend"
   ],
   "scripts": {
     "bootstrap": "node eng/run.mjs bootstrap",
@@ -32,7 +33,9 @@
     "dev:editor": "node eng/run.mjs dev:editor",
     "affected": "node eng/run.mjs affected",
     "example:counter": "dotnet run --project examples/current/counter/Counter.csproj",
-    "verify:templates": "node eng/verify-templates.mjs"
+    "verify:templates": "node eng/verify-templates.mjs",
+    "example:customers": "node eng/run.mjs example:customers",
+    "verify:customers": "node eng/run.mjs verify:customers"
   },
   "devDependencies": {
     "typescript": "5.9.3",

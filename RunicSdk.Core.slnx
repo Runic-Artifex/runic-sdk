@@ -71,5 +71,9 @@
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/current/counter/Counter.csproj" />
+    <Project Path="examples/current/customer-migration/Domain/CustomerDomain.csproj" />
+    <Project Path="examples/current/customer-migration/Before/CustomerMvvm.csproj" />
+    <Project Path="examples/current/customer-migration/After/CustomerApplication.csproj" />
+    <Project Path="examples/current/customer-migration/Tests/CustomerMigration.Tests.csproj" />
   </Folder>
 </Solution>

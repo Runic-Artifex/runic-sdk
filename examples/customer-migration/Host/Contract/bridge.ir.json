@@ -1,0 +1,1109 @@
+{
+  "authority": "csharp",
+  "bindings": {
+    "modules": [
+      {
+        "assembly": "CustomerApplication",
+        "definitions": {
+          "command:ReloadCustomers": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "ReloadCustomers"
+                }
+              }
+            }
+          },
+          "command:SaveCustomer": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "SaveCustomer"
+                }
+              },
+              "draft": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:CustomerInput"
+                }
+              }
+            }
+          },
+          "command:ValidateCustomer": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "ValidateCustomer"
+                }
+              },
+              "draft": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:CustomerInput"
+                }
+              }
+            }
+          },
+          "error:CustomerRejected": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "CustomerRejected"
+                }
+              },
+              "code": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "issues": {
+                "optional": false,
+                "type": {
+                  "items": {
+                    "kind": "ref",
+                    "name": "type:ValidationIssue"
+                  },
+                  "kind": "array"
+                }
+              },
+              "message": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            }
+          },
+          "event:CustomersChanged": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "CustomersChanged"
+                }
+              },
+              "snapshot": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:CustomerSnapshot"
+                }
+              }
+            }
+          },
+          "receipt:CustomerReloaded": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "CustomerReloaded"
+                }
+              },
+              "snapshot": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:CustomerSnapshot"
+                }
+              }
+            }
+          },
+          "receipt:DraftValidated": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "DraftValidated"
+                }
+              },
+              "issues": {
+                "optional": false,
+                "type": {
+                  "items": {
+                    "kind": "ref",
+                    "name": "type:ValidationIssue"
+                  },
+                  "kind": "array"
+                }
+              }
+            }
+          },
+          "receipt:SaveStarted": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "SaveStarted"
+                }
+              },
+              "operationId": {
+                "optional": false,
+                "type": {
+                  "format": "uuid",
+                  "kind": "string"
+                }
+              },
+              "snapshot": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:CustomerSnapshot"
+                }
+              }
+            }
+          },
+          "type:CustomerInput": {
+            "kind": "object",
+            "properties": {
+              "company": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maxLength": 1000,
+                    "minLength": 0
+                  },
+                  "kind": "string"
+                }
+              },
+              "email": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maxLength": 1000,
+                    "minLength": 0
+                  },
+                  "kind": "string"
+                }
+              },
+              "id": {
+                "optional": false,
+                "type": {
+                  "format": "uuid",
+                  "kind": "string"
+                }
+              },
+              "name": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maxLength": 1000,
+                    "minLength": 0
+                  },
+                  "kind": "string"
+                }
+              },
+              "version": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  "kind": "integer"
+                }
+              }
+            }
+          },
+          "type:CustomerRow": {
+            "kind": "object",
+            "properties": {
+              "company": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "email": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "id": {
+                "optional": false,
+                "type": {
+                  "format": "uuid",
+                  "kind": "string"
+                }
+              },
+              "name": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "version": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 2147483647,
+                    "minimum": -2147483648
+                  },
+                  "kind": "integer"
+                }
+              }
+            }
+          },
+          "type:CustomerSnapshot": {
+            "kind": "object",
+            "properties": {
+              "customers": {
+                "optional": false,
+                "type": {
+                  "items": {
+                    "kind": "ref",
+                    "name": "type:CustomerRow"
+                  },
+                  "kind": "array"
+                }
+              },
+              "generation": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 2147483647,
+                    "minimum": -2147483648
+                  },
+                  "kind": "integer"
+                }
+              },
+              "save": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:SaveState"
+                }
+              }
+            }
+          },
+          "type:SaveState": {
+            "kind": "object",
+            "properties": {
+              "issues": {
+                "optional": false,
+                "type": {
+                  "items": {
+                    "kind": "ref",
+                    "name": "type:ValidationIssue"
+                  },
+                  "kind": "array"
+                }
+              },
+              "message": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "operationId": {
+                "optional": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "format": "uuid",
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ]
+                }
+              },
+              "progress": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 100,
+                    "minimum": 0
+                  },
+                  "kind": "integer"
+                }
+              },
+              "status": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            }
+          },
+          "type:ValidationIssue": {
+            "kind": "object",
+            "properties": {
+              "field": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "message": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            }
+          }
+        },
+        "errors": [
+          "CustomerRejected"
+        ],
+        "events": [
+          "CustomersChanged"
+        ],
+        "members": [
+          {
+            "adapter": "__Runic_bacad0ad61fa",
+            "advancesRevision": false,
+            "cancellable": false,
+            "kind": "command",
+            "member": "Reload",
+            "owner": "global::CustomerMigration.After.CustomerFeature",
+            "receipt": "CustomerReloaded",
+            "schema": "receipt:CustomerReloaded",
+            "startsOperation": false,
+            "tag": "ReloadCustomers"
+          },
+          {
+            "adapter": "__Runic_0bd8079d0cb8",
+            "advancesRevision": true,
+            "cancellable": true,
+            "kind": "command",
+            "member": "Save",
+            "owner": "global::CustomerMigration.After.CustomerFeature",
+            "receipt": "SaveStarted",
+            "schema": "receipt:SaveStarted",
+            "startsOperation": true,
+            "tag": "SaveCustomer"
+          },
+          {
+            "adapter": "__Runic_f2e7320e0dee",
+            "advancesRevision": false,
+            "cancellable": false,
+            "kind": "snapshot",
+            "member": "Snapshot",
+            "owner": "global::CustomerMigration.After.CustomerFeature",
+            "receipt": null,
+            "schema": "type:CustomerSnapshot",
+            "startsOperation": false,
+            "tag": null
+          },
+          {
+            "adapter": "__Runic_de998e317b6d",
+            "advancesRevision": false,
+            "cancellable": false,
+            "kind": "command",
+            "member": "Validate",
+            "owner": "global::CustomerMigration.After.CustomerFeature",
+            "receipt": "DraftValidated",
+            "schema": "receipt:DraftValidated",
+            "startsOperation": false,
+            "tag": "ValidateCustomer"
+          }
+        ],
+        "registrar": "Runic.Application.Bridge.Generated.Module_65fbef4a74a23e9b",
+        "types": {
+          "command:ReloadCustomers": "global::CustomerMigration.After.ReloadCustomers",
+          "command:SaveCustomer": "global::CustomerMigration.After.SaveCustomer",
+          "command:ValidateCustomer": "global::CustomerMigration.After.ValidateCustomer",
+          "error:CustomerRejected": "global::CustomerMigration.After.CustomerRejected",
+          "event:CustomersChanged": "global::CustomerMigration.After.CustomersChanged",
+          "receipt:CustomerReloaded": "global::CustomerMigration.After.CustomerReloaded",
+          "receipt:DraftValidated": "global::CustomerMigration.After.DraftValidated",
+          "receipt:SaveStarted": "global::CustomerMigration.After.SaveStarted",
+          "type:CustomerInput": "global::CustomerMigration.After.CustomerInput",
+          "type:CustomerRow": "global::CustomerMigration.After.CustomerRow",
+          "type:CustomerSnapshot": "global::CustomerMigration.After.CustomerSnapshot",
+          "type:SaveState": "global::CustomerMigration.After.SaveState",
+          "type:ValidationIssue": "global::CustomerMigration.After.ValidationIssue"
+        },
+        "version": 1
+      },
+      {
+        "assembly": "CustomerDesktop",
+        "definitions": {},
+        "errors": [],
+        "events": [],
+        "members": [],
+        "registrar": "Runic.Application.Bridge.Generated.Module_b8e0aa177ba071e0",
+        "types": {},
+        "version": 1
+      }
+    ]
+  },
+  "csharp": {
+    "contractName": "Customers",
+    "namespace": "Runic.Application.Generated"
+  },
+  "documentation": {},
+  "fingerprint": {
+    "algorithm": "sha256",
+    "scope": "wire",
+    "value": "16401a37d518255343bdaba2603ad228a9464b536dff2e2ab2fd3cd4af5c2775"
+  },
+  "format": "runic.application-bridge-ir",
+  "formatVersion": 1,
+  "wire": {
+    "canonicalEncoding": "runic-json-v1",
+    "commands": [
+      {
+        "advancesRevision": false,
+        "cancellable": false,
+        "name": "ReloadCustomers",
+        "receipt": "CustomerReloaded",
+        "startsOperation": false
+      },
+      {
+        "advancesRevision": true,
+        "cancellable": true,
+        "name": "SaveCustomer",
+        "receipt": "SaveStarted",
+        "startsOperation": true
+      },
+      {
+        "advancesRevision": false,
+        "cancellable": false,
+        "name": "ValidateCustomer",
+        "receipt": "DraftValidated",
+        "startsOperation": false
+      }
+    ],
+    "definitions": {
+      "command:ReloadCustomers": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ReloadCustomers"
+            }
+          }
+        }
+      },
+      "command:SaveCustomer": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "SaveCustomer"
+            }
+          },
+          "draft": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:CustomerInput"
+            }
+          }
+        }
+      },
+      "command:ValidateCustomer": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ValidateCustomer"
+            }
+          },
+          "draft": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:CustomerInput"
+            }
+          }
+        }
+      },
+      "error:CommandRejected": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CommandRejected"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:CustomerRejected": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CustomerRejected"
+            }
+          },
+          "code": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "issues": {
+            "optional": false,
+            "type": {
+              "items": {
+                "kind": "ref",
+                "name": "type:ValidationIssue"
+              },
+              "kind": "array"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          }
+        }
+      },
+      "error:OperationCancelled": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationCancelled"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationFailed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationFailed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:OperationTimedOut": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "OperationTimedOut"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolDecodeError": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolDecodeError"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:ProtocolVersionMismatch": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "ProtocolVersionMismatch"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:StaleRevision": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "StaleRevision"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportClosed": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportClosed"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "error:TransportUnavailable": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransportUnavailable"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "retryable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "event:CustomersChanged": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CustomersChanged"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:CustomerSnapshot"
+            }
+          }
+        }
+      },
+      "receipt:CustomerReloaded": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "CustomerReloaded"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:CustomerSnapshot"
+            }
+          }
+        }
+      },
+      "receipt:DraftValidated": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "DraftValidated"
+            }
+          },
+          "issues": {
+            "optional": false,
+            "type": {
+              "items": {
+                "kind": "ref",
+                "name": "type:ValidationIssue"
+              },
+              "kind": "array"
+            }
+          }
+        }
+      },
+      "receipt:SaveStarted": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "SaveStarted"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "format": "uuid",
+              "kind": "string"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:CustomerSnapshot"
+            }
+          }
+        }
+      },
+      "type:CustomerInput": {
+        "kind": "object",
+        "properties": {
+          "company": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maxLength": 1000,
+                "minLength": 0
+              },
+              "kind": "string"
+            }
+          },
+          "email": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maxLength": 1000,
+                "minLength": 0
+              },
+              "kind": "string"
+            }
+          },
+          "id": {
+            "optional": false,
+            "type": {
+              "format": "uuid",
+              "kind": "string"
+            }
+          },
+          "name": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maxLength": 1000,
+                "minLength": 0
+              },
+              "kind": "string"
+            }
+          },
+          "version": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": 1
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "type:CustomerRow": {
+        "kind": "object",
+        "properties": {
+          "company": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "email": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "id": {
+            "optional": false,
+            "type": {
+              "format": "uuid",
+              "kind": "string"
+            }
+          },
+          "name": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "version": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": -2147483648
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
+      "type:CustomerSnapshot": {
+        "kind": "object",
+        "properties": {
+          "customers": {
+            "optional": false,
+            "type": {
+              "items": {
+                "kind": "ref",
+                "name": "type:CustomerRow"
+              },
+              "kind": "array"
+            }
+          },
+          "generation": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": -2147483648
+              },
+              "kind": "integer"
+            }
+          },
+          "save": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:SaveState"
+            }
+          }
+        }
+      },
+      "type:SaveState": {
+        "kind": "object",
+        "properties": {
+          "issues": {
+            "optional": false,
+            "type": {
+              "items": {
+                "kind": "ref",
+                "name": "type:ValidationIssue"
+              },
+              "kind": "array"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "format": "uuid",
+                  "kind": "string"
+                },
+                {
+                  "kind": "null"
+                }
+              ]
+            }
+          },
+          "progress": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 100,
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          },
+          "status": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          }
+        }
+      },
+      "type:ValidationIssue": {
+        "kind": "object",
+        "properties": {
+          "field": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          }
+        }
+      }
+    },
+    "envelopeVersion": 1,
+    "errors": [
+      "CommandRejected",
+      "CustomerRejected",
+      "OperationCancelled",
+      "OperationFailed",
+      "OperationTimedOut",
+      "ProtocolDecodeError",
+      "ProtocolVersionMismatch",
+      "StaleRevision",
+      "TransportClosed",
+      "TransportUnavailable"
+    ],
+    "events": [
+      "CustomersChanged"
+    ],
+    "initialization": {
+      "kind": "snapshot",
+      "payload": "empty-object"
+    },
+    "limits": {
+      "maxCollectionItems": 4096,
+      "maxDepth": 32,
+      "maxFrameBytes": 262144,
+      "maxPendingCommands": 64,
+      "maxStringBytes": 65536
+    },
+    "protocol": {
+      "identity": "runic.examples.customers",
+      "version": 1
+    },
+    "snapshot": "type:CustomerSnapshot"
+  }
+}

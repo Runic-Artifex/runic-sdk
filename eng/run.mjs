@@ -74,6 +74,13 @@ function build() {
     configuration,
     "--nologo",
   ]);
+  run("dotnet", [
+    "build",
+    "examples/current/customer-migration/Host/CustomerDesktop.csproj",
+    "-c",
+    configuration,
+    "--nologo",
+  ]);
   run("bun", ["run", "build"], resolve(root, "docs"));
 }
 function test() {
@@ -117,6 +124,16 @@ function test() {
     "--no-build",
   ]);
   web("test");
+  run(
+    "bun",
+    ["run", "test"],
+    resolve(root, "examples/current/customer-migration/Host/Frontend"),
+  );
+  run(
+    "bun",
+    ["run", "contract:check"],
+    resolve(root, "examples/current/customer-migration/Host/Frontend"),
+  );
   for (const path of [
     "packages/runic-svelte/packages/svelte",
     "packages/runic-svelte/packages/sveltekit",
@@ -227,6 +244,34 @@ async function main() {
     case "affected":
       affected();
       break;
+    case "example:customers":
+      core();
+      web("build");
+      run("dotnet", [
+        "run",
+        "--project",
+        "examples/current/customer-migration/Host/CustomerDesktop.csproj",
+        "-c",
+        configuration,
+        "--",
+        ...process.argv.slice(3),
+      ]);
+      break;
+    case "verify:customers":
+      core();
+      web("build");
+      run("dotnet", [
+        "build",
+        "examples/current/customer-migration/Host/CustomerDesktop.csproj",
+        "-c",
+        configuration,
+      ]);
+      run(
+        "bun",
+        ["run", "test:browser"],
+        resolve(root, "examples/current/customer-migration/Host/Frontend"),
+      );
+      break;
     case "dev:docs":
       run("bun", ["run", "dev"], resolve(root, "docs"));
       break;
@@ -243,7 +288,7 @@ async function main() {
       break;
     default:
       throw new Error(
-        "Use bootstrap, build, test, verify, pack, verify-packages, affected, dev:docs, or dev:editor.",
+        "Use bootstrap, build, test, verify, pack, verify-packages, affected, example:customers, verify:customers, dev:docs, or dev:editor.",
       );
   }
 }
