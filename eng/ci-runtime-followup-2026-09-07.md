@@ -87,3 +87,24 @@ Follow-up verification completed:
   this record was written.
 
 No packages have been published. This evidence-only update does not restart CI.
+
+## HMR readiness follow-up
+
+Run 34118452783 subsequently completed with the aggregate `bun run verify` and
+CS-WebUI HMR checks passing, followed by a Desktop Vite startup timeout. Templates
+and footprint jobs were not reached. The startup stall remains undiagnosed; two
+successful complete local HMR runs and 130 isolated Bun/Vite starts (including
+100 launched through .NET) did not reproduce it.
+
+Two diagnostic defects are fixed: the readiness fault no longer includes a URL
+that the command sanitizer mistakes for a drive path, and acceptance cleanup
+preserves the primary error alongside any shutdown failure. Readiness reports
+which module probe failed and its last response, with the origin in local progress
+output. CI retains per-host development logs, including successful startup logs.
+The existing 30-second startup deadline and required shutdown checks remain.
+
+Validation: all 25 development-tool tests pass, including controlled client/entry
+timeouts, successful readiness, caller cancellation and early process exit. The
+changed acceptance driver passed both real host/HMR journeys under Bun in the Nix
+shell with `CI=true`; logs are under `artifacts/host-dev`. This is diagnostic
+coverage, not proof that the intermittent startup stall is fixed.

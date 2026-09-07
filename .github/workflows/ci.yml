@@ -51,6 +51,13 @@ jobs:
       - name: Verify both hosts with frontend HMR
         working-directory: examples/customer-migration/Host/Frontend
         run: bun run test:dev
+      - name: Retain frontend development logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: host-dev-${{ github.sha }}
+          path: artifacts/host-dev
+          if-no-files-found: ignore
       - run: bun run verify:templates
       - name: Check generated files and lockfile
         run: git diff --exit-code

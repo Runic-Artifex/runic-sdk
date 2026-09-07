@@ -163,22 +163,33 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 
     private async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
         using var client = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(1),
         };
-        Uri clientModule = new(Origin, "@vite/client");
-        Uri entryModule = new(Origin, HostEnvironment[EntryEnvironmentVariable]![1..]);
+        Console.WriteLine($"[vite] Probing {Origin} for the Vite client and application entry.");
+        await WaitUntilReadyAsync(Origin, HostEnvironment[EntryEnvironmentVariable]![1..],
+            Completion, client, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static async Task WaitUntilReadyAsync(
+        Uri origin, string entry, Task<int> completion, HttpClient client,
+        TimeSpan deadline, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(deadline);
+        Uri clientModule = new(origin, "@vite/client");
+        Uri entryModule = new(origin, entry);
+        string probe = "Vite client";
+        string lastResponse = "no response";
         try
         {
             while (true)
             {
                 timeout.Token.ThrowIfCancellationRequested();
-                if (Completion.IsCompleted)
+                if (completion.IsCompleted)
                 {
-                    int exitCode = await Completion.ConfigureAwait(false);
+                    int exitCode = await completion.ConfigureAwait(false);
                     throw new DevDevelopmentException(
                         "RTKDEV1007",
                         $"The Vite development server exited before readiness with code {exitCode}.");
@@ -186,14 +197,20 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 
                 try
                 {
+                    probe = "Vite client";
+                    lastResponse = "no response";
                     using HttpResponseMessage clientResponse = await client
                         .GetAsync(clientModule, timeout.Token)
                         .ConfigureAwait(false);
+                    lastResponse = $"HTTP {(int)clientResponse.StatusCode}";
                     if (clientResponse.IsSuccessStatusCode)
                     {
+                        probe = "application entry";
+                        lastResponse = "no response";
                         using HttpResponseMessage entryResponse = await client
                             .GetAsync(entryModule, timeout.Token)
                             .ConfigureAwait(false);
+                        lastResponse = $"HTTP {(int)entryResponse.StatusCode}";
                         if (entryResponse.IsSuccessStatusCode)
                         {
                             return;
@@ -202,9 +219,11 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 }
                 catch (HttpRequestException)
                 {
+                    lastResponse = "connection failed";
                 }
                 catch (TaskCanceledException) when (!timeout.IsCancellationRequested)
                 {
+                    lastResponse = "request timed out";
                 }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token)
@@ -215,7 +234,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         {
             throw new DevDevelopmentException(
                 "RTKDEV1007",
-                $"Timed out waiting for the Vite development server at {Origin}. " +
+                $"Timed out waiting for the Vite development server ({probe}: {lastResponse}). " +
                 "Run 'dotnet runic doctor' and verify the configured dev script " +
                 "and Vite entry module.");
         }

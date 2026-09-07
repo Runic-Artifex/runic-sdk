@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +27,7 @@ internal static class Program
             ("host selection is scoped across child processes", HostSelectionIsScoped),
             ("package managers use frozen installs and portable scripts", PackageManagersUseFrozenPortableCommands),
             ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
+            ("Vite readiness identifies failed probes and preserves caller cancellation", ViteReadinessFailuresAreActionable),
             ("Vite startup skips the production frontend build", ViteStartupSkipsProductionBuild),
             ("Angular server arguments use the supported development builder", AngularArgumentsAreExplicit),
             ("development bootstrap preserves private binding and remote assets", DevelopmentBootstrapIsNativeSafe),
@@ -61,6 +64,66 @@ internal static class Program
 
         Console.WriteLine($"{tests.Length - failures}/{tests.Length} development-tool tests passed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void ViteReadinessFailuresAreActionable()
+        => VerifyViteReadinessAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyViteReadinessAsync()
+    {
+        var origin = new Uri("http://127.0.0.1:12345/");
+        var running = new TaskCompletionSource<int>();
+        foreach (bool clientReady in new[] { false, true })
+        {
+            using var client = new HttpClient(new ReadinessHandler(clientReady));
+            try
+            {
+                await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts",
+                    running.Task, client, TimeSpan.FromMilliseconds(200), CancellationToken.None);
+                throw new InvalidOperationException("A non-responsive module was accepted as ready.");
+            }
+            catch (DevDevelopmentException error)
+            {
+                Equal("RTKDEV1007", error.Code);
+                Contains(error.Message, clientReady ? "application entry: no response" : "Vite client: no response");
+                // URLs trigger the public command fault sanitizer's drive-path check.
+                DoesNotContain(error.Message, origin.AbsoluteUri);
+                Contains(error.Message, "dotnet runic doctor");
+            }
+        }
+
+        using var readyClient = new HttpClient(new ReadinessHandler(true, true));
+        await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts", running.Task,
+            readyClient, TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        try
+        {
+            await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts", running.Task,
+                readyClient, TimeSpan.FromSeconds(1), cancellation.Token);
+            throw new InvalidOperationException("Caller cancellation was ignored.");
+        }
+        catch (OperationCanceledException) { }
+
+        try
+        {
+            await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts", Task.FromResult(7),
+                readyClient, TimeSpan.FromSeconds(1), CancellationToken.None);
+            throw new InvalidOperationException("An exited server was accepted as ready.");
+        }
+        catch (DevDevelopmentException error) { Contains(error.Message, "code 7"); }
+    }
+
+    private sealed class ReadinessHandler(bool clientReady, bool entryReady = false) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (!(request.RequestUri!.AbsolutePath == "/@vite/client" ? clientReady : entryReady))
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
     }
 
     private static void SizeInventoryAccountsForBytes()

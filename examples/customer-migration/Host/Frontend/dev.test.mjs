@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,8 @@ const css = resolve(here, "src/style.css");
 const original = await readFile(css, "utf8");
 const modified = original + "\n:root { --runic-development-probe: ready; }\n";
 const temporary = await mkdtemp(resolve(tmpdir(), "runic-host-dev-"));
+const logs = resolve(root, "artifacts/host-dev");
+await mkdir(logs, { recursive: true });
 let browser;
 try {
   browser = await chromium.launch({ headless: true,
@@ -30,6 +32,7 @@ try {
     });
     let output = "";
     let page;
+    let failure;
     host.stderr.on("data", chunk => { output += chunk; });
     try {
       const url = await new Promise((accept, reject) => {
@@ -57,11 +60,19 @@ try {
       console.log(`ok - ${selection}: CLI startup, live bridge and frontend HMR preserve the draft`);
     } catch (error) {
       console.error(output);
-      throw error;
+      failure = error;
     } finally {
-      if (await readFile(css, "utf8") === modified) await writeFile(css, original);
-      await page?.close();
-      await stopHost(host);
+      const failures = failure ? [failure] : [];
+      for (const cleanup of [
+        async () => { if (await readFile(css, "utf8") === modified) await writeFile(css, original); },
+        async () => { await page?.close(); },
+        async () => { await stopHost(host); },
+        async () => { await writeFile(resolve(logs, `${selection}.log`), output); },
+      ]) {
+        try { await cleanup(); } catch (error) { failures.push(error); }
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, `${selection} development acceptance and cleanup failed`);
     }
   }
 } finally {
