@@ -80,6 +80,14 @@ Packages are materialized after the build independently of test completion.
 Separate package-consumer, template and footprint jobs validate these candidates.
 Only the final `verify` gate succeeding means all required jobs have passed.
 
+Both desktop conformance paths (default and minimal host) use
+`desktop.runsettings`: xUnit reports tests running longer than 30 seconds and
+VSTest records diagnostics and TRX results. A two-minute hang limit aborts the
+test host, with a three-minute session deadline and a five-minute Actions step
+backstop for stalls outside individual tests. Failure artifacts are retained
+by the following `always()` upload step, including for the minimal-host test
+that runs before footprint publishing. No crash dumps are requested.
+
 ## GitHub reruns
 
 Use GitHub's **Re-run failed jobs** or select one job to rerun after a transient

@@ -347,8 +347,10 @@ jobs:
         run: |
           dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       - name: Test managed desktop contracts
+        timeout-minutes: 5
         run: >-
           dotnet test tests/dotnet/Runic.Desktop.Tests -c Release --no-build
+          --settings eng/ci/desktop.runsettings --diag artifacts/native-tests/vstest.log
           --logger "console;verbosity=normal" --logger "trx;LogFileName=desktop.trx"
           --results-directory artifacts/native-tests
           --blame-hang-timeout 2m --blame-hang-dump-type none
@@ -424,8 +426,16 @@ jobs:
       - name: Build frontend verification dependencies
         run: bun eng/run.mjs build-web
       - uses: ./.github/actions/install-browser
+      - name: Build minimal Desktop conformance
+        run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopMinimalHost=true
       - name: Verify minimal Desktop conformance
-        run: dotnet test tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopMinimalHost=true
+        timeout-minutes: 5
+        run: >-
+          dotnet test tests/dotnet/Runic.Desktop.Tests -c Release --no-build -p:RunicDesktopMinimalHost=true
+          --settings eng/ci/desktop.runsettings --diag artifacts/host-footprint/minimal-tests/vstest.log
+          --logger "console;verbosity=normal" --logger "trx;LogFileName=desktop-minimal.trx"
+          --results-directory artifacts/host-footprint/minimal-tests
+          --blame-hang-timeout 2m --blame-hang-dump-type none
       - name: Publish, measure and verify all three package consumers
         run: bun run verify:footprint
         env:

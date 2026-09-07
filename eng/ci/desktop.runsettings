@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <!-- Bound the session too: a test-host startup/exit hang is outside xUnit. -->
+    <TestSessionTimeout>180000</TestSessionTimeout>
+  </RunConfiguration>
+  <xUnit>
+    <DiagnosticMessages>true</DiagnosticMessages>
+    <LongRunningTestSeconds>30</LongRunningTestSeconds>
+    <ShowLiveOutput>true</ShowLiveOutput>
+  </xUnit>
+</RunSettings>
