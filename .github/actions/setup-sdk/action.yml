@@ -1,0 +1,42 @@
+name: Set up SDK tools
+description: Shared tool versions and dependency setup for GitHub and act.
+inputs:
+  dotnet:
+    description: Install the pinned .NET SDK
+    default: "true"
+  node:
+    description: Install real Node and npm/pnpm for compatibility checks
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v6
+      if: inputs.dotnet == 'true'
+      with:
+        global-json-file: global.json
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.4.0
+    - name: Snapshot source and lockfiles
+      shell: bash
+      run: bun eng/ci/source-state.mjs capture
+    - uses: actions/setup-node@v6
+      if: inputs.node == 'true'
+      with:
+        node-version-file: .node-version
+    - name: Install compatibility package managers
+      if: inputs.node == 'true'
+      shell: bash
+      run: npm install --global npm@11.16.0 pnpm@11.25.0
+    - uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+    - uses: actions/cache@v4
+      if: inputs.dotnet == 'true'
+      with:
+        path: .cache/nuget
+        key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.props', '**/*.targets', '**/*.csproj', 'global.json', 'NuGet.Config') }}
+    - name: Install workspace dependencies
+      shell: bash
+      run: bun install --frozen-lockfile

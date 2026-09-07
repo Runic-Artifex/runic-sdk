@@ -19,7 +19,7 @@ for the environment requirements and regression checks.
 nix develop             # Linux: use the complete pinned environment
 bun run bootstrap       # One frozen npm workspace install and .NET restore
 bun run build           # SDK, editor, current example, and documentation
-bun run test            # Managed contracts, frontend tests, generated artifacts, docs
+bun run ci --job managed --matrix suite:application # Actual CI jobs locally (Linux)
 bun run example:counter # Small member-based bridge example
 bun run example:customers # Customer editor migrated away from CommunityToolkit MVVM
 bun run dev:docs        # Documentation development server
@@ -69,7 +69,7 @@ defines the proposed CS-WebUI/Desktop parity work and size-tuning experiments.
 bun run pack             # Materialize all 19 NuGet packages and 8 npm archives
 bun run verify-packages  # Install archives into isolated consumers outside this checkout
 bun run verify:templates # Packed React/Vue/Svelte/Angular apps with npm, pnpm, and Bun
-bun run verify           # Build, tests, pack, and standalone package consumers
+bun run ci               # Same GitHub workflow locally, including Linux native checks
 bun run affected main    # Changed components plus their dependent components
 ```
 
@@ -82,11 +82,15 @@ requires Bash, npm 11.16.0, and pnpm 11.25.0. Artifacts are written to
 `eng/workspace.json` lists maintained artifacts and component dependencies.
 `eng/Versions.props` defines the .NET release version. npm packages retain explicit
 versions, checked against the inventory. Coordinate version changes in a single PR.
-CI runs the integrated verification and template consumers on Linux, plus managed
-desktop contracts, native window/close smoke tests, and NativeAOT bridge checks on
-Linux, Windows, and both macOS architectures. Broader native UI certification remains
+CI uses separate jobs for managed suites, web packages, docs, the editor, browser/HMR
+checks, packages and template consumers. Managed desktop, native window/close,
+NativeAOT and footprint checks target Linux x64, Windows x64 and macOS Apple Silicon. Broader native UI certification remains
 a separate platform test concern.
 
 Root CI creates downloadable
 candidates only. The root `.github/workflows/ci.yml` owns this checkout's CI.
+
+See [local CI tooling](eng/ci/README.md) for Docker/Podman setup, job selection,
+source snapshots, artifacts and reruns. `bun run test` and `bun run verify` are
+aliases for `bun run ci`; the workflow is the single verification authority.
 

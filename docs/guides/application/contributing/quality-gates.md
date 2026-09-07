@@ -1,32 +1,24 @@
 # Quality gates
 
-The required pull-request gate is `./eng/verify.sh`.
+The required pull-request check is the final `verify` job in
+`.github/workflows/ci.yml`. It succeeds only when all build, managed, web,
+engineering, framework-consumer, bridge, editor, documentation, customer,
+package-consumer, template, native and footprint jobs succeed.
 
-`./eng/run-ci-local.sh` executes that gate through the actual GitHub Actions
-workflow in a pinned Ubuntu 24.04 container. It is the closest local check for
-runner-image, action, environment, and workflow-wiring differences; its
-synthetic pull-request event deliberately disables every publishing step.
+Run the Linux portion of the same workflow locally with `bun run ci`. Use
+`--job <id>` to select a job and its prerequisites. The root `test` and `verify`
+commands are aliases for this runner, not separate verification scripts.
 
-The prerelease and public-release workflows invoke the same
-`eng/verify-release-candidate.sh` command available locally. It:
+Linux x64, Windows x64 and macOS Apple Silicon have native checks. A local Linux
+pass does not certify Windows or macOS behavior. See the
+[local CI guide](../../../../eng/ci/README.md) for setup and platform limits.
 
-1. packs and validates seven MIT-licensed NuGet artifacts with repository
-   commit provenance;
-2. keeps exact cross-repository NuGet dependencies in a separate verification
-   feed and runs isolated package plus NativeAOT consumers;
-3. packs and validates the Application Bridge and Angular npm artifacts;
-4. packs exact Desktop, Svelte, and Vite candidates from detached compatibility
-   revisions and builds every generated template through a cold local registry;
-5. applies the exact compatibility-authority public metadata contract when the
-   public target is selected; and
-6. leaves only the canonical seven NuGet and two npm artifacts for digesting and
-   optional publication.
+Build outputs carry a source digest and toolchain identity; downstream jobs check
+both before reuse. Source and lockfile checks compare each job's final files with
+its starting files, allowing developers to verify uncommitted work. Candidate
+packages are tested outside the source workspace and are never published by CI.
 
-NativeAOT smoke projects remain registered in `eng/solution-exclusions.txt` and
-can be executed with `eng/verify-native-aot.ps1` in an environment containing
-the appropriate runtime packs. The real CS-WebUI browser canary is run from the
-pinned Nix environment when native/browser behavior changes.
-
-No product repository commits `packages.lock.json` or a custom package hash
-replay catalog. Application/example repositories may keep lock files because
-they own a resolved dependency graph.
+Independent jobs can be rerun after a transient failure without repeating unrelated
+successful suites. A GitHub rerun uses its original commit; pushed fixes need a new
+run. Imported release receipts retain their original source revisions and do not
+certify the current monorepo commit.

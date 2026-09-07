@@ -1,0 +1,9 @@
+name: Install the conformance browser
+description: Install pinned Playwright Chromium and its platform dependencies.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        bunx --bun playwright-core install --with-deps chromium
+        bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path); console.log("WEBUI_BROWSER_PATH=" + path)' >> "$GITHUB_ENV"

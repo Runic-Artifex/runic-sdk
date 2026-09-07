@@ -113,7 +113,7 @@ are retained under `artifacts/host-footprint/<RID>/run-*/`. Browser and OS libra
 are excluded from the byte counts. The matrix records the source revision and
 whether the checkout was dirty.
 
-The CI matrix targets Windows x64, Linux x64, macOS x64 and macOS arm64. A configured
+The CI matrix targets Windows x64, Linux x64 and macOS arm64. A configured
 job is not evidence of a passing platform: inspect its uploaded reports. Local
 measurements here are NixOS builds run in the repository shell; their native linker
 and OS-library paths must not be treated as a portable distribution for arbitrary

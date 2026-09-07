@@ -6,11 +6,12 @@ Run all workspace commands from the SDK root. Install the versions in `global.js
 ```sh
 bun run bootstrap
 bun run build
-bun run test
+bun run ci --job managed --matrix suite:application
 ```
 
 Use `RunicSdk.Core.slnx` for libraries, tools and managed tests, or `RunicSdk.slnx`
-when working on the editor. `CONFIGURATION=Release` selects release verification.
+when working on the editor. `CONFIGURATION=Release` selects release builds; CI
+always uses Release.
 The compiler tests require a C++20-capable `clang++`.
 
 ## Where changes belong
@@ -47,13 +48,15 @@ Run the relevant package tests during development. Before completing a structura
 or packaging change, run:
 
 ```sh
-bun run verify            # Full build, tests, packing, isolated NuGet/npm consumers
-bun run verify:templates  # Four frontend templates with npm, pnpm and Bun
+bun run ci --list         # Discover jobs in the GitHub workflow
+bun run ci                # Run that workflow locally on Linux
+bun run ci --job templates # Template checks with build/package prerequisites
 ```
 
-Template acceptance also requires npm 11.16.0 and pnpm 11.25.0. Root CI exercises
-native window close handling and NativeAOT on Linux, Windows and both macOS
-architectures. `bun run affected <base-ref>` reports changed components and their
+Local CI needs Docker or rootless Podman; see [setup and reruns](eng/ci/README.md).
+The workflow installs npm 11.16.0 and pnpm 11.25.0 where compatibility tests need
+them. GitHub also exercises native window close handling and NativeAOT on Windows
+x64 and macOS Apple Silicon. `bun run affected <base-ref>` reports changed components and their
 consumers; it does not replace verification. Keep generated contracts and lockfiles
 current, and document platform checks that could not run locally.
 

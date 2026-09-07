@@ -7,6 +7,12 @@ Chromium, GTK, WebKitGTK and Xvfb. Playwright uses the shell's Chromium through
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; it does not need a separate browser download.
 The template matrix installs its explicitly pinned npm/pnpm versions itself.
 
+The repository's `.envrc` uses Git-aware `use flake` and watches the local `act`
+patch. Avoid `use flake path:.`: it can copy ignored dependency caches and build
+outputs into new Nix store snapshots. For workflow verification, use
+`bun run ci --job <id>` with Docker or rootless Podman; see the
+[local CI guide](../../../eng/ci/README.md) for resource limits and cleanup.
+
 Do not assemble a substitute shell from remembered Nix store paths. In
 particular, preserve the SDK wrapper, `DOTNET_ROOT`, native library paths and
 browser configuration. Restricted automation can put its Nix cache in a writable

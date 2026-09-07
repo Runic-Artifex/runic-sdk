@@ -32,7 +32,7 @@
           PackagePath="tools/net10.0/" />
   </ItemGroup>
 
-  <Target Name="BuildRunicAssetsPackerForPackage" BeforeTargets="GenerateNuspec">
+  <Target Name="BuildRunicAssetsPackerForPackage" BeforeTargets="GenerateNuspec" Condition="'$(NoBuild)' != 'true'">
     <MSBuild Projects="../../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj"
              Targets="Build"
              Properties="Configuration=$(Configuration);RunicAssetsBuildMode=$(RunicAssetsBuildMode)" />

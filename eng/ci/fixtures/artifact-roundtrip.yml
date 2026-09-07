@@ -1,0 +1,24 @@
+name: Local artifact protocol contract
+on: workflow_dispatch
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          mkdir -p proof
+          printf 'runic-artifact-roundtrip\n' > proof/value.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: roundtrip
+          path: proof/value.txt
+          if-no-files-found: error
+          overwrite: true
+  download:
+    needs: upload
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: roundtrip
+          path: proof
+      - run: test "$(cat proof/value.txt)" = runic-artifact-roundtrip

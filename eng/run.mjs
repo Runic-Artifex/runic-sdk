@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { nodeCompatibility } from "./node-compatibility.mjs";
 import { spawnSync } from "node:child_process";
-import { readFileSync, mkdirSync, readdirSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -90,103 +90,8 @@ function build() {
   ]);
   run("bun", ["run", "--bun", "build"], resolve(root, "docs"));
 }
-function test() {
-  run("bun", ["test", "--timeout", "180000", "./eng/workspace.test.mjs", "./eng/path-boundary.test.mjs", "./eng/node-compatibility.test.mjs"]);
-  run("bun", ["test", "--timeout", "180000", "tests/engineering/size-command.test.mjs"]);
-  const acceptance = "tests/engineering/acceptance";
-  const acceptanceTests = readdirSync(resolve(root, acceptance), { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && entry.name.startsWith("current-"))
-    .flatMap(entry => readdirSync(resolve(root, acceptance, entry.name))
-      .filter(name => name.endsWith(".test.mjs"))
-      .map(name => `./${acceptance}/${entry.name}/${name}`)).sort();
-  if (!acceptanceTests.length) throw new Error("No current acceptance tests found");
-  run("bun", ["test", "--timeout", "180000", ...acceptanceTests]);
-  run("dotnet", [
-    "test",
-    "tests/dotnet/Runic.Desktop.Tests",
-    "-c",
-    configuration,
-    "--no-build",
-    "--nologo",
-  ]);
-  const solution = readFileSync(resolve(root, "RunicSdk.Core.slnx"), "utf8");
-  for (const [, path] of solution.matchAll(/<Project Path="([^"]+)"/g)) {
-    const project = readFileSync(resolve(root, path), "utf8");
-    if (
-      /Tests\.csproj$/.test(path) &&
-      /<OutputType>Exe<\/OutputType>/.test(project)
-    ) {
-      run(
-        "dotnet",
-        [
-          "run",
-          "--project",
-          resolve(root, path),
-          "-c",
-          configuration,
-          "--no-build",
-        ],
-        root,
-      );
-    }
-  }
-  run("dotnet", [
-    "run",
-    "--project",
-    "examples/counter/Counter.csproj",
-    "-c",
-    configuration,
-    "--no-build",
-  ]);
-  web("test");
-  run("bun", ["tests/web/svelte-package-consumers/package-consumers.mjs"]);
-  run(
-    "bun",
-    ["run", "--bun", "test"],
-    resolve(root, "examples/customer-migration/Host/Frontend"),
-  );
-  run(
-    "bun",
-    ["run", "contract:check"],
-    resolve(root, "examples/customer-migration/Host/Frontend"),
-  );
-  for (const path of [
-    "packages/web/svelte",
-    "packages/web/sveltekit",
-    "apps/translations-editor/Frontend",
-  ]) {
-    run(
-      "bun",
-      [
-        "run",
-        path === "apps/translations-editor/Frontend" ? "verify:built" : "check",
-      ],
-      resolve(root, path),
-      path === "apps/translations-editor/Frontend"
-        ? {
-            RUNIC_TRANSLATIONS_MANIFEST: resolve(
-              root,
-              `apps/translations-editor/obj/${configuration}/net10.0/translations/editor.esm/web-module-manifest-v1.json`,
-            ),
-          }
-        : {},
-    );
-  }
-  const editor = `apps/translations-editor/bin/${configuration}/net10.0/Runic.Translations.Editor.dll`;
-  run("dotnet", [editor, "--smoke-test"]);
-  run("dotnet", [
-    editor,
-    "validate",
-    "apps/translations-editor/ExampleWorkspace",
-  ]);
-  run("bun", ["eng/bridge/verify-artifacts.mjs"]);
-  run("bun", ["run", "--bun", "check"], resolve(root, "docs"));
-  run("bun", ["run", "--bun", "test"], resolve(root, "docs"));
-}
-function pack() {
-  // Pack is also usable on a clean checkout: bundled tools and generators must exist first.
-  core();
-  web("build");
+function pack(built = false) {
+  if (!built) { core(); web("build"); }
   const nuget = resolve(root, "artifacts/packages/nuget");
   const npm = resolve(root, "artifacts/packages/npm");
   mkdirSync(nuget, { recursive: true });
@@ -197,7 +102,7 @@ function pack() {
       p.project,
       "-c",
       configuration,
-      "--no-restore",
+      ...(built ? ["--no-build"] : ["--no-restore"]),
       "-o",
       nuget,
       `-p:PackageVersion=${workspace.version}`,
@@ -265,14 +170,11 @@ async function main() {
     case "build":
       build();
       break;
-    case "test":
-      test();
+    case "build-core":
+      core();
       break;
-    case "verify":
-      build();
-      test();
-      pack();
-      await (await import("./verify-packages.mjs")).verifyPackages();
+    case "pack-built":
+      pack(true);
       break;
     case "build-web":
       web("build");
@@ -330,7 +232,7 @@ async function main() {
       break;
     default:
       throw new Error(
-        "Use bootstrap, build, test, verify, pack, verify-packages, affected, example:customers, verify:customers, dev:docs, or dev:editor.",
+        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:customers, verify:customers, dev:docs, or dev:editor. Run bun run ci for workflow verification.",
       );
   }
 }

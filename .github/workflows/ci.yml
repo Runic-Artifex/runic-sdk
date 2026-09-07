@@ -13,60 +13,301 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
   CONFIGURATION: Release
+  NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
+  RUNIC_BRIDGE_INSPECTOR: ${{ github.workspace }}/tools/Runic.Application.Bridge.Inspector/bin/Release/net10.0/Runic.Application.Bridge.Inspector.dll
 jobs:
-  verify:
+  build:
+    name: Build shared SDK inputs
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 25
+    outputs:
+      web: ${{ steps.plan.outputs.web }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-dotnet@v6
+      - uses: ./.github/actions/setup-sdk
+      - name: Discover web test suites
+        id: plan
+        run: bun eng/ci/plan.mjs >> "$GITHUB_OUTPUT"
+      - name: Restore managed dependencies
+        run: dotnet restore RunicSdk.Core.slnx
+      - name: Build managed SDK, tools and test executables
+        run: bun eng/run.mjs build-core
+      - name: Build web packages
+        run: bun eng/run.mjs build-web
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+      - name: Archive reusable Linux build outputs
+        run: bun eng/ci/build-artifact.mjs create
+      - uses: actions/upload-artifact@v7
         with:
-          global-json-file: global.json
-      - uses: actions/setup-node@v6
+          name: sdk-build-${{ github.run_id }}
+          path: artifacts/ci-build
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+  managed:
+    name: Managed / ${{ matrix.suite }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [application, assets, command-line, translations]
+    steps:
+      - uses: actions/checkout@v7
         with:
-          node-version-file: .node-version
-      - uses: oven-sh/setup-bun@v2
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: ./.github/actions/restore-build
+      - uses: ./.github/actions/install-browser
+        if: matrix.suite == 'application'
+      - name: Run managed conformance suite
+        run: bun eng/ci/test-managed.mjs "$SUITE"
+        env:
+          SUITE: ${{ matrix.suite }}
+      - name: Exercise the counter application
+        if: matrix.suite == 'application'
+        run: dotnet run --project examples/counter/Counter.csproj -c Release --no-build
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  web:
+    name: Web / ${{ matrix.package }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.build.outputs.web) }}
+    steps:
+      - uses: actions/checkout@v7
         with:
-          bun-version: 1.4.0
-      - uses: actions/cache@v4
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
         with:
-          path: |
-            .cache/nuget
-            ~/.bun/install/cache
-          key: sdk-${{ runner.os }}-${{ hashFiles('bun.lock', '**/Directory.Packages.props', '**/*.csproj', 'global.json') }}
-      - run: npm install --global npm@11.16.0 pnpm@11.25.0
-      - run: bun run bootstrap
-      - name: Install browser for conformance and migration verification
+          node: ${{ matrix.node && 'true' || 'false' }}
+      - uses: ./.github/actions/restore-build
+      - name: Run package tests
+        working-directory: packages/web/${{ matrix.package }}
+        run: bun run --bun test
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  engineering:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          node: "true"
+      - uses: ./.github/actions/restore-build
+      - name: Verify workspace, runtime and CI contracts
+        run: bun test --timeout 180000 eng/workspace.test.mjs eng/path-boundary.test.mjs eng/node-compatibility.test.mjs ./eng/ci/*.test.mjs
+      - name: Verify the size command failure boundaries
+        run: bun test --timeout 180000 tests/engineering/size-command.test.mjs
+      - name: Verify retained acceptance evidence
+        run: bun eng/ci/test-acceptance.mjs
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  framework-consumers:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          node: "true"
+      - uses: ./.github/actions/restore-build
+      - name: Check Svelte integration types
+        working-directory: packages/web/svelte
+        run: bun run --bun check
+      - name: Check SvelteKit integration types
+        working-directory: packages/web/sveltekit
+        run: bun run --bun check
+      - name: Exercise isolated npm framework consumers
+        run: bun tests/web/svelte-package-consumers/package-consumers.mjs
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  bridge:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: ./.github/actions/restore-build
+      - name: Verify generated bridge artifacts and template contracts
+        run: bun eng/bridge/verify-artifacts.mjs
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  editor:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: ./.github/actions/restore-build
+      - name: Build the Translations Editor
+        run: dotnet build apps/translations-editor/Runic.Translations.Editor.csproj -c Release
+      - name: Verify editor frontend and production output
+        working-directory: apps/translations-editor/Frontend
+        run: bun run --bun verify:built
+        env:
+          RUNIC_TRANSLATIONS_MANIFEST: ${{ github.workspace }}/apps/translations-editor/obj/Release/net10.0/translations/editor.esm/web-module-manifest-v1.json
+      - name: Run editor smoke scenarios
+        run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll --smoke-test
+      - name: Validate the example translation workspace
+        run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll validate apps/translations-editor/ExampleWorkspace
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          dotnet: "false"
+      - name: Check documentation types
+        working-directory: docs
+        run: bun run --bun check
+      - name: Build and test documentation and release data
+        working-directory: docs
+        run: bun run --bun test
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  customers:
+    name: Customer migration / ${{ matrix.journey }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        journey: [browser, dev]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: ./.github/actions/restore-build
+      - uses: ./.github/actions/install-browser
+      - name: Build the customer application
+        run: dotnet build examples/customer-migration/Host/CustomerDesktop.csproj -c Release
+      - name: Verify feature behavior
+        if: matrix.journey == 'browser'
         working-directory: examples/customer-migration/Host/Frontend
-        run: |
-          bunx --bun playwright-core install --with-deps chromium
-          bun -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
-      - run: bun run verify
-      - name: Verify the customer migration through the live bridge
+        run: bun run --bun test
+      - name: Check generated customer contracts
+        if: matrix.journey == 'browser'
         working-directory: examples/customer-migration/Host/Frontend
-        run: bun run test:browser
-      - name: Verify both hosts with frontend HMR
+        run: bun run --bun contract:check
+      - name: Exercise the live bridge and lifecycle
+        if: matrix.journey == 'browser'
         working-directory: examples/customer-migration/Host/Frontend
-        run: bun run test:dev
-      - name: Retain frontend development logs
-        if: always()
+        run: bun run --bun test:browser
+      - name: Exercise both hosts with frontend HMR
+        if: matrix.journey == 'dev'
+        working-directory: examples/customer-migration/Host/Frontend
+        run: bun run --bun test:dev
+      - name: Retain development logs
+        if: always() && matrix.journey == 'dev'
         uses: actions/upload-artifact@v7
         with:
-          name: host-dev-${{ github.sha }}
+          name: host-dev-${{ github.run_id }}
           path: artifacts/host-dev
           if-no-files-found: ignore
-      - run: bun run verify:templates
+          overwrite: true
       - name: Check generated files and lockfile
-        run: git diff --exit-code
-      - name: Retain local package candidates
-        uses: actions/upload-artifact@v7
+        run: bun eng/ci/source-state.mjs check
+  packages:
+    name: Materialize package candidates
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
         with:
-          name: runic-sdk-${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: ./.github/actions/restore-build
+      - name: Pack the verified build inputs
+        run: bun eng/run.mjs pack-built
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
           if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+  package-consumers:
+    needs: packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          node: "true"
+      - uses: actions/download-artifact@v8
+        with:
+          name: runic-sdk-${{ github.run_id }}
+          path: artifacts/packages
+      - name: Verify isolated NuGet and npm consumers
+        run: bun run verify-packages
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  templates:
+    needs: packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          node: "true"
+      - uses: actions/download-artifact@v8
+        with:
+          name: runic-sdk-${{ github.run_id }}
+          path: artifacts/packages
+      - name: Verify generated template applications
+        run: bun run verify:templates
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
   native:
     strategy:
       fail-fast: false
@@ -91,11 +332,17 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - name: Build and test managed desktop contracts
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/install-browser
+      - name: Build managed desktop contracts
         shell: bash
         run: |
-          dotnet build RunicSdk.Core.slnx -c Release
-          dotnet test tests/dotnet/Runic.Desktop.Tests -c Release --no-build
+          dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
+      - name: Test managed desktop contracts
+        run: dotnet test tests/dotnet/Runic.Desktop.Tests -c Release --no-build
       - name: Install Linux native WebView prerequisites
         if: runner.os == 'Linux'
         run: |
@@ -119,7 +366,7 @@ jobs:
           ./artifacts/native/Runic.Application.Bridge.MemberAotSmoke${{ matrix.extension }}
 
   footprint:
-    needs: verify
+    needs: packages
     strategy:
       fail-fast: false
       matrix:
@@ -144,19 +391,16 @@ jobs:
           bun-version: 1.4.0
       - uses: actions/download-artifact@v8
         with:
-          name: runic-sdk-${{ github.sha }}
+          name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
-      - name: Build verification tools and shared frontend dependencies
+      - name: Restore and build verification tools
         shell: bash
         run: |
           bun run bootstrap
           dotnet build tools/dotnet-runic-toolkit -c Release
-          bun eng/run.mjs build-web
-      - name: Install browser and Linux native prerequisites
-        shell: bash
-        run: |
-          bunx --bun playwright-core install --with-deps chromium
-          bun -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
+      - name: Build frontend verification dependencies
+        run: bun eng/run.mjs build-web
+      - uses: ./.github/actions/install-browser
       - name: Verify minimal Desktop conformance
         run: dotnet test tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopMinimalHost=true
       - name: Publish, measure and verify all three package consumers
@@ -167,6 +411,25 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: host-footprint-${{ matrix.rid }}-${{ github.sha }}
+          name: host-footprint-${{ matrix.rid }}-${{ github.run_id }}
           path: artifacts/host-footprint
           if-no-files-found: warn
+          overwrite: true
+
+  verify:
+    name: verify
+    if: always()
+    needs: [build, managed, web, engineering, framework-consumers, bridge, editor, docs, customers, packages, package-consumers, templates, native, footprint]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every verification job to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          IFS=',' read -ra results <<< "$RESULTS"
+          for result in "${results[@]}"; do
+            if [[ "$result" != success ]]; then
+              echo "Verification is incomplete: $RESULTS"
+              exit 1
+            fi
+          done

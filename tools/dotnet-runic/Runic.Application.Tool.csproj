@@ -17,7 +17,10 @@
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot;PublishTrimmed;RuntimeIdentifier;SelfContained" />
   </ItemGroup>
-  <Target Name="IncludeBridgeInspector" BeforeTargets="GetCopyToOutputDirectoryItems;_GetPackageFiles;GenerateNuspec" DependsOnTargets="ResolveProjectReferences">
+  <Target Name="BuildBridgeInspector" BeforeTargets="IncludeBridgeInspector" DependsOnTargets="ResolveProjectReferences" Condition="'$(NoBuild)' != 'true'" />
+  <Target Name="IncludeBridgeInspector" BeforeTargets="GetCopyToOutputDirectoryItems;_GetPackageFiles;GenerateNuspec">
+    <Error Condition="'$(NoBuild)' == 'true' and !Exists('../Runic.Application.Bridge.Inspector/bin/$(Configuration)/net10.0/Runic.Application.Bridge.Inspector.dll')"
+           Text="Build the bridge inspector before packing the tool with --no-build." />
     <ItemGroup>
       <Content Include="../Runic.Application.Bridge.Inspector/bin/$(Configuration)/net10.0/**/*" Exclude="../Runic.Application.Bridge.Inspector/bin/$(Configuration)/net10.0/**/*.pdb">
         <Link>bridge-inspector/%(RecursiveDir)%(Filename)%(Extension)</Link>

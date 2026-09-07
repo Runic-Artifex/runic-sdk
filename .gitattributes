@@ -11,6 +11,8 @@
 *.mjs text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+# Unified diffs preserve upstream whitespace, including context prefixes.
+eng/ci/*.patch text eol=lf -whitespace
 .* text eol=lf
 *.ps1 text eol=crlf
 *.png binary

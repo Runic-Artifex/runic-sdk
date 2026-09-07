@@ -1,51 +1,37 @@
 # Development
 
-Use the pinned Nix environment:
+Work from the `runic-sdk` root in the pinned Nix environment:
 
-```bash
+```sh
 nix develop
-./eng/verify.sh
+bun run bootstrap
+bun run build
+bun run ci --list
+bun run ci --job managed --matrix suite:application
 ```
 
-The verification script checks identities, solution completeness, ownership,
-npm lock restoration, TypeScript packages, .NET compilation, executable
-contract suites, NativeAOT, browser behavior, package consumers, and generated
-templates against the exact compatibility set.
+`RunicSdk.Core.slnx` contains SDK libraries, tools and managed tests;
+`RunicSdk.slnx` also includes the editor and current applications. Build commands
+use Debug by default; the CI workflow uses Release. First-party tools use Bun.
+Node and npm/pnpm are retained for explicit package-manager compatibility checks.
 
-Before pushing release-pipeline changes, run the same release-candidate command
-used by the prerelease and public-release workflows:
+## Run GitHub Actions locally
 
-```bash
-version="$(node eng/compatibility-set-value.mjs release-train-version)"
-output="$(mktemp -d /tmp/runic-toolkit-candidate.XXXXXXXXXX)"
-./eng/verify-release-candidate.sh "$version" "$output" github
-```
+On Linux, enable Docker or the rootless Podman socket, then run the actual SDK
+workflow in its Ubuntu runner container:
 
-The command uses detached compatibility revisions, a fresh npm cache, a
-separate exact NuGet dependency feed, isolated NuGet/npm consumers, NativeAOT,
-and cold local-registry template acceptance. Use `public` instead of `github`
-to validate public NuGet/npm metadata with the exact compatibility-authority
-validator used in CI.
-
-## Run the GitHub Actions job locally
-
-On Linux, the repository can execute the real `verify` job in a pinned Ubuntu
-24.04 runner container before pushing:
-
-```bash
+```sh
 systemctl --user start podman.socket
-./eng/run-ci-local.sh
+bun run ci
+bun run ci --job customers --matrix journey:dev
+bun run ci --job templates
 ```
 
-The wrapper obtains `act` from the repository's locked Nixpkgs input, copies the
-current working tree into the container, and prints the total elapsed time. It
-always uses a synthetic fork pull-request event, which runs verification but
-cannot enter the workflow's candidate publication or registry round-trip
-steps. A GitHub token is still required for read-only action and private
-package downloads; set `GITHUB_TOKEN`, or authenticate `gh` locally.
+The Nix flake supplies the compatible `act` runner. Each invocation snapshots
+uncommitted source once, then executes the workflow's jobs and dependencies against
+that snapshot. Build artifacts and dependency downloads are shared through local
+servers. Windows and macOS checks still require native GitHub runners.
 
-The first invocation builds a small repository runner layer with PowerShell and
-Chrome's Linux libraries on the pinned base image, then downloads the actions.
-Use `./eng/run-ci-local.sh --offline` after they are cached, or `--dry-run` to
-validate workflow expansion without running the job. The Windows job remains a
-real Windows-runner gate and is not emulated by this wrapper.
+See the [local CI guide](../../../../eng/ci/README.md) for prerequisites, caches,
+artifacts, job selection and reruns. The imported multi-repository release scripts
+are historical evidence under `eng/archive`; they are not the current SDK gate.

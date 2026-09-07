@@ -21,6 +21,11 @@
           pkgs = import nixpkgs { inherit system; };
           inherit (pkgs) lib;
           dotnet = pkgs.dotnetCorePackages.sdk_10_0;
+          # act 0.2.89 needs the upstream artifact protocol fix for upload v7/download v8.
+          # Remove this patch once the pinned nixpkgs act contains nektos/act#6115.
+          actForCi = pkgs.act.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [ ./eng/ci/act-artifacts.patch ];
+          });
           bunArchive =
             if system == "x86_64-linux" then
               {
@@ -57,6 +62,8 @@
               bun_1_4_0
               nodejs_24
               powershell
+              actForCi
+              actionlint
 
               # Required by the repository's Native AOT verification.
               clang
@@ -67,6 +74,7 @@
             DOTNET_CLI_TELEMETRY_OPTOUT = "1";
             DOTNET_NOLOGO = "1";
             DOTNET_ROOT = "${dotnet}/share/dotnet";
+            RUNIC_CI_ACT = "${actForCi}/bin/act";
             DisableImplicitLibraryPacksFolder = "true";
 
             shellHook = ''

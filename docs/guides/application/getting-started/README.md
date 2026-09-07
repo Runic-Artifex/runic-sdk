@@ -1,10 +1,11 @@
 # Getting started
 
-Enter the pinned development environment and run the repository gate:
+From the SDK root, enter the pinned development environment and run the application
+CI suite locally (Linux with Docker or rootless Podman):
 
 ```bash
 nix develop
-./eng/verify.sh
+bun run ci --job managed --matrix suite:application
 ```
 
 For application code, configure the Runic Artifex GitHub NuGet and npm package

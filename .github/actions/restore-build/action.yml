@@ -1,0 +1,17 @@
+name: Restore SDK build outputs
+description: Restore the exact Linux SDK build produced in this workflow run.
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: sdk-build-${{ github.run_id }}
+        path: artifacts/ci-build
+    - name: Validate and restore build outputs
+      shell: bash
+      run: bun eng/ci/build-artifact.mjs restore
+    - name: Restore external dependencies and workspace executable links
+      shell: bash
+      run: |
+        dotnet restore RunicSdk.Core.slnx
+        bun install --frozen-lockfile

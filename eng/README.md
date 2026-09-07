@@ -1,6 +1,8 @@
 # Workspace engineering
 
-`run.mjs` is the active entrypoint. `workspace.json` defines package identity,
+`run.mjs` supplies focused build and package commands. Verification is defined in
+`.github/workflows/ci.yml`; [ci/local.mjs](ci/README.md) runs that workflow locally
+with `act`. `workspace.json` defines package identity,
 artifact paths, and the component dependency graph. Source builds use project and
 workspace links; `verify-packages.mjs` exercises independent installation from
 packed artifacts in a temporary directory outside the checkout.
