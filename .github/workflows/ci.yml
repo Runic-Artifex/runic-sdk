@@ -428,6 +428,8 @@ jobs:
           dotnet build tools/dotnet-runic-toolkit -c Release
       - name: Build frontend verification dependencies
         run: bun eng/run.mjs build-web
+      - name: Test CS-WebUI startup readiness
+        run: dotnet run --project tests/dotnet/Runic.Application.CsWebUi.Tests -c Release
       - uses: ./.github/actions/install-browser
       - name: Build Desktop browser fixture
         run: bun build packages/web/desktop/test/browser-entry.ts --target browser --outfile artifacts/browser/runic-desktop-test.js

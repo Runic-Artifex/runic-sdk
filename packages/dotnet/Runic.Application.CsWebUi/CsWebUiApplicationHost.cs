@@ -43,6 +43,7 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
     private int _started;
     private int _stopped;
     private bool _ownsRuntime;
+    private volatile string? _readinessPath;
 
     /// <summary>Creates a host and validates capabilities before loading native code.</summary>
     public CsWebUiApplicationHost(CsWebUiApplicationHostOptions options)
@@ -76,6 +77,7 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
             if (Interlocked.CompareExchange(ref _runtimeClaimed, 1, 0) != 0)
                 throw new InvalidOperationException("A CS-WebUI application host already owns this process's native runtime. Start another application in a separate process.");
             _ownsRuntime = true;
+            _readinessPath = "/.runic-ready/" + Guid.NewGuid().ToString("N");
             WebUiApplication.SetConfiguration(WebUiConfiguration.UseCookies, true);
             Window = new WebUiWindow();
             Window.SetPublic(false);
@@ -93,8 +95,15 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
             // SetPublic(false) binds native WebUI to IPv4 loopback, although
             // StartServer returns localhost. IPv6-first clients can otherwise
             // try ::1, where this server does not listen.
-            Url = new UriBuilder(Window.StartServer(entry)) { Host = "127.0.0.1" }.Uri;
-            if (_options.OpenWindow) Window.ShowInBrowser(Url.AbsoluteUri, _options.Browser);
+            var url = new UriBuilder(Window.StartServer(entry)) { Host = "127.0.0.1" }.Uri;
+            // CsWebUi.Native 2.5.0-beta.4.4 (WebUI b08e7b8) returns before its
+            // listener and request handlers are ready. Do not expose the URL yet.
+            // A private, per-startup route distinguishes our callback from
+            // native WebUI's default file handler during initialization.
+            await NativeServerReadiness.WaitAsync(new Uri(url, _readinessPath), TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
+            _readinessPath = null;
+            if (_options.OpenWindow) Window.ShowInBrowser(url.AbsoluteUri, _options.Browser);
+            Url = url;
         }
         catch { await StopAsync(CancellationToken.None).ConfigureAwait(false); throw; }
     }
@@ -129,6 +138,7 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
     {
         try
         {
+            if (path == _readinessPath) return Response(200, "text/plain", []);
             string normalized = string.IsNullOrEmpty(path.Trim('/')) ? _options.Assets.Manifest.EntryPoint.RelativePath : AssetPath.Normalize(path.TrimStart('/'));
             if (!_options.Assets.Manifest.TryGetAsset(normalized, out var asset) || asset is null)
                 return Response(404, "text/plain", []);
@@ -178,6 +188,7 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
     public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _stopped, 1) != 0) return;
+        _readinessPath = null;
         if (_mailbox is { } mailbox) await mailbox.DisposeAsync().ConfigureAwait(false);
         // StartServer uses a persistent native server. Close/Destroy alone can
         // time out and free its mutexes while its thread is still running in

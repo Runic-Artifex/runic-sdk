@@ -16,6 +16,7 @@ catch (Exception exception)
 
 static async Task RunAsync()
 {
+    await NativeServerReadinessTests.RunAsync();
     var limits = BridgeLimits.Default;
     await using var session = new ApplicationBridgeSession(new Dispatcher());
     await using var mailbox = new BridgeMailbox(session, limits);

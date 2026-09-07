@@ -46,12 +46,16 @@ try {
           undefined, { timeout: 10000 });
         if (mode === "disconnected") { await page.close(); page = null; }
       } else {
-        const response = await fetch(url);
+        // Startup must already have made the URL usable; do not retry here.
+        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
         assert.equal(response.status, 200);
         await response.arrayBuffer();
       }
       await stopHost(host);
       console.log(`ok - ${mode} host shuts down cleanly`);
+    } catch (error) {
+      console.error(`Lifecycle failure (${mode}, pid ${host.pid}):\n${output}`);
+      throw error;
     } finally {
       try { await stopHost(host); }
       finally { await page?.close(); }
