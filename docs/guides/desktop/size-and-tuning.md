@@ -88,13 +88,11 @@ This property has no role in CS-WebUI, which has no ASP.NET Core dependency.
   An assembly list cannot attribute NativeAOT bytes. Startup time and process-tree
   memory need separate measurements; neither is inferred from file size.
 
-The common customer editor's initial NixOS Linux x64 NativeAOT run measured
-10.41 MiB for the default Desktop executable and 9.40 MiB for the minimal profile,
-a 9.7% executable reduction. CS-WebUI's executable plus native library was
-5.46 MiB. All three passed the same browser and lifecycle acceptance. These are
-application-specific results, not replacements for the older minimal sample's
-8.25 MiB Desktop measurement. Full evidence is recorded separately in
-`eng/host-footprint/` after the implementation commit.
+The [verified Linux x64 package-consumer measurement](../../../eng/host-footprint/linux-x64-2026-09-07/README.md)
+records the same customer editor under all three profiles, with exact settings,
+package hashes, file inventories and successful browser/lifecycle checks. Minimal
+Desktop reduced its executable by about 9.6%. These application-specific results
+are separate from the older minimal sample's 8.25 MiB Desktop measurement.
 
 ## Reproduce the package comparison
 

@@ -1,0 +1,11 @@
+
+> /nix/store/p8hbhn8hdqz5p3a7y6dvi1y1x8nriybl-nodejs-slim-24.18.0/bin/node browser.test.mjs (/examples/customer-migration/Host/Frontend)
+Customer migration browser acceptance passed: live C# bridge, validation, save, cancel, dirty navigation, close confirmation, reconnect, import, uniqueness, responsive layout.
+
+> /nix/store/p8hbhn8hdqz5p3a7y6dvi1y1x8nriybl-nodejs-slim-24.18.0/bin/node lifecycle.test.mjs (/examples/customer-migration/Host/Frontend)
+ok - unconnected host shuts down cleanly
+ok - connected host shuts down cleanly
+ok - disconnected host shuts down cleanly
+ok - connected host shuts down cleanly
+ok - unconnected host shuts down cleanly
+Browser console: Failed to load resource: the server responded with a status of 404 (Not Found)

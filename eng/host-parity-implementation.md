@@ -8,7 +8,7 @@ Authorized scope: implement the 2026-09-07 host-choice and footprint assessment.
 - [x] Standalone package consumers and host/template verification matrix.
 - [x] Minimal Desktop hosting profile and behavior parity.
 - [x] Size reporting command, package-consumer measurements and tuning guidance.
-- [ ] Platform CI, final documentation and committed verification evidence.
+- [x] Platform CI configuration, final documentation and Linux verification evidence.
 
 Commit each verified wave. Do not change historical release evidence or publish
 packages as part of this implementation. Report measured sizes only with their
@@ -19,5 +19,6 @@ acceptance fail on a crash during cleanup. Verification runs through the actual
 Nix development shell; see `docs/guides/desktop/nixos-development.md`.
 The second wave adds host-aware templates and CLI development, an opt-in shared
 development document, and live HMR acceptance on both hosts. The third wave adds a minimal Desktop profile, `runic size`, package-only native
-measurements and a four-RID CI matrix. Final measurement receipts follow from a
-committed source revision. No package has been published.
+measurements and a four-RID CI matrix. Final receipts are in `eng/host-footprint/linux-x64-2026-09-07/`, measured from
+clean commit c274ca5c. Cross-platform CI is configured; only Linux x64 is locally
+certified. No package has been published.

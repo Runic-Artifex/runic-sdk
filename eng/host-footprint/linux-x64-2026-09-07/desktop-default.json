@@ -1,0 +1,98 @@
+{
+  "schema": "runic.size/1",
+  "createdUtc": "2026-09-07T10:48:37.7346562+00:00",
+  "project": "$CONSUMER_ROOT/desktop-default/Host/CustomerDesktop.csproj",
+  "runtime": "linux-x64",
+  "host": "desktop",
+  "profile": "default",
+  "sdk": "10.0.302",
+  "buildOperatingSystem": "NixOS 26.11 (Zokor)",
+  "buildArchitecture": "X64",
+  "installedRuntimes": "Microsoft.AspNetCore.App 10.0.10 [/nix/store/z63sdvbahmyxs5vpv1rnwv2n3vx7jvgd-dotnet-sdk-10.0.302/share/dotnet/shared/Microsoft.AspNetCore.App]\nMicrosoft.NETCore.App 10.0.10 [/nix/store/z63sdvbahmyxs5vpv1rnwv2n3vx7jvgd-dotnet-sdk-10.0.302/share/dotnet/shared/Microsoft.NETCore.App]",
+  "sourceRevision": null,
+  "sourceDirty": null,
+  "effectiveProperties": {
+    "AssemblyName": "CustomerDesktop",
+    "TargetFramework": "net10.0",
+    "RuntimeIdentifier": "linux-x64",
+    "RunicHost": "desktop",
+    "PublishAot": "true",
+    "PublishTrimmed": "true",
+    "TrimMode": "",
+    "OptimizationPreference": "Size",
+    "SelfContained": "true",
+    "InvariantGlobalization": "true",
+    "StripSymbols": "true",
+    "DebugType": "none",
+    "DebugSymbols": "false",
+    "StackTraceSupport": "",
+    "EventSourceSupport": "false",
+    "UseSystemResourceKeys": "false",
+    "HttpActivityPropagationSupport": "",
+    "EnableUnsafeBinaryFormatterSerialization": "false",
+    "RunicDesktopMinimalHost": "false",
+    "ProjectAssetsFile": "$CONSUMER_ROOT/desktop-default/Host/obj/project.assets.json",
+    "RuntimeFrameworkVersion": "",
+    "TargetLatestRuntimePatch": "true"
+  },
+  "libraries": {
+    "CustomerApplication/1.0.0": "project",
+    "CustomerDomain/1.0.0": "project",
+    "Microsoft.DotNet.ILCompiler/10.0.10": "package",
+    "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.10": "package",
+    "Microsoft.Extensions.DependencyInjection/10.0.10": "package",
+    "Microsoft.NET.ILLink.Tasks/10.0.10": "package",
+    "Microsoft.Web.WebView2/1.0.4078.44": "package",
+    "Runic.Application.Bridge/1.0.0-preview.1": "package",
+    "Runic.Application.Desktop/1.0.0-preview.1": "package",
+    "Runic.Application/1.0.0-preview.1": "package",
+    "Runic.Assets.Desktop/1.0.0-preview.1": "package",
+    "Runic.Assets/1.0.0-preview.1": "package",
+    "Runic.Desktop/1.0.0-preview.1": "package",
+    "runtime.linux-x64.Microsoft.DotNet.ILCompiler/10.0.10": "package"
+  },
+  "publishDirectory": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-default-485cb53a80b04a56be1155d3fbb591f6/publish",
+  "publishExitCode": 0,
+  "publishLog": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-default-485cb53a80b04a56be1155d3fbb591f6/publish.log",
+  "archive": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-default-485cb53a80b04a56be1155d3fbb591f6/distribution.zip",
+  "totalBytes": 11703663,
+  "compressedBytes": 5276704,
+  "files": [
+    {
+      "path": "CustomerDesktop",
+      "category": "main-executable",
+      "bytes": 10927440,
+      "sha256": "1269e50c1c8ad182b0836c00e4b9637b35c189208dabed79ea43f4be36d5fd74"
+    },
+    {
+      "path": "Microsoft.Web.WebView2.Core.xml",
+      "category": "documentation",
+      "bytes": 612031,
+      "sha256": "8684cd74000c77533e563785208308ada63808da85825206856cab11a9eeffce"
+    },
+    {
+      "path": "runtimes/win-x64/native/WebView2Loader.dll",
+      "category": "other-rid",
+      "bytes": 164192,
+      "sha256": "239a9d6614a6cfade62b47cdb0be36e3069eedc438c3e0647a9e7b7c84ef6ea0"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "exitCode": 0,
+    "executable": "/nix/store/p8hbhn8hdqz5p3a7y6dvi1y1x8nriybl-nodejs-slim-24.18.0/bin/node",
+    "arguments": [
+      "$SDK_ROOT/eng/verify-published-customers.mjs",
+      "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-default-485cb53a80b04a56be1155d3fbb591f6/publish",
+      "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-default-485cb53a80b04a56be1155d3fbb591f6/publish/CustomerDesktop"
+    ]
+  },
+  "notes": [
+    "All publish files are counted. File categories are heuristic and never remove files.",
+    "Embedded frontend assets are counted inside their containing executable or assembly.",
+    "NativeAOT library inventory does not attribute bytes inside the linked executable.",
+    "Installed browsers and OS libraries are excluded. This does not measure startup or memory.",
+    "Command stdout and stderr are each retained up to 4 Mi characters; longer logs are marked truncated.",
+    "Empty evaluated properties mean unspecified. Application targets may further customize publishing."
+  ]
+}

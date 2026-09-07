@@ -1,0 +1,65 @@
+{
+  "schema": "runic.host-footprint-matrix/1",
+  "rid": "linux-x64",
+  "revision": "c274ca5c7f8bf4efd99d45340d727e68233a1a1b",
+  "dirty": false,
+  "consumerDirectory": "$CONSUMER_ROOT",
+  "npmCandidates": {
+    "@runic-artifex/application-bridge": "4ea85818ad7edf3c74855b70e1f53dab275f481822d857110c849014dbec10e5",
+    "@runic-artifex/desktop": "d47b570aebd6ef51e213d8ab70a4ed7441b0942f2b65b22ac11f79012440e844",
+    "@runic-artifex/application-bridge-tooling": "2f5e0715c9441f2aa05341213e03390dc97a2dbcabba4b723624cabed7a65465",
+    "@runic-artifex/vite-plugin-runic": "3592c895641326a7b943bbaebe2325500554701207d30016c54222fb1c7893c6"
+  },
+  "nugetCandidates": {
+    "Runic.Assets.1.0.0-preview.1.nupkg": "bef8ba21fc512bb455fd9365b0fc73673242e8fd65d0cf2ef460c299f4d3ed95",
+    "Runic.Assets.AspNetCore.1.0.0-preview.1.nupkg": "8752413402f53f2e6fdcc170e5db8bcd4f96feaf71cd41aec8a6319b9dbcd497",
+    "Runic.Assets.Desktop.1.0.0-preview.1.nupkg": "0220d962b893e355a78326fb600c638d9f1c8ffb62737b452ae6572c733aa35c",
+    "Runic.CommandLine.1.0.0-preview.1.nupkg": "a7ef4767d62c000051247ded18680cb3c60c815aece2fad46426c4f01c9b046d",
+    "Runic.CommandLine.Processes.1.0.0-preview.1.nupkg": "760dda9959a627fb1631e4647da65252b7cfb8db6283ee2bb03c291732bb1f45",
+    "Runic.CommandLine.Testing.1.0.0-preview.1.nupkg": "7df8712dc09e81255314370cd233824f28dfd49a3873f522c9d1b658158b5f0f",
+    "Runic.Desktop.1.0.0-preview.1.nupkg": "686ce9dc44b67fed706e9702b8d39ecd04fd4aedf16fea8ef61949a80dae46bb",
+    "Runic.Application.1.0.0-preview.1.nupkg": "541a9cda19d991f8efc718a56f3bf59c12e337db3c4e7ebf78a7844df9cc3c6f",
+    "Runic.Application.Bridge.1.0.0-preview.1.nupkg": "b731db56636c1f201c024772197b84f948cfe5ae8b2c3d2f9e619b82332bb13b",
+    "Runic.Application.Desktop.1.0.0-preview.1.nupkg": "38c924a48c16d2ad97d253d2ae62c4d3ad4aba972657ec650abd14c743dd3c10",
+    "Runic.Application.Hosting.1.0.0-preview.1.nupkg": "890c178bbc5eb7be352a70fa2fc612a674ca566fbdd36fcc13be72acf58e3997",
+    "Runic.Application.Testing.1.0.0-preview.1.nupkg": "189d39f5704a01f279375948a5f3a905a58cffbc132357bafd11dcdad62ff21d",
+    "Runic.Application.Templates.1.0.0-preview.1.nupkg": "1459465f834bd93b58445ab5ad7f6572bd351b0bd54502677c8ee38091b60922",
+    "dotnet-runic.1.0.0-preview.1.nupkg": "773651af8a50fbc6e46bde0ee7c5ec8995e1b2ea2e8b23771a7a49fc998314e6",
+    "Runic.Translations.1.0.0-preview.1.nupkg": "de8dd1f1ef839fa7c79510895f6b78b10f2fe2724adfbc990275d68da5ae10f0",
+    "Runic.Translations.Build.1.0.0-preview.1.nupkg": "31611bee02c3abb59d7a87f779f6252644488c594b9f1a13971c35d40cd29065",
+    "Runic.Translations.Tooling.1.0.0-preview.1.nupkg": "6116eb1975deef35484f596bea7a7b7d0d7728207d233ac35a3770965b1889c6",
+    "Runic.Translations.Templates.1.0.0-preview.1.nupkg": "6c3048c9e0afafd7e2d958c6cb4c96152ab4c9bb260e7d98925df304b2cc249b",
+    "dotnet-runic-translations.1.0.0-preview.1.nupkg": "3ffcad82dc0975ad179e23fedb75953db0552436240d177bded21fed871d12ed",
+    "Runic.Application.CsWebUi.1.0.0-preview.1.nupkg": "8975c58d7b02abf74f006250ce3230ffb355d4937df40d484ac1f5353b08aba7"
+  },
+  "cases": [
+    {
+      "host": "desktop",
+      "profile": "default",
+      "report": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-default.json",
+      "totalBytes": 11703663,
+      "compressedBytes": 5276704,
+      "mainExecutableBytes": 10927440,
+      "verification": "passed"
+    },
+    {
+      "host": "desktop",
+      "profile": "minimal",
+      "report": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-minimal.json",
+      "totalBytes": 10649647,
+      "compressedBytes": 4795136,
+      "mainExecutableBytes": 9873424,
+      "verification": "passed"
+    },
+    {
+      "host": "cswebui",
+      "profile": "default",
+      "report": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/cswebui-default.json",
+      "totalBytes": 5738600,
+      "compressedBytes": 2766273,
+      "mainExecutableBytes": 5410080,
+      "verification": "passed"
+    }
+  ],
+  "frontendLockSha256": "83ceac2b04d7e0a28dd954dc172b32a898a5667d05edee311dc2cc5249b47cf2"
+}

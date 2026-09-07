@@ -1,0 +1,10 @@
+  Determining projects to restore...
+  Restored $CONSUMER_ROOT/desktop-default/Domain/CustomerDomain.csproj (in 1.7 sec).
+  Restored $CONSUMER_ROOT/desktop-default/After/CustomerApplication.csproj (in 1.7 sec).
+  Restored $CONSUMER_ROOT/desktop-default/Host/CustomerDesktop.csproj (in 1.7 sec).
+  CustomerDomain -> $CONSUMER_ROOT/desktop-default/Domain/bin/Release/net10.0/CustomerDomain.dll
+  CustomerApplication -> $CONSUMER_ROOT/desktop-default/After/bin/Release/net10.0/CustomerApplication.dll
+  Packed a canonical Runic Assets archive into 144257 bytes.
+  CustomerDesktop -> $CONSUMER_ROOT/desktop-default/Host/bin/Release/net10.0/linux-x64/CustomerDesktop.dll
+  Generating native code
+  CustomerDesktop -> $SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/desktop-default-485cb53a80b04a56be1155d3fbb591f6/publish/

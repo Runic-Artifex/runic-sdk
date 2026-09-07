@@ -60,5 +60,5 @@ only that explicit entry snapshot changes. Normal published execution uses the
 embedded assets when `RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT` is unset.
 
 On NixOS, use the repository's [development shell](nixos-development.md).
-Footprint tuning and measurements are tracked separately in the
-[footprint assessment](host-choice-and-footprint.md).
+Use the [size and tuning guide](size-and-tuning.md) for measurements and the
+minimal Desktop profile.

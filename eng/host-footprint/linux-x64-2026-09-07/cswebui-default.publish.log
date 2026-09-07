@@ -1,0 +1,10 @@
+  Determining projects to restore...
+  Restored $CONSUMER_ROOT/cswebui-default/Domain/CustomerDomain.csproj (in 167 ms).
+  Restored $CONSUMER_ROOT/cswebui-default/After/CustomerApplication.csproj (in 167 ms).
+  Restored $CONSUMER_ROOT/cswebui-default/Host/CustomerDesktop.csproj (in 1.02 sec).
+  CustomerDomain -> $CONSUMER_ROOT/cswebui-default/Domain/bin/Release/net10.0/CustomerDomain.dll
+  CustomerApplication -> $CONSUMER_ROOT/cswebui-default/After/bin/Release/net10.0/CustomerApplication.dll
+  Packed a canonical Runic Assets archive into 144257 bytes.
+  CustomerDesktop -> $CONSUMER_ROOT/cswebui-default/Host/bin/Release/net10.0/linux-x64/CustomerDesktop.dll
+  Generating native code
+  CustomerDesktop -> $SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/cswebui-default-202dfdeda4784672b9809986c79c44ba/publish/

@@ -1,0 +1,91 @@
+{
+  "schema": "runic.size/1",
+  "createdUtc": "2026-09-07T10:49:15.7844904+00:00",
+  "project": "$CONSUMER_ROOT/cswebui-default/Host/CustomerDesktop.csproj",
+  "runtime": "linux-x64",
+  "host": "cswebui",
+  "profile": "default",
+  "sdk": "10.0.302",
+  "buildOperatingSystem": "NixOS 26.11 (Zokor)",
+  "buildArchitecture": "X64",
+  "installedRuntimes": "Microsoft.AspNetCore.App 10.0.10 [/nix/store/z63sdvbahmyxs5vpv1rnwv2n3vx7jvgd-dotnet-sdk-10.0.302/share/dotnet/shared/Microsoft.AspNetCore.App]\nMicrosoft.NETCore.App 10.0.10 [/nix/store/z63sdvbahmyxs5vpv1rnwv2n3vx7jvgd-dotnet-sdk-10.0.302/share/dotnet/shared/Microsoft.NETCore.App]",
+  "sourceRevision": null,
+  "sourceDirty": null,
+  "effectiveProperties": {
+    "AssemblyName": "CustomerDesktop",
+    "TargetFramework": "net10.0",
+    "RuntimeIdentifier": "linux-x64",
+    "RunicHost": "cswebui",
+    "PublishAot": "true",
+    "PublishTrimmed": "true",
+    "TrimMode": "",
+    "OptimizationPreference": "Size",
+    "SelfContained": "true",
+    "InvariantGlobalization": "true",
+    "StripSymbols": "true",
+    "DebugType": "none",
+    "DebugSymbols": "false",
+    "StackTraceSupport": "",
+    "EventSourceSupport": "false",
+    "UseSystemResourceKeys": "false",
+    "HttpActivityPropagationSupport": "",
+    "EnableUnsafeBinaryFormatterSerialization": "false",
+    "RunicDesktopMinimalHost": "false",
+    "ProjectAssetsFile": "$CONSUMER_ROOT/cswebui-default/Host/obj/project.assets.json",
+    "RuntimeFrameworkVersion": "",
+    "TargetLatestRuntimePatch": "true"
+  },
+  "libraries": {
+    "CsWebUi.Native/2.5.0-beta.4.4": "package",
+    "CsWebUi/2.5.0-beta.4.4": "package",
+    "CustomerApplication/1.0.0": "project",
+    "CustomerDomain/1.0.0": "project",
+    "Microsoft.DotNet.ILCompiler/10.0.10": "package",
+    "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.10": "package",
+    "Microsoft.Extensions.DependencyInjection/10.0.10": "package",
+    "Microsoft.NET.ILLink.Tasks/10.0.10": "package",
+    "Runic.Application.Bridge/1.0.0-preview.1": "package",
+    "Runic.Application.CsWebUi/1.0.0-preview.1": "package",
+    "Runic.Application/1.0.0-preview.1": "package",
+    "Runic.Assets/1.0.0-preview.1": "package",
+    "runtime.linux-x64.Microsoft.DotNet.ILCompiler/10.0.10": "package"
+  },
+  "publishDirectory": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/cswebui-default-202dfdeda4784672b9809986c79c44ba/publish",
+  "publishExitCode": 0,
+  "publishLog": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/cswebui-default-202dfdeda4784672b9809986c79c44ba/publish.log",
+  "archive": "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/cswebui-default-202dfdeda4784672b9809986c79c44ba/distribution.zip",
+  "totalBytes": 5738600,
+  "compressedBytes": 2766273,
+  "files": [
+    {
+      "path": "CustomerDesktop",
+      "category": "main-executable",
+      "bytes": 5410080,
+      "sha256": "32a9b0e81f66d06a165e2e6fb69763c50f2abe4723f0d93860877d6ce0c61668"
+    },
+    {
+      "path": "libwebui-2.so",
+      "category": "native-dependency",
+      "bytes": 328520,
+      "sha256": "ecca096b65f7733db44dfaa28f35bd98da6e2d1aadcfcb2e2368981aee20ad57"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "exitCode": 0,
+    "executable": "/nix/store/p8hbhn8hdqz5p3a7y6dvi1y1x8nriybl-nodejs-slim-24.18.0/bin/node",
+    "arguments": [
+      "$SDK_ROOT/eng/verify-published-customers.mjs",
+      "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/cswebui-default-202dfdeda4784672b9809986c79c44ba/publish",
+      "$SDK_ROOT/artifacts/host-footprint/linux-x64/run-1788778087971/cswebui-default-202dfdeda4784672b9809986c79c44ba/publish/CustomerDesktop"
+    ]
+  },
+  "notes": [
+    "All publish files are counted. File categories are heuristic and never remove files.",
+    "Embedded frontend assets are counted inside their containing executable or assembly.",
+    "NativeAOT library inventory does not attribute bytes inside the linked executable.",
+    "Installed browsers and OS libraries are excluded. This does not measure startup or memory.",
+    "Command stdout and stderr are each retained up to 4 Mi characters; longer logs are marked truncated.",
+    "Empty evaluated properties mean unspecified. Application targets may further customize publishing."
+  ]
+}
