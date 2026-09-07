@@ -11,8 +11,10 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
     private const string ApplicationBridgeCapability = "runic.desktop.application-bridge/1";
     private const string ApplicationBridgeReceiver = "__runicDesktopReceiveApplicationBridgeFrame";
 
-    [Fact]
-    public async Task UpstreamStyleCallbackAndJavaScriptRoundTripRunsInChromium()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpstreamStyleCallbackAndJavaScriptRoundTripRunsInChromium(bool delayedPageLoad)
     {
         var chrome = FindChrome();
         if (chrome is null)
@@ -22,6 +24,19 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         await using var window = new WebUiWindow();
+        var pageObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.SetFileHandler(async (path, cancellationToken) =>
+        {
+            if (path != "/startup.js") return null;
+            if (delayedPageLoad)
+            {
+                // Hold the parser before <body> until CDP has observed the loading page.
+                // The former 100 x 25 ms result poll expired during this valid navigation.
+                await pageObserved.Task.WaitAsync(cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+            }
+            return new WebUiContent(ReadOnlyMemory<byte>.Empty, "text/javascript; charset=utf-8");
+        });
         window.Bind("exercise", e =>
         {
             var result = e.Window.ExecuteJavaScript("return 6 * 7;", TimeSpan.FromSeconds(5));
@@ -39,7 +54,7 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
 
         var url = await window.StartServerAsync("""
             <!doctype html>
-            <html><head><script src="webui.js"></script><title>WAIT</title></head>
+            <html><head><script src="startup.js"></script><script src="webui.js"></script><title>WAIT</title></head>
             <body data-result="waiting"><button id="exercise">Exercise</button><button id="clicker">Click</button>
             <script>
               globalThis.acceptBytes = data => globalThis.rawResult = Array.from(data).join(',');
@@ -48,13 +63,15 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
                 const value = await exercise();
                 const largeSize = await large('A'.repeat(150000));
                 document.querySelector('#clicker').click();
-                for (let index = 0; index < 100 &&
-                     (globalThis.rawResult === undefined || globalThis.clickResult === undefined); index++) {
+                while (globalThis.rawResult === undefined || globalThis.clickResult === undefined) {
                   await new Promise(resolve => setTimeout(resolve, 10));
                 }
                 document.body.dataset.result = `${value}:${globalThis.rawResult}:${globalThis.clickResult}:${largeSize}`;
                 document.title = 'PASS';
-              })();
+              })().catch(error => {
+                globalThis.testError = String(error?.stack ?? error);
+                document.title = 'FAIL';
+              });
             </script></body></html>
             """, timeout.Token);
 
@@ -71,23 +88,14 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
             using var devTools = new ClientWebSocket();
             await devTools.ConnectAsync(debuggerUrl, timeout.Token);
 
-            string? result = null;
-            for (var attempt = 0; attempt < 100 && result != "42:1,0,2:clicked:150000"; attempt++)
-            {
-                result = await EvaluateAsync(devTools, attempt + 1, "document.body?.dataset.result", timeout.Token);
-                if (result != "42:1,0,2:clicked:150000")
-                {
-                    await Task.Delay(25, timeout.Token);
-                }
-            }
+            await WaitForBridgeResultAsync(devTools, "42:1,0,2:clicked:150000", timeout.Token, pageObserved);
 
-            var diagnostic = await EvaluateAsync(
-                devTools,
-                102,
-                "JSON.stringify({webui:typeof webui,exercise:typeof exercise,connected:webui?.isConnected?.(),title:document.title})",
-                timeout.Token);
-            Assert.True(result == "42:1,0,2:clicked:150000", $"Actual result: {result}; browser state: {diagnostic}");
-            Assert.Equal("PASS", await EvaluateAsync(devTools, 101, "document.title", timeout.Token));
+            if (delayedPageLoad)
+            {
+                var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    EvaluateAsync(devTools, int.MaxValue, "throw new Error('diagnostic probe')", timeout.Token));
+                Assert.Contains("diagnostic probe", error.Message, StringComparison.Ordinal);
+            }
         }
         finally
         {
@@ -158,23 +166,7 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
             using var devTools = new ClientWebSocket();
             await devTools.ConnectAsync(debuggerUrl, timeout.Token);
 
-            string? result = null;
-            for (var attempt = 0; attempt < 100 && result != "1,0,2"; attempt++)
-            {
-                result = await EvaluateAsync(devTools, attempt + 1, "document.body?.dataset.result", timeout.Token);
-                if (result != "1,0,2")
-                {
-                    await Task.Delay(25, timeout.Token);
-                }
-            }
-
-            var diagnostic = await EvaluateAsync(
-                devTools,
-                102,
-                "JSON.stringify({runicDesktop:globalThis.runicDesktop?.product,webui:typeof globalThis.webui,title:document.title})",
-                timeout.Token);
-            Assert.True(result == "1,0,2", $"Actual result: {result}; browser state: {diagnostic}");
-            Assert.Equal("PASS", await EvaluateAsync(devTools, 101, "document.title", timeout.Token));
+            await WaitForBridgeResultAsync(devTools, "1,0,2", timeout.Token);
         }
         finally
         {
@@ -188,6 +180,51 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
             output.WriteLine("Chromium stopped; removing its profile.");
             await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
             output.WriteLine("Browser cleanup complete; disposing the application host.");
+        }
+    }
+
+    private static async Task WaitForBridgeResultAsync(
+        ClientWebSocket socket,
+        string expected,
+        CancellationToken cancellationToken,
+        TaskCompletionSource? pageObserved = null)
+    {
+        const string expression = """
+            JSON.stringify({
+              url: location.href, readyState: document.readyState, title: document.title,
+              result: document.body?.dataset.result,
+              error: globalThis.testError,
+              webui: typeof globalThis.webui, exercise: typeof globalThis.exercise,
+              connected: globalThis.webui?.isConnected?.(),
+              runicDesktop: globalThis.runicDesktop?.product,
+              rawResult: globalThis.rawResult, clickResult: globalThis.clickResult
+            })
+            """;
+        string? state = null;
+        try
+        {
+            // Discovering a page target does not mean its document or bridge is ready.
+            // Use the test's deadline, preserving the last observed state on timeout.
+            for (var id = 1; ; id++)
+            {
+                state = await EvaluateAsync(socket, id, expression, cancellationToken);
+                pageObserved?.TrySetResult();
+                using var document = JsonDocument.Parse(state ?? throw new InvalidOperationException("Chromium returned no page state."));
+                var root = document.RootElement;
+                var title = root.GetProperty("title").GetString();
+                var result = root.TryGetProperty("result", out var value) ? value.GetString() : null;
+                Assert.True(title != "FAIL" && !root.TryGetProperty("error", out _), $"Bridge fixture failed; browser state: {state}");
+                if (title == "PASS")
+                {
+                    Assert.True(result == expected, $"Expected result: {expected}; browser state: {state}");
+                    return;
+                }
+                await Task.Delay(25, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Bridge did not complete before the test deadline. Expected result: {expected}; last browser state: {state}", exception);
         }
     }
 
@@ -330,11 +367,13 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
         var buffer = new byte[16 * 1024];
         while (true)
         {
-            var message = new MemoryStream();
+            using var message = new MemoryStream();
             WebSocketReceiveResult response;
             do
             {
                 response = await socket.ReceiveAsync(buffer, cancellationToken);
+                if (response.MessageType == WebSocketMessageType.Close)
+                    throw new InvalidOperationException($"Chromium closed DevTools while evaluating {expression}: {socket.CloseStatusDescription}");
                 message.Write(buffer, 0, response.Count);
             }
             while (!response.EndOfMessage);
@@ -342,7 +381,12 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
             using var document = JsonDocument.Parse(message.ToArray());
             if (document.RootElement.TryGetProperty("id", out var responseId) && responseId.GetInt32() == id)
             {
-                var result = document.RootElement.GetProperty("result").GetProperty("result");
+                if (document.RootElement.TryGetProperty("error", out var protocolError))
+                    throw new InvalidOperationException($"Chromium DevTools failed evaluating {expression}: {protocolError}");
+                var evaluation = document.RootElement.GetProperty("result");
+                if (evaluation.TryGetProperty("exceptionDetails", out var exception))
+                    throw new InvalidOperationException($"JavaScript failed evaluating {expression}: {exception}");
+                var result = evaluation.GetProperty("result");
                 return result.TryGetProperty("value", out var value) ? value.GetString() : null;
             }
         }
