@@ -43,7 +43,7 @@ public sealed record DesktopApplicationHostOptions
 }
 
 /// <summary>Composes Application-owned lifecycle and bridge state with Runic Desktop presentation hosting.</summary>
-public sealed class DesktopApplicationHost : IApplicationHost
+public sealed class DesktopApplicationHost : IApplicationHost, IApplicationMainThreadHost
 {
     private readonly DesktopApplicationHostOptions _options;
     private DesktopHost? _host;
@@ -51,7 +51,7 @@ public sealed class DesktopApplicationHost : IApplicationHost
     private DesktopWindow? _window;
     private DesktopApplicationBridge? _bridge;
     private int _started;
-    private int _stopped;
+    private TaskCompletionSource? _stopCompletion;
 
     /// <summary>Creates one host from immutable typed composition.</summary>
     public DesktopApplicationHost(DesktopApplicationHostOptions? options = null)
@@ -68,6 +68,9 @@ public sealed class DesktopApplicationHost : IApplicationHost
 
     /// <summary>Gets the active optional browser or WebView after successful start.</summary>
     public DesktopWindow? Window => _window;
+
+    /// <inheritdoc />
+    public void Run(Func<Task> application) => DesktopEventLoop.Run(application);
 
     /// <inheritdoc />
     public async ValueTask StartAsync(
@@ -93,7 +96,25 @@ public sealed class DesktopApplicationHost : IApplicationHost
             }
             if (_options.OpenWindow)
             {
-                _window = await _surface.OpenWindowAsync(_options.Window, cancellationToken).ConfigureAwait(false);
+                var windowOptions = _options.Window;
+                // A native user close must drain presentation services before the
+                // platform destroys its owner. Browser presentations have no owned
+                // native services and cannot provide close interception.
+                if (_bridge?.HasPresentationLifetimes == true && windowOptions.Browser == BrowserKind.Embedded
+                    && windowOptions.PresentationPolicy != DesktopPresentationPolicy.EmbeddedThenBrowser)
+                {
+                    var confirm = windowOptions.ConfirmCloseAsync;
+                    windowOptions = windowOptions with
+                    {
+                        ConfirmCloseAsync = async token =>
+                        {
+                            if (confirm is not null && !await confirm(token).ConfigureAwait(false)) return false;
+                            if (_bridge is not null) await _bridge.DisposeAsync().ConfigureAwait(false);
+                            return true;
+                        },
+                    };
+                }
+                _window = await _surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
                 if (_options.Title is { } title)
                 {
                     await _surface.RunJavaScriptAsync(
@@ -121,17 +142,33 @@ public sealed class DesktopApplicationHost : IApplicationHost
     }
 
     /// <inheritdoc />
-    public async ValueTask StopAsync(CancellationToken cancellationToken)
+    public ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        if (Interlocked.Exchange(ref _stopped, 1) != 0) return;
-        if (_window is not null) await _window.CloseAsync().ConfigureAwait(false);
-        _window = null;
-        if (_bridge is not null) await _bridge.DisposeAsync().ConfigureAwait(false);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref _stopCompletion, completion, null) is { } existing)
+            return new(existing.Task);
+        _ = StopCoreAsync(completion);
+        return new(completion.Task);
+    }
+
+    private async Task StopCoreAsync(TaskCompletionSource completion)
+    {
+        System.Collections.Generic.List<Exception> failures = [];
+        async Task Clean(Func<Task> action)
+        {
+            try { await action().ConfigureAwait(false); }
+            catch (Exception error) { failures.Add(error); }
+        }
+        if (_bridge is not null) await Clean(() => _bridge.DisposeAsync().AsTask()).ConfigureAwait(false);
         _bridge = null;
-        if (_surface is not null) await _surface.CloseAsync(cancellationToken).ConfigureAwait(false);
+        if (_window is not null) await Clean(() => _window.CloseAsync().AsTask()).ConfigureAwait(false);
+        _window = null;
+        if (_surface is not null) await Clean(() => _surface.CloseAsync(CancellationToken.None).AsTask()).ConfigureAwait(false);
         _surface = null;
-        if (_host is not null) await _host.DisposeAsync().ConfigureAwait(false);
+        if (_host is not null) await Clean(() => _host.DisposeAsync().AsTask()).ConfigureAwait(false);
         _host = null;
+        if (failures.Count == 0) completion.SetResult();
+        else completion.SetException(failures.Count == 1 ? failures[0] : new AggregateException(failures));
     }
 
     /// <inheritdoc />

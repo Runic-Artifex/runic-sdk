@@ -90,3 +90,31 @@ thread. It checks bridge responsiveness during the pending decision, veto, retry
 approved destruction. Root CI runs this smoke on Linux x64, Windows x64 and macOS Apple Silicon. Local execution evidence is recorded in the
 [reference verification record](../../../examples/customer-migration/VERIFICATION.md);
 adding CI coverage is not evidence that a remote platform run has passed.
+
+## Presentation-owned native work
+
+Application Bridge scoped services can implement
+`IApplicationPresentationLifetime` and register the same scoped instance under
+that interface. Both Application transports invoke its `StopAsync()` before
+waiting for in-flight commands; the DI scope is disposed after command drain.
+The service must cancel pending UI, wait for acquired access release and reject
+new work. Reconnect retains the service instance.
+
+With an explicit embedded Desktop host and such hooks, Application composes its
+close interception with `ConfirmCloseAsync`: an application veto keeps the scope
+alive; approval drains presentation services before the native owner closes.
+Application stop follows the same drain-before-destruction order. Browser fallback
+cannot promise native close interception and must not expose an owned picker.
+
+`DesktopWindow.SupportsNativeDispatch`, `CheckNativeAccess()` and
+`DispatchNativeAsync(Action<nint>, CancellationToken)` expose the verified built-in
+native owner boundary. The callback receives an HWND on Windows, GtkWindow on Linux
+or NSWindow on macOS; these identities are not interchangeable. Queued cancellation
+prevents invocation. Once a callback starts, its completion is observed even if the
+caller cancels. Custom embedded hosts do not automatically gain this capability.
+Never retain the handle beyond the owning presentation or send it to JavaScript.
+
+On macOS use `ApplicationHost.Run()` from a synchronous process entry point, or
+`DesktopEventLoop.Run(Func<Task>)` when composing Desktop directly. The loop remains
+active through asynchronous cleanup. It does not migrate a worker thread into the
+AppKit process main thread.

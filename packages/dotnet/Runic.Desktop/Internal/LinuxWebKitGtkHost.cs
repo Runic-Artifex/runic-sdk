@@ -14,10 +14,18 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private nint _webView;
     private WebUiEmbeddedHostOptions? _options;
     private int _dispatcherLease;
+    private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+    public bool SupportsNativeDispatch => true;
+    public bool CheckNativeAccess() => Dispatcher.CheckAccess;
+    public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _nativeShutdown.Token);
+        await InvokeWindowAsync(action, linked.Token).ConfigureAwait(false);
+    }
 
     public event EventHandler? Closed;
 
@@ -234,6 +242,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         _window = 0;
         _webView = 0;
+        _nativeShutdown.Cancel();
         _closed.TrySetResult();
         Closed?.Invoke(this, EventArgs.Empty);
     }
@@ -316,6 +325,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private readonly AutoResetEvent _startLoop = new(false);
         private TaskCompletionSource _loopRunning = NewCompletionSource();
         private TaskCompletionSource _loopStopped = NewCompletionSource();
+        private int _threadId;
+        internal bool CheckAccess => Environment.CurrentManagedThreadId == Volatile.Read(ref _threadId);
         private int _leases;
         private int _started;
 
@@ -370,6 +381,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         internal async Task InvokeAsync(Action action, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (CheckAccess) { action(); return; }
             EnsureStarted();
             await _initialized.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             Task running;
@@ -378,7 +391,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 running = _loopRunning.Task;
             }
             await running.WaitAsync(cancellationToken).ConfigureAwait(false);
-            var work = new GtkWorkItem(action);
+            var work = new NativeDispatchWork(action, cancellationToken);
             var handle = GCHandle.Alloc(work);
             if (_api.GIdleAdd(WorkItemCallback, GCHandle.ToIntPtr(handle)) == 0)
             {
@@ -386,7 +399,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 throw new InvalidOperationException("GTK rejected a main-loop work item.");
             }
 
-            await work.Completion.Task.ConfigureAwait(false);
+            await work.WaitAsync().ConfigureAwait(false);
         }
 
         private void EnsureStarted()
@@ -406,6 +419,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         private void Run()
         {
+            Volatile.Write(ref _threadId, Environment.CurrentManagedThreadId);
             try
             {
                 if (!_api.GtkInitCheck())
@@ -438,27 +452,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private static int RunWorkItem(nint context)
         {
             var handle = GCHandle.FromIntPtr(context);
-            var work = (GtkWorkItem)handle.Target!;
+            var work = (NativeDispatchWork)handle.Target!;
             handle.Free();
-            try
-            {
-                work.Action();
-                work.Completion.TrySetResult();
-            }
-            catch (Exception exception)
-            {
-                work.Completion.TrySetException(exception);
-            }
+            work.Run();
             return 0;
         }
 
         private static unsafe nint WorkItemCallback =>
             (nint)(delegate* unmanaged[Cdecl]<nint, int>)&RunWorkItem;
-
-        private sealed record GtkWorkItem(Action Action)
-        {
-            internal TaskCompletionSource Completion { get; } = NewCompletionSource();
-        }
     }
 #pragma warning restore CA1001
 

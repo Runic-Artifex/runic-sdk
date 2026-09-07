@@ -16,6 +16,11 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
     bool SupportsCloseConfirmation => false;
 
+    bool SupportsNativeDispatch => false;
+    bool CheckNativeAccess() => false;
+    ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>
+        ValueTask.FromException(new NotSupportedException("This host does not expose native dispatch."));
+
     /// <summary>Occurs after the platform window has closed.</summary>
     event EventHandler? Closed;
 

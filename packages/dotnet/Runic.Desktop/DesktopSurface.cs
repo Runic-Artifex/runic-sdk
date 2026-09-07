@@ -421,6 +421,25 @@ public sealed class DesktopWindow : IAsyncDisposable
         && (Browser == BrowserKind.Embedded ? _engine.IsEmbeddedWindowOpen : _engine.IsShown);
     public ulong ProcessId => _engine.BrowserProcessId;
     public nint NativeHandle => IsOpen ? _engine.NativeWindowHandle : 0;
+
+    /// <summary>Whether this live embedded owner supports native-thread callbacks.</summary>
+    public bool SupportsNativeDispatch => IsOpen && _engine.SupportsNativeDispatch;
+
+    /// <summary>Whether the caller is executing on the live native owner's thread.</summary>
+    public bool CheckNativeAccess() => SupportsNativeDispatch && _engine.CheckNativeAccess();
+
+    /// <summary>Runs native work on this owner's thread. Cancellation prevents queued work;
+    /// a running callback is awaited to completion. No native handle may outlive this window.</summary>
+    public ValueTask DispatchNativeAsync(Action<nint> action, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (!SupportsNativeDispatch) throw new NotSupportedException("The presentation has no native dispatcher.");
+        return _engine.DispatchNativeAsync(() =>
+        {
+            ObjectDisposedException.ThrowIf(!IsOpen || NativeHandle == 0, this);
+            action(NativeHandle);
+        }, cancellationToken);
+    }
     public DesktopWindowCapabilities Capabilities => Browser == BrowserKind.Embedded
         ? DesktopWindowCapabilities.NativeHandle |
           DesktopWindowCapabilities.Focus |

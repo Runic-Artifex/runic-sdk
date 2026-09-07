@@ -305,3 +305,25 @@ implementation on a broad design committee. Record any change with its test evid
 
 The planned scenario specification is in
 [OS integration acceptance](../../../../eng/os-integration-acceptance.md).
+
+
+## Implementation progress: presentation and file access wave
+
+The [internal provider experiment](../../../../tests/dotnet/Runic.Platform.Prototype.Tests/README.md)
+implements concrete read/staged-save leases and connects their lifetime to the
+actual bridge-session DI scope. Delivered resources remain tracked until release.
+Desktop drains those resources before destroying an owned native window; both
+transports start service shutdown before waiting on command gates. Reconnect
+continues to use the same logical scope.
+
+This wave also brings forward the macOS main-thread Application runner and AppKit
+sheets with security-scoped URL balancing. Windows uses Common Item Dialog;
+Linux uses GTK's native chooser, including its portal/parent-export implementation.
+Selected-file-only grants explicitly decline sibling-file atomic staging. These
+providers remain internal, with no public Platform package or compatibility promise.
+
+Native CI checks owner dispatch, actual picker cancellation and shutdown separately
+from managed contract tests and NativeAOT publication. Signed sandbox grants,
+Wayland/portal selection and focus require the environment-specific evidence in
+the acceptance guide. CS-WebUI live service lifetimes are wired; owned dialogs
+remain unavailable until its public native-owner/dispatcher boundary is established.

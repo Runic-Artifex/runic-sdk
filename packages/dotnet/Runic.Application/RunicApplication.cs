@@ -113,6 +113,13 @@ public sealed class ApplicationHost : IAsyncDisposable
     /// <summary>Gets an immutable copy of launch arguments.</summary>
     public ReadOnlyMemory<string> Arguments => _arguments;
 
+    /// <summary>Runs from a synchronous process entry point, servicing the selected host's main-thread event loop.</summary>
+    public void Run(CancellationToken cancellationToken = default)
+    {
+        if (_host is IApplicationMainThreadHost mainThread) mainThread.Run(() => RunAsync(cancellationToken));
+        else RunAsync(cancellationToken).GetAwaiter().GetResult();
+    }
+
     /// <summary>Starts, waits for owned shutdown, then stops the selected host exactly once.</summary>
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
@@ -183,4 +190,11 @@ public interface IApplicationHost : IAsyncDisposable
 
     /// <summary>Stops the host after a completed run.</summary>
     ValueTask StopAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Services native main-thread events for the entire application run, including shutdown.</summary>
+public interface IApplicationMainThreadHost
+{
+    /// <summary>Runs from the process main thread until application work and cleanup complete.</summary>
+    void Run(Func<Task> application);
 }

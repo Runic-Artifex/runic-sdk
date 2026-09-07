@@ -19,3 +19,20 @@ The former `RunicToolkit.Hosting`, `RunicToolkit.Desktop`,
 `RunicToolkit.Hosting.Abstractions`, and `RunicToolkit.Hosting.Generators`
 packages are preview identities. Move to `Runic.Application`; builds that still
 reference a preview identity receive `RAPP0001` with this migration destination.
+
+For macOS embedded Desktop applications, enter through synchronous
+`ApplicationHost.Run()` on the process main thread. The selected Desktop host
+implements `IApplicationMainThreadHost` and services AppKit while the asynchronous
+application starts, runs and releases native resources:
+
+```csharp
+var builder = RunicApplication.CreateBuilder(args);
+builder.UseDesktop(options);
+var application = builder.Build();
+try { application.Run(); }
+finally { application.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+```
+
+The entry point must reach `Run()` before any asynchronous continuation moves it
+off the process main thread. `RunAsync()` remains available for hosts with no
+main-thread requirement or an externally managed compatible native event loop.

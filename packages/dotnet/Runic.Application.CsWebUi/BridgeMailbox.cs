@@ -17,6 +17,7 @@ internal sealed class BridgeMailbox : IAsyncDisposable
     private bool _overflow;
     private int _polling;
     private int _disposed;
+    private TaskCompletionSource? _disposeCompletion;
 
     internal BridgeMailbox(ApplicationBridgeSession session, BridgeLimits limits)
     {
@@ -103,14 +104,36 @@ internal sealed class BridgeMailbox : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref _disposeCompletion, completion, null) is { } existing)
+            return new(existing.Task);
+        Volatile.Write(ref _disposed, 1);
+        _ = CompleteDisposeAsync(completion);
+        return new(completion.Task);
+    }
+
+    private async Task CompleteDisposeAsync(TaskCompletionSource completion)
+    {
+        try { await DisposeCoreAsync().ConfigureAwait(false); completion.SetResult(); }
+        catch (Exception error) { completion.SetException(error); }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
         _session.EventProduced -= OnEvent;
-        await _shutdown.CancelAsync().ConfigureAwait(false);
+        Exception? cancellationFailure = null;
+        try { await _shutdown.CancelAsync().ConfigureAwait(false); }
+        catch (Exception error) { cancellationFailure = error; }
+        // Stop owner work before waiting for a command that may itself await a picker.
+        try { await _session.StopPresentationAsync().ConfigureAwait(false); }
+        catch { /* Session disposal reports the retained stop failure after cleanup. */ }
         await _dispatch.WaitAsync().ConfigureAwait(false);
         try { await _session.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception error) when (cancellationFailure is not null) { throw new AggregateException(cancellationFailure, error); }
         finally { _dispatch.Release(); }
+        if (cancellationFailure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cancellationFailure).Throw();
         // Native callbacks may still be unwinding; do not dispose their synchronization primitives.
     }
 }

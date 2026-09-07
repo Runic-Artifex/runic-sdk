@@ -126,12 +126,13 @@ runtime conditions to probe, not implied by entering `nix develop`.
 ## Commit-sized implementation waves
 
 The [internal prototype](../tests/dotnet/Runic.Platform.Prototype.Tests/README.md)
-starts wave 1 with controlled CAP, PICK and THREAD scenarios plus both-host DI
-composition. It uses simulated owners, queues and leases; it does not start the
-hosts or certify native capabilities. Nine grouped scenarios cover admission,
-late-result disposal, shutdown failure propagation and dispatch boundaries.
-Concrete lease/stream ownership and actual presentation-scoped host wiring remain
-unfinished, so wave 1 as a whole is not yet complete.
+now includes concrete leases, tracked access release, live Desktop/CS-WebUI
+session-scope wiring and native Windows/GTK/macOS picker implementations. The
+macOS runner and picker work from wave 4 was brought forward at the user's request.
+Twelve managed groups pass locally, along with live CS-WebUI and GTK/X11 owned
+picker cancellation/shutdown. Native CI has separate JIT and NativeAOT steps on
+all three operating systems. These steps do not certify Wayland/portal user grants
+or a signed macOS sandbox; those environment-specific evidence gates remain open.
 
 | Wave | Deliverable | Exit evidence |
 | --- | --- | --- |

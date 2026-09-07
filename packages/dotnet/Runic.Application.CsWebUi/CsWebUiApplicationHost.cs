@@ -41,7 +41,7 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
     private readonly List<WebUiBinding> _bindings = [];
     private BridgeMailbox? _mailbox;
     private int _started;
-    private int _stopped;
+    private TaskCompletionSource? _stopCompletion;
     private bool _ownsRuntime;
     private volatile string? _readinessPath;
 
@@ -185,18 +185,35 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
     }
 
     /// <inheritdoc />
-    public async ValueTask StopAsync(CancellationToken cancellationToken)
+    public ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        if (Interlocked.Exchange(ref _stopped, 1) != 0) return;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref _stopCompletion, completion, null) is { } existing)
+            return new(existing.Task);
+        _ = StopCoreAsync(completion);
+        return new(completion.Task);
+    }
+
+    private async Task StopCoreAsync(TaskCompletionSource completion)
+    {
+        System.Collections.Generic.List<Exception> failures = [];
+        async Task Clean(Func<Task> action)
+        {
+            try { await action().ConfigureAwait(false); }
+            catch (Exception error) { failures.Add(error); }
+        }
         _readinessPath = null;
-        if (_mailbox is { } mailbox) await mailbox.DisposeAsync().ConfigureAwait(false);
-        // StartServer uses a persistent native server. Close/Destroy alone can
-        // time out and free its mutexes while its thread is still running in
-        // CsWebUi.Native 2.5.0-beta.4.4. End the owned process runtime first.
-        if (_ownsRuntime) WebUiApplication.Exit();
-        foreach (var binding in _bindings) binding.Dispose();
+        if (_mailbox is { } mailbox) await Clean(() => mailbox.DisposeAsync().AsTask()).ConfigureAwait(false);
+        // End the persistent native server before destroying its window and mutexes.
+        if (_ownsRuntime) await Clean(() => { WebUiApplication.Exit(); return Task.CompletedTask; }).ConfigureAwait(false);
+        foreach (var binding in _bindings)
+            await Clean(() => { binding.Dispose(); return Task.CompletedTask; }).ConfigureAwait(false);
         _bindings.Clear();
-        Window?.Close(); Window?.Dispose(); Window = null;
+        await Clean(() => { Window?.Close(); return Task.CompletedTask; }).ConfigureAwait(false);
+        await Clean(() => { Window?.Dispose(); return Task.CompletedTask; }).ConfigureAwait(false);
+        Window = null;
+        if (failures.Count == 0) completion.SetResult();
+        else completion.SetException(failures.Count == 1 ? failures[0] : new AggregateException(failures));
     }
 
     /// <inheritdoc />

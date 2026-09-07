@@ -22,6 +22,7 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
     private ulong? _presentationSessionId;
     private readonly BridgeConnectionAdmission _admission = new();
     private int _disposed;
+    private TaskCompletionSource? _disposeCompletion;
 
     private DesktopApplicationBridge(
         DesktopSurface surface,
@@ -33,6 +34,8 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
         _registration = surface.RegisterCapability(DesktopApplicationBridgeOptions.Capability, OnFrameAsync);
         bridgeSession.EventProduced += OnEventProduced;
     }
+
+    internal bool HasPresentationLifetimes => _bridgeSession.HasPresentationLifetimes;
 
     /// <summary>Gets the active presentation session after successful Application Bridge initialization.</summary>
     public ulong? PresentationSessionId => _presentationSessionId;
@@ -51,18 +54,39 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref _disposeCompletion, completion, null) is { } existing)
+            return new(existing.Task);
+        Volatile.Write(ref _disposed, 1);
+        _ = CompleteDisposeAsync(completion);
+        return new(completion.Task);
+    }
+
+    private async Task CompleteDisposeAsync(TaskCompletionSource completion)
+    {
+        try { await DisposeCoreAsync().ConfigureAwait(false); completion.SetResult(); }
+        catch (Exception error) { completion.SetException(error); }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
         _bridgeSession.EventProduced -= OnEventProduced;
         _registration.Dispose();
-        _shutdown.Cancel();
+        Exception? cancellationFailure = null;
+        try { await _shutdown.CancelAsync().ConfigureAwait(false); }
+        catch (Exception error) { cancellationFailure = error; }
+        // Stop owner work before waiting for a command that may itself await a picker.
+        try { await _bridgeSession.StopPresentationAsync().ConfigureAwait(false); }
+        catch { /* Session disposal reports the retained stop failure after cleanup. */ }
         await _dispatch.WaitAsync().ConfigureAwait(false);
         await _send.WaitAsync().ConfigureAwait(false);
         try
         {
             await _bridgeSession.DisposeAsync().ConfigureAwait(false);
         }
+        catch (Exception error) when (cancellationFailure is not null) { throw new AggregateException(cancellationFailure, error); }
         finally
         {
             _send.Release();
@@ -71,6 +95,7 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
             _dispatch.Dispose();
             _shutdown.Dispose();
         }
+        if (cancellationFailure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cancellationFailure).Throw();
     }
 
     private async ValueTask<PresentationResult> OnFrameAsync(
@@ -91,9 +116,11 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
         await _dispatch.WaitAsync(linked.Token).ConfigureAwait(false);
-        await _send.WaitAsync(linked.Token).ConfigureAwait(false);
+        bool sendAcquired = false;
         try
         {
+            await _send.WaitAsync(linked.Token).ConfigureAwait(false);
+            sendAcquired = true;
             if (!CanAccept(invocation.Session, envelope!))
             {
                 await invocation.CloseSessionAsync(linked.Token).ConfigureAwait(false);
@@ -132,7 +159,7 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
         finally
         {
             lock (_eventGate) _inFlightFrames = null;
-            _send.Release();
+            if (sendAcquired) _send.Release();
             _dispatch.Release();
         }
     }

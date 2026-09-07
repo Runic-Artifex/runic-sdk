@@ -33,3 +33,4 @@ Runic.Desktop.PresentationResult
 Runic.Desktop.PresentationSession
 Runic.Desktop.RequestCancellationReason
 Runic.Desktop.StructuredPayload
+Runic.Desktop.DesktopEventLoop

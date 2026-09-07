@@ -17,6 +17,7 @@ internal static class Program
     {
         (string Name, Func<Task> Run)[] tests =
         [
+            ("presentation services drain before scope disposal and concurrent stop joins cleanup", PresentationLifetimeTests.RunAsync),
             ("generated named commands initialize and mutate an authoritative session", SessionRoundTrip),
             ("duplicates, stale revisions, and stale sessions are rejected", Rejections),
             ("revision comparison and advancement are atomic across admitted commands", AtomicRevisionAdvance),

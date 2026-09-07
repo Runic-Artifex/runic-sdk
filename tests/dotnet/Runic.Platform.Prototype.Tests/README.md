@@ -1,59 +1,108 @@
 # Internal OS-service prototype
 
-This non-packable executable contains internal contract and lifetime experiments
-for the [OS integration RFC](../../../docs/guides/application/architecture/os-integration-rfc.md).
-Nothing here is a shipped native provider or public `Runic.Platform` API.
+This non-packable executable contains internal contracts, concrete file leases
+and native provider experiments for the
+[OS integration RFC](../../../docs/guides/application/architecture/os-integration-rfc.md).
+It does not publish a `Runic.Platform` API. The existing Application/Bridge/Desktop
+packages supply the presentation lifetime hook, main-thread runner and verified
+native dispatch boundary used here.
 
-Run from the SDK root in `nix develop`:
+Run in the repository's Nix development environment:
 
 ```sh
 dotnet run --project tests/dotnet/Runic.Platform.Prototype.Tests -c Release -p:TreatWarningsAsErrors=true
+# Separate process: CS-WebUI owns one process-wide native runtime.
+# Prefix with xvfb-run -a on Linux without an active display, even with OpenWindow=false.
+dotnet run --project tests/dotnet/Runic.Platform.Prototype.Tests -c Release -- --live-cswebui
+# Interactive native session; on Linux X11 CI, prefix with xvfb-run -a.
+dotnet run --project tests/dotnet/Runic.Platform.Prototype.Tests -c Release -- --native
 ```
 
-Both SDK solutions include the executable, so the existing root test runner also
-runs it. The prototype files depend only on the BCL. References to Application,
-Desktop and CS-WebUI are used by the composition tests, not by the contracts.
+The CI workflow runs these commands and NativeAOT variants as separate native-job
+steps on Linux x64, Windows x64 and macOS Apple Silicon. Use `bun run ci` to run
+supported workflow jobs locally. Entering Nix supplies libraries, not a Wayland
+compositor, desktop portal or sandbox permission grant.
 
-## Evidence
+## Implemented behavior
 
-The controlled backend, callback queue and access lease exercise nine grouped
-scenarios without sleep-based race coordination:
+- Read leases retain an acquired stream and optional access grant. They are
+  consumed once, accept unknown-length streams, close outstanding streams on
+  disposal and reject reuse. Applications must still bound reads and validate data.
+- Save selection does not create/truncate the destination. A transaction stages
+  in the same directory, compares the destination's content hash with selection
+  time, then attempts one rename. Cancellation before submission prevents commit;
+  cancellation after submission waits for the actual result. Unknown outcomes
+  cannot be retried. Disposal removes leftover staging files and joins commits.
+- Atomic replacement is explicit provider policy. A selected-file portal or
+  security-scoped grant does not imply permission to create sibling files: those
+  saves return `AtomicReplaceUnavailable` before staging. There is no copy/delete
+  fallback. Content hashing is a best-effort conflict check, not filesystem CAS;
+  neither concurrent replacement between check and rename nor power-loss durability
+  is promised. Network/virtual filesystems require separate provider validation.
+- The presentation facade tracks delivered leases. Caller disposal releases early;
+  owner shutdown joins the same release and closes forgotten streams. Late cancelled
+  selections are released before their request settles. Release failures remain
+  observable at shutdown.
+- `ApplicationBridgeSessionFactory` resolves presentation lifetime hooks in the
+  same async scope as generated features. Reconnection retains the scope. Both
+  transports stop these services before waiting for commands that may await them.
+  Concurrent shutdown joins one operation and a failing service does not skip
+  remaining scope/native teardown.
+- Desktop drains scoped services before native close. Explicit embedded hosts with
+  lifetime hooks intercept user close, first apply the application's existing close
+  policy, then drain services before destroying the owner. Installed-browser and
+  fallback presentations do not acquire native ownership by process ID.
+- `ApplicationHost.Run()` runs Desktop's macOS event loop from a synchronous process
+  entry point, including startup and native cleanup. `RunAsync()` remains useful
+  when a suitable owner event loop already exists; it cannot create AppKit's process
+  main thread. Native dispatch runs inline on the owner thread, cancels queued work
+  and waits for already-running callbacks.
 
-- Missing or temporarily unavailable providers, required ownership, explicit
-  unowned selection, immutable readiness snapshots and presentation generations.
-- Pre-cancelled calls, dismissal, one open/save picker per owner across facades,
-  independent owners and admission recovery after provider exceptions.
-- Caller cancellation and owner shutdown with a late selected lease: wait for
-  release, release once, reject subsequent work, and preserve cleanup failures.
-- Worker-to-owner dispatch, inline nested dispatch, queued cancellation, callback
-  exceptions, queued shutdown rejection and draining already-running callbacks.
-- Identical feature DI registrations beside real Desktop and CS-WebUI host
-  compositions. Headless service resolution returns explicit unavailable results;
-  disposing one scope leaves another independent scope usable.
+## Native providers
 
-The composition test builds the real host objects and validated service graphs.
-It **does not start either host**, bind a native window owner, invoke a native
-dispatcher, or prove bridge-session scope ownership. `AttachTestOwner` is only a
-simulated state transition, never evidence of a valid HWND, NSWindow or portal
-parent token. A host must retain a logical presentation scope across reconnect
-and close it when replacing its owner; that wiring remains to be implemented.
+| Provider | Ownership and access handling |
+| --- | --- |
+| Windows | Common Item Dialog on the WebView2 STA; actual HWND passed to `Show`; cancellation posts `IFileDialog.Close` to that thread; all COM interfaces released after modal completion. File acquisition obeys actual filesystem permissions. |
+| Linux | `GtkFileChooserNative` with the actual GtkWindow as transient parent. GTK handles X11/Wayland parent export and portal protocol. Required portal availability is probed off the UI thread. Hide/destroy drains cancellation. Portal-persistent grants are not revoked as if they were SDK-owned. |
+| macOS | `NSOpenPanel`/`NSSavePanel` sheets on the process main thread, with an Objective-C completion block owning its captured context. The selected NSURL is retained; successful SDK calls to `startAccessingSecurityScopedResource` are balanced with `stopAccessingSecurityScopedResource`. Sandbox entitlement checks conservatively constrain staging. No persisted bookmark is claimed. |
 
-## Contract refinements and remaining work
+The prototype binds these providers only to a verified Desktop embedded owner.
+CS-WebUI has live service-scope parity, but its current public API does not supply
+a verified browser HWND/NSWindow/GTK dispatcher. Required owned pickers therefore
+remain unavailable there. An installed browser PID is not a substitute. No Desktop
+or ASP.NET dependency was added to the CS-WebUI shipping package.
 
-Picker dismissal has its own closed `PickerResult<T>` family, so clipboard
-results cannot accidentally express dismissal. Successful selection cannot carry
-a null lease. `PlatformResult<T>` still permits a successful null clipboard read.
-Save commit outcomes distinguish committed, not committed and unknown.
+Native API references:
+[Common Item Dialog](https://learn.microsoft.com/en-us/windows/win32/shell/common-file-dialog),
+[GtkFileChooserNative](https://docs.gtk.org/gtk3/class.FileChooserNative.html),
+[AppKit sheets](https://developer.apple.com/documentation/appkit/nssavepanel/beginsheetmodal(for:completionhandler:)),
+[macOS sandbox file access](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox).
 
-Only the picker facade and managed lifetime/dispatch rules are implemented.
-Save transaction and clipboard types are contract sketches. File filters, title
-and native filename validation, concrete read leases and stream ownership,
-atomic writes, clipboard bounds, composition capability projection and actual
-host-owned service scopes remain part of the next implementation slices.
-Successful returned leases transfer to the caller; only late rejected selections
-are released by this facade. Native providers must separately implement and prove
-lease/stream lifetime and SDK-acquired access release.
+## Evidence and limits
 
-Do not promote the contracts to published packages or label a platform supported
-based on these fake-provider tests. Native execution, package-only consumers,
-NativeAOT and provider footprint comparisons remain separate gates.
+The managed suite has 12 grouped scenarios covering admission, late cancellation,
+lease/stream cleanup, staged writes, conflicts, uncertain commits, access-acquisition
+failures, dispatch and DI composition. Its live Desktop test starts the real host
+and drives the session owned by that host through reconnect and blocked-operation
+shutdown. The separate CS-WebUI process does the same with its native HTTP runtime.
+Additional transport tests exercise a command holding the CS-WebUI mailbox gate.
+
+The `--native` test uses the real Application runner and embedded owner. It opens
+and cancels an actual open picker, opens an actual save picker, requests owner
+close while that picker is active, and verifies owner-thread access release and
+closure of an outstanding acquired stream. It has phase logs and a 90-second
+watchdog; unsupported environments fail rather than silently count as passes.
+The filesystem selection used to check acquired-stream teardown is injected and
+is explicitly **not** sandbox-grant evidence.
+
+Linux GTK/X11 native cancellation and both live host lifetimes have been exercised
+locally in managed and NativeAOT builds, with warnings treated as errors. Windows/macOS native execution is assigned to their CI runners. Actual
+Wayland/portal selection, focus behavior, user permission grants and a signed
+macOS sandbox fixture still require the manual evidence listed in
+[acceptance scenarios](../../../eng/os-integration-acceptance.md). CI dialog
+cancellation must not be presented as that evidence. CI prepares a signed fixture;
+use its [manual selection instructions](../../../tests/native/platform-sandbox/README.md)
+and `--native-select` to exercise a real user-selected file grant.
+
+Clipboard, customer import/export UI, a second MAUI-derived feature, public
+provider packaging and provider footprint comparisons remain subsequent slices.

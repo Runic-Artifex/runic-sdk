@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -69,7 +70,8 @@ public static class ApplicationBridgeSessionFactory
     public static ApplicationBridgeSession Create(IServiceProvider services)
     {
         AsyncServiceScope scope = services.CreateAsyncScope();
-        try { return new ApplicationBridgeSession(scope.ServiceProvider.GetRequiredService<IApplicationBridgeDispatcher>(), ownedScope: scope); }
+        try { return new ApplicationBridgeSession(scope.ServiceProvider.GetRequiredService<IApplicationBridgeDispatcher>(), ownedScope: scope,
+            presentationLifetimes: scope.ServiceProvider.GetServices<IApplicationPresentationLifetime>().ToArray()); }
         catch { scope.DisposeAsync().AsTask().GetAwaiter().GetResult(); throw; }
     }
 }

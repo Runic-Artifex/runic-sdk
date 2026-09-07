@@ -1,6 +1,6 @@
 namespace Runic.Platform.Prototype;
 
-internal sealed class PresentationLifetime : IAsyncDisposable
+internal sealed class PresentationLifetime : IAsyncDisposable, Runic.Application.Bridge.IApplicationPresentationLifetime
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _shutdown = new();
@@ -9,13 +9,29 @@ internal sealed class PresentationLifetime : IAsyncDisposable
     private int _operations;
     private int _picker;
     private bool _hasOwner;
+    private readonly Func<bool>? _ownerAvailable;
+    private readonly HashSet<PresentationLease> _leases = [];
     private Exception? _cleanupFailure;
 
-    internal PresentationLifetime() => Shutdown = _shutdown.Token;
+    internal PresentationLifetime(Func<bool>? ownerAvailable = null) { Shutdown = _shutdown.Token; _ownerAvailable = ownerAvailable; }
     internal Guid Generation { get; } = Guid.NewGuid();
     internal CancellationToken Shutdown { get; }
     internal bool IsClosing { get { lock (_gate) return _closed is not null; } }
-    internal bool HasOwner { get { lock (_gate) return _hasOwner && _closed is null; } }
+    internal bool HasOwner
+    {
+        get
+        {
+            bool attached;
+            lock (_gate) { if (_closed is not null) return false; attached = _hasOwner; }
+            return attached || _ownerAvailable?.Invoke() == true;
+        }
+    }
+
+    internal bool Own(PresentationLease lease)
+    {
+        lock (_gate) { if (_closed is not null) return false; return _leases.Add(lease); }
+    }
+    internal void Forget(PresentationLease lease) { lock (_gate) _leases.Remove(lease); }
 
     // A native adapter must eventually supply verified identity and dispatch here.
     // This prototype only models the transition; it cannot certify ownership.
@@ -55,6 +71,8 @@ internal sealed class PresentationLifetime : IAsyncDisposable
         }
     }
 
+    public ValueTask StopAsync() => DisposeAsync();
+
     public ValueTask DisposeAsync()
     {
         TaskCompletionSource closed;
@@ -75,6 +93,12 @@ internal sealed class PresentationLifetime : IAsyncDisposable
         try { await _shutdown.CancelAsync().ConfigureAwait(false); }
         catch (Exception error) { failure = error; }
         await _drained.Task.ConfigureAwait(false);
+        PresentationLease[] leases;
+        lock (_gate) leases = [.. _leases];
+        // Start every release before joining; one provider may depend on another.
+        var releases = leases.Select(lease => lease.DisposeAsync().AsTask()).ToArray();
+        try { await Task.WhenAll(releases).ConfigureAwait(false); }
+        catch { /* Each lease records its release failure below. */ }
         _shutdown.Dispose();
         lock (_gate)
         {

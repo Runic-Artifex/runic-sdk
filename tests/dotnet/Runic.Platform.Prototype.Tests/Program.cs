@@ -5,6 +5,13 @@ using Runic.Application.Desktop;
 using Runic.Assets;
 using Runic.Platform.Prototype;
 
+if (args.Contains("--native-select", StringComparer.Ordinal)) return NativeHostTests.Run(manualSelection: true);
+if (args.Contains("--native", StringComparer.Ordinal)) return NativeHostTests.Run();
+if (args.Contains("--live-cswebui", StringComparer.Ordinal))
+{
+    await LiveHostTests.RunAsync(csWebUi: true);
+    return 0;
+}
 return await Conformance.RunAsync();
 
 internal static class Conformance
@@ -13,6 +20,9 @@ internal static class Conformance
     {
         (string Name, Func<Task> Run)[] tests =
         [
+            ("LIVE: Desktop session-owned scopes and shutdown", () => LiveHostTests.RunAsync(csWebUi: false)),
+            ("ACCESS: acquisition failure and selected-file permission limits", NativeAccessTests.RunAsync),
+            ("FILE: concrete stream access, staging, conflict and commit cancellation", FileLeaseTests.RunAsync),
             ("CAP-01/02/03/04: readiness, immutable snapshots and explicit ownership", Capabilities),
             ("PICK-01/02/04: dismissal, pre-cancellation and one picker per owner", PickerAdmission),
             ("PICK-03: late selection after caller cancellation releases access", LateCancellation),

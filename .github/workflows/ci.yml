@@ -378,6 +378,53 @@ jobs:
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+      - name: Build platform lifetime and native picker conformance
+        run: dotnet build tests/dotnet/Runic.Platform.Prototype.Tests -c Release
+      - name: Verify live CS-WebUI presentation service lifetime on Linux
+        if: runner.os == 'Linux'
+        timeout-minutes: 2
+        run: xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --live-cswebui
+      - name: Verify live CS-WebUI presentation service lifetime
+        if: runner.os != 'Linux'
+        timeout-minutes: 2
+        run: dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --live-cswebui
+      - name: Verify GTK picker ownership and presentation shutdown
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --native
+      - name: Verify native picker ownership and presentation shutdown
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        run: dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --native
+      - name: Publish platform lifetime and picker conformance with NativeAOT
+        timeout-minutes: 10
+        run: dotnet publish tests/dotnet/Runic.Platform.Prototype.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/platform-aot
+      - name: Exercise NativeAOT GTK picker lifecycle
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: xvfb-run -a artifacts/platform-aot/Runic.Platform.Prototype.Tests --native
+      - name: Exercise NativeAOT picker lifecycle
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        shell: bash
+        run: ./artifacts/platform-aot/Runic.Platform.Prototype.Tests${{ matrix.extension }} --native
+      - name: Prepare signed macOS sandbox fixture for manual permission evidence
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p artifacts/platform-sandbox/RunicPlatform.app/Contents/MacOS
+          cp tests/native/platform-sandbox/Info.plist artifacts/platform-sandbox/RunicPlatform.app/Contents/Info.plist
+          ditto artifacts/platform-aot artifacts/platform-sandbox/RunicPlatform.app/Contents/MacOS
+          codesign --force --deep --sign - --entitlements tests/native/platform-sandbox/entitlements.plist artifacts/platform-sandbox/RunicPlatform.app
+          codesign --verify --deep --strict artifacts/platform-sandbox/RunicPlatform.app
+          tar -czf artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz -C artifacts/platform-sandbox RunicPlatform.app
+      - name: Retain macOS sandbox permission fixture
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: platform-sandbox-${{ matrix.rid }}-${{ github.run_id }}
+          path: artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz
+          if-no-files-found: error
       - name: Compile the original WPF migration example
         if: runner.os == 'Windows'
         run: dotnet build examples/customer-migration/Wpf/CustomerWpf.csproj -c Release

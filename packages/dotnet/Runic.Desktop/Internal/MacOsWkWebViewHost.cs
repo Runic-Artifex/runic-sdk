@@ -19,7 +19,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private static readonly ObjC Api = new();
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> Hosts = new();
-    private static readonly ConcurrentQueue<MainQueueWorkItem> MainQueue = new();
+    private static readonly ConcurrentQueue<NativeDispatchWork> MainQueue = new();
     private static readonly nint DelegateClass = CreateDelegateClass();
 
     private readonly TaskCompletionSource _closed = NewCompletionSource();
@@ -28,10 +28,18 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private nint _webView;
     private nint _delegate;
     private Action? _closeRequested;
+    private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+    public bool SupportsNativeDispatch => true;
+    public bool CheckNativeAccess() => IsMainThread;
+    public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _nativeShutdown.Token);
+        await InvokeAsync(action, linked.Token).ConfigureAwait(false);
+    }
 
     public event EventHandler? Closed;
 
@@ -56,6 +64,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             throw new PlatformNotSupportedException("WKWebView is required for embedded WebViews on macOS.");
         }
+        if (!IsMainThread && DesktopEventLoop.IsRunning)
+            return InvokeOnMainAsync(() => ShowAsync(url, options, cancellationToken).AsTask().GetAwaiter().GetResult(), cancellationToken);
         if (!IsMainThread)
         {
             throw new InvalidOperationException(
@@ -170,6 +180,17 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
+    internal static void ProcessApplicationEvents()
+    {
+        var pool = Api.SendNint(Api.SendNint(Api.GetClass("NSAutoreleasePool"), "alloc"), "init");
+        try
+        {
+            ProcessPendingMainThreadWork();
+            foreach (var host in Hosts.Values) host.ProcessEvents();
+        }
+        finally { Api.SendVoid(pool, "drain"); }
+    }
+
     internal static void ProcessPendingMainThreadWork()
     {
         if (!IsMainThread)
@@ -194,6 +215,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private unsafe ValueTask InvokeAsync(Action action, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!IsOpen)
         {
             throw new InvalidOperationException("The embedded WebView window is not open.");
@@ -209,15 +231,16 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private static ValueTask InvokeOnMainAsync(Action action, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (IsMainThread)
         {
             action();
             return ValueTask.CompletedTask;
         }
 
-        var work = new MainQueueWorkItem(action);
+        var work = new NativeDispatchWork(action, cancellationToken);
         MainQueue.Enqueue(work);
-        return new ValueTask(work.Completion.Task.WaitAsync(cancellationToken));
+        return new ValueTask(work.WaitAsync());
     }
 
     private void Create(Uri url, WebUiEmbeddedHostOptions options)
@@ -318,6 +341,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             return;
         }
         Hosts.TryRemove(_window, out _);
+        _nativeShutdown.Cancel();
         _closed.TrySetResult();
         ThreadPool.QueueUserWorkItem(static state =>
         {
@@ -394,24 +418,6 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private static TaskCompletionSource NewCompletionSource() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    private sealed record MainQueueWorkItem(Action Action)
-    {
-        internal TaskCompletionSource Completion { get; } = NewCompletionSource();
-
-        internal void Run()
-        {
-            try
-            {
-                Action();
-                Completion.TrySetResult();
-            }
-            catch (Exception exception)
-            {
-                Completion.TrySetException(exception);
-            }
-        }
-    }
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct CGPoint(double X, double Y);

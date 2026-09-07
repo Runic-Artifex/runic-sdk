@@ -11,6 +11,9 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
 {
     private readonly IApplicationBridgeDispatcher _dispatcher;
     private readonly IAsyncDisposable? _ownedScope;
+    private readonly IApplicationPresentationLifetime[] _presentationLifetimes;
+    private TaskCompletionSource? _presentationStopped;
+    private TaskCompletionSource? _disposeCompletion;
     private readonly BridgeLimits _limits;
     private readonly SemaphoreSlim _admission;
     private readonly SemaphoreSlim _dispatchGate = new(1, 1);
@@ -34,10 +37,12 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
     public ApplicationBridgeSession(
         IApplicationBridgeDispatcher dispatcher,
         BridgeLimits? limits = null,
-        IAsyncDisposable? ownedScope = null)
+        IAsyncDisposable? ownedScope = null,
+        IReadOnlyList<IApplicationPresentationLifetime>? presentationLifetimes = null)
     {
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _ownedScope = ownedScope;
+        _presentationLifetimes = presentationLifetimes?.Distinct<IApplicationPresentationLifetime>(ReferenceEqualityComparer.Instance).ToArray() ?? [];
         ReportDevelopmentFingerprint(dispatcher.ManifestFingerprint);
         _limits = limits ?? BridgeLimits.Default;
         _limits.Validate();
@@ -249,25 +254,75 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
         return PublishExternalAsync(eventPayload, cancellationToken);
     }
 
-    /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    /// <summary>Whether this session owns services that must drain before native teardown.</summary>
+    public bool HasPresentationLifetimes => _presentationLifetimes.Length != 0;
+
+    /// <summary>Drains scoped presentation services before transport locks or native teardown.</summary>
+    public ValueTask StopPresentationAsync()
     {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref _presentationStopped, completion, null) is { } existing)
+            return new(existing.Task);
+        _ = StopPresentationCoreAsync(completion);
+        return new(completion.Task);
+    }
+
+    private async Task StopPresentationCoreAsync(TaskCompletionSource completion)
+    {
+        var stops = new List<Task>();
+        foreach (var lifetime in _presentationLifetimes)
+        {
+            try { stops.Add(lifetime.StopAsync().AsTask()); }
+            catch (Exception error) { stops.Add(Task.FromException(error)); }
+        }
+        var joined = Task.WhenAll(stops);
+        try { await joined.ConfigureAwait(false); completion.SetResult(); }
+        catch (Exception error)
+        {
+            completion.SetException(joined.Exception?.InnerExceptions.Count > 1 ? joined.Exception : error);
+        }
+    }
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync()
+    {
+        TaskCompletionSource completion;
         lock (_gate)
         {
-            if (_disposed != 0) return;
+            if (_disposeCompletion is not null) return new(_disposeCompletion.Task);
+            completion = _disposeCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _disposed = 1;
             if (_activeDispatches == 0) _dispatchesDrained.TrySetResult();
         }
-        _shutdown.Cancel();
+        _ = DisposeCoreAsync(completion);
+        return new(completion.Task);
+    }
+
+    private async Task DisposeCoreAsync(TaskCompletionSource completion)
+    {
+        List<Exception> failures = [];
+        async Task Clean(Func<Task> action)
+        {
+            try { await action().ConfigureAwait(false); }
+            catch (Exception error) { failures.Add(error); }
+        }
+        await Clean(() => StopPresentationAsync().AsTask()).ConfigureAwait(false);
+        await Clean(() => _shutdown.CancelAsync()).ConfigureAwait(false);
         await _dispatchesDrained.Task.ConfigureAwait(false);
-        foreach (OperationRegistration operation in _operations.Values) operation.Cancel();
+        foreach (OperationRegistration operation in _operations.Values)
+        {
+            try { operation.Cancel(); }
+            catch (Exception error) { failures.Add(error); }
+        }
         long deadline = Environment.TickCount64 + (long)_limits.ShutdownTimeout.TotalMilliseconds;
         while (!_operations.IsEmpty && Environment.TickCount64 < deadline) await Task.Delay(10).ConfigureAwait(false);
         lock (_gate) _events.Writer.TryComplete();
-        await _eventPump.ConfigureAwait(false);
+        await Clean(() => _eventPump).ConfigureAwait(false);
         _admission.Dispose();
         _shutdown.Dispose();
-        if (_ownedScope is not null) await _ownedScope.DisposeAsync().ConfigureAwait(false);
+        if (_ownedScope is not null) await Clean(() => _ownedScope.DisposeAsync().AsTask()).ConfigureAwait(false);
+        if (failures.Count == 0) completion.SetResult();
+        else completion.SetException(failures.Count == 1 ? failures[0] : new AggregateException(failures));
     }
 
     private bool MatchesContract(BridgeClientEnvelope envelope) => string.Equals(envelope.Protocol, _dispatcher.ProtocolIdentity, StringComparison.Ordinal) && envelope.Version == _dispatcher.ProtocolVersion && string.Equals(envelope.ContractFingerprint, _dispatcher.ManifestFingerprint, StringComparison.Ordinal);

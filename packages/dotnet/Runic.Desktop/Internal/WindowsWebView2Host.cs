@@ -54,11 +54,19 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private GCHandle _selfHandle;
     private nint _window;
     private nint _icon;
+    private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
     private int _maximized;
 
     public bool SupportsCloseConfirmation => true;
+    public bool SupportsNativeDispatch => true;
+    public bool CheckNativeAccess() => ReferenceEquals(Thread.CurrentThread, _thread);
+    public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _nativeShutdown.Token);
+        await InvokeAsync(action, linked.Token).ConfigureAwait(false);
+    }
 
     public event EventHandler? Closed;
 
@@ -202,21 +210,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             throw new InvalidOperationException("The embedded WebView window is not open.");
         }
 
-        var completion = NewCompletionSource();
-        _dispatchQueue.Enqueue((state =>
-        {
-            try
-            {
-                ((Action)state!)();
-                completion.TrySetResult();
-            }
-            catch (Exception exception)
-            {
-                completion.TrySetException(exception);
-            }
-        }, action));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (CheckNativeAccess()) { action(); return ValueTask.CompletedTask; }
+        var work = new NativeDispatchWork(action, cancellationToken);
+        _dispatchQueue.Enqueue((static state => ((NativeDispatchWork)state!).Run(), work));
         Native.PostMessage(_window, WmAppDispatch, 0, 0);
-        return new ValueTask(completion.Task.WaitAsync(cancellationToken));
+        return new ValueTask(work.WaitAsync());
     }
 
     private void Run(Uri url)
@@ -362,6 +361,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             return;
         }
         _window = 0;
+        _nativeShutdown.Cancel();
         _closed.TrySetResult();
         Closed?.Invoke(this, EventArgs.Empty);
     }

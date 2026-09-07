@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 namespace Runic.Platform.Prototype;
 
 // Internal experiment: no package or public compatibility promise yet.
-internal enum UnavailableReason { ProviderNotConfigured, OwnerUnavailable, OwnerClosed, BackendUnavailable }
+internal enum UnavailableReason { ProviderNotConfigured, OwnerUnavailable, OwnerClosed, BackendUnavailable, AtomicReplaceUnavailable }
 internal enum FailureCode { PermissionDenied, ResourceBusy, InvalidData, TooLarge, IoError, Conflict }
 internal enum OwnerPolicy { RequireOwner, AllowUnowned }
 internal enum FileWritePolicy { RequireAtomicReplace }

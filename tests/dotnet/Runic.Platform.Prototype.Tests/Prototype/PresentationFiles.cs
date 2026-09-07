@@ -26,7 +26,7 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
     public ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return PickAsync(options.OwnerPolicy, token => backend!.OpenFileAsync(options, token), cancellationToken);
+        return PickAsync(options.OwnerPolicy, token => backend!.OpenFileAsync(options, token), value => new PresentationReadLease(lifetime, value), cancellationToken);
     }
 
     public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
@@ -35,11 +35,11 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
         ArgumentException.ThrowIfNullOrWhiteSpace(options.SuggestedName);
         if (options.SuggestedName.IndexOfAny(['/', '\\', '\0']) >= 0 || options.SuggestedName is "." or "..")
             throw new ArgumentException("The suggestion must be a filename, not a path.", nameof(options));
-        return PickAsync(options.OwnerPolicy, token => backend!.SaveFileAsync(options, token), cancellationToken);
+        return PickAsync(options.OwnerPolicy, token => backend!.SaveFileAsync(options, token), value => new PresentationSaveLease(lifetime, value), cancellationToken);
     }
 
     private async ValueTask<PickerResult<T>> PickAsync<T>(OwnerPolicy policy,
-        Func<CancellationToken, ValueTask<PickerResult<T>>> invoke, CancellationToken caller) where T : IAsyncDisposable
+        Func<CancellationToken, ValueTask<PickerResult<T>>> invoke, Func<T, PresentationLease> wrap, CancellationToken caller) where T : IAsyncDisposable
     {
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
         caller.ThrowIfCancellationRequested();
@@ -63,6 +63,16 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
                 }
                 caller.ThrowIfCancellationRequested();
                 return new PickerResult<T>.Unavailable(UnavailableReason.OwnerClosed);
+            }
+            if (result is PickerResult<T>.Selected selectedResult)
+            {
+                var owned = wrap(selectedResult.Value);
+                if (!lifetime.Own(owned))
+                {
+                    await owned.DisposeAsync().ConfigureAwait(false);
+                    return new PickerResult<T>.Unavailable(UnavailableReason.OwnerClosed);
+                }
+                return new PickerResult<T>.Selected((T)(IAsyncDisposable)owned);
             }
             return result;
         }
