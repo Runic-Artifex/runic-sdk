@@ -107,7 +107,7 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
                 await process.WaitForExitAsync(CancellationToken.None);
             }
             output.WriteLine(await browserErrors);
-            profile.Delete(recursive: true);
+            await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
         }
     }
 
@@ -186,7 +186,7 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
                 await process.WaitForExitAsync(CancellationToken.None);
             }
             output.WriteLine(await browserErrors);
-            profile.Delete(recursive: true);
+            await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
         }
     }
 
