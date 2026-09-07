@@ -49,6 +49,9 @@ current user's Podman socket, falling back to Docker. `RUNIC_CONTAINER_ENGINE`
 can override the image-build CLI. These are local trusted development runs:
 containers use host networking for the loopback artifact/cache servers. They do
 not receive a mounted container-daemon socket or a writable checkout bind mount.
+The engine's init process reaps orphaned children, as on a hosted runner, so
+process-tree termination checks also work inside containers. Translation jobs
+install their C++20 conformance compiler explicitly through the workflow.
 Do not use this runner for untrusted code with credentials in the environment.
 
 The launcher currently supports Linux with an amd64 runner image. Windows x64 and

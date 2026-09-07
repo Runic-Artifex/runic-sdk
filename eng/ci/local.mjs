@@ -12,6 +12,7 @@ export function actArguments(args, image, artifactPath, port, directory = root) 
   return ["workflow_dispatch", "--directory", directory, "--workflows", resolve(directory, ".github/workflows/ci.yml"),
     "--platform", `ubuntu-24.04=${image}`, "--matrix", "os:ubuntu-24.04",
     "--container-architecture", "linux/amd64", "--container-daemon-socket", "-",
+    "--container-options", "--init",
     "--network", "host", "--concurrent-jobs", "1", "--pull=false", "--rm",
     "--artifact-server-addr", "127.0.0.1", "--artifact-server-port", String(port),
     "--artifact-server-path", artifactPath,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertCsWebUiDependencies } from "./ci/nuget-graph.mjs";
 import { isWithinDirectory } from "./path-boundary.mjs";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,13 +78,12 @@ for (const [host, profile] of [["desktop", "default"], ["desktop", "minimal"], [
   const measured = JSON.parse(readFileSync(report, "utf8"));
   assert.equal(measured.publishExitCode, 0);
   assert.equal(measured.verification.status, "passed");
-  const assets = JSON.parse(readFileSync(join(project, "../obj/project.assets.json"), "utf8"));
+  const assetsPath = join(project, "../obj/project.assets.json");
+  cpSync(assetsPath, join(results, `${name}.assets.json`));
+  const assets = JSON.parse(readFileSync(assetsPath, "utf8"));
   for (const [name, item] of Object.entries(assets.libraries))
     if (name.startsWith("Runic.")) assert.equal(item.type, "package", `${name} is not a package consumer`);
-  if (host === "cswebui") {
-    assert.ok(!Object.keys(assets.libraries).some(name => name.startsWith("Runic.Desktop/")));
-    assert.ok(!JSON.stringify(assets.project.frameworks).includes("Microsoft.AspNetCore.App"));
-  }
+  if (host === "cswebui") assertCsWebUiDependencies(assets);
   metadata.cases.push({ host, profile, report, totalBytes: measured.totalBytes, compressedBytes: measured.compressedBytes,
     mainExecutableBytes: measured.files.find(file => file.category === "main-executable")?.bytes,
     verification: measured.verification.status });
