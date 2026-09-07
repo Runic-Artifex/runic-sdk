@@ -1,7 +1,8 @@
 # RFC: OS services for Runic applications
 
-Status: proposed API and acceptance contract, 2026-09-07. This document does not
-introduce public packages or claim native picker/clipboard support. The existing
+Status: proposed API with an [internal lifetime prototype](../../../../tests/dotnet/Runic.Platform.Prototype.Tests/README.md),
+2026-09-07. This document does not introduce public packages or claim native
+picker/clipboard support. The existing
 [host selection contract](../../desktop/host-selection.md) remains authoritative
 for shipped behavior. Implementation starts after the current native lifecycle
 failures have been diagnosed.
@@ -183,6 +184,12 @@ operation has begun, as described below. Stable failure codes include
 `permission-denied`, `resource-busy`, `invalid-data`, `too-large` and `io-error`.
 Unexpected provider bugs remain exceptions. Detailed native errors go to opt-in,
 redacted diagnostics; paths and clipboard contents are not logged by default.
+
+The internal prototype refines this sketch into separate `PickerResult<T>` and
+`PlatformResult<T>` families. Only picker results can express dismissal, and a
+selected result requires a non-null lease. This prevents invalid clipboard
+dismissal states without relying on a provider convention. Public API naming
+remains subject to the later review gate.
 
 Open options specify title, named extension/MIME filters and owner policy. Save
 options additionally specify a suggested filename. Native format mapping belongs

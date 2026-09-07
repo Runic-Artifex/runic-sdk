@@ -42,6 +42,7 @@
     <Project Path="tests/dotnet/Runic.Application.Desktop.Tests/Runic.Application.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Hosting.Tests/Runic.Application.Hosting.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Tests/Runic.Application.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.Prototype.Tests/Runic.Platform.Prototype.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Assets.Desktop.Tests/Runic.Assets.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Assets.Tests/Runic.Assets.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.CommandLine.Contracts.Tests/Runic.CommandLine.Contracts.Tests.csproj" />

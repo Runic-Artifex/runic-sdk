@@ -238,6 +238,7 @@
         "tests/dotnet/Runic.Application.Hosting.Tests",
         "tests/fixtures/application/Runic.Application.PackageConsumer",
         "tests/dotnet/Runic.Application.Tests",
+        "tests/dotnet/Runic.Platform.Prototype.Tests",
         "tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests",
         "tests/dotnet/RunicToolkit.PackageCanary",
         "tools/Runic.Application.Bridge.Inspector",

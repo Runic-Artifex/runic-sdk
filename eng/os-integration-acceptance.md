@@ -1,7 +1,8 @@
 # OS integration: acceptance scenarios and implementation waves
 
-Status: planned, 2026-09-07. None of the new scenarios below is marked as passing.
-These are test specifications for the [API RFC](../docs/guides/application/architecture/os-integration-rfc.md),
+Status: native implementation planned; internal lifetime prototype started,
+2026-09-07. Managed prototype evidence is described below; native scenarios are
+not certified. These are test specifications for the [API RFC](../docs/guides/application/architecture/os-integration-rfc.md),
 not a replacement for executing native provider tests. Existing host-parity checks
 remain in force.
 
@@ -123,6 +124,14 @@ runtime conditions to probe, not implied by entering `nix develop`.
   features omitted by the minimal ASP.NET Core builder.
 
 ## Commit-sized implementation waves
+
+The [internal prototype](../tests/dotnet/Runic.Platform.Prototype.Tests/README.md)
+starts wave 1 with controlled CAP, PICK and THREAD scenarios plus both-host DI
+composition. It uses simulated owners, queues and leases; it does not start the
+hosts or certify native capabilities. Nine grouped scenarios cover admission,
+late-result disposal, shutdown failure propagation and dispatch boundaries.
+Concrete lease/stream ownership and actual presentation-scoped host wiring remain
+unfinished, so wave 1 as a whole is not yet complete.
 
 | Wave | Deliverable | Exit evidence |
 | --- | --- | --- |
