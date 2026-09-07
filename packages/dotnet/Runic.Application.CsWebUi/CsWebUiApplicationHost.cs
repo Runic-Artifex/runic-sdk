@@ -90,7 +90,10 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
                 return WebUiResult.None;
             }));
             string entry = _options.Assets.Manifest.EntryPoint.RelativePath;
-            Url = new Uri(Window.StartServer(entry));
+            // SetPublic(false) binds native WebUI to IPv4 loopback, although
+            // StartServer returns localhost. IPv6-first clients can otherwise
+            // try ::1, where this server does not listen.
+            Url = new UriBuilder(Window.StartServer(entry)) { Host = "127.0.0.1" }.Uri;
             if (_options.OpenWindow) Window.ShowInBrowser(Url.AbsoluteUri, _options.Browser);
         }
         catch { await StopAsync(CancellationToken.None).ConfigureAwait(false); throw; }

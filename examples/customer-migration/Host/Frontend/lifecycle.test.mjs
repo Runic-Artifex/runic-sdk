@@ -38,6 +38,7 @@ try {
           if (match) { clearTimeout(timer); accept(match[1]); }
         });
       });
+      assert.equal(new URL(url).hostname, "127.0.0.1", "Host URL must match its IPv4 loopback listener");
       if (mode !== "unconnected") {
         page = await browser.newPage();
         await page.goto(url);
