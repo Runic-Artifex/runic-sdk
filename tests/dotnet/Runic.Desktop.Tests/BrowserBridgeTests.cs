@@ -59,25 +59,15 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
             """, timeout.Token);
 
         var profile = Directory.CreateTempSubdirectory("runic-desktop-chrome-");
-        var startInfo = new ProcessStartInfo(chrome)
-        {
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        startInfo.ArgumentList.Add("--headless=new");
-        startInfo.ArgumentList.Add("--no-sandbox");
-        startInfo.ArgumentList.Add("--disable-gpu");
-        startInfo.ArgumentList.Add("--disable-dev-shm-usage");
-        startInfo.ArgumentList.Add("--remote-debugging-port=0");
-        startInfo.ArgumentList.Add($"--user-data-dir={profile.FullName}");
-        startInfo.ArgumentList.Add(url.AbsoluteUri);
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start Chromium.");
-        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError);
+        using var process = StartChrome(chrome, profile.FullName, url);
+        using var browserOutputLifetime = new CancellationTokenSource();
+        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError, browserOutputLifetime.Token);
         try
         {
+            output.WriteLine($"Chromium process {process.Id}: waiting for DevTools.");
             var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
             var debuggerUrl = await FindPageDebuggerUrlAsync(debuggerPort, url, timeout.Token);
+            output.WriteLine("Chromium page discovered; connecting and exercising the bridge.");
             using var devTools = new ClientWebSocket();
             await devTools.ConnectAsync(debuggerUrl, timeout.Token);
 
@@ -101,13 +91,16 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
         }
         finally
         {
-            if (!process.HasExited)
+            output.WriteLine("Stopping Chromium.");
+            try { await StopChromeAsync(process, profile.FullName); }
+            finally
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None);
+                await browserOutputLifetime.CancelAsync();
+                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
             }
-            output.WriteLine(await browserErrors);
+            output.WriteLine("Chromium stopped; removing its profile.");
             await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
+            output.WriteLine("Browser cleanup complete; disposing the application host.");
         }
     }
 
@@ -116,6 +109,8 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
     {
         var chrome = FindChrome();
         var bundlePath = Path.Combine(AppContext.BaseDirectory, "runic-desktop-browser-test.js");
+        if (Environment.GetEnvironmentVariable("CI") is "true")
+            Assert.True(File.Exists(bundlePath), "Build the TypeScript browser fixture before running Desktop conformance in CI.");
         if (chrome is null || !File.Exists(bundlePath))
         {
             return;
@@ -152,11 +147,14 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
 
         var profile = Directory.CreateTempSubdirectory("runic-desktop-effect-chrome-");
         using var process = StartChrome(chrome, profile.FullName, surface.Url);
-        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError);
+        using var browserOutputLifetime = new CancellationTokenSource();
+        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError, browserOutputLifetime.Token);
         try
         {
+            output.WriteLine($"Chromium process {process.Id}: waiting for DevTools.");
             var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
             var debuggerUrl = await FindPageDebuggerUrlAsync(debuggerPort, surface.Url, timeout.Token);
+            output.WriteLine("Chromium page discovered; connecting and exercising the bridge.");
             using var devTools = new ClientWebSocket();
             await devTools.ConnectAsync(debuggerUrl, timeout.Token);
 
@@ -180,13 +178,16 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
         }
         finally
         {
-            if (!process.HasExited)
+            output.WriteLine("Stopping Chromium.");
+            try { await StopChromeAsync(process, profile.FullName); }
+            finally
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None);
+                await browserOutputLifetime.CancelAsync();
+                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
             }
-            output.WriteLine(await browserErrors);
+            output.WriteLine("Chromium stopped; removing its profile.");
             await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
+            output.WriteLine("Browser cleanup complete; disposing the application host.");
         }
     }
 
@@ -207,17 +208,53 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
         return Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start Chromium.");
     }
 
-    private static async Task<string> ReadBrowserErrorsAsync(StreamReader reader)
+    private async Task StopChromeAsync(Process process, string profile)
+    {
+        if (process.HasExited) return;
+        try
+        {
+            // Ask the browser to close its own renderer/utility processes first.
+            // Killing the process tree while Chromium is spawning children is
+            // platform-dependent and can prevent test cleanup from returning.
+            using var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var lines = await File.ReadAllLinesAsync(Path.Combine(profile, "DevToolsActivePort"), shutdown.Token);
+            if (lines.Length < 2) throw new IOException("Chromium has not published its browser endpoint.");
+            using var socket = new ClientWebSocket();
+            await socket.ConnectAsync(new Uri($"ws://127.0.0.1:{lines[0]}{lines[1]}"), shutdown.Token);
+            await socket.SendAsync("{\"id\":1,\"method\":\"Browser.close\"}"u8.ToArray(),
+                WebSocketMessageType.Text, true, shutdown.Token);
+            await process.WaitForExitAsync(shutdown.Token);
+            return;
+        }
+        catch (Exception error) when (error is IOException or WebSocketException or OperationCanceledException)
+        {
+            output.WriteLine($"Chromium graceful shutdown failed: {error.Message}");
+        }
+
+        if (!process.HasExited)
+        {
+            // Avoid synchronous process-tree enumeration on macOS. Chromium's
+            // children also monitor the browser process for parent termination.
+            process.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private static async Task<string> ReadBrowserErrorsAsync(StreamReader reader, CancellationToken cancellationToken)
     {
         // Always drain the pipe so Chromium cannot block on diagnostic output.
         var retained = new StringBuilder();
         var buffer = new char[4096];
         int count;
-        while ((count = await reader.ReadAsync(buffer)) != 0)
+        try
         {
-            int take = Math.Min(count, 64 * 1024 - retained.Length);
-            if (take > 0) retained.Append(buffer, 0, take);
+            while ((count = await reader.ReadAsync(buffer, cancellationToken)) != 0)
+            {
+                int take = Math.Min(count, 64 * 1024 - retained.Length);
+                if (take > 0) retained.Append(buffer, 0, take);
+            }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         return retained.ToString();
     }
 

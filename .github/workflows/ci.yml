@@ -342,10 +342,13 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - uses: ./.github/actions/install-browser
-      - name: Build managed desktop contracts
+      - name: Build Desktop browser fixture
         shell: bash
         run: |
-          dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
+          bun run --cwd packages/web/desktop --bun build
+          bun build packages/web/desktop/test/browser-entry.ts --target browser --outfile artifacts/browser/runic-desktop-test.js
+      - name: Build managed desktop contracts
+        run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       - name: Test managed desktop contracts
         timeout-minutes: 5
         run: >-
@@ -426,6 +429,8 @@ jobs:
       - name: Build frontend verification dependencies
         run: bun eng/run.mjs build-web
       - uses: ./.github/actions/install-browser
+      - name: Build Desktop browser fixture
+        run: bun build packages/web/desktop/test/browser-entry.ts --target browser --outfile artifacts/browser/runic-desktop-test.js
       - name: Build minimal Desktop conformance
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopMinimalHost=true
       - name: Verify minimal Desktop conformance

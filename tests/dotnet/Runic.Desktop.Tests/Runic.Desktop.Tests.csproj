@@ -27,10 +27,10 @@
     <None Include="../../../specs/desktop/conformance/scenarios/*.json" Link="conformance/scenarios/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/desktop/conformance/vectors/*.json" Link="conformance/vectors/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../fixtures/desktop/evidence/conformance/dotnet-m6.json" Link="conformance/dotnet-m6.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../artifacts/browser/runic-desktop-test.js"
+    <None Include="../../../artifacts/browser/runic-desktop-test.js"
           Link="runic-desktop-browser-test.js"
           CopyToOutputDirectory="PreserveNewest"
-          Condition="Exists('../../artifacts/browser/runic-desktop-test.js')" />
+          Condition="Exists('../../../artifacts/browser/runic-desktop-test.js')" />
   </ItemGroup>
   <Target Name="IncludeWebView2AbiContract" BeforeTargets="AssignTargetPaths">
     <ItemGroup>

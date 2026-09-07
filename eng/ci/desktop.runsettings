@@ -5,6 +5,7 @@
     <TestSessionTimeout>180000</TestSessionTimeout>
   </RunConfiguration>
   <xUnit>
+    <ParallelizeTestCollections>false</ParallelizeTestCollections>
     <DiagnosticMessages>true</DiagnosticMessages>
     <LongRunningTestSeconds>30</LongRunningTestSeconds>
     <ShowLiveOutput>true</ShowLiveOutput>
