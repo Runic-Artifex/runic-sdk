@@ -2,7 +2,14 @@
 set -euo pipefail
 
 experiment_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repository_root="$(cd "$experiment_root/../.." && pwd)"
+repository_root="$(git -C "$experiment_root" rev-parse --show-toplevel)"
+: "${CS_WEBUI_REPOSITORY:?Set CS_WEBUI_REPOSITORY to an explicit cs-webui checkout}"
+cs_repository="$(cd "$CS_WEBUI_REPOSITORY" && pwd)"
+if [[ ! -f "$cs_repository/src/CsWebUi/CsWebUi.csproj" ]]; then
+  echo "CS_WEBUI_REPOSITORY does not contain src/CsWebUi/CsWebUi.csproj." >&2
+  exit 2
+fi
+cd "$repository_root"
 artifacts_root="$repository_root/artifacts/native-aot-size/linux-x64"
 mkdir -p "$artifacts_root"
 run_root="$(mktemp -d "$artifacts_root/run.XXXXXXXX")"
@@ -15,7 +22,7 @@ mkdir -p "$cs_output" "$runic_output" "$aspnet_output"
 sdk_version="$(dotnet --version)"
 if [[ "$sdk_version" != 10.0.302 ]]; then
   echo "Expected the repository SDK 10.0.302, but dotnet resolves to $sdk_version." >&2
-  echo "Run through the Runic Desktop environment: nix develop ../runic-desktop --command $0" >&2
+  echo "Run from the SDK environment: nix develop --command $0" >&2
   exit 2
 fi
 
@@ -35,6 +42,7 @@ publish_arguments=(
 
 dotnet publish "$experiment_root/CsWebUiBaseline/CsWebUiBaseline.csproj" \
   "${publish_arguments[@]}" \
+  "-p:CsWebUiRepository=$cs_repository" \
   --output "$cs_output" \
   2>&1 | tee "$run_root/cs-webui-publish.log"
 
@@ -146,9 +154,13 @@ aspnet_compressed="$(stat --format='%s' "$run_root/aspnetcore-diagnostic.tar.gz"
 {
   dotnet --info
   uname -a
-  printf '\nrunic-toolkit\t%s\n' "$(git -C "$repository_root" rev-parse HEAD)"
-  printf 'runic-desktop\t%s\n' "$(git -C "$repository_root/../runic-desktop" rev-parse HEAD)"
-  printf 'cs-webui\t%s\n' "$(git -C "$repository_root/../cs-webui" rev-parse HEAD)"
+  printf '\nSDK working status\n'
+  git -C "$repository_root" status --porcelain
+  printf '\nCS-WebUI working status\n'
+  git -C "$cs_repository" status --porcelain
+  printf '\nSmoke skipped\t%s\n' "${RUNIC_NATIVE_AOT_SKIP_SMOKE:-0}"
+  printf '\nrunic-sdk\t%s\n' "$(git -C "$repository_root" rev-parse HEAD)"
+  printf 'cs-webui\t%s\n' "$(git -C "$cs_repository" rev-parse HEAD)"
 } > "$run_root/environment.txt"
 
 printf '\nComparison artifacts: %s\n' "$run_root"

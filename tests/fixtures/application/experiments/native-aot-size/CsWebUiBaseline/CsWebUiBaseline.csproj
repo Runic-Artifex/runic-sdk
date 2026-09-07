@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <CsWebUiRepository>$(MSBuildThisFileDirectory)..\..\..\..\cs-webui</CsWebUiRepository>
-  </PropertyGroup>
+  <Target Name="RequireExplicitCsWebUiRepository" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(CsWebUiRepository)' == '' or !Exists('$(CsWebUiRepository)/src/CsWebUi/CsWebUi.csproj')"
+           Text="Set CsWebUiRepository to an explicit cs-webui checkout for this external-host comparison." />
+  </Target>
 
   <ItemGroup>
     <Compile Include="..\ComparisonContent.cs" Link="ComparisonContent.cs" />

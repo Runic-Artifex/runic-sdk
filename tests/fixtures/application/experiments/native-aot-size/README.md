@@ -15,11 +15,12 @@ ASP.NET Core NativeAOT floor.
 
 ## Run on Linux x64
 
-From the `runic-toolkit` repository:
+From the `runic-sdk` repository, with the independent CS-WebUI source checkout
+and its Linux native library already available:
 
 ~~~sh
-nix develop ../runic-desktop --command \
-  ./experiments/native-aot-size/compare-linux-x64.sh
+CS_WEBUI_REPOSITORY="/absolute/path/to/cs-webui" nix develop --command \
+  ./tests/fixtures/application/experiments/native-aot-size/compare-linux-x64.sh
 ~~~
 
 The script uses .NET SDK 10.0.302 and identical Release, NativeAOT, full
@@ -43,11 +44,20 @@ installed browser.
 Smoke the two primary binaries under a virtual display with:
 
 ~~~sh
-nix develop ../runic-desktop --command \
+nix develop --command \
   xvfb-run -a artifacts/native-aot-size/linux-x64/<run-directory>/cs-webui/DesktopSizeBaseline
 
-nix develop ../runic-desktop --command \
+nix develop --command \
   xvfb-run -a artifacts/native-aot-size/linux-x64/<run-directory>/runic-desktop/DesktopSizeBaseline
 ~~~
 
 Select one concrete `run.*` directory when more than one result exists.
+
+The comparator requires the external checkout explicitly; it never discovers a
+retired sibling repository. Results belong under the SDK root even when invoked
+from another directory. Each result includes both source revisions, working-tree
+status, and whether browser verification was skipped.
+
+The September 3 result is historical evidence, not a new measurement of the
+reorganised SDK. See [host choice and footprint](../../../../../docs/guides/desktop/host-choice-and-footprint.md)
+for the parity assessment and proposed tuning experiments.
