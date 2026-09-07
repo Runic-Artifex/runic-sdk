@@ -26,6 +26,10 @@ for (const group of [manifest.dependencies, manifest.devDependencies]) {
     candidates[name] = createHash("sha256").update(readFileSync(archive)).digest("hex");
   }
 }
+// Bind transitive SDK references as well as direct dependencies to the candidates.
+// Bun may otherwise resolve a dependency's release version through the registry.
+manifest.overrides = { ...manifest.overrides, ...Object.fromEntries(Object.keys(candidates)
+  .map(name => [name, manifest.dependencies?.[name] ?? manifest.devDependencies[name]])) };
 writeFileSync(join(frontend, "package.json"), JSON.stringify(manifest, null, 2));
 run("bun", ["install", "--ignore-scripts"], frontend, { BUN_INSTALL_CACHE_DIR: join(temporary, "bun-cache") });
 for (const name of Object.keys(candidates))
