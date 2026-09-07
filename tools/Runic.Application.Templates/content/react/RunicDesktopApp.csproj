@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <RunicHost Condition="'$(RunicHost)' == ''">__RUNIC_HOST__</RunicHost>
     <RunicApplicationBridgeAuthority>csharp</RunicApplicationBridgeAuthority>
+    <RunicToolkitFrontendDevServerKind>vite</RunicToolkitFrontendDevServerKind>
+    <RunicToolkitFrontendViteDevServerEntry>/src/main.tsx</RunicToolkitFrontendViteDevServerEntry>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>RunicDesktopApp</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -13,15 +16,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Condition="'$(RunicHost)' == 'cswebui'" Include="Runic.Application.CsWebUi" Version="__RUNIC_TOOLKIT_VERSION__" />
     <PackageReference Include="Runic.Application.Bridge" Version="__RUNIC_TOOLKIT_VERSION__" />
     <PackageReference Include="Runic.Application" Version="__RUNIC_TOOLKIT_VERSION__" />
-    <PackageReference Include="Runic.Application.Desktop" Version="__RUNIC_TOOLKIT_VERSION__" />
-    <PackageReference Include="Runic.Desktop" Version="__RUNIC_DESKTOP_VERSION__" />
+    <PackageReference Condition="'$(RunicHost)' == 'desktop'" Include="Runic.Application.Desktop" Version="__RUNIC_TOOLKIT_VERSION__" />
+    <PackageReference Condition="'$(RunicHost)' == 'desktop'" Include="Runic.Desktop" Version="__RUNIC_DESKTOP_VERSION__" />
     <PackageReference Include="Runic.Assets" Version="__RUNIC_ASSETS_VERSION__" />
-    <PackageReference Include="Runic.Assets.Desktop" Version="__RUNIC_ASSETS_VERSION__" />
+    <PackageReference Condition="'$(RunicHost)' == 'desktop'" Include="Runic.Assets.Desktop" Version="__RUNIC_ASSETS_VERSION__" />
   </ItemGroup>
   <ItemGroup>
     <AdditionalFiles Include="Contract/bridge.ir.json" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Host.Desktop.cs" Condition="'$(RunicHost)' != 'desktop'" />
+    <Compile Remove="Host.CsWebUi.cs" Condition="'$(RunicHost)' != 'cswebui'" />
+  </ItemGroup>
+  <Target Name="ValidateRunicHost" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(RunicHost)' != 'desktop' and '$(RunicHost)' != 'cswebui'" Text="RunicHost must be desktop or cswebui." />
+  </Target>
   <Import Project="RunicTemplateFrontend.targets" />
 </Project>

@@ -13,6 +13,7 @@ internal static class DevApplication
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
+        using var requestedHost = new HostSelectionScope(options.Host);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnetHost = ResolveDotNetHost();
         DevProjectConfiguration configuration;
@@ -27,11 +28,14 @@ internal static class DevApplication
                 .ConfigureAwait(false);
             phase.Complete();
         }
+        using var selectedHost = new HostSelectionScope(configuration.Host);
         WriteConfiguration(configuration, options);
         if (options.DryRun)
         {
             return Program.Success;
         }
+        if (!options.Restore && !string.IsNullOrEmpty(options.Host))
+            RequireRestoredHost(configuration);
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
@@ -42,6 +46,14 @@ internal static class DevApplication
         Console.CancelKeyPress += cancelHandler;
         try
         {
+            if (options.Restore)
+            {
+                using var phase = PhaseTimer.Start("Restoring selected host dependencies");
+                await RequireSuccessAsync(dotnetHost, configuration.ProjectDirectory,
+                    ["restore", configuration.ProjectPath, $"-p:Configuration={options.Configuration}"],
+                    "RTKDEV1006", "Selected host restore failed.", stop.Token).ConfigureAwait(false);
+                phase.Complete();
+            }
             if (configuration.NodeEnabled)
             {
                 await BuildCanonicalFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
@@ -69,6 +81,20 @@ internal static class DevApplication
         {
             Console.CancelKeyPress -= cancelHandler;
         }
+    }
+
+    private static void RequireRestoredHost(DevProjectConfiguration configuration)
+    {
+        string package = configuration.Host == "cswebui" ? "Runic.Application.CsWebUi/" : "Runic.Application.Desktop/";
+        string path = configuration.ProjectAssetsFile;
+        if (File.Exists(path))
+        {
+            using var assets = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            if (assets.RootElement.TryGetProperty("libraries", out var libraries))
+                foreach (var library in libraries.EnumerateObject())
+                    if (library.Name.StartsWith(package, StringComparison.Ordinal)) return;
+        }
+        throw new DevUsageException("RTKDEV1008", $"The {configuration.Host} host has not been restored. Omit --no-restore when changing hosts.");
     }
 
     private static async Task<int> RunDevelopmentLoopAsync(
@@ -472,6 +498,7 @@ internal static class DevApplication
         DevOptions options)
     {
         Console.WriteLine($"[dev] Project: {configuration.ProjectPath}");
+        Console.WriteLine($"[dev] Host: {configuration.Host}");
         Console.WriteLine(
             configuration.HasDevelopmentServer
                 ? $"[dev] Frontend: {configuration.DevelopmentServerKind} dev server " +

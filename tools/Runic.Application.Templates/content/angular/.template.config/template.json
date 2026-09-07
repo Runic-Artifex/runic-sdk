@@ -1,22 +1,46 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Runic Artifex",
-  "classifications": ["Desktop", "Runic Desktop", "Angular"],
+  "classifications": [
+    "Desktop",
+    "Runic Desktop",
+    "Angular"
+  ],
   "identity": "Runic.Application.Templates.Angular",
   "name": "Runic Application Angular",
   "shortName": "runic-app-angular",
   "sourceName": "RunicDesktopApp",
   "preferNameDirectory": true,
-  "tags": { "language": "C#", "type": "project" },
-  "sources": [{
-    "source": "./",
-    "target": "./",
-    "modifiers": [
-      { "condition": "(packageManager != 'npm')", "exclude": ["Frontend/package-lock.json"] },
-      { "condition": "(packageManager != 'pnpm')", "exclude": ["Frontend/pnpm-lock.yaml"] },
-      { "condition": "(packageManager != 'bun')", "exclude": ["Frontend/bun.lock"] }
-    ]
-  }],
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "modifiers": [
+        {
+          "condition": "(packageManager != 'npm')",
+          "exclude": [
+            "Frontend/package-lock.json"
+          ]
+        },
+        {
+          "condition": "(packageManager != 'pnpm')",
+          "exclude": [
+            "Frontend/pnpm-lock.yaml"
+          ]
+        },
+        {
+          "condition": "(packageManager != 'bun')",
+          "exclude": [
+            "Frontend/bun.lock"
+          ]
+        }
+      ]
+    }
+  ],
   "symbols": {
     "packageManager": {
       "type": "parameter",
@@ -25,9 +49,18 @@
       "replaces": "__PACKAGE_MANAGER_NAME__",
       "description": "JavaScript package manager used for install, build, and development scripts.",
       "choices": [
-        { "choice": "npm", "description": "npm with package-lock.json" },
-        { "choice": "pnpm", "description": "pnpm with pnpm-lock.yaml" },
-        { "choice": "bun", "description": "Bun with bun.lock" }
+        {
+          "choice": "npm",
+          "description": "npm with package-lock.json"
+        },
+        {
+          "choice": "pnpm",
+          "description": "pnpm with pnpm-lock.yaml"
+        },
+        {
+          "choice": "bun",
+          "description": "Bun with bun.lock"
+        }
       ]
     },
     "packageManagerDeclaration": {
@@ -38,9 +71,17 @@
         "evaluator": "C++",
         "datatype": "string",
         "cases": [
-          { "condition": "(packageManager == 'pnpm')", "value": "pnpm@__PNPM_PACKAGE_MANAGER_VERSION__" },
-          { "condition": "(packageManager == 'bun')", "value": "bun@__BUN_PACKAGE_MANAGER_VERSION__" },
-          { "value": "npm@__NPM_PACKAGE_MANAGER_VERSION__" }
+          {
+            "condition": "(packageManager == 'pnpm')",
+            "value": "pnpm@__PNPM_PACKAGE_MANAGER_VERSION__"
+          },
+          {
+            "condition": "(packageManager == 'bun')",
+            "value": "bun@__BUN_PACKAGE_MANAGER_VERSION__"
+          },
+          {
+            "value": "npm@__NPM_PACKAGE_MANAGER_VERSION__"
+          }
         ]
       }
     },
@@ -79,7 +120,28 @@
       "datatype": "text",
       "defaultValue": "__RUNIC_ANGULAR_NPM_VERSION__",
       "replaces": "__RUNIC_ANGULAR_NPM__"
+    },
+    "host": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "desktop",
+      "replaces": "__RUNIC_HOST__",
+      "description": "Application presentation host. CS-WebUI avoids the ASP.NET Core runtime.",
+      "choices": [
+        {
+          "choice": "desktop",
+          "description": "Runic Desktop enhancements and native close coordination"
+        },
+        {
+          "choice": "cswebui",
+          "description": "Native CS-WebUI with the same generated application model"
+        }
+      ]
     }
   },
-  "primaryOutputs": [{ "path": "RunicDesktopApp.csproj" }]
+  "primaryOutputs": [
+    {
+      "path": "RunicDesktopApp.csproj"
+    }
+  ]
 }

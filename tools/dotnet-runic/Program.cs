@@ -13,6 +13,8 @@ namespace Runic.Application.Tool;
 
 internal static class Program
 {
+    private static readonly AsyncLocal<CommandOutputMode?> OutputMode = new();
+
     internal const int Success = 0;
     internal const int DevelopmentFailure = 1;
     internal const int UsageFailure = 2;
@@ -44,6 +46,7 @@ internal static class Program
             return await PresentParseFailureAsync(parse, console).ConfigureAwait(false);
         }
 
+        OutputMode.Value = parse.Invocation.OutputClassification.Mode;
         CommandExecutionResult result = await new CommandExecutor(EmptyScopeFactory.Instance, ToolExitCodePolicy.Instance).ExecuteAsync(
             new CommandExecutionRequest(parse.Invocation, console, CultureInfo.InvariantCulture, "runic"),
             new CommandOutputDispatcher()).ConfigureAwait(false);
@@ -61,7 +64,8 @@ internal static class Program
         [Argument(AllowMultipleValues = true)] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
         [Option("--project", "-p")] string project = "",
-        [Option("--configuration")] string configuration = "Debug")
+        [Option("--configuration")] string configuration = "Debug",
+        [Option("--host")] string host = "")
     {
         return ExecuteAsync("dev", async () =>
         {
@@ -73,9 +77,9 @@ internal static class Program
             !noFrontendWatch,
             !noDotNetWatch,
             dryRun,
-                applicationArguments);
+                applicationArguments) { Host = host };
             return await DevApplication.RunAsync(options, cancellationToken).ConfigureAwait(false);
-        });
+        }, stream: !dryRun);
     }
 
     [Command("doctor")]
@@ -175,15 +179,17 @@ internal static class Program
         }
     }
 
-    private static async Task<CommandOutcome<ToolCommandResult>> ExecuteAsync(string command, Func<Task<int>> operation)
+    private static async Task<CommandOutcome<ToolCommandResult>> ExecuteAsync(string command, Func<Task<int>> operation, bool stream = false)
     {
         TextWriter originalOutput = Console.Out;
         TextWriter originalError = Console.Error;
         using var output = new StringWriter(CultureInfo.InvariantCulture);
         try
         {
-            Console.SetOut(output);
-            Console.SetError(output);
+            // Long-running development output must reach the terminal immediately.
+            // JSON invocations reserve stdout for the final command envelope.
+            Console.SetOut(stream ? (OutputMode.Value == CommandOutputMode.Json ? originalError : originalOutput) : output);
+            Console.SetError(stream ? originalError : output);
             int exitCode = await operation().ConfigureAwait(false);
             return exitCode == Success
                 ? CommandOutcome.Success(new ToolCommandResult(command, exitCode, output.ToString().TrimEnd()))
@@ -330,6 +336,7 @@ internal static class Program
         Options:
           -p, --project <path>       Project file or directory. Default: the current directory.
           --configuration <name>    MSBuild configuration. Default: Debug.
+          --host <name>             desktop or cswebui; defaults to the project selection.
           --no-restore              Skip NuGet and frozen frontend dependency restore.
           --no-contracts            Skip Application Bridge contract generation and verification.
           --no-frontend-watch       Build frontend assets once without starting Vite or Angular watch.

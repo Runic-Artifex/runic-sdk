@@ -22,6 +22,7 @@ internal static class Program
             ("project discovery accepts a directory", ProjectDiscoveryAcceptsDirectory),
             ("project discovery rejects ambiguity", ProjectDiscoveryRejectsAmbiguity),
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
+            ("host selection is scoped across child processes", HostSelectionIsScoped),
             ("package managers use frozen installs and portable scripts", PackageManagersUseFrozenPortableCommands),
             ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
             ("Vite startup skips the production frontend build", ViteStartupSkipsProductionBuild),
@@ -77,6 +78,24 @@ internal static class Program
         {
             throw new InvalidOperationException("--no-dotnet-watch was ignored.");
         }
+    }
+
+    private static void HostSelectionIsScoped()
+    {
+        static string? ReadHost() => CommandRunner.CreateStartInfo("dotnet", "/tmp", []).Environment.TryGetValue("RunicHost", out var value) ? value : null;
+        string? original = ReadHost();
+        using (new HostSelectionScope("cswebui"))
+        {
+            var start = CommandRunner.CreateStartInfo("dotnet", "/tmp", []);
+            Equal("cswebui", start.Environment["RunicHost"]);
+            Equal("cswebui", start.Environment["VITE_RUNIC_HOST"]);
+            using (new HostSelectionScope("desktop"))
+                Equal("desktop", CommandRunner.CreateStartInfo("dotnet", "/tmp", []).Environment["RunicHost"]);
+            Equal("cswebui", CommandRunner.CreateStartInfo("dotnet", "/tmp", []).Environment["RunicHost"]);
+        }
+        Equal(original, ReadHost());
+        try { using var invalid = new HostSelectionScope("unknown"); throw new InvalidOperationException("Invalid host was accepted."); }
+        catch (DevUsageException error) { Equal("RTKDEV1008", error.Code); }
     }
 
     private static void DoctorOptionsSelectProject()
@@ -329,14 +348,18 @@ internal static class Program
             Path.Combine(target, "www", "simple", "index.html"));
         string advanced = File.ReadAllText(
             Path.Combine(target, "www", "advanced", "index.html"));
-        Contains(simple, "<script src=\"/webui.js\"></script>");
+        Contains(simple, "<script src=\"runic-desktop.js\"></script>");
         Contains(simple, "http://127.0.0.1:43125/src/main.ts");
-        Contains(simple, "<base href=\"/\">");
+        Contains(simple, "<base href=\"./\">");
         Contains(simple, "from \"http://127.0.0.1:43125/@react-refresh\"");
         Contains(simple, "__runicToolkitApplicationBridgeDevelopment");
         Contains(simple, "http://127.0.0.1:43126/token/events");
         Contains(simple, configuration.ProjectDirectory);
         Equal(simple, advanced);
+        FrontendDevelopmentDocument.Write(configuration with { Host = "cswebui" }, origin, inspector, "cs.html", source);
+        string cs = File.ReadAllText(Path.Combine(target, "www", "cs.html"));
+        False(cs.Contains("/runic-desktop.js", StringComparison.Ordinal), "CS-WebUI inherited a Desktop bootstrap.");
+        False(cs.Contains("/webui.js", StringComparison.Ordinal), "The native host must inject WebUI exactly once.");
     }
 
     private static void InspectorTerminalSinkIsSafe()

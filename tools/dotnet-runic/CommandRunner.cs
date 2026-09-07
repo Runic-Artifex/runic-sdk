@@ -87,6 +87,10 @@ internal static class CommandRunner
             startInfo.ArgumentList.Add(argument);
         }
 
+        HostSelectionScope.Apply(startInfo);
+        string inspector = Path.Combine(AppContext.BaseDirectory, "bridge-inspector", "Runic.Application.Bridge.Inspector.dll");
+        if (!startInfo.Environment.ContainsKey("RUNIC_BRIDGE_INSPECTOR") && File.Exists(inspector))
+            startInfo.Environment["RUNIC_BRIDGE_INSPECTOR"] = inspector;
         return startInfo;
     }
 

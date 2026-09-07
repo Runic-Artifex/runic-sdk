@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
-import { root, workspace, run } from "./run.mjs";
+import { root, workspace, run, configuration } from "./run.mjs";
 
 export async function verifyPackages() {
   const directory = mkdtempSync(join(tmpdir(), "runic-sdk-consumers-"));
@@ -73,7 +73,7 @@ export async function verifyPackages() {
           readFileSync(program, "utf8"),
       );
     }
-    run("dotnet", ["run", "--project", "Consumer.csproj"], consumer, env);
+    run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], consumer, env);
     const assets = JSON.parse(
       readFileSync(join(consumer, "obj/project.assets.json"), "utf8"),
     );
@@ -84,7 +84,7 @@ export async function verifyPackages() {
     if (p.name === "Runic.Application.CsWebUi") {
       assert.ok(!Object.keys(assets.libraries).some(name => name.startsWith("Runic.Desktop/")),
         "CS-WebUI host unexpectedly depends on Desktop");
-      const runtime = JSON.parse(readFileSync(join(consumer, "bin/Debug/net10.0/Consumer.runtimeconfig.json"), "utf8"));
+      const runtime = JSON.parse(readFileSync(join(consumer, `bin/${configuration}/net10.0/Consumer.runtimeconfig.json`), "utf8"));
       const frameworks = runtime.runtimeOptions.frameworks ?? [runtime.runtimeOptions.framework];
       assert.ok(!frameworks.some(framework => framework?.name === "Microsoft.AspNetCore.App"),
         "CS-WebUI host unexpectedly requires ASP.NET Core");

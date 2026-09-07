@@ -19,7 +19,7 @@ using Runic.Assets;
 
 string? data = Environment.GetEnvironmentVariable("RUNIC_CUSTOMERS_FILE");
 data ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Runic", "CustomerMigration", "customers.json");
-var assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly());
+var assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly()).WithDevelopmentDocument();
 #if RUNIC_CSWEBUI
 var host = new CsWebUiApplicationHost(new()
 {

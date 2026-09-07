@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import {
   ApplicationBridgeLive,
+  createCsWebUiFrameChannel,
   MockApplicationBridge,
   createApplicationBridgeController,
 } from "@runic-artifex/application-bridge";
@@ -39,5 +40,5 @@ export const counterBridge = createApplicationBridgeController(
   CounterContract,
   import.meta.env.MODE === "mock"
     ? mock
-    : ApplicationBridgeLive(CounterContract, createDesktopFrameChannel()),
+    : ApplicationBridgeLive(CounterContract, ("runicCsWebUi" in globalThis ? createCsWebUiFrameChannel() : createDesktopFrameChannel())),
 );

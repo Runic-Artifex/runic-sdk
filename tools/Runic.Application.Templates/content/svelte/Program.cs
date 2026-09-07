@@ -3,10 +3,7 @@ using System.Threading.Tasks;
 using Runic.Application;
 using Runic.Application.Bridge;
 using System.Reflection;
-using Runic.Application.Desktop;
-using Runic.Desktop;
 using Runic.Assets;
-using Runic.Assets.Desktop;
 using RunicDesktopApp;
 
 [assembly: RunicApplicationManifest("RunicDesktopApp", Version = "1.0.0", Provenance = "template")]
@@ -17,13 +14,9 @@ using RunicDesktopApp;
 if (Array.Exists(args, static argument => argument == "--smoke-test"))
     return await CounterSmokeTest.RunAsync();
 
-AssetArchiveSource assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly());
+var assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly()).WithDevelopmentDocument();
 await using ApplicationHost application = RunicApplication.CreateBuilder(args)
-    .UseDesktop(new DesktopApplicationHostOptions
-    {
-        Title = "Runic Application Counter · Svelte",
-        Surface = new DesktopSurfaceOptions { ContentHandler = assets.ToDesktopContentHandler() },
-    })
+    .UseHost(HostComposition.Create(assets))
     .Build();
 await application.RunAsync();
 return 0;

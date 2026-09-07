@@ -58,18 +58,23 @@
 >
     <Message Importance="high" Text="[runic] Generating Application Bridge IR." />
     <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
-          Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; run contract:generate" />
+          Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; run contract:generate" EnvironmentVariables="RunicHost=$(RunicHost)" />
+  </Target>
+
+  <Target Name="RunicTemplateSelectHost" BeforeTargets="RunicTemplateFrontendBuild">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(IntermediateOutputPath)runic-frontend.host" Lines="$(RunicHost)" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
 
   <Target Name="RunicTemplateFrontendBuild"
           BeforeTargets="RunicAssetsPackFileSystem"
           DependsOnTargets="RunicTemplateToolsRestore;RunicTemplateFrontendInstall"
           Condition="'$(RunicTemplateFrontendBuild)' == 'true' and '$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'"
-          Inputs="@(_RunicTemplateFrontendInstallInput);@(_RunicTemplateFrontendBuildInput)"
+          Inputs="@(_RunicTemplateFrontendInstallInput);@(_RunicTemplateFrontendBuildInput);$(IntermediateOutputPath)runic-frontend.host"
           Outputs="$(_RunicTemplateFrontendBuildStamp)">
     <Message Importance="high" Text="[runic] Building managed frontend assets." />
     <Exec WorkingDirectory="$(_RunicTemplateFrontendDirectory)"
-          Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; run build" />
+          Command="&quot;$(_RunicTemplatePackageManagerExecutable)&quot; run build" EnvironmentVariables="VITE_RUNIC_HOST=$(RunicHost);RunicHost=$(RunicHost)" />
     <Touch Files="$(_RunicTemplateFrontendBuildStamp)" AlwaysCreate="true" />
   </Target>
 </Project>

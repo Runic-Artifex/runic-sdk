@@ -28,6 +28,8 @@ internal sealed record DevProjectConfiguration(
     string FrontendCompilerHotReloadPath,
     string TargetDirectory)
 {
+    internal string Host { get; init; } = "desktop";
+    internal string ProjectAssetsFile { get; init; } = string.Empty;
     internal string FrontendCompilerWatchPattern { get; init; } = string.Empty;
 
     internal string FrontendCompilerHotReloadTarget { get; init; } = string.Empty;
@@ -42,6 +44,8 @@ internal sealed record DevProjectConfiguration(
     private static readonly string[] PropertyNames =
     [
         "MSBuildProjectFullPath",
+        "RunicHost",
+        "ProjectAssetsFile",
         "RunicAssetsDist",
         "RunicAssetsEntryPoint",
         "RunicAssetsEmbeddedResourceName",
@@ -186,7 +190,7 @@ internal sealed record DevProjectConfiguration(
             evaluatedProjectDirectory,
             canonicalFrontend || (legacyEnabled && bool.TryParse(Value("RunicToolkitFrontendNodeEnabled"), out bool nodeEnabled)
                 && nodeEnabled),
-            generatedAssets || (legacyEnabled && bool.TryParse(Value("RunicToolkitFrontendCompilerEnabled"), out bool compilerEnabled)
+            (legacyEnabled && bool.TryParse(Value("RunicToolkitFrontendCompilerEnabled"), out bool compilerEnabled)
                 && compilerEnabled),
             workspaceRoot,
             canonicalFrontend ? "." : Value("RunicToolkitFrontendWorkspace"),
@@ -210,6 +214,8 @@ internal sealed record DevProjectConfiguration(
             NormalizeOptional(Value("RunicToolkitFrontendCompilerHotReloadPath"), evaluatedProjectDirectory),
             targetDirectory)
         {
+            ProjectAssetsFile = Normalize(Value("ProjectAssetsFile"), evaluatedProjectDirectory),
+            Host = string.IsNullOrEmpty(Value("RunicHost")) ? "desktop" : Value("RunicHost"),
             FrontendCompilerWatchPattern = Value("RunicToolkitFrontendCompilerWatchPattern"),
             FrontendCompilerHotReloadTarget = Value("RunicToolkitFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind =

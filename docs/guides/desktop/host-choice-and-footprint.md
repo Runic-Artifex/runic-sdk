@@ -4,7 +4,9 @@ Assessment: 2026-09-07. The intended product direction is equal access to Runic'
 application development experience through CS-WebUI and Runic Desktop. Choose
 Desktop for its additional hosting and presentation features. Choosing CS-WebUI
 should not require replacing application members, generated frontend contracts,
-or the development workflow. The parity work below is proposed, not implemented.
+or the development workflow. This document records the original assessment. The first implementation waves
+are described in [host selection](host-selection.md); footprint experiments below
+remain the work plan until accompanied by new measurements.
 
 ## What the current code provides
 

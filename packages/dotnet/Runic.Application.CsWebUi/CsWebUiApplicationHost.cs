@@ -144,7 +144,9 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
             {
                 string bootstrap = "<script src=\"/webui.js\"></script><script>globalThis.runicCsWebUi={credential:'" + _credential +
                     "',maxFrameBytes:" + _options.Limits.MaxFrameBytes + "};document.title=" + ("\"" + System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(_options.Title) + "\"") + ";</script>";
-                string html = Encoding.UTF8.GetString(body);
+                string html = Encoding.UTF8.GetString(body)
+                    .Replace("<script src=\"/runic-desktop.js\"></script>", "", StringComparison.Ordinal)
+                    .Replace("<script src=\"./runic-desktop.js\"></script>", "", StringComparison.Ordinal);
                 // Bootstrap must run before the application's module scripts.
                 int head = html.IndexOf('>', html.IndexOf("<head", StringComparison.OrdinalIgnoreCase) is var pos && pos >= 0 ? pos : 0);
                 body = Encoding.UTF8.GetBytes(head >= 0 ? html.Insert(head + 1, bootstrap) : bootstrap + html);

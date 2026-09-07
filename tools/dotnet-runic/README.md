@@ -32,4 +32,17 @@ dotnet runic support --mode remove --destination /path/to/support-envelope.json
 
 The collector accepts only `runic.translations.editor-diagnostics/1` and rejects paths, source/translation/review text, sessions, cookies, and tokens. The resulting `runic.support-envelope/1` contains normalized application/workspace counts plus a fixed omission record; it is not a telemetry or hosted-diagnostics API.
 
-Everything after `--` is forwarded unchanged to the application, including option-looking and negative values. The tool reads optional project properties and runs only your configured local commands. See the [development guide](https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/contributing/development.md), [examples](https://github.com/Runic-Artifex/runic-toolkit-examples), and [issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Preview tool; [MIT licensed](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).
+Everything after `--` is forwarded unchanged to the application, including option-looking and negative values. The tool reads optional project properties and runs only your configured local commands. See the [development guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/contributing/development.md), [examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples), and [issues](https://github.com/Runic-Artifex/runic-sdk/issues). Preview tool; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).
+
+## Application host selection
+
+`dotnet runic dev --host desktop|cswebui` selects the matching project references,
+contract generation, frontend build and child process environment. Generated
+projects expose `RunicHost`; normal builds and publishes accept
+`-p:RunicHost=cswebui`. Restore when changing hosts. With no override, `dev`
+uses the project selection. Development progress streams immediately; JSON mode
+keeps progress on stderr and reserves stdout for the final result envelope.
+
+Hosts opt into the generated frontend development document by calling
+`assets.WithDevelopmentDocument()`. Only the explicit bounded entry document is
+replaced. The remaining asset manifest is unchanged.

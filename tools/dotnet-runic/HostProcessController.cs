@@ -90,7 +90,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine("[dev] Reloading the native Runic Desktop host.");
+            Console.WriteLine($"[dev] Reloading the {_configuration.Host} application host.");
             _host = Start();
             ObserveExit(_host);
         }
@@ -138,6 +138,8 @@ internal sealed class HostProcessController : IAsyncDisposable
 
         var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
+            ["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"] = _developmentEnvironment.Count == 0 ? null :
+                System.IO.Path.GetFullPath(_configuration.DevelopmentServerDocuments[0], _configuration.RuntimeWebRoot),
             ["RunicToolkitFrontendEnabled"] = "false",
             ["RunicToolkitFrontendInstall"] = "false",
             ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "1",

@@ -12,7 +12,9 @@ internal sealed record DevOptions(
     bool WatchHost,
     bool DryRun,
     IReadOnlyList<string> ApplicationArguments)
-{ }
+{
+    internal string? Host { get; init; }
+}
 
 internal sealed class DevUsageException(string code, string message) : Exception(message)
 {

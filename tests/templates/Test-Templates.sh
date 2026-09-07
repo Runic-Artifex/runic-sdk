@@ -149,8 +149,9 @@ dotnet run --project "$default_svelte_output/PackagedSvelteDefaults.csproj" \
 
 verify_framework() {
   local framework="$1"
-  local project_name="Acceptance${framework^}"
-  local output="$template_tmp/$framework"
+  local selected_host="${2:-desktop}"
+  local project_name="Acceptance${framework^}${selected_host^}"
+  local output="$template_tmp/$framework-$selected_host"
   local first_manifest
   local second_manifest
   local -a template_arguments=(
@@ -158,15 +159,27 @@ verify_framework() {
     --output "$output"
     --runicApplicationVersion "$package_version"
     --runicAssetsVersion "$runic_assets_version"
+    --host "$selected_host"
   )
   dotnet new "runic-app-$framework" \
     "${template_arguments[@]}"
   bind_candidate_integrities "$output/Frontend/package-lock.json"
   "$tool_directory/dotnet-runic" dev --project "$output/$project_name.csproj" --dry-run -- --template-option -1 > "$output/dotnet-runic-dev-plan.txt"
   grep -Fq 'Frontend' "$output/dotnet-runic-dev-plan.txt"
+  grep -Fq "Host: $selected_host" "$output/dotnet-runic-dev-plan.txt"
   configure_candidate_registry "$output/Frontend"
   dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
+  if [[ "$selected_host" == "cswebui" ]]; then
+    node -e '
+      const fs = require("node:fs");
+      const assets = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      if (Object.keys(assets.libraries).some(name => name.startsWith("Runic.Desktop/")))
+        throw new Error("CS-WebUI template references Desktop");
+      if (JSON.stringify(assets.project.frameworks).includes("Microsoft.AspNetCore.App"))
+        throw new Error("CS-WebUI template requires ASP.NET Core");
+    ' "$output/obj/project.assets.json"
+  fi
   test -f "$output/Frontend/dist/index.html"
   test -f "$output/Frontend/node_modules/.package-lock.json"
   (cd "$output/Frontend" && npm run typecheck)
@@ -294,6 +307,12 @@ run_parallel_acceptance_group frameworks \
   vue verify_framework 1 vue \
   svelte verify_framework 1 svelte \
   angular verify_framework 1 angular
+
+run_parallel_acceptance_group cswebui \
+  react-cswebui verify_framework 2 react cswebui \
+  vue-cswebui verify_framework 2 vue cswebui \
+  svelte-cswebui verify_framework 2 svelte cswebui \
+  angular-cswebui verify_framework 2 angular cswebui
 
 run_parallel_acceptance_group pnpm \
   react-pnpm verify_package_manager_framework 2 react pnpm \

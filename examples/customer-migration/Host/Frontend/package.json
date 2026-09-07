@@ -2,12 +2,15 @@
   "name": "@runic-artifex/customer-migration",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "scripts": {
     "build": "tsc --noEmit && vite build",
+    "dev": "vite",
     "contract:generate": "runic-bridge generate --authority csharp --project ../CustomerDesktop.csproj",
     "contract:check": "runic-bridge check --authority csharp --project ../CustomerDesktop.csproj",
     "test": "node --test src/*.test.ts",
     "test:browser": "node browser.test.mjs && node lifecycle.test.mjs",
+    "test:dev": "node dev.test.mjs",
     "test:lifecycle": "node lifecycle.test.mjs",
     "browser:install": "playwright-core install chromium"
   },

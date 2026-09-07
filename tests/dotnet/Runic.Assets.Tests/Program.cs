@@ -22,6 +22,7 @@ internal static class Program
         new("paths reject traversal and ambiguous syntax", SafePaths),
         new("manifest metadata and ordering are deterministic", DeterministicManifest),
         new("embedded assets validate and open offline", EmbeddedAssets),
+        new("development documents replace only a bounded immutable entry", DevelopmentDocument),
         new("portable archives round-trip deterministic metadata", ArchiveRoundTrip),
         new("archive writes reject content mutation after validation", ArchiveWriteMutation),
         new("directory compiler uses the canonical archive authority", DirectoryArchiveAuthority),
@@ -129,6 +130,26 @@ internal static class Program
         True((await reader.ReadToEndAsync().ConfigureAwait(false)).Contains("Asset boundary", StringComparison.Ordinal));
         await ThrowsAsync<FileNotFoundException>(
             async () => await source.OpenReadAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
+    }
+
+    private static async Task DevelopmentDocument()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.Write("dev.html", "<html>Vite entry</html>");
+        var original = NewEmbeddedSource();
+        var source = original.WithDevelopmentDocument(System.IO.Path.Combine(directory.Path, "dev.html"));
+        directory.Write("dev.html", "changed after loading");
+        Equal(AssetCacheMode.NoStore, source.Manifest.EntryPoint.CacheMode);
+        await using var entry = await source.OpenSnapshotAsync("index.html");
+        using var reader = new StreamReader(entry.Content);
+        Equal("<html>Vite entry</html>", await reader.ReadToEndAsync());
+        Equal(original.Manifest.Assets.Count, source.Manifest.Assets.Count);
+        await using var css = await source.OpenSnapshotAsync("assets/app.css");
+        True(css.Descriptor.MediaType == "text/css");
+        await ThrowsAsync<FileNotFoundException>(async () => await source.OpenReadAsync("dev.html"));
+        Throws<ArgumentException>(() => original.WithDevelopmentDocument("relative.html"));
+        directory.Write("large.html", new string('x', 1024 * 1024 + 1));
+        Throws<InvalidDataException>(() => original.WithDevelopmentDocument(System.IO.Path.Combine(directory.Path, "large.html")));
     }
 
     private static async Task ArchiveRoundTrip()

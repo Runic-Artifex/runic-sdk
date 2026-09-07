@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import {
   ApplicationBridgeLive,
+  createCsWebUiFrameChannel,
   MockApplicationBridge,
   createApplicationBridgeController,
 } from "@runic-artifex/application-bridge";
@@ -46,7 +47,7 @@ export const counterBridge = preserveRunicHmrResource("counter-bridge", () =>
       CounterContract,
       import.meta.env.MODE === "mock"
         ? mock
-        : ApplicationBridgeLive(CounterContract, createDesktopFrameChannel()),
+        : ApplicationBridgeLive(CounterContract, ("runicCsWebUi" in globalThis ? createCsWebUiFrameChannel() : createDesktopFrameChannel())),
     ),
     {
       reduce: (_snapshot, event) => event.snapshot,

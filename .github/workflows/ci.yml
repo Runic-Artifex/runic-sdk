@@ -46,6 +46,9 @@ jobs:
       - name: Verify the customer migration through the live bridge
         working-directory: examples/customer-migration/Host/Frontend
         run: bun run test:browser
+      - name: Verify both hosts with frontend HMR
+        working-directory: examples/customer-migration/Host/Frontend
+        run: bun run test:dev
       - run: bun run verify:templates
       - name: Check generated files and lockfile
         run: git diff --exit-code

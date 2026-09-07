@@ -22,11 +22,11 @@ internal static partial class FrontendDevelopmentDocument
         string document = BaseElement().IsMatch(developmentDocument)
             ? BaseElement().Replace(
                 developmentDocument,
-                "<base href=\"/\">",
+                "<base href=\"./\">",
                 1)
             : HeadElement().Replace(
                 developmentDocument,
-                "<head><base href=\"/\">",
+                "<head><base href=\"./\">",
                 1);
         document = DevelopmentAssetAttribute().Replace(document, match =>
         {
@@ -34,7 +34,7 @@ internal static partial class FrontendDevelopmentDocument
             string normalized = path.StartsWith("./", StringComparison.Ordinal)
                 ? path[1..]
                 : path;
-            if (string.Equals(normalized, "/webui.js", StringComparison.OrdinalIgnoreCase))
+            if (normalized is "/webui.js" or "/runic-desktop.js")
             {
                 return match.Value;
             }
@@ -49,17 +49,10 @@ internal static partial class FrontendDevelopmentDocument
                 match.Groups["prefix"].Value +
                 new Uri(origin, match.Groups["path"].Value).AbsoluteUri +
                 match.Groups["suffix"].Value);
-        document = WebUiScript().Replace(
-            document,
-            "<script src=\"/webui.js\"></script>",
-            1);
-        if (!WebUiScript().IsMatch(document))
-        {
-            document = HeadElement().Replace(
-                document,
-                "<head><script src=\"/webui.js\"></script>",
-                1);
-        }
+        document = HostScript().Replace(document, "");
+        if (configuration.Host == "desktop")
+            document = HeadElement().Replace(document,
+                "<head><script src=\"runic-desktop.js\"></script>", 1);
         string inspectorBootstrap =
             "<script>globalThis.__runicToolkitApplicationBridgeDevelopment=Object.freeze({" +
             "endpoint:" + JsonString(inspectorEndpoint.AbsoluteUri) + "," +
@@ -102,8 +95,8 @@ internal static partial class FrontendDevelopmentDocument
     [GeneratedRegex("<head(?:\\s[^>]*)?>", RegexOptions.IgnoreCase)]
     private static partial Regex HeadElement();
 
-    [GeneratedRegex("<script\\s+[^>]*src\\s*=\\s*[\"'](?:\\.?/)?webui\\.js[\"'][^>]*>\\s*</script>", RegexOptions.IgnoreCase)]
-    private static partial Regex WebUiScript();
+    [GeneratedRegex("<script\\s+[^>]*src\\s*=\\s*[\"'](?:\\.?/)?(?:webui|runic-desktop)\\.js[\"'][^>]*>\\s*</script>", RegexOptions.IgnoreCase)]
+    private static partial Regex HostScript();
 
     [GeneratedRegex("(?<prefix><(?:script|link)\\b[^>]*?\\b(?:src|href)\\s*=\\s*[\"'])(?<path>(?![A-Za-z][A-Za-z0-9+.-]*:|//|#|data:)[^\"']+)(?<suffix>[\"'])", RegexOptions.IgnoreCase)]
     private static partial Regex DevelopmentAssetAttribute();

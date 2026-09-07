@@ -8,6 +8,9 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <RunicApplicationBridgeGenerate>false</RunicApplicationBridgeGenerate>
+    <RunicApplicationBridgeAuthority>csharp</RunicApplicationBridgeAuthority>
+    <RunicToolkitFrontendDevServerKind>vite</RunicToolkitFrontendDevServerKind>
+    <RunicToolkitFrontendViteDevServerEntry>/src/main.tsx</RunicToolkitFrontendViteDevServerEntry>
     <RunicAssetsDist Condition="'$(RunicBridgeInspect)' != 'true'">$(MSBuildProjectDirectory)/Frontend/dist</RunicAssetsDist>
   </PropertyGroup>
   <ItemGroup>
