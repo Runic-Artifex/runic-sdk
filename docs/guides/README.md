@@ -5,6 +5,7 @@ and the [SDK contributor guide](../../CONTRIBUTING.md) for workspace commands.
 
 - [Application architecture](application/architecture/README.md), [Application Bridge](application/architecture/application-bridge.md).
 - [MVVM migration design](application/architecture/mvvm-migration-rfc.md) and [customer migration reference](../../examples/customer-migration/README.md).
+- [OS integration API proposal](application/architecture/os-integration-rfc.md) and [acceptance scenarios](../../eng/os-integration-acceptance.md).
 - [Desktop native close handling](desktop/window-close-lifecycle.md).
 - [Translation guides](translations).
 - [Asset guides](assets).

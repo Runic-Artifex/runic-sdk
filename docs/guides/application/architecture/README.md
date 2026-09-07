@@ -24,3 +24,6 @@ while Toolkit core does not depend on those products.
 Cross-domain source references inside this repository are declared in
 `eng/ownership.json`. Cross-repository composition is verified through packed
 NuGet/npm consumers rather than source references.
+
+The next platform-services design is the [OS integration RFC](os-integration-rfc.md),
+with explicit host capabilities, native ownership and migration acceptance scenarios.

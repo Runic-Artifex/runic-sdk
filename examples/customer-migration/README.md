@@ -145,3 +145,8 @@ belong to the test and are removed afterward.
 
 See the [migration RFC](../../docs/guides/application/architecture/mvvm-migration-rfc.md)
 and [step-by-step guide](../../docs/guides/application/guides/migrate-mvvm-to-runic.md).
+
+The proposed next feature adds native import/export and clipboard commands through
+shared OS services. See the [API design](../../docs/guides/application/architecture/os-integration-rfc.md)
+and [acceptance scenarios](../../eng/os-integration-acceptance.md); these are planned,
+not current native picker or clipboard guarantees.
