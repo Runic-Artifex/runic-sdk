@@ -1,3 +1,4 @@
+import { nodeCompatibility } from "../../../eng/node-compatibility.mjs";
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -5,11 +6,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-const execFile = promisify(execFileCallback);
+const execute = promisify(execFileCallback);
+const execFile = (command, args, options) => {
+  const compatibility = nodeCompatibility();
+  return execute(command === process.execPath ? compatibility.executable : command, args,
+    { ...options, env: { ...compatibility.env, ...options?.env } });
+};
 const root = await mkdtemp(join(tmpdir(), "runic-svelte-package-"));
 const suppliedArchives = process.argv.slice(2);
 if (suppliedArchives.length !== 0 && suppliedArchives.length !== 3) {
-  throw new Error("Usage: node test/package-consumers.mjs [<application-bridge.tgz> <svelte.tgz> <vite-plugin-runic.tgz>]");
+  throw new Error("Usage: bun test/package-consumers.mjs [<application-bridge.tgz> <svelte.tgz> <vite-plugin-runic.tgz>]");
 }
 
 try {

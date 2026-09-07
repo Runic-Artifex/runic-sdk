@@ -310,28 +310,19 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
   assert.equal(specs.length, 1);
 });
 
-test("starts with the official Vite DevTools server and validated JSON renderer", async () => {
-  const server = await createServer({
-    configFile: false,
-    logLevel: "silent",
-    plugins: [
-      DevTools({ visibility: "passive" }),
-      runic({
-        contract: { identity: "sample", version: "1", fingerprint: "abc" },
-      }),
-    ],
-    server: { host: "127.0.0.1", port: 0, strictPort: false },
-  });
+test("Bun keeps core diagnostics available and rejects a required Node-only dock", async () => {
+  assert.ok("Bun" in globalThis);
+  const required = runic({ devtools: true });
+  assert.throws(() => required.configResolved({ command: "serve", mode: "development", root: process.cwd() }), /RUNICP007.*Bun/);
+  const plugin = runic();
+  const server = await createServer({ configFile: false, logLevel: "silent", plugins: [plugin],
+    server: { host: "127.0.0.1", port: 0, strictPort: false } });
   try {
     await server.listen();
-    const address = server.httpServer?.address();
-    assert.ok(address && typeof address === "object");
-    const response = await fetch(`http://127.0.0.1:${address.port}/__runic/state`);
-    assert.equal(response.status, 200);
-    assert.equal((await response.json()).contract.identity, "sample");
-  } finally {
-    await server.close();
-  }
+    assert.doesNotMatch(plugin.load("\0virtual:runic/client"), /@vitejs\/devtools\/client/);
+    const address = server.httpServer.address();
+    assert.equal((await fetch(`http://127.0.0.1:${address.port}/__runic/state`)).status, 200);
+  } finally { await server.close(); }
 });
 
 test("excludes the official DevTools client from production output", async () => {

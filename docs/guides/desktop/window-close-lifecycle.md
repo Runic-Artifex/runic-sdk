@@ -87,7 +87,6 @@ covers clean/dirty decisions, Keep editing, Escape, discard and an active save.
 `Runic.Desktop.WebViewSmoke` sends actual native close requests: `WM_CLOSE`,
 `gtk_window_close` scheduled on the GTK thread, or AppKit `performClose:` on the main
 thread. It checks bridge responsiveness during the pending decision, veto, retry and
-approved destruction. Root CI runs this smoke on Linux, Windows and both macOS
-architectures. Local execution evidence is recorded in the
+approved destruction. Root CI runs this smoke on Linux x64, Windows x64 and macOS Apple Silicon. Local execution evidence is recorded in the
 [reference verification record](../../../examples/customer-migration/VERIFICATION.md);
 adding CI coverage is not evidence that a remote platform run has passed.

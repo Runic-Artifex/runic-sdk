@@ -32,7 +32,9 @@ and `counter-bridge.ts` selects the selected native host channel or frontend-onl
 mock Layer. `@runic-artifex/svelte` owns Svelte 5 rune projection and
 component-tree lifecycle while one controller owns the Effect runtime and its
 transport scope. The Runic Vite plugin injects the Desktop bootstrap, adds HMR
-persistence, and integrates the official Vite DevTools panel.
+persistence, and integrates the optional official Vite DevTools panel on Node.
+The pinned panel transport does not support Bun; Bun development retains Runic
+bridge generation, HMR and the `/__runic/state` diagnostics endpoint.
 
 Run `cd Frontend && __PACKAGE_MANAGER_NAME__ run dev:mock` for browser-only development.
 

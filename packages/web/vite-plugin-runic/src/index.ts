@@ -434,6 +434,12 @@ function initialState(options: RunicViteOptions): RunicDevelopmentState {
 
 function resolveDevtoolsAvailability(root: string, requested: boolean | "auto"): boolean {
   if (requested === false) return false;
+  if ("Bun" in globalThis) {
+    if (requested === true) throw new Error(
+      "RUNICP007: The pinned Vite DevTools dock does not support Bun. Core Runic diagnostics remain available with devtools: false or auto.",
+    );
+    return false;
+  }
   const require = createRequire(join(root, "package.json"));
   try {
     require.resolve("@vitejs/devtools/client/inject-passive");

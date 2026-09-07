@@ -349,7 +349,7 @@ internal static class Program
         await using TestServer server = await TestServer.StartAsync(transport).ConfigureAwait(false);
         string module = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "packages/web/application-bridge", "dist", "esm", "index.js"));
         if (!File.Exists(module)) throw new InvalidOperationException("Build @runic-artifex/application-bridge before running the hosted-web client test.");
-        var start = new ProcessStartInfo("node")
+        var start = new ProcessStartInfo("bun")
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -358,7 +358,7 @@ internal static class Program
         start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "hosted-web-client.mjs"));
         start.ArgumentList.Add(server.WebSocketUri.AbsoluteUri);
         start.Environment["RUNIC_APPLICATION_BRIDGE_MODULE"] = module;
-        using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the Node.js hosted-web client test.");
+        using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the Bun hosted-web client test.");
         Task<string> output = process.StandardOutput.ReadToEndAsync();
         Task<string> error = process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync().ConfigureAwait(false);
@@ -498,7 +498,7 @@ internal static class Program
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
         string script = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "tests/dotnet/Runic.Application.Hosting.Tests", "hosted-web-browser.mjs"));
-        var start = new ProcessStartInfo("node")
+        var start = new ProcessStartInfo("bun")
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,

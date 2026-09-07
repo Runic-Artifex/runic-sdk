@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isWithinDirectory } from "./path-boundary.mjs";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
@@ -7,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { root, workspace, run, configuration } from "./run.mjs";
 
 const rid = process.env.RUNIC_SIZE_RID ?? ({linux: "linux", win32: "win", darwin: "osx"}[process.platform] + "-" + process.arch);
-const temporary = mkdtempSync(join(tmpdir(), "runic-host-footprint-"));
+const temporary = realpathSync(mkdtempSync(join(tmpdir(), "runic-host-footprint-")));
 const results = resolve(root, "artifacts/host-footprint", rid, `run-${Date.now()}`);
 mkdirSync(results, { recursive: true });
 const feed = resolve(root, "artifacts/packages/nuget");
@@ -26,12 +27,12 @@ for (const group of [manifest.dependencies, manifest.devDependencies]) {
   }
 }
 writeFileSync(join(frontend, "package.json"), JSON.stringify(manifest, null, 2));
-run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], frontend, { npm_config_cache: join(temporary, "npm-cache") });
+run("bun", ["install", "--ignore-scripts"], frontend, { BUN_INSTALL_CACHE_DIR: join(temporary, "bun-cache") });
 for (const name of Object.keys(candidates))
-  assert.ok(realpathSync(join(frontend, "node_modules", name)).startsWith(frontend), `${name} resolved to workspace source`);
+  assert.ok(isWithinDirectory(frontend, join(frontend, "node_modules", name)), `${name} resolved to workspace source`);
 // Build one package-only frontend and embed exactly those bytes in every candidate.
-run("npm", ["run", "build"], frontend, { VITE_RUNIC_HOST: "desktop" });
-cpSync(join(frontend, "package-lock.json"), join(results, "frontend-package-lock.json"));
+run("bun", ["run", "--bun", "build"], frontend, { VITE_RUNIC_HOST: "desktop" });
+cpSync(join(frontend, "bun.lock"), join(results, "frontend-bun.lock"));
 const xml = value => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 writeFileSync(join(temporary, "NuGet.config"), `<configuration><packageSources><clear/><add key="candidate" value="${xml(feed)}"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>`);
 const env = { NUGET_PACKAGES: join(temporary, "packages"), DOTNET_CLI_HOME: join(temporary, "dotnet-home"),

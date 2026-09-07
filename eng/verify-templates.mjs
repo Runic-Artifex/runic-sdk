@@ -1,3 +1,4 @@
+import { nodeCompatibility } from "./node-compatibility.mjs";
 import { resolve } from "node:path";
 import { root, workspace, run } from "./run.mjs";
 
@@ -17,5 +18,5 @@ run(
     npm("runic-artifex-desktop"),
   ],
   root,
-  { RUNIC_VERIFICATION_FEED: resolve(root, "artifacts/packages/nuget") },
+  { ...nodeCompatibility().env, RUNIC_VERIFICATION_FEED: resolve(root, "artifacts/packages/nuget") },
 );

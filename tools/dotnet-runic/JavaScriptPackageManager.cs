@@ -71,7 +71,7 @@ internal sealed record JavaScriptPackageManager(
                 arguments.AddRange(["run", script]);
                 break;
             case "bun":
-                arguments.Add("run");
+                arguments.AddRange(["run", "--bun"]);
                 if (!string.IsNullOrWhiteSpace(workspace) && workspace != ".")
                 {
                     arguments.AddRange(["--filter", workspace]);

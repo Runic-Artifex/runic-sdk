@@ -43,10 +43,10 @@
     "node": ">=24.18.0 <25"
   },
   "scripts": {
-    "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });\"",
-    "build": "bun run clean && tsc --project tsconfig.json",
-    "test": "bun run build && node --test --experimental-strip-types \"test/**/*.test.ts\"",
-    "prepack": "bun run build"
+    "clean": "bun --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });\"",
+    "build": "bun run --bun clean && tsc --project tsconfig.json",
+    "test": "bun run --bun build && bun test --timeout 120000 ./test",
+    "prepack": "bun run --bun build"
   },
   "dependencies": {
     "effect": "3.22.1"

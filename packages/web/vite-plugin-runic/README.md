@@ -193,3 +193,14 @@ For a working SvelteKit integration, see the [reference application](https://git
 - [npm package](https://www.npmjs.com/package/@runic-artifex/vite-plugin-runic)
 - [Issues and support](https://github.com/Runic-Artifex/runic-vite/issues)
 - [MIT License](https://github.com/Runic-Artifex/runic-vite/blob/main/LICENSE)
+
+### Bun runtime
+
+Run repository scripts with `bun run --bun`. Build, HMR, bridge generation and the
+`/__runic/state` diagnostics endpoint work with Bun. The pinned official Vite
+DevTools dock (`@vitejs/devtools` 0.4.12 through devframe/crossws) requires Node.
+Under Bun, `devtools: "auto"` omits its client, and `devtools: true` fails with
+`RUNICP007`; omit the separate `DevTools(...)` plugin in a Bun configuration.
+The Svelte template selects it only in a Node runtime. The dock remains covered
+by a real installed npm consumer test on Node. A Bun-compatible upstream dock
+transport is follow-up work; Runic does not switch the application to Node silently.

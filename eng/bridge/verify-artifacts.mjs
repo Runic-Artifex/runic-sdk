@@ -7,7 +7,7 @@ const cli = resolve(
 );
 for (const fixture of ["setup", "counter", "refresh", "portable-core"]) {
   const directory = `specs/application/protocol/application-bridge/${fixture}`;
-  run("node", [
+  run("bun", [
     cli,
     "check",
     "--authority",

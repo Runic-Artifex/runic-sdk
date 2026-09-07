@@ -28,8 +28,8 @@
     <Error Condition="'$(RunicHost)' != 'desktop' and '$(RunicHost)' != 'cswebui'" Text="RunicHost must be desktop or cswebui." />
   </Target>
   <Target Name="CustomerFrontend" BeforeTargets="RunicAssetsPackFileSystem;CoreCompile" Condition="'$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'">
-    <Exec WorkingDirectory="Frontend" Command="bun run contract:generate" EnvironmentVariables="RunicHost=$(RunicHost)" />
-    <Exec WorkingDirectory="Frontend" Command="bun run build" EnvironmentVariables="VITE_RUNIC_HOST=$(RunicHost)" />
+    <Exec WorkingDirectory="Frontend" Command="bun run --bun contract:generate" EnvironmentVariables="RunicHost=$(RunicHost)" />
+    <Exec WorkingDirectory="Frontend" Command="bun run --bun build" EnvironmentVariables="VITE_RUNIC_HOST=$(RunicHost)" />
   </Target>
   <Import Project="../../../packages/dotnet/Runic.Assets/buildTransitive/Runic.Assets.targets" />
 </Project>

@@ -41,10 +41,10 @@
     "node": ">=24.18.0 <25"
   },
   "scripts": {
-    "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
-    "build": "npm run clean && tsc --project tsconfig.json && node -e \"require('node:fs').chmodSync('dist/esm/cli.js', 0o755)\"",
-    "test": "npm run build && node --test test/*.test.mjs",
-    "prepack": "npm run build"
+    "clean": "bun --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
+    "build": "bun run --bun clean && tsc --project tsconfig.json && bun -e \"require('node:fs').chmodSync('dist/esm/cli.js', 0o755)\"",
+    "test": "bun run --bun build && bun test --timeout 120000 test/*.test.mjs",
+    "prepack": "bun run --bun build"
   },
   "dependencies": {
     "esbuild": "0.28.1"

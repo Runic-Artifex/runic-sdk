@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
@@ -22,7 +22,7 @@ const defaultAuthorityRevision =
 const run = promisify(execFile);
 
 function usage() {
-  return 'Usage: node scripts/generate-release-data.mjs [--check] [--manifest <path>] [--compatibility-set <path>] [--authority-revision <commit>] [--output <path>]';
+  return 'Usage: bun scripts/generate-release-data.mjs [--check] [--manifest <path>] [--compatibility-set <path>] [--authority-revision <commit>] [--output <path>]';
 }
 
 function parseArguments(arguments_) {

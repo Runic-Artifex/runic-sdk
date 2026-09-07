@@ -1,6 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
+import { nodeCompatibility } from "./node-compatibility.mjs";
 import { spawnSync } from "node:child_process";
-import { readFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,17 +11,20 @@ export const workspace = JSON.parse(
 );
 export const configuration = process.env.CONFIGURATION ?? "Debug";
 const executable = (name) =>
-  process.platform === "win32" && ["bun", "npm", "pnpm"].includes(name)
+  process.platform === "win32" && ["npm", "pnpm"].includes(name)
     ? `${name}.cmd`
     : name;
 export function run(command, args, cwd = root, extraEnv = {}) {
   console.log(
     `\n> ${command} ${args.join(" ")} (${cwd === root ? "/" : cwd.startsWith(root) ? cwd.slice(root.length) : cwd})`,
   );
-  const result = spawnSync(executable(command), args, {
+  const launchArgs = command === "bun" && args[0] === "run" && !args.includes("--bun")
+    ? ["run", "--bun", ...args.slice(1)] : args;
+  const compatibility = ["node", "npm", "pnpm"].includes(command) ? nodeCompatibility() : null;
+  const result = spawnSync(command === "node" ? compatibility.executable : executable(command), launchArgs, {
     cwd,
     stdio: "inherit",
-    env: { ...process.env, ...extraEnv },
+    env: { ...(compatibility?.env ?? process.env), ...extraEnv },
   });
   if (result.error) throw result.error;
   if (result.status !== 0)
@@ -52,7 +56,7 @@ function orderedPackages() {
 function web(command) {
   for (const p of orderedPackages()) {
     if (manifest(p.path).scripts?.[command])
-      run("bun", ["run", command], resolve(root, p.path));
+      run("bun", ["run", "--bun", command], resolve(root, p.path));
   }
   // On a clean checkout Bun cannot link workspace executables until their
   // compiled entry files exist. Refresh links before building consuming apps.
@@ -84,12 +88,19 @@ function build() {
     configuration,
     "--nologo",
   ]);
-  run("bun", ["run", "build"], resolve(root, "docs"));
+  run("bun", ["run", "--bun", "build"], resolve(root, "docs"));
 }
 function test() {
-  run("node", ["--test", "eng/workspace.test.mjs"]);
-  run("node", ["--test", "tests/engineering/size-command.test.mjs"]);
-  run("node", ["--test", "tests/engineering/acceptance/current-*/*.test.mjs"]);
+  run("bun", ["test", "--timeout", "180000", "./eng/workspace.test.mjs", "./eng/path-boundary.test.mjs", "./eng/node-compatibility.test.mjs"]);
+  run("bun", ["test", "--timeout", "180000", "tests/engineering/size-command.test.mjs"]);
+  const acceptance = "tests/engineering/acceptance";
+  const acceptanceTests = readdirSync(resolve(root, acceptance), { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name.startsWith("current-"))
+    .flatMap(entry => readdirSync(resolve(root, acceptance, entry.name))
+      .filter(name => name.endsWith(".test.mjs"))
+      .map(name => `./${acceptance}/${entry.name}/${name}`)).sort();
+  if (!acceptanceTests.length) throw new Error("No current acceptance tests found");
+  run("bun", ["test", "--timeout", "180000", ...acceptanceTests]);
   run("dotnet", [
     "test",
     "tests/dotnet/Runic.Desktop.Tests",
@@ -128,10 +139,10 @@ function test() {
     "--no-build",
   ]);
   web("test");
-  run("node", ["tests/web/svelte-package-consumers/package-consumers.mjs"]);
+  run("bun", ["tests/web/svelte-package-consumers/package-consumers.mjs"]);
   run(
     "bun",
-    ["run", "test"],
+    ["run", "--bun", "test"],
     resolve(root, "examples/customer-migration/Host/Frontend"),
   );
   run(
@@ -168,9 +179,9 @@ function test() {
     "validate",
     "apps/translations-editor/ExampleWorkspace",
   ]);
-  run("node", ["eng/bridge/verify-artifacts.mjs"]);
-  run("bun", ["run", "check"], resolve(root, "docs"));
-  run("bun", ["run", "test"], resolve(root, "docs"));
+  run("bun", ["eng/bridge/verify-artifacts.mjs"]);
+  run("bun", ["run", "--bun", "check"], resolve(root, "docs"));
+  run("bun", ["run", "--bun", "test"], resolve(root, "docs"));
 }
 function pack() {
   // Pack is also usable on a clean checkout: bundled tools and generators must exist first.

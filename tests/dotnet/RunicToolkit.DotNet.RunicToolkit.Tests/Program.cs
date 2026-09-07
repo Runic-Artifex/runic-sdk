@@ -194,7 +194,7 @@ internal static class Program
             ["install", "--frozen-lockfile", "--ignore-scripts"],
             bun.InstallArguments());
         SequenceEqual(
-            ["run", "--filter", "@example/app", "dev", "--host", "127.0.0.1"],
+            ["run", "--bun", "--filter", "@example/app", "dev", "--host", "127.0.0.1"],
             bun.RunScriptArguments("dev", "@example/app", ["--host", "127.0.0.1"]));
     }
 

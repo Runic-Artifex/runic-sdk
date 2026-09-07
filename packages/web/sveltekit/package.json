@@ -48,7 +48,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "bun run build && vitest run",
+    "test": "bun run --bun build && vitest run",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {

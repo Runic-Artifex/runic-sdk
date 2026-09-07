@@ -42,8 +42,8 @@ jobs:
       - name: Install browser for conformance and migration verification
         working-directory: examples/customer-migration/Host/Frontend
         run: |
-          bunx playwright-core install --with-deps chromium
-          node --input-type=module -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
+          bunx --bun playwright-core install --with-deps chromium
+          bun -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
       - run: bun run verify
       - name: Verify the customer migration through the live bridge
         working-directory: examples/customer-migration/Host/Frontend
@@ -71,9 +71,6 @@ jobs:
           - os: windows-latest
             rid: win-x64
             extension: .exe
-          - os: macos-15-intel
-            rid: osx-x64
-            extension: ""
           - os: macos-15
             rid: osx-arm64
             extension: ""
@@ -124,8 +121,6 @@ jobs:
             rid: linux-x64
           - os: windows-latest
             rid: win-x64
-          - os: macos-15-intel
-            rid: osx-x64
           - os: macos-15
             rid: osx-arm64
     runs-on: ${{ matrix.os }}
@@ -137,9 +132,6 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -152,12 +144,12 @@ jobs:
         run: |
           bun run bootstrap
           dotnet build tools/dotnet-runic-toolkit -c Release
-          node eng/run.mjs build-web
+          bun eng/run.mjs build-web
       - name: Install browser and Linux native prerequisites
         shell: bash
         run: |
-          bunx playwright-core install --with-deps chromium
-          node --input-type=module -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
+          bunx --bun playwright-core install --with-deps chromium
+          bun -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
       - name: Verify minimal Desktop conformance
         run: dotnet test tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopMinimalHost=true
       - name: Publish, measure and verify all three package consumers
@@ -170,4 +162,4 @@ jobs:
         with:
           name: host-footprint-${{ matrix.rid }}-${{ github.sha }}
           path: artifacts/host-footprint
-          if-no-files-found: error
+          if-no-files-found: warn

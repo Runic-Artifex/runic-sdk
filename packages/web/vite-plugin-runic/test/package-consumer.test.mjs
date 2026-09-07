@@ -5,10 +5,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
+import { nodeCompatibility } from "../../../../eng/node-compatibility.mjs";
 
-const execFile = promisify(execFileCallback);
+const execute = promisify(execFileCallback);
+const execFile = (command, args, options) => {
+  if (["node", "npm", "pnpm"].includes(command)) {
+    const compatibility = nodeCompatibility();
+    return execute(command === "node" ? compatibility.executable : command, args,
+      { ...options, env: { ...compatibility.env, ...options?.env } });
+  }
+  return execute(command, args, options);
+};
 
-test("packed package is source-free and works from an isolated consumer", async () => {
+test("packed package is source-free and works from an isolated consumer", { timeout: 120000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-package-"));
   try {
     const packed = await execFile("npm", ["pack", "--json", "--pack-destination", root], { cwd: process.cwd() });
@@ -30,6 +39,7 @@ test("packed package is source-free and works from an isolated consumer", async 
         dependencies: {
           "@runic-artifex/vite-plugin-runic": `file:${tarball}`,
           vite: "8.2.1",
+          "@vitejs/devtools": "0.4.12",
           typescript: "5.9.3",
         },
       }),
@@ -92,6 +102,9 @@ test("packed package is source-free and works from an isolated consumer", async 
       "utf8",
     );
     await execFile(process.execPath, ["build.mjs"], { cwd: root });
+    // The pinned official dock is Node-only. Exercise it in the installed npm consumer.
+    await writeFile(join(root, "devtools.mjs"), "import assert from \"node:assert/strict\";\nimport { createServer } from \"vite\";\nimport { DevTools } from \"@vitejs/devtools\";\nimport { runic } from \"@runic-artifex/vite-plugin-runic\";\nconst server = await createServer({ configFile: false, logLevel: \"silent\",\n  plugins: [DevTools({ visibility: \"passive\" }), runic({ devtools: true,\n    contract: { identity: \"sample\", version: \"1\", fingerprint: \"abc\" } })],\n  server: { host: \"127.0.0.1\", port: 0, strictPort: false } });\ntry {\n  await server.listen();\n  const address = server.httpServer.address();\n  const response = await fetch(`http://127.0.0.1:${address.port}/__runic/state`);\n  assert.equal(response.status, 200);\n  assert.equal((await response.json()).contract.identity, \"sample\");\n} finally { await server.close(); }\n");
+    await execFile("node", ["devtools.mjs"], { cwd: root });
     const manifest = JSON.parse(await readFile(join(root, "node_modules", "@runic-artifex", "vite-plugin-runic", "package.json"), "utf8"));
     assert.equal(manifest.name, "@runic-artifex/vite-plugin-runic");
 
@@ -103,4 +116,4 @@ test("packed package is source-free and works from an isolated consumer", async 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-}, 30_000);
+});

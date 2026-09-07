@@ -57,3 +57,19 @@ architectures. `bun run affected <base-ref>` reports changed components and thei
 consumers; it does not replace verification. Keep generated contracts and lockfiles
 current, and document platform checks that could not run locally.
 
+
+Repository scripts, build tools and verification use Bun 1.4.0. Use `bun run --bun`
+when invoking package scripts so Node shebangs also run under Bun. Node is retained
+for npm/pnpm package and template compatibility checks, not the default workspace
+runtime. `node:` imports refer to compatible APIs and do not require launching Node.
+Native CI targets Linux x64, Windows x64 and macOS Apple Silicon; Intel macOS is
+not a CI certification target.
+
+The optional pinned Vite DevTools dock currently rejects Bun in its upstream
+transport. Core Runic diagnostics and HMR run on Bun; the dock is exercised by
+the installed npm/Node consumer. Explicitly requiring the dock on Bun reports
+`RUNICP007`. See the [Vite plugin guide](packages/web/vite-plugin-runic/README.md#bun-runtime).
+
+Vue template type checking remains an explicit npm/Node compatibility check
+because the pinned `vue-tsc` relies on Node behavior; the template's build is also
+verified with only Bun and .NET on PATH.

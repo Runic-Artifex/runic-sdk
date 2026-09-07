@@ -24,7 +24,7 @@ that exercises the actual published application to earn `passed`:
 
 ```sh
 dotnet runic size --runtime linux-x64 --report measurements/checked.json \
-  --verify node --verify-argument ./check-published-app.mjs
+  --verify bun --verify-argument ./check-published-app.mjs
 ```
 
 The checker receives its explicit arguments, then the publish directory and

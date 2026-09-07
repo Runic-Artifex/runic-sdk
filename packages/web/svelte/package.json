@@ -55,7 +55,7 @@
   "scripts": {
     "build": "svelte-package -i src -o dist",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun run build && vitest run",
+    "test": "bun run --bun build && vitest run",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {

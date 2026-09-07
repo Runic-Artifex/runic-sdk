@@ -63,8 +63,8 @@ dotnet tool install dotnet-runic \
   "${tool_source_options[@]}" \
   "${tool_restore_options[@]}"
 
-pnpm_version="$(node "$repository_root/eng/compatibility-set-value.mjs" toolchain pnpm)"
-bun_version="$(node "$repository_root/eng/compatibility-set-value.mjs" toolchain bun)"
+pnpm_version="$(bun "$repository_root/eng/compatibility-set-value.mjs" toolchain pnpm)"
+bun_version="$(bun "$repository_root/eng/compatibility-set-value.mjs" toolchain bun)"
 package_manager_directory="$template_tmp/package-managers"
 npm install --global --prefix "$package_manager_directory" "pnpm@$pnpm_version" \
   --ignore-scripts --no-audit --no-fund
@@ -73,7 +73,7 @@ export PATH="$package_manager_directory/bin:$PATH"
 [[ "$(bun --version)" == "$bun_version" ]]
 
 npm_archive_version() {
-  node -e '
+  bun -e '
     const { execFileSync } = require("node:child_process");
     const manifest = JSON.parse(execFileSync("tar", ["-xOf", process.argv[1], "package/package.json"], { encoding: "utf8" }));
     process.stdout.write(manifest.version);
@@ -85,7 +85,7 @@ svelte_npm_version="$(npm_archive_version "$svelte_archive")"
 vite_npm_version="$(npm_archive_version "$vite_archive")"
 
 bind_candidate_integrities() {
-  node "$script_directory/bind-template-candidate-integrities.mjs" "$1" \
+  bun "$script_directory/bind-template-candidate-integrities.mjs" "$1" \
     "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
 }
 
@@ -97,7 +97,7 @@ configure_candidate_registry() {
 }
 
 registry_ready="$template_tmp/template-npm-registry.url"
-node "$script_directory/template-npm-registry.mjs" \
+bun "$script_directory/template-npm-registry.mjs" \
   "$registry_ready" "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive" &
 registry_pid=$!
 for _ in $(seq 1 100); do
@@ -127,7 +127,7 @@ test -f "$default_output/Frontend/node_modules/.package-lock.json"
 default_svelte_output="$template_tmp/default-svelte"
 dotnet new runic-app-svelte --name PackagedSvelteDefaults --output "$default_svelte_output"
 bind_candidate_integrities "$default_svelte_output/Frontend/package-lock.json"
-node -e '
+bun -e '
   const fs = require("node:fs");
   const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   const expected = new Map([
@@ -171,7 +171,7 @@ verify_framework() {
   dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   if [[ "$selected_host" == "cswebui" ]]; then
-    node -e '
+    bun -e '
       const fs = require("node:fs");
       const assets = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
       if (Object.keys(assets.libraries).some(name => name.startsWith("Runic.Desktop/")))
@@ -250,9 +250,10 @@ verify_package_manager_framework() {
     ln -sf "$(command -v dotnet)" "$bun_only_path/dotnet"
     (
       cd "$output/Frontend"
-      # vue-tsc requires Node (vuejs/language-tools#6090); Bun still runs the build.
+      # vue-tsc currently requires Node (vuejs/language-tools#6090).
+      # Keep that check in the npm compatibility lane; require a Bun-only build below.
       if [[ "$framework" == "vue" ]]; then
-        bun run typecheck
+        npm run typecheck
       else
         env PATH="$bun_only_path" "$bun_only_path/bun" --bun run typecheck
       fi
