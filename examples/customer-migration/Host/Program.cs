@@ -53,7 +53,13 @@ desktop = new DesktopApplicationHost(new()
 var builder = RunicApplication.CreateBuilder(args).UseHost(desktop);
 #endif
 builder.Services.AddSingleton(_ => new CustomerDirectory(data));
-builder.Services.AddSingleton(services => new CustomerService(services.GetRequiredService<CustomerDirectory>(), TimeSpan.FromMilliseconds(300)));
+// Headless acceptance can hold a save before persistence without racing a timer.
+string? saveGate = args.Contains("--serve") ? Environment.GetEnvironmentVariable("RUNIC_CUSTOMER_SAVE_GATE") : null;
+builder.Services.AddSingleton(services => new CustomerService(services.GetRequiredService<CustomerDirectory>(),
+    TimeSpan.FromMilliseconds(300), saveGate is null ? null : async token =>
+    {
+        while (File.Exists(saveGate)) await Task.Delay(25, token);
+    }));
 await using var application = builder.Build();
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };

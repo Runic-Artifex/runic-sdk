@@ -1,7 +1,7 @@
 import { stopHost } from "./host-process.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { chromium } from "playwright-core";
 const here = dirname(fileURLToPath(import.meta.url));
 const temporary = await mkdtemp(resolve(tmpdir(), "runic-customer-browser-"));
 const file = resolve(temporary, "customers.json");
+const saveGate = resolve(temporary, "hold-save");
 const host = spawn(
   process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ?? "dotnet",
   process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ? ["--serve"] : [
@@ -21,7 +22,7 @@ const host = spawn(
   ],
   {
     cwd: here,
-    env: { ...process.env, RUNIC_CUSTOMERS_FILE: file },
+    env: { ...process.env, RUNIC_CUSTOMERS_FILE: file, RUNIC_CUSTOMER_SAVE_GATE: saveGate },
     stdio: ["pipe", "pipe", "pipe"],
   },
 );
@@ -134,6 +135,7 @@ try {
     JSON.parse(await readFile(file, "utf8"))[0].Name,
     "Alex Browser",
   );
+  await writeFile(saveGate, "hold until cancellation is observed");
   await page.getByLabel("Company", { exact: true }).fill("Cancelled Company");
   await page
     .getByRole("button", { name: "Save customer", exact: true })
@@ -155,6 +157,7 @@ try {
     JSON.parse(await readFile(file, "utf8"))[0].Company,
     "Northstar Studio",
   );
+  await rm(saveGate);
   await page.getByRole("button", { name: "Reconnect", exact: true }).click();
   await page.waitForFunction(
     () => !document.querySelector(".bottom button")?.disabled,

@@ -83,13 +83,14 @@ public sealed class CustomerDirectory(string? path = null) : IDisposable
         new(Guid.Parse("22222222-2222-4222-8222-222222222222"), "Sam Rivera", "sam@example.com", "Fieldwork", 1),
         new(Guid.Parse("33333333-3333-4333-8333-333333333333"), "Robin Chen", "robin@example.com", "Independent", 1)];
 }
-public sealed class CustomerService(CustomerDirectory directory, TimeSpan stepDelay)
+public sealed class CustomerService(CustomerDirectory directory, TimeSpan stepDelay, Func<CancellationToken, Task>? beforeSave = null)
 {
     public Customer[] Read() => directory.Read();
     public async Task<Customer> SaveAsync(CustomerDraft draft, Func<int, ValueTask> progress, CancellationToken token)
     {
         var errors = CustomerRules.Validate(draft);
         if (errors.Length != 0) throw new CustomerProblem("Validation", "Correct the highlighted fields.", errors);
+        if (beforeSave is not null) await beforeSave(token);
         // Visible staging for this demonstration; no simulated delay is required by Runic.
         foreach (int percent in new[] { 20, 60, 90 })
         {

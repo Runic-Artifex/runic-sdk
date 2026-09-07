@@ -116,6 +116,13 @@ frontend state tests, and generated-contract checks. Linux CI also runs live bro
 acceptance. Windows CI compiles the original WPF host. Native UI/accessibility
 certification is still separate from these automated checks.
 
+The browser cancellation check holds the sample service before persistence,
+then cancels through the actual bridge. Headless `--serve` hosting accepts an
+explicit `RUNIC_CUSTOMER_SAVE_GATE` sentinel path for that check; normal windowed
+execution ignores it. This makes cancellation acceptance independent of the
+machine's speed and the demonstration's progress delay. The directory and gate
+belong to the test and are removed afterward.
+
 ## Deliberate limits and next work
 
 - HTML file selection demonstrates an OS picker through the WebView. It is not a
