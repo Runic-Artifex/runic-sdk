@@ -11,8 +11,10 @@ project does not silently change its language, analyzer or package settings.
 - `translations`: translation runtime, compiler, generators and tooling.
 
 Props are imported before a project's property groups. Matching targets are imported
-after its items. Root `Directory.Build.targets` applies Desktop's WebView2 reference
-filter to all source consumers. NuGet dependency versions remain in the root
+after its items. Root `Directory.Build.targets` applies Desktop's host profile
+switch to source consumers. Desktop takes only WebView2's native loader assets;
+its COM callbacks are generated at build time for NativeAOT. NuGet dependency
+versions remain in the root
 `Directory.Packages.props`; the translation compiler's existing Roslyn pin is scoped
 there to translation projects, rather than becoming a workspace-wide downgrade.
 

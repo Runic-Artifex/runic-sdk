@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Microsoft.Web.WebView2.Core;
 
 namespace Runic.Desktop.Internal;
 
@@ -49,8 +48,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private readonly TaskCompletionSource _ready = NewCompletionSource();
     private readonly TaskCompletionSource _closed = NewCompletionSource();
     private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _dispatchQueue = new();
-    private CoreWebView2Controller? _controller;
-    private CoreWebView2Environment? _environment;
+    private WindowsWebView2Controller? _controller;
     private WebUiEmbeddedHostOptions? _options;
     private Thread? _thread;
     private GCHandle _selfHandle;
@@ -74,9 +72,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             }
             try
             {
-                return !string.IsNullOrWhiteSpace(CoreWebView2Environment.GetAvailableBrowserVersionString());
+                return WindowsWebView2Interop.IsAvailable();
             }
-            catch (Exception exception) when (exception is WebView2RuntimeNotFoundException or COMException or DllNotFoundException)
+            catch (Exception exception) when (exception is COMException or DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
             {
                 return false;
             }
@@ -121,7 +119,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(url);
-        return InvokeAsync(() => _controller!.CoreWebView2.Navigate(url.AbsoluteUri), cancellationToken);
+        return InvokeAsync(() => _controller!.Navigate(url.AbsoluteUri), cancellationToken);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
@@ -139,7 +137,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             Native.ShowWindow(_window, SwShow);
             Native.SetForegroundWindow(_window);
             Native.SetFocus(_window);
-            _controller!.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+            _controller!.MoveFocus();
         }, cancellationToken);
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
@@ -223,8 +221,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     private void Run(Uri url)
     {
+        var comInitialized = false;
         try
         {
+            // NativeAOT does not supply the managed WebView2 wrapper's COM setup.
+            Marshal.ThrowExceptionForHR(Native.CoInitializeEx(0, 2)); // COINIT_APARTMENTTHREADED
+            comInitialized = true;
             EnsureWindowClass();
             var options = _options ?? throw new InvalidOperationException("The embedded host has no launch options.");
             var width = checked((int)options.Width);
@@ -273,17 +275,23 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         }
         finally
         {
-            _controller?.Close();
-            _controller = null;
-            _environment = null;
-            if (_icon != 0)
+            try
             {
-                Native.DestroyIcon(_icon);
-                _icon = 0;
+                _controller?.Dispose();
+                _controller = null;
+                if (_icon != 0)
+                {
+                    Native.DestroyIcon(_icon);
+                    _icon = 0;
+                }
+                if (_selfHandle.IsAllocated)
+                {
+                    _selfHandle.Free();
+                }
             }
-            if (_selfHandle.IsAllocated)
+            finally
             {
-                _selfHandle.Free();
+                if (comInitialized) Native.CoUninitialize();
             }
         }
     }
@@ -293,32 +301,18 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         try
         {
             var options = _options!;
-            var environmentOptions = new CoreWebView2EnvironmentOptions
-            {
-                AdditionalBrowserArguments = options.CustomParameters,
-            };
-            _environment = await CoreWebView2Environment.CreateAsync(
-                userDataFolder: options.ProfilePath,
-                options: environmentOptions);
-            _controller = await _environment.CreateCoreWebView2ControllerAsync(_window);
+            _controller = await WindowsWebView2Controller.CreateAsync(_window, options);
             _controller.Bounds = ClientBounds();
             _controller.IsVisible = !options.Hidden;
             if (options.Transparent)
             {
-                _controller.DefaultBackgroundColor = Color.Transparent;
+                _controller.SetTransparent();
             }
-            _controller.CoreWebView2.DocumentTitleChanged += (_, _) =>
-                Native.SetWindowText(_window, _controller.CoreWebView2.DocumentTitle);
-            _controller.CoreWebView2.WindowCloseRequested += (_, _) => Native.PostMessage(_window, WmClose, 0, 0);
-            _controller.CoreWebView2.PermissionRequested += (_, request) =>
-            {
-                var isMedia = request.PermissionKind is CoreWebView2PermissionKind.Camera or CoreWebView2PermissionKind.Microphone;
-                request.State = isMedia && (options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0
-                    ? CoreWebView2PermissionState.Allow
-                    : CoreWebView2PermissionState.Deny;
-                request.Handled = true;
-            };
-            _controller.CoreWebView2.Navigate(url.AbsoluteUri);
+            _controller.RegisterEvents(
+                title => Native.SetWindowText(_window, title),
+                () => Native.PostMessage(_window, WmClose, 0, 0),
+                options.AllowedPermissions);
+            _controller.Navigate(url.AbsoluteUri);
             if (!string.IsNullOrWhiteSpace(options.IconFile))
             {
                 _icon = Native.LoadImage(0, options.IconFile, ImageIcon, 0, 0, LrLoadFromFile);
@@ -374,9 +368,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     private void CloseController()
     {
-        _controller?.Close();
+        _controller?.Dispose();
         _controller = null;
-        _environment = null;
     }
 
     private static unsafe void EnsureWindowClass()
@@ -546,6 +539,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     private static partial class Native
     {
+        [LibraryImport("ole32.dll")]
+        internal static partial int CoInitializeEx(nint reserved, uint concurrencyModel);
+
+        [LibraryImport("ole32.dll")]
+        internal static partial void CoUninitialize();
+
         [LibraryImport("user32.dll", EntryPoint = "RegisterClassExW", SetLastError = true)]
         internal static partial ushort RegisterClassEx(in WindowClass windowClass);
 

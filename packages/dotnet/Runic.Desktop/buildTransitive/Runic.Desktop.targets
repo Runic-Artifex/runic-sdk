@@ -10,17 +10,4 @@
     <Error Condition="'$(RunicDesktopMinimalHost)' != '' and '$(RunicDesktopMinimalHost)' != 'true' and '$(RunicDesktopMinimalHost)' != 'false'"
            Text="RunicDesktopMinimalHost must be true or false." />
   </Target>
-  <!--
-    The WebView2 SDK adds its WPF and WinForms controls to every modern .NET
-    project. Runic.Desktop uses only Microsoft.Web.WebView2.Core, so remove
-    those UI-framework references unless the consuming project uses them.
-  -->
-  <Target Name="RunicDesktopRemoveUnusedWebView2Controls" BeforeTargets="ResolveAssemblyReferences">
-    <ItemGroup>
-      <Reference Remove="@(Reference)"
-                 Condition="'$(UseWPF)' != 'true' and '%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
-      <Reference Remove="@(Reference)"
-                 Condition="'$(UseWindowsForms)' != 'true' and '%(Reference.Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
-    </ItemGroup>
-  </Target>
 </Project>

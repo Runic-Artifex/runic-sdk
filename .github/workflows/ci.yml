@@ -376,6 +376,12 @@ jobs:
       - name: Compile the original WPF migration example
         if: runner.os == 'Windows'
         run: dotnet build examples/customer-migration/Wpf/CustomerWpf.csproj -c Release
+      - name: Publish and exercise WebView2 with NativeAOT
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          dotnet publish tests/native/Runic.Desktop.WebViewSmoke -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/webview-aot
+          ./artifacts/webview-aot/Runic.Desktop.WebViewSmoke.exe
       - name: Publish generated member bridge with NativeAOT
         shell: bash
         run: |

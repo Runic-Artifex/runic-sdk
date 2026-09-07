@@ -32,4 +32,11 @@
           CopyToOutputDirectory="PreserveNewest"
           Condition="Exists('../../artifacts/browser/runic-desktop-test.js')" />
   </ItemGroup>
+  <Target Name="IncludeWebView2AbiContract" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <_WebView2Sdk Include="@(PackageVersion)" Condition="'%(Identity)' == 'Microsoft.Web.WebView2'" />
+      <None Include="@(_WebView2Sdk->'$(NuGetPackageRoot)/microsoft.web.webview2/%(Version)/build/native/include/WebView2.h')"
+            Link="interop/WebView2.h" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

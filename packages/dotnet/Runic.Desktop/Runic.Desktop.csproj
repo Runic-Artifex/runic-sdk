@@ -13,11 +13,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Keep the WebView2 compile surface private while allowing its build
-         targets to carry the Core assembly and loader to clean consumers.
-         Runic.Desktop's own transitive target removes the SDK's WPF/WinForms
-         references when the application does not use them. -->
-    <PackageReference Include="Microsoft.Web.WebView2" PrivateAssets="compile;contentfiles;analyzers" />
+    <!-- Use the native loader with our AOT-compatible COM binding. The SDK's
+         managed wrappers and build targets must not enter consumer builds. -->
+    <PackageReference Include="Microsoft.Web.WebView2" IncludeAssets="native" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Runic.Desktop.Tests" />
     <None Include="pack/README.md" Pack="true" PackagePath="" />
