@@ -40,6 +40,11 @@ configuration. It no longer generates a synthetic wrapper configuration, so
 SvelteKit and other Vite frameworks retain full control of their plugins and
 routing.
 
+For a Vite startup timeout, set `RUNIC_TOOLKIT_VITE_DEBUG=vite:config,vite:deps`
+in the environment before running `dotnet runic dev`. This enables diagnostics
+for the Vite server without sending config dumps through MSBuild's error parser.
+Customer development CI retains these diagnostics in the `host-dev` artifact.
+
 React and Vue consume the controller directly. Angular uses the official
 `@runic-artifex/angular` controller projection; every framework integration
 must keep the same protocol boundary.

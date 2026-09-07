@@ -86,6 +86,11 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 new Dictionary<string, string?>(StringComparer.Ordinal)
                 {
                     ["BROWSER"] = "none",
+                    // Scope Vite diagnostics to the dev server. Passing DEBUG
+                    // through MSBuild can make its Exec task parse config dumps
+                    // (for example "error: [Function: error]") as build errors.
+                    ["DEBUG"] = Environment.GetEnvironmentVariable("RUNIC_TOOLKIT_VITE_DEBUG")
+                        ?? Environment.GetEnvironmentVariable("DEBUG"),
                     ["RUNIC_TOOLKIT_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
                     ["RUNIC_TOOLKIT_DEV_PROJECT"] = configuration.ProjectPath,
                     [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
