@@ -99,20 +99,10 @@ public static class DesktopPlatform
         }
         if (OperatingSystem.IsMacOS())
         {
-            if (!WebUiEmbeddedHostFactory.Instance.IsSupported)
-            {
-                return Missing(
-                    "webkit-runtime-missing",
-                    "The macOS WebKit framework is unavailable.",
-                    "Use a supported macOS installation or select an installed browser.");
-            }
-            if (!MacOsWkWebViewHost.IsMainThread)
-            {
-                return Missing(
-                    "macos-main-thread-required",
-                    "The first macOS embedded window must be opened from the process main thread.",
-                    "Open the first Desktop window before awaiting other work, or select an installed browser.");
-            }
+            return GetMacOsEmbeddedDiagnostic(
+                WebUiEmbeddedHostFactory.Instance.IsSupported,
+                MacOsWkWebViewHost.IsMainThread,
+                DesktopEventLoop.IsRunning);
         }
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
         {
@@ -121,6 +111,25 @@ public static class DesktopPlatform
                 "The current platform has no built-in embedded WebView host.",
                 "Provide an IDesktopWindowHostFactory or select an installed browser.");
         }
+        return null;
+    }
+
+    // Availability must accept the same worker-to-main dispatch path as
+    // MacOsWkWebViewHost.ShowAsync. An active loop owns the process main thread;
+    // merely calling from a worker without that loop is still unsupported.
+    internal static DesktopDiagnostic? GetMacOsEmbeddedDiagnostic(
+        bool frameworkAvailable, bool isMainThread, bool eventLoopRunning)
+    {
+        if (!frameworkAvailable)
+            return Missing(
+                "webkit-runtime-missing",
+                "The macOS WebKit framework is unavailable.",
+                "Use a supported macOS installation or select an installed browser.");
+        if (!isMainThread && !eventLoopRunning)
+            return Missing(
+                "macos-main-thread-required",
+                "Opening a macOS embedded window requires the process main thread or an active Desktop event loop.",
+                "Call ApplicationHost.Run() or DesktopEventLoop.Run() from the process main thread, or open the first Desktop window before awaiting other work.");
         return null;
     }
 

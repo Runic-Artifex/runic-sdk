@@ -23,6 +23,14 @@ internal static class NativeHostTests
             services.AddScoped<IApplicationBridgeDispatcher>(provider =>
             {
                 lifetime = provider.GetRequiredService<PresentationLifetime>();
+                if (OperatingSystem.IsMacOS())
+                {
+                    // This factory runs on Application.Run's worker before the
+                    // first window opens. Discovery must recognize the main loop.
+                    Check(DesktopPlatform.IsEmbeddedWindowAvailable,
+                        "macOS discovery rejected the active Application event loop.");
+                    Console.WriteLine("Native: macOS worker discovery accepted the active main-thread loop.");
+                }
                 return new EmptyDispatcher();
             });
         }, ApplicationBridgeSessionFactory.Create);

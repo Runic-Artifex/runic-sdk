@@ -12,6 +12,22 @@ public sealed class DesktopApiTests
 {
     private const int PacketHeaderSize = 8;
 
+    [Theory]
+    [InlineData(true, false, true, null)] // Application.Run worker, AppKit loop active.
+    [InlineData(true, false, false, "macos-main-thread-required")]
+    [InlineData(true, true, false, null)] // Direct synchronous main-thread startup.
+    [InlineData(true, true, true, null)]
+    [InlineData(false, false, true, "webkit-runtime-missing")]
+    [InlineData(false, true, false, "webkit-runtime-missing")]
+    public void MacOsDiscoveryRequiresFrameworkAndAnAvailableMainThread(
+        bool frameworkAvailable, bool isMainThread, bool eventLoopRunning, string? diagnosticCode)
+    {
+        var diagnostic = DesktopPlatform.GetMacOsEmbeddedDiagnostic(frameworkAvailable, isMainThread, eventLoopRunning);
+        Assert.Equal(diagnosticCode, diagnostic?.Code);
+        if (diagnosticCode == "macos-main-thread-required")
+            Assert.Contains("ApplicationHost.Run()", diagnostic!.Remediation, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void StructuredPayloadRejectsDuplicateKeysWithStableRedactedError()
     {
