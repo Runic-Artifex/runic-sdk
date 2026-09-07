@@ -302,8 +302,11 @@ internal static class WebUiApplication
         }
     }
 
-    internal static bool TryDeleteGeneratedProfile(string path)
+    internal static bool TryDeleteGeneratedProfile(string path) => TryDeleteGeneratedProfile(path, out _);
+
+    internal static bool TryDeleteGeneratedProfile(string path, out Exception? failure)
     {
+        failure = null;
         try
         {
             if (Directory.Exists(path))
@@ -317,12 +320,9 @@ internal static class WebUiApplication
             }
             return true;
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
+            failure = exception;
             return false;
         }
     }

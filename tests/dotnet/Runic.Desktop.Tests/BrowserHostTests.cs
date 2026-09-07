@@ -180,7 +180,7 @@ public sealed class BrowserHostTests
 
             await window.CloseAsync(timeout.Token);
             await WaitForProcessExitAsync(firstProcessId, timeout.Token);
-            Assert.False(Directory.Exists(firstProfile));
+            AssertProfileDeleted(window, firstProfile);
             Assert.Equal((nuint)0, window.BrowserProcessId);
 
             await window.ShowInBrowserAsync(Page("second"), browser.Value, timeout.Token);
@@ -194,7 +194,7 @@ public sealed class BrowserHostTests
 
             await WebUiApplication.WaitAsync(timeout.Token);
             Assert.Null(window.Url);
-            Assert.False(Directory.Exists(secondProfile));
+            AssertProfileDeleted(window, secondProfile);
         }
         finally
         {
@@ -240,6 +240,25 @@ public sealed class BrowserHostTests
             await window.DisposeAsync();
             WebUiApplication.SetConnectionTimeout(15);
         }
+    }
+
+    private static void AssertProfileDeleted(WebUiWindow window, string? profile)
+    {
+        if (!Directory.Exists(profile)) return;
+
+        // Only inspect our generated test profile, never browser contents or a user profile.
+        string entries;
+        try
+        {
+            entries = string.Join(", ", Directory.EnumerateFileSystemEntries(profile)
+                .Take(30).Select(path => $"{Path.GetFileName(path)} ({File.GetAttributes(path)})"));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            entries = exception.Message;
+        }
+        Assert.Fail($"Generated profile remains: {profile}. Entries: {entries}. " +
+            $"Last deletion failure: {window.LastProfileCleanupFailure?.ToString() ?? "none; directory may have been recreated"}");
     }
 
     private static WebUiBrowser? FindChromiumBrowser()

@@ -1060,6 +1060,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal string? GeneratedProfilePath => _generatedProfilePath;
 
+    internal Exception? LastProfileCleanupFailure { get; private set; }
+
     internal bool HasEmbeddedHost => _embeddedHost is not null;
 
     internal bool RequiresMainThreadEventPump => _embeddedHost is IWebUiMainThreadHost;
@@ -1820,9 +1822,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (_runtimeOptions is null)
         {
-            return WebUiApplication.TryDeleteGeneratedProfile(path);
+            var deleted = WebUiApplication.TryDeleteGeneratedProfile(path, out var failure);
+            LastProfileCleanupFailure = failure;
+            return deleted;
         }
 
+        LastProfileCleanupFailure = null;
         try
         {
             if (Directory.Exists(path))
@@ -1833,6 +1838,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            LastProfileCleanupFailure = exception;
             return false;
         }
     }

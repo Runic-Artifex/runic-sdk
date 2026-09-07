@@ -1,20 +1,36 @@
 using Runic.Desktop;
 
-if (!DesktopPlatform.IsEmbeddedWindowAvailable)
+// A stalled native event loop otherwise occupies a runner until the job timeout.
+// Exit normally with failure rather than producing an unhandled-exception core dump.
+using var watchdog = new Timer(static _ =>
 {
-    throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
-}
+    Console.Error.WriteLine("Native window smoke exceeded its 90-second deadline; see the last logged phase.");
+    Environment.Exit(1);
+}, null, TimeSpan.FromSeconds(90), Timeout.InfiniteTimeSpan);
 
-if (OperatingSystem.IsMacOS())
+try
 {
-    RunMacOsSmoke();
-}
-else
-{
-    await RunAsyncSmoke();
-}
+    if (!DesktopPlatform.IsEmbeddedWindowAvailable)
+    {
+        throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
+    }
 
-Console.WriteLine("Runic Desktop embedded WebView smoke passed.");
+    if (OperatingSystem.IsMacOS())
+    {
+        RunMacOsSmoke();
+    }
+    else
+    {
+        await RunAsyncSmoke();
+    }
+
+    Console.WriteLine("Runic Desktop embedded WebView smoke passed.");
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine(exception);
+    Environment.ExitCode = 1;
+}
 
 static async Task RunAsyncSmoke()
 {
@@ -42,6 +58,7 @@ static async Task RunAsyncSmoke()
 
 static void RunMacOsSmoke()
 {
+    Console.WriteLine("macOS: starting presentation host on the main thread.");
     var host = DesktopHost.StartAsync(CreateHostOptions()).AsTask().GetAwaiter().GetResult();
     try
     {
@@ -60,6 +77,7 @@ static void RunMacOsSmoke()
     }
     finally
     {
+        Console.WriteLine("macOS: disposing presentation host.");
         host.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 }
@@ -75,7 +93,9 @@ static void RunMacOsWindow(
     DesktopWindow? window = null;
     try
     {
+        Console.WriteLine("macOS: opening embedded window and authenticating bridge.");
         window = surface.OpenWindowAsync(options).AsTask().GetAwaiter().GetResult();
+        Console.WriteLine("macOS: exercising window while pumping native events.");
         var activeWindow = window;
         var work = Task.Run(async () =>
         {
@@ -85,15 +105,19 @@ static void RunMacOsWindow(
             }
             finally
             {
+                Console.WriteLine("macOS: closing exercised window.");
                 await activeWindow.CloseAsync();
+                Console.WriteLine("macOS: exercised window cleanup completed.");
             }
         });
         activeWindow.WaitForClose();
+        Console.WriteLine("macOS: event pump returned; awaiting exercise completion.");
         work.GetAwaiter().GetResult();
         AssertClosed(activeWindow);
     }
     finally
     {
+        Console.WriteLine("macOS: disposing window and surface.");
         window?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         surface.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
