@@ -20,7 +20,7 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
     private List<BridgeHostEnvelope>? _inFlightFrames;
     private PresentationSession? _presentationSession;
     private ulong? _presentationSessionId;
-    private long _acceptedConnectionEpoch = -1;
+    private readonly BridgeConnectionAdmission _admission = new();
     private int _disposed;
 
     private DesktopApplicationBridge(
@@ -137,26 +137,15 @@ public sealed class DesktopApplicationBridge : IAsyncDisposable
         }
     }
 
-    private bool CanAccept(PresentationSession session, BridgeClientEnvelope envelope)
-    {
-        if (_presentationSessionId is null) return envelope.Kind == "initialize";
-        if (_presentationSessionId == session.Id)
-        {
-            return envelope.ConnectionEpoch == _acceptedConnectionEpoch ||
-                envelope.Kind == "initialize" && envelope.ConnectionEpoch > _acceptedConnectionEpoch;
-        }
-        return envelope.Kind == "initialize" && envelope.ConnectionEpoch > _acceptedConnectionEpoch;
-    }
+    private bool CanAccept(PresentationSession session, BridgeClientEnvelope envelope) =>
+        _admission.CanAccept(session.Id, 0, envelope);
 
-    private void AcceptAfterInitialization(
-        PresentationSession session,
-        BridgeClientEnvelope envelope,
-        BridgeHostEnvelope response)
+    private void AcceptAfterInitialization(PresentationSession session, BridgeClientEnvelope envelope, BridgeHostEnvelope response)
     {
+        _admission.Accept(session.Id, 0, envelope, response);
         if (envelope.Kind != "initialize" || response.Kind != "snapshot") return;
         _presentationSession = session;
         _presentationSessionId = session.Id;
-        _acceptedConnectionEpoch = envelope.ConnectionEpoch;
     }
 
     private void OnEventProduced(object? sender, BridgeHostEnvelope message)

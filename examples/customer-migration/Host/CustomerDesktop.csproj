@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <RunicHost Condition="'$(RunicHost)' == ''">desktop</RunicHost>
+    <DefineConstants Condition="'$(RunicHost)' == 'cswebui'">$(DefineConstants);RUNIC_CSWEBUI</DefineConstants>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -9,18 +11,22 @@
     <RunicAssetsDist Condition="'$(RunicBridgeInspect)' != 'true'">$(MSBuildProjectDirectory)/Frontend/dist</RunicAssetsDist>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Condition="'$(RunicHost)' == 'cswebui'" Include="../../../packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj" />
     <ProjectReference Include="../After/CustomerApplication.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application/Runic.Application.csproj" />
-    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
-    <ProjectReference Include="../../../packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
+    <ProjectReference Condition="'$(RunicHost)' == 'desktop'" Include="../../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+    <ProjectReference Condition="'$(RunicHost)' == 'desktop'" Include="../../../packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Generators/Runic.Application.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Bridge/buildTransitive/Runic.Application.Bridge.targets" />
+  <Target Name="ValidateRunicHost" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(RunicHost)' != 'desktop' and '$(RunicHost)' != 'cswebui'" Text="RunicHost must be desktop or cswebui." />
+  </Target>
   <Target Name="CustomerFrontend" BeforeTargets="RunicAssetsPackFileSystem;CoreCompile" Condition="'$(RunicBridgeInspect)' != 'true' and '$(DesignTimeBuild)' != 'true'">
-    <Exec WorkingDirectory="Frontend" Command="bun run contract:generate" />
-    <Exec WorkingDirectory="Frontend" Command="bun run build" />
+    <Exec WorkingDirectory="Frontend" Command="bun run contract:generate" EnvironmentVariables="RunicHost=$(RunicHost)" />
+    <Exec WorkingDirectory="Frontend" Command="bun run build" EnvironmentVariables="VITE_RUNIC_HOST=$(RunicHost)" />
   </Target>
   <Import Project="../../../packages/dotnet/Runic.Assets/buildTransitive/Runic.Assets.targets" />
 </Project>

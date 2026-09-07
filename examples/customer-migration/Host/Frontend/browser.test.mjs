@@ -1,3 +1,4 @@
+import { stopHost } from "./host-process.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -227,21 +228,10 @@ try {
     "Customer migration browser acceptance passed: live C# bridge, validation, save, cancel, dirty navigation, close confirmation, reconnect, import, uniqueness, responsive layout.",
   );
 } catch (error) {
-  if (page) console.error("Page:", (await page.content()).slice(0, 5000));
+  if (page) console.error("Page:", (await page.locator("body").innerText()).slice(0, 5000));
   throw error;
 } finally {
   await browser?.close();
-  host.kill("SIGINT");
-  await new Promise((resolve) => {
-    if (host.exitCode !== null) return resolve();
-    const timer = setTimeout(() => {
-      host.kill("SIGKILL");
-      resolve();
-    }, 5000);
-    host.once("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
-  await rm(temporary, { recursive: true, force: true });
+  try { await stopHost(host); }
+  finally { await rm(temporary, { recursive: true, force: true }); }
 }

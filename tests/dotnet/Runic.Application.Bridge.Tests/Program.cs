@@ -406,11 +406,16 @@ internal static class Program
         await progressEvent.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
         True(events.Any(message => message.Payload.GetProperty("_tag").GetString() == "OperationProgress"));
 
+        BridgeHostEnvelope future = await session.DispatchAsync(Envelope(
+            "cancelOperation", Guid.NewGuid(), session.Id.Value, session.Revision + 1,
+            $$"""{"operationId":"{{operationId}}"}"""));
+        Equal("StaleRevision", future.Payload.GetProperty("_tag").GetString());
+
         BridgeHostEnvelope cancelled = await session.DispatchAsync(Envelope(
             "cancelOperation",
             Guid.Parse("00000000-0000-4000-8000-000000000023"),
             session.Id.Value,
-            session.Revision,
+            0, // Progress already advanced the revision; cancellation still targets this operation.
             $$"""{"operationId":"{{operationId}}"}"""));
         True(cancelled.Payload.GetProperty("accepted").GetBoolean());
         await handler.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);

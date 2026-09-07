@@ -59,6 +59,12 @@ extensions in `Runic.Application.Bridge.Generated` provide
 backpressure. Cancellable commands must start an operation and their receipt must
 include a required operation identifier.
 
+Cancellation addresses an operation in the admitted session and connection. An
+older expected revision is allowed because progress can advance the revision
+while cancellation is in transit; a future revision is still rejected. Wait for
+the new operation's receipt before enabling its cancel action so a previous
+operation identifier cannot be reused accidentally.
+
 ## Dependency injection and modules
 
 Each bridge part is registered with `TryAddScoped` using a generated constructor

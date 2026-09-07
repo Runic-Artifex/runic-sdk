@@ -62,6 +62,7 @@ export async function verifyPackages() {
         "Runic.Application",
         "Runic.Application.Hosting",
         "Runic.Application.Desktop",
+        "Runic.Application.CsWebUi",
         "Runic.Application.Testing",
       ].includes(p.name)
     ) {
@@ -80,6 +81,14 @@ export async function verifyPackages() {
       Object.values(assets.libraries).every((l) => l.type !== "project"),
       `${p.name} leaked a project reference`,
     );
+    if (p.name === "Runic.Application.CsWebUi") {
+      assert.ok(!Object.keys(assets.libraries).some(name => name.startsWith("Runic.Desktop/")),
+        "CS-WebUI host unexpectedly depends on Desktop");
+      const runtime = JSON.parse(readFileSync(join(consumer, "bin/Debug/net10.0/Consumer.runtimeconfig.json"), "utf8"));
+      const frameworks = runtime.runtimeOptions.frameworks ?? [runtime.runtimeOptions.framework];
+      assert.ok(!frameworks.some(framework => framework?.name === "Microsoft.AspNetCore.App"),
+        "CS-WebUI host unexpectedly requires ASP.NET Core");
+    }
     for (const key of Object.keys(assets.libraries).filter((k) =>
       k.startsWith("Runic."),
     )) {

@@ -11,6 +11,7 @@
     <Project Path="examples/customer-migration/Tests/CustomerMigration.Tests.csproj" />
   </Folder>
   <Folder Name="/packages/dotnet/">
+    <Project Path="packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
@@ -36,6 +37,7 @@
     <Project Path="tests/fixtures/desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
   </Folder>
   <Folder Name="/tests/dotnet/">
+    <Project Path="tests/dotnet/Runic.Application.CsWebUi.Tests/Runic.Application.CsWebUi.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Bridge.CounterTests/Runic.Application.Bridge.CounterTests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Bridge.GeneratorTests/Runic.Application.Bridge.GeneratorTests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Bridge.MemberTests/Runic.Application.Bridge.MemberTests.csproj" />

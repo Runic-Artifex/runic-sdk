@@ -60,6 +60,7 @@
 
               # Required by the repository's Native AOT verification.
               clang
+              pkg-config
               zlib
             ] ++ linuxRuntimePackages;
 
@@ -74,6 +75,7 @@
               ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
                 export LD_LIBRARY_PATH="${lib.makeLibraryPath linuxRuntimePackages}:$LD_LIBRARY_PATH"
                 export WEBUI_BROWSER_PATH="${pkgs.chromium}/bin/chromium"
+                export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="${pkgs.chromium}/bin/chromium"
               ''}
             '';
           };

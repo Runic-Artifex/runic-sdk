@@ -127,7 +127,10 @@ public sealed class ApplicationBridgeSession : IAsyncDisposable, IBridgeEventPub
                 if (envelope.Kind != "initialize" && envelope.ConnectionEpoch != _connectionEpoch)
                     return ErrorLocked(commandId, "CommandRejected", "The command belongs to a stale connection.", true);
                 long revision = _revision;
-                if (envelope.ExpectedRevision is long expected && expected != revision)
+                // Cancellation targets an owned operation, not a mutable snapshot. Progress
+                // may advance the revision while the cancellation frame is in transit.
+                if (envelope.ExpectedRevision is long expected && expected != revision &&
+                    (envelope.Kind != "cancelOperation" || expected > revision))
                     return isInitializeAtCurrentOrFutureEpoch
                         ? AdmissionError(commandId, "The command was based on a stale application revision.", "StaleRevision", true, envelope.ConnectionEpoch)
                         : ErrorLocked(commandId, "StaleRevision", "The command was based on a stale application revision.", true);

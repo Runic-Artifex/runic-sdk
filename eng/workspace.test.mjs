@@ -9,11 +9,12 @@ const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace contains every SDK artifact with unchanged package identities", () => {
   const canonical = json("eng/release/runic.compatibility-set.json").packages;
   const names = [...workspace.npm, ...workspace.nuget].map((p) => p.name);
-  assert.equal(new Set(names).size, 27);
+  assert.equal(new Set(names).size, names.length);
   const authorityNames = canonical.map(
     (p) => p.name ?? p.identity ?? p.packageId,
   );
-  assert.deepEqual([...names].sort(), authorityNames.sort());
+  for (const name of authorityNames) assert.ok(names.includes(name), `Imported identity removed: ${name}`);
+  assert.deepEqual(names.filter(name => !authorityNames.includes(name)), ["Runic.Application.CsWebUi"]);
   for (const p of workspace.npm) {
     const manifest = json(`${p.path}/package.json`);
     assert.equal(manifest.name, p.name);

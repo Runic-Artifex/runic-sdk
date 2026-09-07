@@ -1,6 +1,7 @@
 import { Effect, Either } from "effect";
 import {
   ApplicationBridgeLive,
+  createCsWebUiFrameChannel,
   createApplicationBridgeController,
 } from "@runic-artifex/application-bridge";
 import { createDesktopFrameChannel } from "@runic-artifex/desktop";
@@ -9,7 +10,7 @@ import contract, {
 } from "./application.bridge.generated";
 export const bridge = createApplicationBridgeController(
   contract,
-  ApplicationBridgeLive(contract, createDesktopFrameChannel()),
+  ApplicationBridgeLive(contract, import.meta.env.VITE_RUNIC_HOST === "cswebui" ? createCsWebUiFrameChannel() : createDesktopFrameChannel()),
 );
 export async function dispatch(command: CustomersCommand) {
   const result = await bridge.run(

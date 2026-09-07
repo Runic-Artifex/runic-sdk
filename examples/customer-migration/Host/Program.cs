@@ -3,10 +3,14 @@ using CustomerMigration.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application;
 using Runic.Application.Bridge;
+#if RUNIC_CSWEBUI
+using Runic.Application.CsWebUi;
+#else
 using Runic.Application.Desktop;
-using Runic.Assets;
 using Runic.Assets.Desktop;
 using Runic.Desktop;
+#endif
+using Runic.Assets;
 
 [assembly: RunicApplicationManifest("CustomerMigration", Version = "1.0.0", Provenance = "reference")]
 [assembly: RunicApplicationCapability("desktop")]
@@ -16,6 +20,14 @@ using Runic.Desktop;
 string? data = Environment.GetEnvironmentVariable("RUNIC_CUSTOMERS_FILE");
 data ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Runic", "CustomerMigration", "customers.json");
 var assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly());
+#if RUNIC_CSWEBUI
+var host = new CsWebUiApplicationHost(new()
+{
+    Assets = assets, Title = "Customers · Runic", OpenWindow = !args.Contains("--serve"),
+    RequireNativeCloseConfirmation = args.Contains("--native"),
+});
+var builder = RunicApplication.CreateBuilder(args).UseHost(host);
+#else
 DesktopApplicationHost? desktop = null;
 var native = args.Contains("--native");
 desktop = new DesktopApplicationHost(new()
@@ -39,6 +51,7 @@ desktop = new DesktopApplicationHost(new()
     },
 });
 var builder = RunicApplication.CreateBuilder(args).UseHost(desktop);
+#endif
 builder.Services.AddSingleton(_ => new CustomerDirectory(data));
 builder.Services.AddSingleton(services => new CustomerService(services.GetRequiredService<CustomerDirectory>(), TimeSpan.FromMilliseconds(300)));
 await using var application = builder.Build();
@@ -47,7 +60,12 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
 var running = application.RunAsync(shutdown.Token);
 if (args.Contains("--serve"))
 {
+#if RUNIC_CSWEBUI
+    while (host.Url is null && !running.IsCompleted) await Task.Delay(20);
+    if (host.Url is not null) Console.WriteLine($"Customer editor: {host.Url}");
+#else
     while (desktop.Surface is null && !running.IsCompleted) await Task.Delay(20);
     if (desktop.Surface is not null) Console.WriteLine($"Customer editor: {desktop.Surface.Url}");
+#endif
 }
 try { await running; } catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }

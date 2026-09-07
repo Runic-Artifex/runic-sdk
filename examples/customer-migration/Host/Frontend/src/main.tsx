@@ -374,7 +374,7 @@ function Customers() {
                 {busy && (
                   <button
                     type="button"
-                    disabled={!editor.snapshot?.save.operationId}
+                    disabled={pending || editor.snapshot?.save.status !== "saving" || !editor.snapshot.save.operationId}
                     onClick={() => {
                       const id = editor.snapshot?.save.operationId;
                       if (id) void bridge.cancel(id).catch(failure);

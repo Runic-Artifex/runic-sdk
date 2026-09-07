@@ -7,7 +7,8 @@
     "contract:generate": "runic-bridge generate --authority csharp --project ../CustomerDesktop.csproj",
     "contract:check": "runic-bridge check --authority csharp --project ../CustomerDesktop.csproj",
     "test": "node --test src/*.test.ts",
-    "test:browser": "node browser.test.mjs",
+    "test:browser": "node browser.test.mjs && node lifecycle.test.mjs",
+    "test:lifecycle": "node lifecycle.test.mjs",
     "browser:install": "playwright-core install chromium"
   },
   "dependencies": {

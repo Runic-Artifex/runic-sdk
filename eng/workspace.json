@@ -111,6 +111,10 @@
     {
       "name": "dotnet-runic-translations",
       "project": "tools/dotnet-runic-translations/dotnet-runic-translations.csproj"
+    },
+    {
+      "name": "Runic.Application.CsWebUi",
+      "project": "packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj"
     }
   ],
   "components": {
@@ -154,7 +158,10 @@
       ]
     },
     "assets": {
-      "dependsOn": ["command-line", "desktop"],
+      "dependsOn": [
+        "command-line",
+        "desktop"
+      ],
       "paths": [
         "packages/dotnet/Runic.Assets",
         "packages/dotnet/Runic.Assets.AspNetCore",
@@ -171,7 +178,9 @@
       ]
     },
     "translations": {
-      "dependsOn": ["command-line"],
+      "dependsOn": [
+        "command-line"
+      ],
       "paths": [
         "packages/dotnet/Runic.Translations",
         "packages/dotnet/Runic.Translations.Authoring",
@@ -199,7 +208,12 @@
       ]
     },
     "application": {
-      "dependsOn": ["command-line", "desktop", "assets", "translations"],
+      "dependsOn": [
+        "command-line",
+        "desktop",
+        "assets",
+        "translations"
+      ],
       "paths": [
         "packages/dotnet/Runic.Application",
         "packages/dotnet/Runic.Application.Bridge",
@@ -242,15 +256,24 @@
         "tests/web/angular-package-consumer",
         "tests/benchmarks/application",
         "tests/fixtures/application/experiments",
-        "eng/compatibility-set-value.mjs"
+        "eng/compatibility-set-value.mjs",
+        "packages/dotnet/Runic.Application.CsWebUi",
+        "tests/dotnet/Runic.Application.CsWebUi.Tests"
       ]
     },
     "vite": {
-      "dependsOn": ["application"],
-      "paths": ["packages/web/vite-plugin-runic"]
+      "dependsOn": [
+        "application"
+      ],
+      "paths": [
+        "packages/web/vite-plugin-runic"
+      ]
     },
     "svelte": {
-      "dependsOn": ["application", "vite"],
+      "dependsOn": [
+        "application",
+        "vite"
+      ],
       "paths": [
         "packages/web/svelte",
         "packages/web/sveltekit",
@@ -259,11 +282,25 @@
       ]
     },
     "editor": {
-      "dependsOn": ["application", "assets", "translations", "svelte", "vite"],
-      "paths": ["apps/translations-editor"]
+      "dependsOn": [
+        "application",
+        "assets",
+        "translations",
+        "svelte",
+        "vite"
+      ],
+      "paths": [
+        "apps/translations-editor"
+      ]
     },
     "examples": {
-      "dependsOn": ["application", "assets", "translations", "svelte", "vite"],
+      "dependsOn": [
+        "application",
+        "assets",
+        "translations",
+        "svelte",
+        "vite"
+      ],
       "paths": [
         "tests/fixtures/legacy-examples",
         "tests/engineering/acceptance",
@@ -278,7 +315,9 @@
     },
     "docs": {
       "dependsOn": [],
-      "paths": ["docs"]
+      "paths": [
+        "docs"
+      ]
     }
   }
 }

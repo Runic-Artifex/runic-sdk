@@ -12,7 +12,11 @@ with C++20 support.
 On Linux with Nix, `nix develop` provides the SDK, Node, Bun, C++ compiler, and
 webview dependencies from the shared flake. Run these commands from this directory:
 
+See [NixOS development and native shutdown](docs/guides/desktop/nixos-development.md)
+for the environment requirements and regression checks.
+
 ```sh
+nix develop             # Linux: use the complete pinned environment
 bun run bootstrap       # One frozen npm workspace install and .NET restore
 bun run build           # SDK, editor, current example, and documentation
 bun run test            # Managed contracts, frontend tests, generated artifacts, docs

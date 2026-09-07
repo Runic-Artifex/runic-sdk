@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <PackageId>Runic.Application.CsWebUi</PackageId>
+    <Description>CS-WebUI hosting for generated Runic applications, without ASP.NET Core.</Description>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CsWebUi" />
+    <ProjectReference Include="../Runic.Application/Runic.Application.csproj" />
+    <ProjectReference Include="../Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../Runic.Assets/Runic.Assets.csproj" />
+    <InternalsVisibleTo Include="Runic.Application.CsWebUi.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>
