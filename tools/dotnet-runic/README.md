@@ -46,3 +46,13 @@ keeps progress on stderr and reserves stdout for the final result envelope.
 Hosts opt into the generated frontend development document by calling
 `assets.WithDevelopmentDocument()`. Only the explicit bounded entry document is
 replaced. The remaining asset manifest is unchanged.
+
+## Publish measurements
+
+`dotnet runic size --runtime linux-x64 --host desktop --profile minimal
+--report measurements/minimal.json` publishes a fresh self-contained NativeAOT
+distribution and records disk/ZIP bytes, file hashes, package versions, evaluated
+settings and behavior-check status. `--verify <executable>` and repeated
+`--verify-argument <value>` invoke a shell-free checker against the published
+directory and main executable. Without a checker the report says `not-run`.
+See the [size and tuning guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/size-and-tuning.md).

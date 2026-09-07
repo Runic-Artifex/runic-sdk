@@ -11,8 +11,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const temporary = await mkdtemp(resolve(tmpdir(), "runic-customer-browser-"));
 const file = resolve(temporary, "customers.json");
 const host = spawn(
-  "dotnet",
-  [
+  process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ?? "dotnet",
+  process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ? ["--serve"] : [
     resolve(
       here,
       `../bin/${process.env.CONFIGURATION ?? "Debug"}/net10.0/CustomerDesktop.dll`,
@@ -22,7 +22,7 @@ const host = spawn(
   {
     cwd: here,
     env: { ...process.env, RUNIC_CUSTOMERS_FILE: file },
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   },
 );
 let output = "";

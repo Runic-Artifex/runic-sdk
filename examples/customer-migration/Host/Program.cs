@@ -57,6 +57,9 @@ builder.Services.AddSingleton(services => new CustomerService(services.GetRequir
 await using var application = builder.Build();
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
+// Headless verification can request graceful shutdown on every OS through stdin.
+if (args.Contains("--serve") && Console.IsInputRedirected)
+    _ = Task.Run(() => StopFromInputAsync(shutdown));
 var running = application.RunAsync(shutdown.Token);
 if (args.Contains("--serve"))
 {
@@ -69,3 +72,13 @@ if (args.Contains("--serve"))
 #endif
 }
 try { await running; } catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
+
+static async Task StopFromInputAsync(CancellationTokenSource shutdown)
+{
+    try
+    {
+        if (await Console.In.ReadLineAsync(shutdown.Token) == "stop") shutdown.Cancel();
+    }
+    catch (OperationCanceledException) { }
+    catch (ObjectDisposedException) { }
+}

@@ -10,7 +10,8 @@ export async function stopHost(host) {
         host.kill("SIGKILL");
       }, 10000);
       host.once("exit", () => { clearTimeout(timer); resolve(); });
-      host.kill("SIGINT");
+      if (host.stdin?.writable) host.stdin.end("stop\n");
+      else host.kill("SIGINT");
     });
   }
   assert.equal(forced, false, "Host shutdown timed out");

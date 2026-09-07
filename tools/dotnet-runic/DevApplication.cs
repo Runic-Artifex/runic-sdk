@@ -488,7 +488,7 @@ internal static class DevApplication
         }
     }
 
-    private static string ResolveDotNetHost() =>
+    internal static string ResolveDotNetHost() =>
         Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host
             ? host
             : "dotnet";

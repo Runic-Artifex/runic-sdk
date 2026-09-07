@@ -82,6 +82,23 @@ internal static class Program
         }, stream: !dryRun);
     }
 
+    [Command("size")]
+    [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
+    internal static Task<CommandOutcome<ToolCommandResult>> Size(
+        [Option("--no-aot")] bool noAot,
+        [Option("--verify-argument", AllowMultipleValues = true)] IReadOnlyList<string> verifyArguments,
+        CancellationToken cancellationToken,
+        [Option("--project", "-p")] string project = "",
+        [Option("--runtime", "-r")] string runtime = "",
+        [Option("--host")] string host = "",
+        [Option("--profile")] string profile = "default",
+        [Option("--configuration")] string configuration = "Release",
+        [Option("--report")] string report = "runic-size.json",
+        [Option("--verify")] string verify = "") =>
+        ExecuteAsync("size", () => SizeApplication.RunAsync(new SizeOptions(
+            string.IsNullOrWhiteSpace(project) ? null : project, runtime, host, profile,
+            configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);
+
     [Command("doctor")]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Doctor(
@@ -304,6 +321,7 @@ internal static class Program
     private static string HelpFor(CommandPath? path) => path?.ToString() switch
     {
         "dev" => DevHelp,
+        "size" => SizeHelp,
         "doctor" => DoctorHelp,
         "inspect" => InspectHelp,
         "migrate" => MigrateHelp,
@@ -314,6 +332,7 @@ internal static class Program
     private const string RootHelp = """
         Usage:
           dotnet runic dev [options] [-- <application-args>...]
+          dotnet runic size --runtime <RID> [options]
           dotnet runic inspect [options]
           dotnet runic doctor [options]
           dotnet runic support [--mode preview|collect|remove] [--editor-diagnostics <zip>] [--destination <path>]
@@ -321,6 +340,7 @@ internal static class Program
 
         Commands:
           dev       Build the app and coordinate frontend and managed-host watches.
+          size      Publish and measure a fresh distribution with optional behavior verification.
           doctor    Check SDK, package-manager, lockfile, package-train, and platform prerequisites.
           inspect   Render deterministic generated application diagnostics.
           migrate   Inspect or apply the bounded CS-WebUI-to-Runic migration.
@@ -342,6 +362,27 @@ internal static class Program
           --no-frontend-watch       Build frontend assets once without starting Vite or Angular watch.
           --no-dotnet-watch         Run the managed host once without dotnet watch.
           --dry-run                 Print the evaluated development plan without starting processes.
+        """;
+
+    private const string SizeHelp = """
+        Usage:
+          dotnet runic size --runtime <RID> [options]
+
+        Options:
+          -p, --project <path>       Project file or directory. Default: current directory.
+          -r, --runtime <RID>        Required target runtime, for example linux-x64.
+          --host <name>             desktop or cswebui; defaults to the project selection.
+          --profile <name>          default or minimal (Desktop only). Default: default.
+          --configuration <name>    Default: Release.
+          --report <path>           New JSON report path. Default: runic-size.json.
+          --no-aot                  Disable NativeAOT; still publish self-contained.
+          --verify <executable>     Optional behavior checker; no shell interpolation.
+          --verify-argument <value> Repeat for checker arguments. Publish directory and
+                                    main executable path are appended automatically.
+
+        Publishes into a fresh directory next to the report. Retains logs, hashes,
+        all files and a ZIP. Culture and diagnostic settings stay project-controlled.
+        Without a successful checker, behavior is explicitly marked not-run.
         """;
 
     private const string DoctorHelp = """

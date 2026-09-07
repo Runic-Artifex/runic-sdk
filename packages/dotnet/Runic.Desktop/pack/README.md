@@ -129,3 +129,11 @@ Runic Desktop is MIT licensed. Its managed bridge implementation is informed by
 WebUI's MIT-licensed wire protocol and TypeScript bridge. The upstream license
 is retained in `eng/licenses/WebUI-LICENSE.txt` and the relevant attribution is
 recorded in `NOTICE`.
+
+### Minimal hosting profile
+
+Set `RunicDesktopMinimalHost=true` to use the opt-in empty ASP.NET Core builder
+with explicit Kestrel core and socket transport. A NativeAOT linker feature switch
+removes the default slim-builder path. Runic's surface, transport and admission
+behavior is retained; default configuration providers are omitted. Test any custom
+service assumptions. See the SDK's [size and tuning guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/size-and-tuning.md).

@@ -6,7 +6,7 @@ using Runic.Desktop;
 
 namespace Runic.Desktop.Tests;
 
-public sealed class BrowserBridgeTests
+public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     private const string ApplicationBridgeCapability = "runic.desktop.application-bridge/1";
     private const string ApplicationBridgeReceiver = "__runicDesktopReceiveApplicationBridgeFrame";
@@ -73,6 +73,7 @@ public sealed class BrowserBridgeTests
         startInfo.ArgumentList.Add(url.AbsoluteUri);
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start Chromium.");
+        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError);
         try
         {
             var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
@@ -105,6 +106,7 @@ public sealed class BrowserBridgeTests
                 process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync(CancellationToken.None);
             }
+            output.WriteLine(await browserErrors);
             profile.Delete(recursive: true);
         }
     }
@@ -150,6 +152,7 @@ public sealed class BrowserBridgeTests
 
         var profile = Directory.CreateTempSubdirectory("runic-desktop-effect-chrome-");
         using var process = StartChrome(chrome, profile.FullName, surface.Url);
+        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError);
         try
         {
             var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
@@ -182,6 +185,7 @@ public sealed class BrowserBridgeTests
                 process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync(CancellationToken.None);
             }
+            output.WriteLine(await browserErrors);
             profile.Delete(recursive: true);
         }
     }
@@ -203,8 +207,27 @@ public sealed class BrowserBridgeTests
         return Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start Chromium.");
     }
 
+    private static async Task<string> ReadBrowserErrorsAsync(StreamReader reader)
+    {
+        // Always drain the pipe so Chromium cannot block on diagnostic output.
+        var retained = new StringBuilder();
+        var buffer = new char[4096];
+        int count;
+        while ((count = await reader.ReadAsync(buffer)) != 0)
+        {
+            int take = Math.Min(count, 64 * 1024 - retained.Length);
+            if (take > 0) retained.Append(buffer, 0, take);
+        }
+        return retained.ToString();
+    }
+
     private static string? FindChrome()
     {
+        if (Environment.GetEnvironmentVariable("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH") is { Length: > 0 } configured)
+        {
+            if (!File.Exists(configured)) throw new FileNotFoundException("Configured Chromium executable is missing.", configured);
+            return configured;
+        }
         var names = OperatingSystem.IsWindows()
             ? new[] { "chrome.exe", "msedge.exe" }
             : new[] { "google-chrome", "chromium", "chromium-browser" };

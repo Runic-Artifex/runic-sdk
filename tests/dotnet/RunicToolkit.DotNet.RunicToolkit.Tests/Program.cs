@@ -32,6 +32,7 @@ internal static class Program
             ("compiler rendered-fragment snapshots stay bounded and private", RenderedFragmentSnapshotsAreSafe),
             ("compiler reload comparison separates renderer edits from shape edits", FrontendCompilerReloadComparisonIsSafe),
             ("phase timings are concise and stable", PhaseTimingsAreConcise),
+            ("size inventories account for all bytes and preserve file hashes", SizeInventoryAccountsForBytes),
             ("doctor supports a healthy Node-free project", DoctorSupportsNodeFreeProject),
             ("doctor verifies a complete Node contract toolchain", DoctorVerifiesNodeContracts),
             ("doctor supports Bun without a separate Node runtime", DoctorSupportsBunRuntime),
@@ -60,6 +61,33 @@ internal static class Program
 
         Console.WriteLine($"{tests.Length - failures}/{tests.Length} development-tool tests passed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void SizeInventoryAccountsForBytes()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "runic-size-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "runtimes", "win-x64", "native"));
+        try
+        {
+            File.WriteAllBytes(Path.Combine(root, "Example"), [1, 2, 3]);
+            File.WriteAllBytes(Path.Combine(root, "libwebui-2.so"), [4, 5]);
+            File.WriteAllBytes(Path.Combine(root, "Example.dbg"), [6]);
+            File.WriteAllBytes(Path.Combine(root, "runtimes", "win-x64", "native", "WebView2Loader.dll"), [7]);
+            var files = SizeApplication.Inventory(root, "Example", "linux-x64");
+            Equal(4, files.Count);
+            Equal(7L, files.Sum(file => file.Bytes));
+            Equal("main-executable", files.Single(file => file.Path == "Example").Category);
+            Equal("native-dependency", files.Single(file => file.Path == "libwebui-2.so").Category);
+            Equal("debug-symbols", files.Single(file => file.Path == "Example.dbg").Category);
+            Equal("other-rid", files.Single(file => file.Path.StartsWith("runtimes/", StringComparison.Ordinal)).Category);
+            string previous = files.Single(file => file.Path == "Example").Sha256;
+            File.WriteAllBytes(Path.Combine(root, "Example"), [3, 2, 1]);
+            False(previous == SizeApplication.Inventory(root, "Example", "linux-x64").Single(file => file.Path == "Example").Sha256,
+                "Same-length mutations must change the content hash.");
+            Equal("frontend-assets", SizeApplication.Classify("www/index.html", "Example", "linux-x64"));
+            Equal("runtime-metadata", SizeApplication.Classify("Example.runtimeconfig.json", "Example", "linux-x64"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     private static void DevOptionsPreserveApplicationArguments()

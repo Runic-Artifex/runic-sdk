@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { root, run } from "./run.mjs";
+import { resolve } from "node:path";
+const [directory, executable] = process.argv.slice(2);
+assert.ok(directory && executable && existsSync(executable), "Supply the published directory and executable");
+const cwd = resolve(root, "examples/customer-migration/Host/Frontend");
+const env = { RUNIC_CUSTOMER_HOST_EXECUTABLE: executable };
+run(process.execPath, ["browser.test.mjs"], cwd, env);
+run(process.execPath, ["lifecycle.test.mjs"], cwd, env);

@@ -39,10 +39,12 @@ jobs:
           key: sdk-${{ runner.os }}-${{ hashFiles('bun.lock', '**/Directory.Packages.props', '**/*.csproj', 'global.json') }}
       - run: npm install --global npm@11.16.0 pnpm@11.25.0
       - run: bun run bootstrap
-      - run: bun run verify
-      - name: Install browser for the migration reference
+      - name: Install browser for conformance and migration verification
         working-directory: examples/customer-migration/Host/Frontend
-        run: bunx playwright-core install --with-deps chromium
+        run: |
+          bunx playwright-core install --with-deps chromium
+          node --input-type=module -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
+      - run: bun run verify
       - name: Verify the customer migration through the live bridge
         working-directory: examples/customer-migration/Host/Frontend
         run: bun run test:browser
@@ -111,3 +113,61 @@ jobs:
         run: |
           dotnet publish tests/native/Runic.Application.Bridge.MemberAotSmoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/native
           ./artifacts/native/Runic.Application.Bridge.MemberAotSmoke${{ matrix.extension }}
+
+  footprint:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-15-intel
+            rid: osx-x64
+          - os: macos-15
+            rid: osx-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: runic-sdk-${{ github.sha }}
+          path: artifacts/packages
+      - name: Build verification tools and shared frontend dependencies
+        shell: bash
+        run: |
+          bun run bootstrap
+          dotnet build tools/dotnet-runic-toolkit -c Release
+          node eng/run.mjs build-web
+      - name: Install browser and Linux native prerequisites
+        shell: bash
+        run: |
+          bunx playwright-core install --with-deps chromium
+          node --input-type=module -e 'import {chromium} from "playwright-core"; console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + chromium.executablePath())' >> "$GITHUB_ENV"
+      - name: Verify minimal Desktop conformance
+        run: dotnet test tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopMinimalHost=true
+      - name: Publish, measure and verify all three package consumers
+        run: bun run verify:footprint
+        env:
+          RUNIC_SIZE_RID: ${{ matrix.rid }}
+      - name: Retain measurements and actual published distributions
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: host-footprint-${{ matrix.rid }}-${{ github.sha }}
+          path: artifacts/host-footprint
+          if-no-files-found: error

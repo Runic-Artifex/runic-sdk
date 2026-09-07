@@ -16,9 +16,9 @@ try {
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
   // Fresh processes are required: the native WebUI runtime has process lifetime.
   for (const mode of ["unconnected", "connected", "disconnected", "connected", "unconnected"]) {
-    const host = spawn("dotnet", [resolve(here,
+    const host = spawn(process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ?? "dotnet", process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ? ["--serve"] : [resolve(here,
       `../bin/${process.env.CONFIGURATION ?? "Debug"}/net10.0/CustomerDesktop.dll`), "--serve"], {
-      cwd: here, stdio: ["ignore", "pipe", "pipe"],
+      cwd: here, stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, RUNIC_CUSTOMERS_FILE: resolve(temporary, "customers.json"),
         XDG_CACHE_HOME: temporary, GSETTINGS_BACKEND: "memory" },
     });

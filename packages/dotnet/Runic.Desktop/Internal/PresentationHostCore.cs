@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -23,6 +24,8 @@ internal sealed record PresentationHostCoreOptions(
 
 internal sealed class PresentationHostCore : IAsyncDisposable
 {
+    [FeatureSwitchDefinition("Runic.Desktop.MinimalHost")]
+    private static bool MinimalHost => AppContext.TryGetSwitch("Runic.Desktop.MinimalHost", out bool enabled) && enabled;
     private readonly PresentationHostCoreOptions _options;
     private readonly ConcurrentDictionary<string, PresentationSurfaceRegistration> _surfaces =
         new(StringComparer.Ordinal);
@@ -143,7 +146,10 @@ internal sealed class PresentationHostCore : IAsyncDisposable
             return;
         }
 
-        var builder = WebApplication.CreateSlimBuilder();
+        var builder = MinimalHost
+            ? WebApplication.CreateEmptyBuilder(new WebApplicationOptions())
+            : WebApplication.CreateSlimBuilder();
+        if (MinimalHost) builder.WebHost.UseKestrelCore().UseSockets();
         builder.Logging.ClearProviders();
         _options.ConfigureServices?.Invoke(builder.Services);
         builder.WebHost.ConfigureKestrel(options =>

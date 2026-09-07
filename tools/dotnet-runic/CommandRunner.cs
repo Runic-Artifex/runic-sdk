@@ -118,15 +118,17 @@ internal static class CommandRunner
     {
         var output = new StringBuilder(Math.Min(maximumCharacters, 16 * 1024));
         var buffer = new char[4096];
+        bool truncated = false;
         while (true)
         {
             int count = await reader.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
             if (count == 0)
             {
-                return output.ToString();
+                return output.ToString() + (truncated ? "\n[output truncated after 4 Mi characters]\n" : "");
             }
 
             int retained = Math.Min(count, maximumCharacters - output.Length);
+            truncated |= retained != count;
             if (retained > 0)
             {
                 output.Append(buffer, 0, retained);

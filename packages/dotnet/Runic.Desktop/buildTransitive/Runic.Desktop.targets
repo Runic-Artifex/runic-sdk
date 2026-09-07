@@ -1,4 +1,15 @@
 <Project>
+  <PropertyGroup>
+    <RunicDesktopMinimalHost Condition="'$(RunicDesktopMinimalHost)' == ''">false</RunicDesktopMinimalHost>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(RunicDesktopMinimalHost)' != ''">
+    <!-- A linker feature switch removes the unused builder path in NativeAOT. -->
+    <RuntimeHostConfigurationOption Include="Runic.Desktop.MinimalHost" Value="$(RunicDesktopMinimalHost)" Trim="true" />
+  </ItemGroup>
+  <Target Name="RunicDesktopValidateHostProfile" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(RunicDesktopMinimalHost)' != '' and '$(RunicDesktopMinimalHost)' != 'true' and '$(RunicDesktopMinimalHost)' != 'false'"
+           Text="RunicDesktopMinimalHost must be true or false." />
+  </Target>
   <!--
     The WebView2 SDK adds its WPF and WinForms controls to every modern .NET
     project. Runic.Desktop uses only Microsoft.Web.WebView2.Core, so remove

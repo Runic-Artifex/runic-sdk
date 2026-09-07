@@ -8,6 +8,7 @@ import {
 } from "../../packages/web/application-bridge-tooling/dist/esm/index.js";
 
 const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const configuration = process.env.CONFIGURATION ?? "Debug";
 const check = process.argv.includes("--check");
 const dotnet = process.env.DOTNET_HOST_PATH ?? "dotnet";
 execFileSync(
@@ -15,6 +16,8 @@ execFileSync(
   [
     "build",
     "tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj",
+    "--configuration",
+    configuration,
     "--nologo",
     "-v:q",
   ],
@@ -22,7 +25,7 @@ execFileSync(
 );
 process.env.RUNIC_BRIDGE_INSPECTOR = resolve(
   root,
-  "tools/Runic.Application.Bridge.Inspector/bin/Debug/net10.0/Runic.Application.Bridge.Inspector.dll",
+  `tools/Runic.Application.Bridge.Inspector/bin/${configuration}/net10.0/Runic.Application.Bridge.Inspector.dll`,
 );
 execFileSync(
   dotnet,

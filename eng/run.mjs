@@ -88,6 +88,7 @@ function build() {
 }
 function test() {
   run("node", ["--test", "eng/workspace.test.mjs"]);
+  run("node", ["--test", "tests/engineering/size-command.test.mjs"]);
   run("node", ["--test", "tests/engineering/acceptance/current-*/*.test.mjs"]);
   run("dotnet", [
     "test",
@@ -261,6 +262,9 @@ async function main() {
       test();
       pack();
       await (await import("./verify-packages.mjs")).verifyPackages();
+      break;
+    case "build-web":
+      web("build");
       break;
     case "pack":
       pack();

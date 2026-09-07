@@ -6,7 +6,8 @@ Desktop for its additional hosting and presentation features. Choosing CS-WebUI
 should not require replacing application members, generated frontend contracts,
 or the development workflow. This document records the original assessment. The first implementation waves
 are described in [host selection](host-selection.md); footprint experiments below
-remain the work plan until accompanied by new measurements.
+are implemented by [size reporting and tuning](size-and-tuning.md), with fresh
+package-consumer measurements. The assessment below is retained as context.
 
 ## What the current code provides
 

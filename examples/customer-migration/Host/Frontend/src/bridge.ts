@@ -10,7 +10,7 @@ import contract, {
 } from "./application.bridge.generated";
 export const bridge = createApplicationBridgeController(
   contract,
-  ApplicationBridgeLive(contract, import.meta.env.VITE_RUNIC_HOST === "cswebui" ? createCsWebUiFrameChannel() : createDesktopFrameChannel()),
+  ApplicationBridgeLive(contract, "runicCsWebUi" in globalThis ? createCsWebUiFrameChannel() : createDesktopFrameChannel()),
 );
 export async function dispatch(command: CustomersCommand) {
   const result = await bridge.run(
