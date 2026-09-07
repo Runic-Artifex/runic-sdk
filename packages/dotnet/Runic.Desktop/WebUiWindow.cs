@@ -1448,7 +1448,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (_generatedProfilePath is { } profilePath)
         {
             _generatedProfilePath = null;
-            for (var attempt = 0; attempt < 10 && !TryDeleteGeneratedProfile(profilePath); attempt++)
+            // Waiting for the browser's main process does not wait for all of its
+            // descendants. Give their profile handles a bounded interval to close.
+            long cleanupStarted = Stopwatch.GetTimestamp();
+            while (!TryDeleteGeneratedProfile(profilePath)
+                && Stopwatch.GetElapsedTime(cleanupStarted) < TimeSpan.FromSeconds(5))
             {
                 await Task.Delay(50).ConfigureAwait(false);
             }
