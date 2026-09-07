@@ -66,6 +66,24 @@ Performed in the repository's actual Nix development environment:
 - Workflow YAML parsed; both native and footprint matrices contain only the three
   active RIDs.
 
-Full template acceptance, Bun-driven published footprint/browser lifecycle checks
-and the updated remote native runs are the remaining verification gates at this
-commit. No packages have been published.
+Follow-up verification completed:
+
+- Full template matrix: 18 generated projects, including both hosts and npm/pnpm/Bun
+  cases; 17 command/authoritative-snapshot smoke checks passed.
+- All three published Linux consumers passed with Bun as the recorded verifier:
+  Desktop default, Desktop minimal and CS-WebUI. Each ran the real browser and
+  five lifecycle scenarios. Local reports are retained under
+  `artifacts/host-footprint/linux-x64/run-1788781636317/`. These are verification
+  results, not replacements for the earlier committed clean-source size baseline.
+- Both CS-WebUI and Desktop CLI development passed live bridge/HMR acceptance with
+  the unsaved draft preserved. An initial startup timed out during concurrent local
+  verification; direct startup and the isolated full rerun passed. No timeout was
+  widened and no test was skipped. Continue observing the CI startup check.
+- No core dumps were reported locally since 13:00 CEST on 2026-09-07.
+- [CI run 34118452783](https://github.com/Runic-Artifex/runic-sdk/actions/runs/34118452783)
+  passed all three native jobs on code commit `4c37b8c9`: Linux x64, Windows x64 and
+  macOS arm64. This includes the real Apple Silicon close/disposal/restart smoke.
+  The broader verification and footprint jobs were still pending or running when
+  this record was written.
+
+No packages have been published. This evidence-only update does not restart CI.
