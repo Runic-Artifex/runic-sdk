@@ -5,6 +5,38 @@ namespace Runic.Desktop.Tests;
 public sealed class EmbeddedHostTests
 {
     [Fact]
+    public async Task PresentationCloseWaitsForNativeCallbackCleanup()
+    {
+        var factory = new RecordingHostFactory();
+        WebUiApplication.SetEmbeddedHostFactory(factory);
+        WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, false);
+        await using var window = new WebUiWindow();
+        RecordingHost? host = null;
+        try
+        {
+            await window.ShowWebViewAsync("cleanup");
+            host = Assert.IsType<RecordingHost>(factory.Host);
+            host.ReleaseDisposal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            host.CloseFromPlatform();
+            await host.DisposalEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            // Native destruction has cleared the handle, but release still needs the UI loop.
+            var close = window.ClosePresentationAsync();
+            Assert.False(close.IsCompleted);
+            host.ReleaseDisposal.SetResult();
+            await close.WaitAsync(TimeSpan.FromSeconds(5));
+            await WebUiApplication.WaitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, host.DisposalCount);
+        }
+        finally
+        {
+            host?.ReleaseDisposal?.TrySetResult();
+            WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, true);
+            WebUiApplication.SetEmbeddedHostFactory(null);
+        }
+    }
+
+    [Fact]
     public async Task CustomHostReceivesWindowOptionsAndParticipatesInLifecycle()
     {
         var factory = new RecordingHostFactory();
@@ -91,6 +123,9 @@ public sealed class EmbeddedHostTests
 
     private sealed class RecordingHost : IWebUiEmbeddedHost
     {
+        internal TaskCompletionSource DisposalEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource? ReleaseDisposal { get; set; }
+        internal int DisposalCount { get; private set; }
         public event EventHandler? Closed;
 
         public bool IsOpen { get; private set; }
@@ -190,10 +225,12 @@ public sealed class EmbeddedHostTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
+            DisposalCount++;
             IsOpen = false;
-            return ValueTask.CompletedTask;
+            DisposalEntered.TrySetResult();
+            if (ReleaseDisposal is { } release) await release.Task;
         }
 
         internal void CloseFromPlatform()

@@ -30,6 +30,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly ConcurrentDictionary<Guid, WebUiSession> _sessions = new();
     private readonly ConcurrentDictionary<string, nuint> _clients = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly SemaphoreSlim _presentationGate = new(1, 1);
     private readonly TaskCompletionSource _disposeCompletion = NewCompletionSource();
     private readonly object _connectionGate = new();
     private CancellationTokenSource _shutdown = new();
@@ -1313,14 +1314,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await _lifecycleGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!ReferenceEquals(Interlocked.CompareExchange(ref _embeddedHost, null, host), host))
+            await _presentationGate.WaitAsync().ConfigureAwait(false);
+            try
             {
-                return;
+                if (!ReferenceEquals(Interlocked.CompareExchange(ref _embeddedHost, null, host), host))
+                {
+                    return;
+                }
+                StopCloseConfirmation();
+                host.Closed -= EmbeddedHostClosed;
+                _currentBrowser = WebUiBrowser.NoBrowser;
+                await host.DisposeAsync().ConfigureAwait(false);
             }
-            StopCloseConfirmation();
-            host.Closed -= EmbeddedHostClosed;
-            _currentBrowser = WebUiBrowser.NoBrowser;
-            await host.DisposeAsync().ConfigureAwait(false);
+            finally
+            {
+                _presentationGate.Release();
+            }
         }
         finally
         {
@@ -1396,6 +1405,21 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     private async Task StopBrowserAsync()
+    {
+        // A native Closed callback can already be releasing the presentation.
+        // All close callers must await that release even after its handle is cleared.
+        await _presentationGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await StopBrowserCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _presentationGate.Release();
+        }
+    }
+
+    private async Task StopBrowserCoreAsync()
     {
         StopCloseConfirmation();
         var embeddedHost = Interlocked.Exchange(ref _embeddedHost, null);

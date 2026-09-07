@@ -470,10 +470,20 @@ public sealed class DesktopWindow : IAsyncDisposable
             Thread.Sleep(10);
         }
 
-        if (Volatile.Read(ref _disposed) != 0)
+        // Native destruction can precede asynchronously queued native release work.
+        // Join that cleanup while the process main thread can still service it.
+        var close = CloseAsync().AsTask();
+        while (!close.IsCompleted)
         {
-            _closed.Task.GetAwaiter().GetResult();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (OperatingSystem.IsMacOS())
+            {
+                Internal.MacOsWkWebViewHost.ProcessPendingMainThreadWork();
+            }
+            _engine.ProcessEmbeddedHostEvents();
+            Thread.Sleep(10);
         }
+        close.GetAwaiter().GetResult();
     }
 
     /// <summary>Requests closing, awaiting the same confirmation as the native close button.</summary>
