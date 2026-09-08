@@ -25,6 +25,6 @@ test('soak retains cycle, shutdown, and assessment failures together',()=>{
   const adapter=join(directory,'adapter.mjs');writeFileSync(adapter,"export async function start(){return {cycle:async()=>{throw Error('cycle defect')},stop:async()=>{throw Error('shutdown defect')}}}");
   const config=join(directory,'config.json'),output=join(directory,'receipt.json');writeFileSync(config,JSON.stringify({directory:artifacts,executable,provenance,adapter,profile:'test'}));
   const result=spawnSync(process.execPath,[resolve('eng/reliability/run.mjs'),'soak',config,output],{encoding:'utf8',timeout:10000});assert.equal(result.status,1);
-  const receipt=JSON.parse(readFileSync(output));assert.equal(receipt.status,'failed');for(const reason of ['cycle defect','shutdown defect','Two-hour duration not reached'])assert.ok(receipt.failure.includes(reason),receipt.failure);
+  const receipt=JSON.parse(readFileSync(output));assert.equal(receipt.status,'failed');for(const reason of ['cycle defect','shutdown defect','Required soak duration not reached'])assert.ok(receipt.failure.includes(reason),receipt.failure);
  }finally{rmSync(directory,{recursive:true,force:true});}
 });

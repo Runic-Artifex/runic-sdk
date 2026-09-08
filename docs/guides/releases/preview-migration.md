@@ -41,7 +41,16 @@ do not prove the published dependency graph works.
 
 New scaffolds and maintained templates set `sourceLayout: "locale-toml"` in
 `runic.json`. Each locale lives in a sibling file such as `en.toml` or `de.toml`,
-with flat identifier-safe keys and MF2 string values. MF2 remains the message
+with MF2 string leaves grouped by standard TOML tables, nested tables, dotted
+keys or inline tables. Identifier-safe path segments join with underscores into logical message
+IDs: `[documents.actions] save` becomes `documents_actions_save`. Flat keys remain
+supported; collisions such as `a_b.c`, `a.b_c` and flat `a_b_c` are rejected.
+Prefer multiline literal strings for readable MF2 plurals. Plain tables are the
+preferred default; optional arrays of tables require a stable identifier string
+`_id` immediately in every row.
+Keep it identical across locales: it contributes to the logical ID, is not
+translated and makes row order irrelevant. Scalar and mixed arrays and a separate
+TOML matching language are not supported. MF2 remains the message
 language, including parameters and plurals. A project without `sourceLayout`
 continues to read legacy `{locale}/{message_id}.mf2` files; do not mix layouts.
 
