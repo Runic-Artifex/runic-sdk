@@ -44,6 +44,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly PresentationSurfaceRuntimeOptions? _runtimeOptions;
     private readonly string _sessionCredential;
     private Process? _browserProcess;
+    private Task _browserOutputClosed = Task.CompletedTask;
     private IWebUiEmbeddedHost? _embeddedHost;
     private Func<CancellationToken, ValueTask<bool>>? _confirmClose;
     private WindowCloseController? _closeController;
@@ -339,10 +340,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             {
                 throw new InvalidOperationException("This window is already hosted by an embedded WebView.");
             }
-            if (_browserProcess is { HasExited: true } exitedProcess)
+            if (_browserProcess is { HasExited: true })
             {
-                _browserProcess = null;
-                exitedProcess.Dispose();
+                await StopBrowserAsync().ConfigureAwait(false);
             }
             if (_browserProcess is { HasExited: false })
             {
@@ -376,9 +376,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     _allowedPermissions);
                 _browserConnected = NewCompletionSource();
                 Process process;
+                Task outputClosed;
                 try
                 {
-                    process = WebUiBrowserHost.Start(installation, browserUrl, options);
+                    process = WebUiBrowserHost.Start(installation, browserUrl, options, out outputClosed);
                 }
                 catch
                 {
@@ -390,6 +391,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     throw;
                 }
                 _browserProcess = process;
+                _browserOutputClosed = outputClosed;
                 _currentBrowser = installation.Browser;
                 connection = _browserConnected.Task;
                 _ = MonitorBrowserAsync(process);
@@ -1442,6 +1444,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
 
         var process = _browserProcess;
+        var outputClosed = _browserOutputClosed;
+        _browserOutputClosed = Task.CompletedTask;
         if ((process is not null || embeddedHost is not null)
             && WaitForConnection && _externalUrl is null)
         {
@@ -1469,6 +1473,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                         await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                     }
                 }
+                // POSIX allows deletion while a helper still has files open, and
+                // that helper can recreate the directory. Join inherited output
+                // pipes before disposing their readers or removing the profile.
+                await outputClosed.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
             catch (InvalidOperationException)
             {

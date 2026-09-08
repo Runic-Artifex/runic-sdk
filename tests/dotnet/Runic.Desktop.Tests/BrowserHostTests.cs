@@ -204,6 +204,82 @@ public sealed class BrowserHostTests
     }
 
     [Fact]
+    public async Task ClosingBrowserWaitsForInheritedPipesBeforeDeletingProfile()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-helper-");
+        var releaseHelper = Path.Combine(folder.FullName, "release-helper");
+        var exitParent = Path.Combine(folder.FullName, "exit-parent");
+        var window = new WebUiWindow();
+        try
+        {
+            var executable = Path.Combine(folder.FullName, ChromeExecutableName());
+            Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+            await File.WriteAllTextAsync(executable, """
+                #!/bin/sh
+                for arg do
+                  case "$arg" in
+                    --user-data-dir=*) profile=${arg#*=} ;;
+                    --gate=*) gate=${arg#*=} ;;
+                  esac
+                done
+                (
+                  while [ ! -f "$gate/release-helper" ]; do sleep 0.02; done
+                  mkdir -p "$profile/Default"
+                  printf late > "$profile/Default/helper-write"
+                  touch "$gate/helper-finished"
+                ) &
+                touch "$gate/ready"
+                while [ ! -f "$gate/exit-parent" ]; do sleep 0.02; done
+                exit 0
+                """);
+            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            WebUiApplication.SetBrowserFolder(folder.FullName);
+            WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, false);
+            window.SetCustomParameters($"--gate=\"{folder.FullName}\"");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await window.ShowInBrowserAsync(Page("helper"), WebUiBrowser.Chrome, timeout.Token);
+            var profile = window.GeneratedProfilePath;
+            var processId = checked((int)window.BrowserProcessId);
+            while (!File.Exists(Path.Combine(folder.FullName, "ready")))
+                await Task.Delay(10, timeout.Token);
+
+            await File.WriteAllTextAsync(exitParent, string.Empty, timeout.Token);
+            await WaitForProcessExitAsync(processId, timeout.Token);
+            var close = window.CloseAsync(timeout.Token);
+            // The parent has exited, but its helper still owns the output pipes
+            // and can write to the profile. Closing must join that helper first.
+            await Assert.ThrowsAsync<TimeoutException>(() => close.WaitAsync(TimeSpan.FromMilliseconds(100)));
+            Assert.True(Directory.Exists(profile));
+            await File.WriteAllTextAsync(releaseHelper, string.Empty, timeout.Token);
+            await close;
+            AssertProfileDeleted(window, profile);
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(exitParent, string.Empty);
+            await File.WriteAllTextAsync(releaseHelper, string.Empty);
+            try
+            {
+                if (File.Exists(Path.Combine(folder.FullName, "ready")))
+                {
+                    using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    while (!File.Exists(Path.Combine(folder.FullName, "helper-finished")))
+                        await Task.Delay(10, cleanupTimeout.Token);
+                }
+            }
+            finally
+            {
+                await window.DisposeAsync();
+                WebUiApplication.SetBrowserFolder(string.Empty);
+                WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, true);
+                folder.Delete(recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task CanDisposeOwnedBrowserFromItsBindingCallback()
     {
         var browser = FindChromiumBrowser();

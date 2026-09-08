@@ -37,7 +37,8 @@ internal static class WebUiBrowserHost
     internal static Process Start(
         WebUiBrowserInstallation installation,
         Uri url,
-        WebUiBrowserLaunchOptions options)
+        WebUiBrowserLaunchOptions options,
+        out Task outputClosed)
     {
         var startInfo = new ProcessStartInfo(installation.ExecutablePath)
         {
@@ -53,9 +54,16 @@ internal static class WebUiBrowserHost
 
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"The {installation.Browser} browser process could not be started.");
-        _ = process.StandardOutput.ReadToEndAsync();
-        _ = process.StandardError.ReadToEndAsync();
+        // Helpers inherit these pipes. Their EOF is a shutdown barrier even when
+        // the parent exits first; discard output instead of retaining it forever.
+        outputClosed = Task.WhenAll(DrainAsync(process.StandardOutput), DrainAsync(process.StandardError));
         return process;
+    }
+
+    private static async Task DrainAsync(StreamReader reader)
+    {
+        var buffer = new char[4096];
+        while (await reader.ReadAsync(buffer).ConfigureAwait(false) != 0) { }
     }
 
     internal static IReadOnlyList<string> BuildArguments(
