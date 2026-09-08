@@ -149,6 +149,42 @@ test("mock and live layers expose the same semantic command sequence", async () 
   await semanticSuite(ApplicationBridgeLive(contract, new LoopbackChannel()));
 });
 
+test("host-provided initial connection epoch is lazy and reconnect advances it", async () => {
+  const channel = new LoopbackChannel();
+  let epoch = 0;
+  let reads = 0;
+  const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, channel, {
+    get initialConnectionEpoch() { reads++; return epoch; },
+  }));
+  assert.equal(reads, 0);
+  epoch = 7; // The same-origin capability finishes before initialization.
+  try {
+    await controller.initialize();
+    assert.deepEqual(channel.initializationEpochs, [7]);
+    channel.resetPhysicalConnection();
+    await controller.reconnect();
+    assert.deepEqual(channel.initializationEpochs, [7, 8]);
+  } finally { await controller.dispose(); }
+});
+
+test("initial connection epoch rejects invalid values and bounded overflow", async () => {
+  for (const initialConnectionEpoch of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    const channel = new LoopbackChannel();
+    const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, channel, { initialConnectionEpoch }));
+    try {
+      await assert.rejects(controller.initialize(), /initialConnectionEpoch must be a nonnegative safe integer/);
+      assert.equal(channel.sentFrames, 0);
+    } finally { await controller.dispose(); }
+  }
+  const channel = new LoopbackChannel();
+  const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, channel, { initialConnectionEpoch: Number.MAX_SAFE_INTEGER }));
+  try {
+    await controller.initialize();
+    await assert.rejects(controller.reconnect(), /connection epoch is exhausted/);
+    assert.deepEqual(channel.initializationEpochs, [Number.MAX_SAFE_INTEGER]);
+  } finally { await controller.dispose(); }
+});
+
 test("browser encoding rejects undeclared command properties", async () => {
   const controller = createApplicationBridgeController(contract, ApplicationBridgeLive(contract, new LoopbackChannel()));
   try {
@@ -538,6 +574,7 @@ async function semanticSuite(layer: Layer.Layer<unknown>): Promise<void> {
 class LoopbackChannel implements FrameChannel {
   public state: "connected" | "closed" = "connected";
   public sentFrames = 0;
+  public initializationEpochs: number[] = [];
   public failNextSend = false;
   public holdDispatch = false;
   public cancellationPayload: Record<string, unknown> | undefined;
@@ -597,6 +634,7 @@ class LoopbackChannel implements FrameChannel {
     const commandId = String(request.commandId);
     const kind = String(request.kind);
     const requestedEpoch = Number(request.connectionEpoch);
+    if (kind === "initialize") this.initializationEpochs.push(requestedEpoch);
     if (this.deferNextSend) {
       this.deferNextSend = false;
       let started!: () => void;

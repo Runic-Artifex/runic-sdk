@@ -108,6 +108,22 @@ export async function verifyPackages() {
         ? 'Console.WriteLine("Translation build targets restored.");'
         : `Console.WriteLine(System.Reflection.Assembly.Load("${p.name}").GetName().Name);`,
     );
+    if (p.name === "Runic.Translations.Build") {
+      // Exercise the packaged analyzer and its parser without a CLI or source reference.
+      const resources = join(consumer, "translations");
+      mkdirSync(resources);
+      writeFileSync(join(resources, "runic.json"), JSON.stringify({
+        schemaVersion: 1, sourceLayout: "locale-toml", catalog: "canary",
+        code: { namespace: "PackageCanary", className: "CanaryText" },
+        baseLocale: "en", locales: ["en"],
+      }));
+      writeFileSync(join(resources, "en.toml"), "Greeting = '''\n.input {$name :string}\nHello {$name}\n'''\n");
+      writeFileSync(join(consumer, "Program.cs"),
+        'var manager = await PackageCanary.CanaryTextCatalog.CreateManagerAsync();\n' +
+        'var text = new PackageCanary.CanaryText(manager);\n' +
+        'if (text.Greeting("Ada") != "Hello Ada") throw new Exception("Packaged TOML accessor failed");\n' +
+        'Console.WriteLine("Packaged TOML analyzer and runtime passed.");\n');
+    }
     if (
       [
         "Runic.Application",

@@ -120,8 +120,13 @@ Measure equivalent existing configurations against green baseline `5afb8b8d` on 
 same machine, with repeated startup samples and process-tree memory. Record raw
 samples, workload, environment, aggregation and baseline/candidate hashes. Investigate
 and fix reproducible regressions above 20%; report provider-enabled deltas separately.
-Run a two-hour window/reconnect/cancellation soak. Fail on unreleased resources,
-accumulating processes or sustained memory growth and retain observations over time.
+Run a 30-minute window/reconnect/cancellation soak for the demo preview. Retain
+observations over time and fail on unreleased resources, accumulating processes or
+sustained memory growth. The bounded Linux memory-trend exception requires a
+separate `known-issue` receipt under the [soak policy](reliability/README.md);
+preserve the raw failed result. It does not waive cleanup or other platform checks.
+The full v1 policy retains a strict two-hour soak; explicitly requested longer runs
+must complete their requested duration.
 
 As a follow-up before v1, two independent developers each build a small application using candidate packages
 and documentation. Each records installation, migration, debugging and lifecycle

@@ -190,6 +190,18 @@ jobs:
         run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll --smoke-test
       - name: Validate the example translation workspace
         run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll validate apps/translations-editor/ExampleWorkspace
+      - uses: ./.github/actions/install-browser
+      - name: Verify real hosted editor TOML editing and recovery
+        run: bun apps/translations-editor/tests/HostedBrowserE2E/run-hosted-toml-ui.mjs apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll
+        env:
+          RUNIC_EDITOR_HOSTED_E2E_REPORT_DIR: ${{ github.workspace }}/artifacts/editor-hosted-toml-ui
+      - name: Retain hosted editor browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-hosted-toml-ui
+          path: artifacts/editor-hosted-toml-ui
+          if-no-files-found: ignore
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   docs:

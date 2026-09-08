@@ -22,6 +22,8 @@ import { ApplicationBridge, type ApplicationBridgeService } from "./service.js";
 import type { FrameChannel, FrameChannelEvent, ReconnectableFrameChannel } from "./transport.js";
 
 export interface ApplicationBridgeOptions {
+  /** Host-provided first presentation epoch; defaults to zero. Reconnect advances it. */
+  readonly initialConnectionEpoch?: number;
   /** Produces a candidate command identifier. Intended primarily for deterministic tests. */
   readonly commandIdFactory?: () => string;
   readonly maxFrameBytes?: number;
@@ -159,7 +161,10 @@ export function ApplicationBridgeLive<
       let stopped = false;
       let recoveryRequired = false;
       let ingressGeneration = 0;
-      let connectionEpoch = 0;
+      let connectionEpoch = options.initialConnectionEpoch ?? 0;
+      if (!Number.isSafeInteger(connectionEpoch) || connectionEpoch < 0) {
+        throw new RangeError("initialConnectionEpoch must be a nonnegative safe integer.");
+      }
       let reconnectPromise: Promise<Snapshot> | undefined;
       const effectRuntime = yield* Effect.context<never>();
       const runPromise = Effect.runPromiseWith(effectRuntime);
@@ -480,6 +485,10 @@ export function ApplicationBridgeLive<
             (snapshot) => resume(Effect.succeed(snapshot)),
             (error: ApplicationBridgeFailure<DomainError>) => resume(Effect.fail(error)),
           );
+          return;
+        }
+        if (connectionEpoch === Number.MAX_SAFE_INTEGER) {
+          resume(Effect.fail(bridgeError("TransportUnavailable", "The Application Bridge connection epoch is exhausted.", false)));
           return;
         }
         const disposed = bridgeError(

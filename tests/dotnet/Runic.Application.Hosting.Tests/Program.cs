@@ -29,6 +29,7 @@ internal static class Program
         var tests = new List<(string Name, Func<Task> Run)>
         {
             ("WebSocket transport preserves session, event, and reconnect semantics", RoundTripAndReconnectAsync),
+            ("fresh presentation epoch preserves strict stale-connection admission", FreshPresentationEpochAsync),
             ("WebSocket transport rejects malformed frames and unapproved origins", RejectionAsync),
             ("WebSocket transport disposal cancels an idle uninitialized connection", DisposalAsync),
             ("authoritative asset and translation changes enter the bridge event stream", RefreshCoordinatorAsync),
@@ -87,6 +88,41 @@ internal static class Program
         Equal("snapshot", reinitialized.GetProperty("kind").GetString());
         Equal(2L, reinitialized.GetProperty("connectionEpoch").GetInt64());
         Equal(1L, reinitialized.GetProperty("sequence").GetInt64());
+    }
+
+    private static async Task FreshPresentationEpochAsync()
+    {
+        await using var session = new ApplicationBridgeSession(new TestDispatcher());
+        await using var transport = new ApplicationBridgeWebSocketTransport(session);
+        await using TestServer server = await TestServer.StartAsync(transport).ConfigureAwait(false);
+        Equal(0L, transport.NextConnectionEpoch);
+        using var first = new ClientWebSocket();
+        await first.ConnectAsync(server.WebSocketUri, CancellationToken.None).ConfigureAwait(false);
+        await SendAsync(first, Initialize(Guid.NewGuid(), transport.NextConnectionEpoch)).ConfigureAwait(false);
+        Equal("snapshot", (await ReceiveAsync(first).ConfigureAwait(false)).GetProperty("kind").GetString());
+        Equal(1L, transport.NextConnectionEpoch);
+
+        // A genuinely new browser controller starts from the host bootstrap,
+        // while the previous presentation can still be finishing its close.
+        using var refreshed = new ClientWebSocket();
+        await refreshed.ConnectAsync(server.WebSocketUri, CancellationToken.None).ConfigureAwait(false);
+        await SendAsync(refreshed, Initialize(Guid.NewGuid(), transport.NextConnectionEpoch)).ConfigureAwait(false);
+        JsonElement snapshot = await ReceiveAsync(refreshed).ConfigureAwait(false);
+        Equal("snapshot", snapshot.GetProperty("kind").GetString());
+        Equal(1L, snapshot.GetProperty("connectionEpoch").GetInt64());
+        Equal(2L, transport.NextConnectionEpoch);
+
+        using var stale = new ClientWebSocket();
+        await stale.ConnectAsync(server.WebSocketUri, CancellationToken.None).ConfigureAwait(false);
+        await SendAsync(stale, Initialize(Guid.NewGuid(), 0)).ConfigureAwait(false);
+        WebSocketReceiveResult close = await stale.ReceiveAsync(new byte[128], CancellationToken.None).ConfigureAwait(false);
+        Equal(WebSocketMessageType.Close, close.MessageType);
+        Equal(WebSocketCloseStatus.PolicyViolation, stale.CloseStatus);
+        Equal(2L, transport.NextConnectionEpoch);
+
+        await SendAsync(refreshed, Initialize(Guid.NewGuid(), 9_007_199_254_740_991L)).ConfigureAwait(false);
+        Equal("snapshot", (await ReceiveAsync(refreshed).ConfigureAwait(false)).GetProperty("kind").GetString());
+        Throws<InvalidOperationException>(() => _ = transport.NextConnectionEpoch);
     }
 
     private static async Task RejectionAsync()

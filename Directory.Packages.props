@@ -23,6 +23,7 @@
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <PackageVersion Include="ReactiveUI" Version="24.2.0" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="3.2.0" />
+    <PackageVersion Include="Tomlyn" Version="2.10.1" />
     <PackageVersion Include="Runic.Platform" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Runtime" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Windows" Version="$(RunicSdkVersion)" />

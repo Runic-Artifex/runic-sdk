@@ -36,3 +36,33 @@ Upgrading between previews may require source changes and regenerated bridge cod
 Use the exact Effect release candidate documented in the release guide. Re-run both
 host and package-consumer acceptance after upgrading; development project references
 do not prove the published dependency graph works.
+
+## Translation catalogs
+
+New scaffolds and maintained templates set `sourceLayout: "locale-toml"` in
+`runic.json`. Each locale lives in a sibling file such as `en.toml` or `de.toml`,
+with flat identifier-safe keys and MF2 string values. MF2 remains the message
+language, including parameters and plurals. A project without `sourceLayout`
+continues to read legacy `{locale}/{message_id}.mf2` files; do not mix layouts.
+
+Commit or back up the original catalog, then use the matching preview tool:
+
+```sh
+dotnet tool run runic-translations -- migrate --project translations --dry-run
+dotnet tool run runic-translations -- migrate --project translations
+dotnet tool run runic-translations -- validate --project translations
+```
+
+The dry run lists planned creations, replacements and deletions without writing.
+The applying command checks for collisions and commits the conversion as a
+transaction, updates the discriminator and removes the migrated MF2 files.
+Message IDs and decoded source content are preserved; existing MF2 line-ending
+normalization and body trimming still apply. Regenerate outputs and verify the
+application's formatted messages before accepting the migration. See the
+[locale project guide](../translations/mf2-projects.md) for the supported profile.
+
+The pinned Tomlyn 2.10.1 parser belongs to compiler and authoring tooling, not
+generated application runtimes. Upgrade tool and build packages together.
+Runic's source-built Translations Editor demonstrates the English/German TOML
+workflow and MF2 count messages; final automated UI acceptance remains pending.
+Standalone Editor distributions are outside this preview.

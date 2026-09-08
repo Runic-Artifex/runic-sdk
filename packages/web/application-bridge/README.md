@@ -71,3 +71,14 @@ The local WebSocket channel is not a deployed remote-service contract. Authentic
 Commands are named domain operations. This package deliberately does not expose generic `setProperty` or `execute` protocol operations.
 
 Read the [Application Bridge guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/guides/application-bridge.md), explore [runnable examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples), or report problems in [GitHub Issues](https://github.com/Runic-Artifex/runic-sdk/issues). Released under the [MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).
+
+For a fresh browser presentation reconnecting to an existing authoritative host,
+pass the host-provided `initialConnectionEpoch` in `ApplicationBridgeLive` options.
+It defaults to zero, must be a nonnegative safe integer, and is read when the
+layer initializes. Complete the same-origin host bootstrap before starting the
+controller; a getter can supply the resulting value. Ordinary reconnects advance
+this epoch, and exhaustion requires a new application session. The host remains
+responsible for admission: the seed does not permit stale connections or change
+authentication. The .NET WebSocket transport exposes `NextConnectionEpoch` for
+host-owned bootstrap responses; it is a minimum, not a reservation, so concurrent
+presentations still follow the existing single active presentation policy.

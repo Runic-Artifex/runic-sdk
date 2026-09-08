@@ -43,6 +43,22 @@ public sealed class ApplicationBridgeWebSocketTransport : IAsyncDisposable
 
     /// <summary>Gets the endpoint configuration.</summary>
     public ApplicationBridgeWebSocketOptions Options => _options;
+    /// <summary>Gets the minimum fresh presentation epoch for a host-owned bootstrap.</summary>
+    /// <remarks>This is not a reservation. Admission remains authoritative if presentations race.</remarks>
+    public long NextConnectionEpoch
+    {
+        get
+        {
+            lock (_gate)
+            {
+                ThrowIfDisposed();
+                if (_acceptedConnectionEpoch >= 9_007_199_254_740_991L)
+                    throw new InvalidOperationException("The Application Bridge connection epoch is exhausted; create a new application session.");
+                return _acceptedConnectionEpoch + 1;
+            }
+        }
+    }
+
     /// <summary>Raised after an initialization snapshot is queued for the active connection.</summary>
     public event EventHandler? Activated;
 
