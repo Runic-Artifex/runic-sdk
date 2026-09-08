@@ -4,7 +4,7 @@
   "description": "Vite 8 development and DevTools integration for Runic applications",
   "license": "MIT",
   "type": "module",
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
   "files": [
     "dist",
     "virtual.d.ts",

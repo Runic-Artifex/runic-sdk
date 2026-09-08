@@ -226,7 +226,7 @@ internal static class Program
     private static void PackageManagersUseFrozenPortableCommands()
     {
         using var workspace = new TestWorkspace();
-        workspace.Write("npm/package.json", """{"packageManager":"npm@11.16.0"}""");
+        workspace.Write("npm/package.json", """{"packageManager":"npm@12.0.2"}""");
         workspace.Write("npm/package-lock.json", "{}");
         JavaScriptPackageManager npm = JavaScriptPackageManager.Resolve(
             Path.Combine(workspace.Root, "npm"),
@@ -236,7 +236,7 @@ internal static class Program
             ["run", "dev", "--workspace", "@example/app", "--", "--host", "127.0.0.1"],
             npm.RunScriptArguments("dev", "@example/app", ["--host", "127.0.0.1"]));
 
-        workspace.Write("pnpm/package.json", """{"packageManager":"pnpm@11.25.0"}""");
+        workspace.Write("pnpm/package.json", """{"packageManager":"pnpm@12.3.4"}""");
         workspace.Write("pnpm/pnpm-lock.yaml", "lockfileVersion: '9.0'");
         JavaScriptPackageManager pnpm = JavaScriptPackageManager.Resolve(
             Path.Combine(workspace.Root, "pnpm"),
@@ -248,7 +248,7 @@ internal static class Program
             ["--filter", "@example/app", "run", "dev", "--host", "127.0.0.1"],
             pnpm.RunScriptArguments("dev", "@example/app", ["--host", "127.0.0.1"]));
 
-        workspace.Write("bun/package.json", """{"packageManager":"bun@1.4.0"}""");
+        workspace.Write("bun/package.json", """{"packageManager":"bun@1.4.2"}""");
         workspace.Write("bun/bun.lock", "{}");
         JavaScriptPackageManager bun = JavaScriptPackageManager.Resolve(
             Path.Combine(workspace.Root, "bun"),
@@ -618,7 +618,7 @@ internal static class Program
         var runtime = new FakeDoctorRuntime()
             .WithEnvironment("RUNIC_BROWSER_PATH", browser)
             .WithExecutable("dotnet", "/tools/dotnet")
-            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.400")
             .WithResult(browser, "--version", 0, "Chromium 150");
 
         DoctorReport report = InspectDoctor(
@@ -650,7 +650,7 @@ internal static class Program
         using var workspace = new TestWorkspace();
         workspace.Write(
             "package.json",
-            """{"packageManager":"npm@11.16.0"}""");
+            """{"packageManager":"npm@12.0.2"}""");
         workspace.Write("package-lock.json", """{"lockfileVersion":3,"packages":{}}""");
         string browser = workspace.Write("bin/chromium", "browser");
         string source = workspace.Write("src/application.bridge.ts", "// contract");
@@ -670,9 +670,9 @@ internal static class Program
             .WithExecutable("dotnet", "/tools/dotnet")
             .WithExecutable("node", "/tools/node")
             .WithExecutable("npm", "/tools/npm")
-            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
-            .WithResult("/tools/node", "--version", 0, "v24.18.0")
-            .WithResult("/tools/npm", "--version", 0, "11.16.0")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.400")
+            .WithResult("/tools/node", "--version", 0, "v24.20.0")
+            .WithResult("/tools/npm", "--version", 0, "12.0.2")
             .WithResult(browser, "--version", 0, "Chromium 150")
             .WithResult("/tools/npm", "contract:check", 0, string.Empty);
 
@@ -697,7 +697,7 @@ internal static class Program
     private static void DoctorSupportsBunRuntime()
     {
         using var workspace = new TestWorkspace();
-        workspace.Write("package.json", """{"packageManager":"bun@1.4.0"}""");
+        workspace.Write("package.json", """{"packageManager":"bun@1.4.2"}""");
         workspace.Write("bun.lock", "{}");
         string browser = workspace.Write("bin/chromium", "browser");
         DoctorProjectConfiguration project = CreateDoctorProject(
@@ -708,8 +708,8 @@ internal static class Program
             .WithEnvironment("RUNIC_BROWSER_PATH", browser)
             .WithExecutable("dotnet", "/tools/dotnet")
             .WithExecutable("bun", "/tools/bun")
-            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
-            .WithResult("/tools/bun", "--version", 0, "1.4.0")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.400")
+            .WithResult("/tools/bun", "--version", 0, "1.4.2")
             .WithResult(browser, "--version", 0, "Chromium 150");
 
         DoctorReport report = InspectDoctor(project, runtime);
@@ -729,7 +729,7 @@ internal static class Program
     private static void DoctorReportsFrontendFailures()
     {
         using var workspace = new TestWorkspace();
-        workspace.Write("package.json", """{"packageManager":"npm@11.16.0"}""");
+        workspace.Write("package.json", """{"packageManager":"npm@12.0.2"}""");
         string browser = workspace.Write("bin/chromium", "browser");
         DoctorProjectConfiguration project = CreateDoctorProject(
             workspace,
@@ -743,7 +743,7 @@ internal static class Program
         var runtime = new FakeDoctorRuntime()
             .WithEnvironment("RUNIC_BROWSER_PATH", browser)
             .WithExecutable("dotnet", "/tools/dotnet")
-            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.400")
             .WithResult(browser, "--version", 0, "Chromium 150");
 
         DoctorReport report = InspectDoctor(project, runtime);
@@ -815,7 +815,7 @@ internal static class Program
         var runtime = new FakeDoctorRuntime()
             .WithEnvironment("RUNIC_BROWSER_PATH", browser)
             .WithExecutable("dotnet", "/tools/dotnet")
-            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.400")
             .WithResult(browser, "--version", 0, "Chromium 150");
 
         DoctorReport report = InspectDoctor(project, runtime);
@@ -828,7 +828,7 @@ internal static class Program
     private static void DoctorRejectsNonPortableNpmLock()
     {
         using var workspace = new TestWorkspace();
-        workspace.Write("package.json", """{"packageManager":"npm@11.16.0"}""");
+        workspace.Write("package.json", """{"packageManager":"npm@12.0.2"}""");
         workspace.Write(
             "package-lock.json",
             """
@@ -844,9 +844,9 @@ internal static class Program
             .WithExecutable("dotnet", "/tools/dotnet")
             .WithExecutable("node", "/tools/node")
             .WithExecutable("npm", "/tools/npm")
-            .WithResult("/tools/dotnet", "--version", 0, "10.0.302")
-            .WithResult("/tools/node", "--version", 0, "v24.18.0")
-            .WithResult("/tools/npm", "--version", 0, "11.16.0")
+            .WithResult("/tools/dotnet", "--version", 0, "10.0.400")
+            .WithResult("/tools/node", "--version", 0, "v24.20.0")
+            .WithResult("/tools/npm", "--version", 0, "12.0.2")
             .WithResult(browser, "--version", 0, "Chromium 150");
 
         DoctorReport report = InspectDoctor(project, runtime);

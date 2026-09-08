@@ -7,7 +7,7 @@ import { createServer } from "node:net";
 import { root } from "../run.mjs";
 import { snapshot } from "./snapshot.mjs";
 
-export const runnerBase = "ghcr.io/catthehacker/ubuntu@sha256:dff4ec57d90046a7283aafc314298380be82bfeccb9ad0f1b36c4ebe74aabe78";
+export const runnerBase = "ghcr.io/catthehacker/ubuntu@sha256:62d572b92f9f32d3427b6d220ad1f9dca9c7b6ffad37d295425037dbff78abaf";
 export function actArguments(args, image, artifactPath, port, directory = root) {
   return ["workflow_dispatch", "--directory", directory, "--workflows", resolve(directory, ".github/workflows/ci.yml"),
     "--platform", `ubuntu-24.04=${image}`, "--matrix", "os:ubuntu-24.04",

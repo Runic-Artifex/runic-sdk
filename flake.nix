@@ -30,18 +30,18 @@
             if system == "x86_64-linux" then
               {
                 platform = "linux-x64";
-                hash = "sha256-Poy0vf7yJ/hzk33QiQj5gnshI5Q7dfbaMD7xgwiyDKw=";
+                hash = "sha256-Nq85/hrOkT7M4VJ9Uc7Kr9e+uNx8unD4d30RzaQlYxc=";
               }
             else
               {
                 platform = "linux-aarch64";
-                hash = "sha256-rIfaywTWWN3ELVH9DtPfrkuAGjrwi7DJYUeKPS1Zd04=";
+                hash = "sha256-E9EOo0ihjqTrVS7RffpXUBeqdkvRoYnXAmscz1BmNwo=";
               };
           bunSource = pkgs.fetchzip {
-            url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-${bunArchive.platform}.zip";
+            url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-${bunArchive.platform}.zip";
             inherit (bunArchive) hash;
           };
-          bun_1_4_0 = pkgs.runCommand "bun-1.4.0" { } ''
+          bun_1_4_2 = pkgs.runCommand "bun-1.4.2" { } ''
             mkdir -p "$out/bin"
             cp "${bunSource}/bun" "$out/bin/bun"
             chmod +x "$out/bin/bun"
@@ -59,7 +59,7 @@
               git
               curl
               dotnet
-              bun_1_4_0
+              bun_1_4_2
               nodejs_24
               powershell
               actForCi

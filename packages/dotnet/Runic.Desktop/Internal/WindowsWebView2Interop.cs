@@ -295,7 +295,7 @@ internal sealed partial class WebViewEnvironmentOptions(string? arguments) : IWe
 {
     private string? _arguments = arguments;
     private string? _language;
-    private string? _version = "150.0.4078.44"; // CORE_WEBVIEW_TARGET_PRODUCT_VERSION in the pinned SDK.
+    private string? _version = "152.0.4191.47"; // CORE_WEBVIEW_TARGET_PRODUCT_VERSION in the pinned SDK.
     private int _allowSingleSignOn;
     public int GetAdditionalBrowserArguments(out nint value) { value = Marshal.StringToCoTaskMemUni(_arguments); return 0; }
     public int SetAdditionalBrowserArguments(nint value) { _arguments = Marshal.PtrToStringUni(value); return 0; }

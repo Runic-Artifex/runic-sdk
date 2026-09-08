@@ -339,7 +339,7 @@ jobs:
           global-json-file: global.json
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - uses: ./.github/actions/install-browser
       - name: Build Desktop browser fixture
@@ -463,7 +463,7 @@ jobs:
           global-json-file: global.json
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - uses: actions/download-artifact@v8
         with:
           name: runic-sdk-${{ github.run_id }}

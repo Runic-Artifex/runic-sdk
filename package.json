@@ -2,9 +2,9 @@
   "name": "@runic-artifex/sdk-workspace",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
   "engines": {
-    "bun": "1.4.0",
+    "bun": "1.4.2",
     "node": ">=24.18.0 <25"
   },
   "workspaces": [
@@ -36,7 +36,8 @@
     "example:customers": "bun eng/run.mjs example:customers",
     "verify:customers": "bun eng/run.mjs verify:customers",
     "verify:bridge": "bun eng/bridge/verify-artifacts.mjs",
-    "ci": "bun eng/ci/local.mjs"
+    "ci": "bun eng/ci/local.mjs",
+    "dependencies:audit": "bun eng/dependencies/audit.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",

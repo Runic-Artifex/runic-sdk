@@ -2,7 +2,7 @@
 export const releaseData = {
   schemaVersion: 1,
   source: {
-    authorityRevision: '009be7c0be0f834a5af0b7e063750065cf45f766',
+    authorityRevision: '2fdbc2af5ae1de7ba31807917df42b21c9179572',
     manifestSha256:
       '8d9add4f00f6a26acae40bdb053acdd637654fc26b3f9fb3a968245ad0840013',
     schemaSha256:
@@ -10,7 +10,7 @@ export const releaseData = {
     verifierSha256:
       '8b6fdf5bb8e83446f7a92c00c3a1f4c8f277c2cfa8e7d56fb704f6653f486ec6',
     compatibilitySetSha256:
-      '559478f1dc494a64167ecc58612aaec4d7b3b6a98a86f41680a20ba34d18040b',
+      'd87df30b40049ae4e6db668278dbb137bd620b69e65bc0b0344ffc5b1090b702',
     compatibilitySchemaSha256:
       '0be0b3566a5d8bcc9c72a170740287277002926eac865b835bd7de198645c23c',
     compatibilityVerifierSha256:
@@ -1011,11 +1011,11 @@ export const releaseData = {
     releaseTrainVersion: '1.0.0-preview.1',
     publication: 'forbidden',
     toolchain: {
-      dotnetSdk: '10.0.302',
-      node: '24.18.0',
-      bun: '1.4.0',
-      npm: '11.16.0',
-      pnpm: '11.25.0',
+      dotnetSdk: '10.0.400',
+      node: '24.20.0',
+      bun: '1.4.2',
+      npm: '12.0.2',
+      pnpm: '12.3.4',
     },
     languageProfiles: {
       v1: [

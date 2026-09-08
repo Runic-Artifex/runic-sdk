@@ -7,7 +7,7 @@ can still be consumed independently.
 
 ## Start developing
 
-Install the .NET SDK in `global.json`, Node in `.node-version`, and Bun 1.4.0. The full translation compiler test suite also requires `clang++`
+Install the .NET SDK in `global.json`, Node in `.node-version`, and Bun 1.4.2. The full translation compiler test suite also requires `clang++`
 with C++20 support.
 On Linux with Nix, `nix develop` provides the SDK, Node, Bun, C++ compiler, and
 webview dependencies from the shared flake. Run these commands from this directory:
@@ -76,7 +76,7 @@ bun run affected main    # Changed components plus their dependent components
 Package consumers use a fresh NuGet cache and map Runic identities to the local
 candidate feed. npm consumers install tarballs outside the workspace and reject
 source links or unpublished dependency specifiers. Template acceptance additionally
-requires Bash, npm 11.16.0, and pnpm 11.25.0. Artifacts are written to
+requires Bash, npm 12.0.2, and pnpm 12.3.4. Artifacts are written to
 `artifacts/packages`; these commands never publish packages.
 
 `eng/workspace.json` lists maintained artifacts and component dependencies.

@@ -1,0 +1,3433 @@
+{
+  "checkedAt": "2026-09-08T09:14:48.309Z",
+  "toolchain": {
+    "dotnetSdk": "10.0.400",
+    "node": "24.20.0",
+    "bun": "1.4.2",
+    "npm": "12.0.2",
+    "pnpm": "12.3.4"
+  },
+  "nixpkgs": {
+    "lastModified": 1788775869,
+    "narHash": "sha256-JRf1lSypbvKj6AzUZHpUA6YC1DirVuitZWOnRwcm+Ww=",
+    "owner": "NixOS",
+    "repo": "nixpkgs",
+    "rev": "58973d74f1893afe13f5902919803a0e99da0ca4",
+    "type": "github"
+  },
+  "packages": [
+    {
+      "ecosystem": "github-action",
+      "name": "actions/cache",
+      "declarations": [
+        {
+          "path": ".github/actions/setup-sdk/action.yml",
+          "kind": "uses",
+          "version": "v6"
+        },
+        {
+          "path": ".github/actions/setup-sdk/action.yml",
+          "kind": "uses",
+          "version": "v6"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "v6.1.0"
+      },
+      "source": "https://github.com/actions/cache/releases/tag/v6.1.0"
+    },
+    {
+      "ecosystem": "github-action",
+      "name": "actions/checkout",
+      "declarations": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "v7.0.1"
+      },
+      "source": "https://github.com/actions/checkout/releases/tag/v7.0.1"
+    },
+    {
+      "ecosystem": "github-action",
+      "name": "actions/download-artifact",
+      "declarations": [
+        {
+          "path": ".github/actions/restore-build/action.yml",
+          "kind": "uses",
+          "version": "v8"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v8"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v8"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v8"
+        },
+        {
+          "path": "eng/ci/fixtures/artifact-roundtrip.yml",
+          "kind": "uses",
+          "version": "v8"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "v8.0.1"
+      },
+      "source": "https://github.com/actions/download-artifact/releases/tag/v8.0.1"
+    },
+    {
+      "ecosystem": "github-action",
+      "name": "actions/setup-dotnet",
+      "declarations": [
+        {
+          "path": ".github/actions/setup-sdk/action.yml",
+          "kind": "uses",
+          "version": "v6"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v6"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v6"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "v6.0.0"
+      },
+      "source": "https://github.com/actions/setup-dotnet/releases/tag/v6.0.0"
+    },
+    {
+      "ecosystem": "github-action",
+      "name": "actions/setup-node",
+      "declarations": [
+        {
+          "path": ".github/actions/setup-sdk/action.yml",
+          "kind": "uses",
+          "version": "v7"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "v7.0.0"
+      },
+      "source": "https://github.com/actions/setup-node/releases/tag/v7.0.0"
+    },
+    {
+      "ecosystem": "github-action",
+      "name": "actions/upload-artifact",
+      "declarations": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v7"
+        },
+        {
+          "path": "eng/ci/fixtures/artifact-roundtrip.yml",
+          "kind": "uses",
+          "version": "v7"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "v7.0.1"
+      },
+      "source": "https://github.com/actions/upload-artifact/releases/tag/v7.0.1"
+    },
+    {
+      "ecosystem": "github-action",
+      "name": "oven-sh/setup-bun",
+      "declarations": [
+        {
+          "path": ".github/actions/setup-sdk/action.yml",
+          "kind": "uses",
+          "version": "v2"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v2"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "uses",
+          "version": "v2"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "v2.2.0"
+      },
+      "source": "https://github.com/oven-sh/setup-bun/releases/tag/v2.2.0"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@angular/build",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "22.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "22.0.8"
+        }
+      ],
+      "candidates": {
+        "next": "22.2.0-next.6",
+        "latest": "22.1.7"
+      },
+      "source": "https://www.npmjs.com/package/@angular/build",
+      "requirements": {
+        "next": {
+          "engines": {
+            "npm": "^6.11.0 || ^7.5.6 || >=8.0.0",
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0",
+            "yarn": ">= 1.13.0"
+          },
+          "peers": {
+            "less": "^4.2.0",
+            "karma": "^6.4.0",
+            "tslib": "^2.3.0",
+            "rollup": "^4.0.0",
+            "vitest": "^4.0.8",
+            "postcss": "^8.4.0",
+            "ng-packagr": "^22.0.0 || ^22.2.0-next.0",
+            "typescript": ">=6.0 <6.1",
+            "tailwindcss": "^2.0.0 || ^3.0.0 || ^4.0.0",
+            "@angular/ssr": "^22.2.0-next.6",
+            "@angular/core": "^22.0.0 || ^22.2.0-next.0",
+            "@angular/compiler": "^22.0.0 || ^22.2.0-next.0",
+            "@angular/localize": "^22.0.0 || ^22.2.0-next.0",
+            "@angular/compiler-cli": "^22.0.0 || ^22.2.0-next.0",
+            "@angular/service-worker": "^22.0.0 || ^22.2.0-next.0",
+            "istanbul-lib-instrument": "^6.0.0",
+            "@angular/platform-server": "^22.0.0 || ^22.2.0-next.0",
+            "@angular/platform-browser": "^22.0.0 || ^22.2.0-next.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "npm": "^6.11.0 || ^7.5.6 || >=8.0.0",
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0",
+            "yarn": ">= 1.13.0"
+          },
+          "peers": {
+            "less": "^4.2.0",
+            "karma": "^6.4.0",
+            "tslib": "^2.3.0",
+            "rollup": "^4.0.0",
+            "vitest": "^4.0.8",
+            "postcss": "^8.4.0",
+            "ng-packagr": "^22.0.0",
+            "typescript": ">=6.0 <6.1",
+            "tailwindcss": "^2.0.0 || ^3.0.0 || ^4.0.0",
+            "@angular/ssr": "^22.1.7",
+            "@angular/core": "^22.0.0",
+            "@angular/compiler": "^22.0.0",
+            "@angular/localize": "^22.0.0",
+            "@angular/compiler-cli": "^22.0.0",
+            "@angular/service-worker": "^22.0.0",
+            "istanbul-lib-instrument": "^6.0.0",
+            "@angular/platform-server": "^22.0.0",
+            "@angular/platform-browser": "^22.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@angular/cli",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "22.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "22.0.8"
+        }
+      ],
+      "candidates": {
+        "next": "22.2.0-next.6",
+        "latest": "22.1.7"
+      },
+      "source": "https://www.npmjs.com/package/@angular/cli",
+      "requirements": {
+        "next": {
+          "engines": {
+            "npm": "^6.11.0 || ^7.5.6 || >=8.0.0",
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0",
+            "yarn": ">= 1.13.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "npm": "^6.11.0 || ^7.5.6 || >=8.0.0",
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0",
+            "yarn": ">= 1.13.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@angular/common",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "22.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "22.0.8"
+        }
+      ],
+      "candidates": {
+        "next": "22.2.0-next.5",
+        "latest": "22.1.5"
+      },
+      "source": "https://www.npmjs.com/package/@angular/common",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "rxjs": "^6.5.3 || ^7.4.0",
+            "@angular/core": "22.2.0-next.5"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "rxjs": "^6.5.3 || ^7.4.0",
+            "@angular/core": "22.1.5"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@angular/compiler",
+      "declarations": [
+        {
+          "path": "packages/web/angular/package.json",
+          "kind": "devDependencies",
+          "version": "22.0.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "22.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "22.0.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "22.0.8"
+        }
+      ],
+      "candidates": {
+        "next": "22.2.0-next.5",
+        "latest": "22.1.5"
+      },
+      "source": "https://www.npmjs.com/package/@angular/compiler",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@angular/compiler-cli",
+      "declarations": [
+        {
+          "path": "packages/web/angular/package.json",
+          "kind": "devDependencies",
+          "version": "22.0.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "22.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "22.0.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "22.0.8"
+        }
+      ],
+      "candidates": {
+        "next": "22.2.0-next.5",
+        "latest": "22.1.5"
+      },
+      "source": "https://www.npmjs.com/package/@angular/compiler-cli",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "typescript": ">=6.0 <6.1",
+            "@angular/compiler": "22.2.0-next.5"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "typescript": ">=6.0 <6.1",
+            "@angular/compiler": "22.1.5"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@angular/core",
+      "declarations": [
+        {
+          "path": "packages/web/angular/package.json",
+          "kind": "devDependencies",
+          "version": "22.0.8"
+        },
+        {
+          "path": "packages/web/angular/package.json",
+          "kind": "peerDependencies",
+          "version": ">=20.3.26 <23"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "22.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "22.0.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "22.0.8"
+        }
+      ],
+      "candidates": {
+        "next": "22.2.0-next.5",
+        "latest": "22.1.5"
+      },
+      "source": "https://www.npmjs.com/package/@angular/core",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "rxjs": "^6.5.3 || ^7.4.0",
+            "zone.js": "~0.15.0 || ~0.16.0",
+            "@angular/compiler": "22.2.0-next.5"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "rxjs": "^6.5.3 || ^7.4.0",
+            "zone.js": "~0.15.0 || ~0.16.0",
+            "@angular/compiler": "22.1.5"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@angular/platform-browser",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "22.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "22.0.8"
+        }
+      ],
+      "candidates": {
+        "next": "22.2.0-next.5",
+        "latest": "22.1.5"
+      },
+      "source": "https://www.npmjs.com/package/@angular/platform-browser",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "@angular/core": "22.2.0-next.5",
+            "@angular/common": "22.2.0-next.5",
+            "@angular/animations": "22.2.0-next.5"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+          },
+          "peers": {
+            "@angular/core": "22.1.5",
+            "@angular/common": "22.1.5",
+            "@angular/animations": "22.1.5"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@eslint/js",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "10.0.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "10.0.1"
+        }
+      ],
+      "candidates": {
+        "next": "10.0.0-rc.0",
+        "latest": "10.0.1"
+      },
+      "source": "https://www.npmjs.com/package/@eslint/js",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^20.19.0 || ^22.13.0 || >=24"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^20.19.0 || ^22.13.0 || >=24"
+          },
+          "peers": {
+            "eslint": "^10.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@fontsource-variable/inter",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^5.3.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^5.3.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "5.3.0"
+        }
+      ],
+      "candidates": {
+        "latest": "5.3.0"
+      },
+      "source": "https://www.npmjs.com/package/@fontsource-variable/inter",
+      "requirements": {
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@fortawesome/fontawesome-free",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "7.3.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "7.3.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "7.3.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "7.3.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "7.3.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "7.3.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "7.3.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "7.3.1"
+        }
+      ],
+      "candidates": {
+        "latest": "7.3.1"
+      },
+      "source": "https://www.npmjs.com/package/@fortawesome/fontawesome-free",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=6"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@internationalized/date",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^3.12.3"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.12.4"
+        }
+      ],
+      "candidates": {
+        "latest": "3.12.4"
+      },
+      "source": "https://www.npmjs.com/package/@internationalized/date",
+      "requirements": {
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@lucide/svelte",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^1.30.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^1.31.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "1.41.0"
+        }
+      ],
+      "candidates": {
+        "next": "1.3.0",
+        "latest": "1.42.0"
+      },
+      "source": "https://www.npmjs.com/package/@lucide/svelte",
+      "requirements": {
+        "next": {
+          "peers": {
+            "svelte": "^5"
+          }
+        },
+        "latest": {
+          "peers": {
+            "svelte": "^5"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@popperjs/core",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "2.11.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "2.11.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "2.11.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "2.11.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "2.11.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "2.11.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "2.11.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "2.11.8"
+        }
+      ],
+      "candidates": {
+        "latest": "2.11.8"
+      },
+      "source": "https://www.npmjs.com/package/@popperjs/core",
+      "requirements": {
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@sveltejs/adapter-static",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "3.0.10"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "3.0.10"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "3.0.10"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "3.0.10"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "peerDependencies",
+          "version": ">=3 <4"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.0.10"
+        }
+      ],
+      "candidates": {
+        "latest": "3.0.10",
+        "next": "4.0.0-next.4"
+      },
+      "source": "https://www.npmjs.com/package/@sveltejs/adapter-static",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "@sveltejs/kit": "^2.0.0"
+          }
+        },
+        "next": {
+          "peers": {
+            "@sveltejs/kit": "^3.0.0-next.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@sveltejs/kit",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "2.70.2"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "2.70.2"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "2.70.2"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "2.70.2"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "peerDependencies",
+          "version": ">=2.53.0 <3"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "2.70.2"
+        }
+      ],
+      "candidates": {
+        "latest": "2.70.3",
+        "next": "3.0.0-next.25"
+      },
+      "source": "https://www.npmjs.com/package/@sveltejs/kit",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=18.13"
+          },
+          "peers": {
+            "vite": "^5.0.3 || ^6.0.0 || ^7.0.0-beta.0 || ^8.0.0",
+            "svelte": "^4.0.0 || ^5.0.0-next.0",
+            "typescript": "^5.3.3 || ^6.0.0",
+            "@opentelemetry/api": "^1.0.0",
+            "@sveltejs/vite-plugin-svelte": "^3.0.0 || ^4.0.0-next.1 || ^5.0.0 || ^6.0.0-next.0 || ^7.0.0"
+          }
+        },
+        "next": {
+          "engines": {
+            "node": ">=22.17"
+          },
+          "peers": {
+            "vite": "^8.0.12",
+            "svelte": "^5.56.4",
+            "typescript": "^6.0.0",
+            "@opentelemetry/api": "^1.0.0",
+            "@sveltejs/vite-plugin-svelte": "^7.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@sveltejs/package",
+      "declarations": [
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "2.5.8"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "2.5.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "2.5.8"
+        }
+      ],
+      "candidates": {
+        "latest": "2.5.8",
+        "next": "3.0.0-next.7"
+      },
+      "source": "https://www.npmjs.com/package/@sveltejs/package",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": "^16.14 || >=18"
+          },
+          "peers": {
+            "svelte": "^3.44.0 || ^4.0.0 || ^5.0.0-next.1"
+          }
+        },
+        "next": {
+          "engines": {
+            "node": ">=22"
+          },
+          "peers": {
+            "svelte": "^3.44.0 || ^4.0.0 || ^5.0.0-next.1",
+            "typescript": "^6.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@sveltejs/vite-plugin-svelte",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "7.2.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "7.3.0"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "7.2.0"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "7.2.0"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "peerDependencies",
+          "version": ">=7 <8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "7.2.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "7.2.0"
+        },
+        {
+          "path": "bun.lock",
+          "version": "7.3.0"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "7.2.0"
+        }
+      ],
+      "candidates": {
+        "beta": "2.0.0-beta.3",
+        "next": "7.0.0-next.1",
+        "latest": "7.3.0"
+      },
+      "source": "https://www.npmjs.com/package/@sveltejs/vite-plugin-svelte",
+      "requirements": {
+        "beta": {
+          "engines": {
+            "node": "^14.18.0 || >= 16"
+          },
+          "peers": {
+            "vite": "^4.0.0-beta.5",
+            "svelte": "^3.54.0"
+          }
+        },
+        "next": {
+          "engines": {
+            "node": "^20.19 || ^22.12 || >=24"
+          },
+          "peers": {
+            "vite": "^8.0.0-beta.7 || ^8.0.0",
+            "svelte": "^5.46.4"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^20.19 || ^22.12 || >=24"
+          },
+          "peers": {
+            "vite": "^8.0.0-beta.7 || ^8.0.0",
+            "svelte": "^5.46.4"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@tailwindcss/vite",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^4.3.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^4.3.3"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "4.3.3"
+        }
+      ],
+      "candidates": {
+        "next": "4.0.0",
+        "latest": "4.3.3"
+      },
+      "source": "https://www.npmjs.com/package/@tailwindcss/vite",
+      "requirements": {
+        "next": {
+          "peers": {
+            "vite": "^5.2.0 || ^6"
+          }
+        },
+        "latest": {
+          "peers": {
+            "vite": "^5.2.0 || ^6 || ^7 || ^8"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@types/cookie",
+      "declarations": [
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "dependencies",
+          "version": "0.6.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "0.6.0"
+        }
+      ],
+      "candidates": {
+        "latest": "1.0.0"
+      },
+      "source": "https://www.npmjs.com/package/@types/cookie",
+      "requirements": {
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@types/node",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "24.10.4"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "24.13.3"
+        },
+        {
+          "path": "packages/web/application-bridge-tooling/package.json",
+          "kind": "devDependencies",
+          "version": "24.10.12"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "24.10.12"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "24.10.12"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic/package.json",
+          "kind": "devDependencies",
+          "version": "24.10.12"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "24.10.12"
+        },
+        {
+          "path": "bun.lock",
+          "version": "24.10.4"
+        },
+        {
+          "path": "bun.lock",
+          "version": "24.13.3"
+        },
+        {
+          "path": "bun.lock",
+          "version": "24.13.3"
+        },
+        {
+          "path": "bun.lock",
+          "version": "24.13.3"
+        },
+        {
+          "path": "bun.lock",
+          "version": "24.13.3"
+        }
+      ],
+      "candidates": {
+        "latest": "26.5.0"
+      },
+      "source": "https://www.npmjs.com/package/@types/node",
+      "requirements": {
+        "latest": {
+          "peers": {}
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@types/react",
+      "declarations": [
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "19.2.17"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "19.2.17"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "19.2.17"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "19.2.17"
+        }
+      ],
+      "candidates": {
+        "latest": "19.2.18"
+      },
+      "source": "https://www.npmjs.com/package/@types/react",
+      "requirements": {
+        "latest": {
+          "peers": {}
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@types/react-dom",
+      "declarations": [
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "19.2.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "19.2.3"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "19.2.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "19.2.3"
+        }
+      ],
+      "candidates": {
+        "latest": "19.2.7"
+      },
+      "source": "https://www.npmjs.com/package/@types/react-dom",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "@types/react": "^19.2.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vitejs/devtools",
+      "declarations": [
+        {
+          "path": "packages/web/vite-plugin-runic/package.json",
+          "kind": "devDependencies",
+          "version": "0.4.12"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic/package.json",
+          "kind": "peerDependencies",
+          "version": "^0.4.12"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "0.4.12"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "0.4.12"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "0.4.12"
+        }
+      ],
+      "candidates": {
+        "latest": "0.7.3"
+      },
+      "source": "https://www.npmjs.com/package/@vitejs/devtools",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "@vitejs/devtools-oxc": "^0.7.3",
+            "@vitejs/devtools-rolldown": "^0.7.3",
+            "@vitejs/devtools-vite": "^0.7.3",
+            "@vitejs/devtools-vitest": "^0.7.3",
+            "vite": "*"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vitejs/devtools-kit",
+      "declarations": [
+        {
+          "path": "packages/web/vite-plugin-runic/package.json",
+          "kind": "devDependencies",
+          "version": "0.4.12"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "0.4.12"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "0.4.12"
+        }
+      ],
+      "candidates": {
+        "latest": "0.7.3"
+      },
+      "source": "https://www.npmjs.com/package/@vitejs/devtools-kit",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "vite": "*"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vitejs/plugin-react",
+      "declarations": [
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "6.0.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "6.0.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "6.0.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "6.0.1"
+        }
+      ],
+      "candidates": {
+        "beta": "6.0.0-beta.0",
+        "latest": "6.1.1"
+      },
+      "source": "https://www.npmjs.com/package/@vitejs/plugin-react",
+      "requirements": {
+        "beta": {
+          "engines": {
+            "node": "^20.19.0 || >=22.12.0"
+          },
+          "peers": {
+            "vite": "^8.0.0",
+            "@rolldown/plugin-babel": "^0.1.7",
+            "babel-plugin-react-compiler": "^1.0.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^20.19.0 || >=22.12.0"
+          },
+          "peers": {
+            "vite": "^8.0.0",
+            "oxc-transform-react": "^0.145.0",
+            "@rolldown/plugin-babel": "^0.1.7 || ^0.2.0",
+            "babel-plugin-react-compiler": "^1.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vitejs/plugin-vue",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "6.0.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "6.0.8"
+        }
+      ],
+      "candidates": {
+        "beta": "6.0.0-beta.2",
+        "latest": "6.0.8"
+      },
+      "source": "https://www.npmjs.com/package/@vitejs/plugin-vue",
+      "requirements": {
+        "beta": {
+          "engines": {
+            "node": "^20.19.0 || >=22.12.0"
+          },
+          "peers": {
+            "vue": "^3.2.25",
+            "vite": "^5.0.0 || ^6.0.0 || ^7.0.0-0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^20.19.0 || >=22.12.0"
+          },
+          "peers": {
+            "vue": "^3.2.25",
+            "vite": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "bits-ui",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^2.18.1"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^2.18.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "2.19.0"
+        }
+      ],
+      "candidates": {
+        "next": "1.0.0-next.98",
+        "latest": "2.19.0"
+      },
+      "source": "https://www.npmjs.com/package/bits-ui",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": ">=18",
+            "pnpm": ">=8.7.0"
+          },
+          "peers": {
+            "svelte": "^5.11.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": ">=20"
+          },
+          "peers": {
+            "@internationalized/date": "^3.8.1",
+            "svelte": "^5.33.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "bootstrap",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "5.3.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "5.3.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "5.3.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "5.3.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "5.3.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "5.3.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "5.3.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "5.3.8"
+        }
+      ],
+      "candidates": {
+        "latest": "5.3.8"
+      },
+      "source": "https://www.npmjs.com/package/bootstrap",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "@popperjs/core": "^2.11.8"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "bun",
+      "declarations": [],
+      "resolved": [],
+      "candidates": {
+        "latest": "1.4.2"
+      },
+      "source": "https://www.npmjs.com/package/bun",
+      "requirements": {
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "clsx",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^2.1.1"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^2.1.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "2.1.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "2.1.1"
+        }
+      ],
+      "candidates": {
+        "next": "2.0.0-next.0",
+        "latest": "2.1.1"
+      },
+      "source": "https://www.npmjs.com/package/clsx",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": ">=6"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": ">=6"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "crossws",
+      "declarations": [],
+      "resolved": [],
+      "candidates": {
+        "latest": "0.4.12"
+      },
+      "source": "https://www.npmjs.com/package/crossws",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "srvx": ">=0.11.5"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "devframe",
+      "declarations": [],
+      "resolved": [],
+      "candidates": {
+        "latest": "0.9.16"
+      },
+      "source": "https://www.npmjs.com/package/devframe",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "cac": "^7.0.0",
+            "@modelcontextprotocol/client": "^2.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "effect",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "package.json",
+          "kind": "devDependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "packages/web/application-bridge-tooling/package.json",
+          "kind": "devDependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "packages/web/application-bridge-tooling/package.json",
+          "kind": "peerDependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "packages/web/application-bridge/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "packages/web/desktop/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "peerDependencies",
+          "version": ">=3.22.1 <4"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "3.22.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "3.22.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "3.22.1"
+        }
+      ],
+      "candidates": {
+        "latest": "3.22.1",
+        "beta": "4.0.0-beta.107",
+        "rc": "4.0.0-rc.112"
+      },
+      "source": "https://www.npmjs.com/package/effect",
+      "requirements": {
+        "latest": {},
+        "beta": {},
+        "rc": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "esbuild",
+      "declarations": [
+        {
+          "path": "package.json",
+          "kind": "devDependencies",
+          "version": "0.28.1"
+        },
+        {
+          "path": "packages/web/application-bridge-tooling/package.json",
+          "kind": "dependencies",
+          "version": "0.28.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "0.28.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "0.28.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "0.28.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "0.28.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "0.28.1"
+        }
+      ],
+      "candidates": {
+        "latest": "0.28.2"
+      },
+      "source": "https://www.npmjs.com/package/esbuild",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=18"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "10.8.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "10.8.1"
+        }
+      ],
+      "candidates": {
+        "next": "10.0.0-rc.2",
+        "latest": "10.10.0"
+      },
+      "source": "https://www.npmjs.com/package/eslint",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^20.19.0 || ^22.13.0 || >=24"
+          },
+          "peers": {
+            "jiti": "*"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^20.19.0 || ^22.13.0 || >=24"
+          },
+          "peers": {
+            "jiti": "*"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-config-prettier",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "10.1.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "10.1.8"
+        }
+      ],
+      "candidates": {
+        "latest": "10.1.8"
+      },
+      "source": "https://www.npmjs.com/package/eslint-config-prettier",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "eslint": ">=7.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-svelte",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "3.22.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.22.0"
+        }
+      ],
+      "candidates": {
+        "next": "3.0.0-next.18",
+        "latest": "3.23.0"
+      },
+      "source": "https://www.npmjs.com/package/eslint-plugin-svelte",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": "^18.20.4 || ^20.18.0 || >=22.10.0"
+          },
+          "peers": {
+            "eslint": "^8.57.1 || ^9.0.0",
+            "svelte": "^3.37.0 || ^4.0.0 || ^5.0.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+          },
+          "peers": {
+            "eslint": "^8.57.1 || ^9.0.0 || ^10.0.0",
+            "svelte": "^3.37.0 || ^4.0.0 || ^5.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "globals",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "17.9.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "17.9.0"
+        },
+        {
+          "path": "bun.lock",
+          "version": "16.5.0"
+        }
+      ],
+      "candidates": {
+        "latest": "17.12.0"
+      },
+      "source": "https://www.npmjs.com/package/globals",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=18"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "happy-dom",
+      "declarations": [
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "^20.11.2"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "^20.11.2"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "20.14.0"
+        }
+      ],
+      "candidates": {
+        "latest": "20.14.0"
+      },
+      "source": "https://www.npmjs.com/package/happy-dom",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=20.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "npm",
+      "declarations": [],
+      "resolved": [],
+      "candidates": {
+        "latest": "12.0.2"
+      },
+      "source": "https://www.npmjs.com/package/npm",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "playwright-core",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/tests/HostedBrowserE2E/package.json",
+          "kind": "devDependencies",
+          "version": "1.62.1"
+        },
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "1.62.1"
+        },
+        {
+          "path": "package.json",
+          "kind": "devDependencies",
+          "version": "1.62.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "apps/translations-editor/tests/HostedBrowserE2E/bun.lock",
+          "version": "1.62.1"
+        },
+        {
+          "path": "bun.lock",
+          "version": "1.62.1"
+        }
+      ],
+      "candidates": {
+        "rc": "1.18.0-rc1",
+        "beta": "1.63.0-beta-1788559919000",
+        "latest": "1.63.0",
+        "next": "1.64.0-alpha-2026-09-08"
+      },
+      "source": "https://www.npmjs.com/package/playwright-core",
+      "requirements": {
+        "rc": {
+          "engines": {
+            "node": ">=12"
+          }
+        },
+        "beta": {
+          "engines": {
+            "node": ">=20"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": ">=20"
+          }
+        },
+        "next": {
+          "engines": {
+            "node": ">=20"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "pnpm",
+      "declarations": [],
+      "resolved": [],
+      "candidates": {
+        "latest": "12.3.4"
+      },
+      "source": "https://www.npmjs.com/package/pnpm",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=18.*"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "prettier",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "3.9.6"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.9.6"
+        }
+      ],
+      "candidates": {
+        "next": "4.0.0-alpha.13",
+        "latest": "3.9.6"
+      },
+      "source": "https://www.npmjs.com/package/prettier",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": ">=14"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "prettier-plugin-svelte",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "4.1.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "4.1.1"
+        }
+      ],
+      "candidates": {
+        "latest": "4.1.1"
+      },
+      "source": "https://www.npmjs.com/package/prettier-plugin-svelte",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=20"
+          },
+          "peers": {
+            "prettier": "^3.0.0",
+            "svelte": "^5.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "react",
+      "declarations": [
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "19.2.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "19.2.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "19.2.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "19.2.8"
+        }
+      ],
+      "candidates": {
+        "beta": "19.0.0-beta-26f2496093-20240514",
+        "rc": "19.0.0-rc.1",
+        "next": "19.3.0-canary-d5736f09-20260507",
+        "latest": "19.2.8"
+      },
+      "source": "https://www.npmjs.com/package/react",
+      "requirements": {
+        "beta": {
+          "engines": {
+            "node": ">=0.10.0"
+          }
+        },
+        "rc": {
+          "engines": {
+            "node": ">=0.10.0"
+          }
+        },
+        "next": {
+          "engines": {
+            "node": ">=0.10.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": ">=0.10.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "react-dom",
+      "declarations": [
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "19.2.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "19.2.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "19.2.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "19.2.8"
+        }
+      ],
+      "candidates": {
+        "beta": "19.0.0-beta-26f2496093-20240514",
+        "rc": "19.0.0-rc.1",
+        "next": "19.3.0-canary-d5736f09-20260507",
+        "latest": "19.2.8"
+      },
+      "source": "https://www.npmjs.com/package/react-dom",
+      "requirements": {
+        "beta": {
+          "peers": {
+            "react": "19.0.0-beta-26f2496093-20240514"
+          }
+        },
+        "rc": {
+          "peers": {
+            "react": "19.0.0-rc.1"
+          }
+        },
+        "next": {
+          "peers": {
+            "react": "19.3.0-canary-d5736f09-20260507"
+          }
+        },
+        "latest": {
+          "peers": {
+            "react": "^19.2.8"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "rxjs",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "7.8.2"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "7.8.2"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "7.8.2"
+        }
+      ],
+      "candidates": {
+        "next": "9.0.0-beta.0",
+        "latest": "7.8.2"
+      },
+      "source": "https://www.npmjs.com/package/rxjs",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": ">=22.13.0"
+          }
+        },
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "shadcn-svelte",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^1.5.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^1.5.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "1.6.1"
+        }
+      ],
+      "candidates": {
+        "next": "1.0.0-next.19",
+        "latest": "1.6.1"
+      },
+      "source": "https://www.npmjs.com/package/shadcn-svelte",
+      "requirements": {
+        "next": {},
+        "latest": {
+          "peers": {
+            "svelte": "^5.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "svelte",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "5.56.8"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "5.56.8"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "5.56.8"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "peerDependencies",
+          "version": ">=5.46.4 <6"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "5.56.8"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "peerDependencies",
+          "version": ">=5.46.4 <6"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "5.56.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "5.56.8"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "5.56.8"
+        }
+      ],
+      "candidates": {
+        "next": "5.0.0-next.272",
+        "latest": "5.57.0"
+      },
+      "source": "https://www.npmjs.com/package/svelte",
+      "requirements": {
+        "next": {
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": ">=18"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "svelte-check",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "4.7.5"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "4.7.5"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "4.7.5"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "4.7.5"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "4.7.3"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "4.7.5"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "4.7.3"
+        }
+      ],
+      "candidates": {
+        "latest": "4.7.6"
+      },
+      "source": "https://www.npmjs.com/package/svelte-check",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">= 18.0.0"
+          },
+          "peers": {
+            "svelte": "^4.0.0 || ^5.0.0-next.0",
+            "typescript": "^5.0.0 || ^6.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tailwind-merge",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^3.6.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^3.6.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.6.0"
+        }
+      ],
+      "candidates": {
+        "latest": "3.6.0"
+      },
+      "source": "https://www.npmjs.com/package/tailwind-merge",
+      "requirements": {
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tailwind-variants",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^3.3.1"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^3.3.1"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.3.1"
+        }
+      ],
+      "candidates": {
+        "latest": "3.3.1"
+      },
+      "source": "https://www.npmjs.com/package/tailwind-variants",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": ">=16.9.x",
+            "pnpm": ">=7.x"
+          },
+          "peers": {
+            "tailwindcss": "*",
+            "tailwind-merge": ">=3.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tailwindcss",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^4.3.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^4.3.3"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "4.3.3"
+        }
+      ],
+      "candidates": {
+        "next": "4.0.0",
+        "latest": "4.3.3"
+      },
+      "source": "https://www.npmjs.com/package/tailwindcss",
+      "requirements": {
+        "next": {},
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tw-animate-css",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "^1.4.0"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "^1.4.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "1.4.0"
+        }
+      ],
+      "candidates": {
+        "latest": "1.4.0"
+      },
+      "source": "https://www.npmjs.com/package/tw-animate-css",
+      "requirements": {
+        "latest": {}
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "typescript",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "packages/web/angular/package.json",
+          "kind": "devDependencies",
+          "version": "6.0.3"
+        },
+        {
+          "path": "packages/web/application-bridge-tooling/package.json",
+          "kind": "devDependencies",
+          "version": "7.0.2"
+        },
+        {
+          "path": "packages/web/application-bridge/package.json",
+          "kind": "devDependencies",
+          "version": "7.0.2"
+        },
+        {
+          "path": "packages/web/desktop/package.json",
+          "kind": "devDependencies",
+          "version": "7.0.2"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic-translations/package.json",
+          "kind": "devDependencies",
+          "version": "^5.9.3"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "6.0.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "5.9.3"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "5.9.3"
+        },
+        {
+          "path": "bun.lock",
+          "version": "6.0.3"
+        },
+        {
+          "path": "bun.lock",
+          "version": "7.0.2"
+        },
+        {
+          "path": "bun.lock",
+          "version": "7.0.2"
+        },
+        {
+          "path": "bun.lock",
+          "version": "7.0.2"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "6.0.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "5.9.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "5.9.3"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "5.9.3"
+        }
+      ],
+      "candidates": {
+        "beta": "6.0.0-beta",
+        "rc": "7.0.1-rc",
+        "latest": "7.0.2",
+        "next": "7.1.0-dev.20260908.1"
+      },
+      "source": "https://www.npmjs.com/package/typescript",
+      "requirements": {
+        "beta": {
+          "engines": {
+            "node": ">=14.17"
+          }
+        },
+        "rc": {
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "next": {
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "typescript-eslint",
+      "declarations": [
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "8.66.0"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "8.66.0"
+        }
+      ],
+      "candidates": {
+        "latest": "8.70.0"
+      },
+      "source": "https://www.npmjs.com/package/typescript-eslint",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+          },
+          "peers": {
+            "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
+            "typescript": ">=4.8.4 <6.1.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "vite",
+      "declarations": [
+        {
+          "path": "apps/translations-editor/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "8.2.1"
+        },
+        {
+          "path": "docs/package.json",
+          "kind": "devDependencies",
+          "version": "8.2.1"
+        },
+        {
+          "path": "examples/customer-migration/Host/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "8.2.1"
+        },
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "8.2.1"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "8.2.1"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "peerDependencies",
+          "version": ">=8 <9"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic-translations/package.json",
+          "kind": "devDependencies",
+          "version": "^7.3.6"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic-translations/package.json",
+          "kind": "peerDependencies",
+          "version": ">=6 <9"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic/package.json",
+          "kind": "devDependencies",
+          "version": "8.2.1"
+        },
+        {
+          "path": "packages/web/vite-plugin-runic/package.json",
+          "kind": "peerDependencies",
+          "version": "^8.0.0"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "8.1.5"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "8.2.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "8.1.5"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "8.2.1"
+        },
+        {
+          "path": "bun.lock",
+          "version": "7.3.6"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "version": "7.3.6"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "version": "8.1.5"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "8.2.1"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "8.1.5"
+        }
+      ],
+      "candidates": {
+        "latest": "8.2.2",
+        "beta": "8.3.0-beta.1"
+      },
+      "source": "https://www.npmjs.com/package/vite",
+      "requirements": {
+        "latest": {
+          "engines": {
+            "node": "^20.19.0 || >=22.12.0"
+          },
+          "peers": {
+            "tsx": "^4.8.1",
+            "jiti": ">=1.21.0",
+            "less": "^4.0.0",
+            "sass": "^1.70.0",
+            "yaml": "^2.4.2",
+            "stylus": ">=0.54.8",
+            "terser": "^5.16.0",
+            "esbuild": "^0.27.0 || ^0.28.0",
+            "sugarss": "^5.0.0",
+            "@types/node": "^20.19.0 || >=22.12.0",
+            "sass-embedded": "^1.70.0",
+            "@vitejs/devtools": "^0.4.0 || ^0.5.0"
+          }
+        },
+        "beta": {
+          "engines": {
+            "node": "^20.19.0 || >=22.12.0"
+          },
+          "peers": {
+            "tsx": "^4.8.1",
+            "jiti": ">=1.21.0",
+            "less": "^4.0.0",
+            "sass": "^1.70.0",
+            "yaml": "^2.4.2",
+            "stylus": ">=0.54.8",
+            "terser": "^5.16.0",
+            "esbuild": "^0.27.0 || ^0.28.0",
+            "sugarss": "^5.0.0",
+            "@types/node": "^20.19.0 || >=22.12.0",
+            "sass-embedded": "^1.70.0",
+            "@vitejs/devtools": "^0.7.1"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "vitest",
+      "declarations": [
+        {
+          "path": "packages/web/svelte/package.json",
+          "kind": "devDependencies",
+          "version": "4.1.10"
+        },
+        {
+          "path": "packages/web/sveltekit/package.json",
+          "kind": "devDependencies",
+          "version": "4.1.10"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "4.1.10"
+        }
+      ],
+      "candidates": {
+        "beta": "5.0.0-beta.7",
+        "rc": "5.0.0-rc.4",
+        "latest": "5.0.0"
+      },
+      "source": "https://www.npmjs.com/package/vitest",
+      "requirements": {
+        "beta": {
+          "engines": {
+            "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+          },
+          "peers": {
+            "vite": "^6.4.0 || ^7.0.0 || ^8.0.0",
+            "jsdom": "*",
+            "happy-dom": "*",
+            "@vitest/ui": "5.0.0-beta.7",
+            "@types/node": "^22.0.0 || >=24.0.0",
+            "@edge-runtime/vm": "*",
+            "@opentelemetry/api": "^1.9.0",
+            "@vitest/coverage-v8": "5.0.0-beta.7",
+            "@vitest/browser-preview": "5.0.0-beta.7",
+            "@vitest/coverage-istanbul": "5.0.0-beta.7",
+            "@vitest/browser-playwright": "5.0.0-beta.7",
+            "@vitest/browser-webdriverio": "^5.0.0-beta.5 || >=5.0.0"
+          }
+        },
+        "rc": {
+          "engines": {
+            "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+          },
+          "peers": {
+            "vite": "^6.4.0 || ^7.0.0 || ^8.0.0",
+            "jsdom": "*",
+            "happy-dom": "*",
+            "@vitest/ui": "5.0.0-rc.4",
+            "@types/node": "^22.0.0 || >=24.0.0",
+            "@edge-runtime/vm": "*",
+            "@opentelemetry/api": "^1.9.0",
+            "@vitest/coverage-v8": "5.0.0-rc.4",
+            "@vitest/browser-preview": "5.0.0-rc.4",
+            "@vitest/coverage-istanbul": "5.0.0-rc.4",
+            "@vitest/browser-playwright": "5.0.0-rc.4",
+            "@vitest/browser-webdriverio": "^5.0.0-beta.5 || >=5.0.0"
+          }
+        },
+        "latest": {
+          "engines": {
+            "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+          },
+          "peers": {
+            "vite": "^6.4.0 || ^7.0.0 || ^8.0.0",
+            "jsdom": "*",
+            "happy-dom": "*",
+            "@vitest/ui": "5.0.0",
+            "@types/node": "^22.0.0 || >=24.0.0",
+            "@edge-runtime/vm": "*",
+            "@opentelemetry/api": "^1.9.0",
+            "@vitest/coverage-v8": "5.0.0",
+            "@vitest/browser-preview": "5.0.0",
+            "@vitest/coverage-istanbul": "5.0.0",
+            "@vitest/browser-playwright": "5.0.0",
+            "@vitest/browser-webdriverio": "^5.0.0-beta.5 || >=5.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "vue",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "dependencies",
+          "version": "3.5.40"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "bun.lock",
+          "version": "3.5.42"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "version": "3.5.42"
+        },
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "3.5.40"
+        }
+      ],
+      "candidates": {
+        "beta": "3.6.0-beta.17",
+        "latest": "3.5.42",
+        "rc": "3.6.0-rc.7"
+      },
+      "source": "https://www.npmjs.com/package/vue",
+      "requirements": {
+        "beta": {
+          "peers": {
+            "typescript": "*"
+          }
+        },
+        "latest": {
+          "peers": {
+            "typescript": "*"
+          }
+        },
+        "rc": {
+          "peers": {
+            "typescript": "*"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "vue-tsc",
+      "declarations": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "kind": "devDependencies",
+          "version": "3.3.8"
+        }
+      ],
+      "resolved": [
+        {
+          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "version": "3.3.8"
+        }
+      ],
+      "candidates": {
+        "latest": "3.3.11"
+      },
+      "source": "https://www.npmjs.com/package/vue-tsc",
+      "requirements": {
+        "latest": {
+          "peers": {
+            "typescript": ">=5.0.0"
+          }
+        }
+      }
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "CommunityToolkit.Mvvm",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "8.4.2"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "8.4.2",
+        "prerelease": "8.4.1-build.4"
+      },
+      "source": "https://www.nuget.org/packages/CommunityToolkit.Mvvm"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "coverlet.collector",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "10.0.1"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "10.0.1",
+        "prerelease": null
+      },
+      "source": "https://www.nuget.org/packages/coverlet.collector"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "CsWebUi",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "2.5.0-beta.4.4"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": null,
+        "prerelease": "2.5.0-beta.4.4"
+      },
+      "source": "https://www.nuget.org/packages/CsWebUi"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.Build.Framework",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "17.11.48"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "18.9.6",
+        "prerelease": "17.15.0-preview-25277-114"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.Build.Framework"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.Build.Locator",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "1.11.2"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "1.11.2",
+        "prerelease": "1.5.32-g4ed1bab6ff"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.Build.Locator"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.CodeAnalysis.CSharp",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "4.14.0"
+        },
+        {
+          "path": "packages/dotnet/Runic.Translations.Generator/Runic.Translations.Generator.csproj",
+          "kind": "PackageReference",
+          "version": "4.14.0"
+        },
+        {
+          "path": "tests/dotnet/Runic.Translations.Generator.Tests/Runic.Translations.Generator.Tests.csproj",
+          "kind": "PackageReference",
+          "version": "4.14.0"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "5.9.0",
+        "prerelease": "5.3.0-2.final"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.CodeAnalysis.CSharp.Features",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "5.6.0"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "5.9.0",
+        "prerelease": "5.3.0-2.final"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Features"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.CodeAnalysis.CSharp.Workspaces",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "5.6.0"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "5.9.0",
+        "prerelease": "5.3.0-2.final"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Workspaces"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.CodeAnalysis.Workspaces.MSBuild",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "5.6.0"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "5.9.0",
+        "prerelease": "5.3.0-2.final"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.CodeAnalysis.Workspaces.MSBuild"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.Extensions.DependencyInjection",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "10.0.10"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "10.0.11",
+        "prerelease": "11.0.0-preview.7.26381.103"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.Extensions.DependencyInjection"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "10.0.10"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "10.0.11",
+        "prerelease": "11.0.0-preview.7.26381.103"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.Extensions.DependencyInjection.Abstractions"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.Extensions.Hosting",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "10.0.10"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "10.0.11",
+        "prerelease": "11.0.0-preview.7.26381.103"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.Extensions.Hosting"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.NET.Test.Sdk",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "18.7.0"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "18.9.0",
+        "prerelease": "17.14.0-preview-25107-01"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.NET.Test.Sdk"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.SourceLink.GitHub",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "10.0.300"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "10.0.400",
+        "prerelease": "11.0.100-preview.7.26381.103"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.SourceLink.GitHub"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Microsoft.Web.WebView2",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "1.0.4078.44"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "1.0.4191.47",
+        "prerelease": "1.0.4181-prerelease"
+      },
+      "source": "https://www.nuget.org/packages/Microsoft.Web.WebView2"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "ReactiveUI",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "23.2.28"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "24.2.0",
+        "prerelease": "24.0.0-beta.3"
+      },
+      "source": "https://www.nuget.org/packages/ReactiveUI"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "ReactiveUI.SourceGenerators",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "3.1.0"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "3.2.0",
+        "prerelease": null
+      },
+      "source": "https://www.nuget.org/packages/ReactiveUI.SourceGenerators"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "xunit",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "2.9.3"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "2.9.3",
+        "prerelease": "2.5.2-pre.6"
+      },
+      "source": "https://www.nuget.org/packages/xunit"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "xunit.runner.visualstudio",
+      "declarations": [
+        {
+          "path": "Directory.Packages.props",
+          "kind": "PackageVersion",
+          "version": "3.1.5"
+        }
+      ],
+      "resolved": [],
+      "candidates": {
+        "latest": "4.0.0",
+        "prerelease": "4.0.0-pre.5"
+      },
+      "source": "https://www.nuget.org/packages/xunit.runner.visualstudio"
+    }
+  ]
+}

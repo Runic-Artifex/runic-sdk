@@ -1,1 +1,1 @@
-export const authorityRevision = '009be7c0be0f834a5af0b7e063750065cf45f766';
+export const authorityRevision = '2fdbc2af5ae1de7ba31807917df42b21c9179572';

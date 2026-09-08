@@ -2,7 +2,7 @@
   "name": "@runic-artifex/customer-migration",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite",

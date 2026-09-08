@@ -54,14 +54,14 @@ bun run ci --job templates # Template checks with build/package prerequisites
 ```
 
 Local CI needs Docker or rootless Podman; see [setup and reruns](eng/ci/README.md).
-The workflow installs npm 11.16.0 and pnpm 11.25.0 where compatibility tests need
+The workflow installs npm 12.0.2 and pnpm 12.3.4 where compatibility tests need
 them. GitHub also exercises native window close handling and NativeAOT on Windows
 x64 and macOS Apple Silicon. `bun run affected <base-ref>` reports changed components and their
 consumers; it does not replace verification. Keep generated contracts and lockfiles
 current, and document platform checks that could not run locally.
 
 
-Repository scripts, build tools and verification use Bun 1.4.0. Use `bun run --bun`
+Repository scripts, build tools and verification use Bun 1.4.2. Use `bun run --bun`
 when invoking package scripts so Node shebangs also run under Bun. Node is retained
 for npm/pnpm package and template compatibility checks, not the default workspace
 runtime. `node:` imports refer to compatible APIs and do not require launching Node.
