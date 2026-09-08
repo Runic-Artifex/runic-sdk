@@ -54,7 +54,7 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [DevTools({ visibility: "passive" }), runic(), sveltekit()],
+  plugins: [DevTools({ embeddedVisibility: "passive" }), runic(), sveltekit()],
 });
 ```
 

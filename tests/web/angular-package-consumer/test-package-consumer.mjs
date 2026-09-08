@@ -32,9 +32,9 @@ try {
     private: true,
     scripts: { build: "ng build customer-app" },
     dependencies: {
-      "@angular/common": "22.0.8",
-      "@angular/core": "22.0.8",
-      "@angular/platform-browser": "22.0.8",
+      "@angular/common": "22.1.5",
+      "@angular/core": "22.1.5",
+      "@angular/platform-browser": "22.1.5",
       "@runic-artifex/application-bridge": `file:${resolve(bridgeArchive)}`,
       "@runic-artifex/angular": `file:${resolve(angularArchive)}`,
       "effect": "3.22.1",
@@ -44,11 +44,11 @@ try {
       "@runic-artifex/application-bridge": `file:${resolve(bridgeArchive)}`,
     },
     devDependencies: {
-      "@angular/build": "22.0.8",
-      "@angular/cli": "22.0.8",
-      "@angular/compiler": "22.0.8",
-      "@angular/compiler-cli": "22.0.8",
-      "ng-packagr": "22.0.2",
+      "@angular/build": "22.1.7",
+      "@angular/cli": "22.1.7",
+      "@angular/compiler": "22.1.5",
+      "@angular/compiler-cli": "22.1.5",
+      "ng-packagr": "22.1.1",
       typescript: "6.0.3",
     },
   });
@@ -65,7 +65,7 @@ try {
   });
   await write(root, "projects/contracts/package.json", {
     name: "@customer/contracts", version: "1.0.0", sideEffects: false,
-    peerDependencies: { "@angular/core": "22.0.8" },
+    peerDependencies: { "@angular/core": "22.1.5" },
   });
   await write(root, "projects/contracts/ng-package.json", {
     $schema: "../../../eng/archive/runic-toolkit/node_modules/ng-packagr/ng-package.schema.json",

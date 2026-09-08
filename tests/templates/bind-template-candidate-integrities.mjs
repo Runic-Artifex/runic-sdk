@@ -109,6 +109,10 @@ for (const name of declared) {
   if (!entry) throw new Error(`Template lock does not contain candidate ${name}.`);
   entry.version = candidate.version;
   entry.integrity = candidate.integrity;
+  // npm 12 no longer treats a public tarball URL as belonging to an explicitly
+  // selected private registry. Bind the exact candidate URL as well as its hash.
+  const registry = process.env.RUNIC_TEMPLATE_NPM_REGISTRY;
+  if (registry) entry.resolved = `${registry}/${name}/-/${name.slice(name.lastIndexOf("/") + 1)}-${candidate.version}.tgz`;
   for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
     for (const dependency of Object.keys(entry[field] ?? {})) {
       if (candidates.has(dependency)) entry[field][dependency] = candidates.get(dependency).version;

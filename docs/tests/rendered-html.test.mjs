@@ -205,7 +205,7 @@ test('renders the authority-derived Desktop choose-your-path matrix', async () =
   );
   assert.match(html, /Runic\.Application\.Templates@1\.0\.0-preview\.1/);
   assert.match(html, /@runic-artifex\/desktop@1\.0\.0-preview\.1/);
-  assert.match(html, /\.NET SDK 10\.0\.302; Node 24\.18\.0 with npm 11\.16\.0/);
+  assert.match(html, /\.NET SDK 10\.0\.400; Node 24\.20\.0 with npm 12\.0\.2/);
   assert.match(html, /packageManager/);
   assert.match(html, /static frontend/);
   assert.match(html, /runic-toolkit-examples/);

@@ -67,7 +67,7 @@ pnpm_version="$(bun "$repository_root/eng/compatibility-set-value.mjs" toolchain
 bun_version="$(bun "$repository_root/eng/compatibility-set-value.mjs" toolchain bun)"
 package_manager_directory="$template_tmp/package-managers"
 npm install --global --prefix "$package_manager_directory" "pnpm@$pnpm_version" \
-  --ignore-scripts --no-audit --no-fund
+  --allow-scripts=pnpm --no-audit --no-fund
 export PATH="$package_manager_directory/bin:$PATH"
 [[ "$(cd "$template_tmp" && pnpm --version)" == "$pnpm_version" ]]
 [[ "$(bun --version)" == "$bun_version" ]]
@@ -85,7 +85,7 @@ svelte_npm_version="$(npm_archive_version "$svelte_archive")"
 vite_npm_version="$(npm_archive_version "$vite_archive")"
 
 bind_candidate_integrities() {
-  bun "$script_directory/bind-template-candidate-integrities.mjs" "$1" \
+  RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" "$1" \
     "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
 }
 

@@ -21,12 +21,36 @@ runtime releases and the local container image also need the checks below.
 | NuGet tooling | Update SourceLink, Test SDK, test adapter, ReactiveUI and its generator to current stable versions. Keep xUnit 2.9.3, coverlet 10.0.1, MVVM Toolkit 8.4.2, Build Locator 1.11.2 and CsWebUi beta.4.4, which are current in their package identities. |
 | WebView2 | Update native SDK to 1.0.4191.47 and copy its target product version from `WebView2EnvironmentOptions.h`; validate COM vtable layout and NativeAOT on Windows. |
 | Bun | Pin 1.4.2 in Nix, manifests, templates and CI; use upstream release archives with verified hashes for both Linux architectures. |
-| Node/package managers | Test real Node 24.20.0 LTS, npm 12.0.2 and pnpm 12.3.4 in compatibility jobs. Nix currently packages Node 24.19.0; both satisfy the supported Node 24 range. |
+| Node/package managers | Test real Node 24.20.0 LTS, npm 12.0.2 and pnpm 12.3.4 in compatibility jobs. Nix currently packages Node 24.19.0; both satisfy the supported Node 24 range. The development shell also pins npm 12.0.2 and the native pnpm 12.3.4 launcher. |
 | Actions | Upgrade cache to v6 and setup-node to v7. Checkout v7, setup-dotnet v6, upload-artifact v7, download-artifact v8 and setup-bun v2 already track current release majors. |
 | Local CI | Refresh nixpkgs to its 2026-09-07 revision and the Ubuntu 24.04 runner image to the current registry digest. Keep act 0.2.89 plus the documented artifact protocol patch: upstream has no newer stable release containing that fix. |
 | TypeScript | Keep native compiler packages on 7.0.2. Upgrade Angular/Svelte/lint consumers only to 6.0.3: Angular requires `<6.1` and Svelte's checker/typescript-eslint do not yet support 7. |
 | Effect | Adopt the explicitly requested 4.0.0-rc.112 as a coordinated API migration, covering the runtime, schema compiler, generated facades, consumers and templates. Do not mix Effect 3/4 services or widen peers to claim untested compatibility. |
-| Web/framework packages | Align current stable versions across maintained packages and template manifests, regenerate each supported package manager's locks, and test real packed consumers. Assess DevTools 0.7.3 with devframe/crossws together. |
+| Web/framework packages | Align current stable versions across maintained packages and template manifests, regenerate each supported package manager's locks, and test real packed consumers. Use DevTools/kit 0.5.2 with devframe 0.9.16. Vite 8.2.2 only accepts DevTools `^0.4 || ^0.5`; 0.7.3 fails clean npm peer resolution. The Bun browser check verifies the real dock renders and receives live diagnostics through the upstream SSE transport. |
+
+Vue 3.5.42 / vue-tsc 3.3.11 still fails to resolve `.vue` imports when its checker
+runs under Bun 1.4.2. Keep the documented Node compatibility typecheck; Bun-only
+Vue production builds remain required.
+
+Vite 8.3.0-beta.1 accepts DevTools `^0.7.1`, so it is the next candidate for
+DevTools 0.7.3. It is deferred because the latest React, Vue and SvelteKit plugin
+peer ranges exclude that Vite prerelease. A clean npm 12 install with Vite
+8.3.0-beta.1, DevTools 0.7.3 and the React plugin 6.1.1 fails with `ERESOLVE`.
+Recheck these upstream peers before updating the coordinated stack; do not require
+starter users to bypass dependency validation. DevTools 0.5.2 remains an upgrade
+from the previously committed 0.4.12.
+
+Regenerate starter lockfiles after building web packages with
+`bun eng/dependencies/update-template-locks.mjs`. It packs local candidates into a
+temporary loopback registry, runs the authority-pinned Bun/npm/pnpm resolvers, then
+removes temporary URLs and deletes its temporary workspace. No packages are published.
+The template acceptance step rebinds hashes and npm 12 registry URLs to its own exact
+candidates. pnpm 12 needs its installation script to materialize its native launcher.
+
+The web wave passed the complete build, documentation checks, editor checks, Svelte
+and SvelteKit tests, and installed npm consumers. The DevTools tests also check real
+Node startup and Chromium rendering with Bun. Retain `@types/cookie` 0.6.0: 1.0 is a
+deprecated stub for modern cookie versions, while SvelteKit still uses cookie 0.6.
 
 Upgrade waves are reviewed by the maintainer through their commits. Validate each
 wave with affected suites, then use the real SDK CI workflow for package consumers,

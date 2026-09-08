@@ -46,6 +46,44 @@
             cp "${bunSource}/bun" "$out/bin/bun"
             chmod +x "$out/bin/bun"
           '';
+          npmSource = pkgs.fetchzip {
+            url = "https://registry.npmjs.org/npm/-/npm-12.0.2.tgz";
+            hash = "sha256-GMlNf3g1qGZESoES60OH2OYHXJ7Kv1v15HhYEw20fmc=";
+          };
+          npmForCompatibility = pkgs.runCommand "npm-12.0.2" {
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+          } ''
+            mkdir -p "$out/bin"
+            # Keep real Node and the selected npm together for compatibility tests.
+            ln -s "${pkgs.nodejs_24}/bin/node" "$out/bin/node"
+            makeWrapper "${pkgs.nodejs_24}/bin/node" "$out/bin/npm" \
+              --add-flags "${npmSource}/bin/npm-cli.js"
+            makeWrapper "${pkgs.nodejs_24}/bin/node" "$out/bin/npx" \
+              --add-flags "${npmSource}/bin/npx-cli.js"
+          '';
+          pnpmArchive = if system == "x86_64-linux" then {
+            platform = "linux-x64";
+            hash = "sha256-4mngwZG2hfp3rEPqywKezJ0ZO/8OxdB8jxatjTcIP2U=";
+          } else {
+            platform = "linux-arm64";
+            hash = "sha256-94c7TD59PdJeY8STn9Bln8sfYkzn6Jd8In5zMSvmZQ4=";
+          };
+          pnpmForCompatibility = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pnpm";
+            version = "12.3.4";
+            src = pkgs.fetchzip {
+              url = "https://registry.npmjs.org/@pnpm/exe.${pnpmArchive.platform}/-/exe.${pnpmArchive.platform}-12.3.4.tgz";
+              inherit (pnpmArchive) hash;
+            };
+            nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+            buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+            dontBuild = true;
+            installPhase = ''
+              mkdir -p "$out/bin"
+              cp pnpm "$out/bin/pnpm"
+              chmod +x "$out/bin/pnpm"
+            '';
+          };
           linuxRuntimePackages = with pkgs; lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             chromium
             gtk3
@@ -60,6 +98,8 @@
               curl
               dotnet
               bun_1_4_2
+              npmForCompatibility
+              pnpmForCompatibility
               nodejs_24
               powershell
               actForCi

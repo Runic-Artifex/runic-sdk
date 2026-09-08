@@ -28,6 +28,10 @@ for (const path of files) {
       declare("github-action", match[1], match[2], path, "uses");
   }
 }
+// The Angular packaging canary creates its npm manifest at runtime.
+const angularCanary = "tests/web/angular-package-consumer/test-package-consumer.mjs";
+const ngPackagr = readFileSync(resolve(root, angularCanary), "utf8").match(/"ng-packagr": "([^"]+)"/);
+if (ngPackagr) declare("npm", "ng-packagr", ngPackagr[1], angularCanary, "devDependencies");
 for (const name of ["bun", "npm", "pnpm", "devframe", "crossws"])
   if (!packages.has(`npm:${name}`)) packages.set(`npm:${name}`, { ecosystem: "npm", name, declarations: [], resolved: [] });
 for (const path of files.filter(path => path.endsWith("bun.lock"))) {

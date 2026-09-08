@@ -1,8 +1,7 @@
 /// <reference types="@vitejs/devtools-kit" />
 
-import { createRequire } from "node:module";
 import { readFile, readdir } from "node:fs/promises";
-import { join, dirname, resolve, extname, sep } from "node:path";
+import { dirname, resolve, extname, sep } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type {
@@ -59,7 +58,6 @@ export interface RunicViteOptions {
     fingerprint?: string;
   }>;
   readonly devtools?: boolean | "auto";
-  readonly devtoolsVisibility?: "normal" | "passive" | "hidden";
   readonly maxTimelineEntries?: number;
   /** Injects the Runic Desktop bootstrap without taking ownership of Vite or HMR. */
   readonly desktop?: boolean | Readonly<{
@@ -101,7 +99,6 @@ export interface RunicDevelopmentState {
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const maxTimelineEntries = timelineLimit(options.maxTimelineEntries);
   let server: ViteDevServer | undefined;
-  let injectDevtoolsClient = false;
   let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
   let jsonRenderer: JsonRenderer | undefined;
   let state = initialState(options);
@@ -311,8 +308,10 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       if (resolved.command === "build" && desktopBootstrapUrl !== undefined && resolved.base !== "./") {
         throw new TypeError("desktop: true requires the resolved Vite base to be './' for relocatable surface output.");
       }
-      injectDevtoolsClient = resolved.command === "serve" &&
-        resolveDevtoolsAvailability(resolved.root, options.devtools ?? "auto");
+      if (resolved.command === "serve" && options.devtools === true &&
+          !resolved.plugins.some((plugin) => plugin.name === "vite:devtools:server")) {
+        throw new Error('RUNICP007: devtools: true requires DevTools() from @vitejs/devtools in the Vite plugins array.');
+      }
       resolvedRoot = resolved.root;
       state = {
         ...state,
@@ -358,13 +357,11 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     },
     load(id) {
       if (id !== resolvedVirtualClientId) return undefined;
-      const injector = injectDevtoolsClient
-        ? `import ${JSON.stringify(devtoolsInjector(options.devtoolsVisibility ?? "passive"))};\n`
-        : "";
-      return `${injector}export * from ${JSON.stringify("@runic-artifex/vite-plugin-runic/client")};`;
+      return `export * from ${JSON.stringify("@runic-artifex/vite-plugin-runic/client")};`;
     },
     devtools: {
       async setup(context) {
+        if (options.devtools === false) return;
         sharedState = await context.rpc.sharedState.get(stateKey, { initialValue: state });
         const renderer = context.createJsonRenderer(createDevtoolsSpec(state));
         jsonRenderer = renderer;
@@ -373,7 +370,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           title: "Runic",
           icon: "ph:diamond-duotone",
           type: "json-render",
-          ui: renderer,
+          view: renderer.view,
         });
         context.commands.register({
           id: "runic:copy-diagnostic-state",
@@ -432,29 +429,6 @@ function initialState(options: RunicViteOptions): RunicDevelopmentState {
   };
 }
 
-function resolveDevtoolsAvailability(root: string, requested: boolean | "auto"): boolean {
-  if (requested === false) return false;
-  if ("Bun" in globalThis) {
-    if (requested === true) throw new Error(
-      "RUNICP007: The pinned Vite DevTools dock does not support Bun. Core Runic diagnostics remain available with devtools: false or auto.",
-    );
-    return false;
-  }
-  const require = createRequire(join(root, "package.json"));
-  try {
-    require.resolve("@vitejs/devtools/client/inject-passive");
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function devtoolsInjector(visibility: "normal" | "passive" | "hidden"): string {
-  return visibility === "normal"
-    ? "@vitejs/devtools/client/inject"
-    : `@vitejs/devtools/client/inject-${visibility}`;
-}
-
 function sanitizeRuntimeState(candidate: unknown): RunicRuntimeState {
   if (!isRecord(candidate)) return {};
   const contract = isRecord(candidate.contract) ? {
@@ -485,7 +459,10 @@ function sanitizeRuntimeState(candidate: unknown): RunicRuntimeState {
 }
 
 function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
-  const recent = current.timeline.slice(-12).reverse();
+  const section = (id: string, title: string, data: Record<string, string>): JsonRenderSpec["elements"] => ({
+    [id]: { type: "Card", props: { title }, children: [`${id}-data`] },
+    [`${id}-data`]: { type: "KeyValueTable", props: { data } },
+  });
   return {
     root: "root",
     elements: {
@@ -494,55 +471,29 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
         props: { direction: "column", gap: 12 },
         children: ["heading", "connection", "contract", "operations", "timeline"],
       },
-      heading: { type: "Text", props: { content: "Runic", variant: "heading" } },
-      connection: {
-        type: "KeyValueTable",
-        props: {
-          title: "Application Bridge",
-          entries: [
-            { key: "State", value: current.connection.state },
-            { key: "Transport", value: current.connection.transport },
-            { key: "Session", value: current.connection.sessionId || "not initialized" },
-            { key: "Revision", value: String(current.connection.revision) },
-            { key: "Sequence", value: String(current.connection.sequence) },
-          ],
-        },
-      },
-      contract: {
-        type: "KeyValueTable",
-        props: {
-          title: "Contract",
-          entries: [
-            { key: "Identity", value: current.contract.identity || "not reported" },
-            { key: "Version", value: current.contract.version || "not reported" },
-            { key: "Fingerprint", value: current.contract.fingerprint || "not reported" },
-          ],
-        },
-      },
-      operations: {
-        type: "KeyValueTable",
-        props: {
-          title: `Operations (${current.operations.length})`,
-          entries: current.operations.length === 0
-            ? [{ key: "Active", value: "none" }]
-            : current.operations.map((operation) => ({
-                key: operation.id,
-                value: `${operation.state} ${operation.completed}/${operation.total}`,
-              })),
-        },
-      },
-      timeline: {
-        type: "KeyValueTable",
-        props: {
-          title: "Recent timeline",
-          entries: recent.length === 0
-            ? [{ key: "Events", value: "none" }]
-            : recent.map((entry) => ({
-                key: `${entry.source} · ${entry.kind} · ${entry.timestamp || entry.id}`,
-                value: entry.label,
-              })),
-        },
-      },
+      heading: { type: "Text", props: { text: "Runic", variant: "heading" } },
+      ...section("connection", "Application Bridge", {
+        State: current.connection.state,
+        Transport: current.connection.transport,
+        Session: current.connection.sessionId || "not initialized",
+        Revision: String(current.connection.revision),
+        Sequence: String(current.connection.sequence),
+      }),
+      ...section("contract", "Contract", {
+        Identity: current.contract.identity || "not reported",
+        Version: current.contract.version || "not reported",
+        Fingerprint: current.contract.fingerprint || "not reported",
+      }),
+      ...section("operations", `Operations (${current.operations.length})`, current.operations.length === 0
+        ? { Active: "none" }
+        : Object.fromEntries(current.operations.map((operation) => [
+            operation.id, `${operation.state} ${operation.completed}/${operation.total}`,
+          ]))),
+      ...section("timeline", "Recent timeline", current.timeline.length === 0
+        ? { Events: "none" }
+        : Object.fromEntries(current.timeline.slice(-12).reverse().map((entry) => [
+            `${entry.id} · ${entry.source} · ${entry.kind} · ${entry.timestamp}`, entry.label,
+          ]))),
     },
   };
 }

@@ -280,12 +280,12 @@ test("waits for the matching managed-host fingerprint before reloading", async (
 
 test("registers the official Vite DevTools dock, shared state, and command", async () => {
   const plugin = runic({
-    devtools: false,
     contract: { identity: "sample", version: "1", fingerprint: "abc" },
   });
   const docks = [];
   const commands = [];
   const specs = [];
+  const view = { stateKey: "runic:test-view" };
   await plugin.devtools.setup({
     rpc: {
       sharedState: {
@@ -297,7 +297,7 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
     },
     createJsonRenderer: (spec) => {
       specs.push(spec);
-      return { updateSpec: (next) => specs.push(next) };
+      return { view, updateSpec: (next) => specs.push(next) };
     },
     docks: { register: (dock) => docks.push(dock) },
     commands: { register: (command) => commands.push(command) },
@@ -305,15 +305,15 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
   assert.equal(docks[0].id, "runic:overview");
   assert.equal(docks[0].title, "Runic");
   assert.equal(docks[0].type, "json-render");
+  assert.equal(docks[0].view, view);
   assert.equal(commands[0].id, "runic:copy-diagnostic-state");
-  assert.equal(specs[0].elements.heading.props.content, "Runic");
+  assert.equal(specs[0].elements.heading.props.text, "Runic");
   assert.equal(specs.length, 1);
 });
 
-test("Bun keeps core diagnostics available and rejects a required Node-only dock", async () => {
-  assert.ok("Bun" in globalThis);
+test("keeps core diagnostics available without the optional dock", async () => {
   const required = runic({ devtools: true });
-  assert.throws(() => required.configResolved({ command: "serve", mode: "development", root: process.cwd() }), /RUNICP007.*Bun/);
+  assert.throws(() => required.configResolved({ command: "serve", mode: "development", root: process.cwd(), plugins: [] }), /RUNICP007.*DevTools/);
   const plugin = runic();
   const server = await createServer({ configFile: false, logLevel: "silent", plugins: [plugin],
     server: { host: "127.0.0.1", port: 0, strictPort: false } });
@@ -323,6 +323,35 @@ test("Bun keeps core diagnostics available and rejects a required Node-only dock
     const address = server.httpServer.address();
     assert.equal((await fetch(`http://127.0.0.1:${address.port}/__runic/state`)).status, 200);
   } finally { await server.close(); }
+});
+
+test("official DevTools registers a live Runic dock under Bun", { timeout: 30_000 }, async () => {
+  const root = await fixtureRoot();
+  const plugin = runic({ devtools: true, contract: { identity: "bun-dock" } });
+  let context;
+  const setup = plugin.devtools.setup;
+  plugin.devtools.setup = async (value) => { context = value; await setup(value); };
+  const server = await createServer({ root, configFile: false, logLevel: "silent",
+    plugins: [DevTools({ embeddedVisibility: "normal" }), plugin],
+    server: { host: "127.0.0.1", port: 0 } });
+  try {
+    await server.listen();
+    const base = `http://127.0.0.1:${serverPort(server)}`;
+    const html = await fetch(base).then((response) => response.text());
+    const proxy = html.match(/src="([^"]*html-proxy[^"]*)"/);
+    const injection = proxy ? await fetch(`${base}${proxy[1]}`).then((response) => response.text()) : html;
+    assert.match(injection, /__devtools\/embedded\.js/);
+    assert.equal((await fetch(`${base}/__devtools/embedded.js`)).status, 200);
+    const dock = context.docks.views.get("runic:overview");
+    assert.equal(dock.type, "json-render");
+    assert.ok(dock.view);
+    plugin.diagnostics.report({ source: "assets", kind: "event", label: "Bun dock updated" });
+    const shared = await context.rpc.sharedState.get("runic:state");
+    assert.equal(shared.value().timeline.at(-1).label, "Bun dock updated");
+    const copied = JSON.parse(await context.commands.execute("runic:copy-diagnostic-state"));
+    assert.equal(copied.contract.identity, "bun-dock");
+    assert.equal(copied.timeline.at(-1).label, "Bun dock updated");
+  } finally { await server.close(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("excludes the official DevTools client from production output", async () => {
@@ -345,7 +374,7 @@ test("excludes the official DevTools client from production output", async () =>
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [DevTools({ visibility: "passive" }), runic()],
+      plugins: [DevTools({ embeddedVisibility: "passive" }), runic()],
       build: { outDir: "dist", minify: false },
     });
     const assets = await readdir(join(root, "dist", "assets"));

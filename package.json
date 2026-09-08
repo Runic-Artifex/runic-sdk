@@ -40,9 +40,9 @@
     "dependencies:audit": "bun eng/dependencies/audit.mjs"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "effect": "3.22.1",
-    "esbuild": "0.28.1",
-    "playwright-core": "1.62.1"
+    "esbuild": "0.28.2",
+    "playwright-core": "1.63.0"
   }
 }

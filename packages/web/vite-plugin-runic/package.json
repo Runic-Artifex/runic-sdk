@@ -34,7 +34,7 @@
   },
   "peerDependencies": {
     "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
-    "@vitejs/devtools": "^0.4.12",
+    "@vitejs/devtools": "^0.5.2",
     "vite": "^8.0.0"
   },
   "peerDependenciesMeta": {
@@ -46,11 +46,11 @@
     }
   },
   "devDependencies": {
-    "@types/node": "24.10.12",
-    "@vitejs/devtools": "0.4.12",
-    "@vitejs/devtools-kit": "0.4.12",
-    "typescript": "5.9.3",
-    "vite": "8.2.1",
+    "@types/node": "24.13.3",
+    "@vitejs/devtools": "0.5.2",
+    "@vitejs/devtools-kit": "0.5.2",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
     "@runic-artifex/application-bridge-tooling": "workspace:*"
   },
   "engines": {

@@ -98,6 +98,8 @@ jobs:
         with:
           node: ${{ matrix.node && 'true' || 'false' }}
       - uses: ./.github/actions/restore-build
+      - uses: ./.github/actions/install-browser
+        if: matrix.package == 'vite-plugin-runic'
       - name: Run package tests
         working-directory: packages/web/${{ matrix.package }}
         run: bun run --bun test

@@ -68,10 +68,9 @@ runtime. `node:` imports refer to compatible APIs and do not require launching N
 Native CI targets Linux x64, Windows x64 and macOS Apple Silicon; Intel macOS is
 not a CI certification target.
 
-The optional pinned Vite DevTools dock currently rejects Bun in its upstream
-transport. Core Runic diagnostics and HMR run on Bun; the dock is exercised by
-the installed npm/Node consumer. Explicitly requiring the dock on Bun reports
-`RUNICP007`. See the [Vite plugin guide](packages/web/vite-plugin-runic/README.md#bun-runtime).
+The optional Vite DevTools dock supports Bun and is also exercised by an
+installed npm/Node consumer. See the
+[Vite plugin guide](packages/web/vite-plugin-runic/README.md#bun-runtime).
 
 Vue template type checking remains an explicit npm/Node compatibility check
 because the pinned `vue-tsc` relies on Node behavior; the template's build is also

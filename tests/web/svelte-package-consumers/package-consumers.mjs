@@ -75,7 +75,8 @@ try {
 
 async function pack(workspace) {
   const packed = await execFile("npm", ["pack", "--json", "--workspace", workspace, "--pack-destination", root]);
-  const [{ filename }] = JSON.parse(packed.stdout);
+  const result = JSON.parse(packed.stdout);
+  const [{ filename }] = Array.isArray(result) ? result : Object.values(result);
   return join(root, filename);
 }
 

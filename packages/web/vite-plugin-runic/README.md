@@ -42,7 +42,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
-    DevTools({ visibility: "passive" }),
+    DevTools({ embeddedVisibility: "passive" }),
     runic({
       desktop: true,
       applicationBridge: true,
@@ -90,8 +90,7 @@ project declaration file such as `src/vite-env.d.ts`:
 | --- | --- | --- |
 | `contract` | none | Initial diagnostic contract metadata: `identity`, `version`, and `fingerprint`. |
 | `applicationBridge` | `false` | Generates Bridge IR and the fingerprint facade at startup/build and watches imported contract modules. Pass `{ source, ir, facade }` for non-conventional paths. |
-| `devtools` | `"auto"` | Enables DevTools injection when `@vitejs/devtools` is installed. Set `false` to disable it; `true` also requests it when available. |
-| `devtoolsVisibility` | `"passive"` | DevTools injector visibility: `"normal"`, `"passive"`, or `"hidden"`. |
+| `devtools` | `"auto"` | Registers the Runic dock when `DevTools()` is configured. Set `false` to disable the Runic dock; `true` requires the DevTools plugin during development. |
 | `maxTimelineEntries` | `200` | Maximum retained diagnostic timeline entries (clamped to `1`–`500`). |
 | `desktop` | `false` | Injects `./runic-desktop.js` and emits relocatable production assets; pass an absolute Desktop bootstrap URL when Vite owns the development page origin. |
 
@@ -196,11 +195,10 @@ For a working SvelteKit integration, see the [reference application](https://git
 
 ### Bun runtime
 
-Run repository scripts with `bun run --bun`. Build, HMR, bridge generation and the
-`/__runic/state` diagnostics endpoint work with Bun. The pinned official Vite
-DevTools dock (`@vitejs/devtools` 0.4.12 through devframe/crossws) requires Node.
-Under Bun, `devtools: "auto"` omits its client, and `devtools: true` fails with
-`RUNICP007`; omit the separate `DevTools(...)` plugin in a Bun configuration.
-The Svelte template selects it only in a Node runtime. The dock remains covered
-by a real installed npm consumer test on Node. A Bun-compatible upstream dock
-transport is follow-up work; Runic does not switch the application to Node silently.
+Run repository scripts with `bun run --bun`. Build, HMR, bridge generation,
+core diagnostics and the optional Vite DevTools dock support Bun 1.4.2 and Node 24.
+DevTools 0.5 owns its HTML injection. Configure visibility on
+`DevTools({ embeddedVisibility: "passive" })`; the old Runic
+`devtoolsVisibility` option and manual `@vitejs/devtools/client/inject*` imports
+are removed. Core diagnostics remain available without DevTools installed.
+Both Bun and Node run the installed package consumer check.

@@ -54,9 +54,9 @@
     "@angular/core": ">=20.3.26 <23"
   },
   "devDependencies": {
-    "@angular/compiler": "22.0.8",
-    "@angular/compiler-cli": "22.0.8",
-    "@angular/core": "22.0.8",
+    "@angular/compiler": "22.1.5",
+    "@angular/compiler-cli": "22.1.5",
+    "@angular/core": "22.1.5",
     "typescript": "6.0.3"
   },
   "packageManager": "bun@1.4.2"

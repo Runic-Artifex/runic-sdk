@@ -47,7 +47,7 @@
     "prepack": "bun run --bun build"
   },
   "dependencies": {
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.2"
   },
   "peerDependencies": {
     "@runic-artifex/application-bridge": "1.0.0-preview.1",
@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@runic-artifex/application-bridge": "workspace:*",
-    "@types/node": "24.10.12",
+    "@types/node": "24.13.3",
     "effect": "3.22.1",
     "typescript": "7.0.2"
   },
