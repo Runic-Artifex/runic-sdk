@@ -2,16 +2,16 @@ import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
 
 export const Uuid = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
-).annotations({ identifier: "Uuid" });
-const Revision = Schema.Int.pipe(Schema.nonNegative()).annotations({ identifier: "Revision" });
-export const SetupViewId = Schema.Literal("Welcome", "Destination", "Features", "Installing", "Complete");
-export const FeatureId = Schema.Literal("core", "desktop-shortcut", "examples");
+  Schema.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)),
+).annotate({ identifier: "Uuid" });
+const Revision = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).annotate({ identifier: "Revision" });
+export const SetupViewId = Schema.Literals(["Welcome", "Destination", "Features", "Installing", "Complete"]);
+export const FeatureId = Schema.Literals(["core", "desktop-shortcut", "examples"]);
 export const DestinationSelection = Schema.Struct({
   selectionId: Uuid,
   displayName: Schema.String,
-  availableBytes: Schema.Int.pipe(Schema.nonNegative()),
-}).annotations({ identifier: "DestinationSelection" });
+  availableBytes: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+}).annotate({ identifier: "DestinationSelection" });
 export const SetupSnapshot = Schema.Struct({
   viewId: SetupViewId,
   revision: Revision,
@@ -20,7 +20,7 @@ export const SetupSnapshot = Schema.Struct({
   activeOperationId: Schema.optional(Uuid),
   canNavigateBack: Schema.Boolean,
   canNavigateNext: Schema.Boolean,
-}).annotations({ identifier: "SetupSnapshot" });
+}).annotate({ identifier: "SetupSnapshot" });
 
 export const InitializeApplication = Schema.TaggedStruct("InitializeApplication", {});
 export const SelectDestination = Schema.TaggedStruct("SelectDestination", { currentSelectionId: Schema.optional(Uuid) });
@@ -34,14 +34,14 @@ export const InstallationStarted = Schema.TaggedStruct("InstallationStarted", { 
 export const OperationCancellationAccepted = Schema.TaggedStruct("OperationCancellationAccepted", { operationId: Uuid, accepted: Schema.Boolean, revision: Revision });
 export const SnapshotReplaced = Schema.TaggedStruct("SnapshotReplaced", { snapshot: SetupSnapshot });
 export const NavigationChanged = Schema.TaggedStruct("NavigationChanged", { viewId: SetupViewId, revision: Revision });
-export const OperationProgress = Schema.TaggedStruct("OperationProgress", { operationId: Uuid, completed: Schema.Int.pipe(Schema.nonNegative()), total: Schema.Int.pipe(Schema.positive()), message: Schema.optional(Schema.String) });
+export const OperationProgress = Schema.TaggedStruct("OperationProgress", { operationId: Uuid, completed: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))), total: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))), message: Schema.optional(Schema.String) });
 export const OperationCompleted = Schema.TaggedStruct("OperationCompleted", { operationId: Uuid, revision: Revision });
 export const InstallationFailed = Schema.TaggedStruct("OperationFailed", { operationId: Uuid, error: Schema.String, revision: Revision });
 export const InstallationCancelled = Schema.TaggedStruct("OperationCancelled", { operationId: Uuid, revision: Revision });
 
-export const SetupCommand = Schema.Union(InitializeApplication, SelectDestination, Navigate, StartInstallation, CancelOperation);
-export const SetupReceipt = Schema.Union(ApplicationInitialized, DestinationSelected, NavigationAccepted, InstallationStarted, OperationCancellationAccepted);
-export const SetupEvent = Schema.Union(SnapshotReplaced, NavigationChanged, OperationProgress, OperationCompleted, InstallationFailed, InstallationCancelled);
+export const SetupCommand = Schema.Union([InitializeApplication, SelectDestination, Navigate, StartInstallation, CancelOperation]);
+export const SetupReceipt = Schema.Union([ApplicationInitialized, DestinationSelected, NavigationAccepted, InstallationStarted, OperationCancellationAccepted]);
+export const SetupEvent = Schema.Union([SnapshotReplaced, NavigationChanged, OperationProgress, OperationCompleted, InstallationFailed, InstallationCancelled]);
 
 export default defineApplicationBridgeContract({
   protocol: { identity: "runic.artifex.setup", version: 1 },

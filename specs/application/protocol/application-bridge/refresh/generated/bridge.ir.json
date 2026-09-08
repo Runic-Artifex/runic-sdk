@@ -4,14 +4,7 @@
     "contractName": "Refresh",
     "namespace": "Runic.Application.Hosting.RefreshContract"
   },
-  "documentation": {
-    "event:AssetSourceChanged.entryPointPath": "a string",
-    "event:AssetSourceChanged.manifestFingerprint": "a string matching the pattern ^[a-f0-9]{64}$",
-    "event:AssetSourceChanged.manifestVersion": "a string",
-    "event:TranslationLocaleChanged.catalog": "a string",
-    "event:TranslationLocaleChanged.newLocale": "a string",
-    "event:TranslationLocaleChanged.oldLocale": "a string"
-  },
+  "documentation": {},
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",

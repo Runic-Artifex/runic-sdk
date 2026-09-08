@@ -22,7 +22,7 @@
     "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
     "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
     "bootstrap": "5.3.8",
-    "effect": "3.22.1",
+    "effect": "4.0.0-rc.112",
     "vue": "3.5.42"
   },
   "devDependencies": {

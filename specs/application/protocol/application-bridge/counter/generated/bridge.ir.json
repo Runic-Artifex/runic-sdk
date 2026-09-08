@@ -4,21 +4,7 @@
     "contractName": "Counter",
     "namespace": "Runic.Application.Template.Contract"
   },
-  "documentation": {
-    "command:IncrementCounter.step": "a number",
-    "event:CounterChanged.snapshot.count": "a number",
-    "event:CounterChanged.snapshot.history[]": "an integer",
-    "event:CounterChanged.snapshot.revision": "an integer",
-    "receipt:CounterIncremented.snapshot.count": "a number",
-    "receipt:CounterIncremented.snapshot.history[]": "an integer",
-    "receipt:CounterIncremented.snapshot.revision": "an integer",
-    "receipt:CounterReset.snapshot.count": "a number",
-    "receipt:CounterReset.snapshot.history[]": "an integer",
-    "receipt:CounterReset.snapshot.revision": "an integer",
-    "type:CounterSnapshot.count": "a number",
-    "type:CounterSnapshot.history[]": "an integer",
-    "type:CounterSnapshot.revision": "an integer"
-  },
+  "documentation": {},
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",

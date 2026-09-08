@@ -137,8 +137,8 @@ importers:
         specifier: 5.3.8
         version: 5.3.8(@popperjs/core@2.11.8)
       effect:
-        specifier: 3.22.1
-        version: 3.22.1
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
       rxjs:
         specifier: 7.8.2
         version: 7.8.2
@@ -157,7 +157,7 @@ importers:
         version: 22.1.5(@angular/compiler@22.1.5)(typescript@6.0.3)
       '@runic-artifex/application-bridge-tooling':
         specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@3.22.1)
+        version: 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -1332,33 +1332,30 @@ packages:
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
   '@runic-artifex/angular@1.0.0-preview.1':
-    resolution: {integrity: sha512-MAGi54HwEsSmAbvvkMX0s6cjt+q68brjH01AltPi/nKmqaD7T6ccOZh13naIVSqqg7RiinQjIrQX1W+IyA15mw==}
+    resolution: {integrity: sha512-t0gcL6jfe6dfXLqDRab361qFBHICMUKLnWyHpE2tG2UcrqJCij8o6VproY6QoSaEkuopfAtkvrWlX9Bwx5a5iQ==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
       '@angular/core': '>=20.3.26 <23'
 
   '@runic-artifex/application-bridge-tooling@1.0.0-preview.1':
-    resolution: {integrity: sha512-1FlQT55faDwzumdU7HpRt3sfM/I7Xhd2KUP5SWBGCsng/SAYb/kZ2m2d2sNuTh3hiQaG5Uag7na/S69K565UIQ==}
+    resolution: {integrity: sha512-42In6kIWEBitPLveK7V1+ld1TgcComFuX1wzuL7xLCrtuMjSQ6SKkv59V1ozmFlcxd+MQIhms3oZX7C+pnligg==}
     engines: {node: '>=24.18.0 <25'}
     hasBin: true
     peerDependencies:
       '@runic-artifex/application-bridge': 1.0.0-preview.1
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
 
   '@runic-artifex/application-bridge@1.0.0-preview.1':
-    resolution: {integrity: sha512-RFknNtoSwyOLgPovfb5eSXssWwuTRnVVb+7WJWYaLVT79eBDsgAaVw26mjW5iQ4adKxcXwCO+817Tm7hQHpW0w==}
+    resolution: {integrity: sha512-Pozt/rAJcdOj1aI6aIGj6Y/SEkKRLe1e1NnqdCrJMTyUZjOO2kIjSqPMme5Sneq1Cod6xgQcGTcG3flcvRVT5Q==}
     engines: {node: '>=24.18.0 <25'}
 
   '@runic-artifex/desktop@1.0.0-preview.1':
-    resolution: {integrity: sha512-urB+iAVPmoaXqg01J6dnMo2MJjIbs7Y723vUvLJnGx4NGoVDaSl6KN5FYuVikgeG9pA5VujYLVeU57hbi7LJ5w==}
+    resolution: {integrity: sha512-LRJWvckZIMnOPw+4t6rMzPKPV9QpTdoJ8vgv2purgsZ3fgFVjQotoshakfWGFGwjjoOxgJltWBBRiLhEybCMeg==}
     engines: {node: '>=24.18.0 <25'}
 
   '@schematics/angular@22.1.7':
     resolution: {integrity: sha512-acBv147JjnwtWFgC8Af0KFBzPpb/TWaYxoWN/Ou3pXtUhYiEqnrdJeoFz3ssDw26eKFIdWnVBLB/dHORBykPBg==}
     engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0, npm: ^6.11.0 || ^7.5.6 || >=8.0.0, yarn: '>= 1.13.0'}
-
-  '@standard-schema/spec@1.1.0':
-    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
@@ -1559,8 +1556,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@3.22.1:
-    resolution: {integrity: sha512-TNoXushmPOBAjJlthF5d2QwnX2xBPEtcNJr5XKNKbRLbDvBcOYkXlYDfvGfSA0zriwLFuCll5MDtNMAdZL17PQ==}
+  effect@4.0.0-rc.112:
+    resolution: {integrity: sha512-wXxwuh1Ywnv4cPRM3Wfa0vDwuOHnZ1TsTgHJkG9XgzND6inhBH9n1vBxhg3iIXOia/OrpmvVmd3lrD4vq6bF3A==}
 
   electron-to-chromium@1.5.422:
     resolution: {integrity: sha512-UvA/32XqrLDdZSn7Jllo1AYNcWji/G0d5M0GTViE7KoGBiMunw3a34Sb2KO4ZZyrSEhqsxFoVhWWJshdyfKqJA==}
@@ -1638,9 +1635,9 @@ packages:
     resolution: {integrity: sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw==}
     engines: {node: '>= 18'}
 
-  fast-check@3.23.2:
-    resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
-    engines: {node: '>=8.0.0'}
+  fast-check@4.9.0:
+    resolution: {integrity: sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg==}
+    engines: {node: '>=12.17.0'}
 
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
@@ -1947,6 +1944,9 @@ packages:
   msgpackr@1.12.1:
     resolution: {integrity: sha512-4EUH9tQHnMmEgzW/MdAP0KIfa1T9AF+htl0ffe2n5vb2EKn9y2co8ccpgWko6S52Jy1PQZKwRnx5/KkYjtd9MQ==}
 
+  msgpackr@2.1.0:
+    resolution: {integrity: sha512-p/pBCVO63CsvvpkomUnNNag6+n38rULuDA6HHe70o2gtC8ODI52foF/4ko2qQcp6OiErJXTmrZeXmsGGHsIQNQ==}
+
   mute-stream@3.0.0:
     resolution: {integrity: sha512-dkEJPVvun4FryqBmZ5KhDo0K9iDXAwn08tMLDinNdRBNPcYEDiWYysLcc6k3mjTMlbP9KyylvRpd4wFtwrT9rw==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -2080,8 +2080,8 @@ packages:
       kerberos:
         optional: true
 
-  pure-rand@6.1.0:
-    resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
+  pure-rand@8.4.2:
+    resolution: {integrity: sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==}
 
   qs@6.16.0:
     resolution: {integrity: sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==}
@@ -3212,19 +3212,19 @@ snapshots:
       '@angular/core': 22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2)
       '@runic-artifex/application-bridge': 1.0.0-preview.1
 
-  '@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@3.22.1)':
+  '@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)':
     dependencies:
       '@runic-artifex/application-bridge': 1.0.0-preview.1
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
       esbuild: 0.28.2
 
   '@runic-artifex/application-bridge@1.0.0-preview.1':
     dependencies:
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
 
   '@runic-artifex/desktop@1.0.0-preview.1':
     dependencies:
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
 
   '@schematics/angular@22.1.7(chokidar@5.0.0)':
     dependencies:
@@ -3234,8 +3234,6 @@ snapshots:
       typescript: 6.0.3
     transitivePeerDependencies:
       - chokidar
-
-  '@standard-schema/spec@1.1.0': {}
 
   '@tybys/wasm-util@0.10.3':
     dependencies:
@@ -3430,10 +3428,10 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@3.22.1:
+  effect@4.0.0-rc.112:
     dependencies:
-      '@standard-schema/spec': 1.1.0
-      fast-check: 3.23.2
+      fast-check: 4.9.0
+      msgpackr: 2.1.0
 
   electron-to-chromium@1.5.422: {}
 
@@ -3541,9 +3539,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fast-check@3.23.2:
+  fast-check@4.9.0:
     dependencies:
-      pure-rand: 6.1.0
+      pure-rand: 8.4.2
 
   fast-deep-equal@3.1.3: {}
 
@@ -3823,6 +3821,10 @@ snapshots:
       msgpackr-extract: 3.0.4
     optional: true
 
+  msgpackr@2.1.0:
+    optionalDependencies:
+      msgpackr-extract: 3.0.4
+
   mute-stream@3.0.0: {}
 
   nanoid@3.3.18: {}
@@ -3963,7 +3965,7 @@ snapshots:
 
   proxy-agent-negotiate@1.1.0: {}
 
-  pure-rand@6.1.0: {}
+  pure-rand@8.4.2: {}
 
   qs@6.16.0:
     dependencies:

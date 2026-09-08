@@ -48,28 +48,28 @@ export function renderCSharpFacade(ir: BridgeIr): string {
   const schema = (node: BridgeIrNode): string => {
     let value: string;
     switch (node.kind) {
-      case "string": value = node.format === "uuid" ? `Schema.String.pipe(Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/))` : "Schema.String"; break;
+      case "string": value = node.format === "uuid" ? `Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/))` : "Schema.String"; break;
       case "number": value = "Schema.Finite"; break;
-      case "integer": value = "Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991))"; break;
+      case "integer": value = "Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 }))"; break;
       case "boolean": value = "Schema.Boolean"; break;
       case "null": value = "Schema.Null"; break;
       case "literal": value = node.value === null ? "Schema.Null" : `Schema.Literal(${JSON.stringify(node.value)})`; break;
       case "ref": return `Schema.suspend(() => ${name(node.name)})`;
       case "array": value = `Schema.Array(${schema(node.items)})`; break;
-      case "union": value = `Schema.Union(${node.members.map(schema).join(", ")})`; break;
-      case "object": value = `Schema.Struct({ ${Object.entries(node.properties).map(([key, p]) => `${JSON.stringify(key)}: ${p.optional ? `Schema.optionalWith(${schema(p.type)}, { exact: true })` : schema(p.type)}`).join(", ")} })`; break;
+      case "union": value = `Schema.Union([${node.members.map(schema).join(", ")}])`; break;
+      case "object": value = `Schema.Struct({ ${Object.entries(node.properties).map(([key, p]) => `${JSON.stringify(key)}: ${p.optional ? `Schema.optionalKey(${schema(p.type)})` : schema(p.type)}`).join(", ")} })`; break;
       default: throw new Error(`Unexpected C# wire node ${node.kind}`);
     }
     if ("constraints" in node && node.constraints !== undefined) {
       const constraints = node.constraints;
       const filters: string[] = [];
-      const functions = { minimum: "greaterThanOrEqualTo", maximum: "lessThanOrEqualTo", exclusiveMinimum: "greaterThan", exclusiveMaximum: "lessThan", multipleOf: "multipleOf", minLength: "minLength", maxLength: "maxLength", minItems: "minItems", maxItems: "maxItems" } as const;
+      const functions = { minimum: "isGreaterThanOrEqualTo", maximum: "isLessThanOrEqualTo", exclusiveMinimum: "isGreaterThan", exclusiveMaximum: "isLessThan", multipleOf: "isMultipleOf", minLength: "isMinLength", maxLength: "isMaxLength", minItems: "isMinLength", maxItems: "isMaxLength" } as const;
       for (const [key, fn] of Object.entries(functions)) {
         const bound = constraints[key as keyof typeof functions];
-        if (bound !== undefined) filters.push(`Schema.${fn}(${bound})`);
+        if (bound !== undefined) filters.push(`Schema.check(Schema.${fn}(${bound}))`);
       }
-      if (constraints.pattern !== undefined) filters.push(`Schema.pattern(new RegExp(${JSON.stringify(constraints.pattern)}))`);
-      if (constraints.uniqueItems) filters.push("Schema.filter(items => new Set(items.map(canonicalValue)).size === items.length)");
+      if (constraints.pattern !== undefined) filters.push(`Schema.check(Schema.isPattern(new RegExp(${JSON.stringify(constraints.pattern)})))`);
+      if (constraints.uniqueItems) filters.push("Schema.check(Schema.makeFilter(items => new Set(items.map(canonicalValue)).size === items.length))");
       if (filters.length) value += `.pipe(${filters.join(", ")})`;
     }
     return value;
@@ -78,7 +78,7 @@ export function renderCSharpFacade(ir: BridgeIr): string {
   if (JSON.stringify(ir.wire).includes('"uniqueItems":true')) lines.push('const canonicalValue = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item !== null && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);');
   for (const [id, node] of entries) {
     const exportName = name(id);
-    lines.push(`export type ${exportName} = ${type(node)};`, `export const ${exportName}: Schema.Schema<${exportName}> = ${schema(node)}.annotations({ identifier: ${JSON.stringify(id.split(":")[1])} });`, `export type ${exportName}Encoded = Schema.Schema.Encoded<typeof ${exportName}>;`, "");
+    lines.push(`export type ${exportName} = ${type(node)};`, `export const ${exportName}: Schema.Codec<${exportName}> = ${schema(node)}.annotate({ identifier: ${JSON.stringify(id.split(":")[1])} });`, `export type ${exportName}Encoded = Schema.Codec.Encoded<typeof ${exportName}>;`, "");
   }
   lines.push("const definition = defineApplicationBridgeContract({", `  protocol: ${JSON.stringify(ir.wire.protocol)},`, `  csharp: ${JSON.stringify(ir.csharp)},`, `  snapshot: ${name(ir.wire.snapshot)},`, "  commands: [");
   for (const command of ir.wire.commands) lines.push(`    bridge.command(${name(`command:${command.name}`)}, { receipt: ${name(`receipt:${command.receipt}`)}, startsOperation: ${command.startsOperation}, cancellable: ${command.cancellable}, advancesRevision: ${command.advancesRevision} }),`);

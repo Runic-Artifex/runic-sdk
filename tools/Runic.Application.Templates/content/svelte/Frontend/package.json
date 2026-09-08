@@ -23,7 +23,7 @@
     "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
     "@runic-artifex/svelte": "__RUNIC_SVELTE_NPM__",
     "bootstrap": "5.3.8",
-    "effect": "3.22.1",
+    "effect": "4.0.0-rc.112",
     "svelte": "5.57.0"
   },
   "devDependencies": {

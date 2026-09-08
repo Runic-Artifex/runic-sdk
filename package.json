@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "typescript": "6.0.3",
-    "effect": "3.22.1",
+    "effect": "4.0.0-rc.112",
     "esbuild": "0.28.2",
     "playwright-core": "1.63.0"
   }

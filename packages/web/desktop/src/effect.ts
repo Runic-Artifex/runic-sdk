@@ -16,14 +16,14 @@ export interface DesktopTransportService {
   readonly states: Stream.Stream<FrameChannelState>;
 }
 
-export const DesktopTransport = Context.GenericTag<DesktopTransportService>(
+export const DesktopTransport = Context.Service<DesktopTransportService>(
   "@runic-artifex/desktop/DesktopTransport",
 );
 
 export function DesktopTransportLive(
   options: DesktopFrameChannelOptions = {},
 ): Layer.Layer<DesktopTransportService, DesktopTransportError> {
-  return Layer.scoped(
+  return Layer.effect(
     DesktopTransport,
     Effect.gen(function*() {
       const frames = yield* PubSub.dropping<Uint8Array>(256);
@@ -64,7 +64,7 @@ export function DesktopTransportLive(
 function interruptibleReconnect(
   channel: ReconnectableFrameChannel,
 ): Effect.Effect<void, DesktopTransportError> {
-  return Effect.async<void, DesktopTransportError>((resume) => {
+  return Effect.callback<void, DesktopTransportError>((resume) => {
     let active = true;
     channel.reconnect().then(
       () => { if (active) resume(Effect.void); },

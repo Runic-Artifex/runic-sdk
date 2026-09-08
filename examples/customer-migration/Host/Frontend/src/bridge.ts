@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import {
   ApplicationBridgeLive,
   createCsWebUiFrameChannel,
@@ -14,8 +14,8 @@ export const bridge = createApplicationBridgeController(
 );
 export async function dispatch(command: CustomersCommand) {
   const result = await bridge.run(
-    Effect.either(bridge.effects.dispatch(command)),
+    Effect.result(bridge.effects.dispatch(command)),
   );
-  if (Either.isLeft(result)) throw result.left;
-  return result.right;
+  if (Result.isFailure(result)) throw result.failure;
+  return result.success;
 }

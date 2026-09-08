@@ -6,7 +6,7 @@ Connect a TypeScript UI to a Runic Application host through typed commands, snap
 npm install @runic-artifex/application-bridge
 ```
 
-Requires Node.js 24.18 or later, TypeScript, and Effect. This preview runtime is intended to match the generated .NET Application Bridge contract. Use [Runic.Application.Templates](https://www.nuget.org/packages/Runic.Application.Templates) for a complete app, or use this package directly with a framework adapter.
+Requires Node.js 24.18 or later, TypeScript, and Effect 4.0.0-rc.112. Update the Runic runtime, compiler and framework packages together, then regenerate existing application facades. This preview runtime is intended to match the generated .NET Application Bridge contract. Use [Runic.Application.Templates](https://www.nuget.org/packages/Runic.Application.Templates) for a complete app, or use this package directly with a framework adapter.
 
 ## Bootstrap a controller
 

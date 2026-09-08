@@ -114,7 +114,7 @@ export async function verifyPackages() {
           ),
           typescript: "6.0.3",
           "@types/node": "24.10.12",
-          effect: "3.22.1",
+          effect: "4.0.0-rc.112",
           svelte: "5.57.0",
           vite: "8.2.2",
           "@angular/core": "22.1.5",

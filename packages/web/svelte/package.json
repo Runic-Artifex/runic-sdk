@@ -61,7 +61,7 @@
   "peerDependencies": {
     "@runic-artifex/application-bridge": ">=1.0.0-preview.1 <2",
     "@runic-artifex/vite-plugin-runic": ">=1.0.0-preview.1 <2",
-    "effect": ">=3.22.1 <4",
+    "effect": "4.0.0-rc.112",
     "svelte": ">=5.46.4 <6"
   },
   "peerDependenciesMeta": {
@@ -92,7 +92,7 @@
     "@sveltejs/package": "2.5.8",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@types/node": "24.13.3",
-    "effect": "3.22.1",
+    "effect": "4.0.0-rc.112",
     "happy-dom": "^20.14.0",
     "svelte": "5.57.0",
     "svelte-check": "4.7.6",

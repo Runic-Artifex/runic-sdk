@@ -125,7 +125,7 @@ async function run<Command, Receipt, HostEvent, Snapshot, Failure, Value>(
   try {
     const outcome = await controller.runExit(operation);
     if (Exit.isFailure(outcome)) {
-      const failure = Cause.failureOption(outcome.cause);
+      const failure = Cause.findErrorOption(outcome.cause);
       throw Option.isSome(failure)
         ? failure.value
         : bridgeError("OperationFailed", "The Application Bridge operation was interrupted.") as Failure;

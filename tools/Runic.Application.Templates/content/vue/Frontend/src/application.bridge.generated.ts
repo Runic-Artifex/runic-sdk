@@ -3,28 +3,28 @@ import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
 
 export type IncrementCounter = { readonly "_tag": "IncrementCounter"; readonly "step": number; };
-export const IncrementCounter: Schema.Schema<IncrementCounter> = Schema.Struct({ "_tag": Schema.Literal("IncrementCounter"), "step": Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(1), Schema.lessThanOrEqualTo(10)) }).annotations({ identifier: "IncrementCounter" });
-export type IncrementCounterEncoded = Schema.Schema.Encoded<typeof IncrementCounter>;
+export const IncrementCounter: Schema.Codec<IncrementCounter> = Schema.Struct({ "_tag": Schema.Literal("IncrementCounter"), "step": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1)), Schema.check(Schema.isLessThanOrEqualTo(10))) }).annotate({ identifier: "IncrementCounter" });
+export type IncrementCounterEncoded = Schema.Codec.Encoded<typeof IncrementCounter>;
 
 export type ResetCounter = { readonly "_tag": "ResetCounter"; };
-export const ResetCounter: Schema.Schema<ResetCounter> = Schema.Struct({ "_tag": Schema.Literal("ResetCounter") }).annotations({ identifier: "ResetCounter" });
-export type ResetCounterEncoded = Schema.Schema.Encoded<typeof ResetCounter>;
+export const ResetCounter: Schema.Codec<ResetCounter> = Schema.Struct({ "_tag": Schema.Literal("ResetCounter") }).annotate({ identifier: "ResetCounter" });
+export type ResetCounterEncoded = Schema.Codec.Encoded<typeof ResetCounter>;
 
 export type CounterChanged = { readonly "_tag": "CounterChanged"; readonly "snapshot": CounterSnapshot; };
-export const CounterChanged: Schema.Schema<CounterChanged> = Schema.Struct({ "_tag": Schema.Literal("CounterChanged"), "snapshot": Schema.suspend(() => CounterSnapshot) }).annotations({ identifier: "CounterChanged" });
-export type CounterChangedEncoded = Schema.Schema.Encoded<typeof CounterChanged>;
+export const CounterChanged: Schema.Codec<CounterChanged> = Schema.Struct({ "_tag": Schema.Literal("CounterChanged"), "snapshot": Schema.suspend(() => CounterSnapshot) }).annotate({ identifier: "CounterChanged" });
+export type CounterChangedEncoded = Schema.Codec.Encoded<typeof CounterChanged>;
 
 export type CounterIncremented = { readonly "_tag": "CounterIncremented"; readonly "snapshot": CounterSnapshot; };
-export const CounterIncremented: Schema.Schema<CounterIncremented> = Schema.Struct({ "_tag": Schema.Literal("CounterIncremented"), "snapshot": Schema.suspend(() => CounterSnapshot) }).annotations({ identifier: "CounterIncremented" });
-export type CounterIncrementedEncoded = Schema.Schema.Encoded<typeof CounterIncremented>;
+export const CounterIncremented: Schema.Codec<CounterIncremented> = Schema.Struct({ "_tag": Schema.Literal("CounterIncremented"), "snapshot": Schema.suspend(() => CounterSnapshot) }).annotate({ identifier: "CounterIncremented" });
+export type CounterIncrementedEncoded = Schema.Codec.Encoded<typeof CounterIncremented>;
 
 export type CounterReset = { readonly "_tag": "CounterReset"; readonly "snapshot": CounterSnapshot; };
-export const CounterReset: Schema.Schema<CounterReset> = Schema.Struct({ "_tag": Schema.Literal("CounterReset"), "snapshot": Schema.suspend(() => CounterSnapshot) }).annotations({ identifier: "CounterReset" });
-export type CounterResetEncoded = Schema.Schema.Encoded<typeof CounterReset>;
+export const CounterReset: Schema.Codec<CounterReset> = Schema.Struct({ "_tag": Schema.Literal("CounterReset"), "snapshot": Schema.suspend(() => CounterSnapshot) }).annotate({ identifier: "CounterReset" });
+export type CounterResetEncoded = Schema.Codec.Encoded<typeof CounterReset>;
 
 export type CounterSnapshot = { readonly "count": number; readonly "history": ReadonlyArray<number>; readonly "revision": number; };
-export const CounterSnapshot: Schema.Schema<CounterSnapshot> = Schema.Struct({ "count": Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(-2147483648), Schema.lessThanOrEqualTo(2147483647)), "history": Schema.Array(Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(-2147483648), Schema.lessThanOrEqualTo(2147483647))), "revision": Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(0), Schema.lessThanOrEqualTo(9007199254740991)) }).annotations({ identifier: "CounterSnapshot" });
-export type CounterSnapshotEncoded = Schema.Schema.Encoded<typeof CounterSnapshot>;
+export const CounterSnapshot: Schema.Codec<CounterSnapshot> = Schema.Struct({ "count": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "history": Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647)))), "revision": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), Schema.check(Schema.isLessThanOrEqualTo(9007199254740991))) }).annotate({ identifier: "CounterSnapshot" });
+export type CounterSnapshotEncoded = Schema.Codec.Encoded<typeof CounterSnapshot>;
 
 const definition = defineApplicationBridgeContract({
   protocol: {"identity":"runic.artifex.counter","version":1},

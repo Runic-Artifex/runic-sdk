@@ -17,7 +17,7 @@ current preview release without pinning a stale version.
 | Requirement | Supported range |
 |---|---|
 | Svelte | `>=5.46.4 <6` |
-| Effect | `>=3.22.1 <4` |
+| Effect | `4.0.0-rc.112` |
 | Runic Toolkit Application Bridge | `>=0.1.0-preview.30.1 <1` (optional peer; required by the root and `/bridge` entries) |
 | Runic Vite integration | `>=0.2.0-preview.1 <1` (optional peer; required only by `/vite`) |
 

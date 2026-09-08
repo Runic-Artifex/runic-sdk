@@ -44,11 +44,11 @@ test("transport-neutral conformance fixtures validate paired reconnect epochs", 
   const snapshot = await decode("resynchronized.host.json");
   const oldAdmission = await decode("late-old-admission-error.host.json");
   const futureAdmission = await decode("future-admission-error.host.json");
-  assert.equal((await Effect.runPromise(Schema.decodeUnknown(ClientEnvelopeSchema)(initial))).connectionEpoch, 0);
-  assert.equal((await Effect.runPromise(Schema.decodeUnknown(ClientEnvelopeSchema)(resync))).connectionEpoch, 1);
-  assert.equal((await Effect.runPromise(Schema.decodeUnknown(HostEnvelopeSchema)(snapshot))).connectionEpoch, 1);
-  assert.equal((await Effect.runPromise(Schema.decodeUnknown(HostEnvelopeSchema)(oldAdmission))).sequence, 0);
-  assert.equal((await Effect.runPromise(Schema.decodeUnknown(HostEnvelopeSchema)(futureAdmission))).connectionEpoch, 2);
+  assert.equal((await Effect.runPromise(Schema.decodeUnknownEffect(ClientEnvelopeSchema)(initial))).connectionEpoch, 0);
+  assert.equal((await Effect.runPromise(Schema.decodeUnknownEffect(ClientEnvelopeSchema)(resync))).connectionEpoch, 1);
+  assert.equal((await Effect.runPromise(Schema.decodeUnknownEffect(HostEnvelopeSchema)(snapshot))).connectionEpoch, 1);
+  assert.equal((await Effect.runPromise(Schema.decodeUnknownEffect(HostEnvelopeSchema)(oldAdmission))).sequence, 0);
+  assert.equal((await Effect.runPromise(Schema.decodeUnknownEffect(HostEnvelopeSchema)(futureAdmission))).connectionEpoch, 2);
   assert.equal(snapshot.sequence, 1);
 });
 

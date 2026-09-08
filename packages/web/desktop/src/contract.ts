@@ -9,7 +9,7 @@ export const DesktopBootstrapSchema = Schema.Struct({
   product: Schema.Literal("Runic Desktop"),
   profile: Schema.Literal(wireProfile),
   endpoint: Schema.String,
-  token: Schema.Number.pipe(Schema.int(), Schema.between(0, 0xffff_ffff)),
+  token: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 0, maximum: 0xffff_ffff }))),
   sessionCredential: Schema.String,
 });
 
@@ -23,7 +23,7 @@ declare global {
 }
 
 export function decodeDesktopBootstrap(value: unknown): Effect.Effect<DesktopBootstrap, DesktopTransportError> {
-  return Schema.decodeUnknown(DesktopBootstrapSchema, { onExcessProperty: "error" })(value).pipe(
+  return Schema.decodeUnknownEffect(DesktopBootstrapSchema, { onExcessProperty: "error" })(value).pipe(
     Effect.mapError(() => transportError(
       "ConfigurationInvalid",
       "bootstrap-invalid",

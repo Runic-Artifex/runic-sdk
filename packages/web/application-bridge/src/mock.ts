@@ -11,7 +11,7 @@ export interface MockApplicationBridgeFixture<Command, Receipt, HostEvent, Snaps
 export function MockApplicationBridge<Command, Receipt, HostEvent, Snapshot, Failure = never>(
   fixture: MockApplicationBridgeFixture<Command, Receipt, HostEvent, Snapshot, Failure>,
 ): Layer.Layer<ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, BridgeError | Failure>> {
-  return Layer.scoped(
+  return Layer.effect(
     ApplicationBridge,
     Effect.gen(function*() {
       const events = yield* PubSub.unbounded<HostEvent>();

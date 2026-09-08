@@ -15,7 +15,7 @@ export class SvelteEffectAction<Input, Success, Failure> {
   readonly #runner: EffectRunner;
   readonly #program: (input: Input) => Effect.Effect<Success, Failure, ApplicationBridgeService>;
   readonly #onDispose: (() => void) | undefined;
-  #fiber: Fiber.RuntimeFiber<Success, Failure> | undefined;
+  #fiber: Fiber.Fiber<Success, Failure> | undefined;
   #generation = 0;
   #disposed = false;
 
@@ -100,7 +100,7 @@ export class SvelteEffectAction<Input, Success, Failure> {
       return;
     }
     this.cause = exit.cause;
-    this.error = Option.getOrUndefined(Cause.failureOption(exit.cause));
-    this.status = Cause.isInterruptedOnly(exit.cause) ? "interrupted" : "failure";
+    this.error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    this.status = Cause.hasInterruptsOnly(exit.cause) ? "interrupted" : "failure";
   }
 }

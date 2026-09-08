@@ -24,7 +24,7 @@
     "bootstrap": "5.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "effect": "3.22.1"
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
     "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",

@@ -487,7 +487,7 @@ function bridgeFixtureSource(snapshot) {
   return `
 import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
-const Snapshot = ${snapshot}.annotations({ identifier: "Snapshot" });
+const Snapshot = ${snapshot}.annotate({ identifier: "Snapshot" });
 export default defineApplicationBridgeContract({
   protocol: { identity: "runic.test", version: 1 },
   csharp: { namespace: "Runic.Test", contractName: "Test" },

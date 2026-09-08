@@ -5,16 +5,16 @@ import {
 } from "../../../../../packages/web/application-bridge/dist/esm/index.js";
 
 const Uuid = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
-).annotations({ identifier: "Uuid" });
-const Revision = Schema.Int.pipe(Schema.nonNegative()).annotations({ identifier: "Revision" });
-const SetupViewId = Schema.Literal("Welcome", "Destination", "Features", "Installing", "Complete");
-const FeatureId = Schema.Literal("core", "desktop-shortcut", "examples");
+  Schema.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)),
+).annotate({ identifier: "Uuid" });
+const Revision = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).annotate({ identifier: "Revision" });
+const SetupViewId = Schema.Literals(["Welcome", "Destination", "Features", "Installing", "Complete"]);
+const FeatureId = Schema.Literals(["core", "desktop-shortcut", "examples"]);
 const DestinationSelection = Schema.Struct({
   selectionId: Uuid,
   displayName: Schema.String,
-  availableBytes: Schema.Int.pipe(Schema.nonNegative()),
-}).annotations({ identifier: "DestinationSelection" });
+  availableBytes: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+}).annotate({ identifier: "DestinationSelection" });
 export const SetupSnapshot = Schema.Struct({
   viewId: SetupViewId,
   revision: Revision,
@@ -23,7 +23,7 @@ export const SetupSnapshot = Schema.Struct({
   activeOperationId: Schema.optional(Uuid),
   canNavigateBack: Schema.Boolean,
   canNavigateNext: Schema.Boolean,
-}).annotations({ identifier: "SetupSnapshot" });
+}).annotate({ identifier: "SetupSnapshot" });
 
 const SelectDestination = Schema.TaggedStruct("SelectDestination", { currentSelectionId: Schema.optional(Uuid) });
 const Navigate = Schema.TaggedStruct("Navigate", { target: SetupViewId, expectedRevision: Revision });
@@ -41,8 +41,8 @@ const SnapshotReplaced = Schema.TaggedStruct("SnapshotReplaced", { snapshot: Set
 const NavigationChanged = Schema.TaggedStruct("NavigationChanged", { viewId: SetupViewId, revision: Revision });
 const OperationProgress = Schema.TaggedStruct("OperationProgress", {
   operationId: Uuid,
-  completed: Schema.Int.pipe(Schema.nonNegative()),
-  total: Schema.Int.pipe(Schema.positive()),
+  completed: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+  total: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
   message: Schema.optional(Schema.String),
 });
 const OperationCompleted = Schema.TaggedStruct("OperationCompleted", { operationId: Uuid, revision: Revision });

@@ -2,11 +2,11 @@ import { Schema } from "effect";
 import { BridgeErrorSchema, type BridgeError } from "./errors.js";
 
 export const UuidSchema = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+  Schema.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)),
 );
-export const RevisionSchema = Schema.Int.pipe(Schema.nonNegative());
-export const SequenceSchema = Schema.Int.pipe(Schema.positive());
-const HostSequenceSchema = Schema.Int.pipe(Schema.nonNegative());
+export const RevisionSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)));
+export const SequenceSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0)));
+const HostSequenceSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)));
 
 export interface ApplicationContract<
   Command,
@@ -24,16 +24,16 @@ export interface ApplicationContract<
   readonly version: number;
   /** SHA-256 of the generated canonical wire contract. */
   readonly fingerprint: string;
-  readonly command: Schema.Schema<Command, CommandEncoded, never>;
-  readonly receipt: Schema.Schema<Receipt, ReceiptEncoded, never>;
-  readonly event: Schema.Schema<HostEvent, HostEventEncoded, never>;
-  readonly snapshot: Schema.Schema<Snapshot, SnapshotEncoded, never>;
-  readonly error: Schema.Schema<Failure, FailureEncoded, never>;
+  readonly command: Schema.Codec<Command, CommandEncoded, never>;
+  readonly receipt: Schema.Codec<Receipt, ReceiptEncoded, never>;
+  readonly event: Schema.Codec<HostEvent, HostEventEncoded, never>;
+  readonly snapshot: Schema.Codec<Snapshot, SnapshotEncoded, never>;
+  readonly error: Schema.Codec<Failure, FailureEncoded, never>;
 }
 
 export interface ApplicationBridgeCommand<
-  Command extends Schema.Schema.AnyNoContext,
-  Receipt extends Schema.Schema.AnyNoContext,
+  Command extends Schema.Codec<any, any, never, never>,
+  Receipt extends Schema.Codec<any, any, never, never>,
 > {
   readonly schema: Command;
   readonly receipt: Receipt;
@@ -43,11 +43,11 @@ export interface ApplicationBridgeCommand<
 }
 
 export interface ApplicationBridgeDefinition<
-  Snapshot extends Schema.Schema.AnyNoContext = Schema.Schema.AnyNoContext,
-  Commands extends readonly ApplicationBridgeCommand<Schema.Schema.AnyNoContext, Schema.Schema.AnyNoContext>[] =
-    readonly ApplicationBridgeCommand<Schema.Schema.AnyNoContext, Schema.Schema.AnyNoContext>[],
-  Events extends readonly Schema.Schema.AnyNoContext[] = readonly Schema.Schema.AnyNoContext[],
-  Errors extends readonly Schema.Schema.AnyNoContext[] = readonly Schema.Schema.AnyNoContext[],
+  Snapshot extends Schema.Codec<any, any, never, never> = Schema.Codec<any, any, never, never>,
+  Commands extends readonly ApplicationBridgeCommand<Schema.Codec<any, any, never, never>, Schema.Codec<any, any, never, never>>[] =
+    readonly ApplicationBridgeCommand<Schema.Codec<any, any, never, never>, Schema.Codec<any, any, never, never>>[],
+  Events extends readonly Schema.Codec<any, any, never, never>[] = readonly Schema.Codec<any, any, never, never>[],
+  Errors extends readonly Schema.Codec<any, any, never, never>[] = readonly Schema.Codec<any, any, never, never>[],
 > {
   readonly protocol: Readonly<{ identity: string; version: number }>;
   readonly csharp: Readonly<{ namespace: string; contractName: string }>;
@@ -64,25 +64,25 @@ export interface ApplicationBridgeDefinition<
   readonly errors?: Errors;
 }
 
-type CommandType<Item> = Item extends ApplicationBridgeCommand<infer Command, Schema.Schema.AnyNoContext>
+type CommandType<Item> = Item extends ApplicationBridgeCommand<infer Command, Schema.Codec<any, any, never, never>>
   ? Schema.Schema.Type<Command>
   : never;
-type ReceiptType<Item> = Item extends ApplicationBridgeCommand<Schema.Schema.AnyNoContext, infer Receipt>
+type ReceiptType<Item> = Item extends ApplicationBridgeCommand<Schema.Codec<any, any, never, never>, infer Receipt>
   ? Schema.Schema.Type<Receipt>
   : never;
-type EventType<Items extends readonly Schema.Schema.AnyNoContext[]> = Schema.Schema.Type<Items[number]>;
-type CommandEncoded<Item> = Item extends ApplicationBridgeCommand<infer Command, Schema.Schema.AnyNoContext>
-  ? Schema.Schema.Encoded<Command>
+type EventType<Items extends readonly Schema.Codec<any, any, never, never>[]> = Schema.Schema.Type<Items[number]>;
+type CommandEncoded<Item> = Item extends ApplicationBridgeCommand<infer Command, Schema.Codec<any, any, never, never>>
+  ? Schema.Codec.Encoded<Command>
   : never;
-type ReceiptEncoded<Item> = Item extends ApplicationBridgeCommand<Schema.Schema.AnyNoContext, infer Receipt>
-  ? Schema.Schema.Encoded<Receipt>
+type ReceiptEncoded<Item> = Item extends ApplicationBridgeCommand<Schema.Codec<any, any, never, never>, infer Receipt>
+  ? Schema.Codec.Encoded<Receipt>
   : never;
-type EventEncoded<Items extends readonly Schema.Schema.AnyNoContext[]> = Schema.Schema.Encoded<Items[number]>;
-type ErrorType<Items extends readonly Schema.Schema.AnyNoContext[]> = Schema.Schema.Type<Items[number]>;
-type ErrorEncoded<Items extends readonly Schema.Schema.AnyNoContext[]> = Schema.Schema.Encoded<Items[number]>;
+type EventEncoded<Items extends readonly Schema.Codec<any, any, never, never>[]> = Schema.Codec.Encoded<Items[number]>;
+type ErrorType<Items extends readonly Schema.Codec<any, any, never, never>[]> = Schema.Schema.Type<Items[number]>;
+type ErrorEncoded<Items extends readonly Schema.Codec<any, any, never, never>[]> = Schema.Codec.Encoded<Items[number]>;
 
 export const bridge = Object.freeze({
-  command<Command extends Schema.Schema.AnyNoContext, Receipt extends Schema.Schema.AnyNoContext>(
+  command<Command extends Schema.Codec<any, any, never, never>, Receipt extends Schema.Codec<any, any, never, never>>(
     schema: Command,
     metadata: Readonly<{
       receipt: Receipt;
@@ -102,10 +102,10 @@ export const bridge = Object.freeze({
 });
 
 export function defineApplicationBridgeContract<
-  const Snapshot extends Schema.Schema.AnyNoContext,
-  const Commands extends readonly ApplicationBridgeCommand<Schema.Schema.AnyNoContext, Schema.Schema.AnyNoContext>[],
-  const Events extends readonly Schema.Schema.AnyNoContext[],
-  const Errors extends readonly Schema.Schema.AnyNoContext[] = readonly [],
+  const Snapshot extends Schema.Codec<any, any, never, never>,
+  const Commands extends readonly ApplicationBridgeCommand<Schema.Codec<any, any, never, never>, Schema.Codec<any, any, never, never>>[],
+  const Events extends readonly Schema.Codec<any, any, never, never>[],
+  const Errors extends readonly Schema.Codec<any, any, never, never>[] = readonly [],
 >(
   definition: ApplicationBridgeDefinition<Snapshot, Commands, Events, Errors>,
 ): ApplicationBridgeDefinition<Snapshot, Commands, Events, Errors> {
@@ -118,10 +118,10 @@ export function defineApplicationBridgeContract<
 }
 
 export function materializeApplicationBridgeContract<
-  const Snapshot extends Schema.Schema.AnyNoContext,
-  const Commands extends readonly ApplicationBridgeCommand<Schema.Schema.AnyNoContext, Schema.Schema.AnyNoContext>[],
-  const Events extends readonly Schema.Schema.AnyNoContext[],
-  const Errors extends readonly Schema.Schema.AnyNoContext[],
+  const Snapshot extends Schema.Codec<any, any, never, never>,
+  const Commands extends readonly ApplicationBridgeCommand<Schema.Codec<any, any, never, never>, Schema.Codec<any, any, never, never>>[],
+  const Events extends readonly Schema.Codec<any, any, never, never>[],
+  const Errors extends readonly Schema.Codec<any, any, never, never>[],
 >(
   definition: ApplicationBridgeDefinition<Snapshot, Commands, Events, Errors>,
   fingerprint: string,
@@ -134,8 +134,8 @@ export function materializeApplicationBridgeContract<
   CommandEncoded<Commands[number]>,
   ReceiptEncoded<Commands[number]>,
   EventEncoded<Events>,
-  Schema.Schema.Encoded<Snapshot>,
-  Schema.Schema.Encoded<typeof BridgeErrorSchema> | ErrorEncoded<Errors>
+  Schema.Codec.Encoded<Snapshot>,
+  Schema.Codec.Encoded<typeof BridgeErrorSchema> | ErrorEncoded<Errors>
 > {
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
     throw new TypeError("An Application Bridge contract requires a generated SHA-256 fingerprint.");
@@ -151,38 +151,38 @@ export function materializeApplicationBridgeContract<
     receipt: union(receiptSchemas),
     event: union(definition.events),
     snapshot: definition.snapshot,
-    error: union([BridgeErrorSchema, ...domainErrors]) as unknown as Schema.Schema<
+    error: union([BridgeErrorSchema, ...domainErrors]) as unknown as Schema.Codec<
       BridgeError | ErrorType<Errors>,
-      Schema.Schema.Encoded<typeof BridgeErrorSchema> | ErrorEncoded<Errors>,
+      Schema.Codec.Encoded<typeof BridgeErrorSchema> | ErrorEncoded<Errors>,
       never
     >,
   });
 }
 
-function union<const Schemas extends readonly Schema.Schema.AnyNoContext[]>(
+function union<const Schemas extends readonly Schema.Codec<any, any, never, never>[]>(
   schemas: Schemas,
-): Schema.Schema<Schema.Schema.Type<Schemas[number]>, Schema.Schema.Encoded<Schemas[number]>, never> {
+): Schema.Codec<Schema.Schema.Type<Schemas[number]>, Schema.Codec.Encoded<Schemas[number]>, never> {
   if (schemas.length === 0) {
-    return Schema.Never as unknown as Schema.Schema<
+    return Schema.Never as unknown as Schema.Codec<
       Schema.Schema.Type<Schemas[number]>,
-      Schema.Schema.Encoded<Schemas[number]>,
+      Schema.Codec.Encoded<Schemas[number]>,
       never
     >;
   }
   if (schemas.length === 1) return schemas[0]!;
-  return Schema.Union(schemas[0]!, schemas[1]!, ...schemas.slice(2)) as unknown as Schema.Schema<
+  return Schema.Union([schemas[0]!, schemas[1]!, ...schemas.slice(2)]) as unknown as Schema.Codec<
     Schema.Schema.Type<Schemas[number]>,
-    Schema.Schema.Encoded<Schemas[number]>,
+    Schema.Codec.Encoded<Schemas[number]>,
     never
   >;
 }
 
 export const ClientEnvelopeSchema = Schema.Struct({
   protocol: Schema.String,
-  version: Schema.Int.pipe(Schema.positive()),
-  contractFingerprint: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/)),
-  connectionEpoch: Schema.Int.pipe(Schema.nonNegative()),
-  kind: Schema.Literal("initialize", "dispatch", "cancelOperation", "uiReady", "uiRendered"),
+  version: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
+  contractFingerprint: Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/))),
+  connectionEpoch: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+  kind: Schema.Literals(["initialize", "dispatch", "cancelOperation", "uiReady", "uiRendered"]),
   commandId: UuidSchema,
   sessionId: Schema.optional(UuidSchema),
   expectedRevision: Schema.optional(RevisionSchema),
@@ -193,10 +193,10 @@ export type ClientEnvelope = typeof ClientEnvelopeSchema.Type;
 
 export const HostEnvelopeSchema = Schema.Struct({
   protocol: Schema.String,
-  version: Schema.Int.pipe(Schema.positive()),
-  contractFingerprint: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/)),
-  connectionEpoch: Schema.Int.pipe(Schema.nonNegative()),
-  kind: Schema.Literal("snapshot", "receipt", "event", "error"),
+  version: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
+  contractFingerprint: Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/))),
+  connectionEpoch: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+  kind: Schema.Literals(["snapshot", "receipt", "event", "error"]),
   sessionId: UuidSchema,
   sequence: HostSequenceSchema,
   revision: RevisionSchema,

@@ -5,13 +5,13 @@ import {
 } from "../../../../../packages/web/application-bridge/dist/esm/index.js";
 
 export const CounterSnapshot = Schema.Struct({
-  count: Schema.Number.pipe(Schema.int(), Schema.between(-2147483648, 2147483647)),
-  history: Schema.Array(Schema.Number.pipe(Schema.int(), Schema.between(-2147483648, 2147483647))),
-  revision: Schema.Number.pipe(Schema.int(), Schema.between(0, Number.MAX_SAFE_INTEGER)),
-}).annotations({ identifier: "CounterSnapshot" });
+  count: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: -2147483648, maximum: 2147483647 }))),
+  history: Schema.Array(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: -2147483648, maximum: 2147483647 })))),
+  revision: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))),
+}).annotate({ identifier: "CounterSnapshot" });
 
 export const IncrementCounter = Schema.TaggedStruct("IncrementCounter", {
-  step: Schema.Int.pipe(Schema.between(1, 10)),
+  step: Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 10 }))),
 });
 export const ResetCounter = Schema.TaggedStruct("ResetCounter", {});
 export const CounterIncremented = Schema.TaggedStruct("CounterIncremented", { snapshot: CounterSnapshot });

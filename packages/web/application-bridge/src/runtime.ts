@@ -5,7 +5,6 @@ import {
   Layer,
   ManagedRuntime,
   PubSub,
-  Runtime,
   Schema,
   Stream,
 } from "effect";
@@ -81,9 +80,9 @@ export interface ApplicationBridgeController<Command, Receipt, HostEvent, Snapsh
   ): Promise<Exit.Exit<A, E>>;
   fork<A, E>(
     program: Effect.Effect<A, E, ApplicationBridgeService>,
-  ): Fiber.RuntimeFiber<A, E>;
-  await<A, E>(fiber: Fiber.RuntimeFiber<A, E>): Promise<Exit.Exit<A, E>>;
-  interrupt<A, E>(fiber: Fiber.RuntimeFiber<A, E>): Promise<Exit.Exit<A, E>>;
+  ): Fiber.Fiber<A, E>;
+  await<A, E>(fiber: Fiber.Fiber<A, E>): Promise<Exit.Exit<A, E>>;
+  interrupt<A, E>(fiber: Fiber.Fiber<A, E>): Promise<Exit.Exit<A, E>>;
   dispose(): Promise<void>;
 }
 
@@ -141,7 +140,7 @@ export function ApplicationBridgeLive<
   channel: FrameChannel,
   options: ApplicationBridgeOptions = {},
 ): Layer.Layer<ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, ApplicationBridgeFailure<DomainError>>> {
-  return Layer.scoped(
+  return Layer.effect(
     ApplicationBridge,
     Effect.gen(function*() {
       const maxFrameBytes = positiveInteger(options.maxFrameBytes ?? 262_144, "maxFrameBytes");
@@ -162,16 +161,16 @@ export function ApplicationBridgeLive<
       let ingressGeneration = 0;
       let connectionEpoch = 0;
       let reconnectPromise: Promise<Snapshot> | undefined;
-      const effectRuntime = yield* Effect.runtime<never>();
-      const runPromise = Runtime.runPromise(effectRuntime);
-      const runSync = Runtime.runSync(effectRuntime);
+      const effectRuntime = yield* Effect.context<never>();
+      const runPromise = Effect.runPromiseWith(effectRuntime);
+      const runSync = Effect.runSyncWith(effectRuntime);
 
       const disposePending = (error: ApplicationBridgeFailure<DomainError>): void => {
         for (const item of pending.values()) item.reject(error);
         pending.clear();
       };
       const failAll = (error: ApplicationBridgeFailure<DomainError>): Effect.Effect<void> => Effect.sync(() => disposePending(error)).pipe(
-        Effect.zipRight(PubSub.publish(failures, error)),
+        Effect.andThen(PubSub.publish(failures, error)),
         Effect.asVoid,
       );
 
@@ -194,7 +193,7 @@ export function ApplicationBridgeLive<
         } catch {
           // Diagnostics must not affect protocol recovery or command disposition.
         }
-      }).pipe(Effect.zipRight(failAll(error)));
+      }).pipe(Effect.andThen(failAll(error)));
 
       const onEnvelope = (envelope: HostEnvelope): Effect.Effect<void, BridgeError> => Effect.gen(function*() {
         if (envelope.protocol !== contract.identity || envelope.version !== contract.version ||
@@ -212,7 +211,7 @@ export function ApplicationBridgeLive<
             const pendingInitialize = envelope.commandId === undefined ? undefined : pending.get(envelope.commandId);
             if (pendingInitialize?.kind === "initialize" && pendingInitialize.connectionEpoch === envelope.connectionEpoch) {
               pending.delete(envelope.commandId!);
-              const error = yield* Schema.decodeUnknown(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
+              const error = yield* Schema.decodeUnknownEffect(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
                 Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host admission error was invalid.")),
               );
               pendingInitialize.reject(error);
@@ -230,7 +229,7 @@ export function ApplicationBridgeLive<
           const item = pending.get(envelope.commandId);
           if (item === undefined || item.connectionEpoch !== connectionEpoch) return;
           pending.delete(envelope.commandId);
-          const error = yield* Schema.decodeUnknown(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
+          const error = yield* Schema.decodeUnknownEffect(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host admission error was invalid.")),
           );
           item.reject(error);
@@ -247,7 +246,7 @@ export function ApplicationBridgeLive<
         sessionId = envelope.sessionId;
 
         if (envelope.kind === "event") {
-          const event = yield* Schema.decodeUnknown(contract.event, { onExcessProperty: "error" })(envelope.payload).pipe(
+          const event = yield* Schema.decodeUnknownEffect(contract.event, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host event was invalid.")),
           );
           const published = yield* PubSub.publish(events, event);
@@ -267,7 +266,7 @@ export function ApplicationBridgeLive<
         const item = pending.get(commandId);
         if (item === undefined || item.connectionEpoch !== connectionEpoch) return;
         if (envelope.kind === "error") {
-          const error = yield* Schema.decodeUnknown(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
+          const error = yield* Schema.decodeUnknownEffect(contract.error!, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host error was invalid.")),
           );
           pending.delete(commandId);
@@ -278,7 +277,7 @@ export function ApplicationBridgeLive<
           if (envelope.kind !== "snapshot") {
             return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host initialization response was not a snapshot."));
           }
-          const snapshot = yield* Schema.decodeUnknown(contract.snapshot, { onExcessProperty: "error" })(envelope.payload).pipe(
+          const snapshot = yield* Schema.decodeUnknownEffect(contract.snapshot, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
           );
           pending.delete(commandId);
@@ -289,7 +288,7 @@ export function ApplicationBridgeLive<
           return yield* Effect.fail(bridgeError("ProtocolDecodeError", "The host command response was not a receipt."));
         }
         if (item.kind === "cancel") {
-          const receipt = yield* Schema.decodeUnknown(CancellationReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
+          const receipt = yield* Schema.decodeUnknownEffect(CancellationReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host cancellation acknowledgement was invalid.")),
           );
           if (receipt.operationId !== item.operationId || (envelope.operationId !== undefined && envelope.operationId !== receipt.operationId)) {
@@ -300,14 +299,14 @@ export function ApplicationBridgeLive<
           return;
         }
         const value: unknown = item.kind === "uiReady"
-          ? yield* Schema.decodeUnknown(UiReadyReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
+          ? yield* Schema.decodeUnknownEffect(UiReadyReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host UI-ready acknowledgement was invalid.")),
           )
           : item.kind === "uiRendered"
-            ? yield* Schema.decodeUnknown(UiRenderedReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
+            ? yield* Schema.decodeUnknownEffect(UiRenderedReceiptSchema, { onExcessProperty: "error" })(envelope.payload).pipe(
               Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host UI-rendered acknowledgement was invalid.")),
             )
-            : yield* Schema.decodeUnknown(contract.receipt, { onExcessProperty: "error" })(envelope.payload).pipe(
+            : yield* Schema.decodeUnknownEffect(contract.receipt, { onExcessProperty: "error" })(envelope.payload).pipe(
               Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host response payload was invalid.")),
             );
         pending.delete(commandId);
@@ -346,12 +345,12 @@ export function ApplicationBridgeLive<
           ));
         }
         for (const encodedEnvelope of encodedEnvelopes) {
-          const envelope = yield* Schema.decodeUnknown(HostEnvelopeSchema, { onExcessProperty: "error" })(encodedEnvelope).pipe(
+          const envelope = yield* Schema.decodeUnknownEffect(HostEnvelopeSchema, { onExcessProperty: "error" })(encodedEnvelope).pipe(
             Effect.mapError(() => bridgeError("ProtocolDecodeError", "The host frame was invalid.")),
           );
           yield* onEnvelope(envelope);
         }
-      }).pipe(Effect.catchAll(requireRecovery));
+      }).pipe(Effect.catch(requireRecovery));
 
       const unsubscribe = channel.subscribe((event) => {
         const published = runSync(PubSub.publish(rawFrames, { generation: ingressGeneration, event }));
@@ -365,7 +364,7 @@ export function ApplicationBridgeLive<
       });
       yield* Stream.fromPubSub(rawFrames).pipe(
         Stream.runForEach(onChannelEvent),
-        Effect.forkScoped,
+        Effect.forkScoped({ startImmediately: true }),
       );
       yield* Effect.addFinalizer(() => Effect.gen(function*() {
         stopped = true;
@@ -378,7 +377,7 @@ export function ApplicationBridgeLive<
       }));
 
       const request = <A>(kind: ClientEnvelope["kind"], payload: unknown, expectedRevision?: number): Effect.Effect<A, ApplicationBridgeFailure<DomainError>> =>
-        Effect.async<A, ApplicationBridgeFailure<DomainError>>((resume) => {
+        Effect.callback<A, ApplicationBridgeFailure<DomainError>>((resume) => {
           if (stopped) {
             resume(Effect.fail(bridgeError("TransportClosed", "The Application Bridge runtime is disposed.")));
             return;
@@ -427,7 +426,7 @@ export function ApplicationBridgeLive<
             ...(sessionId === undefined ? {} : { sessionId }),
             ...(expectedRevision === undefined ? {} : { expectedRevision }),
           };
-          runPromise(Schema.encode(ClientEnvelopeSchema)(envelope))
+          runPromise(Schema.encodeEffect(ClientEnvelopeSchema)(envelope))
             .then((encoded) => channel.send(encoder.encode(JSON.stringify(encoded))))
             .catch(() => {
               // A reconnect may have already detached this request. Its late
@@ -450,7 +449,7 @@ export function ApplicationBridgeLive<
             true,
           ));
         }
-        return Effect.async<void, BridgeError>((resume) => {
+        return Effect.callback<void, BridgeError>((resume) => {
           let active = true;
           channel.reconnect().then(
             () => {
@@ -473,9 +472,9 @@ export function ApplicationBridgeLive<
         });
       };
       const initialize = connect().pipe(
-        Effect.zipRight(request<Snapshot>("initialize", {})),
+        Effect.andThen(request<Snapshot>("initialize", {})),
       );
-      const reconnect: Effect.Effect<Snapshot, ApplicationBridgeFailure<DomainError>> = Effect.async((resume) => {
+      const reconnect: Effect.Effect<Snapshot, ApplicationBridgeFailure<DomainError>> = Effect.callback((resume) => {
         if (reconnectPromise !== undefined) {
           reconnectPromise.then(
             (snapshot) => resume(Effect.succeed(snapshot)),
@@ -515,7 +514,7 @@ export function ApplicationBridgeLive<
       });
       const service: ApplicationBridgeService<Command, Receipt, HostEvent, Snapshot, ApplicationBridgeFailure<DomainError>> = {
         initialize,
-        dispatch: (command) => Schema.encode(contract.command, { onExcessProperty: "error" })(command).pipe(
+        dispatch: (command) => Schema.encodeEffect(contract.command, { onExcessProperty: "error" })(command).pipe(
           Effect.mapError(() => bridgeError("ProtocolDecodeError", "The command did not satisfy its Effect Schema.")),
           Effect.flatMap((payload) => request<Receipt>("dispatch", payload, revision)),
         ),
@@ -523,10 +522,16 @@ export function ApplicationBridgeLive<
         reconnect,
         uiReady: request<unknown>("uiReady", {}).pipe(Effect.asVoid),
         uiRendered: request<unknown>("uiRendered", {}).pipe(Effect.asVoid),
-        events: Stream.merge(
-          Stream.fromPubSub(events),
-          Stream.fromPubSub(failures).pipe(Stream.mapEffect(Effect.fail)),
-        ),
+        events: Stream.unwrap(Effect.gen(function*() {
+          // Subscribe before merge forks its readers: a synchronous host reply
+          // must remain buffered even when those readers have not started yet.
+          const eventSubscription = yield* PubSub.subscribe(events);
+          const failureSubscription = yield* PubSub.subscribe(failures);
+          return Stream.merge(
+            Stream.fromSubscription(eventSubscription),
+            Stream.fromSubscription(failureSubscription).pipe(Stream.mapEffect(Effect.fail)),
+          );
+        })),
       };
       return service as ApplicationBridgeService;
     }),
@@ -694,9 +699,9 @@ export function createApplicationBridgeController<
       const consume = (): Effect.Effect<void, never, ApplicationBridgeService> =>
         Effect.flatMap(service, (bridge) =>
           Stream.runForEach(bridge.events, (event) => Effect.sync(() => onEvent(event))),
-        ).pipe(Effect.catchAll((error) =>
+        ).pipe(Effect.catch((error) =>
           Effect.sync(() => onError(error)).pipe(
-            Effect.zipRight(Effect.suspend(consume)),
+            Effect.andThen(Effect.suspend(consume)),
           )));
       const fiber = runtime.runFork(consume());
       return () => {
@@ -707,7 +712,7 @@ export function createApplicationBridgeController<
     runExit: (program) => run(Effect.exit(program)),
     fork: (program) => runtime.runFork(program),
     await: (fiber) => run(Fiber.await(fiber)),
-    interrupt: (fiber) => run(Fiber.interrupt(fiber)),
+    interrupt: (fiber) => run(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber)))),
     dispose: runtime.dispose,
   };
 }

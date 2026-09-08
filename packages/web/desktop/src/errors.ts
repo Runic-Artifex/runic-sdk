@@ -43,7 +43,7 @@ export class LimitExceeded extends Schema.TaggedError<LimitExceeded>()(
   fields,
 ) {}
 
-export const DesktopTransportErrorSchema = Schema.Union(
+export const DesktopTransportErrorSchema = Schema.Union([
   ConfigurationInvalid,
   TransportUnavailable,
   TransportClosed,
@@ -51,7 +51,7 @@ export const DesktopTransportErrorSchema = Schema.Union(
   CapabilityDenied,
   InvalidFrame,
   LimitExceeded,
-);
+]);
 
 export type DesktopTransportError = typeof DesktopTransportErrorSchema.Type;
 

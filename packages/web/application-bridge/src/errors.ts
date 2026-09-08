@@ -42,7 +42,7 @@ export class OperationTimedOut extends Schema.TaggedError<OperationTimedOut>()(
   publicFields,
 ) {}
 
-export const BridgeErrorSchema = Schema.Union(
+export const BridgeErrorSchema = Schema.Union([
   TransportUnavailable,
   TransportClosed,
   ProtocolVersionMismatch,
@@ -52,7 +52,7 @@ export const BridgeErrorSchema = Schema.Union(
   OperationFailed,
   OperationCancelled,
   OperationTimedOut,
-);
+]);
 
 export type BridgeError = typeof BridgeErrorSchema.Type;
 

@@ -13,11 +13,11 @@ const fixture = (name: string) => new URL(
 test("committed Setup fixtures decode through the Effect wire schemas", async () => {
   const client = JSON.parse(await readFile(fixture("initialize.client.json"), "utf8"));
   const host = JSON.parse(await readFile(fixture("initialized.host.json"), "utf8"));
-  const envelope = await Effect.runPromise(Schema.decodeUnknown(ClientEnvelopeSchema)(client));
+  const envelope = await Effect.runPromise(Schema.decodeUnknownEffect(ClientEnvelopeSchema)(client));
   assert.deepEqual(envelope.payload, {});
-  const decodedHost = await Effect.runPromise(Schema.decodeUnknown(HostEnvelopeSchema)(host));
+  const decodedHost = await Effect.runPromise(Schema.decodeUnknownEffect(HostEnvelopeSchema)(host));
   assert.deepEqual(
-    await Effect.runPromise(Schema.decodeUnknown(SetupSnapshot)(decodedHost.payload)),
+    await Effect.runPromise(Schema.decodeUnknownEffect(SetupSnapshot)(decodedHost.payload)),
     host.payload,
   );
 });

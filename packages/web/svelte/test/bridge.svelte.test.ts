@@ -151,7 +151,7 @@ describe("SvelteApplicationBridge", () => {
     await Promise.resolve();
     const second = await action.run(0);
     const interrupted = await first;
-    expect(Exit.isFailure(interrupted) && Cause.isInterruptedOnly(interrupted.cause)).toBe(true);
+    expect(Exit.isFailure(interrupted) && Cause.hasInterruptsOnly(interrupted.cause)).toBe(true);
     expect(Exit.isSuccess(second)).toBe(true);
     expect(action.status).toBe("success");
 
@@ -161,7 +161,7 @@ describe("SvelteApplicationBridge", () => {
     await bridge.dispose();
     expect(owned.status).toBe("disposed");
     const disposedExit = await running;
-    expect(Exit.isFailure(disposedExit) && Cause.isInterruptedOnly(disposedExit.cause)).toBe(true);
+    expect(Exit.isFailure(disposedExit) && Cause.hasInterruptsOnly(disposedExit.cause)).toBe(true);
   });
 
   test("keeps disposal terminal across all public operations and in-flight races", async () => {

@@ -51,12 +51,12 @@
   },
   "peerDependencies": {
     "@runic-artifex/application-bridge": "1.0.0-preview.1",
-    "effect": "3.22.1"
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
     "@runic-artifex/application-bridge": "workspace:*",
     "@types/node": "24.13.3",
-    "effect": "3.22.1",
+    "effect": "4.0.0-rc.112",
     "typescript": "7.0.2"
   },
   "publishConfig": {

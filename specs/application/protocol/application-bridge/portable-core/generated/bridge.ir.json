@@ -4,14 +4,7 @@
     "contractName": "PortableCore",
     "namespace": "Runic.Application.PortableCore.Contract"
   },
-  "documentation": {
-    "error:QuotaExceeded.limit": "a number",
-    "type:PortableSnapshot.choice|0.value": "a string",
-    "type:PortableSnapshot.choice|1.value": "an integer",
-    "type:PortableSnapshot.node.value": "a string",
-    "type:PortableSnapshot.pair[0]": "a string",
-    "type:PortableSnapshot.pair[1]": "a number"
-  },
+  "documentation": {},
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",

@@ -11,6 +11,8 @@ The dated JSON file records the initial 2026-09-08 audit, including declared/res
 versions and upstream requirements. Historical imports, benchmark receipts and
 archived source trees are excluded from updates. Native SDK headers, Nix inputs,
 runtime releases and the local container image also need the checks below.
+`2026-09-08-updated.json` records the resulting 88-package/action inventory after
+the toolchain, web and Effect migrations.
 
 ## September 2026 decisions
 
@@ -51,6 +53,37 @@ The web wave passed the complete build, documentation checks, editor checks, Sve
 and SvelteKit tests, and installed npm consumers. The DevTools tests also check real
 Node startup and Chromium rendering with Bun. Retain `@types/cookie` 0.6.0: 1.0 is a
 deprecated stub for modern cookie versions, while SvelteKit still uses cookie 0.6.
+
+## Effect 4 migration
+
+The bridge, Desktop transport, compiler, framework consumers and starters pin
+`4.0.0-rc.112` together. Regenerate C#-authority facades with `contract:generate`;
+they now expose `Schema.Codec` and Effect 4 checks. Effect-authority applications
+use `Schema.Union([schemas])`, `Schema.Literals([values])`, `.annotate(...)`, and
+`.check(Schema.isBetween({ minimum, maximum }))` in place of the Effect 3 forms.
+Strict TypeScript projects using the runtime declarations need `ESNext.Disposable`
+in their `compilerOptions.lib` alongside their existing platform libraries.
+
+The runtime uses context-bound runners and `Layer.effect` with scoped finalizers.
+The controller still returns an exit from `interrupt`; it waits for both
+interruption and completion. Frame consumption starts immediately, and event/error
+subscriptions are acquired before the merged readers start, preserving synchronous
+host replies under Effect 4's scheduling. The compiler reads v4 AST checks and
+keeps the existing named integer wire definition. Boilerplate descriptions supplied
+implicitly by Effect 3 disappear from generated documentation; explicit descriptions
+and wire identities remain supported.
+
+## Separately maintained repositories
+
+This SDK wave inventories the adjacent repositories without changing their release
+boundaries. `cs-webui` has its own central NuGet pins, .NET SDK and Nix lock, plus an
+upstream React example using react-scripts. `local-planning` maintains its SvelteKit
+portal, Mermaid, Zod and YAML tooling separately. `runic-brand` owns font/image
+tooling; `runic-site` owns the marketing SvelteKit app; `runic-flow` and `runic-markup`
+own separate .NET/Nix toolchains, with a VS Code client in `runic-markup`. Their
+updates require their own repository checks and commits. Historical SDK imports and
+frozen legacy-example dependencies remain excluded; the current SDK acceptance
+consumers are updated with the runtime they exercise.
 
 Upgrade waves are reviewed by the maintainer through their commits. Validate each
 wave with affected suites, then use the real SDK CI workflow for package consumers,

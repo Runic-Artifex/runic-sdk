@@ -11,6 +11,6 @@ export interface ApplicationBridgeService<Command = unknown, Receipt = unknown, 
   readonly events: Stream.Stream<HostEvent, Failure>;
 }
 
-export const ApplicationBridge = Context.GenericTag<ApplicationBridgeService>(
+export const ApplicationBridge = Context.Service<ApplicationBridgeService>(
   "@runic-artifex/application-bridge/ApplicationBridge",
 );

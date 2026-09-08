@@ -60,7 +60,7 @@ test("rejects refinements without portable wire metadata and preserves last-good
     await writeFile(join(root, "application.bridge.ts"), contractSource(), "utf8");
     await generateApplicationBridge(options);
     const before = await readFile(join(root, "bridge.ir.json"), "utf8");
-    await writeFile(join(root, "application.bridge.ts"), contractSource("Schema.String.pipe(Schema.filter(() => true))"), "utf8");
+    await writeFile(join(root, "application.bridge.ts"), contractSource("Schema.String.pipe(Schema.check(Schema.makeFilter(() => true)))"), "utf8");
     await assert.rejects(
       generateApplicationBridge(options),
       (error) => error instanceof ApplicationBridgeCompilerError && error.code === "RTKAB1004",
@@ -75,22 +75,23 @@ test("lowers the portable core, constraints, imported schemas, and named recursi
   const root = await mkdtemp(join(tmpdir(), "runic-bridge-"));
   try {
     await writeFile(join(root, "shared.ts"), `
-import { Schema } from ${JSON.stringify(effect)};
+import { Schema, SchemaGetter } from ${JSON.stringify(effect)};
 export const Node = Schema.suspend(() => Schema.Struct({ value: Schema.String, next: Schema.optional(Node) }))
-  .annotations({ identifier: "Node" });
+  .annotate({ identifier: "Node" });
 export const Payload = Schema.Struct({
-  bounded: Schema.Number.pipe(Schema.greaterThan(0), Schema.lessThanOrEqualTo(100), Schema.multipleOf(0.5)),
-  text: Schema.String.pipe(Schema.minLength(2), Schema.maxLength(8), Schema.pattern(/^[a-z]+$/)),
+  finite: Schema.Finite,
+  bounded: Schema.Number.pipe(Schema.check(Schema.isGreaterThan(0)), Schema.check(Schema.isLessThanOrEqualTo(100)), Schema.check(Schema.isMultipleOf(0.5))),
+  text: Schema.String.pipe(Schema.check(Schema.isMinLength(2)), Schema.check(Schema.isMaxLength(8)), Schema.check(Schema.isPattern(/^[a-z]+$/))),
   normalized: Schema.String,
-  values: Schema.Array(Schema.Int).pipe(Schema.minItems(1), Schema.maxItems(3)),
-  tuple: Schema.Tuple(Schema.String, Schema.optionalElement(Schema.Int)),
-  dictionary: Schema.Record({ key: Schema.String.pipe(Schema.pattern(/^[a-z]+$/)), value: Schema.Boolean }),
-  choice: Schema.Union(Schema.Literal("one", "two"), Schema.Null),
+  values: Schema.Array(Schema.Int).pipe(Schema.check(Schema.isMinLength(1)), Schema.check(Schema.isMaxLength(3))),
+  tuple: Schema.Tuple([Schema.String, Schema.optionalKey(Schema.Int)]),
+  dictionary: Schema.Record(Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-z]+$/))), Schema.Boolean),
+  choice: Schema.Union([Schema.Literals(["one", "two"]), Schema.Null]),
   node: Node
-}).annotations({ identifier: "Payload" });
+}).annotate({ identifier: "Payload" });
 `, "utf8");
     await writeFile(join(root, "application.bridge.ts"), `
-import { Schema } from ${JSON.stringify(effect)};
+import { Schema, SchemaGetter } from ${JSON.stringify(effect)};
 import { Payload } from "./shared.js";
 export default { protocol:{identity:"runic.core",version:1}, csharp:{namespace:"Runic.Core",contractName:"Core"}, snapshot:Payload,
 commands:[], events:[], errors:[] };
@@ -99,6 +100,8 @@ commands:[], events:[], errors:[] };
     assert.deepEqual(result.dependencies.map((path) => basename(path)), ["application.bridge.ts", "shared.ts"]);
     const payload = result.ir.wire.definitions["type:Payload"];
     assert.equal(payload.kind, "object");
+    assert.deepEqual(payload.properties.finite.type, { kind: "ref", name: "type:Finite" });
+    assert.deepEqual(result.ir.wire.definitions["type:Finite"], { kind: "number" });
     assert.deepEqual(payload.properties.bounded.type.constraints, { exclusiveMinimum: 0, maximum: 100, multipleOf: 0.5 });
     assert.deepEqual(payload.properties.text.type.constraints, { maxLength: 8, minLength: 2, pattern: "^[a-z]+$" });
     assert.deepEqual(payload.properties.normalized.type, { kind: "string" });
@@ -171,11 +174,11 @@ test("classifies additions separately from changed or removed wire semantics", a
 
 for (const [name, expression] of [
   ["observable standard transformation", "Schema.Trim"],
-  ["custom transformation", "Schema.transform(Schema.String, Schema.String, { decode: value => value, encode: value => value })"],
+  ["custom transformation", "Schema.String.pipe(Schema.decodeTo(Schema.String, { decode: SchemaGetter.transform(value => value), encode: SchemaGetter.transform(value => value) }))"],
   ["standard transformation with extra wire validation", "Schema.DateFromString"],
   ["non-JSON values", "Schema.BigInt"],
-  ["regular-expression flags", "Schema.String.pipe(Schema.pattern(/value/i))"],
-  ["unsupported regular-expression features", "Schema.String.pipe(Schema.pattern(/(?=value)/))"],
+  ["regular-expression flags", "Schema.String.pipe(Schema.check(Schema.isPattern(/value/i)))"],
+  ["unsupported regular-expression features", "Schema.String.pipe(Schema.check(Schema.isPattern(/(?=value)/)))"],
 ]) {
   test(`rejects ${name}`, async () => {
     const root = await mkdtemp(join(tmpdir(), "runic-bridge-"));
@@ -210,10 +213,10 @@ test("rejects duplicate tags, untagged receipts, and anonymous recursion", async
   }
 });
 
-function contractSource(step = "Schema.Int.pipe(Schema.between(1, 10))") {
+function contractSource(step = "Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 10 })))") {
   return `
-import { Schema } from ${JSON.stringify(effect)};
-const CounterSnapshot = Schema.Struct({ count: Schema.Int }).annotations({ identifier: "CounterSnapshot", description: "The authoritative counter state." });
+import { Schema, SchemaGetter } from ${JSON.stringify(effect)};
+const CounterSnapshot = Schema.Struct({ count: Schema.Int }).annotate({ identifier: "CounterSnapshot", description: "The authoritative counter state." });
 const IncrementCounter = Schema.TaggedStruct("IncrementCounter", { step: ${step} });
 const CounterIncremented = Schema.TaggedStruct("CounterIncremented", { snapshot: CounterSnapshot });
 export default {

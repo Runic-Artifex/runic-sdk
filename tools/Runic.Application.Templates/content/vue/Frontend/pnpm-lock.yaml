@@ -125,18 +125,18 @@ importers:
         specifier: 5.3.8
         version: 5.3.8(@popperjs/core@2.11.8)
       effect:
-        specifier: 3.22.1
-        version: 3.22.1
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
       vue:
         specifier: 3.5.42
         version: 3.5.42(typescript@6.0.3)
     devDependencies:
       '@runic-artifex/application-bridge-tooling':
         specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@3.22.1)
+        version: 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)
       '@runic-artifex/vite-plugin-runic':
         specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@3.22.1))(vite@8.2.2(esbuild@0.28.2))
+        version: 1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112))(vite@8.2.2(esbuild@0.28.2))
       '@vitejs/plugin-vue':
         specifier: 6.0.8
         version: 6.0.8(vite@8.2.2(esbuild@0.28.2))(vue@3.5.42(typescript@6.0.3))
@@ -332,6 +332,36 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
+  '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
+    resolution: {integrity: sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4':
+    resolution: {integrity: sha512-zExlW9zUJKZH/tOtVMttwjKa4Xm/3KcNjnE3dPN92uCktwavMxpgCA3MoJK/DOnTWsQgo224OaST27/mPNAf+w==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4':
+    resolution: {integrity: sha512-dgX0P/9wGPJeHFBG+ZmhgE6bmtMt7NP5CRBGyyktpopdk/mW4POnrpQsSLtKI1dwpc+pPLuXHDh6vvskyQE/sw==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4':
+    resolution: {integrity: sha512-Tg3yX65f5GbtXLkrYEHE5oibZG9epyYWas7FogTTEJeDEF9JlXJzKgXaNhT3UXlTOeA+AfZpYZYZ0uPj7Cfquw==}
+    cpu: [arm]
+    os: [linux]
+
+  '@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4':
+    resolution: {integrity: sha512-8TNXMEjJc3QEy7R/x1INhgiU+XakDAFUzBhaz7+Rbrs8NH5UQeHQxxmzsSBJGyV6I1jW79undiQm8tOI+D+8FQ==}
+    cpu: [x64]
+    os: [linux]
+
+  '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4':
+    resolution: {integrity: sha512-CmCXPQrkbwExx3j946/PtHWHbYJiCRBRDl4BlkRQcJB/YOwQxJRTpoo7aTsortjgoJ1x7opzTSxn7C+ASSLVjQ==}
+    cpu: [x64]
+    os: [win32]
+
   '@oxc-project/types@0.148.0':
     resolution: {integrity: sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A==}
 
@@ -438,23 +468,23 @@ packages:
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
   '@runic-artifex/application-bridge-tooling@1.0.0-preview.1':
-    resolution: {integrity: sha512-1FlQT55faDwzumdU7HpRt3sfM/I7Xhd2KUP5SWBGCsng/SAYb/kZ2m2d2sNuTh3hiQaG5Uag7na/S69K565UIQ==}
+    resolution: {integrity: sha512-42In6kIWEBitPLveK7V1+ld1TgcComFuX1wzuL7xLCrtuMjSQ6SKkv59V1ozmFlcxd+MQIhms3oZX7C+pnligg==}
     engines: {node: '>=24.18.0 <25'}
     hasBin: true
     peerDependencies:
       '@runic-artifex/application-bridge': 1.0.0-preview.1
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
 
   '@runic-artifex/application-bridge@1.0.0-preview.1':
-    resolution: {integrity: sha512-RFknNtoSwyOLgPovfb5eSXssWwuTRnVVb+7WJWYaLVT79eBDsgAaVw26mjW5iQ4adKxcXwCO+817Tm7hQHpW0w==}
+    resolution: {integrity: sha512-Pozt/rAJcdOj1aI6aIGj6Y/SEkKRLe1e1NnqdCrJMTyUZjOO2kIjSqPMme5Sneq1Cod6xgQcGTcG3flcvRVT5Q==}
     engines: {node: '>=24.18.0 <25'}
 
   '@runic-artifex/desktop@1.0.0-preview.1':
-    resolution: {integrity: sha512-urB+iAVPmoaXqg01J6dnMo2MJjIbs7Y723vUvLJnGx4NGoVDaSl6KN5FYuVikgeG9pA5VujYLVeU57hbi7LJ5w==}
+    resolution: {integrity: sha512-LRJWvckZIMnOPw+4t6rMzPKPV9QpTdoJ8vgv2purgsZ3fgFVjQotoshakfWGFGwjjoOxgJltWBBRiLhEybCMeg==}
     engines: {node: '>=24.18.0 <25'}
 
   '@runic-artifex/vite-plugin-runic@1.0.0-preview.1':
-    resolution: {integrity: sha512-K3/QhlFXVYzq2ipOaCjGNgVjIFJTzkQWsbZs7EMa0csWsT41VQ4j9ORqCb+3Vy0yZC/hqJ0TfANXDSEzauSSxA==}
+    resolution: {integrity: sha512-iqQzEizZuLtvM3Fh2GnH7BFWyJWzkI32eGsJt6PAGnTTt713pJIimgoDRgFw8pPliLqDf+j77PUUeXimdi5leg==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
       '@runic-artifex/application-bridge-tooling': 1.0.0-preview.1
@@ -465,9 +495,6 @@ packages:
         optional: true
       '@vitejs/devtools':
         optional: true
-
-  '@standard-schema/spec@1.1.0':
-    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@vitejs/plugin-vue@6.0.8':
     resolution: {integrity: sha512-0ZjgOg7oO6farnNGup7yvoM/YXZV84OZxHAwtflItNa/6zzQyVb5LNxyea3FEKEX2XlagIKzrlH7wwxkKgtiew==}
@@ -535,8 +562,8 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
-  effect@3.22.1:
-    resolution: {integrity: sha512-TNoXushmPOBAjJlthF5d2QwnX2xBPEtcNJr5XKNKbRLbDvBcOYkXlYDfvGfSA0zriwLFuCll5MDtNMAdZL17PQ==}
+  effect@4.0.0-rc.112:
+    resolution: {integrity: sha512-wXxwuh1Ywnv4cPRM3Wfa0vDwuOHnZ1TsTgHJkG9XgzND6inhBH9n1vBxhg3iIXOia/OrpmvVmd3lrD4vq6bF3A==}
 
   entities@7.0.1:
     resolution: {integrity: sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA==}
@@ -550,9 +577,9 @@ packages:
   estree-walker@2.0.2:
     resolution: {integrity: sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w==}
 
-  fast-check@3.23.2:
-    resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
-    engines: {node: '>=8.0.0'}
+  fast-check@4.9.0:
+    resolution: {integrity: sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg==}
+    engines: {node: '>=12.17.0'}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -645,12 +672,23 @@ packages:
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
+  msgpackr-extract@3.0.4:
+    resolution: {integrity: sha512-4kmO/MdyUIkLIvTPr8VHLil4AtoKIoniWPIEk5+CDy0xnWC84azhSFmuJ7PxZdsYtiP5kEeQsORAVIeMgxT+Hw==}
+    hasBin: true
+
+  msgpackr@2.1.0:
+    resolution: {integrity: sha512-p/pBCVO63CsvvpkomUnNNag6+n38rULuDA6HHe70o2gtC8ODI52foF/4ko2qQcp6OiErJXTmrZeXmsGGHsIQNQ==}
+
   muggle-string@0.4.1:
     resolution: {integrity: sha512-VNTrAak/KhO2i8dqqnqnAHOa3cYBwXEZe9h+D5h/1ZqFSTEFHdM65lR7RoIqq3tBBYavsOXV84NoHXZ0AkPyqQ==}
 
   nanoid@3.3.18:
     resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
+    hasBin: true
+
+  node-gyp-build-optional-packages@5.2.2:
+    resolution: {integrity: sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw==}
     hasBin: true
 
   path-browserify@1.0.1:
@@ -667,8 +705,8 @@ packages:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
 
-  pure-rand@6.1.0:
-    resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
+  pure-rand@8.4.2:
+    resolution: {integrity: sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==}
 
   rolldown@1.2.7:
     resolution: {integrity: sha512-g0EtLvBjTUB7jhyV0S/TCup3v/XSVl45vUIGbOGU4QPiyjTenCe4mKuFvW9fEgYmS2Fo42AUssRmNuMziXdrig==}
@@ -845,6 +883,24 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
+  '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
+    optional: true
+
+  '@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4':
+    optional: true
+
+  '@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4':
+    optional: true
+
+  '@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4':
+    optional: true
+
+  '@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4':
+    optional: true
+
+  '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4':
+    optional: true
+
   '@oxc-project/types@0.148.0': {}
 
   '@popperjs/core@2.11.8': {}
@@ -896,27 +952,25 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@3.22.1)':
+  '@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)':
     dependencies:
       '@runic-artifex/application-bridge': 1.0.0-preview.1
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
       esbuild: 0.28.2
 
   '@runic-artifex/application-bridge@1.0.0-preview.1':
     dependencies:
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
 
   '@runic-artifex/desktop@1.0.0-preview.1':
     dependencies:
-      effect: 3.22.1
+      effect: 4.0.0-rc.112
 
-  '@runic-artifex/vite-plugin-runic@1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@3.22.1))(vite@8.2.2(esbuild@0.28.2))':
+  '@runic-artifex/vite-plugin-runic@1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112))(vite@8.2.2(esbuild@0.28.2))':
     dependencies:
       vite: 8.2.2(esbuild@0.28.2)
     optionalDependencies:
-      '@runic-artifex/application-bridge-tooling': 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@3.22.1)
-
-  '@standard-schema/spec@1.1.0': {}
+      '@runic-artifex/application-bridge-tooling': 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)
 
   '@vitejs/plugin-vue@6.0.8(vite@8.2.2(esbuild@0.28.2))(vue@3.5.42(typescript@6.0.3))':
     dependencies:
@@ -1012,10 +1066,10 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  effect@3.22.1:
+  effect@4.0.0-rc.112:
     dependencies:
-      '@standard-schema/spec': 1.1.0
-      fast-check: 3.23.2
+      fast-check: 4.9.0
+      msgpackr: 2.1.0
 
   entities@7.0.1: {}
 
@@ -1050,9 +1104,9 @@ snapshots:
 
   estree-walker@2.0.2: {}
 
-  fast-check@3.23.2:
+  fast-check@4.9.0:
     dependencies:
-      pure-rand: 6.1.0
+      pure-rand: 8.4.2
 
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
@@ -1114,9 +1168,30 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
+  msgpackr-extract@3.0.4:
+    dependencies:
+      node-gyp-build-optional-packages: 5.2.2
+    optionalDependencies:
+      '@msgpackr-extract/msgpackr-extract-darwin-arm64': 3.0.4
+      '@msgpackr-extract/msgpackr-extract-darwin-x64': 3.0.4
+      '@msgpackr-extract/msgpackr-extract-linux-arm': 3.0.4
+      '@msgpackr-extract/msgpackr-extract-linux-arm64': 3.0.4
+      '@msgpackr-extract/msgpackr-extract-linux-x64': 3.0.4
+      '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.4
+    optional: true
+
+  msgpackr@2.1.0:
+    optionalDependencies:
+      msgpackr-extract: 3.0.4
+
   muggle-string@0.4.1: {}
 
   nanoid@3.3.18: {}
+
+  node-gyp-build-optional-packages@5.2.2:
+    dependencies:
+      detect-libc: 2.1.2
+    optional: true
 
   path-browserify@1.0.1: {}
 
@@ -1130,7 +1205,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  pure-rand@6.1.0: {}
+  pure-rand@8.4.2: {}
 
   rolldown@1.2.7:
     dependencies:

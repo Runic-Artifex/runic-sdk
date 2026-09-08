@@ -37,7 +37,7 @@ try {
       "@angular/platform-browser": "22.1.5",
       "@runic-artifex/application-bridge": `file:${resolve(bridgeArchive)}`,
       "@runic-artifex/angular": `file:${resolve(angularArchive)}`,
-      "effect": "3.22.1",
+      "effect": "4.0.0-rc.112",
       rxjs: "7.8.2",
     },
     overrides: {
@@ -166,7 +166,7 @@ function angularJson() {
 function contractSource() {
   return `import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
-export const CounterSnapshot = Schema.Struct({ count: Schema.Int, revision: Schema.Int.pipe(Schema.nonNegative()) });
+export const CounterSnapshot = Schema.Struct({ count: Schema.Int, revision: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))) });
 export const CounterCommand = Schema.TaggedStruct("ReadCounter", {});
 export const CounterReceipt = Schema.TaggedStruct("CounterRead", { snapshot: CounterSnapshot });
 export const CounterEvent = Schema.TaggedStruct("CounterChanged", { snapshot: CounterSnapshot });

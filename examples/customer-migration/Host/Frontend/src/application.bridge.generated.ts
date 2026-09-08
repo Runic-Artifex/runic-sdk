@@ -3,56 +3,56 @@ import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
 
 export type ReloadCustomers = { readonly "_tag": "ReloadCustomers"; };
-export const ReloadCustomers: Schema.Schema<ReloadCustomers> = Schema.Struct({ "_tag": Schema.Literal("ReloadCustomers") }).annotations({ identifier: "ReloadCustomers" });
-export type ReloadCustomersEncoded = Schema.Schema.Encoded<typeof ReloadCustomers>;
+export const ReloadCustomers: Schema.Codec<ReloadCustomers> = Schema.Struct({ "_tag": Schema.Literal("ReloadCustomers") }).annotate({ identifier: "ReloadCustomers" });
+export type ReloadCustomersEncoded = Schema.Codec.Encoded<typeof ReloadCustomers>;
 
 export type SaveCustomer = { readonly "_tag": "SaveCustomer"; readonly "draft": CustomerInput; };
-export const SaveCustomer: Schema.Schema<SaveCustomer> = Schema.Struct({ "_tag": Schema.Literal("SaveCustomer"), "draft": Schema.suspend(() => CustomerInput) }).annotations({ identifier: "SaveCustomer" });
-export type SaveCustomerEncoded = Schema.Schema.Encoded<typeof SaveCustomer>;
+export const SaveCustomer: Schema.Codec<SaveCustomer> = Schema.Struct({ "_tag": Schema.Literal("SaveCustomer"), "draft": Schema.suspend(() => CustomerInput) }).annotate({ identifier: "SaveCustomer" });
+export type SaveCustomerEncoded = Schema.Codec.Encoded<typeof SaveCustomer>;
 
 export type ValidateCustomer = { readonly "_tag": "ValidateCustomer"; readonly "draft": CustomerInput; };
-export const ValidateCustomer: Schema.Schema<ValidateCustomer> = Schema.Struct({ "_tag": Schema.Literal("ValidateCustomer"), "draft": Schema.suspend(() => CustomerInput) }).annotations({ identifier: "ValidateCustomer" });
-export type ValidateCustomerEncoded = Schema.Schema.Encoded<typeof ValidateCustomer>;
+export const ValidateCustomer: Schema.Codec<ValidateCustomer> = Schema.Struct({ "_tag": Schema.Literal("ValidateCustomer"), "draft": Schema.suspend(() => CustomerInput) }).annotate({ identifier: "ValidateCustomer" });
+export type ValidateCustomerEncoded = Schema.Codec.Encoded<typeof ValidateCustomer>;
 
 export type CustomerRejected = { readonly "_tag": "CustomerRejected"; readonly "code": string; readonly "issues": ReadonlyArray<ValidationIssue>; readonly "message": string; };
-export const CustomerRejected: Schema.Schema<CustomerRejected> = Schema.Struct({ "_tag": Schema.Literal("CustomerRejected"), "code": Schema.String, "issues": Schema.Array(Schema.suspend(() => ValidationIssue)), "message": Schema.String }).annotations({ identifier: "CustomerRejected" });
-export type CustomerRejectedEncoded = Schema.Schema.Encoded<typeof CustomerRejected>;
+export const CustomerRejected: Schema.Codec<CustomerRejected> = Schema.Struct({ "_tag": Schema.Literal("CustomerRejected"), "code": Schema.String, "issues": Schema.Array(Schema.suspend(() => ValidationIssue)), "message": Schema.String }).annotate({ identifier: "CustomerRejected" });
+export type CustomerRejectedEncoded = Schema.Codec.Encoded<typeof CustomerRejected>;
 
 export type CustomersChanged = { readonly "_tag": "CustomersChanged"; readonly "snapshot": CustomerSnapshot; };
-export const CustomersChanged: Schema.Schema<CustomersChanged> = Schema.Struct({ "_tag": Schema.Literal("CustomersChanged"), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotations({ identifier: "CustomersChanged" });
-export type CustomersChangedEncoded = Schema.Schema.Encoded<typeof CustomersChanged>;
+export const CustomersChanged: Schema.Codec<CustomersChanged> = Schema.Struct({ "_tag": Schema.Literal("CustomersChanged"), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotate({ identifier: "CustomersChanged" });
+export type CustomersChangedEncoded = Schema.Codec.Encoded<typeof CustomersChanged>;
 
 export type CustomerReloaded = { readonly "_tag": "CustomerReloaded"; readonly "snapshot": CustomerSnapshot; };
-export const CustomerReloaded: Schema.Schema<CustomerReloaded> = Schema.Struct({ "_tag": Schema.Literal("CustomerReloaded"), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotations({ identifier: "CustomerReloaded" });
-export type CustomerReloadedEncoded = Schema.Schema.Encoded<typeof CustomerReloaded>;
+export const CustomerReloaded: Schema.Codec<CustomerReloaded> = Schema.Struct({ "_tag": Schema.Literal("CustomerReloaded"), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotate({ identifier: "CustomerReloaded" });
+export type CustomerReloadedEncoded = Schema.Codec.Encoded<typeof CustomerReloaded>;
 
 export type DraftValidated = { readonly "_tag": "DraftValidated"; readonly "issues": ReadonlyArray<ValidationIssue>; };
-export const DraftValidated: Schema.Schema<DraftValidated> = Schema.Struct({ "_tag": Schema.Literal("DraftValidated"), "issues": Schema.Array(Schema.suspend(() => ValidationIssue)) }).annotations({ identifier: "DraftValidated" });
-export type DraftValidatedEncoded = Schema.Schema.Encoded<typeof DraftValidated>;
+export const DraftValidated: Schema.Codec<DraftValidated> = Schema.Struct({ "_tag": Schema.Literal("DraftValidated"), "issues": Schema.Array(Schema.suspend(() => ValidationIssue)) }).annotate({ identifier: "DraftValidated" });
+export type DraftValidatedEncoded = Schema.Codec.Encoded<typeof DraftValidated>;
 
 export type SaveStarted = { readonly "_tag": "SaveStarted"; readonly "operationId": string; readonly "snapshot": CustomerSnapshot; };
-export const SaveStarted: Schema.Schema<SaveStarted> = Schema.Struct({ "_tag": Schema.Literal("SaveStarted"), "operationId": Schema.String.pipe(Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotations({ identifier: "SaveStarted" });
-export type SaveStartedEncoded = Schema.Schema.Encoded<typeof SaveStarted>;
+export const SaveStarted: Schema.Codec<SaveStarted> = Schema.Struct({ "_tag": Schema.Literal("SaveStarted"), "operationId": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotate({ identifier: "SaveStarted" });
+export type SaveStartedEncoded = Schema.Codec.Encoded<typeof SaveStarted>;
 
 export type CustomerInput = { readonly "company": string; readonly "email": string; readonly "id": string; readonly "name": string; readonly "version": number; };
-export const CustomerInput: Schema.Schema<CustomerInput> = Schema.Struct({ "company": Schema.String.pipe(Schema.minLength(0), Schema.maxLength(1000)), "email": Schema.String.pipe(Schema.minLength(0), Schema.maxLength(1000)), "id": Schema.String.pipe(Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "name": Schema.String.pipe(Schema.minLength(0), Schema.maxLength(1000)), "version": Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(1), Schema.lessThanOrEqualTo(2147483647)) }).annotations({ identifier: "CustomerInput" });
-export type CustomerInputEncoded = Schema.Schema.Encoded<typeof CustomerInput>;
+export const CustomerInput: Schema.Codec<CustomerInput> = Schema.Struct({ "company": Schema.String.pipe(Schema.check(Schema.isMinLength(0)), Schema.check(Schema.isMaxLength(1000))), "email": Schema.String.pipe(Schema.check(Schema.isMinLength(0)), Schema.check(Schema.isMaxLength(1000))), "id": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "name": Schema.String.pipe(Schema.check(Schema.isMinLength(0)), Schema.check(Schema.isMaxLength(1000))), "version": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))) }).annotate({ identifier: "CustomerInput" });
+export type CustomerInputEncoded = Schema.Codec.Encoded<typeof CustomerInput>;
 
 export type CustomerRow = { readonly "company": string; readonly "email": string; readonly "id": string; readonly "name": string; readonly "version": number; };
-export const CustomerRow: Schema.Schema<CustomerRow> = Schema.Struct({ "company": Schema.String, "email": Schema.String, "id": Schema.String.pipe(Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "name": Schema.String, "version": Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(-2147483648), Schema.lessThanOrEqualTo(2147483647)) }).annotations({ identifier: "CustomerRow" });
-export type CustomerRowEncoded = Schema.Schema.Encoded<typeof CustomerRow>;
+export const CustomerRow: Schema.Codec<CustomerRow> = Schema.Struct({ "company": Schema.String, "email": Schema.String, "id": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "name": Schema.String, "version": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))) }).annotate({ identifier: "CustomerRow" });
+export type CustomerRowEncoded = Schema.Codec.Encoded<typeof CustomerRow>;
 
 export type CustomerSnapshot = { readonly "customers": ReadonlyArray<CustomerRow>; readonly "generation": number; readonly "save": SaveState; };
-export const CustomerSnapshot: Schema.Schema<CustomerSnapshot> = Schema.Struct({ "customers": Schema.Array(Schema.suspend(() => CustomerRow)), "generation": Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(-2147483648), Schema.lessThanOrEqualTo(2147483647)), "save": Schema.suspend(() => SaveState) }).annotations({ identifier: "CustomerSnapshot" });
-export type CustomerSnapshotEncoded = Schema.Schema.Encoded<typeof CustomerSnapshot>;
+export const CustomerSnapshot: Schema.Codec<CustomerSnapshot> = Schema.Struct({ "customers": Schema.Array(Schema.suspend(() => CustomerRow)), "generation": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "save": Schema.suspend(() => SaveState) }).annotate({ identifier: "CustomerSnapshot" });
+export type CustomerSnapshotEncoded = Schema.Codec.Encoded<typeof CustomerSnapshot>;
 
 export type SaveState = { readonly "issues": ReadonlyArray<ValidationIssue>; readonly "message": string; readonly "operationId": string | null; readonly "progress": number; readonly "status": string; };
-export const SaveState: Schema.Schema<SaveState> = Schema.Struct({ "issues": Schema.Array(Schema.suspend(() => ValidationIssue)), "message": Schema.String, "operationId": Schema.Union(Schema.String.pipe(Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), Schema.Null), "progress": Schema.Int.pipe(Schema.between(-9007199254740991, 9007199254740991)).pipe(Schema.greaterThanOrEqualTo(0), Schema.lessThanOrEqualTo(100)), "status": Schema.String }).annotations({ identifier: "SaveState" });
-export type SaveStateEncoded = Schema.Schema.Encoded<typeof SaveState>;
+export const SaveState: Schema.Codec<SaveState> = Schema.Struct({ "issues": Schema.Array(Schema.suspend(() => ValidationIssue)), "message": Schema.String, "operationId": Schema.Union([Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), Schema.Null]), "progress": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), Schema.check(Schema.isLessThanOrEqualTo(100))), "status": Schema.String }).annotate({ identifier: "SaveState" });
+export type SaveStateEncoded = Schema.Codec.Encoded<typeof SaveState>;
 
 export type ValidationIssue = { readonly "field": string; readonly "message": string; };
-export const ValidationIssue: Schema.Schema<ValidationIssue> = Schema.Struct({ "field": Schema.String, "message": Schema.String }).annotations({ identifier: "ValidationIssue" });
-export type ValidationIssueEncoded = Schema.Schema.Encoded<typeof ValidationIssue>;
+export const ValidationIssue: Schema.Codec<ValidationIssue> = Schema.Struct({ "field": Schema.String, "message": Schema.String }).annotate({ identifier: "ValidationIssue" });
+export type ValidationIssueEncoded = Schema.Codec.Encoded<typeof ValidationIssue>;
 
 const definition = defineApplicationBridgeContract({
   protocol: {"identity":"runic.examples.customers","version":1},

@@ -4,7 +4,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { Option, Schema, SchemaAST } from "effect";
+import { SchemaAST } from "effect";
 import type { BridgeIr, BridgeIrConstraints, BridgeIrNode } from "./model.js";
 
 const defaultLimits = Object.freeze({
@@ -483,39 +483,60 @@ function lowerWithoutName(
   definitions: Record<string, BridgeIrNode>,
   active: Set<SchemaAST.AST>,
 ): BridgeIrNode {
+  return applyChecks(lowerShape(ast, path, definitions, active), ast.checks, path);
+}
+
+function applyChecks(node: BridgeIrNode, checks: SchemaAST.Checks | undefined, path: string): BridgeIrNode {
+  for (const check of checks ?? []) {
+    if (check._tag === "FilterGroup") {
+      node = applyChecks(node, check.checks, path);
+      continue;
+    }
+    const annotation = check.annotations;
+    if (annotation?.toJsonSchema === undefined) {
+      throw unsupported("Executable refinements require portable constraint metadata.", path);
+    }
+    if (annotation.representation?.id === "effect/schema/isPattern") {
+      const payload = annotation.representation.payload as { readonly flags?: string };
+      if (payload.flags !== "") {
+        throw unsupported("Regular-expression flags are not portable; express the intended character classes explicitly.", path);
+      }
+    }
+    const raw = annotation.toJsonSchema({ type: node.kind === "array" || node.kind === "tuple" ? "array" : node.kind === "string" ? "string" : node.kind === "number" || node.kind === "integer" ? "number" : undefined, schemas: [] });
+    if (typeof raw !== "object" || raw === null) throw unsupported("Checks require portable constraint metadata.", path);
+    node = constrain(node, raw, path);
+  }
+  return node;
+}
+
+function lowerShape(
+  ast: SchemaAST.AST,
+  path: string,
+  definitions: Record<string, BridgeIrNode>,
+  active: Set<SchemaAST.AST>,
+): BridgeIrNode {
   switch (ast._tag) {
-    case "StringKeyword": return { kind: "string" };
-    case "NumberKeyword": return { kind: "number" };
-    case "BooleanKeyword": return { kind: "boolean" };
+    case "String": return { kind: "string" };
+    case "Number": return { kind: "number" };
+    case "Boolean": return { kind: "boolean" };
+    case "Null": return { kind: "null" };
     case "Literal": {
       if (typeof ast.literal === "bigint") throw unsupported("BigInt literals are not JSON values.", path);
       return ast.literal === null ? { kind: "null" } : { kind: "literal", value: ast.literal };
     }
-    case "Enums":
+    case "Enum":
       return orderedUnion(ast.enums.map(([, value]): BridgeIrNode => {
         if (typeof value === "bigint") throw unsupported("BigInt enum values are not JSON values.", path);
         return { kind: "literal", value };
       }));
-    case "Refinement": {
-      const node = lowerWithoutName(ast.from, path, definitions, active);
-      const annotation = option(SchemaAST.getJSONSchemaAnnotation(ast));
-      if (annotation === undefined) throw unsupported("Executable refinements require portable constraint metadata.", path);
-      if (option(SchemaAST.getSchemaIdAnnotation(ast)) === Schema.PatternSchemaId) {
-        const pattern = ast.annotations[Schema.PatternSchemaId] as { readonly regex?: RegExp } | undefined;
-        if (pattern?.regex?.flags !== "") {
-          throw unsupported("Regular-expression flags are not portable; express the intended character classes explicitly.", path);
-        }
-      }
-      return constrain(node, annotation, path);
-    }
-    case "TupleType": {
+    case "Arrays": {
       const constraints = undefined;
       if (ast.elements.length === 0 && ast.rest.length === 1) {
-        return { kind: "array", items: lower(ast.rest[0]!.type, `${path}[]`, definitions, active) };
+        return { kind: "array", items: lower(ast.rest[0]!, `${path}[]`, definitions, active) };
       }
       if (ast.rest.length > 1) throw unsupported("Tuple post-rest elements are not supported in V1.", path);
-      const firstOptional = ast.elements.findIndex((element) => element.isOptional);
-      if (firstOptional >= 0 && ast.elements.slice(firstOptional).some((element) => !element.isOptional)) {
+      const firstOptional = ast.elements.findIndex((element) => SchemaAST.isOptional(element));
+      if (firstOptional >= 0 && ast.elements.slice(firstOptional).some((element) => !SchemaAST.isOptional(element))) {
         throw unsupported("Optional tuple elements must be trailing.", path);
       }
       if (firstOptional >= 0 && ast.rest.length > 0) {
@@ -524,24 +545,24 @@ function lowerWithoutName(
       return {
         kind: "tuple",
         elements: ast.elements.map((element, index) => ({
-          type: lower(element.type, `${path}[${index}]`, definitions, active),
-          optional: element.isOptional,
+          type: lower(element, `${path}[${index}]`, definitions, active),
+          optional: SchemaAST.isOptional(element),
         })),
-        ...(ast.rest.length === 0 ? {} : { rest: lower(ast.rest[0]!.type, `${path}[]`, definitions, active) }),
+        ...(ast.rest.length === 0 ? {} : { rest: lower(ast.rest[0]!, `${path}[]`, definitions, active) }),
         ...(constraints === undefined ? {} : { constraints }),
       };
     }
-    case "TypeLiteral": {
+    case "Objects": {
       const propertyEntries: Array<[string, { type: BridgeIrNode; optional: boolean }]> = ast.propertySignatures.map((property) => {
         if (typeof property.name !== "string") throw unsupported("Symbol property names are not JSON object keys.", path);
         let propertyAst = property.type;
-        if (property.isOptional && propertyAst._tag === "Union") {
-          const present = propertyAst.types.filter((member) => member._tag !== "UndefinedKeyword");
+        if (SchemaAST.isOptional(property.type) && propertyAst._tag === "Union") {
+          const present = propertyAst.types.filter((member) => member._tag !== "Undefined");
           if (present.length === 1) propertyAst = present[0]!;
         }
         return [property.name, {
           type: lower(propertyAst, `${path}.${property.name}`, definitions, active),
-          optional: property.isOptional,
+          optional: SchemaAST.isOptional(property.type),
         }];
       });
       propertyEntries.sort(([left], [right]) => compare(left, right));
@@ -555,7 +576,7 @@ function lowerWithoutName(
       throw unsupported("Objects cannot mix declared properties with a record index in V1.", path);
     }
     case "Union": {
-      const members = ast.types.filter((member) => member._tag !== "UndefinedKeyword")
+      const members = ast.types.filter((member) => member._tag !== "Undefined")
         .map((member, index) => lower(member, `${path}|${index}`, definitions, active));
       if (members.length === 0) throw unsupported("Undefined is not a JSON wire value.", path);
       return orderedUnion(members);
@@ -566,21 +587,20 @@ function lowerWithoutName(
       const nameId = `type:${name}`;
       if (definitions[nameId] !== undefined) return { kind: "ref", name: nameId };
       definitions[nameId] = { kind: "null" };
-      definitions[nameId] = lower(ast.f(), path, definitions, active);
+      definitions[nameId] = lower(ast.thunk(), path, definitions, active);
       return { kind: "ref", name: nameId };
     }
-    case "NeverKeyword": throw unsupported("Never cannot be transported as JSON.", path);
-    case "UndefinedKeyword": throw unsupported("Undefined is not a JSON wire value.", path);
+    case "Never": throw unsupported("Never cannot be transported as JSON.", path);
+    case "Undefined": throw unsupported("Undefined is not a JSON wire value.", path);
     case "Declaration": throw unsupported("Effect declarations require an explicit Runic wire adapter.", path);
-    case "Transformation": return lower(ast.from, path, definitions, active);
     case "TemplateLiteral": throw unsupported("Template literal schemas are outside the V1 portable core.", path);
-    case "AnyKeyword":
-    case "UnknownKeyword":
+    case "Any":
+    case "Unknown":
     case "ObjectKeyword": throw unsupported("Unbounded values are not guaranteed to be JSON-safe.", path);
-    case "BigIntKeyword": throw unsupported("BigInt is not a JSON wire value; transform it to a constrained string.", path);
-    case "SymbolKeyword":
+    case "BigInt": throw unsupported("BigInt is not a JSON wire value; transform it to a constrained string.", path);
+    case "Symbol":
     case "UniqueSymbol": throw unsupported("Symbols are not JSON wire values.", path);
-    case "VoidKeyword": throw unsupported("Void is not a JSON wire value.", path);
+    case "Void": throw unsupported("Void is not a JSON wire value.", path);
   }
 }
 
@@ -602,6 +622,9 @@ function constrain(node: BridgeIrNode, raw: object, path: string): BridgeIrNode 
   if (value.type === "integer") {
     if (node.kind !== "number") throw unsupported("The integer refinement must refine a number.", path);
     constrained = { kind: "integer" };
+  } else if (value.type === "number" && (node.kind === "number" || node.kind === "integer")) {
+    // JSON wire numbers are already finite; Effect 4's finite check emits this
+    // explicit type where Effect 3 emitted an empty constraint object.
   } else if (value.type !== undefined) {
     throw unsupported(`Unsupported refinement type '${String(value.type)}'.`, path);
   }
@@ -622,41 +645,29 @@ function constrain(node: BridgeIrNode, raw: object, path: string): BridgeIrNode 
 function assertPortableSource(ast: SchemaAST.AST, path: string, seen: Set<SchemaAST.AST>): void {
   if (seen.has(ast)) return;
   seen.add(ast);
+  if (ast.encoding !== undefined) {
+    throw unsupported("Observable transformations are not supported in a V1 bridge contract; layer them above the contract.", path);
+  }
   switch (ast._tag) {
-    case "Transformation": {
-      if (ast.transformation._tag !== "TypeLiteralTransformation" || ast.transformation.propertySignatureTransformations.length > 0) {
-        throw unsupported("Observable transformations are not supported in a V1 bridge contract; layer them above the contract.", path);
-      }
-      assertPortableSource(ast.from, path, seen);
+    case "Arrays":
+      for (const element of ast.elements) assertPortableSource(element, path, seen);
+      for (const rest of ast.rest) assertPortableSource(rest, path, seen);
       return;
-    }
-    case "Refinement": {
-      if (ast.from._tag === "Transformation") {
-        throw unsupported("A post-transformation refinement is not represented by the encoded wire schema.", path);
-      }
-      assertPortableSource(ast.from, path, seen);
-      return;
-    }
-    case "TupleType":
-      for (const element of ast.elements) assertPortableSource(element.type, path, seen);
-      for (const rest of ast.rest) assertPortableSource(rest.type, path, seen);
-      return;
-    case "TypeLiteral":
+    case "Objects":
       for (const property of ast.propertySignatures) assertPortableSource(property.type, `${path}.${String(property.name)}`, seen);
       for (const index of ast.indexSignatures) assertPortableSource(index.type, `${path}.*`, seen);
       return;
     case "Union":
       for (const member of ast.types) assertPortableSource(member, path, seen);
       return;
-    case "Suspend": assertPortableSource(ast.f(), path, seen); return;
+    case "Suspend": assertPortableSource(ast.thunk(), path, seen); return;
     default: return;
   }
 }
 
 function taggedName(schema: WireSchema, path: string): string {
-  let ast = SchemaAST.encodedBoundAST(schema.ast);
-  while (ast._tag === "Refinement") ast = ast.from;
-  if (ast._tag !== "TypeLiteral") throw unsupported("Commands, receipts, events, and errors must be tagged structs.", path);
+  const ast = SchemaAST.toEncoded(schema.ast);
+  if (ast._tag !== "Objects") throw unsupported("Commands, receipts, events, and errors must be tagged structs.", path);
   const tag = ast.propertySignatures.find((property) => property.name === "_tag")?.type;
   if (tag?._tag !== "Literal" || typeof tag.literal !== "string" || tag.literal.length === 0) {
     throw unsupported("The schema must have one literal string '_tag' property.", path);
@@ -664,14 +675,11 @@ function taggedName(schema: WireSchema, path: string): string {
   return tag.literal;
 }
 
-function recordPattern(ast: SchemaAST.Parameter, path: string): string | undefined {
-  if (ast._tag === "StringKeyword") return undefined;
-  if (ast._tag === "Refinement") {
-    const annotation = option(SchemaAST.getJSONSchemaAnnotation(ast));
-    const pattern = annotation === undefined ? undefined : (annotation as Record<string, unknown>).pattern;
-    if (typeof pattern === "string") {
-      validatePattern(pattern, path);
-      return pattern;
+function recordPattern(ast: SchemaAST.AST, path: string): string | undefined {
+  if (ast._tag === "String") {
+    const node = applyChecks({ kind: "string" }, ast.checks, path);
+    if (node.kind === "string" && Object.keys(node.constraints ?? {}).every(key => key === "pattern")) {
+      return node.constraints?.pattern;
     }
   }
   throw unsupported("Record keys must be strings with an optional portable pattern.", path);
@@ -710,7 +718,18 @@ function hasRequiredStringProperty(
 }
 
 function identifier(ast: SchemaAST.AST): string | undefined {
-  return option(SchemaAST.getIdentifierAnnotation(ast)) ?? option(SchemaAST.getJSONIdentifier(ast));
+  const checkIdentifier = ast.checks?.at(-1)?.annotations?.identifier;
+  if (typeof checkIdentifier === "string") return checkIdentifier;
+  if (typeof ast.annotations?.identifier === "string") return ast.annotations.identifier;
+  // Effect 4 removed these built-in identifiers. Retain the existing wire
+  // definitions for unadorned integer/finite checks. Contract modules are bundled,
+  // so this recognition must use portable metadata rather than object identity.
+  if (ast._tag === "Number" && ast.checks?.length === 1) {
+    const intrinsic = ast.checks[0]?.annotations?.representation?.id;
+    if (intrinsic === "effect/schema/isInt") return "Int";
+    if (intrinsic === "effect/schema/isFinite") return "Finite";
+  }
+  return undefined;
 }
 
 function collectDocumentation(
@@ -721,30 +740,23 @@ function collectDocumentation(
 ): void {
   if (seen.has(ast)) return;
   seen.add(ast);
-  const description = option(SchemaAST.getDescriptionAnnotation(ast));
-  if (description !== undefined) documentation[path] = description;
+  const description = ast.checks?.at(-1)?.annotations?.description ?? ast.annotations?.description;
+  if (typeof description === "string") documentation[path] = description;
   switch (ast._tag) {
-    case "Transformation":
-      collectDocumentation(ast.from, path, documentation, seen);
-      return;
-    case "Refinement":
-      collectDocumentation(ast.from, path, documentation, seen);
-      return;
-    case "TypeLiteral":
+    case "Objects":
       for (const property of ast.propertySignatures) {
         if (typeof property.name !== "string") continue;
         const propertyPath = `${path}.${property.name}`;
-        const propertyDescription = option(SchemaAST.getDescriptionAnnotation(property)) ??
-          option(SchemaAST.getDescriptionAnnotation(property.type));
-        if (propertyDescription !== undefined) documentation[propertyPath] = propertyDescription;
+        const propertyDescription = property.type.annotations?.description;
+        if (typeof propertyDescription === "string") documentation[propertyPath] = propertyDescription;
         collectDocumentation(property.type, propertyPath, documentation, seen);
       }
       return;
-    case "TupleType":
+    case "Arrays":
       for (let index = 0; index < ast.elements.length; index++) {
-        collectDocumentation(ast.elements[index]!.type, `${path}[${index}]`, documentation, seen);
+        collectDocumentation(ast.elements[index]!, `${path}[${index}]`, documentation, seen);
       }
-      for (const rest of ast.rest) collectDocumentation(rest.type, `${path}[]`, documentation, seen);
+      for (const rest of ast.rest) collectDocumentation(rest, `${path}[]`, documentation, seen);
       return;
     case "Union":
       for (let index = 0; index < ast.types.length; index++) {
@@ -752,7 +764,7 @@ function collectDocumentation(
       }
       return;
     case "Suspend":
-      collectDocumentation(ast.f(), path, documentation, seen);
+      collectDocumentation(ast.thunk(), path, documentation, seen);
       return;
     default:
       return;
@@ -765,9 +777,6 @@ function valueTag(value: unknown): string | undefined {
     : undefined;
 }
 
-function option<A>(value: Option.Option<A>): A | undefined {
-  return Option.isSome(value) ? value.value : undefined;
-}
 
 function unsupported(message: string, path: string): ApplicationBridgeCompilerError {
   return new ApplicationBridgeCompilerError("RTKAB1004", message, path);
