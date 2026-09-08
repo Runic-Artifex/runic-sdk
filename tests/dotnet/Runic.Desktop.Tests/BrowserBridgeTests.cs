@@ -321,16 +321,36 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
         return null;
     }
 
-    private static async Task<int> ReadDebuggerPortAsync(string profile, CancellationToken cancellationToken)
+    internal static async Task<int> ReadDebuggerPortAsync(string profile, CancellationToken cancellationToken)
     {
         var path = Path.Combine(profile, "DevToolsActivePort");
-        while (!File.Exists(path))
+        while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                // Creation is not publication: Chromium can still hold a Windows
+                // sharing lock or be writing the port. A newline completes the port
+                // record; EOF alone could be a valid-looking prefix of that number.
+                await using var file = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
+                using var reader = new StreamReader(file);
+                var content = await reader.ReadToEndAsync(cancellationToken);
+                var newline = content.IndexOf('\n');
+                if (newline >= 0 && int.TryParse(content.AsSpan(0, newline).TrimEnd('\r'),
+                    System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture,
+                    out var port) && port is > 0 and <= 65535)
+                {
+                    return port;
+                }
+            }
+            catch (FileNotFoundException) { }
+            catch (IOException error) when (OperatingSystem.IsWindows() && (error.HResult & 0xffff) is 32 or 33)
+            {
+                // Retry only sharing/lock violations; other I/O failures remain errors.
+            }
             await Task.Delay(25, cancellationToken);
         }
-
-        var lines = await File.ReadAllLinesAsync(path, cancellationToken);
-        return int.Parse(lines[0], System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static async Task<Uri> FindPageDebuggerUrlAsync(
