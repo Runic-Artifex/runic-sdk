@@ -30,4 +30,10 @@ Object.assign(globalThis, {
   },
 });
 const channel = createDesktopFrameChannel();
-void channel.reconnect().catch(error => { state.error = String(error); });
+void channel.reconnect().then(
+  () => { void fetch("__native-startup/channel-connected").catch(() => {}); },
+  error => {
+    state.error = String(error);
+    void fetch("__native-startup/channel-failed").catch(() => {});
+  },
+);

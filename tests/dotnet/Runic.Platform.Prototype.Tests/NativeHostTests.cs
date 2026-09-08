@@ -22,6 +22,7 @@ internal static class NativeHostTests
         DesktopApplicationHost? host = null;
         PresentationLifetime? lifetime = null;
         var owner = new DesktopNativeOwner(() => host?.Window);
+        var startup = System.Diagnostics.Stopwatch.StartNew();
         RunicApplicationBridgeCompositionRegistry.Register(services =>
         {
             services.AddRunicPlatform(_ => new PlatformProvider { OwnerAvailable = () => owner.IsAvailable, Generation = owner.Generation });
@@ -48,7 +49,29 @@ internal static class NativeHostTests
                 ConfirmCloseAsync = async token => await host!.Surface!.ExecuteJavaScriptAsync(
                     "return await globalThis.__runicConfirmClose();", TimeSpan.FromSeconds(10), cancellationToken: token) == "true",
             },
-            Surface = new() { Content = PublicTransportPage() },
+            Surface = new()
+            {
+                Content = PublicTransportPage(),
+                ContentHandler = (request, _) =>
+                {
+                    var phase = request.Path switch
+                    {
+                        "/" => "document-requested",
+                        "/__native-startup/bootstrap-present" => "bootstrap-present",
+                        "/__native-startup/bootstrap-missing" => "bootstrap-missing",
+                        "/__native-startup/module-start" => "module-start",
+                        "/__native-startup/script-error" => "script-error",
+                        "/__native-startup/unhandled-rejection" => "unhandled-rejection",
+                        "/__native-startup/channel-connected" => "channel-connected",
+                        "/__native-startup/channel-failed" => "channel-failed",
+                        _ => null,
+                    };
+                    if (phase is not null)
+                        Console.WriteLine($"Native startup +{startup.Elapsed.TotalMilliseconds:F0}ms: {phase}");
+                    return ValueTask.FromResult<ContentResponse?>(phase is not null && request.Path != "/"
+                        ? new ContentResponse(ReadOnlyMemory<byte>.Empty) : null);
+                },
+            },
         });
         var builder = new RunicApplicationBuilder(new("platform.native", "0.0.0", "test", []), []);
         builder.UseHost(host);
@@ -151,8 +174,12 @@ internal static class NativeHostTests
         using var reader = new StreamReader(stream);
         var script = reader.ReadToEnd().Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
         return "<!doctype html><html><head><meta charset=\"utf-8\"><script src=\"runic-desktop.js\"></script>" +
+            "<script>globalThis.__nativePhase=(s)=>fetch('__native-startup/'+s).catch(()=>{});" +
+            "addEventListener('error',()=>__nativePhase('script-error'));" +
+            "addEventListener('unhandledrejection',()=>__nativePhase('unhandled-rejection'));" +
+            "__nativePhase(typeof runicDesktop==='object'?'bootstrap-present':'bootstrap-missing');</script>" +
             "<title>Runic native platform tests</title></head><body>Native platform conformance<script type=\"module\">" +
-            script + "</script></body></html>";
+            "__nativePhase('module-start');" + script + "</script></body></html>";
     }
 
     private static async Task ExercisePublicTransportCloseAsync(DesktopApplicationHost host, CancellationToken deadline)
