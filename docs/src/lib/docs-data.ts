@@ -1,17 +1,11 @@
-import { releaseData } from '$lib/generated/release-data';
 import { activeVersionForProduct } from '$lib/release-docs';
 
-type ReleaseProductId = (typeof releaseData.products)[number]['id'];
-type ArchivedReleaseProduct = Extract<
-  (typeof releaseData.products)[number],
-  { readonly support: 'archived' }
->;
+type ReleaseProductId = string;
 type ReleaseMetadata = {
-  releaseProduct: ReleaseProductId;
+  releaseProduct: string;
   version: string | null;
-  versionState: 'published' | 'unassigned';
-  availability: 'active' | 'archived';
-  archive?: ArchivedReleaseProduct['archive'];
+  versionState: 'published' | 'unpublished' | 'unassigned';
+  availability: 'active';
 };
 
 export type Product = {
@@ -24,12 +18,11 @@ export type Product = {
   description: string;
   releaseProduct: ReleaseProductId | null;
   version: string | null;
-  versionState: 'published' | 'unassigned';
+  versionState: 'published' | 'unpublished' | 'unassigned';
   source: string;
   bestFor: string[];
   boundaries: string[];
   availability?: 'active' | 'archived' | 'independent';
-  archive?: ArchivedReleaseProduct['archive'];
   kind?: 'package-family' | 'application';
   related?: {
     href:
@@ -49,29 +42,25 @@ function releaseVersion(product: ReleaseProductId) {
 
 function releaseMetadata(releaseProduct: ReleaseProductId): ReleaseMetadata {
   const version = releaseVersion(releaseProduct);
-  const product = releaseData.products.find(
-    (candidate) => candidate.id === releaseProduct,
-  );
   return {
     releaseProduct,
     version: version.value,
     versionState: version.state,
-    availability: product?.support === 'archived' ? 'archived' : 'active',
-    archive: product?.support === 'archived' ? product.archive : undefined,
+    availability: 'active',
   };
 }
 
 export const products: Product[] = [
   {
     slug: 'runic-toolkit',
-    name: 'Runic Toolkit',
-    shortName: 'Toolkit',
+    name: 'Runic Application',
+    shortName: 'Application',
     icon: '/products/runic-toolkit.png',
     kicker: 'Application composition',
     summary:
       'Compose desktop windows, browser frontends, and .NET hosting around one application model with NativeAOT-safe application contracts.',
     description:
-      'Runic Toolkit connects desktop windows, browser frontends, and .NET hosting around one application model. Its Application Bridge carries named commands and validated events between a frontend and a NativeAOT-safe .NET host.',
+      'Runic Application connects desktop windows, browser frontends, and .NET hosting around one application model. Its Application Bridge carries named commands and validated events between a frontend and a NativeAOT-safe .NET host.',
     ...releaseMetadata('application'),
     source:
       'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application',
@@ -134,28 +123,6 @@ export const products: Product[] = [
       'Tracks the WebUI 2.5 beta ABI and unmodified upstream native source',
       'Is maintained and released independently of the Runic v1 compatibility set',
       'Is not the implementation underneath Runic Desktop',
-    ],
-  },
-  {
-    slug: 'runic-flow',
-    name: 'Runic Flow',
-    shortName: 'Flow',
-    icon: '/products/runic-flow.png',
-    kicker: 'Archived product',
-    summary:
-      'Runic Flow is archived and has no release-bearing packages or public replacement.',
-    description:
-      'Runic Flow is archived. Historical migration documentation remains available to guide removal, while current release authority records no package identity, public replacement, or forwarding package.',
-    ...releaseMetadata('flow'),
-    source: 'https://github.com/Runic-Artifex/runic-flow',
-    bestFor: [
-      'Reviewing archived package migrations',
-      'Removing legacy Flow dependencies without adopting a replacement',
-    ],
-    boundaries: [
-      'Has no canonical packages, install instructions, or compatibility lane',
-      'Legacy identities survive only in clearly historical records, not current release authority',
-      'Archive evidence records the authoritative retirement decision',
     ],
   },
   {

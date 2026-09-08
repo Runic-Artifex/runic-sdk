@@ -30,16 +30,16 @@ input/download as a separate presentation implementation with different guarante
 
 Current extraction package names and locations:
 
-| Package | Responsibility | Dependencies and lifetime |
-| --- | --- | --- |
-| `Runic.Platform` under `packages/dotnet` | Small C# service contracts, options and result types | No Desktop, CS-WebUI, ASP.NET Core, WPF, MAUI or Toolkit dependency |
-| `Runic.Platform.Runtime` | Shared leases, transactions, presentation lifetimes and dispatch | Host-independent provider infrastructure |
-| `Runic.Platform.Windows` | Native Windows providers | Platform contracts; COM/Win32 implementation, NativeAOT compatible |
-| `Runic.Platform.Linux` | Portal file access and Linux clipboard providers | Platform contracts; explicit desktop-session/backend prerequisites |
-| `Runic.Platform.MacOS` | AppKit providers and file-access lifetime | Platform contracts; process-main-thread integration |
-| `Runic.Application.Platform` | Presentation-scoped registration and shutdown hooks | Shared application integration |
-| `Runic.Application.Platform.Desktop` | Verified Desktop owner and dispatcher adapter | Optional Desktop integration; native services remain unavailable in CS-WebUI |
-| Test fixtures under `tests/dotnet` | Controllable providers, dispatchers and ownership fixtures | Internal until a second application demonstrates a reusable testing package |
+| Package                                  | Responsibility                                                   | Dependencies and lifetime                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `Runic.Platform` under `packages/dotnet` | Small C# service contracts, options and result types             | No Desktop, CS-WebUI, ASP.NET Core, WPF, MAUI or Toolkit dependency          |
+| `Runic.Platform.Runtime`                 | Shared leases, transactions, presentation lifetimes and dispatch | Host-independent provider infrastructure                                     |
+| `Runic.Platform.Windows`                 | Native Windows providers                                         | Platform contracts; COM/Win32 implementation, NativeAOT compatible           |
+| `Runic.Platform.Linux`                   | Portal file access and Linux clipboard providers                 | Platform contracts; explicit desktop-session/backend prerequisites           |
+| `Runic.Platform.MacOS`                   | AppKit providers and file-access lifetime                        | Platform contracts; process-main-thread integration                          |
+| `Runic.Application.Platform`             | Presentation-scoped registration and shutdown hooks              | Shared application integration                                               |
+| `Runic.Application.Platform.Desktop`     | Verified Desktop owner and dispatcher adapter                    | Optional Desktop integration; native services remain unavailable in CS-WebUI |
+| Test fixtures under `tests/dotnet`       | Controllable providers, dispatchers and ownership fixtures       | Internal until a second application demonstrates a reusable testing package  |
 
 Clipboard implementation detail: Windows uses Win32 APIs. macOS uses the
 ApplicationServices C Pasteboard APIs and CoreFoundation, not `NSPasteboard`.
@@ -87,15 +87,15 @@ projection into mutable state.
 
 Proposed capability identities:
 
-| Identity | Exact promise when currently available |
-| --- | --- |
-| `platform.files.open` | Native single-file selection and a disposable read-access lease |
-| `platform.files.save` | Native destination selection and a disposable save target |
-| `platform.dialogs.owned` | Provider can attach a dialog to this live presentation |
+| Identity                        | Exact promise when currently available                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| `platform.files.open`           | Native single-file selection and a disposable read-access lease                          |
+| `platform.files.save`           | Native destination selection and a disposable save target                                |
+| `platform.dialogs.owned`        | Provider can attach a dialog to this live presentation                                   |
 | `platform.files.atomic-replace` | Provider can stage and replace on a supported target; target-specific checks still apply |
-| `platform.clipboard.read-text` | Provider can attempt an explicit text read in this session |
-| `platform.clipboard.write-text` | Provider can attempt an explicit text write in this session |
-| `platform.ui.dispatch` | A live dispatcher for this native UI owner is available |
+| `platform.clipboard.read-text`  | Provider can attempt an explicit text read in this session                               |
+| `platform.clipboard.write-text` | Provider can attempt an explicit text write in this session                              |
+| `platform.ui.dispatch`          | A live dispatcher for this native UI owner is available                                  |
 
 Use the existing Available/Unavailable distinction with reasons such as
 `provider-not-configured`, `desktop-session-unavailable`, `owner-unavailable`,
@@ -109,16 +109,16 @@ Do not add a generic `platform.supported` flag.
 All picker, clipboard and shared-dispatch entries below are proposals. A target
 means an implementation route, not a certified SDK feature.
 
-| Presentation / environment | Native file selection target | Owned-dialog target | Clipboard / dispatcher target | Current gate |
-| --- | --- | --- | --- | --- |
-| Desktop embedded, Windows | Common Item Dialog | Current HWND and generation | Win32 clipboard; owning UI dispatcher | Implement providers and acceptance |
-| Desktop embedded, Linux X11 | XDG FileChooser portal | Export X11 parent identity | GTK clipboard; GTK dispatcher | Test portal-present and portal-missing sessions |
-| Desktop embedded, Linux Wayland | XDG FileChooser portal | Export a valid Wayland parent token | GTK clipboard; GTK dispatcher | Prove parent export and compositor behavior |
-| Desktop embedded, macOS arm64 | NSOpenPanel / NSSavePanel | Sheet attached to current NSWindow | NSPasteboard; main-thread dispatcher | Fix lifecycle runner evidence and Application main-thread hosting first |
-| Desktop installed browser | Shared OS provider if configured | Unavailable until reliable owner integration is proved | OS provider can be independent of browser | Require explicit permission to open an unowned dialog |
-| CS-WebUI embedded or installed browser | Same shared OS provider if configured | Unavailable until the integration supplies a verified owner/dispatcher | Same OS provider; host must provide the required native loop | Do not infer ownership from a process ID or from bridge connectivity |
-| Headless host / no desktop session | Unavailable | Unavailable | Unavailable unless a specific configured service supports the operation | A listener alone is not a desktop session |
-| Android / iOS | Deferred | Deferred | Deferred | No mobile-host support claim; validate a MAUI-derived feature separately |
+| Presentation / environment             | Native file selection target          | Owned-dialog target                                                    | Clipboard / dispatcher target                                           | Current gate                                                             |
+| -------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Desktop embedded, Windows              | Common Item Dialog                    | Current HWND and generation                                            | Win32 clipboard; owning UI dispatcher                                   | Implement providers and acceptance                                       |
+| Desktop embedded, Linux X11            | XDG FileChooser portal                | Export X11 parent identity                                             | GTK clipboard; GTK dispatcher                                           | Test portal-present and portal-missing sessions                          |
+| Desktop embedded, Linux Wayland        | XDG FileChooser portal                | Export a valid Wayland parent token                                    | GTK clipboard; GTK dispatcher                                           | Prove parent export and compositor behavior                              |
+| Desktop embedded, macOS arm64          | NSOpenPanel / NSSavePanel             | Sheet attached to current NSWindow                                     | NSPasteboard; main-thread dispatcher                                    | Fix lifecycle runner evidence and Application main-thread hosting first  |
+| Desktop installed browser              | Shared OS provider if configured      | Unavailable until reliable owner integration is proved                 | OS provider can be independent of browser                               | Require explicit permission to open an unowned dialog                    |
+| CS-WebUI embedded or installed browser | Same shared OS provider if configured | Unavailable until the integration supplies a verified owner/dispatcher | Same OS provider; host must provide the required native loop            | Do not infer ownership from a process ID or from bridge connectivity     |
+| Headless host / no desktop session     | Unavailable                           | Unavailable                                                            | Unavailable unless a specific configured service supports the operation | A listener alone is not a desktop session                                |
+| Android / iOS                          | Deferred                              | Deferred                                                               | Deferred                                                                | No mobile-host support claim; validate a MAUI-derived feature separately |
 
 The existing Desktop close-confirmation API stays separate. CS-WebUI's current
 explicit rejection of required close veto is unchanged by this proposal.
@@ -276,12 +276,12 @@ The application module receives `IFileDialogs` and `ITextClipboard` through DI.
 The host composition supplies those services, including test providers. Keep the
 reference's domain validation and persistence unchanged.
 
-| User action | Runic command and result | Frontend responsibility |
-| --- | --- | --- |
-| Import contact | `ChooseContactImport` reads at most 4 KiB, parses and validates contact data; returns a candidate draft | Apply only to the original editor/draft generation; a file import does not save |
-| Export contact | `ExportContact` snapshots a confirmed customer and writes JSON through a save transaction | Show the exported revision/name and distinguish dismissal, failure and unknown commit |
-| Copy contact | `CopyContact` serializes the selected confirmed customer into bounded text | Announce actual success; do not claim success before native completion |
-| Paste contact | `PasteContact` reads bounded clipboard text and returns a validated candidate | Apply with the same draft-generation check as import; preserve current draft on failure |
+| User action    | Runic command and result                                                                                | Frontend responsibility                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Import contact | `ChooseContactImport` reads at most 4 KiB, parses and validates contact data; returns a candidate draft | Apply only to the original editor/draft generation; a file import does not save         |
+| Export contact | `ExportContact` snapshots a confirmed customer and writes JSON through a save transaction               | Show the exported revision/name and distinguish dismissal, failure and unknown commit   |
+| Copy contact   | `CopyContact` serializes the selected confirmed customer into bounded text                              | Announce actual success; do not claim success before native completion                  |
+| Paste contact  | `PasteContact` reads bounded clipboard text and returns a validated candidate                           | Apply with the same draft-generation check as import; preserve current draft on failure |
 
 Record the originating editor and edit sequence when an interaction starts. If the
 user edits or changes selection before import/paste returns, offer the candidate
@@ -320,7 +320,6 @@ implementation on a broad design committee. Record any change with its test evid
 
 The planned scenario specification is in
 [OS integration acceptance](../../../../eng/os-integration-acceptance.md).
-
 
 ## Implementation progress: presentation and file access wave
 

@@ -143,7 +143,7 @@ not supported.
 ## Corpus layout
 
 `manifest.json` records the fixture inventory and all machine-readable limits.
-Files in `tests/fixtures/legacy-examples/` are complete valid envelopes. `invalid-structures.json`
+Files in `examples/` are complete valid envelopes. `invalid-structures.json`
 contains parseable JSON documents that violate envelope semantics.
 `wire-inputs.json` represents malformed or hostile stdout bytes as base64 so
 every checked-in `.json` file remains strict, valid JSON and can be validated

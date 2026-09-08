@@ -70,4 +70,4 @@ The local WebSocket channel is not a deployed remote-service contract. Authentic
 
 Commands are named domain operations. This package deliberately does not expose generic `setProperty` or `execute` protocol operations.
 
-Read the [Application Bridge guide](https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/guides/application-bridge.md), explore [runnable examples](https://github.com/Runic-Artifex/runic-toolkit-examples), or report problems in [GitHub Issues](https://github.com/Runic-Artifex/runic-toolkit/issues). Released under the [MIT License](https://github.com/Runic-Artifex/runic-toolkit/blob/main/LICENSE).
+Read the [Application Bridge guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/guides/application-bridge.md), explore [runnable examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples), or report problems in [GitHub Issues](https://github.com/Runic-Artifex/runic-sdk/issues). Released under the [MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <!--
       Development is the approachable inner loop. Verification is selected by CI
-      and eng/verify.ps1 for release-grade analysis.
+      through the shared workflow for release-grade analysis.
     -->
     <RunicCommandLineBuildMode Condition="'$(RunicCommandLineBuildMode)' == '' and '$(CI)' == 'true'">Verification</RunicCommandLineBuildMode>
     <RunicCommandLineBuildMode Condition="'$(RunicCommandLineBuildMode)' == ''">Development</RunicCommandLineBuildMode>

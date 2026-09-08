@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { nodeCompatibility } from "./node-compatibility.mjs";
 import { spawnSync, execFileSync } from "node:child_process";
-import { packNpm } from "./preview/pack-npm.mjs";
+import { packNpm } from "./release/pack-npm.mjs";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

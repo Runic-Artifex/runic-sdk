@@ -125,7 +125,7 @@ if (parse.Kind == ParseOutcomeKind.Invocation && parse.Invocation is not null)
 
 `console` is your `ICommandConsole` implementation and `executor` is a
 `CommandExecutor` configured with your `ICommandExecutionScopeFactory`. See the
-[complete runnable example](https://github.com/Runic-Artifex/runic-command-line/tree/main/tests/Runic.CommandLine.AotSmoke)
+[complete runnable example](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/native/Runic.CommandLine.AotSmoke)
 for implementations of the binder, handler, source-generated codec, scope, and
 console.
 
@@ -150,7 +150,7 @@ success is the only semantic outcome that maps to exit code zero.
 ## Documentation and support
 
 Read the [Runic Command Line documentation](https://docs.runic-artifex.eu/products/runic-command-line/),
-see [examples](https://github.com/Runic-Artifex/runic-command-line/tree/main/tests),
-or [report an issue](https://github.com/Runic-Artifex/runic-command-line/issues).
+see [examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/dotnet/Runic.CommandLine.Tests),
+or [report an issue](https://github.com/Runic-Artifex/runic-sdk/issues).
 Runic.CommandLine is maintained by Runic Artifex and licensed under the
-[MIT License](https://github.com/Runic-Artifex/runic-command-line/blob/main/LICENSE).
+[MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).

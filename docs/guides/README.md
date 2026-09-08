@@ -10,6 +10,8 @@ and the [SDK contributor guide](../../CONTRIBUTING.md) for workspace commands.
 - [Translation guides](translations).
 - [Asset guides](assets).
 
-The imported design records retain their decision history. Shared build commands
-and ownership come from the root contributor guide; versioned schemas and protocol
-inputs live under `specs`. Historical release procedures are in `eng/archive`.
+Shared build commands and ownership come from the root contributor guide; versioned
+schemas and protocol inputs live under `specs`.
+
+- [SDK preview](releases/0.2.0-preview.1.md) and [migration checklist](releases/preview-migration.md).
+- [Document migration reference](../../examples/document-migration/README.md).

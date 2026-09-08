@@ -13,9 +13,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\..\specs\command-line\command-line\grammar-corpus.json" Link="Corpus\grammar-corpus.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\..\specs\command-line\command-line\output-classification-corpus.json" Link="Corpus\output-classification-corpus.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\..\specs\command-line\command-line\protocol\**\*.json" Link="Corpus\protocol\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\specs\command-line\grammar-corpus.json" Link="Corpus\grammar-corpus.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\specs\command-line\output-classification-corpus.json" Link="Corpus\output-classification-corpus.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\specs\command-line\protocol\**\*.json" Link="Corpus\protocol\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="../../../eng/build/command-line.targets" />
 </Project>

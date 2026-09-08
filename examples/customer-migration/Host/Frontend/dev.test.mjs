@@ -23,7 +23,7 @@ try {
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
   for (const selection of ["cswebui", "desktop"]) {
     const host = spawn("dotnet", [resolve(root,
-      `tools/dotnet-runic-toolkit/bin/${configuration}/net10.0/dotnet-runic.dll`),
+      `tools/dotnet-runic/bin/${configuration}/net10.0/dotnet-runic.dll`),
       "dev", "--project", resolve(here, ".."), "--configuration", configuration,
       "--host", selection, "--no-dotnet-watch", "--", "--serve"], {
       cwd: root, stdio: ["ignore", "pipe", "pipe"],

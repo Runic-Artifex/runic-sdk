@@ -18,6 +18,8 @@ internal sealed record CompatibilityToolchain(
 
 internal sealed class CompatibilitySetAuthority
 {
+    // Generated from the current SDK inventory and maintained toolchain pins.
+    // This offline diagnostic snapshot is not a publication or source-provenance receipt.
     private const string ResourceName = "Runic.Application.Tool.runic.compatibility-set.json";
 
     private CompatibilitySetAuthority(

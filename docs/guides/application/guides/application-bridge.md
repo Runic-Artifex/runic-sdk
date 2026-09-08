@@ -129,7 +129,7 @@ commands or internal process snapshots.
 
 The committed Setup contract under `protocol/application-bridge/setup` is the
 reference contract. The package-only runnable Setup application lives in
-`runic-toolkit-examples`.
+`examples`.
 
 ## Performance and boundedness
 

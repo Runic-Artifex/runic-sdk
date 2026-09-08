@@ -9,7 +9,7 @@
   import type { Product } from '$lib/docs-data';
   import {
     catalogRows,
-    distributionRows,
+    currentCandidate,
     packageInstallCommand,
     versionLabel,
   } from '$lib/release-docs';
@@ -25,37 +25,10 @@
   let currentPackages = $derived(
     catalogRows.filter((entry) => entry.productId === product.releaseProduct),
   );
-  let distributions = $derived(
-    distributionRows.filter(
-      (entry) => entry.productId === product.releaseProduct,
-    ),
-  );
-  let currentDistributions = $derived(
-    distributions.filter(
-      (distribution) => distribution.kind !== 'application-archive',
-    ),
-  );
-  let historicalDistributions = $derived(
-    distributions.filter(
-      (distribution) => distribution.kind === 'application-archive',
-    ),
-  );
-  let availabilityVersion = $derived(
-    isApplication ? currentDistributions[0]?.version : productVersion,
-  );
-  let hasPublishedVersion = $derived(
-    isApplication
-      ? currentDistributions.some(
-          (distribution) => distribution.version.state === 'published',
-        )
-      : availabilityVersion?.state === 'published',
-  );
+  let hasPublishedVersion = $derived(productVersion.state === 'published');
+  let availabilityVersion = $derived(productVersion);
   let packageSectionTitle = $derived(
-    isApplication && currentDistributions.length === 0
-      ? 'Distribution history'
-      : isApplication
-        ? 'Downloads'
-        : 'Packages',
+    isApplication ? 'Source application' : 'Packages',
   );
   let pageTitle = $derived(`${product.name} · Runic Artifex`);
 </script>
@@ -184,67 +157,33 @@
       </section>
       <section id="availability">
         <p class="eyebrow">Availability</p>
-        <h2>
-          {isArchived
-            ? 'Archive status'
-            : isIndependent
-              ? 'Independent compatibility product'
-              : isApplication
-                ? currentDistributions.length > 0
-                  ? 'Desktop downloads'
-                  : 'Release status'
-                : hasPublishedVersion
-                  ? `Install ${product.shortName}`
-                  : 'Release status'}
-        </h2>
+        <h2>Release status</h2>
         <Notice
-          title={isArchived
-            ? 'Archived — no release-bearing packages'
-            : isIndependent
-              ? 'Maintained outside the Runic v1 train'
-              : isApplication
-                ? hasPublishedVersion
-                  ? 'Published distributions available'
-                  : 'Distribution versions unassigned'
-                : hasPublishedVersion
-                  ? `Version ${availabilityVersion?.value}`
-                  : 'Version unassigned'}
+          title={isIndependent
+            ? 'External WebUI binding'
+            : isApplication
+              ? 'Source application'
+              : `${currentCandidate.version} — unpublished`}
         >
           <p>
-            {#if isArchived}
-              This product is archived. Historical records retain its former
-              identities for removal guidance, while current release authority
-              contains no public replacement or forwarding package.
-              {#if product.archive}
-                Archive evidence: <code
-                  >{product.archive.evidence.repository}</code
-                >
-                at <code>{product.archive.evidence.revision}</code>,
-                <code>{product.archive.evidence.path}</code>.
-              {/if}
-            {:else if isIndependent}
-              This product is maintained and released by its own repository. It
-              is not governed by the Runic v1 compatibility set, so this site
-              does not infer its package availability or version. Consult the
-              source repository for its current packages and upstream WebUI
-              compatibility.
+            {#if isIndependent}
+              CS-WebUI is maintained separately. The SDK's
+              Runic.Application.CsWebUi adapter shares application APIs while
+              reporting native platform services unavailable.
             {:else if isApplication}
-              {#if currentDistributions.length > 0}
-                Each desktop distribution has its own release status. Only a
-                distribution with a recorded published version is available.
-              {:else}
-                No current desktop distribution is recorded. Any archived
-                distribution evidence is listed separately below and does not
-                indicate current availability.
-              {/if}
-            {:else if hasPublishedVersion}
-              Version {availabilityVersion?.value} is published for this product's
-              active compatibility lane.
+              Standalone Translations Editor distributions are outside this SDK
+              preview. Build and run the application from this repository.
             {:else}
-              The release authority has not assigned a version. This
-              documentation does not infer availability from repository state.
+              These packages are part of the unpublished SDK candidate. A
+              package version in source does not establish registry
+              availability.
             {/if}
           </p>
+          <a
+            class="text-link"
+            href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md"
+            >Preview installation and migration guide</a
+          >
         </Notice>
       </section>
       {#if !isArchived && !isIndependent}
@@ -259,31 +198,6 @@
                   — Install: <code>{packageInstallCommand(entry)}</code>
                 {:else}
                   — <code>{versionLabel(entry.version)}</code>
-                {/if}
-              </span>
-            {/each}
-            {#each currentDistributions as distribution (distribution.identity)}
-              <span>
-                <code>{distribution.identity}</code>
-                {#if distribution.version.state === 'published'}
-                  — Published distribution: <code
-                    >{distribution.version.value}</code
-                  >
-                {:else}
-                  — Distribution version unassigned
-                {/if}
-              </span>
-            {/each}
-            {#each historicalDistributions as distribution (distribution.identity)}
-              <span>
-                Historical archive distribution:
-                <code>{distribution.identity}</code>
-                {#if distribution.version.state === 'published'}
-                  — Published historical distribution: <code
-                    >{distribution.version.value}</code
-                  >
-                {:else}
-                  — Historical distribution version unassigned
                 {/if}
               </span>
             {/each}

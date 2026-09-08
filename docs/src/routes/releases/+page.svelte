@@ -1,26 +1,6 @@
 <script lang="ts">
   import ContentCard from '$lib/components/ContentCard.svelte';
-  import * as Table from '$lib/components/ui/table';
-  import {
-    availabilityLabel,
-    currentCandidate,
-    previewGuideUrl,
-    compatibilitySet,
-    compatibilityRows,
-    distributionRows,
-    distributionsArePending,
-    releaseRows,
-    releaseSummary,
-    versionLabel,
-  } from '$lib/release-docs';
-
-  const toolchainLabels: Readonly<Record<string, string>> = {
-    dotnetSdk: '.NET SDK',
-    node: 'Node',
-    npm: 'npm',
-    pnpm: 'pnpm',
-    bun: 'Bun',
-  };
+  import { currentCandidate, releaseSummary } from '$lib/release-docs';
 </script>
 
 <svelte:head>
@@ -74,133 +54,11 @@
         independent pilots are deferred before v1; automated CI and
         performance/soak gates remain required.
       </p>
-      <a class="text-link" href={previewGuideUrl}
+      <a
+        class="text-link"
+        href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md"
         >Read the {currentCandidate.version} installation and migration guide</a
       >
-    </ContentCard>
-    <p class="eyebrow">Historical release authority records</p>
-    <p>
-      The following pinned records retain their original lane names. They do not
-      describe current preview availability or certify this candidate.
-    </p>
-    <div class="package-table">
-      <Table.Root>
-        <Table.Caption class="sr-only">
-          Runic Artifex historical release-train versions
-        </Table.Caption>
-        <Table.Header>
-          <Table.Row>
-            <Table.Head scope="col">Product</Table.Head>
-            <Table.Head scope="col">Lane</Table.Head>
-            <Table.Head scope="col">Version</Table.Head>
-            <Table.Head scope="col">Release status</Table.Head>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {#each releaseRows as row (`${row.lane}:${row.product}`)}
-            <Table.Row>
-              <Table.Cell>{row.product}</Table.Cell>
-              <Table.Cell>{row.lane}</Table.Cell>
-              <Table.Cell>
-                <code>{versionLabel(row.version)}</code>
-              </Table.Cell>
-              <Table.Cell>
-                {availabilityLabel(row.version)}
-              </Table.Cell>
-            </Table.Row>
-          {/each}
-        </Table.Body>
-      </Table.Root>
-    </div>
-    <ContentCard
-      eyebrow="Historical 1.0 profile"
-      title="Language and toolchain scope is explicit"
-      full
-    >
-      <p>
-        Compatibility set <code>{compatibilitySet.id}</code> selects release
-        train <code>{compatibilitySet.releaseTrainVersion}</code>. It is local
-        certification input and does not authorize publication.
-      </p>
-      <h3>Version 1.0 language profile</h3>
-      <ul>
-        {#each compatibilitySet.languageProfiles.v1 as profile (`${profile.language}:${profile.role}`)}
-          <li>
-            <code>{profile.language}</code> — {profile.role}, {profile.state}.
-          </li>
-        {/each}
-      </ul>
-      <h3>Post-1.0 language profile</h3>
-      <ul>
-        {#each compatibilitySet.languageProfiles.postV1 as profile (`${profile.language}:${profile.role}`)}
-          <li>
-            <code>{profile.language}</code> — {profile.role}, {profile.state};
-            no package or support claim is made.
-          </li>
-        {/each}
-      </ul>
-      <p>
-        Exact build toolchain:
-        {#each Object.entries(compatibilitySet.toolchain) as [tool, version], index (tool)}
-          {index === 0 ? '' : ', '}{toolchainLabels[tool] ?? tool}
-          <code>{version}</code>
-        {/each}. Selected platform profiles:
-        {compatibilitySet.platformProfiles.join(', ')}. Native support remains
-        bounded by retained platform evidence.
-      </p>
-    </ContentCard>
-    <ContentCard
-      eyebrow="Compatibility"
-      title="Historical compatibility lanes"
-      full
-    >
-      <p>
-        This matrix declares the lane identities and versions selected by the
-        release authority. It does not certify operating-system coverage,
-        upgrade behavior, or later W70 compatibility gates.
-      </p>
-      <div class="package-table">
-        <Table.Root>
-          <Table.Caption class="sr-only">
-            Runic Artifex compatibility lanes and versions
-          </Table.Caption>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head scope="col">Train</Table.Head>
-              <Table.Head scope="col">Lane</Table.Head>
-              <Table.Head scope="col">Product</Table.Head>
-              <Table.Head scope="col">Version</Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {#each compatibilityRows as row (`${row.train}:${row.lane}:${row.product}`)}
-              <Table.Row>
-                <Table.Cell>{row.train}</Table.Cell>
-                <Table.Cell>{row.lane}</Table.Cell>
-                <Table.Cell>{row.product}</Table.Cell>
-                <Table.Cell><code>{versionLabel(row.version)}</code></Table.Cell
-                >
-              </Table.Row>
-            {/each}
-          </Table.Body>
-        </Table.Root>
-      </div>
-    </ContentCard>
-    <ContentCard
-      eyebrow="Historical distributions"
-      title={distributionsArePending
-        ? 'Release artifacts remain unassigned until published'
-        : 'Distribution versions are recorded independently'}
-      full
-    >
-      <ul>
-        {#each distributionRows as distribution (distribution.identity)}
-          <li>
-            <code>{distribution.identity}</code> — {distribution.product},
-            {distribution.kind}, {versionLabel(distribution.version)}.
-          </li>
-        {/each}
-      </ul>
     </ContentCard>
   </section>
 </div>

@@ -24,7 +24,7 @@
 <div>
   <section class="page-hero shell">
     <p class="eyebrow">Products</p>
-    <h1>Seven products, each with a clear job.</h1>
+    <h1>Products with clear boundaries.</h1>
     <p class="lede">
       Every Runic product solves a focused job and can be used on its own. Add
       integrations when your application needs products to work together.

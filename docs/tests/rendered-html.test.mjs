@@ -8,7 +8,6 @@ import { releaseData } from '../src/lib/generated/release-data.ts';
 import {
   createReleaseDocs,
   packageInstallCommand,
-  versionLabel,
 } from '../src/lib/release-docs-core.ts';
 
 const buildDirectory = fileURLToPath(new URL('../build/', import.meta.url));
@@ -25,7 +24,6 @@ const primaryRoutes = [
   '/products/runic-toolkit',
   '/products/runic-desktop',
   '/application-bridge',
-  '/products/runic-flow',
   '/products/runic-assets',
   '/products/runic-translations',
   '/products/runic-translations-editor',
@@ -58,16 +56,6 @@ function stripMarkup(value) {
     .replace(/&quot;/g, '"')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function tableRows(html) {
-  const body = html.match(/<tbody\b[\s\S]*?<\/tbody>/)?.[0];
-  assert.ok(body, 'expected a table body');
-  return [...body.matchAll(/<tr\b[\s\S]*?<\/tr>/g)].map((row) =>
-    [...row[0].matchAll(/<td\b[\s\S]*?<\/td>/g)].map((cell) =>
-      stripMarkup(cell[0]),
-    ),
-  );
 }
 
 test('renders the documentation home with complete metadata and branding', async () => {
@@ -109,7 +97,7 @@ test('renders the documentation home with complete metadata and branding', async
     html,
     /background-image:\s*url\(\/products\/runic-toolkit\.png\)/,
   );
-  assert.match(html, /Runic Toolkit/);
+  assert.match(html, /Runic Application/);
   assert.match(html, /CS-WebUI/);
   assert.doesNotMatch(
     html,
@@ -162,15 +150,14 @@ test('keeps navigation usable before hydration and exposes the Sheet trigger con
 test('renders every primary documentation route', async () => {
   const routes = [
     ['/getting-started', 'Start from what you’re building'],
-    ['/products', 'Seven products, each with a clear job'],
+    ['/products', 'Products with clear boundaries'],
     ['/architecture', 'Use products independently'],
     ['/packages', 'Find packages by product and registry'],
     ['/releases', 'See assigned release versions'],
-    ['/readiness', 'W110 completed the retained local readiness receipt'],
-    ['/products/runic-toolkit', 'Runic Toolkit'],
+    ['/readiness', 'Verify the candidate before publishing'],
+    ['/products/runic-toolkit', 'Runic Application'],
     ['/products/runic-desktop', 'Runic Desktop'],
     ['/application-bridge', 'Connect a frontend to .NET'],
-    ['/products/runic-flow', 'Runic Flow'],
     ['/products/runic-assets', 'Runic Assets'],
     ['/products/runic-translations', 'Runic Translations'],
     ['/products/runic-translations-editor', 'Runic Translations Editor'],
@@ -181,20 +168,6 @@ test('renders every primary documentation route', async () => {
   for (const [path, expected] of routes) {
     assert.match(await render(path), new RegExp(expected), path);
   }
-});
-
-test('renders the local unsigned readiness boundary without a release or updater promise', async () => {
-  const html = await render('/readiness');
-  assert.match(html, /Local readiness evidence/);
-  assert.match(html, /W110 completed the retained local readiness receipt/);
-  assert.match(html, /current package-manager DX work/);
-  assert.match(html, /linux-x64, win-x64, osx-x64, and osx-arm64/);
-  assert.match(
-    html,
-    /source, translation, review, session, cookie, and token content/,
-  );
-  assert.match(html, /does not update, download, install, or roll back/);
-  assert.doesNotMatch(html, /Published distribution/);
 });
 
 test('renders the authority-derived Desktop choose-your-path matrix', async () => {
@@ -216,29 +189,6 @@ test('builds an accessible branded page for nginx 404 responses', async () => {
   assert.match(html, /That rune is not in the catalog/);
   assert.match(html, /<title>Page not found · Runic Artifex<\/title>/);
   assert.match(html, /Skip to content/);
-});
-
-test('presents the editor archive as historical distribution evidence', async () => {
-  const html = await render('/products/runic-translations-editor');
-  const editor = releaseData.distributions.find(
-    (distribution) => distribution.identity === 'Runic.Translations.Editor',
-  );
-  assert.match(html, /<h2>Distribution history<\/h2>/);
-  assert.match(html, /Runic\.Translations\.Editor/);
-  assert.match(html, /Historical archive distribution:/);
-  if (editor?.version.state === 'published') {
-    assert.match(
-      html,
-      new RegExp(`Published historical distribution: ${editor.version.value}`),
-    );
-  } else {
-    assert.match(html, /Historical distribution version unassigned/);
-    assert.match(stripMarkup(html), /does not indicate current availability/);
-  }
-  assert.match(html, /Does not own the compiler, schemas, runtime ABI/);
-  assert.doesNotMatch(html, /\bsigned\b/i);
-  assert.doesNotMatch(html, /First release pending/);
-  assert.doesNotMatch(html, /Prepare to install/);
 });
 
 test('gives product scope and boundaries a semantic section heading', async () => {
@@ -272,7 +222,7 @@ test('keeps route-specific Open Graph and Twitter copy', async () => {
     ],
     [
       '/products/runic-toolkit',
-      'Runic Toolkit · Runic Artifex',
+      'Runic Application · Runic Artifex',
       'Compose desktop windows, browser frontends, and .NET hosting around one application model with NativeAOT-safe application contracts.',
     ],
     [
@@ -321,8 +271,8 @@ test('uses one page h1 followed by h2 product-card headings', async () => {
   ].map((match) => [Number(match[1]), stripMarkup(match[2])]);
 
   assert.deepEqual(headings, [
-    [1, 'Seven products, each with a clear job.'],
-    [2, 'Runic Toolkit'],
+    [1, 'Products with clear boundaries.'],
+    [2, 'Runic Application'],
     [2, 'Runic Desktop'],
     [2, 'CS-WebUI'],
     [2, 'Runic Assets'],
@@ -330,84 +280,6 @@ test('uses one page h1 followed by h2 product-card headings', async () => {
     [2, 'Runic Translations Editor'],
     [2, 'Runic Command Line'],
   ]);
-});
-
-test('keeps Flow only as an archived migration record', async () => {
-  const flowHtml = await render('/products/runic-flow');
-  assert.match(flowHtml, /Archived — no release-bearing packages/);
-  assert.match(
-    stripMarkup(flowHtml),
-    /historical records retain its former identities/i,
-  );
-  assert.match(flowHtml, /0002-v02-operations-probation-archive.md/);
-  assert.doesNotMatch(flowHtml, /<h2>Packages<\/h2>/);
-  assert.doesNotMatch(flowHtml, /Install:/);
-
-  const packageHtml = await render('/packages');
-  const canonicalRows = tableRows(packageHtml);
-  assert.match(packageHtml, /@runic-artifex\/application-bridge/);
-  assert.match(packageHtml, /Runic\.Application\.Testing/);
-  assert.match(packageHtml, /Runic\.CommandLine\.Testing/);
-  assert.ok(canonicalRows.every((row) => !row[0].startsWith('RunicToolkit')));
-  assert.match(packageHtml, /@runic-artifex\/vite-plugin-runic-translations/);
-  assert.doesNotMatch(packageHtml, /RunicToolkit\./);
-  assert.doesNotMatch(packageHtml, /RunicTranslations\.Generator/);
-  assert.doesNotMatch(packageHtml, /RunicAssets\.RunicToolkit/);
-  assert.doesNotMatch(packageHtml, /RunicFlow/);
-  assert.doesNotMatch(packageHtml, /Runic\.Operations/);
-  assert.match(packageHtml, /Historical migrations stay outside/);
-});
-
-test('renders package and release tables with captions, scoped heads, and overflow containment', async () => {
-  const packageHtml = await render('/packages');
-  const releaseHtml = await render('/releases');
-
-  for (const html of [packageHtml, releaseHtml]) {
-    assert.match(
-      html,
-      /data-slot="table-container" class="relative w-full overflow-x-auto"/,
-    );
-    assert.match(html, /data-slot="table-caption"/);
-    assert.match(html, /<th[^>]*scope="col">/);
-  }
-  assert.match(
-    packageHtml,
-    /Runic Artifex canonical package identities and release versions/,
-  );
-  assert.match(releaseHtml, /Runic Artifex historical release-train versions/);
-  assert.equal(packageHtml.match(/scope="col"/g)?.length, 5);
-  assert.equal(releaseHtml.match(/scope="col"/g)?.length, 8);
-});
-
-test('renders release, compatibility, and distribution data from the authority', async () => {
-  const html = await render('/releases');
-
-  const lede = html.match(/<p class="lede">([\s\S]*?)<\/p>/)?.[1];
-
-  assert.ok(lede, 'expected the release lede');
-  assert.match(
-    stripMarkup(lede),
-    /0\.2\.0-preview\.1 is an unpublished candidate/,
-  );
-  const rows = tableRows(html);
-  const expectedRows = releaseData.compatibilityTrains.flatMap((train) =>
-    train.lanes
-      .filter((lane) => lane.name === 'current')
-      .flatMap((lane) => lane.versions),
-  );
-  assert.equal(rows.length, expectedRows.length);
-  for (const entry of expectedRows) {
-    assert.ok(
-      rows.some((row) => row.includes(versionLabel(entry.version))),
-      `expected ${entry.product} version in release table`,
-    );
-  }
-  assert.match(html, /Historical compatibility lanes/);
-  assert.match(html, /Runic\.Translations\.Editor/);
-  assert.match(html, /dotnet runic/);
-  assert.match(html, /typescript-effect/);
-  assert.match(html, /rust/);
-  assert.match(html, /no package or support claim is made/);
 });
 
 test('uses the canonical Runic Translations identifiers', async () => {
@@ -420,58 +292,6 @@ test('uses the canonical Runic Translations identifiers', async () => {
   assert.match(html, /translations\/runic\.json/);
   assert.match(html, /m\.message_id\(\)/);
   assert.match(html, /language server is planned for 2\.0/);
-});
-
-test('renders availability from release authority records', async () => {
-  const homeHtml = await render('/');
-  const releaseHtml = await render('/releases');
-  const gettingStartedHtml = await render('/getting-started');
-  const bridgeHtml = await render('/application-bridge');
-  assert.match(homeHtml, /<h2>Track the release authority\.<\/h2>/);
-  assert.match(homeHtml, /release authority/);
-  assert.match(gettingStartedHtml, /archive status is recorded independently/);
-  const bridgeVersion = releaseData.compatibilityTrains
-    .flatMap((train) => train.lanes)
-    .find((lane) => lane.name === 'current')
-    ?.versions.find((entry) => entry.product === 'application')?.version;
-  assert.match(bridgeHtml, new RegExp(versionLabel(bridgeVersion)));
-  if (bridgeVersion?.state === 'unassigned') {
-    assert.match(releaseHtml, /Pending release — version unassigned/);
-    assert.match(bridgeHtml, /Release versions are currently unassigned/);
-  } else {
-    assert.match(releaseHtml, /Published/);
-  }
-});
-
-test('renders product release labels from their authority-selected active lanes', async () => {
-  const productGuides = [
-    ['/products/runic-toolkit', 'application'],
-    ['/products/runic-desktop', 'desktop'],
-    ['/products/runic-assets', 'assets'],
-    ['/products/runic-translations', 'translations'],
-    ['/products/runic-command-line', 'command-line'],
-  ];
-
-  for (const [path, product] of productGuides) {
-    const html = await render(path);
-    assert.match(
-      html,
-      new RegExp(versionLabel(releaseDocs.activeVersionForProduct(product))),
-      path,
-    );
-  }
-});
-
-test('describes CS-WebUI only as an independent upstream compatibility product', async () => {
-  const html = await render('/products/cs-webui');
-
-  assert.match(html, /tracks unmodified upstream WebUI/);
-  assert.match(html, /complete WebUI 2\.5 C ABI/);
-  assert.match(html, /Maintained outside the Runic v1 train/);
-  assert.match(html, /not governed by the Runic v1 compatibility set/);
-  assert.match(html, /Is not the implementation underneath Runic Desktop/);
-  assert.doesNotMatch(html, /Release-train version/);
-  assert.doesNotMatch(html, /<h2>Packages<\/h2>/);
 });
 
 test('keeps the footer release-status label and renders only authority-backed install commands', async () => {
@@ -529,7 +349,7 @@ test('resolves every internal route link and fragment in the prerendered site', 
   }
 });
 
-test('current preview is discoverable and distinct from historical publication records', async () => {
+test('current preview is discoverable and explicitly unpublished', async () => {
   for (const route of ['/packages', '/releases', '/getting-started']) {
     const html = await render(route);
     assert.match(html, /0\.2\.0-preview\.1/);

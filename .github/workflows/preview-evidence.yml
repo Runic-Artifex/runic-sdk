@@ -5,8 +5,8 @@ on:
       ci_run_id:
         description: Successful full CI run at the selected workflow commit
         required: true
-      receipts_json:
-        description: Reviewed runic.preview-evidence/1 JSON envelope bound to this candidate
+      receipts_gzip_base64:
+        description: Reviewed JSON envelope, UTF-8 then gzip then base64 (maximum 60000 characters)
         required: true
 permissions:
   contents: read
@@ -31,12 +31,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
-          RECEIPTS_JSON: ${{ inputs.receipts_json }}
+          RECEIPTS_GZIP_BASE64: ${{ inputs.receipts_gzip_base64 }}
         run: |
           mkdir -p artifacts/preview
-          bun eng/preview/cli.mjs seal artifacts/packages "$GITHUB_SHA" "$CI_RUN_ID" artifacts/preview/candidate.json demo-preview
-          bun -e 'import {writeFileSync} from "node:fs"; const evidence=JSON.parse(process.env.RECEIPTS_JSON); if(evidence.schema!=="runic.preview-evidence/1") throw Error("Expected evidence envelope"); writeFileSync("artifacts/preview/receipts.json", JSON.stringify(evidence,null,2)+"\n", {flag:"wx"})'
-          bun eng/preview/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json
+          bun eng/release/cli.mjs seal artifacts/packages "$GITHUB_SHA" "$CI_RUN_ID" artifacts/preview/candidate.json demo-preview
+          python3 eng/release/decode-evidence.py artifacts/preview/receipts.json
+          bun eng/release/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json
       - name: Retain verified candidate and acceptance receipts
         uses: actions/upload-artifact@v7
         with:

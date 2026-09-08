@@ -1,10 +1,12 @@
 # Command Line package consumer
 
-`Invoke-PackageConsumer.ps1` packs the five Command Line packages
-(`Runic.CommandLine`, `Processes`, and `Testing`) into a fresh
-local feed, then restores the template consumer into a fresh package cache. It
-proves managed and host-runtime NativeAOT execution for the current platform
-(Linux-x64 in CI). The consumer uses the kernel's packaged method-first analyzer,
+Run `pwsh -NoProfile -File Invoke-PackageConsumer.ps1 -PackageVersion <version>
+-PackageDirectory <candidate-nuget-directory>` (optionally `-RuntimeIdentifier <rid>`).
+The script consumes the existing candidate feed and restores the template consumer
+into a fresh package cache. It proves managed and host-runtime NativeAOT execution
+on the selected platform. It does not rebuild or repack the candidates.
+
+The consumer uses the kernel's packaged method-first analyzer,
 the Hosting adapter, application-owned JSON metadata, and a bounded
 `ProcessRunner` child command. It also proves an application-owned `--output`
 option alongside a configured `--runic-output` transport option and variadic

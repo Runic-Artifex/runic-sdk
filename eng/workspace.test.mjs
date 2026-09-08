@@ -6,15 +6,17 @@ import { spawnSync } from "node:child_process";
 import { root, workspace, affectedComponents } from "./run.mjs";
 
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
-test("workspace contains every SDK artifact with unchanged package identities", () => {
-  const canonical = json("eng/release/runic.compatibility-set.json").packages;
-  const names = [...workspace.npm, ...workspace.nuget].map((p) => p.name);
+test("workspace defines the complete public SDK package inventory", () => {
+  const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
+  assert.equal(workspace.nuget.length, 27);
+  assert.equal(workspace.npm.length, 8);
   assert.equal(new Set(names).size, names.length);
-  const authorityNames = canonical.map(
-    (p) => p.name ?? p.identity ?? p.packageId,
-  );
-  for (const name of authorityNames) assert.ok(names.includes(name), `Imported identity removed: ${name}`);
-  assert.deepEqual(names.filter(name => !authorityNames.includes(name)), ["Runic.Application.CsWebUi", "Runic.Platform", "Runic.Platform.Runtime", "Runic.Platform.Windows", "Runic.Platform.Linux", "Runic.Platform.MacOS", "Runic.Application.Platform", "Runic.Application.Platform.Desktop"]);
+  for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
+  for (const p of workspace.nuget) {
+    assert.match(p.name, /^(?:Runic\.|dotnet-runic(?:$|-))/);
+    assert.doesNotMatch(p.name, /(?:Generators?|Inspector|Packer|Compiler)$/,
+      "Embedded implementation tools must not become public packages");
+  }
   for (const p of workspace.npm) {
     const manifest = json(`${p.path}/package.json`);
     assert.equal(manifest.name, p.name);
@@ -28,10 +30,6 @@ test("active npm consumers resolve internal dependencies from the workspace", ()
   const names = new Set(workspace.npm.map((p) => p.name));
   for (const path of paths) {
     assert.ok(
-      !path.startsWith("tests/fixtures/legacy-examples/samples/"),
-      "historical examples must remain excluded",
-    );
-    assert.ok(
       !existsSync(resolve(root, path, "bun.lock")),
       `${path} owns a competing lockfile`,
     );
@@ -43,17 +41,6 @@ test("active npm consumers resolve internal dependencies from the workspace", ()
       if (names.has(name))
         assert.equal(version, "workspace:*", `${path}: ${name}`);
     }
-  }
-});
-test("all imported source histories remain ancestors of the monorepo", () => {
-  for (const source of json("eng/migration/imports.json").sources) {
-    assert.equal(
-      spawnSync("git", ["merge-base", "--is-ancestor", source.head, "HEAD"], {
-        cwd: root,
-      }).status,
-      0,
-      source.repository,
-    );
   }
 });
 test("component dependency graph is closed and acyclic", () => {
@@ -72,7 +59,7 @@ test("component dependency graph is closed and acyclic", () => {
   for (const name of Object.keys(workspace.components)) visit(name);
 });
 
-test("relocated artifacts have exactly one component owner", () => {
+test("SDK artifacts have exactly one component owner", () => {
   for (const artifact of [...workspace.npm, ...workspace.nuget]) {
     const path = artifact.path ?? artifact.project;
     const owners = Object.entries(workspace.components).filter(
@@ -84,7 +71,7 @@ test("relocated artifacts have exactly one component owner", () => {
     assert.equal(owners.length, 1, `${path}: ${owners.map(([name]) => name)}`);
   }
 });
-test("affected detection follows relocated code and its dependents", () => {
+test("affected detection follows component code and its dependents", () => {
   assert.deepEqual(
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
@@ -112,7 +99,7 @@ test("affected detection follows relocated code and its dependents", () => {
   );
 });
 
-test("development workspaces and CI exclude imported engineering archives", () => {
+test("development workspaces and workflows use the SDK layout", () => {
   for (const path of json("package.json").workspaces) {
     assert.ok(
       /^(packages\/web\/|apps\/|docs$|examples\/(counter|customer-migration|document-migration)\/)/.test(
@@ -124,7 +111,7 @@ test("development workspaces and CI exclude imported engineering archives", () =
   const files = spawnSync("git", ["ls-files"], { cwd: root, encoding: "utf8" });
   assert.equal(files.status, 0);
   for (const path of files.stdout.trim().split("\n")) {
-    if (path.startsWith("eng/archive/")) continue;
+    if (!existsSync(resolve(root, path))) continue;
     assert.ok(
       !path.startsWith("packages/runic-"),
       `retired package root: ${path}`,
@@ -136,14 +123,14 @@ test("development workspaces and CI exclude imported engineering archives", () =
   }
 });
 
-test("solution projects do not import archived engineering files", () => {
+test("solution projects use the maintained SDK layout", () => {
   const solution = readFileSync(resolve(root, "RunicSdk.slnx"), "utf8");
   for (const [, path] of solution.matchAll(/<Project Path="([^"]+)"/g)) {
-    assert.ok(!path.startsWith("eng/archive/"), path);
+    assert.match(path, /^(?:packages\/dotnet|tools|tests|examples|apps)\//);
     const project = readFileSync(resolve(root, path), "utf8");
     assert.doesNotMatch(
       project,
-      /(?:eng[\\/]archive|packages[\\/]runic-)/,
+      /packages[\\/]runic-/,
       path,
     );
   }

@@ -69,7 +69,7 @@ and details are normalized before they reach a result to avoid leaking input.
 ## Documentation and support
 
 Read the [Runic Command Line documentation](https://docs.runic-artifex.eu/products/runic-command-line/),
-see [process examples](https://github.com/Runic-Artifex/runic-command-line/tree/main/tests/Runic.CommandLine.Processes.Tests),
-or [report an issue](https://github.com/Runic-Artifex/runic-command-line/issues).
+see [process examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/dotnet/Runic.CommandLine.Processes.Tests),
+or [report an issue](https://github.com/Runic-Artifex/runic-sdk/issues).
 Runic.CommandLine.Processes is maintained by Runic Artifex and licensed under the
-[MIT License](https://github.com/Runic-Artifex/runic-command-line/blob/main/LICENSE).
+[MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).

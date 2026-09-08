@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 // Read-only registry audit. Major/prerelease upgrades remain explicit decisions.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readToolchain } from "../toolchain.mjs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
 const files = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0")
-  .filter(path => path && !path.startsWith("eng/archive/") && !path.startsWith("tests/fixtures/legacy-examples/"));
+  .filter(path => path && existsSync(resolve(root, path)));
 const packages = new Map();
 function declare(ecosystem, name, version, path, kind) {
   if (name.startsWith("@runic-artifex/") || name.startsWith("Runic.") || version.includes("$(") || version.startsWith("__")) return;
@@ -28,10 +29,6 @@ for (const path of files) {
       declare("github-action", match[1], match[2], path, "uses");
   }
 }
-// The Angular packaging canary creates its npm manifest at runtime.
-const angularCanary = "tests/web/angular-package-consumer/test-package-consumer.mjs";
-const ngPackagr = readFileSync(resolve(root, angularCanary), "utf8").match(/"ng-packagr": "([^"]+)"/);
-if (ngPackagr) declare("npm", "ng-packagr", ngPackagr[1], angularCanary, "devDependencies");
 for (const name of ["bun", "npm", "pnpm", "devframe", "crossws"])
   if (!packages.has(`npm:${name}`)) packages.set(`npm:${name}`, { ecosystem: "npm", name, declarations: [], resolved: [] });
 for (const path of files.filter(path => path.endsWith("bun.lock"))) {
@@ -77,7 +74,7 @@ const results = [];
 for (let index = 0; index < queue.length; index += 6)
   results.push(...await Promise.all(queue.slice(index, index + 6).map(inspect)));
 console.log(JSON.stringify({ checkedAt: new Date().toISOString(),
-  toolchain: JSON.parse(readFileSync(resolve(root, "eng/release/runic.compatibility-set.json"), "utf8")).toolchain,
+  toolchain: readToolchain(root),
   nixpkgs: JSON.parse(readFileSync(resolve(root, "flake.lock"), "utf8")).nodes.nixpkgs.locked,
   packages: results }, null, 2));
 if (results.some(item => item.error)) process.exitCode = 1;

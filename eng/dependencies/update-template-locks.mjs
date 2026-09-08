@@ -6,9 +6,10 @@ import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { root, workspace, run } from "../run.mjs";
+import { readToolchain } from "../toolchain.mjs";
 import { nodeCompatibility } from "../node-compatibility.mjs";
 
-const compatibility = JSON.parse(await readFile(join(root, "tools/dotnet-runic-toolkit/metadata/runic.compatibility-set.json"), "utf8"));
+const toolchain = readToolchain(root);
 const temporary = await mkdtemp(join(tmpdir(), "runic-template-locks-"));
 let registry;
 try {
@@ -27,7 +28,7 @@ try {
   }
   if (!address) throw new Error("Candidate registry did not become ready.");
   for (const framework of ["angular", "react", "svelte", "vue"]) {
-    const source = join(root, "tools/RunicToolkit.Templates/content", framework, "Frontend");
+    const source = join(root, "tools/Runic.Application.Templates/content", framework, "Frontend");
     const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
     for (const section of ["dependencies", "devDependencies"]) {
       for (const name of Object.keys(manifest[section] ?? {})) {
@@ -41,7 +42,7 @@ try {
     ]) {
       const directory = join(temporary, framework, manager);
       await mkdir(directory, { recursive: true });
-      manifest.packageManager = `${manager}@${compatibility.toolchain[manager]}`;
+      manifest.packageManager = `${manager}@${toolchain[manager]}`;
       await writeFile(join(directory, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
       await writeFile(join(directory, ".npmrc"), `@runic-artifex:registry=${address}\n`);
       run(manager, args, directory, nodeCompatibility().env);

@@ -19,16 +19,16 @@ templates. Set `RunicHost` in the project to change the default permanently.
 Keep restore enabled when switching: each selection has a different dependency
 graph. CLI overrides apply to child processes, including frontend tooling.
 
-| Requirement | CS-WebUI integration | Runic Desktop integration |
-| --- | --- | --- |
-| Runic Application lifecycle, typed members and actions | Yes | Yes |
-| Validation, cancellation, state subscriptions and reconnect | Yes | Yes |
-| CLI host selection and frontend development server | Yes | Yes |
-| Embedded, manifest-bound assets | Yes | Yes |
-| ASP.NET Core runtime dependency | No | Yes |
-| Isolated surfaces and presentation fallback policy | Use Desktop for these enhancements | Yes |
-| Native close veto / unsaved-change coordination | Explicitly rejected when required | Yes |
-| Multiple hosts and independent native lifetime | One native runtime owner per process | Desktop presentation ownership rules |
+| Requirement                                                 | CS-WebUI integration                 | Runic Desktop integration            |
+| ----------------------------------------------------------- | ------------------------------------ | ------------------------------------ |
+| Runic Application lifecycle, typed members and actions      | Yes                                  | Yes                                  |
+| Validation, cancellation, state subscriptions and reconnect | Yes                                  | Yes                                  |
+| CLI host selection and frontend development server          | Yes                                  | Yes                                  |
+| Embedded, manifest-bound assets                             | Yes                                  | Yes                                  |
+| ASP.NET Core runtime dependency                             | No                                   | Yes                                  |
+| Isolated surfaces and presentation fallback policy          | Use Desktop for these enhancements   | Yes                                  |
+| Native close veto / unsaved-change coordination             | Explicitly rejected when required    | Yes                                  |
+| Multiple hosts and independent native lifetime              | One native runtime owner per process | Desktop presentation ownership rules |
 
 The CS-WebUI package remains independent. The SDK integration consumes public
 `CsWebUi` packages and does not reference its source checkout. An application can

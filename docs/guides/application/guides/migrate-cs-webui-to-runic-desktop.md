@@ -10,14 +10,14 @@ Desktop.
 
 ## Package mapping
 
-| CS-WebUI compatibility | Runic Desktop default |
-| --- | --- |
-| `Runic.Application.CsWebUi` | `Runic.Application.Desktop` |
-| `CsWebUi` | `Runic.Desktop` |
-| `RunicAssets.CsWebUi` | `Runic.Assets.Desktop` |
-| `createCsWebUiFrameChannel()` | `createDesktopFrameChannel()` from `@runic-artifex/desktop` |
-| `CsWebUiApplicationBridgeLive` | `ApplicationBridgeLive` |
-| `/webui.js` | `/runic-desktop.js` |
+| CS-WebUI compatibility         | Runic Desktop default                                       |
+| ------------------------------ | ----------------------------------------------------------- |
+| `Runic.Application.CsWebUi`    | `Runic.Application.Desktop`                                 |
+| `CsWebUi`                      | `Runic.Desktop`                                             |
+| `RunicAssets.CsWebUi`          | `Runic.Assets.Desktop`                                      |
+| `createCsWebUiFrameChannel()`  | `createDesktopFrameChannel()` from `@runic-artifex/desktop` |
+| `CsWebUiApplicationBridgeLive` | `ApplicationBridgeLive`                                     |
+| `/webui.js`                    | `/runic-desktop.js`                                         |
 
 Keep `Runic.Application.Bridge` and
 `@runic-artifex/application-bridge` at the exact matching candidate versions.
@@ -66,8 +66,8 @@ bridge, presentation, and shutdown disposal in that order.
 Compose the transport-neutral production Layer with the Desktop channel:
 
 ```ts
-import { ApplicationBridgeLive } from "@runic-artifex/application-bridge";
-import { createDesktopFrameChannel } from "@runic-artifex/desktop";
+import { ApplicationBridgeLive } from '@runic-artifex/application-bridge';
+import { createDesktopFrameChannel } from '@runic-artifex/desktop';
 
 export const BridgeLive = ApplicationBridgeLive(
   MyContract,

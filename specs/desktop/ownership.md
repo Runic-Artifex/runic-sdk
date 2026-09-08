@@ -36,22 +36,22 @@ not create a dependency cycle.
 These source locations are evidence for the ownership assignment, not
 normative contract sources:
 
-- `runic-toolkit/src/Runic.Application/RunicApplication.cs` owns application
+- `packages/dotnet/Runic.Application/RunicApplication.cs` owns application
   host selection and lifecycle.
-- `runic-toolkit/web/packages/application-bridge/src/transport.ts` owns the
+- `packages/web/application-bridge/src/transport.ts` owns the
   frontend `FrameChannel`; `runtime.ts` owns its controller behavior.
-- `runic-assets/src/RunicAssets/AssetContracts.cs` and `AssetArchive.cs` own
+- `packages/dotnet/Runic.Assets/AssetContracts.cs` and `AssetArchive.cs` own
   asset identity and archives. Existing ASP.NET Core and CS-WebUI adapters show
   that delivery integration belongs with Assets.
-- `runic-translations/dotnet/src/RunicTranslations/Runtime/Management/TranslationManager.cs`
+- `packages/dotnet/Runic.Translations/Runtime/Management/TranslationManager.cs`
   owns runtime locale state.
-- `runic-vite/src/index.ts` and `src/client.ts` own Vite and HMR integration.
-- `runic-svelte/packages/svelte/src/bridge.svelte.ts` and
+- `packages/web/vite-plugin-runic/src/index.ts` and `src/client.ts` own Vite and HMR integration.
+- `packages/web/svelte/src/bridge.svelte.ts` and
   `effect-bridge.svelte.ts` own Svelte projection and teardown.
-- `runic-toolkit/web/packages/angular/src/index.ts` owns Angular projection.
-- `cs-webui/src/CsWebUi/WebUiWindow.cs` remains the upstream-compatible native
-  window boundary.
+- `packages/web/angular/src/index.ts` owns Angular projection.
+- The external `CsWebUi` dependency supplies the browser/native window boundary
+  for `Runic.Application.CsWebUi`.
 
-The existing `Runic.Application.CsWebUi` host, templates using `UseCsWebUi`,
-and the Translations Editor host are migration targets. Their composition logic
-must not be copied into Desktop.
+The `Runic.Application.CsWebUi` host, templates using `UseCsWebUi`, and the
+Translations Editor compose these capabilities. Shared application composition
+belongs in Application; Desktop owns presentation.

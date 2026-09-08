@@ -6,13 +6,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 
-const [authorityPath, bridgeArchive, angularArchive, receiptPath] = process.argv.slice(2);
-if (authorityPath === undefined || bridgeArchive === undefined || angularArchive === undefined || receiptPath === undefined || process.argv.length !== 6) {
-  throw new Error("Usage: node test-package-consumer.mjs <release-authority.json> <application-bridge.tgz> <angular.tgz> <receipt.json>");
+const [bridgeArchive, angularArchive] = process.argv.slice(2);
+if (bridgeArchive === undefined || angularArchive === undefined || process.argv.length !== 4) {
+  throw new Error("Usage: node test-package-consumer.mjs <application-bridge.tgz> <angular.tgz>");
 }
-await Promise.all([access(authorityPath), access(bridgeArchive), access(angularArchive)]);
-const authority = JSON.parse(await readFile(authorityPath, "utf8"));
-verifyAuthority(authority);
+await Promise.all([access(bridgeArchive), access(angularArchive)]);
 const candidates = await Promise.all([
   candidate(bridgeArchive, "@runic-artifex/application-bridge"),
   candidate(angularArchive, "@runic-artifex/angular"),
@@ -20,8 +18,8 @@ const candidates = await Promise.all([
 if (candidates[0].version !== candidates[1].version) {
   throw new Error("Local Angular and Application Bridge candidates must select the same release train.");
 }
-if (candidates[1].dependencies?.["@runic-artifex/application-bridge"] === undefined) {
-  throw new Error("The local Angular candidate must declare its Application Bridge dependency.");
+if (candidates[1].dependencies?.["@runic-artifex/application-bridge"] !== candidates[0].version) {
+  throw new Error("The local Angular candidate must declare its exact candidate Application Bridge dependency.");
 }
 console.log("Preparing clean Angular package consumer canary.");
 
@@ -60,7 +58,7 @@ try {
     },
   });
   await write(root, "projects/contracts/tsconfig.lib.json", {
-    extends: "../../../eng/archive/runic-toolkit/tsconfig.json", compilerOptions: { outDir: "../../../eng/archive/runic-toolkit/out-tsc/contracts" },
+    extends: "../../tsconfig.json", compilerOptions: { outDir: "../../out-tsc/contracts" },
     include: ["src/**/*.ts"],
   });
   await write(root, "projects/contracts/package.json", {
@@ -68,8 +66,8 @@ try {
     peerDependencies: { "@angular/core": "22.1.5" },
   });
   await write(root, "projects/contracts/ng-package.json", {
-    $schema: "../../../eng/archive/runic-toolkit/node_modules/ng-packagr/ng-package.schema.json",
-    dest: "../../../eng/archive/runic-toolkit/dist/contracts",
+    $schema: "../../node_modules/ng-packagr/ng-package.schema.json",
+    dest: "../../dist/contracts",
     lib: { entryFile: "src/public-api.ts" },
     allowedNonPeerDependencies: ["@runic-artifex/application-bridge", "effect"],
   });
@@ -77,7 +75,7 @@ try {
   await write(root, "projects/contracts/src/lib/generated-translations.ts", "// Generated catalog output; application code imports it as a normal ESM dependency.\nexport const m = Object.freeze({ counterTitle: () => 'Customer counter' });\n");
   await write(root, "projects/contracts/src/lib/counter-contract.ts", contractSource());
   await write(root, "projects/customer-app/tsconfig.app.json", {
-    extends: "../../../eng/archive/runic-toolkit/tsconfig.json", compilerOptions: { outDir: "../../../eng/archive/runic-toolkit/out-tsc/customer-app" },
+    extends: "../../tsconfig.json", compilerOptions: { outDir: "../../out-tsc/customer-app" },
     files: ["src/main.ts"],
   });
   await write(root, "projects/customer-app/src/index.html", "<customer-root></customer-root>\n");
@@ -93,31 +91,22 @@ try {
   await run("npm", ["exec", "ng", "build", "contracts"], root, environment);
   await run("npm", ["install", "--ignore-scripts", "./dist/contracts"], root, environment);
   await run("npm", ["run", "build"], root, environment);
-  await writeReceipt(receiptPath, authorityPath, candidates);
+  for (const [index, archive] of [bridgeArchive, angularArchive].entries()) {
+    if (sha256(await readFile(archive)) !== candidates[index].archive.sha256) {
+      throw new Error("Candidate archive changed during acceptance.");
+    }
+  }
+  for (const selected of candidates) console.log(`${selected.identity}@${selected.version} sha256=${selected.archive.sha256}`);
   console.log("Angular package consumer canary passed.");
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 3 });
-}
-
-function verifyAuthority(authority) {
-  const expectedCanonical = {
-    identity: "@runic-artifex/angular", ecosystem: "npm", installKind: "npm-package", product: "application", state: "approved",
-  };
-  const canonical = authority.canonicalPackages?.filter((item) => item.identity === expectedCanonical.identity) ?? [];
-  if (JSON.stringify(canonical) !== JSON.stringify([expectedCanonical])) {
-    throw new Error("Release authority must declare one canonical @runic-artifex/angular package identity.");
-  }
-  const current = authority.currentPackages?.filter((item) => item.identity === expectedCanonical.identity) ?? [];
-  if (current.length !== 1 || current[0].ecosystem !== "npm" || current[0].product !== "application" || current[0].stableOwner !== "Runic Application" || current[0].support !== "supported" || current[0].disposition !== "keep" || current[0].target !== expectedCanonical.identity || current[0].migration?.kind !== "package" || current[0].migration?.target !== expectedCanonical.identity) {
-    throw new Error("Release authority must assign @runic-artifex/angular to Runic Application.");
-  }
 }
 
 async function candidate(archive, identity) {
   const absolute = resolve(archive);
   const metadata = execFileSync("tar", ["-xOf", absolute, "package/package.json"], { encoding: "utf8" });
   const manifest = JSON.parse(metadata);
-  if (manifest.name !== identity || !/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u.test(manifest.version) || manifest.license !== "MIT" || manifest.repository?.url !== "git+https://github.com/Runic-Artifex/runic-toolkit.git" || manifest.exports === undefined) {
+  if (manifest.name !== identity || !/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u.test(manifest.version) || manifest.license !== "MIT" || manifest.repository?.url !== "git+https://github.com/Runic-Artifex/runic-sdk.git" || manifest.exports === undefined) {
     throw new Error(`Invalid local candidate metadata for ${identity}.`);
   }
   const archiveStat = await stat(absolute);
@@ -127,17 +116,6 @@ async function candidate(archive, identity) {
     archive: { name: absolute.split("/").at(-1), sha256: sha256(await readFile(absolute)), size: archiveStat.size },
     dependencies: manifest.dependencies,
   };
-}
-
-async function writeReceipt(destination, source, candidates) {
-  const root = resolve(source, "..");
-  const authority = await readFile(source);
-  const revision = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-  const tree = execFileSync("git", ["-C", root, "rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
-  if (!/^[0-9a-f]{40}$/u.test(revision) || !/^[0-9a-f]{40}$/u.test(tree)) {
-    throw new Error("Could not resolve release authority Git provenance.");
-  }
-  await writeFile(destination, `${JSON.stringify({ schemaVersion: 1, consumer: "runic-toolkit.angular-package-canary/v1", releaseAuthority: { path: "runic.release.json", sha256: sha256(authority), revision, tree }, candidates }, null, 2)}\n`);
 }
 
 function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
@@ -156,7 +134,7 @@ function angularJson() {
       contracts: {
         projectType: "library", root: "projects/contracts", sourceRoot: "projects/contracts/src",
         architect: { build: { builder: "@angular/build:ng-packagr", options: {
-          project: "projects/contracts/ng-package.json",
+          project: "projects/contracts/ng-package.json", tsConfig: "projects/contracts/tsconfig.lib.json",
         } } },
       },
     },

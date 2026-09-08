@@ -22,17 +22,17 @@ upload client.
 
 Each product owns instrumentation at the boundary it implements:
 
-| Boundary | Owner | Responsibility |
-|---|---|---|
-| Application lifecycle and host composition, excluding the CS-WEBUI native boundary | Runic Application | Shared trace propagation and lifecycle semantics. |
-| CS-WEBUI native boundary | CS-WEBUI | Native lifecycle and private-delivery instrumentation. |
-| Application Bridge | Runic Application Bridge | Bridge request, event, and dispatch semantics. |
-| Svelte projection | `@runic-artifex/svelte` | Browser-side instrumentation and redaction at the Svelte boundary. |
-| Vite development diagnostics | `@runic-artifex/vite-plugin-runic` | Frontend build and development diagnostics. |
-| Assets, Translations, and Editor | Respective product | Domain operations and redaction before an operational handoff. |
-| Command catalog and command I/O schema | Runic Command Line generator | Command-schema and machine-envelope semantics. |
-| Command coordination and support-bundle orchestration | `dotnet runic` | Local diagnostics, explicit collection, preview, and selection. |
-| Release/compatibility facts | Release Automation | Authoritative manifest facts that a bundle may reference. |
+| Boundary                                                                           | Owner                              | Responsibility                                                     |
+| ---------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| Application lifecycle and host composition, excluding the CS-WEBUI native boundary | Runic Application                  | Shared trace propagation and lifecycle semantics.                  |
+| CS-WEBUI native boundary                                                           | CS-WEBUI                           | Native lifecycle and private-delivery instrumentation.             |
+| Application Bridge                                                                 | Runic Application Bridge           | Bridge request, event, and dispatch semantics.                     |
+| Svelte projection                                                                  | `@runic-artifex/svelte`            | Browser-side instrumentation and redaction at the Svelte boundary. |
+| Vite development diagnostics                                                       | `@runic-artifex/vite-plugin-runic` | Frontend build and development diagnostics.                        |
+| Assets, Translations, and Editor                                                   | Respective product                 | Domain operations and redaction before an operational handoff.     |
+| Command catalog and command I/O schema                                             | Runic Command Line generator       | Command-schema and machine-envelope semantics.                     |
+| Command coordination and support-bundle orchestration                              | `dotnet runic`                     | Local diagnostics, explicit collection, preview, and selection.    |
+| Release/compatibility facts                                                        | Release Automation                 | Authoritative manifest facts that a bundle may reference.          |
 
 OpenTelemetry exporters, telemetry storage, dashboards, and transport-specific
 diagnostic backends remain application or operator choices. Runic will use

@@ -11,15 +11,15 @@ package-consumer measurements. The assessment below is retained as context.
 
 ## What the current code provides
 
-| Developer concern | Current state | Required outcome |
-| --- | --- | --- |
-| Application lifecycle and composition | `Runic.Application` is independent of Desktop; `UseDesktop` is the available desktop application integration | A CS-WebUI integration using the same `IApplicationHost` lifecycle |
-| Typed members, actions, state and validation | Bridge runtime/generators do not reference Desktop; `DesktopApplicationBridge` connects the protocol to Desktop sessions | The same generated model and bridge conformance on both hosts |
-| Window and callback APIs | CS-WebUI has `WebUiWindow`, synchronous/asynchronous binding and native WebUI transport | Preserve direct CS-WebUI access while offering Runic application composition |
-| Templates and frontend development | Maintained application templates select `UseDesktop` | Explicit host selection with equivalent React, Vue, Svelte and Angular workflows |
-| Testing and migration | Customer migration sample runs through Desktop | Run the same business rules, generated contract and frontend acceptance on both hosts |
-| Host enhancements | Desktop owns Kestrel hosting, isolated surfaces, presentation preflight, fallback policy and native close coordination | Document capabilities and report unsupported requests before opening a window |
-| Packaging | CS-WebUI remains independently packaged and maintained | SDK integration consumes CS-WebUI packages; selecting it must not pull in Desktop or ASP.NET Core |
+| Developer concern                            | Current state                                                                                                            | Required outcome                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Application lifecycle and composition        | `Runic.Application` is independent of Desktop; `UseDesktop` is the available desktop application integration             | A CS-WebUI integration using the same `IApplicationHost` lifecycle                                |
+| Typed members, actions, state and validation | Bridge runtime/generators do not reference Desktop; `DesktopApplicationBridge` connects the protocol to Desktop sessions | The same generated model and bridge conformance on both hosts                                     |
+| Window and callback APIs                     | CS-WebUI has `WebUiWindow`, synchronous/asynchronous binding and native WebUI transport                                  | Preserve direct CS-WebUI access while offering Runic application composition                      |
+| Templates and frontend development           | Maintained application templates select `UseDesktop`                                                                     | Explicit host selection with equivalent React, Vue, Svelte and Angular workflows                  |
+| Testing and migration                        | Customer migration sample runs through Desktop                                                                           | Run the same business rules, generated contract and frontend acceptance on both hosts             |
+| Host enhancements                            | Desktop owns Kestrel hosting, isolated surfaces, presentation preflight, fallback policy and native close coordination   | Document capabilities and report unsupported requests before opening a window                     |
+| Packaging                                    | CS-WebUI remains independently packaged and maintained                                                                   | SDK integration consumes CS-WebUI packages; selecting it must not pull in Desktop or ASP.NET Core |
 
 Evidence: [Desktop composition](../../../packages/dotnet/Runic.Application.Desktop/DesktopApplicationHost.cs),
 [Desktop bridge transport](../../../packages/dotnet/Runic.Application.Desktop/DesktopApplicationBridge.cs),
@@ -123,11 +123,9 @@ The immediate deliverable is a measured tradeoff table and recommended profiles,
 with functionality retained and removed stated for each. No smaller Desktop
 binary or new ASP.NET Core reduction is claimed by this assessment.
 
-## Assessment verification
+## Verification
 
-Both relocated desktop comparator projects compile in Release with explicit
-CS-WebUI source selection and no warnings (managed builds with AOT/trimming
-switched off for this check). The shell script passes `bash -n`, and documentation
-links resolve. This verifies build inputs and harness syntax, not new NativeAOT
-size results. The previous local Nix NativeAOT worker issue remains recorded in
-[reorganisation verification](../../../eng/migration/reorganisation-verification.md).
+Run comparator builds and measurements against the same toolchain and machine.
+A successful managed build verifies inputs, not NativeAOT footprint or real native
+interaction. Record the exact source, artifacts, workload and environment with each
+measurement; repeat affected checks after changes.

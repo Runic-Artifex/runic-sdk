@@ -26,7 +26,7 @@ HTTP, OpenAPI, SignalR, Server-Sent Events, and WebSockets. Runic should be a
 toolkit and desktop host around those primitives, not a second application
 framework with a mandatory private RPC model.
 
-~~~text
+```text
                               +-----------------------+
                               | application services  |
                               | and domain model       |
@@ -44,7 +44,7 @@ framework with a mandatory private RPC model.
           | loopback security  |                      | public web policy  |
           | window + native UI |                      | remote deployment  |
           +--------------------+                      +--------------------+
-~~~
+```
 
 Not every desktop application needs to become a server. The goal is that Runic
 encourages normal separation of application, delivery, and desktop-only
@@ -96,7 +96,7 @@ hidden application model or root service provider.
 
 The desired shape is approximately:
 
-~~~csharp
+```csharp
 WebApplicationBuilder builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Services.AddCounterApplication();
@@ -108,7 +108,7 @@ app.MapCounterApplication();
 app.MapRunicAssets();
 
 await app.RunRunicDesktopAsync();
-~~~
+```
 
 A web entry point applies the same application registrations and endpoint
 mapping, adds its public-server policy, and uses the normal ASP.NET Core

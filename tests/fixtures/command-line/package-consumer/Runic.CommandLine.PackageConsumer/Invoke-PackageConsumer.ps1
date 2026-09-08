@@ -5,26 +5,24 @@ param(
 
     [string] $RuntimeIdentifier = [System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier,
 
-    [string] $PackageVersion = '1.0.0'
+    [Parameter(Mandatory)]
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')]
+    [string] $PackageVersion,
+
+    [Parameter(Mandatory)]
+    [string] $PackageDirectory
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../../../eng/archive/runic-command-line'))
+$feed = (Resolve-Path -LiteralPath $PackageDirectory).Path
 $runRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'runic-cli-consumer-' + [Guid]::NewGuid().ToString('N'))
-$feed = Join-Path $runRoot 'feed'
 $consumerDirectory = Join-Path $runRoot 'consumer'
 $packageCache = Join-Path $runRoot 'packages'
 $publishDirectory = Join-Path $runRoot "publish/$RuntimeIdentifier"
 $consumerProject = Join-Path $consumerDirectory 'Consumer.csproj'
-
-$ownedProjects = @(
-    (Join-Path $repositoryRoot '../dotnet/Runic.CommandLine/Runic.CommandLine.csproj'),
-    (Join-Path $repositoryRoot '../dotnet/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj'),
-    (Join-Path $repositoryRoot '../dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj')
-)
 
 function Invoke-DotNet {
     param([Parameter(Mandatory, Position = 0, ValueFromRemainingArguments)][string[]] $Arguments)
@@ -35,22 +33,9 @@ function Invoke-DotNet {
     }
 }
 
-New-Item -ItemType Directory -Path $feed, $consumerDirectory, $packageCache, $publishDirectory | Out-Null
-
-foreach ($ownedProject in $ownedProjects) {
-    if (-not (Test-Path -LiteralPath $ownedProject -PathType Leaf)) {
-        throw "Owned package project does not exist: $ownedProject"
-    }
-
-    Invoke-DotNet @('restore', $ownedProject)
-    Invoke-DotNet @(
-        'pack', $ownedProject,
-        '--configuration', $Configuration,
-        '--output', $feed,
-        '--no-restore',
-        "-p:PackageVersion=$PackageVersion"
-    )
-}
+$previousPackageCache = $env:NUGET_PACKAGES
+try {
+New-Item -ItemType Directory -Path $consumerDirectory, $packageCache, $publishDirectory | Out-Null
 
 $projectTemplate = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Consumer.csproj.in') -Raw
 $projectTemplate.Replace('@PACKAGE_VERSION@', $PackageVersion) |
@@ -81,8 +66,6 @@ $nugetConfiguration = @"
 "@
 $nugetConfiguration | Set-Content -LiteralPath (Join-Path $consumerDirectory 'NuGet.Config') -Encoding utf8NoBOM
 
-$previousPackageCache = $env:NUGET_PACKAGES
-try {
     $env:NUGET_PACKAGES = $packageCache
 
     Invoke-DotNet @('restore', $consumerProject)

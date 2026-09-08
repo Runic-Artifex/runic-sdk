@@ -33,5 +33,4 @@ that snapshot. Build artifacts and dependency downloads are shared through local
 servers. Windows and macOS checks still require native GitHub runners.
 
 See the [local CI guide](../../../../eng/ci/README.md) for prerequisites, caches,
-artifacts, job selection and reruns. The imported multi-repository release scripts
-are historical evidence under `eng/archive`; they are not the current SDK gate.
+artifacts, job selection and reruns.

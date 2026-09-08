@@ -1,39 +1,30 @@
-# Workspace engineering
+# SDK engineering
 
-`run.mjs` supplies focused build and package commands. Verification is defined in
-`.github/workflows/ci.yml`; [ci/local.mjs](ci/README.md) runs that workflow locally
-with `act`. `workspace.json` defines package identity,
-artifact paths, and the component dependency graph. Source builds use project and
-workspace links; `verify-packages.mjs` exercises independent installation from
-packed artifacts in a temporary directory outside the checkout.
+`workspace.json` defines package identities, artifact paths and the component
+dependency graph. `run.mjs` supplies focused build and packaging commands.
+Verification is defined in `.github/workflows/ci.yml`; [local CI](ci/README.md)
+runs that same workflow with `act`.
 
-The imported per-product `eng` directories contain useful targeted checks alongside
-historical multi-repository release orchestration. Use root commands for unified
-builds and release candidates. The root workflow needs no Runic package registry
-credentials and never publishes packages.
+- `build/`: shared managed build policy.
+- `ci/`: workflow support, reusable outputs and local execution.
+- `release/`: candidate sealing, acceptance validation and exact-artifact publication.
+- `dependencies/`: dependency audit and template lock maintenance.
+- `toolchain.mjs`: reads the current SDK and package-manager pins.
+- `bridge/`: generated application contracts and template checks.
+- `reliability/`: matched measurements and native lifecycle soak tests.
 
-Release and source control boundaries:
+Use project and workspace references for source development. Package acceptance
+installs exact candidate artifacts outside the checkout and checks optional-provider
+isolation. Templates keep independent dependency locks to verify fresh applications.
 
-- `Versions.props`: current shared .NET candidate version.
-- `workspace.json`: current artifact inventory and dependency ownership.
-- `release/`: retained publication authority, schemas, and validators. Its original
-  source revisions are historical evidence and must not be relabeled as validation
-  of a new monorepo commit.
-- `migration/imports.json`: original repository heads, worktree digests, and paths.
+The [release guide](../docs/guides/releases/0.2.0-preview.1.md) and
+[human acceptance instructions](preview-human-acceptance.md) describe the preview.
+Select a successful full CI run for the frozen source, verify its packages and
+required acceptance receipts, and publish those exact artifacts through the
+separate `publish-preview.yml` workflow. Ordinary CI never publishes.
 
-Current preview preparation is described in the
-[release guide](../docs/guides/releases/0.2.0-preview.1.md) and
-[human acceptance handoff](preview-human-acceptance.md). The current monorepo release
-definition is derived from `workspace.json`; preserve imported release receipts and
-source pins as history. Full CI is the verification authority. A separate preview
-publication workflow must select the frozen commit's successful run and verify the
-immutable artifacts and required demo-preview acceptance receipts before publication.
-
-Registry ownership under NuGet organization `runic-artifex` and manual sessions on
-this Linux system and the available Windows VM require user-coordinated evidence.
-Automated native CI remains required on all three OS targets. Real macOS interaction,
-unavailable Wayland checks, broader accessibility and independent pilots are deferred
-before v1; record them as follow-ups, not demo-preview blockers or passes. Missing
-required gates delay publication. Candidate-only
-checks do not establish public-registry availability, and public installation smoke
-checks follow successful registry publication.
+Registry access and selected-file/clipboard checks on the local Linux desktop and
+Windows VM require user participation. Native JIT and AOT CI cover Linux x64,
+Windows x64 and macOS arm64. Deferred human accessibility, macOS and additional
+Linux display profiles are listed explicitly in the release policy; they are not
+passing results. Public installation smoke checks follow registry publication.

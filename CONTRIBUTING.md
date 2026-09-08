@@ -25,7 +25,7 @@ The compiler tests require a C++20-capable `clang++`.
 | Maintained migration or getting-started example | `examples/<scenario>` |
 | Managed/native tests | `tests/dotnet`, `tests/native` |
 | Cross-package consumer checks | `tests/web`, `tests/templates` |
-| Required historical/invalid consumer inputs | `tests/fixtures` |
+| Required consumer inputs and invalid-data fixtures | `tests/fixtures` |
 | Shared contracts, schemas and conformance data | `specs/<component>` |
 | User and architecture guidance | `docs`, `docs/guides` |
 | Build, CI and release tooling | `eng` |
@@ -38,9 +38,8 @@ shipped targets and native assets stay with it. Shared .NET build policy lives i
 second repository root. Web packages declare their own build/test dependencies.
 
 The root Bun lockfile and NuGet configuration own development restores. Independent
-lockfiles in template and historical consumer fixtures prove installation behavior;
-they are excluded from the active workspace. `eng/archive` is historical reference
-and must never become a dependency of a maintained artifact or check.
+lockfiles in template and isolated consumer fixtures prove installation behavior;
+they are excluded from the active workspace.
 
 ## Verify a change
 
@@ -59,7 +58,6 @@ them. GitHub also exercises native window close handling and NativeAOT on Window
 x64 and macOS Apple Silicon. `bun run affected <base-ref>` reports changed components and their
 consumers; it does not replace verification. Keep generated contracts and lockfiles
 current, and document platform checks that could not run locally.
-
 
 Repository scripts, build tools and verification use Bun 1.4.2. Use `bun run --bun`
 when invoking package scripts so Node shebangs also run under Bun. Node is retained

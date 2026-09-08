@@ -40,6 +40,7 @@ internal static class Program
             ("doctor verifies a complete Node contract toolchain", DoctorVerifiesNodeContracts),
             ("doctor supports Bun without a separate Node runtime", DoctorSupportsBunRuntime),
             ("doctor reports actionable frontend failures", DoctorReportsFrontendFailures),
+            ("embedded compatibility describes the complete SDK", EmbeddedCompatibilityDescribesSdk),
             ("doctor rejects a skewed compatibility set", DoctorRejectsCompatibilitySkew),
             ("doctor rejects npm locks without exact portable integrity", DoctorRejectsNonPortableNpmLock),
             ("support envelope is explicit, deterministic, private, and removable", SupportEnvelopeIsPrivateAndDeterministic),
@@ -797,6 +798,20 @@ internal static class Program
             ViteConfigurationPath: string.Empty,
             ProjectAssetsFile: assetsFile,
             RuntimeIdentifier: "linux-x64");
+    }
+
+    private static void EmbeddedCompatibilityDescribesSdk()
+    {
+        CompatibilitySetAuthority authority = CompatibilitySetAuthority.Current;
+        Equal($"runic-sdk-{authority.ReleaseTrainVersion}", authority.Id);
+        Equal(27, authority.NuGetPackages.Count);
+        Equal(8, authority.NpmPackages.Count);
+        foreach (CompatibilityPackage package in authority.NuGetPackages.Values.Concat(authority.NpmPackages.Values))
+        {
+            Equal(authority.ReleaseTrainVersion, package.Version);
+        }
+        Equal("Runic.Platform.MacOS", authority.NuGetPackages["runic.platform.macos"].Identity);
+        Equal("@runic-artifex/angular", authority.NpmPackages["@runic-artifex/angular"].Identity);
     }
 
     private static void DoctorRejectsCompatibilitySkew()

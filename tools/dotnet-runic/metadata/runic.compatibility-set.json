@@ -9,223 +9,181 @@
     "npm": "12.0.2",
     "pnpm": "12.3.4"
   },
-  "sources": [
-    {
-      "repository": "runic-sdk",
-      "url": "https://github.com/Runic-Artifex/runic-sdk",
-      "revisionSource": "tool assembly informational version and candidate receipt"
-    }
-  ],
   "packages": [
     {
       "ecosystem": "nuget",
       "identity": "Runic.Assets",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Assets.AspNetCore",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Assets.Desktop",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.CommandLine",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.CommandLine.Processes",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.CommandLine.Testing",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Desktop",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Bridge",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Desktop",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Hosting",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Testing",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Templates",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "dotnet-runic",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Translations",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Translations.Build",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Translations.Tooling",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Translations.Templates",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "dotnet-runic-translations",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.CsWebUi",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Runtime",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Windows",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Linux",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.MacOS",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Platform",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Platform.Desktop",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/application-bridge",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/application-bridge-tooling",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/angular",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/desktop",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/vite-plugin-runic-translations",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/vite-plugin-runic",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/svelte",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/sveltekit",
-      "version": "0.2.0-preview.1",
-      "source": "runic-sdk"
+      "version": "0.2.0-preview.1"
     }
   ]
 }

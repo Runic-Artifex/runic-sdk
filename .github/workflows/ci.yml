@@ -119,11 +119,11 @@ jobs:
           node: "true"
       - uses: ./.github/actions/restore-build
       - name: Verify workspace, runtime and CI contracts
-        run: bun test --timeout 180000 eng/workspace.test.mjs eng/path-boundary.test.mjs eng/node-compatibility.test.mjs ./eng/ci/*.test.mjs ./eng/preview/*.test.mjs ./eng/reliability/*.test.mjs
-      - name: Verify the size command failure boundaries
-        run: bun test --timeout 180000 tests/engineering/size-command.test.mjs
-      - name: Verify retained acceptance evidence
+        run: bun test --timeout 180000 ./eng/*.test.mjs ./eng/ci/*.test.mjs ./eng/release/*.test.mjs ./eng/reliability/*.test.mjs
+      - name: Verify current engineering acceptance
         run: bun eng/ci/test-acceptance.mjs
+      - name: Check embedded CLI compatibility metadata
+        run: bun tools/dotnet-runic/metadata/generate.mjs --check
       - name: Verify document candidate export boundaries
         run: python3 examples/document-migration/eng/test-candidate.py
       - name: Check generated files and lockfile
@@ -313,6 +313,15 @@ jobs:
           path: artifacts/packages
       - name: Verify isolated NuGet and npm consumers
         run: bun run verify-packages
+      - name: Verify generated CommandLine package consumer with NativeAOT
+        shell: pwsh
+        run: |
+          $version = (Get-Content eng/workspace.json -Raw | ConvertFrom-Json).version
+          ./tests/fixtures/command-line/package-consumer/Runic.CommandLine.PackageConsumer/Invoke-PackageConsumer.ps1 -PackageVersion $version -PackageDirectory artifacts/packages/nuget -RuntimeIdentifier linux-x64 -Configuration Release
+      - name: Verify Angular library and application package consumption
+        run: |
+          version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
+          bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-application-bridge-$version.tgz" "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
       - uses: ./.github/actions/install-browser
       - name: Verify package-only document migration in both hosts
         run: python3 examples/document-migration/eng/verify-candidate.py --version 0.2.0-preview.1 --nuget-feed artifacts/packages/nuget --npm-feed artifacts/packages/npm --report artifacts/document-package-acceptance/linux-x64
@@ -532,7 +541,7 @@ jobs:
         shell: bash
         run: |
           bun run bootstrap
-          dotnet build tools/dotnet-runic-toolkit -c Release
+          dotnet build tools/dotnet-runic -c Release
       - name: Build frontend verification dependencies
         run: bun eng/run.mjs build-web
       - name: Test CS-WebUI startup readiness

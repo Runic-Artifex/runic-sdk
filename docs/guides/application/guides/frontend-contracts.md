@@ -7,7 +7,7 @@ materialized contract. See [Application Bridge](application-bridge.md) for the
 member and DI model.
 
 ```ts
-runic({ desktop: true, applicationBridge: { authority: "csharp" } })
+runic({ desktop: true, applicationBridge: { authority: 'csharp' } });
 ```
 
 The Vite plugin infers a single project beside the frontend directory, or accepts
@@ -39,9 +39,13 @@ There is no `initialize` property. Initialization always invokes the generated
 C# handler's typed `GetSnapshotAsync(BridgeSnapshotContext, CancellationToken)`.
 
 ```ts
-runic({ desktop: true, applicationBridge: {
-  authority: "effect", source: "src/application.bridge.ts"
-} })
+runic({
+  desktop: true,
+  applicationBridge: {
+    authority: 'effect',
+    source: 'src/application.bridge.ts',
+  },
+});
 ```
 
 Set `RunicApplicationBridgeAuthority` to `effect` and

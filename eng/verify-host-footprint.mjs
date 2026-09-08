@@ -75,7 +75,7 @@ for (const [host, profile, nativeProvider] of [["desktop", "default", "None"], [
   const name = `${host}-${profile}${nativeProvider === "None" ? "" : "-provider"}`;
   const project = copyApplication(name, nativeProvider);
   const report = join(results, `${name}.json`);
-  run("dotnet", [resolve(root, `tools/dotnet-runic-toolkit/bin/${configuration}/net10.0/dotnet-runic.dll`),
+  run("dotnet", [resolve(root, `tools/dotnet-runic/bin/${configuration}/net10.0/dotnet-runic.dll`),
     "size", "--project", project, "--runtime", rid, "--host", host, "--profile", profile,
     "--report", report, "--verify", process.execPath, "--verify-argument", resolve(root, "eng/verify-published-customers.mjs")], root, env);
   const measured = JSON.parse(readFileSync(report, "utf8"));

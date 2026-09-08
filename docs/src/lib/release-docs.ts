@@ -11,7 +11,6 @@ const releaseDocs = createReleaseDocs(releaseData);
 
 export { availabilityLabel, packageInstallCommand, versionLabel };
 export type { ReleaseVersion };
-export const compatibilitySet = releaseData.compatibilitySet;
 export const currentCandidate = releaseData.currentCandidate;
 export const previewGuideUrl =
   'https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md';
@@ -80,17 +79,9 @@ export const choosePathRows = [
 ] as const;
 
 export const {
-  activeLaneForProduct,
-  activeVersions,
   activeVersionForProduct,
   activeVersionsArePending,
-  distributionsArePending,
-  releaseSummary: historicalReleaseSummary,
-  releaseRows,
   catalogRows,
-  migrationRows,
-  compatibilityRows,
-  distributionRows,
 } = releaseDocs;
 
 export const releaseSummary = `Runic SDK ${currentCandidate.version} is an unpublished candidate: ${currentCandidate.packages.filter((entry) => entry.ecosystem === 'nuget').length} NuGet packages and ${currentCandidate.packages.filter((entry) => entry.ecosystem === 'npm').length} npm packages. Publication awaits required CI, native acceptance, performance, two-hour soak and registry gates.`;

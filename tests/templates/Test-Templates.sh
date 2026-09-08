@@ -63,8 +63,8 @@ dotnet tool install dotnet-runic \
   "${tool_source_options[@]}" \
   "${tool_restore_options[@]}"
 
-pnpm_version="$(bun "$repository_root/eng/compatibility-set-value.mjs" toolchain pnpm)"
-bun_version="$(bun "$repository_root/eng/compatibility-set-value.mjs" toolchain bun)"
+pnpm_version="$(bun "$repository_root/eng/toolchain.mjs" pnpm)"
+bun_version="$(bun "$repository_root/eng/toolchain.mjs" bun)"
 package_manager_directory="$template_tmp/package-managers"
 npm install --global --prefix "$package_manager_directory" "pnpm@$pnpm_version" \
   --allow-scripts=pnpm --no-audit --no-fund

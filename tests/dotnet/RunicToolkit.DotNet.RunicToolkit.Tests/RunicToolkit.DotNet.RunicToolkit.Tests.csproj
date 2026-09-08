@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../../tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj" />
+    <ProjectReference Include="../../../tools/dotnet-runic/Runic.Application.Tool.csproj" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

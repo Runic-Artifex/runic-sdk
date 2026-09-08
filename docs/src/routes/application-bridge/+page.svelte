@@ -55,12 +55,12 @@
     </p>
     <div class="actions">
       <ActionLink
-        href="https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/04-SvelteKitSetupApplication"
+        href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/customer-migration"
         >View the SvelteKit example</ActionLink
       >
       <ActionLink
         variant="outline"
-        href="https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/guides/application-bridge.md"
+        href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/guides/application-bridge.md"
         >Read the repository guide</ActionLink
       >
     </div>
@@ -152,17 +152,10 @@
         configuration, and Vite development tooling.
       </p>
       <p>
-        <code>@runic-artifex/svelte</code> projects one Application Bridge
-        controller into Svelte 5 runes and context.
-        <code>@runic-artifex/sveltekit</code>
-        owns the static SPA adapter and native-host page options.
-        <code>@runic-artifex/vite-plugin-runic</code>
-        owns Toolkit development metadata, bounded inspection, and HMR resources.
-        It is the canonical replacement for the legacy
-        <code>@runic-artifex/vite-plugin-runic-toolkit</code> source identity,
-        which remains listed only in the migration inventory. The official
-        <code>@vitejs/devtools</code> plugin remains the DevTools host and is excluded
-        from production output.
+        The official Vite integration is <code
+          >@runic-artifex/vite-plugin-runic</code
+        >. It generates bridge artifacts and keeps renderer tooling behind the
+        same application contract.
       </p>
       <p>
         These integrations intentionally support Svelte 5 only. Framework

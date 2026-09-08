@@ -50,7 +50,7 @@ schema-backed tagged errors.
   reserved for deterministic helpers that materially prevent drift.
 
 The first production vertical is a neutral Setup application in
-`runic-toolkit-examples`. It must demonstrate initialization, backend-owned
+`examples`. It must demonstrate initialization, backend-owned
 navigation and resource selection, a long-running operation, progress, explicit
 cancellation, reconnect snapshot recovery, NativeAOT, and mock/live Layer parity.
 
@@ -74,7 +74,7 @@ prerelease. One may be added only for a concrete published consumer.
   delivers the Effect runtime, committed schemas and manifest, reflection-free
   generator and dispatch, CS-WebUI integration, migrated framework templates,
   package gates, and removal of the obsolete MVVM surface.
-- [runic-toolkit-examples#12](https://github.com/Runic-Artifex/runic-toolkit-examples/pull/12)
+- [runic-toolkit-examples#12](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/pull/12)
   delivers the package-only Setup vertical with authoritative navigation,
   opaque destination selection, operation progress, completion, failure,
   cancellation, recovery, NativeAOT, and a real Windows native-host test.

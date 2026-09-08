@@ -20,5 +20,4 @@ packages are tested outside the source workspace and are never published by CI.
 
 Independent jobs can be rerun after a transient failure without repeating unrelated
 successful suites. A GitHub rerun uses its original commit; pushed fixes need a new
-run. Imported release receipts retain their original source revisions and do not
-certify the current monorepo commit.
+run. Acceptance receipts apply only to their recorded source and artifact hashes.

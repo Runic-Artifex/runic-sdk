@@ -273,14 +273,14 @@
       "name": "@angular/build",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "devDependencies",
           "version": "22.1.7"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "22.1.7"
         }
       ],
@@ -351,14 +351,14 @@
       "name": "@angular/cli",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "devDependencies",
           "version": "22.1.7"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "22.1.7"
         }
       ],
@@ -389,14 +389,14 @@
       "name": "@angular/common",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "22.1.5"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "22.1.5"
         }
       ],
@@ -436,7 +436,7 @@
           "version": "22.1.5"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "devDependencies",
           "version": "22.1.5"
         }
@@ -447,7 +447,7 @@
           "version": "22.1.5"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "22.1.5"
         }
       ],
@@ -479,7 +479,7 @@
           "version": "22.1.5"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "devDependencies",
           "version": "22.1.5"
         }
@@ -490,7 +490,7 @@
           "version": "22.1.5"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "22.1.5"
         }
       ],
@@ -535,7 +535,7 @@
           "version": ">=20.3.26 <23"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "22.1.5"
         }
@@ -546,7 +546,7 @@
           "version": "22.1.5"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "22.1.5"
         }
       ],
@@ -583,14 +583,14 @@
       "name": "@angular/platform-browser",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "22.1.5"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "22.1.5"
         }
       ],
@@ -693,41 +693,41 @@
       "name": "@fortawesome/fontawesome-free",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "7.3.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "dependencies",
           "version": "7.3.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "dependencies",
           "version": "7.3.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "dependencies",
           "version": "7.3.1"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "7.3.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "7.3.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "7.3.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "7.3.1"
         }
       ],
@@ -811,41 +811,41 @@
       "name": "@popperjs/core",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "2.11.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "dependencies",
           "version": "2.11.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "dependencies",
           "version": "2.11.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "dependencies",
           "version": "2.11.8"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "2.11.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "2.11.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "2.11.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "2.11.8"
         }
       ],
@@ -1055,7 +1055,7 @@
           "version": ">=7 <8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "devDependencies",
           "version": "7.3.0"
         }
@@ -1066,7 +1066,7 @@
           "version": "7.3.0"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "7.3.0"
         }
       ],
@@ -1230,7 +1230,7 @@
           "version": "19.2.18"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "devDependencies",
           "version": "19.2.18"
         }
@@ -1241,7 +1241,7 @@
           "version": "19.2.18"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "19.2.18"
         }
       ],
@@ -1265,7 +1265,7 @@
           "version": "19.2.7"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "devDependencies",
           "version": "19.2.7"
         }
@@ -1276,7 +1276,7 @@
           "version": "19.2.7"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "19.2.7"
         }
       ],
@@ -1307,7 +1307,7 @@
           "version": "^0.5.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "devDependencies",
           "version": "0.5.2"
         }
@@ -1318,7 +1318,7 @@
           "version": "0.5.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "0.5.2"
         }
       ],
@@ -1354,7 +1354,7 @@
           "version": "0.5.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "0.5.2"
         }
       ],
@@ -1380,7 +1380,7 @@
           "version": "6.1.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "devDependencies",
           "version": "6.1.1"
         }
@@ -1391,7 +1391,7 @@
           "version": "6.1.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "6.1.1"
         }
       ],
@@ -1429,14 +1429,14 @@
       "name": "@vitejs/plugin-vue",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "devDependencies",
           "version": "6.0.8"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "6.0.8"
         }
       ],
@@ -1518,41 +1518,41 @@
       "name": "bootstrap",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "5.3.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "dependencies",
           "version": "5.3.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "dependencies",
           "version": "5.3.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "dependencies",
           "version": "5.3.8"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "5.3.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "5.3.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "5.3.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "5.3.8"
         }
       ],
@@ -1602,7 +1602,7 @@
           "version": "2.1.1"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "2.1.1"
         }
       ],
@@ -1634,7 +1634,7 @@
           "version": "0.4.12"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "0.4.12"
         }
       ],
@@ -1660,7 +1660,7 @@
           "version": "0.9.16"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "0.9.16"
         }
       ],
@@ -1732,22 +1732,22 @@
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "dependencies",
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "dependencies",
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "dependencies",
           "version": "4.0.0-rc.112"
         }
@@ -1758,19 +1758,19 @@
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "4.0.0-rc.112"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "4.0.0-rc.112"
         }
       ],
@@ -1807,19 +1807,19 @@
           "version": "0.28.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "0.28.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "0.28.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "0.28.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "0.28.2"
         }
       ],
@@ -2221,7 +2221,7 @@
           "version": "19.2.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "dependencies",
           "version": "19.2.8"
         }
@@ -2232,7 +2232,7 @@
           "version": "19.2.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "19.2.8"
         }
       ],
@@ -2276,7 +2276,7 @@
           "version": "19.2.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "dependencies",
           "version": "19.2.8"
         }
@@ -2287,7 +2287,7 @@
           "version": "19.2.8"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "19.2.8"
         }
       ],
@@ -2326,7 +2326,7 @@
       "name": "rxjs",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "dependencies",
           "version": "7.8.2"
         }
@@ -2337,7 +2337,7 @@
           "version": "7.8.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "7.8.2"
         }
       ],
@@ -2425,7 +2425,7 @@
           "version": ">=5.46.4 <6"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "dependencies",
           "version": "5.57.0"
         }
@@ -2436,7 +2436,7 @@
           "version": "5.57.0"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "5.57.0"
         }
       ],
@@ -2483,7 +2483,7 @@
           "version": "4.7.6"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "devDependencies",
           "version": "4.7.6"
         }
@@ -2494,7 +2494,7 @@
           "version": "4.7.6"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "4.7.6"
         }
       ],
@@ -2706,22 +2706,22 @@
           "version": "6.0.3"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/package.json",
           "kind": "devDependencies",
           "version": "6.0.3"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "devDependencies",
           "version": "6.0.3"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "devDependencies",
           "version": "6.0.3"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "devDependencies",
           "version": "6.0.3"
         }
@@ -2744,19 +2744,19 @@
           "version": "7.0.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "6.0.3"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "6.0.3"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "6.0.3"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "6.0.3"
         }
       ],
@@ -2877,17 +2877,17 @@
           "version": "^8.0.0"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/package.json",
           "kind": "devDependencies",
           "version": "8.2.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/package.json",
           "kind": "devDependencies",
           "version": "8.2.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "devDependencies",
           "version": "8.2.2"
         }
@@ -2898,19 +2898,19 @@
           "version": "8.2.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/angular/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/angular/Frontend/bun.lock",
           "version": "8.1.5"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/react/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/react/Frontend/bun.lock",
           "version": "8.2.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/svelte/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/svelte/Frontend/bun.lock",
           "version": "8.2.2"
         },
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "8.2.2"
         }
       ],
@@ -3052,14 +3052,14 @@
       "name": "vue",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "dependencies",
           "version": "3.5.42"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "3.5.42"
         }
       ],
@@ -3092,14 +3092,14 @@
       "name": "vue-tsc",
       "declarations": [
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/package.json",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/package.json",
           "kind": "devDependencies",
           "version": "3.3.11"
         }
       ],
       "resolved": [
         {
-          "path": "tools/RunicToolkit.Templates/content/vue/Frontend/bun.lock",
+          "path": "tools/Runic.Application.Templates/content/vue/Frontend/bun.lock",
           "version": "3.3.11"
         }
       ],

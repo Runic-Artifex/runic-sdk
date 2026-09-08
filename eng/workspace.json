@@ -86,11 +86,11 @@
     },
     {
       "name": "Runic.Application.Templates",
-      "project": "tools/RunicToolkit.Templates/RunicToolkit.Templates.csproj"
+      "project": "tools/Runic.Application.Templates/Runic.Application.Templates.csproj"
     },
     {
       "name": "dotnet-runic",
-      "project": "tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj"
+      "project": "tools/dotnet-runic/Runic.Application.Tool.csproj"
     },
     {
       "name": "Runic.Translations",
@@ -250,7 +250,7 @@
         "packages/dotnet/Runic.Application.Generators",
         "packages/dotnet/Runic.Application.Hosting",
         "packages/dotnet/Runic.Application.Testing",
-        "tools/RunicToolkit.Templates",
+        "tools/Runic.Application.Templates",
         "tests/fixtures/application/BridgeModule",
         "tests/fixtures/application/CounterMembers",
         "tests/native/Runic.Application.AotSmoke",
@@ -270,7 +270,7 @@
         "tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests",
         "tests/dotnet/RunicToolkit.PackageCanary",
         "tools/Runic.Application.Bridge.Inspector",
-        "tools/dotnet-runic-toolkit",
+        "tools/dotnet-runic",
         "eng/build/application.props",
         "eng/build/application.targets",
         "packages/web/application-bridge",
@@ -285,9 +285,10 @@
         "tests/web/angular-package-consumer",
         "tests/benchmarks/application",
         "tests/fixtures/application/experiments",
-        "eng/compatibility-set-value.mjs",
+        "eng/toolchain.mjs",
         "packages/dotnet/Runic.Application.CsWebUi",
-        "tests/dotnet/Runic.Application.CsWebUi.Tests"
+        "tests/dotnet/Runic.Application.CsWebUi.Tests",
+        "tests/engineering/current"
       ]
     },
     "vite": {
@@ -332,8 +333,6 @@
         "platform"
       ],
       "paths": [
-        "tests/fixtures/legacy-examples",
-        "tests/engineering/acceptance",
         "examples/counter",
         "examples/customer-migration",
         "examples/README.md",

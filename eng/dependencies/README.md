@@ -7,6 +7,9 @@ metadata. It is read-only, bounds requests, and exits unsuccessfully if a regist
 query fails. GitHub queries use the existing `gh` authentication. Review `latest`,
 `rc`, `beta` and `next` separately; the command never selects or installs a candidate.
 
+`eng/toolchain.mjs` reads the actual maintained SDK, Node, Bun, npm and pnpm pins;
+dependency audits and template lock generation use that reader, not a release receipt.
+
 The dated JSON file records the initial 2026-09-08 audit, including declared/resolved
 versions and upstream requirements. Historical imports, benchmark receipts and
 archived source trees are excluded from updates. Native SDK headers, Nix inputs,

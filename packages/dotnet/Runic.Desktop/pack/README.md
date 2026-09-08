@@ -1,5 +1,3 @@
-> This package is now developed in the [Runic SDK workspace](../../../../README.md). Use its root build and verification commands.
-
 # Runic Desktop
 
 Runic Desktop is a managed .NET runtime for web-powered desktop applications.

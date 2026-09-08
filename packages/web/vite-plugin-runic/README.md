@@ -1,5 +1,3 @@
-> This package is now developed in the [Runic SDK workspace](../../../README.md). Use its root build and verification commands.
-
 ![Runic Artifex banner](https://raw.githubusercontent.com/Runic-Artifex/runic-vite/main/.github/assets/brand/banner.png)
 
 # Runic Vite
@@ -172,7 +170,7 @@ package install, `runicToolkit()` import and call with `runic()`, and every
 plugin deliberately rejects the former virtual module with
 `RUNICP001` and this exact remediation.
 
-For a working SvelteKit integration, see the [reference application](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/04-SvelteKitSetupApplication).
+For a working SvelteKit integration, see the [reference application](https://github.com/Runic-Artifex/runic-sdk/tree/main/apps/translations-editor/Frontend).
 
 ## Troubleshooting
 
@@ -190,8 +188,8 @@ For a working SvelteKit integration, see the [reference application](https://git
 
 - [Runic Application documentation](https://docs.runic-artifex.eu/products/runic-application)
 - [npm package](https://www.npmjs.com/package/@runic-artifex/vite-plugin-runic)
-- [Issues and support](https://github.com/Runic-Artifex/runic-vite/issues)
-- [MIT License](https://github.com/Runic-Artifex/runic-vite/blob/main/LICENSE)
+- [Issues and support](https://github.com/Runic-Artifex/runic-sdk/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE)
 
 ### Bun runtime
 

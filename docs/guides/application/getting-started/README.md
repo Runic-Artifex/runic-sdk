@@ -22,7 +22,7 @@ NuGet packages and the framework-neutral npm runtime:
 - `@runic-artifex/sveltekit` for native-hosted SvelteKit projects
 - `@runic-artifex/vite-plugin-runic` for Vite 8 development and DevTools
 
-Use [`runic-toolkit-examples`](https://github.com/Runic-Artifex/runic-toolkit-examples)
+Use [`examples`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples)
 for runnable, package-only applications. React and Vue exercise the controller
 directly. Angular uses the official controller-owned DI and signal projection;
 Svelte uses the official Svelte-owned lifecycle projection

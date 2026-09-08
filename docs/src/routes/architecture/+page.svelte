@@ -66,10 +66,9 @@
       <p>
         The runic-sdk monorepo supplies SDK libraries, tools and templates
         through NuGet and npm. Standalone Translations Editor distributions are
-        outside this preview. Historical product and Editor archive records
-        retain their original meaning and do not certify the current candidate.
-        CS-WebUI remains an independent upstream compatibility product; the SDK
-        includes the Runic.Application.CsWebUi integration.
+        outside this preview. All package families share the SDK release
+        workflow. CS-WebUI remains an independent upstream compatibility
+        product; the SDK includes the Runic.Application.CsWebUi integration.
       </p>
     </ContentCard>
     <ContentCard

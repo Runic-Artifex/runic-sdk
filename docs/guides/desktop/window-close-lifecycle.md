@@ -50,12 +50,12 @@ finish or cancel it first. Missing or disconnected presentation state denies clo
 
 ## Platform and custom-host support
 
-| Presentation | Interception | Forced destruction |
-| --- | --- | --- |
-| Windows WebView2 | `WM_CLOSE` (also used by the existing WebView2 close notification) | `DestroyWindow` on the owning UI thread |
-| Linux GTK 3 / WebKitGTK | `delete-event` returns true while the decision runs | `gtk_widget_destroy` on the GTK dispatcher |
-| macOS WKWebView | `windowShouldClose:` returns false while the decision runs | `NSWindow.close` on the main thread |
-| Installed browser | No native close confirmation capability | Existing browser lifecycle |
+| Presentation            | Interception                                                       | Forced destruction                         |
+| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
+| Windows WebView2        | `WM_CLOSE` (also used by the existing WebView2 close notification) | `DestroyWindow` on the owning UI thread    |
+| Linux GTK 3 / WebKitGTK | `delete-event` returns true while the decision runs                | `gtk_widget_destroy` on the GTK dispatcher |
+| macOS WKWebView         | `windowShouldClose:` returns false while the decision runs         | `NSWindow.close` on the main thread        |
+| Installed browser       | No native close confirmation capability                            | Existing browser lifecycle                 |
 
 The native hooks follow the platform contracts for
 [Windows close requests](https://learn.microsoft.com/en-us/windows/win32/learnwin32/closing-the-window),

@@ -95,8 +95,8 @@
     <Project Path="tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
     <Project Path="tools/Runic.Translations.Compiler/Runic.Translations.Compiler.csproj" />
     <Project Path="tools/Runic.Translations.Templates/Runic.Translations.Templates.csproj" />
-    <Project Path="tools/RunicToolkit.Templates/RunicToolkit.Templates.csproj" />
-    <Project Path="tools/dotnet-runic-toolkit/Runic.Application.Tool.csproj" />
+    <Project Path="tools/Runic.Application.Templates/Runic.Application.Templates.csproj" />
+    <Project Path="tools/dotnet-runic/Runic.Application.Tool.csproj" />
     <Project Path="tools/dotnet-runic-translations/dotnet-runic-translations.csproj" />
   </Folder>
 </Solution>

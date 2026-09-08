@@ -51,7 +51,7 @@ const result = await (
 for (const template of ["angular", "react", "svelte", "vue"]) {
   const directory = resolve(
     root,
-    "tools/RunicToolkit.Templates/content",
+    "tools/Runic.Application.Templates/content",
     template,
   );
   for (const [file, expected] of [
@@ -67,7 +67,7 @@ for (const template of ["angular", "react", "svelte", "vue"]) {
     if (
       (await readFile(resolve(directory, file), "utf8")) !==
       (await readFile(
-        resolve(root, "tools/RunicToolkit.Templates/content/react", file),
+        resolve(root, "tools/Runic.Application.Templates/content/react", file),
         "utf8",
       ))
     )

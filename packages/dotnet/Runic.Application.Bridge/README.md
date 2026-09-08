@@ -21,4 +21,4 @@ For custom hosts, use `ApplicationBridgeSessionFactory.Create(services)` after
 configuring the generated contract services. Sessions own revisioning, duplicate
 command handling, cancellation, bounded admission and teardown.
 
-See the [Application Bridge guide](https://github.com/Runic-Artifex/runic-toolkit/blob/main/docs/guides/application-bridge.md).
+See the [Application Bridge guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/guides/application-bridge.md).

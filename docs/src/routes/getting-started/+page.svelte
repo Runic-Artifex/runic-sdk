@@ -3,19 +3,13 @@
   import ContentCard from '$lib/components/ContentCard.svelte';
   import * as Table from '$lib/components/ui/table';
   import {
-    availabilityLabel,
     currentCandidate,
-    previewGuideUrl,
     catalogRows,
     choosePathRows,
-    distributionRows,
     packageInstallCommand,
     releaseSummary,
   } from '$lib/release-docs';
 
-  const editorDistribution = distributionRows.find(
-    (distribution) => distribution.productId === 'editor',
-  );
   const templatePackage = catalogRows.find(
     (entry) => entry.name === 'Runic.Application.Templates',
   );
@@ -66,7 +60,9 @@ dotnet run`
       full
     >
       <p>{releaseSummary}</p>
-      <a class="text-link" href={previewGuideUrl}
+      <a
+        class="text-link"
+        href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md"
         >Read the preview installation and migration guide</a
       >
     </ContentCard>
@@ -177,19 +173,18 @@ dotnet run`
     </div>
     <ContentCard eyebrow="Release status" title="Use recorded release versions">
       <p>
-        {releaseSummary} Use the package catalog to follow explicit migration targets;
-        do not infer an install version from a repository branch or package name.
+        {releaseSummary} Use the package catalog to choose SDK components; do not
+        infer an install version from a repository branch or package name.
       </p>
     </ContentCard>
     <ContentCard
       eyebrow="Application preview"
-      title={`Translations Editor: ${availabilityLabel(editorDistribution?.version)}`}
+      title="Translations Editor: source application"
     >
       <p>
         Standalone Runic Translations Editor distributions are outside this SDK
-        preview. Its historical archive status is recorded independently from
-        the product compatibility lane, so this site only offers a download when
-        its own distribution version is published.
+        preview. Build the editor from source; no standalone download is
+        included.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Composition" title="Connect only when needed">

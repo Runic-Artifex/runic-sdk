@@ -12,7 +12,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: publish-0.2.0-preview.1
+  group: publish-preview
   cancel-in-progress: false
 jobs:
   publish:
@@ -48,9 +48,9 @@ jobs:
           EXPECTED_RUN: ${{ inputs.ci_run_id }}
         run: |
           bun -e 'import c from "./artifacts/preview/candidate.json"; if(c.ciRunId!==process.env.EXPECTED_RUN) throw Error("CI run mismatch")'
-          bun eng/preview/cli.mjs verify artifacts/packages artifacts/preview/candidate.json
-          bun eng/preview/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json
-          bun eng/preview/cli.mjs final-ci artifacts/preview/candidate.json
+          bun eng/release/cli.mjs verify artifacts/packages artifacts/preview/candidate.json
+          bun eng/release/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json
+          bun eng/release/cli.mjs final-ci artifacts/preview/candidate.json
       - uses: NuGet/login@v1
         id: nuget
         with:
@@ -61,6 +61,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
-        run: bun eng/preview/cli.mjs publish artifacts/packages artifacts/preview/candidate.json artifacts/preview/receipts.json
+        run: bun eng/release/cli.mjs publish artifacts/packages artifacts/preview/candidate.json artifacts/preview/receipts.json
       - name: Require registry availability and matching contents
-        run: bun eng/preview/cli.mjs registry artifacts/preview/candidate.json
+        run: bun eng/release/cli.mjs registry artifacts/preview/candidate.json

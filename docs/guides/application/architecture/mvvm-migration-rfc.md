@@ -68,15 +68,15 @@ migration CLI or large code-fix API.
 
 ## DX requirements and observed gaps
 
-| Area | Reference evidence | Next SDK work |
-| --- | --- | --- |
-| Contract authoring | Generated C#/TypeScript module contract; no handwritten wire types | Reduce repetitive state publication without implicit object remoting |
-| Forms | Local draft, dirty checks, C# field issues, bounded import, stale-validation suppression | Framework-neutral form primitives with idiomatic framework bindings |
-| Operations | Owned cancellable save, progress, explicit terminal snapshot | Reusable pending/error/progress helpers and documented commit/cancel semantics |
-| Ordering | Projection generations ignore late receipts; edit sequences reject stale validation | Decide whether controller metadata or shared helpers should own these mechanics |
-| Reconnect | Confirmed data and operation outcome recover; draft preserved in memory | Consistent reconnect affordances and optional durable draft recovery |
-| Debugging | Named contracts and testable headless feature | Command/state inspector, traces and source navigation |
-| Platform | WPF native dialogs versus WebView file input/HTML dialog | Close confirmation implemented; owned dialogs, dispatching and broader capability reporting remain |
+| Area               | Reference evidence                                                                       | Next SDK work                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Contract authoring | Generated C#/TypeScript module contract; no handwritten wire types                       | Reduce repetitive state publication without implicit object remoting                               |
+| Forms              | Local draft, dirty checks, C# field issues, bounded import, stale-validation suppression | Framework-neutral form primitives with idiomatic framework bindings                                |
+| Operations         | Owned cancellable save, progress, explicit terminal snapshot                             | Reusable pending/error/progress helpers and documented commit/cancel semantics                     |
+| Ordering           | Projection generations ignore late receipts; edit sequences reject stale validation      | Decide whether controller metadata or shared helpers should own these mechanics                    |
+| Reconnect          | Confirmed data and operation outcome recover; draft preserved in memory                  | Consistent reconnect affordances and optional durable draft recovery                               |
+| Debugging          | Named contracts and testable headless feature                                            | Command/state inspector, traces and source navigation                                              |
+| Platform           | WPF native dialogs versus WebView file input/HTML dialog                                 | Close confirmation implemented; owned dialogs, dispatching and broader capability reporting remain |
 
 Do not promote the sample's helpers to public packages until another feature tests
 those abstractions. The reference is evidence for API design, not a claim that the
@@ -106,11 +106,9 @@ input latency and recovery behavior. Introduce reusable forms/operation APIs onl
 where both implementations demonstrate the same need. Verify native close and file
 flows on the supported OS runners before describing them as migration guarantees.
 
-## Sequenced follow-up
+## Follow-up
 
-After the close-interception follow-up, restructure the monorepo before broadening
-OS APIs. The [repository reorganisation plan](../../../../eng/repository-reorganisation.md)
-replaces imported repository boundaries with package, tool, application and test
-ownership. Preserve package identities and Git ancestry; verify standalone consumers
-and generated artifacts after moves. File dialogs and reusable migration DX remain
-subsequent feature work, informed by the second reference feature.
+Use the customer and document references to evaluate reusable forms and operation
+APIs. Preserve domain behavior and verify real bridge flows, cancellation and dirty
+close protection. See [v1 priorities](v1-follow-up-priorities.md) for remaining native
+and accessibility validation.

@@ -16,6 +16,6 @@ framework adapters, and Toolkit-specific developer tools.
 - [Architecture decisions](adr/README.md)
 
 Runnable applications live in
-[`runic-toolkit-examples`](https://github.com/Runic-Artifex/runic-toolkit-examples).
+[`examples`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples).
 Flow, Runic Translations, Command Line, and Assets each evolve in their own
 repository and own any Toolkit integration package they publish.

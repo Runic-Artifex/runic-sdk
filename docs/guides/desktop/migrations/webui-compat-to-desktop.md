@@ -4,17 +4,17 @@ M6 removes the transitional public `WebUi*` identity. Runic Desktop now models
 the actual ownership graph instead of making one “window” own content, a
 listener, sessions, and a platform presentation at once.
 
-| Source-preview API | M6 API | Reason |
-| --- | --- | --- |
-| `WebUiApplication` process globals | immutable `DesktopHostOptions` and `await using DesktopHost` | configuration and shutdown belong to one host |
-| `WebUiWindow` server/content state | `DesktopSurface` | content, capabilities, requests, and sessions share one isolated namespace |
-| `WebUiWindow` browser/WebView state | `DesktopWindow` | closing a presentation no longer implicitly closes its surface |
-| `BindAsync` | `RegisterCapability` | capabilities are admitted explicitly and handlers are async-first |
-| `WebUiEvent` | `PresentationInvocation` and `PresentationSession` | invocation and session ownership are distinct |
-| `WebUiResult` | `PresentationResult` | removes compatibility identity while retaining the selected wire profile |
-| `WebUiContent` / `WebUiFileHandler` | `ContentResponse` / `ContentHandler` | handlers receive request-scoped services and cancellation |
-| `SetPort`, `SetPublic`, global client flags | `DesktopHostOptions` / `DesktopSecurityPolicy` | live security boundaries cannot be mutated silently |
-| `IWebUiEmbeddedHost*` | `IDesktopWindowHost*` | platform adapters describe presentation hosting, not WebUI compatibility |
+| Source-preview API                          | M6 API                                                       | Reason                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `WebUiApplication` process globals          | immutable `DesktopHostOptions` and `await using DesktopHost` | configuration and shutdown belong to one host                              |
+| `WebUiWindow` server/content state          | `DesktopSurface`                                             | content, capabilities, requests, and sessions share one isolated namespace |
+| `WebUiWindow` browser/WebView state         | `DesktopWindow`                                              | closing a presentation no longer implicitly closes its surface             |
+| `BindAsync`                                 | `RegisterCapability`                                         | capabilities are admitted explicitly and handlers are async-first          |
+| `WebUiEvent`                                | `PresentationInvocation` and `PresentationSession`           | invocation and session ownership are distinct                              |
+| `WebUiResult`                               | `PresentationResult`                                         | removes compatibility identity while retaining the selected wire profile   |
+| `WebUiContent` / `WebUiFileHandler`         | `ContentResponse` / `ContentHandler`                         | handlers receive request-scoped services and cancellation                  |
+| `SetPort`, `SetPublic`, global client flags | `DesktopHostOptions` / `DesktopSecurityPolicy`               | live security boundaries cannot be mutated silently                        |
+| `IWebUiEmbeddedHost*`                       | `IDesktopWindowHost*`                                        | platform adapters describe presentation hosting, not WebUI compatibility   |
 
 The common server-only migration is:
 

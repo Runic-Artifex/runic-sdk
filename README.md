@@ -49,10 +49,10 @@ They never fall back to a published Runic package when a sibling project is miss
 The root Bun lockfile and NuGet configuration own active workspace restores.
 Root `Directory.Packages.props` centralizes shared .NET dependencies; a documented
 translation compiler pin remains local. Product-specific analyzer/build policies
-are explicitly imported from `eng/build`. Template lockfiles and historical fixtures are independent
+are explicitly imported from `eng/build`. Template lockfiles and isolated fixtures are independent
 consumer evidence, not additional development workspaces.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership and verification.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership and verification, for development guidance.
 
 ## Migrating existing applications
 
@@ -95,10 +95,10 @@ v1 for real macOS, unavailable Wayland, broader accessibility and independent pi
 Publication waits for required demo-preview gates, including the exact frozen
 candidate's full CI on all three OS targets and current acceptance receipts.
 
-The root
-CI produces candidates. Current preview publication uses a separate gated workflow.
+Current release tooling in `eng/release` validates exact candidate artifacts and
+acceptance receipts. The root CI produces candidates; the separate gated publication
+workflow publishes only after the required checks pass.
 
 See [local CI tooling](eng/ci/README.md) for Docker/Podman setup, job selection,
 source snapshots, artifacts and reruns. `bun run test` and `bun run verify` are
 aliases for `bun run ci`; the workflow is the single verification authority.
-

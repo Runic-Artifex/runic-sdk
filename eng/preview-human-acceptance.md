@@ -49,8 +49,8 @@ Each receipt uses `gate`, `outcome`,
 results use `outcome: "pass"`. Attach detailed human records and fixture binary
 hashes through `evidence`; the package hash map does not replace fixture identity.
 
-[preview/policy.mjs](preview/policy.mjs) defines the candidate-bound `demo-preview`
-and `full-v1` profiles; [preview/gates.mjs](preview/gates.mjs) validates them.
+[release/policy.mjs](release/policy.mjs) defines the candidate-bound `demo-preview`
+and `full-v1` profiles; [release/gates.mjs](release/gates.mjs) validates them.
 The demo human gate IDs are `interactive-native-linux-local` and
 `interactive-native-windows-vm`. The policy explicitly records deferred full-profile
 gates with `outcome: "deferred"` and the user's scope-change reason. Do not put pass
@@ -166,4 +166,4 @@ If publication partially succeeds, resume only the same immutable set. Compare
 registry bytes before skipping existing versions. Changed bytes require a new preview
 number. If any required demo-preview gate is incomplete, retain the candidate and a blocker record naming
 the owner, missing scenario/access/evidence and next action. Historical receipts
-under `eng/release` never substitute for current candidate receipts.
+from another candidate never substitute for current candidate receipts.

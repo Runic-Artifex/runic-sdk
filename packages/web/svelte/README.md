@@ -237,6 +237,6 @@ must be cancelled.
 
 - [Application Bridge guide](https://docs.runic-artifex.eu/application-bridge)
 - [Package catalog and release status](https://docs.runic-artifex.eu/packages)
-- [SvelteKit reference application](https://github.com/Runic-Artifex/runic-toolkit-examples/tree/main/samples/04-SvelteKitSetupApplication)
-- [Issues and support](https://github.com/Runic-Artifex/runic-svelte/issues)
-- [MIT License](https://github.com/Runic-Artifex/runic-svelte/blob/main/LICENSE)
+- [SvelteKit reference application](https://github.com/Runic-Artifex/runic-sdk/tree/main/apps/translations-editor/Frontend)
+- [Issues and support](https://github.com/Runic-Artifex/runic-sdk/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE)

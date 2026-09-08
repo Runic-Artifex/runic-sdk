@@ -117,6 +117,6 @@ choose a host adapter for that responsibility.
 ## Documentation and support
 
 - [Runic Assets documentation](https://docs.runic-artifex.eu/products/runic-assets)
-- [Vite archive consumer example](https://github.com/Runic-Artifex/runic-assets/tree/main/tests/Runic.Assets.PackageConsumer)
-- [Issues and support](https://github.com/Runic-Artifex/runic-assets/issues)
-- [MIT License](https://github.com/Runic-Artifex/runic-assets/blob/main/LICENSE)
+- [Vite archive consumer example](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/assets/Runic.Assets.PackageConsumer)
+- [Issues and support](https://github.com/Runic-Artifex/runic-sdk/issues)
+- [MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE)

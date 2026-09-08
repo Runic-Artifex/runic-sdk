@@ -1,26 +1,10 @@
 # Priorities after the member-based bridge
 
-## 1. Reunify the SDK development workspace — implemented
+## 1. Keep SDK changes verifiable
 
-Return the core SDK to a monorepo: Application/Bridge, Desktop, Assets,
-Translations, CommandLine, Vite and framework adapters. Keep their NuGet/npm
-identities and public dependency boundaries. Include the editor and examples as
-integration applications, while retaining package-consumer tests in disposable
-directories with no source references.
-
-This bridge change already spans toolkit, Vite and the editor. Separate checkouts
-require matching unpublished packages, copied development outputs and coordinated
-compatibility pins. Atomic changes across the compiler, runtime, plugin and
-consumer would remove that work. A monorepo should simplify development without
-hiding packaging errors.
-
-Use one pinned .NET/Node/Bun toolchain, one bootstrap command, one release inventory
-and CI selected from the dependency graph. Keep fast compiler/conformance tests
-before browser and native jobs. Preserve histories when importing repositories;
-replace sibling `Exists(...)` fallbacks with explicit in-repository references.
-Retain an independent release-consumer lane that installs only built packages.
-Start by importing the core repositories without renaming APIs or restructuring
-all their code in the same change. Consolidate tooling after that baseline passes.
+Use the shared toolchain, bootstrap command and package inventory. Verify cross-package
+changes through both source tests and isolated package consumers. Keep fast contract
+tests before browser and native jobs; run the actual workflow for integrated checks.
 
 ## 2. Make a complete desktop application easy to ship
 

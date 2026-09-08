@@ -12,13 +12,12 @@ bun run dev:docs
 bun run build
 ```
 
-The site keeps its package catalog and release status generated from the shared,
-pinned authority described in `scripts/release-authority.mjs`. `bun run test` checks
-that generated release data is current and verifies the rendered routes. Publication
-status comes from release evidence, never from a successful local build. The original
-release receipts under `eng/release` retain their historical meaning.
+The package catalog is generated from `eng/workspace.json`; toolchain versions come
+from the shared `eng/toolchain.mjs` reader. Run `bun run generate:release-data` after
+changing those inputs. `bun run test` checks generated data and rendered routes.
+Candidate versions are explicitly unpublished until verified publication evidence
+is introduced; a successful local build never establishes availability.
 
-The build produces static files in `docs/build`. Root CI owns verification; former
-standalone deployment workflows are preserved in `eng/archive/docs`. Deploying the
-site is a separate release operation. The independent `runic-site` repository owns
-the project landing page at [runic-artifex.eu](https://runic-artifex.eu).
+Start with the [preview guide](guides/releases/0.2.0-preview.1.md) and
+[guide index](guides/README.md). The root SDK workflow verifies this site. Website
+deployment is a separate operation.

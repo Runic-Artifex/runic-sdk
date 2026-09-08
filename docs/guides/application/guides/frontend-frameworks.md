@@ -60,11 +60,11 @@ examples.
 The current package-consumer fixtures prove one generated local contract, not
 parallel framework host models:
 
-| Boundary | Owner | Contract or responsibility | Independent receipt |
-| --- | --- | --- | --- |
-| C# host | Runic Application | `runic.artifex.setup` / `1` / generated fingerprint from `bridge.ir.json`; session, revision, lifecycle, and local FrameChannel/WebSocket admission | `eng/current-host-transport/` |
-| Svelte projection | `@runic-artifex/svelte` | Supplied controller projection, component lifecycle, and presentation state | `eng/current-svelte-controller/` |
-| Angular projection | `@runic-artifex/angular` | Supplied controller DI, signals, and presentation state | `eng/current-angular-controller/` |
+| Boundary           | Owner                    | Contract or responsibility                                                                                                                          | Independent receipt               |
+| ------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| C# host            | Runic Application        | `runic.artifex.setup` / `1` / generated fingerprint from `bridge.ir.json`; session, revision, lifecycle, and local FrameChannel/WebSocket admission | `eng/current-host-transport/`     |
+| Svelte projection  | `@runic-artifex/svelte`  | Supplied controller projection, component lifecycle, and presentation state                                                                         | `eng/current-svelte-controller/`  |
+| Angular projection | `@runic-artifex/angular` | Supplied controller DI, signals, and presentation state                                                                                             | `eng/current-angular-controller/` |
 
 All three receipts verify exact local candidates and bind the same generated
 manifest identity and fingerprint; `eng/current-host-boundary/` independently

@@ -13,7 +13,3 @@
 - [0017 — v0.2 product identity and package topology](0017-v0.2-product-identity-and-package-topology.md)
 - [0018 — Operational observability boundary](0018-operational-observability-boundary.md)
 - [0019 — Runic Bridge IR contract toolchain](0019-runic-bridge-ir-contract-toolchain.md)
-
-The standalone repository’s filtered Git history retains older implementation
-context. Monorepo coordination and release-wave documents are not active Toolkit
-decisions.

@@ -12,15 +12,15 @@ building the application with `HostedDeploymentConfiguration.Load`, then build
 the existing C# admission policy from `CreateAdmissionPolicy`. The following
 values are all required:
 
-| Key | Owner | Required value |
-| --- | --- | --- |
-| `PublicOrigin` | trusted proxy / C# | one HTTPS scheme-and-authority origin |
-| `TrustedProxyAddresses` | C# | comma-separated explicit proxy IP addresses |
-| `ServiceUpstream` | C# | private HTTP scheme-and-authority for the C# process |
-| `FrontendUpstream` | SvelteKit | distinct private HTTP scheme-and-authority for SSR |
-| `StaticAssetsPath` | SvelteKit | relative path to the ejected SvelteKit build output |
-| `OidcAuthority`, `OidcClientId` | C# | HTTPS authority and client identifier |
-| `OidcClientSecret` | C# secret provider | injected value, never committed in an artifact |
+| Key                             | Owner              | Required value                                       |
+| ------------------------------- | ------------------ | ---------------------------------------------------- |
+| `PublicOrigin`                  | trusted proxy / C# | one HTTPS scheme-and-authority origin                |
+| `TrustedProxyAddresses`         | C#                 | comma-separated explicit proxy IP addresses          |
+| `ServiceUpstream`               | C#                 | private HTTP scheme-and-authority for the C# process |
+| `FrontendUpstream`              | SvelteKit          | distinct private HTTP scheme-and-authority for SSR   |
+| `StaticAssetsPath`              | SvelteKit          | relative path to the ejected SvelteKit build output  |
+| `OidcAuthority`, `OidcClientId` | C#                 | HTTPS authority and client identifier                |
+| `OidcClientSecret`              | C# secret provider | injected value, never committed in an artifact       |
 
 The configuration loader rejects missing values, an HTTP public origin, a
 wildcard or duplicate proxy address, equal service/frontend upstreams, an
