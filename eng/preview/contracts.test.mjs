@@ -1,7 +1,11 @@
 import { test, expect } from 'bun:test';
 import { authority, sha256, validateCandidate, dependencyOrder, VERSION, REPOSITORY } from './artifacts.mjs';
 import { requiredGates, verifyGates } from './gates.mjs';
-import { verifyRun, expectedCIJobs } from './ci.mjs';
+import { verifyRun, expectedCIJobs, repositoryEndpoint } from './ci.mjs';
+test('GitHub repository lookup uses its canonical route without a trailing slash',()=>{
+ expect(repositoryEndpoint('')).toBe(`repos/${REPOSITORY}`);
+ expect(repositoryEndpoint('actions/runs/123/jobs?per_page=100&page=2')).toBe(`repos/${REPOSITORY}/actions/runs/123/jobs?per_page=100&page=2`);
+});
 function candidate() {
  const body={schema:'runic.preview/1',version:VERSION,repository:REPOSITORY,source:'a'.repeat(40),ciRunId:'123',packages:[{name:'A',file:'nuget/A.nupkg',sha256:'b'.repeat(64),dependencies:{}}]};
  return {...body,digest:sha256(JSON.stringify(body))};

@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { YAML } from 'bun';
 import { webTests } from '../ci/plan.mjs';
 import { REPOSITORY, validateCandidate } from './artifacts.mjs';
-const api = path => JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8'}));
+export const repositoryEndpoint = path => `repos/${REPOSITORY}${path ? `/${path}` : ''}`;
+const api = path => JSON.parse(execFileSync('gh',['api',repositoryEndpoint(path)],{encoding:'utf8'}));
 export function expectedCIJobs(workflow, webMatrix) {
   const names=[];
   for(const [id,job] of Object.entries(workflow.jobs)) {
