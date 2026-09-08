@@ -3,11 +3,11 @@
   "id": "runic-1.0-preview.1",
   "releaseTrainVersion": "1.0.0-preview.1",
   "toolchain": {
-    "dotnetSdk": "10.0.302",
-    "node": "24.18.0",
-    "bun": "1.4.0",
-    "npm": "11.16.0",
-    "pnpm": "11.25.0"
+    "dotnetSdk": "10.0.400",
+    "node": "24.20.0",
+    "bun": "1.4.2",
+    "npm": "12.0.2",
+    "pnpm": "12.3.4"
   },
   "sources": [
     {
