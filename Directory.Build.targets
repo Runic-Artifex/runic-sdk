@@ -1,3 +1,4 @@
 <Project>
+  <Import Project="eng/build/package-dependencies.targets" />
   <Import Project="packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets" />
 </Project>

@@ -1,0 +1,16 @@
+<Project>
+  <Import Project="shipping-projects.props" />
+  <!-- NuGet captures _GetProjectVersion's return before its AfterTargets run.
+       Adjust the collected parent items instead, before PackTask reads them. -->
+  <Target Name="RunicPinShippingProjectDependencies" AfterTargets="_GetProjectReferenceVersions">
+    <PropertyGroup>
+      <_RunicShippingProjectPaths>;@(RunicShippingProject->'%(FullPath)');</_RunicShippingProjectPaths>
+    </PropertyGroup>
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)"
+          Condition="$([System.String]::Copy('$(_RunicShippingProjectPaths)').Contains(';%(_ProjectReferencesWithVersions.Identity);'))">
+        <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
+</Project>

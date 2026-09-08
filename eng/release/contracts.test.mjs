@@ -66,6 +66,42 @@ test('real archives reject stale extras, source, metadata and internal dependenc
 });
 
 import { acceptancePolicy } from './policy.mjs';
+test('real package dependencies require registry-specific exact preview ranges',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'runic-exact-dependency-test-')), source='a'.repeat(40);
+ const inventory=[
+  {registry:'nuget',name:'Runic.Core'},{registry:'nuget',name:'Runic.Consumer'},
+  {registry:'npm',name:'@runic-artifex/core'},{registry:'npm',name:'@runic-artifex/consumer'}
+ ];
+ mkdirSync(join(dir,'npm'));mkdirSync(join(dir,'nuget'));
+ const script=`import io,json,tarfile,zipfile,sys,xml.etree.ElementTree as E
+d,v,s,r,nuget_range,npm_range=sys.argv[1:]
+for name in ['Runic.Core','Runic.Consumer']:
+ root=E.Element('package');m=E.SubElement(root,'metadata')
+ E.SubElement(m,'id').text=name;E.SubElement(m,'version').text=v
+ E.SubElement(m,'repository',url='https://github.com/'+r,commit=s)
+ if name=='Runic.Consumer':E.SubElement(E.SubElement(m,'dependencies'),'dependency',id='Runic.Core',version=nuget_range)
+ with zipfile.ZipFile(d+'/nuget/'+name+'.nupkg','w') as z:z.writestr(name+'.nuspec',E.tostring(root))
+for name in ['core','consumer']:
+ p=dict(name='@runic-artifex/'+name,version=v,repository='https://github.com/'+r,gitHead=s)
+ if name=='consumer':p['dependencies']={'@runic-artifex/core':npm_range}
+ b=json.dumps(p).encode()
+ with tarfile.open(d+'/npm/'+name+'.tgz','w:gz') as t:
+  i=tarfile.TarInfo('package/package.json');i.size=len(b);t.addfile(i,io.BytesIO(b))
+`;
+ const pack=(nugetRange,npmRange)=>execFileSync('python3',['-c',script,dir,VERSION,source,REPOSITORY,nugetRange,npmRange]);
+ try {
+  pack(`[${VERSION}]`,VERSION);
+  expect(scan(dir,inventory,source)).toHaveLength(4);
+  for(const range of [VERSION,`[${VERSION},)`,`[${VERSION},0.3.0)`,`[0.1.0-preview.1]`]) {
+   pack(range,VERSION);
+   expect(()=>scan(dir,inventory,source)).toThrow('Internal nuget dependency must pin candidate');
+  }
+  for(const range of [`[${VERSION}]`,`^${VERSION}`,`~${VERSION}`,`>=${VERSION}`,'*','0.1.0-preview.1']) {
+   pack(`[${VERSION}]`,range);
+   expect(()=>scan(dir,inventory,source)).toThrow('Internal npm dependency must pin candidate');
+  }
+ } finally {rmSync(dir,{recursive:true,force:true});}
+});
 function demoEvidence() {
  const original=candidate(), {digest,...body}=original;
  body.acceptancePolicy=acceptancePolicy('demo-preview');

@@ -99,6 +99,7 @@ function build() {
   run("bun", ["run", "--bun", "build"], resolve(root, "docs"));
 }
 function pack(built = false) {
+  run("bun", ["eng/generate-shipping-projects.mjs", "--check"]);
   if (!built) { core(); web("build"); }
   const nuget = resolve(root, "artifacts/packages/nuget");
   const npm = resolve(root, "artifacts/packages/npm");

@@ -48,7 +48,10 @@ export function scan(directory, inventory, source) {
       assert.equal(metadata.source, source, `Missing/stale source revision ${metadata.name}`);
       for (const [name, range] of Object.entries(metadata.dependencies)) {
         assert(!/workspace:|file:|link:/.test(range), `Unpublishable dependency ${name}`);
-        if (inventory.some(p => p.name === name)) assert([VERSION, `[${VERSION}]`].includes(range), `Internal dependency must pin candidate ${name}: ${range}`);
+        if (inventory.some(p => p.name === name)) {
+          const exact = registry === 'nuget' ? `[${VERSION}]` : VERSION;
+          assert.equal(range, exact, `Internal ${registry} dependency must pin candidate ${name}: ${range}; expected ${exact}`);
+        }
       }
       packages.push({registry, file: `${registry}/${file}`, sha256: sha256(readFileSync(path)), ...metadata});
     }

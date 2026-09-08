@@ -18,6 +18,10 @@ versions remain in the root
 `Directory.Packages.props`; the translation compiler's existing Roslyn pin is scoped
 there to translation projects, rather than becoming a workspace-wide downgrade.
 
-These profiles preserve established product policies while the directory structure
-is consolidated. They are not independent restore/build workspaces. Use root
-commands and the artifact/component inventory in `eng/workspace.json`.
+Packing pins dependencies on shipping workspace projects to exact NuGet versions.
+The project inventory in `shipping-projects.props` is generated from
+`eng/workspace.json`; regenerate it with `bun eng/generate-shipping-projects.mjs`
+when that inventory changes. External dependency ranges are preserved. Explicit
+internal `PackageReference` entries must also use exact `[version]` ranges.
+
+Use root commands and the artifact/component inventory in `eng/workspace.json`.

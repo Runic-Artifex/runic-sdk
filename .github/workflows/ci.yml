@@ -124,6 +124,8 @@ jobs:
         run: bun eng/ci/test-acceptance.mjs
       - name: Check embedded CLI compatibility metadata
         run: bun tools/dotnet-runic/metadata/generate.mjs --check
+      - name: Check generated packing project inventory
+        run: bun eng/generate-shipping-projects.mjs --check
       - name: Verify document candidate export boundaries
         run: python3 examples/document-migration/eng/test-candidate.py
       - name: Check generated files and lockfile
