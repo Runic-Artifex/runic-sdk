@@ -189,7 +189,8 @@ public sealed class BrowserHostTests
             Assert.NotEqual(firstProfile, secondProfile);
             using (var secondProcess = Process.GetProcessById(secondProcessId))
             {
-                secondProcess.Kill(entireProcessTree: true);
+                // Exercise parent exit without macOS's unsafe recursive kill path.
+                secondProcess.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
             }
 
             await WebUiApplication.WaitAsync(timeout.Token);

@@ -1462,8 +1462,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     }
                     catch (TimeoutException)
                     {
-                        process.Kill(entireProcessTree: true);
-                        await process.WaitForExitAsync().ConfigureAwait(false);
+                        // On macOS, the runtime's recursive stop/kill traversal can
+                        // hang (dotnet/runtime#131944) or affect the shared process
+                        // group. Chromium's children observe their parent exiting.
+                        process.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
+                        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                     }
                 }
             }
