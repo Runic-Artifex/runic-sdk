@@ -18,7 +18,8 @@
     "packages/web/sveltekit",
     "apps/translations-editor/Frontend",
     "docs",
-    "examples/customer-migration/Host/Frontend"
+    "examples/customer-migration/Host/Frontend",
+    "examples/document-migration/Host/Frontend"
   ],
   "scripts": {
     "bootstrap": "bun eng/run.mjs bootstrap",

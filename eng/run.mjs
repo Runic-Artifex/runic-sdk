@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { nodeCompatibility } from "./node-compatibility.mjs";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
+import { packNpm } from "./preview/pack-npm.mjs";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,6 +89,13 @@ function build() {
     configuration,
     "--nologo",
   ]);
+  run("dotnet", [
+    "build",
+    "examples/document-migration/Host/DocumentDesktop.csproj",
+    "-c",
+    configuration,
+    "--nologo",
+  ]);
   run("bun", ["run", "--bun", "build"], resolve(root, "docs"));
 }
 function pack(built = false) {
@@ -108,8 +116,9 @@ function pack(built = false) {
       `-p:PackageVersion=${workspace.version}`,
     ]);
   }
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   for (const p of orderedPackages())
-    run("bun", ["pm", "pack", "--destination", npm], resolve(root, p.path));
+    packNpm(resolve(root, p.path), npm, revision);
 }
 function affected() {
   const base = process.argv[3];

@@ -10,9 +10,9 @@
         "@angular/platform-browser": "22.1.5",
         "@fortawesome/fontawesome-free": "7.3.1",
         "@popperjs/core": "2.11.8",
-        "@runic-artifex/angular": "1.0.0-preview.1",
-        "@runic-artifex/application-bridge": "1.0.0-preview.1",
-        "@runic-artifex/desktop": "1.0.0-preview.1",
+        "@runic-artifex/angular": "0.2.0-preview.1",
+        "@runic-artifex/application-bridge": "0.2.0-preview.1",
+        "@runic-artifex/desktop": "0.2.0-preview.1",
         "bootstrap": "5.3.8",
         "effect": "4.0.0-rc.112",
         "rxjs": "7.8.2",
@@ -22,7 +22,7 @@
         "@angular/cli": "22.1.7",
         "@angular/compiler": "22.1.5",
         "@angular/compiler-cli": "22.1.5",
-        "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
+        "@runic-artifex/application-bridge-tooling": "0.2.0-preview.1",
         "typescript": "6.0.3",
       },
     },
@@ -356,13 +356,13 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@runic-artifex/angular": ["@runic-artifex/angular@1.0.0-preview.1", "", { "dependencies": { "@runic-artifex/application-bridge": "1.0.0-preview.1" }, "peerDependencies": { "@angular/core": ">=20.3.26 <23" } }, "sha512-t0gcL6jfe6dfXLqDRab361qFBHICMUKLnWyHpE2tG2UcrqJCij8o6VproY6QoSaEkuopfAtkvrWlX9Bwx5a5iQ=="],
+    "@runic-artifex/angular": ["@runic-artifex/angular@0.2.0-preview.1", "", { "dependencies": { "@runic-artifex/application-bridge": "0.2.0-preview.1" }, "peerDependencies": { "@angular/core": ">=20.3.26 <23" } }, "sha512-hEMZw9nqgZAB6MvQrLJCzKvwqj7ZjI3rw6/yLUMA//s6RlXeikNxQV4z8b/pelIy2Vjx9L7ZJ/KV3oVxS5lxSw=="],
 
-    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@1.0.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-Pozt/rAJcdOj1aI6aIGj6Y/SEkKRLe1e1NnqdCrJMTyUZjOO2kIjSqPMme5Sneq1Cod6xgQcGTcG3flcvRVT5Q=="],
+    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@0.2.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-cG9vNMv7HCw8f0iMRCgw59Os1jXA6rkGGs9xDMKjY7efQ66dD5CDEyMWMhCoOu9M7p3Gw432v5b2DIeVMnQ9BA=="],
 
-    "@runic-artifex/application-bridge-tooling": ["@runic-artifex/application-bridge-tooling@1.0.0-preview.1", "", { "dependencies": { "esbuild": "0.28.2" }, "peerDependencies": { "@runic-artifex/application-bridge": "1.0.0-preview.1", "effect": "4.0.0-rc.112" }, "bin": { "runic-bridge": "./dist/esm/cli.js" } }, "sha512-42In6kIWEBitPLveK7V1+ld1TgcComFuX1wzuL7xLCrtuMjSQ6SKkv59V1ozmFlcxd+MQIhms3oZX7C+pnligg=="],
+    "@runic-artifex/application-bridge-tooling": ["@runic-artifex/application-bridge-tooling@0.2.0-preview.1", "", { "dependencies": { "esbuild": "0.28.2" }, "peerDependencies": { "@runic-artifex/application-bridge": "0.2.0-preview.1", "effect": "4.0.0-rc.112" }, "bin": { "runic-bridge": "./dist/esm/cli.js" } }, "sha512-rG6qI6kuHVl+Sc5j39RAHGOwcWQSvH+ASgpzX+135BBIgF93a2l9Jn/s8s/M2LuRi1qxGpk2Flkp1lTMSd4tmQ=="],
 
-    "@runic-artifex/desktop": ["@runic-artifex/desktop@1.0.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-LRJWvckZIMnOPw+4t6rMzPKPV9QpTdoJ8vgv2purgsZ3fgFVjQotoshakfWGFGwjjoOxgJltWBBRiLhEybCMeg=="],
+    "@runic-artifex/desktop": ["@runic-artifex/desktop@0.2.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-GEMMXqnp4D1+TDHbS9snq61fMj7V/ZnGa2I1buSNLrHLazsCS2hm3zGgtz8+RQcl2jUG2FP6OyzkdyrWl2Bbaw=="],
 
     "@schematics/angular": ["@schematics/angular@22.1.7", "", { "dependencies": { "@angular-devkit/core": "22.1.7", "@angular-devkit/schematics": "22.1.7", "jsonc-parser": "3.3.1", "typescript": "6.0.3" } }, "sha512-acBv147JjnwtWFgC8Af0KFBzPpb/TWaYxoWN/Ou3pXtUhYiEqnrdJeoFz3ssDw26eKFIdWnVBLB/dHORBykPBg=="],
 

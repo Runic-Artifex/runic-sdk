@@ -10,6 +10,10 @@ export type SaveCustomer = { readonly "_tag": "SaveCustomer"; readonly "draft": 
 export const SaveCustomer: Schema.Codec<SaveCustomer> = Schema.Struct({ "_tag": Schema.Literal("SaveCustomer"), "draft": Schema.suspend(() => CustomerInput) }).annotate({ identifier: "SaveCustomer" });
 export type SaveCustomerEncoded = Schema.Codec.Encoded<typeof SaveCustomer>;
 
+export type TransferContact = { readonly "_tag": "TransferContact"; readonly "action": string; readonly "customerId": string; readonly "draftSequence": number; readonly "version": number; };
+export const TransferContact: Schema.Codec<TransferContact> = Schema.Struct({ "_tag": Schema.Literal("TransferContact"), "action": Schema.String.pipe(Schema.check(Schema.isMinLength(1)), Schema.check(Schema.isMaxLength(20))), "customerId": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "draftSequence": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "version": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))) }).annotate({ identifier: "TransferContact" });
+export type TransferContactEncoded = Schema.Codec.Encoded<typeof TransferContact>;
+
 export type ValidateCustomer = { readonly "_tag": "ValidateCustomer"; readonly "draft": CustomerInput; };
 export const ValidateCustomer: Schema.Codec<ValidateCustomer> = Schema.Struct({ "_tag": Schema.Literal("ValidateCustomer"), "draft": Schema.suspend(() => CustomerInput) }).annotate({ identifier: "ValidateCustomer" });
 export type ValidateCustomerEncoded = Schema.Codec.Encoded<typeof ValidateCustomer>;
@@ -30,9 +34,17 @@ export type DraftValidated = { readonly "_tag": "DraftValidated"; readonly "issu
 export const DraftValidated: Schema.Codec<DraftValidated> = Schema.Struct({ "_tag": Schema.Literal("DraftValidated"), "issues": Schema.Array(Schema.suspend(() => ValidationIssue)) }).annotate({ identifier: "DraftValidated" });
 export type DraftValidatedEncoded = Schema.Codec.Encoded<typeof DraftValidated>;
 
+export type NativeContactStarted = { readonly "_tag": "NativeContactStarted"; readonly "operationId": string; readonly "snapshot": CustomerSnapshot; };
+export const NativeContactStarted: Schema.Codec<NativeContactStarted> = Schema.Struct({ "_tag": Schema.Literal("NativeContactStarted"), "operationId": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotate({ identifier: "NativeContactStarted" });
+export type NativeContactStartedEncoded = Schema.Codec.Encoded<typeof NativeContactStarted>;
+
 export type SaveStarted = { readonly "_tag": "SaveStarted"; readonly "operationId": string; readonly "snapshot": CustomerSnapshot; };
 export const SaveStarted: Schema.Codec<SaveStarted> = Schema.Struct({ "_tag": Schema.Literal("SaveStarted"), "operationId": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "snapshot": Schema.suspend(() => CustomerSnapshot) }).annotate({ identifier: "SaveStarted" });
 export type SaveStartedEncoded = Schema.Codec.Encoded<typeof SaveStarted>;
+
+export type ContactData = { readonly "company": string; readonly "email": string; readonly "name": string; };
+export const ContactData: Schema.Codec<ContactData> = Schema.Struct({ "company": Schema.String, "email": Schema.String, "name": Schema.String }).annotate({ identifier: "ContactData" });
+export type ContactDataEncoded = Schema.Codec.Encoded<typeof ContactData>;
 
 export type CustomerInput = { readonly "company": string; readonly "email": string; readonly "id": string; readonly "name": string; readonly "version": number; };
 export const CustomerInput: Schema.Codec<CustomerInput> = Schema.Struct({ "company": Schema.String.pipe(Schema.check(Schema.isMinLength(0)), Schema.check(Schema.isMaxLength(1000))), "email": Schema.String.pipe(Schema.check(Schema.isMinLength(0)), Schema.check(Schema.isMaxLength(1000))), "id": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "name": Schema.String.pipe(Schema.check(Schema.isMinLength(0)), Schema.check(Schema.isMaxLength(1000))), "version": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))) }).annotate({ identifier: "CustomerInput" });
@@ -42,9 +54,17 @@ export type CustomerRow = { readonly "company": string; readonly "email": string
 export const CustomerRow: Schema.Codec<CustomerRow> = Schema.Struct({ "company": Schema.String, "email": Schema.String, "id": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "name": Schema.String, "version": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))) }).annotate({ identifier: "CustomerRow" });
 export type CustomerRowEncoded = Schema.Codec.Encoded<typeof CustomerRow>;
 
-export type CustomerSnapshot = { readonly "customers": ReadonlyArray<CustomerRow>; readonly "generation": number; readonly "save": SaveState; };
-export const CustomerSnapshot: Schema.Codec<CustomerSnapshot> = Schema.Struct({ "customers": Schema.Array(Schema.suspend(() => CustomerRow)), "generation": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "save": Schema.suspend(() => SaveState) }).annotate({ identifier: "CustomerSnapshot" });
+export type CustomerSnapshot = { readonly "capabilities": NativeAvailability; readonly "customers": ReadonlyArray<CustomerRow>; readonly "generation": number; readonly "native": NativeContactState; readonly "save": SaveState; };
+export const CustomerSnapshot: Schema.Codec<CustomerSnapshot> = Schema.Struct({ "capabilities": Schema.suspend(() => NativeAvailability), "customers": Schema.Array(Schema.suspend(() => CustomerRow)), "generation": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "native": Schema.suspend(() => NativeContactState), "save": Schema.suspend(() => SaveState) }).annotate({ identifier: "CustomerSnapshot" });
 export type CustomerSnapshotEncoded = Schema.Codec.Encoded<typeof CustomerSnapshot>;
+
+export type NativeAvailability = { readonly "copy": boolean; readonly "open": boolean; readonly "paste": boolean; readonly "save": boolean; };
+export const NativeAvailability: Schema.Codec<NativeAvailability> = Schema.Struct({ "copy": Schema.Boolean, "open": Schema.Boolean, "paste": Schema.Boolean, "save": Schema.Boolean }).annotate({ identifier: "NativeAvailability" });
+export type NativeAvailabilityEncoded = Schema.Codec.Encoded<typeof NativeAvailability>;
+
+export type NativeContactState = { readonly "candidate": null | ContactData; readonly "cleanupFailed": boolean; readonly "customerId": string | null; readonly "draftSequence": number; readonly "message": string; readonly "operationId": string | null; readonly "status": string; };
+export const NativeContactState: Schema.Codec<NativeContactState> = Schema.Struct({ "candidate": Schema.Union([Schema.Null, Schema.suspend(() => ContactData)]), "cleanupFailed": Schema.Boolean, "customerId": Schema.Union([Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), Schema.Null]), "draftSequence": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "message": Schema.String, "operationId": Schema.Union([Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), Schema.Null]), "status": Schema.String }).annotate({ identifier: "NativeContactState" });
+export type NativeContactStateEncoded = Schema.Codec.Encoded<typeof NativeContactState>;
 
 export type SaveState = { readonly "issues": ReadonlyArray<ValidationIssue>; readonly "message": string; readonly "operationId": string | null; readonly "progress": number; readonly "status": string; };
 export const SaveState: Schema.Codec<SaveState> = Schema.Struct({ "issues": Schema.Array(Schema.suspend(() => ValidationIssue)), "message": Schema.String, "operationId": Schema.Union([Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), Schema.Null]), "progress": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), Schema.check(Schema.isLessThanOrEqualTo(100))), "status": Schema.String }).annotate({ identifier: "SaveState" });
@@ -61,12 +81,13 @@ const definition = defineApplicationBridgeContract({
   commands: [
     bridge.command(ReloadCustomers, { receipt: CustomerReloaded, startsOperation: false, cancellable: false, advancesRevision: false }),
     bridge.command(SaveCustomer, { receipt: SaveStarted, startsOperation: true, cancellable: true, advancesRevision: true }),
+    bridge.command(TransferContact, { receipt: NativeContactStarted, startsOperation: true, cancellable: true, advancesRevision: true }),
     bridge.command(ValidateCustomer, { receipt: DraftValidated, startsOperation: false, cancellable: false, advancesRevision: false }),
   ],
   events: [CustomersChanged],
   errors: [CustomerRejected],
 });
-export const applicationBridge = materializeApplicationBridgeContract(definition, "16401a37d518255343bdaba2603ad228a9464b536dff2e2ab2fd3cd4af5c2775");
+export const applicationBridge = materializeApplicationBridgeContract(definition, "08b8b86f77995ce85759b200855c5c96abb9dc77f36f4863bbede4987b4f062e");
 export type CustomersCommand = Schema.Schema.Type<typeof applicationBridge.command>;
 export type CustomersReceipt = Schema.Schema.Type<typeof applicationBridge.receipt>;
 export type CustomersEvent = Schema.Schema.Type<typeof applicationBridge.event>;

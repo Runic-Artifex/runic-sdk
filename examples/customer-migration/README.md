@@ -10,7 +10,7 @@ From the SDK root, after `bun run bootstrap`:
 
 ```sh
 bun run example:customers
-# Embedded WebView with native close confirmation (Windows/Linux):
+# Embedded WebView with native contacts and close confirmation:
 bun run example:customers --native
 # Serve the same application without opening a native window:
 bun run example:customers --serve
@@ -23,10 +23,9 @@ while using the URL. The page does not have a mock backend or duplicate C# rules
 For faster subsequent starts use `dotnet run --project
 examples/customer-migration/Host/CustomerDesktop.csproj --no-build`.
 
-The native reference requires WebView2 on Windows or GTK 3/WebKitGTK on Linux.
-The current asynchronous Application host does not provide the main-thread runner
-required by AppKit; use browser/serve mode for this example on macOS. The lower-level
-Desktop API has an AppKit close hook and a dedicated main-thread native smoke test.
+The native reference requires WebView2 on Windows, GTK 3/WebKitGTK on Linux, or
+AppKit/WebKit on macOS. Interactive macOS uses the synchronous application runner
+to keep the AppKit event loop on the process main thread.
 
 On Windows, the original WPF implementation is runnable with:
 
@@ -79,7 +78,7 @@ are visible. Those delays are sample behavior, not a Runic requirement.
 | `ObservableValidator` attribute validation | Viewmodel properties using shared validators | `ValidateCustomer`/`SaveCustomer`, typed field issues |
 | Search and selection | Viewmodel and WPF bindings | Local frontend state |
 | UI notifications | Property/collection notifications | Generated snapshot and event contract |
-| File selection and unsaved prompts | WPF `OpenFileDialog`/`MessageBox` | WebView file input and accessible HTML dialog |
+| File selection, clipboard and unsaved prompts | WPF picker/clipboard and `MessageBox` | Runic platform services, reviewable frontend drafts, and accessible HTML dialogs |
 | Platform host | `Wpf/` | `Host/Program.cs`, Runic Desktop and embedded assets |
 
 `After/` is a C# application module. `Host/` owns the contract root and platform
@@ -140,13 +139,53 @@ belong to the test and are removed afterward.
   virtualization, and a measured update strategy.
 - Session operation state survives transport reconnect while the host lives;
   operation resumption after a process crash is not implemented.
-- Native clipboard, menus, notifications, navigation/back integration, and mobile
-  services remain roadmap work. They are not emulated by an MVVM adapter.
+- Menus, notifications, navigation/back integration, and mobile services remain
+  roadmap work. They are not emulated by an MVVM adapter.
 
 See the [migration RFC](../../docs/guides/application/architecture/mvvm-migration-rfc.md)
 and [step-by-step guide](../../docs/guides/application/guides/migrate-mvvm-to-runic.md).
 
-The proposed next feature adds native import/export and clipboard commands through
-shared OS services. See the [API design](../../docs/guides/application/architecture/os-integration-rfc.md)
-and [acceptance scenarios](../../eng/os-integration-acceptance.md); these are planned,
-not current native picker or clipboard guarantees.
+Native import/export and clipboard commands use the shared platform services
+described below. See the [API design](../../docs/guides/application/architecture/os-integration-rfc.md)
+and [acceptance scenarios](../../eng/os-integration-acceptance.md) for the broader
+roadmap and required platform evidence.
+
+## Native contact migration in 0.2.0-preview.1
+
+Run the embedded Desktop host with `--native` to enable the statically selected
+file-dialog and text-clipboard provider. `RunicNativeProvider` selects `Windows`,
+`Linux`, `MacOS`, or `None` at build time (the build OS is the default). Set it
+explicitly for cross-compilation. CS-WebUI registers unavailable native services;
+its consumer references contain no Desktop platform provider. The clearly labeled
+browser JSON input remains an explicit alternate import flow.
+
+Native import and paste return a reviewable contact candidate. The frontend owns
+its draft, allows edits while native work is pending, and records the draft
+sequence and customer identity that requested the candidate. Late results warn
+before replacing changed fields; results for another customer cannot be applied.
+Applying a candidate changes only name, email, and company. Saving still uses the
+unchanged domain validation, optimistic version check, and persistent repository.
+Both input paths enforce 4096 UTF-8 bytes and 1000 characters per contact field.
+
+Export and copy show a confirmation of the saved contact and revision. The C#
+command verifies that revision and captures its contents before opening a picker;
+subsequent edits or saves do not alter that operation's bytes. Export uses the
+public atomic write transaction and distinguishes not committed from uncertain
+commit. Cancellation never overwrites an actual successful commit or clipboard
+write reported by the provider. A separate cleanup-failure flag and alert retain
+that actual outcome while exposing resource cleanup errors. Clipboard absence and empty text are distinct;
+empty text is rejected as invalid contact JSON. Busy, permission, unavailable,
+dismissal and cancellation outcomes are announced by the presentation.
+
+The interactive macOS host starts the native event loop synchronously on the
+process main thread before any await. Native handles, paths, streams, and scoped
+access leases stay in C#. Only bounded
+contact data, operation identifiers, capabilities and outcomes cross the bridge.
+Reconnect obtains the terminal snapshot without replaying a native command or
+automatically applying its candidate. Native operations participate in the host's
+presentation lifetime and the application's existing dirty-close protection.
+
+The `Before` fixture exposes the same contact parsing, review-before-save and
+saved-revision export policy through its view-model methods. `After` preserves the
+shared domain contact codec and replaces orchestration with Runic commands and
+frontend drafts. No MVVM adapter is referenced by the Runic feature.

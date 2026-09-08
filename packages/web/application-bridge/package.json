@@ -1,13 +1,14 @@
 {
   "name": "@runic-artifex/application-bridge",
-  "version": "1.0.0-preview.1",
+  "version": "0.2.0-preview.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
     "directory": "packages/web/application-bridge"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "tag": "preview"
   },
   "description": "Effect-based, schema-first application bridge for Runic Application hosts.",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/application-bridge#readme",

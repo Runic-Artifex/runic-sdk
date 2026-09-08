@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <RunicSdkVersion>1.0.0-preview.1</RunicSdkVersion>
+    <RunicSdkVersion>0.2.0-preview.1</RunicSdkVersion>
     <Version Condition="'$(Version)' == ''">$(RunicSdkVersion)</Version>
     <PackageVersion Condition="'$(PackageVersion)' == ''">$(RunicSdkVersion)</PackageVersion>
   </PropertyGroup>

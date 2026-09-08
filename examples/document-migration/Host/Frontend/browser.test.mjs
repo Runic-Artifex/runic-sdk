@@ -1,0 +1,41 @@
+import { stopHost } from "./host-process.mjs";
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
+const here = dirname(fileURLToPath(import.meta.url));
+const executable = process.env.RUNIC_DOCUMENT_HOST_EXECUTABLE;
+const host = spawn(executable ?? "dotnet", executable ? ["--serve"] : [resolve(here, `../bin/${process.env.CONFIGURATION ?? "Debug"}/net10.0/DocumentDesktop.dll`), "--serve"], { cwd: here, stdio: ["pipe", "pipe", "pipe"] });
+let output = "", browser;
+try {
+  const url = await new Promise((accept, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Host startup timeout: ${output}`)), 20000);
+    host.once("error", error => { clearTimeout(timeout); reject(error); });
+    host.once("exit", code => { clearTimeout(timeout); reject(new Error(`Host exited ${code}: ${output}`)); });
+    host.stderr.on("data", chunk => { output += chunk; });
+    host.stdout.on("data", chunk => { output += chunk; const match = output.match(/Document editor: (https?:\/\/\S+)/); if (match) { clearTimeout(timeout); accept(match[1]); } });
+  });
+  browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
+  const page = await browser.newPage(); page.setDefaultTimeout(10000);
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await page.goto(url); await page.getByLabel("Document text", { exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector('[role="status"]')?.textContent === "idle");
+  assert.equal(await page.evaluate(() => window.confirmDocumentClose()), true);
+  await page.getByRole("button", { name: "Open…", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[role="status"]')?.textContent?.startsWith("unavailable:"));
+  await page.getByLabel("Document text", { exact: true }).fill("Unsaved draft 漢字");
+  assert.equal(await page.getByRole("button", { name: "Open…", exact: true }).isDisabled(), true);
+  await page.evaluate(() => { window.closeResult = window.confirmDocumentClose(); });
+  await page.getByRole("dialog").waitFor();
+  assert.equal(await page.getByRole("button", { name: "Keep editing" }).evaluate(element => element === document.activeElement), true);
+  await page.keyboard.press("Escape");
+  assert.equal(await page.evaluate(() => window.closeResult), false);
+  assert.equal(await page.getByLabel("Document text", { exact: true }).evaluate(element => element === document.activeElement), true, "Escape restores editor focus");
+  assert.equal(await page.getByLabel("Document text", { exact: true }).inputValue(), "Unsaved draft 漢字");
+  await page.getByRole("button", { name: "Save as…", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[role="status"]')?.textContent?.startsWith("unavailable:"));
+  assert.equal(await page.getByLabel("Document text", { exact: true }).inputValue(), "Unsaved draft 漢字");
+  assert.deepEqual(errors, []);
+  console.log("Document browser acceptance passed: real bridge, unavailable services, dirty close, keyboard escape. No native selection evidence.");
+} catch (error) { console.error(output); throw error; } finally { await browser?.close(); await stopHost(host); }

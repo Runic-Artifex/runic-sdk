@@ -36,6 +36,55 @@
               }
             }
           },
+          "command:TransferContact": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "TransferContact"
+                }
+              },
+              "action": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maxLength": 20,
+                    "minLength": 1
+                  },
+                  "kind": "string"
+                }
+              },
+              "customerId": {
+                "optional": false,
+                "type": {
+                  "format": "uuid",
+                  "kind": "string"
+                }
+              },
+              "draftSequence": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  "kind": "integer"
+                }
+              },
+              "version": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  "kind": "integer"
+                }
+              }
+            }
+          },
           "command:ValidateCustomer": {
             "kind": "object",
             "properties": {
@@ -149,6 +198,32 @@
               }
             }
           },
+          "receipt:NativeContactStarted": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "NativeContactStarted"
+                }
+              },
+              "operationId": {
+                "optional": false,
+                "type": {
+                  "format": "uuid",
+                  "kind": "string"
+                }
+              },
+              "snapshot": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:CustomerSnapshot"
+                }
+              }
+            }
+          },
           "receipt:SaveStarted": {
             "kind": "object",
             "properties": {
@@ -171,6 +246,29 @@
                 "type": {
                   "kind": "ref",
                   "name": "type:CustomerSnapshot"
+                }
+              }
+            }
+          },
+          "type:ContactData": {
+            "kind": "object",
+            "properties": {
+              "company": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "email": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "name": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
                 }
               }
             }
@@ -270,6 +368,13 @@
           "type:CustomerSnapshot": {
             "kind": "object",
             "properties": {
+              "capabilities": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:NativeAvailability"
+                }
+              },
               "customers": {
                 "optional": false,
                 "type": {
@@ -290,11 +395,125 @@
                   "kind": "integer"
                 }
               },
+              "native": {
+                "optional": false,
+                "type": {
+                  "kind": "ref",
+                  "name": "type:NativeContactState"
+                }
+              },
               "save": {
                 "optional": false,
                 "type": {
                   "kind": "ref",
                   "name": "type:SaveState"
+                }
+              }
+            }
+          },
+          "type:NativeAvailability": {
+            "kind": "object",
+            "properties": {
+              "copy": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "open": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "paste": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "save": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              }
+            }
+          },
+          "type:NativeContactState": {
+            "kind": "object",
+            "properties": {
+              "candidate": {
+                "optional": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "null"
+                    },
+                    {
+                      "kind": "ref",
+                      "name": "type:ContactData"
+                    }
+                  ]
+                }
+              },
+              "cleanupFailed": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "customerId": {
+                "optional": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "format": "uuid",
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ]
+                }
+              },
+              "draftSequence": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 2147483647,
+                    "minimum": -2147483648
+                  },
+                  "kind": "integer"
+                }
+              },
+              "message": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "operationId": {
+                "optional": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "format": "uuid",
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ]
+                }
+              },
+              "status": {
+                "optional": false,
+                "type": {
+                  "kind": "string"
                 }
               }
             }
@@ -413,6 +632,18 @@
             "tag": null
           },
           {
+            "adapter": "__Runic_cc257c1deb80",
+            "advancesRevision": true,
+            "cancellable": true,
+            "kind": "command",
+            "member": "TransferContact",
+            "owner": "global::CustomerMigration.After.CustomerFeature",
+            "receipt": "NativeContactStarted",
+            "schema": "receipt:NativeContactStarted",
+            "startsOperation": true,
+            "tag": "TransferContact"
+          },
+          {
             "adapter": "__Runic_de998e317b6d",
             "advancesRevision": false,
             "cancellable": false,
@@ -429,15 +660,20 @@
         "types": {
           "command:ReloadCustomers": "global::CustomerMigration.After.ReloadCustomers",
           "command:SaveCustomer": "global::CustomerMigration.After.SaveCustomer",
+          "command:TransferContact": "global::CustomerMigration.After.TransferContact",
           "command:ValidateCustomer": "global::CustomerMigration.After.ValidateCustomer",
           "error:CustomerRejected": "global::CustomerMigration.After.CustomerRejected",
           "event:CustomersChanged": "global::CustomerMigration.After.CustomersChanged",
           "receipt:CustomerReloaded": "global::CustomerMigration.After.CustomerReloaded",
           "receipt:DraftValidated": "global::CustomerMigration.After.DraftValidated",
+          "receipt:NativeContactStarted": "global::CustomerMigration.After.NativeContactStarted",
           "receipt:SaveStarted": "global::CustomerMigration.After.SaveStarted",
+          "type:ContactData": "global::CustomerMigration.Domain.ContactData",
           "type:CustomerInput": "global::CustomerMigration.After.CustomerInput",
           "type:CustomerRow": "global::CustomerMigration.After.CustomerRow",
           "type:CustomerSnapshot": "global::CustomerMigration.After.CustomerSnapshot",
+          "type:NativeAvailability": "global::CustomerMigration.After.NativeAvailability",
+          "type:NativeContactState": "global::CustomerMigration.After.NativeContactState",
           "type:SaveState": "global::CustomerMigration.After.SaveState",
           "type:ValidationIssue": "global::CustomerMigration.After.ValidationIssue"
         },
@@ -463,7 +699,7 @@
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",
-    "value": "16401a37d518255343bdaba2603ad228a9464b536dff2e2ab2fd3cd4af5c2775"
+    "value": "08b8b86f77995ce85759b200855c5c96abb9dc77f36f4863bbede4987b4f062e"
   },
   "format": "runic.application-bridge-ir",
   "formatVersion": 1,
@@ -482,6 +718,13 @@
         "cancellable": true,
         "name": "SaveCustomer",
         "receipt": "SaveStarted",
+        "startsOperation": true
+      },
+      {
+        "advancesRevision": true,
+        "cancellable": true,
+        "name": "TransferContact",
+        "receipt": "NativeContactStarted",
         "startsOperation": true
       },
       {
@@ -520,6 +763,55 @@
             "type": {
               "kind": "ref",
               "name": "type:CustomerInput"
+            }
+          }
+        }
+      },
+      "command:TransferContact": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "TransferContact"
+            }
+          },
+          "action": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maxLength": 20,
+                "minLength": 1
+              },
+              "kind": "string"
+            }
+          },
+          "customerId": {
+            "optional": false,
+            "type": {
+              "format": "uuid",
+              "kind": "string"
+            }
+          },
+          "draftSequence": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          },
+          "version": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": 1
+              },
+              "kind": "integer"
             }
           }
         }
@@ -853,6 +1145,32 @@
           }
         }
       },
+      "receipt:NativeContactStarted": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "NativeContactStarted"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "format": "uuid",
+              "kind": "string"
+            }
+          },
+          "snapshot": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:CustomerSnapshot"
+            }
+          }
+        }
+      },
       "receipt:SaveStarted": {
         "kind": "object",
         "properties": {
@@ -875,6 +1193,29 @@
             "type": {
               "kind": "ref",
               "name": "type:CustomerSnapshot"
+            }
+          }
+        }
+      },
+      "type:ContactData": {
+        "kind": "object",
+        "properties": {
+          "company": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "email": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "name": {
+            "optional": false,
+            "type": {
+              "kind": "string"
             }
           }
         }
@@ -974,6 +1315,13 @@
       "type:CustomerSnapshot": {
         "kind": "object",
         "properties": {
+          "capabilities": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:NativeAvailability"
+            }
+          },
           "customers": {
             "optional": false,
             "type": {
@@ -994,11 +1342,125 @@
               "kind": "integer"
             }
           },
+          "native": {
+            "optional": false,
+            "type": {
+              "kind": "ref",
+              "name": "type:NativeContactState"
+            }
+          },
           "save": {
             "optional": false,
             "type": {
               "kind": "ref",
               "name": "type:SaveState"
+            }
+          }
+        }
+      },
+      "type:NativeAvailability": {
+        "kind": "object",
+        "properties": {
+          "copy": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "open": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "paste": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "save": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      },
+      "type:NativeContactState": {
+        "kind": "object",
+        "properties": {
+          "candidate": {
+            "optional": false,
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "null"
+                },
+                {
+                  "kind": "ref",
+                  "name": "type:ContactData"
+                }
+              ]
+            }
+          },
+          "cleanupFailed": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "customerId": {
+            "optional": false,
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "format": "uuid",
+                  "kind": "string"
+                },
+                {
+                  "kind": "null"
+                }
+              ]
+            }
+          },
+          "draftSequence": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": -2147483648
+              },
+              "kind": "integer"
+            }
+          },
+          "message": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "operationId": {
+            "optional": false,
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "format": "uuid",
+                  "kind": "string"
+                },
+                {
+                  "kind": "null"
+                }
+              ]
+            }
+          },
+          "status": {
+            "optional": false,
+            "type": {
+              "kind": "string"
             }
           }
         }

@@ -23,6 +23,13 @@
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <PackageVersion Include="ReactiveUI" Version="24.2.0" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="3.2.0" />
+    <PackageVersion Include="Runic.Platform" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.Runtime" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.Windows" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.Linux" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.MacOS" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Platform" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Platform.Desktop" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Application" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Application.Bridge" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Application.Desktop" Version="$(RunicSdkVersion)" />

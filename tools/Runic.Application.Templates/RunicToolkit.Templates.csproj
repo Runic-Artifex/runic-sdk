@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <PackageId>Runic.Application.Templates</PackageId>
-    <PackageVersion>1.0.0-preview.1</PackageVersion>
+    <PackageVersion>0.2.0-preview.1</PackageVersion>
     <Title>Runic Application project templates</Title>
     <Description>dotnet new runic-app-* templates for Runic Desktop applications using React, Vue, Svelte, or Angular.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -15,12 +15,12 @@
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <TemplatePackContentRoot>$(MSBuildProjectDirectory)/obj/template-pack-content/</TemplatePackContentRoot>
     <RunicAssetsTemplateVersion Condition="'$(RunicAssetsTemplateVersion)' == ''">$(RunicAssetsPackageVersion)</RunicAssetsTemplateVersion>
-    <ApplicationBridgeTemplateVersion Condition="'$(ApplicationBridgeTemplateVersion)' == ''">1.0.0-preview.1</ApplicationBridgeTemplateVersion>
-    <RunicAngularTemplateVersion Condition="'$(RunicAngularTemplateVersion)' == ''">1.0.0-preview.1</RunicAngularTemplateVersion>
-    <RunicSvelteTemplateVersion Condition="'$(RunicSvelteTemplateVersion)' == ''">1.0.0-preview.1</RunicSvelteTemplateVersion>
-    <RunicViteTemplateVersion Condition="'$(RunicViteTemplateVersion)' == ''">1.0.0-preview.1</RunicViteTemplateVersion>
-    <RunicDesktopTemplateVersion Condition="'$(RunicDesktopTemplateVersion)' == ''">1.0.0-preview.1</RunicDesktopTemplateVersion>
-    <RunicDesktopNpmTemplateVersion Condition="'$(RunicDesktopNpmTemplateVersion)' == ''">1.0.0-preview.1</RunicDesktopNpmTemplateVersion>
+    <ApplicationBridgeTemplateVersion Condition="'$(ApplicationBridgeTemplateVersion)' == ''">0.2.0-preview.1</ApplicationBridgeTemplateVersion>
+    <RunicAngularTemplateVersion Condition="'$(RunicAngularTemplateVersion)' == ''">0.2.0-preview.1</RunicAngularTemplateVersion>
+    <RunicSvelteTemplateVersion Condition="'$(RunicSvelteTemplateVersion)' == ''">0.2.0-preview.1</RunicSvelteTemplateVersion>
+    <RunicViteTemplateVersion Condition="'$(RunicViteTemplateVersion)' == ''">0.2.0-preview.1</RunicViteTemplateVersion>
+    <RunicDesktopTemplateVersion Condition="'$(RunicDesktopTemplateVersion)' == ''">0.2.0-preview.1</RunicDesktopTemplateVersion>
+    <RunicDesktopNpmTemplateVersion Condition="'$(RunicDesktopNpmTemplateVersion)' == ''">0.2.0-preview.1</RunicDesktopNpmTemplateVersion>
     <BunTemplateVersion Condition="'$(BunTemplateVersion)' == ''">1.4.2</BunTemplateVersion>
     <NpmTemplateVersion Condition="'$(NpmTemplateVersion)' == ''">12.0.2</NpmTemplateVersion>
     <PnpmTemplateVersion Condition="'$(PnpmTemplateVersion)' == ''">12.3.4</PnpmTemplateVersion>

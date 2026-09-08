@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { root, workspace, run } from "../run.mjs";
 import { nodeCompatibility } from "../node-compatibility.mjs";
 
-const compatibility = JSON.parse(await readFile(join(root, "eng/release/runic.compatibility-set.json"), "utf8"));
+const compatibility = JSON.parse(await readFile(join(root, "tools/dotnet-runic-toolkit/metadata/runic.compatibility-set.json"), "utf8"));
 const temporary = await mkdtemp(join(tmpdir(), "runic-template-locks-"));
 let registry;
 try {

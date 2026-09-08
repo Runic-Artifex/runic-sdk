@@ -15,6 +15,7 @@ try {
     ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
   // Fresh processes are required: the native WebUI runtime has process lifetime.
+  let persisted = false;
   for (const mode of ["unconnected", "connected", "disconnected", "connected", "unconnected"]) {
     const host = spawn(process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ?? "dotnet", process.env.RUNIC_CUSTOMER_HOST_EXECUTABLE ? ["--serve"] : [resolve(here,
       `../bin/${process.env.CONFIGURATION ?? "Debug"}/net10.0/CustomerDesktop.dll`), "--serve"], {
@@ -42,8 +43,16 @@ try {
       if (mode !== "unconnected") {
         page = await browser.newPage();
         await page.goto(url);
-        await page.waitForFunction(() => document.querySelector("#name")?.value === "Alex Morgan",
-          undefined, { timeout: 10000 });
+        await page.waitForFunction(expected => document.querySelector("#name")?.value === expected,
+          persisted ? "Restarted Customer" : "Alex Morgan", { timeout: 10000 });
+        if (!persisted && mode === "connected") {
+          await page.getByLabel("Full name", { exact: true }).fill("Restarted Customer");
+          await page.getByRole("button", { name: "Save customer", exact: true }).click();
+          await page.getByText("Customer saved", { exact: true }).waitFor();
+          persisted = true;
+        } else if (persisted) {
+          assert.equal(await page.getByLabel("Full name", { exact: true }).inputValue(), "Restarted Customer", "Committed data survives a new host process and bridge initialization");
+        }
         if (mode === "disconnected") { await page.close(); page = null; }
       } else {
         // Startup must already have made the URL usable; do not retry here.

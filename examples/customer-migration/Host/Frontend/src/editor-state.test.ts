@@ -17,6 +17,8 @@ const row = {
 const snapshot = {
   customers: [row],
   generation: 0,
+  native: { operationId: null, status: "idle", message: "Ready", cleanupFailed: false, candidate: null, draftSequence: 0, customerId: null },
+  capabilities: { open: false, save: false, paste: false, copy: false },
   save: {
     operationId: null as string | null,
     status: "idle",
@@ -109,4 +111,14 @@ test("contact import only changes editable fields and checks bounded input", () 
     " ".repeat(4097),
   ])
     assert.throws(() => importContact(text, row));
+});
+
+test("native reconnect does not replay candidates and local late candidates preserve draft correlation", async () => {
+  const { receiveContactCandidate } = await import("./editor-state");
+  const result = { operationId: "native-operation", status: "completed", message: "Ready", cleanupFailed: false, candidate: { name: "Imported", email: "i@example.com", company: "Studio" }, draftSequence: 4, customerId: "customer" };
+  assert.equal(receiveContactCandidate(result), undefined);
+  assert.equal(receiveContactCandidate(result, "another-operation"), undefined);
+  assert.equal(receiveContactCandidate(result, result.operationId, result.operationId), undefined);
+  assert.equal(receiveContactCandidate({ ...result, status: "running" }, result.operationId), undefined);
+  assert.deepEqual(receiveContactCandidate(result, result.operationId), { data: result.candidate, sequence: 4, customerId: "customer" });
 });

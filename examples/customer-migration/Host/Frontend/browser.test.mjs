@@ -77,6 +77,9 @@ try {
   await page.waitForFunction(
     () => document.querySelector("#name")?.value === "Alex Morgan",
   );
+  for (const name of ["Import native contact", "Paste contact", "Export saved contact", "Copy saved contact"])
+    assert.equal(await page.getByRole("button", { name, exact: true }).isDisabled(), true, "Headless browser must explicitly report unavailable native capabilities");
+  await page.getByText("Native services unavailable in this presentation.", { exact: false }).waitFor();
   assert.equal(
     await page
       .getByRole("button", { name: "Save customer", exact: true })

@@ -5,12 +5,14 @@ import { bridge, dispatch } from "./bridge";
 import {
   CustomerRejected,
   type CustomerSnapshot,
+  type ContactData,
 } from "./application.bridge.generated";
 import {
   dirty,
   emptyEditor,
   importContact,
   receiveSnapshot,
+  receiveContactCandidate,
   selectCustomer,
 } from "./editor-state";
 import "./style.css";
@@ -24,6 +26,13 @@ declare global {
 function Customers() {
   const [editor, setEditor] = useState(emptyEditor);
   const [search, setSearch] = useState("");
+  const [nativePending, setNativePending] = useState(false);
+  const [nativeRequest, setNativeRequest] = useState<string>();
+  const [candidate, setCandidate] = useState<{ data: ContactData; sequence: number; customerId: string }>();
+  const handledNative = useRef<string | undefined>(undefined);
+  const nativeTrigger = useRef<HTMLButtonElement | null>(null);
+  const [exportAction, setExportAction] = useState<"copy" | "export">();
+  const exportDialog = useRef<HTMLDialogElement>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [destination, setDestination] = useState<string>();
@@ -40,8 +49,9 @@ function Customers() {
   const current = useRef(editor);
   current.current = editor;
   const busy = pending || editor.snapshot?.save.status === "saving";
+  const nativeBusy = nativePending || editor.snapshot?.native.status === "running";
   const changed = dirty(editor);
-  closeState.current = { busy, navigating: !!destination };
+  closeState.current = { busy: busy || nativeBusy, navigating: !!destination };
   const receive = (snapshot: CustomerSnapshot) =>
     setEditor((state) => receiveSnapshot(state, snapshot));
   const failure = (value: unknown) => {
@@ -69,14 +79,14 @@ function Customers() {
   }, []);
   useEffect(() => {
     const protect = (event: BeforeUnloadEvent) => {
-      if (changed || busy) {
+      if (changed || busy || nativeBusy) {
         event.preventDefault();
         event.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", protect);
     return () => window.removeEventListener("beforeunload", protect);
-  }, [changed, busy]);
+  }, [changed, busy, nativeBusy]);
   useEffect(() => {
     if (destination) dialog.current?.showModal();
   }, [destination]);
@@ -119,6 +129,39 @@ function Customers() {
     closeDecision.current = null;
   }
 
+  useEffect(() => {
+    if (exportAction) exportDialog.current?.showModal();
+  }, [exportAction]);
+  useEffect(() => {
+    const result = editor.snapshot?.native;
+    if (!result || result.status === "running" || !result.operationId || result.operationId !== nativeRequest || handledNative.current === result.operationId) return;
+    const incoming = receiveContactCandidate(result, nativeRequest, handledNative.current);
+    handledNative.current = result.operationId;
+    if (incoming) setCandidate(incoming);
+    nativeTrigger.current?.focus();
+  }, [editor.snapshot, nativeRequest]);
+  async function transfer(action: "import" | "paste" | "export" | "copy") {
+    const state = current.current;
+    if (!state.draft || !state.baseline || nativeBusy || busy) return;
+    setNativePending(true);
+    setError("");
+    setCandidate(undefined);
+    try {
+      const receipt = await dispatch({ _tag: "TransferContact", action, customerId: state.draft.id, version: state.baseline.version, draftSequence: editSequence.current });
+      if (receipt._tag === "NativeContactStarted") {
+        setNativeRequest(receipt.operationId);
+        receive(receipt.snapshot);
+      }
+    } catch (value) { failure(value); }
+    finally { setNativePending(false); }
+  }
+  function applyCandidate() {
+    if (!candidate || current.current.draft?.id !== candidate.customerId) return;
+    ++editSequence.current;
+    setEditor(state => ({ ...state, draft: state.draft && { ...state.draft, ...candidate.data }, issues: [] }));
+    setCandidate(undefined);
+    form.current?.querySelector<HTMLInputElement>("input")?.focus();
+  }
   async function validate() {
     const draft = current.current.draft;
     if (!draft || busy) return;
@@ -306,7 +349,7 @@ function Customers() {
                 );
               })}
               <div className="import">
-                <label htmlFor="contact">Import contact details</label>
+                <label htmlFor="contact">Import contact details (browser JSON file)</label>
                 <p>
                   Choose a JSON file with name, email and company. Review the
                   changes before saving.
@@ -344,6 +387,26 @@ function Customers() {
                 />
               </div>
             </fieldset>
+            <section aria-label="Native contact actions">
+              <p>Native contacts use the desktop file picker and clipboard. Export and copy use the confirmed saved revision.</p>
+              {(["import", "paste", "export", "copy"] as const).map(action => {
+                const available = editor.snapshot?.capabilities[action === "import" ? "open" : action === "export" ? "save" : action];
+                return <button key={action} type="button" disabled={busy || nativeBusy || !editor.draft || !available}
+                  onClick={event => { nativeTrigger.current = event.currentTarget; if (action === "export" || action === "copy") setExportAction(action); else void transfer(action); }}>
+                  {action === "import" ? "Import native contact" : action === "paste" ? "Paste contact" : action === "export" ? "Export saved contact" : "Copy saved contact"}
+                </button>;
+              })}
+              {!editor.snapshot?.capabilities.open && <p>Native services unavailable in this presentation. Use the explicit browser JSON import above.</p>}
+              <p role="status" aria-live="polite">{editor.snapshot?.native.message}</p>
+              {editor.snapshot?.native.cleanupFailed && <p role="alert">The native write outcome above is retained, but resource cleanup failed. Inspect the destination before retrying.</p>}
+              {nativeBusy && <button type="button" disabled={nativePending || !editor.snapshot?.native.operationId} onClick={() => { const id = editor.snapshot?.native.operationId; if (id) void bridge.cancel(id).catch(failure); }}>Cancel contact operation</button>}
+              {candidate && <div role="region" aria-label="Review imported contact">
+                <p>{candidate.sequence !== editSequence.current ? "Your draft changed while this contact was loading. Apply it only if you want to replace your current fields." : "Review this contact before applying it to your draft."}</p>
+                <p>{candidate.data.name} · {candidate.data.email} · {candidate.data.company}</p>
+                <button type="button" disabled={busy || current.current.draft?.id !== candidate.customerId} onClick={applyCandidate}>Apply contact to draft</button>
+                <button type="button" onClick={() => setCandidate(undefined)}>Dismiss imported contact</button>
+              </div>}
+            </section>
             {error && (
               <div role="alert" className="error">
                 {error}
@@ -411,6 +474,13 @@ function Customers() {
           Reconnect
         </button>
       </div>
+      <dialog ref={exportDialog} aria-labelledby="export-title" onCancel={() => setExportAction(undefined)}>
+        <h2 id="export-title">Confirm saved contact</h2>
+        <p>{editor.baseline?.name} · {editor.baseline?.email} · {editor.baseline?.company} · revision {editor.baseline?.version}</p>
+        <p>Unsaved draft edits are not included.</p>
+        <button autoFocus onClick={() => { exportDialog.current?.close(); setExportAction(undefined); }}>Keep editing</button>
+        <button onClick={() => { const action = exportAction; exportDialog.current?.close(); setExportAction(undefined); if (action) void transfer(action); }}>Confirm {exportAction}</button>
+      </dialog>
       <dialog
         ref={closeDialog}
         aria-labelledby="close-title"

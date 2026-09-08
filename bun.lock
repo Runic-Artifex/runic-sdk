@@ -98,9 +98,29 @@
         "vite": "8.2.2",
       },
     },
+    "examples/document-migration/Host/Frontend": {
+      "name": "@runic-artifex/document-migration",
+      "dependencies": {
+        "@runic-artifex/application-bridge": "workspace:*",
+        "@runic-artifex/desktop": "workspace:*",
+        "effect": "4.0.0-rc.112",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+      },
+      "devDependencies": {
+        "@runic-artifex/application-bridge-tooling": "workspace:*",
+        "@runic-artifex/vite-plugin-runic": "workspace:*",
+        "@types/react": "19.2.18",
+        "@types/react-dom": "19.2.7",
+        "@vitejs/plugin-react": "6.1.1",
+        "playwright-core": "1.63.0",
+        "typescript": "6.0.3",
+        "vite": "8.2.2",
+      },
+    },
     "packages/web/angular": {
       "name": "@runic-artifex/angular",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "dependencies": {
         "@runic-artifex/application-bridge": "workspace:*",
       },
@@ -116,7 +136,7 @@
     },
     "packages/web/application-bridge": {
       "name": "@runic-artifex/application-bridge",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "dependencies": {
         "effect": "4.0.0-rc.112",
       },
@@ -126,7 +146,7 @@
     },
     "packages/web/application-bridge-tooling": {
       "name": "@runic-artifex/application-bridge-tooling",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "bin": {
         "runic-bridge": "./dist/esm/cli.js",
       },
@@ -140,13 +160,13 @@
         "typescript": "7.0.2",
       },
       "peerDependencies": {
-        "@runic-artifex/application-bridge": "1.0.0-preview.1",
+        "@runic-artifex/application-bridge": "0.2.0-preview.1",
         "effect": "4.0.0-rc.112",
       },
     },
     "packages/web/desktop": {
       "name": "@runic-artifex/desktop",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "dependencies": {
         "effect": "4.0.0-rc.112",
       },
@@ -156,7 +176,7 @@
     },
     "packages/web/svelte": {
       "name": "@runic-artifex/svelte",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "devDependencies": {
         "@runic-artifex/application-bridge": "workspace:*",
         "@runic-artifex/vite-plugin-runic": "workspace:*",
@@ -174,8 +194,8 @@
         "vitest": "5.0.0",
       },
       "peerDependencies": {
-        "@runic-artifex/application-bridge": ">=1.0.0-preview.1 <2",
-        "@runic-artifex/vite-plugin-runic": ">=1.0.0-preview.1 <2",
+        "@runic-artifex/application-bridge": "0.2.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "0.2.0-preview.1",
         "effect": "4.0.0-rc.112",
         "svelte": ">=5.46.4 <6",
       },
@@ -186,7 +206,7 @@
     },
     "packages/web/sveltekit": {
       "name": "@runic-artifex/sveltekit",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "dependencies": {
         "@types/cookie": "0.6.0",
       },
@@ -208,8 +228,8 @@
         "vitest": "5.0.0",
       },
       "peerDependencies": {
-        "@runic-artifex/svelte": ">=1.0.0-preview.1 <2",
-        "@runic-artifex/vite-plugin-runic": ">=1.0.0-preview.1 <2",
+        "@runic-artifex/svelte": "0.2.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "0.2.0-preview.1",
         "@sveltejs/adapter-static": ">=3 <4",
         "@sveltejs/kit": ">=2.53.0 <3",
         "@sveltejs/vite-plugin-svelte": ">=7 <8",
@@ -223,7 +243,7 @@
     },
     "packages/web/vite-plugin-runic": {
       "name": "@runic-artifex/vite-plugin-runic",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "devDependencies": {
         "@runic-artifex/application-bridge-tooling": "workspace:*",
         "@types/node": "24.13.3",
@@ -233,7 +253,7 @@
         "vite": "8.2.2",
       },
       "peerDependencies": {
-        "@runic-artifex/application-bridge-tooling": "1.0.0-preview.1",
+        "@runic-artifex/application-bridge-tooling": "0.2.0-preview.1",
         "@vitejs/devtools": "^0.5.2",
         "vite": "^8.0.0",
       },
@@ -244,7 +264,7 @@
     },
     "packages/web/vite-plugin-runic-translations": {
       "name": "@runic-artifex/vite-plugin-runic-translations",
-      "version": "1.0.0-preview.1",
+      "version": "0.2.0-preview.1",
       "devDependencies": {
         "typescript": "^6.0.3",
         "vite": "^8.2.2",
@@ -481,6 +501,8 @@
     "@runic-artifex/customer-migration": ["@runic-artifex/customer-migration@workspace:examples/customer-migration/Host/Frontend"],
 
     "@runic-artifex/desktop": ["@runic-artifex/desktop@workspace:packages/web/desktop"],
+
+    "@runic-artifex/document-migration": ["@runic-artifex/document-migration@workspace:examples/document-migration/Host/Frontend"],
 
     "@runic-artifex/svelte": ["@runic-artifex/svelte@workspace:packages/web/svelte"],
 

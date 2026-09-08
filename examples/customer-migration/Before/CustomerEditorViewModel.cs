@@ -38,6 +38,14 @@ public sealed partial class CustomerEditorViewModel : ObservableValidator
         ClearErrors(); OnPropertyChanged(nameof(IsDirty)); SaveCommand.NotifyCanExecuteChanged();
         return true;
     }
+    // The legacy orchestration receives text from its view's native picker/clipboard.
+    // Both migrations retain this contact representation and review-before-save policy.
+    public void ApplyContact(string text)
+    {
+        var contact = ContactCodec.Parse(text);
+        Name = contact.Name; Email = contact.Email; Company = contact.Company;
+    }
+    public string ExportSavedContact() => ContactCodec.Serialize(new(_original.Name, _original.Email, _original.Company));
     [RelayCommand(CanExecute = nameof(CanSave), IncludeCancelCommand = true)]
     private async Task SaveAsync(CancellationToken token)
     {

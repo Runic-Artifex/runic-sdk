@@ -2,6 +2,17 @@ using System.Reflection;
 using CustomerMigration.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application;
+using Runic.Application.Platform;
+#if !RUNIC_CSWEBUI
+using Runic.Application.Platform.Desktop;
+#endif
+#if RUNIC_PLATFORM_Linux
+using SelectedProvider = Runic.Platform.Linux.LinuxPlatformProvider;
+#elif RUNIC_PLATFORM_Windows
+using SelectedProvider = Runic.Platform.Windows.WindowsPlatformProvider;
+#elif RUNIC_PLATFORM_MacOS
+using SelectedProvider = Runic.Platform.MacOS.MacOSPlatformProvider;
+#endif
 using Runic.Application.Bridge;
 #if RUNIC_CSWEBUI
 using Runic.Application.CsWebUi;
@@ -52,6 +63,17 @@ desktop = new DesktopApplicationHost(new()
 });
 var builder = RunicApplication.CreateBuilder(args).UseHost(desktop);
 #endif
+#if RUNIC_PLATFORM_Linux || RUNIC_PLATFORM_Windows || RUNIC_PLATFORM_MacOS
+if (native)
+    builder.Services.AddRunicDesktopPlatform(() => desktop?.Window, owner => new PlatformProvider
+    {
+        Files = SelectedProvider.CreateFileDialogs(owner),
+        Clipboard = SelectedProvider.CreateTextClipboard(owner),
+    });
+else builder.Services.AddRunicPlatform();
+#else
+builder.Services.AddRunicPlatform();
+#endif
 builder.Services.AddSingleton(_ => new CustomerDirectory(data));
 // Headless acceptance can hold a save before persistence without racing a timer.
 string? saveGate = args.Contains("--serve") ? Environment.GetEnvironmentVariable("RUNIC_CUSTOMER_SAVE_GATE") : null;
@@ -66,6 +88,15 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
 // Headless verification can request graceful shutdown on every OS through stdin.
 if (args.Contains("--serve") && Console.IsInputRedirected)
     _ = Task.Run(() => StopFromInputAsync(shutdown));
+#if !RUNIC_CSWEBUI
+// AppKit requires its event loop on the process main thread, before any await.
+if (native && OperatingSystem.IsMacOS() && !args.Contains("--serve"))
+{
+    try { application.Run(shutdown.Token); }
+    catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
+    return;
+}
+#endif
 var running = application.RunAsync(shutdown.Token);
 if (args.Contains("--serve"))
 {

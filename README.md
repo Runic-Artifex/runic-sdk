@@ -66,7 +66,7 @@ defines the proposed CS-WebUI/Desktop parity work and size-tuning experiments.
 ## Verify packages and releases
 
 ```sh
-bun run pack             # Materialize all 19 NuGet packages and 8 npm archives
+bun run pack             # Materialize the current workspace NuGet and npm inventory
 bun run verify-packages  # Install archives into isolated consumers outside this checkout
 bun run verify:templates # Packed React/Vue/Svelte/Angular apps with npm, pnpm, and Bun
 bun run ci               # Same GitHub workflow locally, including Linux native checks
@@ -87,8 +87,16 @@ checks, packages and template consumers. Managed desktop, native window/close,
 NativeAOT and footprint checks target Linux x64, Windows x64 and macOS Apple Silicon. Broader native UI certification remains
 a separate platform test concern.
 
-Root CI creates downloadable
-candidates only. The root `.github/workflows/ci.yml` owns this checkout's CI.
+The [0.2.0-preview.1 release guide](docs/guides/releases/0.2.0-preview.1.md)
+defines the intended 27 NuGet and 8 npm package preview, supported service boundaries,
+installation and compatibility commitments. The [human acceptance handoff](eng/preview-human-acceptance.md)
+tracks required Linux/Windows manual and registry evidence, plus follow-ups before
+v1 for real macOS, unavailable Wayland, broader accessibility and independent pilots.
+Publication waits for required demo-preview gates, including the exact frozen
+candidate's full CI on all three OS targets and current acceptance receipts.
+
+The root
+CI produces candidates. Current preview publication uses a separate gated workflow.
 
 See [local CI tooling](eng/ci/README.md) for Docker/Podman setup, job selection,
 source snapshots, artifacts and reruns. `bun run test` and `bun run verify` are

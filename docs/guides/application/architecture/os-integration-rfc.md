@@ -1,11 +1,16 @@
 # RFC: OS services for Runic applications
 
-Status: proposed API with an [internal lifetime prototype](../../../../tests/dotnet/Runic.Platform.Prototype.Tests/README.md),
-2026-09-07. This document does not introduce public packages or claim native
-picker/clipboard support. The existing
-[host selection contract](../../desktop/host-selection.md) remains authoritative
-for shipped behavior. Implementation starts after the current native lifecycle
-failures have been diagnosed.
+Status: shipping extraction and preview integration in progress, 2026-09-08.
+Public contracts/runtime and provider source now live in the seven platform packages
+below; the [conformance harness](../../../../tests/dotnet/Runic.Platform.Prototype.Tests/README.md)
+consumes that implementation. This status describes code, not published packages or
+native certification. The [host selection contract](../../desktop/host-selection.md)
+and [demo-preview acceptance policy](../../../../eng/preview-human-acceptance.md)
+define current boundaries. Manual preview checks cover this Linux system and the
+available Windows VM; automated native CI remains required on all three OS targets.
+Real macOS/sandbox checks, unavailable Wayland, broader accessibility and independent
+pilots are deferred follow-ups before v1. Existing scenarios below retain the broader
+v1 target; historical receipts are not current-candidate proof.
 
 ## Outcome
 
@@ -23,16 +28,26 @@ input/download as a separate presentation implementation with different guarante
 
 ## Ownership and package direction
 
-Provisional package names and locations:
+Current extraction package names and locations:
 
 | Package | Responsibility | Dependencies and lifetime |
 | --- | --- | --- |
 | `Runic.Platform` under `packages/dotnet` | Small C# service contracts, options and result types | No Desktop, CS-WebUI, ASP.NET Core, WPF, MAUI or Toolkit dependency |
+| `Runic.Platform.Runtime` | Shared leases, transactions, presentation lifetimes and dispatch | Host-independent provider infrastructure |
 | `Runic.Platform.Windows` | Native Windows providers | Platform contracts; COM/Win32 implementation, NativeAOT compatible |
 | `Runic.Platform.Linux` | Portal file access and Linux clipboard providers | Platform contracts; explicit desktop-session/backend prerequisites |
 | `Runic.Platform.MacOS` | AppKit providers and file-access lifetime | Platform contracts; process-main-thread integration |
-| Existing `Runic.Application.Desktop` / `Runic.Application.CsWebUi` | Register selected providers and bind them to owned presentations | Optional integration; do not force native providers into every application |
+| `Runic.Application.Platform` | Presentation-scoped registration and shutdown hooks | Shared application integration |
+| `Runic.Application.Platform.Desktop` | Verified Desktop owner and dispatcher adapter | Optional Desktop integration; native services remain unavailable in CS-WebUI |
 | Test fixtures under `tests/dotnet` | Controllable providers, dispatchers and ownership fixtures | Internal until a second application demonstrates a reusable testing package |
+
+Clipboard implementation detail: Windows uses Win32 APIs. macOS uses the
+ApplicationServices C Pasteboard APIs and CoreFoundation, not `NSPasteboard`.
+Linux GTK `UTF8_STRING` reads bound managed decoding and string allocation after
+GTK receives the native transfer; the application limit does not bound GTK's native
+transfer allocation. Failed advertised transfers report `IoError` without a distinct
+GTK permission code. Linux clipboard writes acquire ownership and do not guarantee
+persistence after application exit. Native evidence is tracked separately.
 
 Application features depend only on contracts for services they use. Domain
 libraries remain independent. Native providers share implementation between the

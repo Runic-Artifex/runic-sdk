@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/application-bridge-tooling",
-  "version": "1.0.0-preview.1",
+  "version": "0.2.0-preview.1",
   "description": "Compiler and development tooling for Runic Application Bridge contracts.",
   "repository": {
     "type": "git",
@@ -50,7 +50,7 @@
     "esbuild": "0.28.2"
   },
   "peerDependencies": {
-    "@runic-artifex/application-bridge": "1.0.0-preview.1",
+    "@runic-artifex/application-bridge": "0.2.0-preview.1",
     "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
@@ -60,7 +60,8 @@
     "typescript": "7.0.2"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "tag": "preview"
   },
   "packageManager": "bun@1.4.2"
 }

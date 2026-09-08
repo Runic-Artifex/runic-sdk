@@ -119,11 +119,13 @@ jobs:
           node: "true"
       - uses: ./.github/actions/restore-build
       - name: Verify workspace, runtime and CI contracts
-        run: bun test --timeout 180000 eng/workspace.test.mjs eng/path-boundary.test.mjs eng/node-compatibility.test.mjs ./eng/ci/*.test.mjs
+        run: bun test --timeout 180000 eng/workspace.test.mjs eng/path-boundary.test.mjs eng/node-compatibility.test.mjs ./eng/ci/*.test.mjs ./eng/preview/*.test.mjs ./eng/reliability/*.test.mjs
       - name: Verify the size command failure boundaries
         run: bun test --timeout 180000 tests/engineering/size-command.test.mjs
       - name: Verify retained acceptance evidence
         run: bun eng/ci/test-acceptance.mjs
+      - name: Verify document candidate export boundaries
+        run: python3 examples/document-migration/eng/test-candidate.py
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   framework-consumers:
@@ -238,6 +240,24 @@ jobs:
         if: matrix.journey == 'browser'
         working-directory: examples/customer-migration/Host/Frontend
         run: bun run --bun test:browser
+      - name: Build the document migration application
+        if: matrix.journey == 'browser'
+        run: dotnet build examples/document-migration/Host/DocumentDesktop.csproj -c Release
+      - name: Verify document draft behavior
+        if: matrix.journey == 'browser'
+        working-directory: examples/document-migration/Host/Frontend
+        run: bun run --bun test
+      - name: Exercise document bridge and dirty-close behavior
+        if: matrix.journey == 'browser'
+        working-directory: examples/document-migration/Host/Frontend
+        run: bun run --bun test:browser
+      - name: Build the document migration application with CS-WebUI
+        if: matrix.journey == 'browser'
+        run: dotnet build examples/document-migration/Host/DocumentDesktop.csproj -c Release -p:RunicHost=cswebui
+      - name: Exercise document CS-WebUI bridge and dirty-close behavior
+        if: matrix.journey == 'browser'
+        working-directory: examples/document-migration/Host/Frontend
+        run: bun run --bun test:browser
       - name: Exercise both hosts with frontend HMR
         if: matrix.journey == 'dev'
         working-directory: examples/customer-migration/Host/Frontend
@@ -293,6 +313,17 @@ jobs:
           path: artifacts/packages
       - name: Verify isolated NuGet and npm consumers
         run: bun run verify-packages
+      - uses: ./.github/actions/install-browser
+      - name: Verify package-only document migration in both hosts
+        run: python3 examples/document-migration/eng/verify-candidate.py --version 0.2.0-preview.1 --nuget-feed artifacts/packages/nuget --npm-feed artifacts/packages/npm --report artifacts/document-package-acceptance/linux-x64
+      - name: Retain package-only document evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-package-acceptance-${{ github.run_id }}
+          path: artifacts/document-package-acceptance
+          if-no-files-found: ignore
+          overwrite: true
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   templates:
@@ -316,18 +347,22 @@ jobs:
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   native:
+    name: Native / ${{ matrix.rid }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
             rid: linux-x64
+            provider: Linux
             extension: ""
           - os: windows-latest
             rid: win-x64
+            provider: Windows
             extension: .exe
           - os: macos-26
             rid: osx-arm64
+            provider: MacOS
             extension: ""
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -376,7 +411,7 @@ jobs:
         run: dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
       - name: Exercise native window close interception on Linux
         if: runner.os == 'Linux'
-        run: xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
@@ -385,7 +420,7 @@ jobs:
       - name: Verify live CS-WebUI presentation service lifetime on Linux
         if: runner.os == 'Linux'
         timeout-minutes: 2
-        run: xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --live-cswebui
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --live-cswebui
       - name: Verify live CS-WebUI presentation service lifetime
         if: runner.os != 'Linux'
         timeout-minutes: 2
@@ -393,7 +428,7 @@ jobs:
       - name: Verify GTK picker ownership and presentation shutdown
         if: runner.os == 'Linux'
         timeout-minutes: 3
-        run: xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --native
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --native
       - name: Verify native picker ownership and presentation shutdown
         if: runner.os != 'Linux'
         timeout-minutes: 3
@@ -404,12 +439,34 @@ jobs:
       - name: Exercise NativeAOT GTK picker lifecycle
         if: runner.os == 'Linux'
         timeout-minutes: 3
-        run: xvfb-run -a artifacts/platform-aot/Runic.Platform.Prototype.Tests --native
+        run: GDK_BACKEND=x11 xvfb-run -a artifacts/platform-aot/Runic.Platform.Prototype.Tests --native
       - name: Exercise NativeAOT picker lifecycle
         if: runner.os != 'Linux'
         timeout-minutes: 3
         shell: bash
         run: ./artifacts/platform-aot/Runic.Platform.Prototype.Tests${{ matrix.extension }} --native
+      - name: Build native clipboard conformance
+        run: dotnet build tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -p:TreatWarningsAsErrors=true
+      - name: Verify native GTK clipboard
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --native
+      - name: Verify native clipboard
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        run: dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --native
+      - name: Publish native clipboard conformance with NativeAOT
+        timeout-minutes: 10
+        run: dotnet publish tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/clipboard-aot
+      - name: Verify NativeAOT GTK clipboard
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: GDK_BACKEND=x11 xvfb-run -a artifacts/clipboard-aot/Runic.Platform.Linux.Tests --native
+      - name: Verify NativeAOT clipboard
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        shell: bash
+        run: ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --native
       - name: Prepare signed macOS sandbox fixture for manual permission evidence
         if: runner.os == 'macOS'
         shell: bash
@@ -443,6 +500,7 @@ jobs:
           ./artifacts/native/Runic.Application.Bridge.MemberAotSmoke${{ matrix.extension }}
 
   footprint:
+    name: Footprint / ${{ matrix.rid }}
     needs: packages
     strategy:
       fail-fast: false

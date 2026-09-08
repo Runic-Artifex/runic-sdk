@@ -1,0 +1,46 @@
+name: Verify preview acceptance evidence
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful full CI run at the selected workflow commit
+        required: true
+      receipts_json:
+        description: Reviewed runic.preview-evidence/1 JSON envelope bound to this candidate
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    if: github.repository == 'Runic-Artifex/runic-sdk'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: actions/download-artifact@v8
+        with:
+          name: runic-sdk-${{ inputs.ci_run_id }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/packages
+      - name: Seal successful CI artifacts and validate supplied evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          RECEIPTS_JSON: ${{ inputs.receipts_json }}
+        run: |
+          mkdir -p artifacts/preview
+          bun eng/preview/cli.mjs seal artifacts/packages "$GITHUB_SHA" "$CI_RUN_ID" artifacts/preview/candidate.json demo-preview
+          bun -e 'import {writeFileSync} from "node:fs"; const evidence=JSON.parse(process.env.RECEIPTS_JSON); if(evidence.schema!=="runic.preview-evidence/1") throw Error("Expected evidence envelope"); writeFileSync("artifacts/preview/receipts.json", JSON.stringify(evidence,null,2)+"\n", {flag:"wx"})'
+          bun eng/preview/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json
+      - name: Retain verified candidate and acceptance receipts
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-acceptance
+          path: artifacts/preview
+          if-no-files-found: error
+          retention-days: 30

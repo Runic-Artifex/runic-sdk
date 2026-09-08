@@ -53,7 +53,15 @@ with an explicit reconciliation policy.
 Replace direct `Dispatcher`, `Shell`, dialog or application-singleton references with
 services that match the feature's actual needs. A web file input can obtain selected
 file contents without granting arbitrary path access, but it does not reproduce all
-native file-picker capabilities. For embedded-window closing, configure
+native file-picker capabilities. The customer reference now uses `IFileDialogs`
+and `ITextClipboard` for native import/export and copy/paste, while retaining the
+browser JSON input as an explicit alternative. Register `AddRunicPlatform()` for
+unavailable browser services or bind an explicitly selected Desktop provider.
+Keep file leases and transactions in C#; send bounded contact candidates to the
+frontend for review. Correlate candidates with the draft sequence and customer
+identity, and capture the confirmed saved revision before starting export.
+
+For embedded-window closing, configure
 `DesktopWindowOptions.ConfirmCloseAsync` and answer from the state owner. The customer
 reference's `--native` mode asks its React draft through the authenticated script
 channel. Use `RequestCloseAsync` for application close buttons; `CloseAsync` and

@@ -1,0 +1,32 @@
+{
+  "name": "@runic-artifex/document-migration",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite",
+    "contract:generate": "runic-bridge generate --authority csharp --project ../DocumentDesktop.csproj",
+    "contract:check": "runic-bridge check --authority csharp --project ../DocumentDesktop.csproj",
+    "test": "bun test --timeout 120000 src/*.test.ts",
+    "test:browser": "bun browser.test.mjs",
+    "browser:install": "playwright-core install chromium"
+  },
+  "dependencies": {
+    "@runic-artifex/application-bridge": "workspace:*",
+    "@runic-artifex/desktop": "workspace:*",
+    "effect": "4.0.0-rc.112",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@runic-artifex/application-bridge-tooling": "workspace:*",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "playwright-core": "1.63.0",
+    "@runic-artifex/vite-plugin-runic": "workspace:*"
+  }
+}

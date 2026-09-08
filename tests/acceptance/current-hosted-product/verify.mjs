@@ -13,7 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../../fixtures/legacy-examples");
 const schema = "runic.current-hosted-product/1";
 const repeatSchema = "runic.current-hosted-product-repeat/1";
-const translationsVersion = "1.0.0-preview.1";
+const translationsVersion = "0.2.0-preview.1";
 const hostingVersion = "0.2.0-preview.1e8fff0";
 const nugetFeed = process.env.RUNIC_CURRENT_HOSTED_PRODUCT_NUGET_FEED && resolve(process.env.RUNIC_CURRENT_HOSTED_PRODUCT_NUGET_FEED);
 const archives = (process.env.RUNIC_CURRENT_HOSTED_PRODUCT_NPM_ARCHIVES ?? "").split(",").filter(Boolean).map(path => resolve(path));

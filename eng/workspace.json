@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "version": "1.0.0-preview.1",
+  "version": "0.2.0-preview.1",
   "npm": [
     {
       "name": "@runic-artifex/application-bridge",
@@ -115,6 +115,34 @@
     {
       "name": "Runic.Application.CsWebUi",
       "project": "packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj"
+    },
+    {
+      "name": "Runic.Platform",
+      "project": "packages/dotnet/Runic.Platform/Runic.Platform.csproj"
+    },
+    {
+      "name": "Runic.Platform.Runtime",
+      "project": "packages/dotnet/Runic.Platform.Runtime/Runic.Platform.Runtime.csproj"
+    },
+    {
+      "name": "Runic.Platform.Windows",
+      "project": "packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj"
+    },
+    {
+      "name": "Runic.Platform.Linux",
+      "project": "packages/dotnet/Runic.Platform.Linux/Runic.Platform.Linux.csproj"
+    },
+    {
+      "name": "Runic.Platform.MacOS",
+      "project": "packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj"
+    },
+    {
+      "name": "Runic.Application.Platform",
+      "project": "packages/dotnet/Runic.Application.Platform/Runic.Application.Platform.csproj"
+    },
+    {
+      "name": "Runic.Application.Platform.Desktop",
+      "project": "packages/dotnet/Runic.Application.Platform.Desktop/Runic.Application.Platform.Desktop.csproj"
     }
   ],
   "components": {
@@ -300,7 +328,8 @@
         "assets",
         "translations",
         "svelte",
-        "vite"
+        "vite",
+        "platform"
       ],
       "paths": [
         "tests/fixtures/legacy-examples",
@@ -311,13 +340,34 @@
         "examples/Directory.Build.props",
         "examples/Directory.Build.targets",
         "examples/Directory.Packages.props",
-        "examples/NuGet.config"
+        "examples/NuGet.config",
+        "examples/document-migration"
       ]
     },
     "docs": {
       "dependsOn": [],
       "paths": [
         "docs"
+      ]
+    },
+    "platform": {
+      "dependsOn": [
+        "application",
+        "desktop"
+      ],
+      "paths": [
+        "packages/dotnet/Runic.Platform",
+        "packages/dotnet/Runic.Platform.Runtime",
+        "packages/dotnet/Runic.Platform.Windows",
+        "packages/dotnet/Runic.Platform.Linux",
+        "packages/dotnet/Runic.Platform.MacOS",
+        "packages/dotnet/Runic.Application.Platform",
+        "packages/dotnet/Runic.Application.Platform.Desktop",
+        "tests/dotnet/Runic.Platform.Prototype.Tests",
+        "tests/dotnet/Runic.Platform.Windows.Tests",
+        "tests/dotnet/Runic.Platform.Linux.Tests",
+        "tests/dotnet/Runic.Platform.MacOS.Tests",
+        "tests/native/platform-sandbox"
       ]
     }
   }

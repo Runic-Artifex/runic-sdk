@@ -38,7 +38,7 @@ try {
   assert.equal(svelteManifest.name, "@runic-artifex/svelte");
   const viteManifest = JSON.parse((await execFile("tar", ["-xOf", vite, "package/package.json"])).stdout);
   assert.equal(viteManifest.name, "@runic-artifex/vite-plugin-runic");
-  assert.equal(svelteManifest.peerDependencies["@runic-artifex/vite-plugin-runic"], ">=1.0.0-preview.1 <2");
+  assert.equal(svelteManifest.peerDependencies["@runic-artifex/vite-plugin-runic"], "0.2.0-preview.1");
   assert.equal(svelteManifest.peerDependenciesMeta["@runic-artifex/vite-plugin-runic"].optional, true);
   const rootEntry = (await execFile("tar", ["-xOf", svelte, "package/dist/index.js"])).stdout;
   const translationsEntry = (await execFile("tar", ["-xOf", svelte, "package/dist/translations/index.js"])).stdout;

@@ -14,7 +14,7 @@ test("workspace contains every SDK artifact with unchanged package identities", 
     (p) => p.name ?? p.identity ?? p.packageId,
   );
   for (const name of authorityNames) assert.ok(names.includes(name), `Imported identity removed: ${name}`);
-  assert.deepEqual(names.filter(name => !authorityNames.includes(name)), ["Runic.Application.CsWebUi"]);
+  assert.deepEqual(names.filter(name => !authorityNames.includes(name)), ["Runic.Application.CsWebUi", "Runic.Platform", "Runic.Platform.Runtime", "Runic.Platform.Windows", "Runic.Platform.Linux", "Runic.Platform.MacOS", "Runic.Application.Platform", "Runic.Application.Platform.Desktop"]);
   for (const p of workspace.npm) {
     const manifest = json(`${p.path}/package.json`);
     assert.equal(manifest.name, p.name);
@@ -97,6 +97,7 @@ test("affected detection follows relocated code and its dependents", () => {
       "svelte",
       "editor",
       "examples",
+      "platform",
     ].sort(),
   );
   assert.deepEqual(
@@ -114,7 +115,7 @@ test("affected detection follows relocated code and its dependents", () => {
 test("development workspaces and CI exclude imported engineering archives", () => {
   for (const path of json("package.json").workspaces) {
     assert.ok(
-      /^(packages\/web\/|apps\/|docs$|examples\/(counter|customer-migration)\/)/.test(
+      /^(packages\/web\/|apps\/|docs$|examples\/(counter|customer-migration|document-migration)\/)/.test(
         path,
       ),
       `unexpected development workspace: ${path}`,

@@ -3,6 +3,10 @@
     <Project Path="apps/translations-editor/Runic.Translations.Editor.csproj" />
   </Folder>
   <Folder Name="/examples/">
+    <Project Path="examples/document-migration/Domain/DocumentDomain.csproj" />
+    <Project Path="examples/document-migration/Before/DocumentMvvm.csproj" />
+    <Project Path="examples/document-migration/After/DocumentApplication.csproj" />
+    <Project Path="examples/document-migration/Tests/DocumentMigration.Tests.csproj" />
     <Project Path="examples/counter/Counter.csproj" />
     <Project Path="examples/customer-migration/After/CustomerApplication.csproj" />
     <Project Path="examples/customer-migration/Before/CustomerMvvm.csproj" />
@@ -11,6 +15,13 @@
     <Project Path="examples/customer-migration/Tests/CustomerMigration.Tests.csproj" />
   </Folder>
   <Folder Name="/packages/dotnet/">
+    <Project Path="packages/dotnet/Runic.Platform/Runic.Platform.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Linux/Runic.Platform.Linux.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Platform/Runic.Application.Platform.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Platform.Desktop/Runic.Application.Platform.Desktop.csproj" />
     <Project Path="packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Bridge.Generators/Runic.Application.Bridge.Generators.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
@@ -37,6 +48,9 @@
     <Project Path="tests/fixtures/desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
   </Folder>
   <Folder Name="/tests/dotnet/">
+    <Project Path="tests/dotnet/Runic.Platform.Windows.Tests/Runic.Platform.Windows.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.MacOS.Tests/Runic.Platform.MacOS.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.CsWebUi.Tests/Runic.Application.CsWebUi.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Bridge.CounterTests/Runic.Application.Bridge.CounterTests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Bridge.GeneratorTests/Runic.Application.Bridge.GeneratorTests.csproj" />

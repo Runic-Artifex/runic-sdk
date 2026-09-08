@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
+using System.Text;
+using System.Runtime.InteropServices;
+using CustomerMigration.Domain;
 using System.Windows;
 using System.Windows.Controls;
 using CustomerMigration.Before;
@@ -26,14 +29,60 @@ public partial class CustomerWindow : Window
         try
         {
             if (new FileInfo(picker.FileName).Length > 4096) throw new IOException("Choose a file smaller than 4 KB.");
-            using var json = JsonDocument.Parse(File.ReadAllText(picker.FileName));
-            string name = json.RootElement.GetProperty("name").GetString() ?? "";
-            string email = json.RootElement.GetProperty("email").GetString() ?? "";
-            string company = json.RootElement.GetProperty("company").GetString() ?? "";
-            _model.Name = name; _model.Email = email; _model.Company = company;
+            using var stream = File.OpenRead(picker.FileName);
+            byte[] bytes = new byte[4097];
+            int count = stream.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false);
+            if (count > 4096) throw new InvalidDataException();
+            ReviewContact(new UTF8Encoding(false, true).GetString(bytes, 0, count));
         }
-        catch (Exception error) when (error is IOException or JsonException or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or JsonException or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException or DecoderFallbackException)
         { MessageBox.Show(this, "Could not read the contact. Use a JSON object with name, email and company text fields."); }
+    }
+    private void ReviewContact(string text)
+    {
+        var contact = ContactCodec.Parse(text);
+        if (MessageBox.Show(this, $"Apply {contact.Name} ({contact.Email}) to the current draft?", "Review contact", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            _model.ApplyContact(text);
+    }
+    private void PasteContact(object sender, RoutedEventArgs e)
+    {
+        if (_model.SaveCommand.IsRunning) return;
+        try
+        {
+            if (!Clipboard.ContainsText()) { MessageBox.Show(this, "The clipboard contains no text."); return; }
+            ReviewContact(Clipboard.GetText());
+        }
+        catch (Exception error) when (error is ExternalException or JsonException or InvalidDataException)
+        { MessageBox.Show(this, "Could not paste a contact. Use valid contact JSON up to 4096 UTF-8 bytes; the clipboard may be busy."); }
+    }
+    private string? ConfirmExport()
+    {
+        if (_model.SaveCommand.IsRunning) return null;
+        string text = _model.ExportSavedContact();
+        return MessageBox.Show(this, $"Export or copy this saved revision? Unsaved draft edits are excluded.\n{text}", "Confirm saved contact", MessageBoxButton.YesNo) == MessageBoxResult.Yes ? text : null;
+    }
+    private void CopyContact(object sender, RoutedEventArgs e)
+    {
+        string? text = ConfirmExport();
+        if (text is null) return;
+        try { Clipboard.SetText(text); }
+        catch (ExternalException) { MessageBox.Show(this, "The clipboard is busy. Try again."); }
+    }
+    private void ExportContact(object sender, RoutedEventArgs e)
+    {
+        string? text = ConfirmExport();
+        if (text is null) return;
+        var picker = new SaveFileDialog { Filter = "Contact JSON|*.json", FileName = "contact.json" };
+        if (picker.ShowDialog(this) != true) return;
+        string staging = Path.Combine(Path.GetDirectoryName(picker.FileName)!, ".contact-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            File.WriteAllText(staging, text, new UTF8Encoding(false));
+            File.Move(staging, picker.FileName, overwrite: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { MessageBox.Show(this, "Could not export the contact. Check destination permissions."); }
+        finally { if (File.Exists(staging)) File.Delete(staging); }
     }
     private async void ConfirmClose(object? sender, CancelEventArgs e)
     {

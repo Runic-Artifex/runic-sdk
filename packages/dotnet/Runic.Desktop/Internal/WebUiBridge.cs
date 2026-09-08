@@ -230,7 +230,14 @@ internal static class WebUiBridge
                 tokenAccepted = true;
                 bindings.clear();
                 allEvents = false;
-                readString(packet, HEADER_SIZE + 1).split(",").forEach(installBinding);
+                const advertisedBindings = readString(packet, HEADER_SIZE + 1);
+                // The wire list ends with a delimiter. Remove exactly that delimiter,
+                // preserving a real empty (all-events) binding before it.
+                if (advertisedBindings.length > 0) {
+                  const names = advertisedBindings.endsWith(",")
+                    ? advertisedBindings.slice(0, -1) : advertisedBindings;
+                  names.split(",").forEach(installBinding);
+                }
                 resolveInitialConnection(webui);
                 resolveConnectionWaiters();
                 notifyConnectionEvent(webui.event.CONNECTED);

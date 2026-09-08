@@ -54,3 +54,28 @@ MAUI/mobile support remain outside these checks.
   the lower-level Desktop smoke test supplies its own runner.
 
 The next structural task is the [repository reorganisation](../../eng/repository-reorganisation.md).
+
+## Native contact candidate checks
+
+The managed migration harness exercises the real generated bridge for unavailable
+file services, clipboard absence versus empty JSON, bounded UTF-8 input, reviewable
+candidate correlation, stale export confirmation, saved-revision copy, selected-file
+lease cleanup, dismissal, uncertain commit, cleanup after acknowledged commit,
+concurrent-save export revision capture, and reconnect without replay. Its clipboard is deterministic and is not native OS
+acceptance evidence. Existing persistence, cancellation and domain equivalence
+checks remain in that harness.
+
+For each final native binary, record its source commit, SHA-256, OS/backend,
+scenario and outcome. Required manual checks: real selected-file import and
+atomic export; actual clipboard copy/paste; cancel and retry; edit while import
+is pending and review the late candidate; save a new revision while an export
+picker is open and verify captured bytes; reconnect without repeated side effects;
+restart and confirm saved data; keyboard focus recovery and dirty-close protection.
+For this demo preview, manual release gates are the current local Linux environment
+and the available Windows VM. Run the automated JIT and NativeAOT matrix on all
+three supported OS targets. Actual macOS selected-file/signed-sandbox checks,
+Wayland/portal if it is not the current local environment, broader accessibility
+(NVDA, Orca, VoiceOver, IME, high contrast and scaling) and independent pilots are
+explicit follow-ups before v1. Record each deferred scenario as deferred, never
+as a passing receipt. Deterministic tests do not replace the required local Linux
+and Windows VM native checks. Historical verification above remains historical.

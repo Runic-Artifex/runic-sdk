@@ -1,0 +1,13 @@
+<!-- Illustrative MAUI page binding for the portable baseline, not a compiled MAUI target. -->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:DocumentMigration.Before" x:DataType="vm:DocumentViewModel">
+  <VerticalStackLayout>
+    <Editor Text="{Binding Text}" AutoSize="TextChanges" />
+    <Button Text="Open" Command="{Binding OpenCommand}" />
+    <Button Text="Save as" Command="{Binding SaveCommand}" />
+    <Button Text="Cancel open" Command="{Binding OpenCancelCommand}" />
+    <Button Text="Cancel save" Command="{Binding SaveCancelCommand}" />
+    <Label Text="{Binding Status}" />
+  </VerticalStackLayout>
+</ContentPage>

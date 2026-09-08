@@ -777,7 +777,7 @@ internal static class Program
         string assetsFile = workspace.Write(
             "obj/project.assets.json",
             """
-            {"libraries":{"Runic.Application/1.0.0-preview.1":{"type":"package"},"Runic.Desktop/1.0.0-preview.1":{"type":"package"}}}
+            {"libraries":{"Runic.Application/0.2.0-preview.1":{"type":"package"},"Runic.Desktop/0.2.0-preview.1":{"type":"package"}}}
             """);
         return new(
             ProjectPath: workspace.Write("App.csproj", "<Project />"),
@@ -810,7 +810,7 @@ internal static class Program
         File.WriteAllText(
             project.ProjectAssetsFile,
             """
-            {"libraries":{"Runic.Application/1.0.0-preview.2":{"type":"package"},"Runic.Desktop/1.0.0-preview.1":{"type":"package"}}}
+            {"libraries":{"Runic.Application/0.2.0-preview.2":{"type":"package"},"Runic.Desktop/0.2.0-preview.1":{"type":"package"}}}
             """);
         var runtime = new FakeDoctorRuntime()
             .WithEnvironment("RUNIC_BROWSER_PATH", browser)
@@ -821,7 +821,7 @@ internal static class Program
         DoctorReport report = InspectDoctor(project, runtime);
         DoctorCheck check = report.Checks.Single(item => item.Name == "compatibility-set");
         Equal(DoctorStatus.Failure, check.Status);
-        Contains(check.Message, "Runic.Application 1.0.0-preview.2");
+        Contains(check.Message, "Runic.Application 0.2.0-preview.2");
         Contains(check.Remediation ?? string.Empty, "isolated feed");
     }
 
@@ -832,7 +832,7 @@ internal static class Program
         workspace.Write(
             "package-lock.json",
             """
-            {"lockfileVersion":3,"packages":{"node_modules/@runic-artifex/application-bridge":{"version":"1.0.0-preview.1","resolved":"https://registry.example.invalid/application-bridge.tgz"}}}
+            {"lockfileVersion":3,"packages":{"node_modules/@runic-artifex/application-bridge":{"version":"0.2.0-preview.1","resolved":"https://registry.example.invalid/application-bridge.tgz"}}}
             """);
         string browser = workspace.Write("bin/chromium", "browser");
         DoctorProjectConfiguration project = CreateDoctorProject(

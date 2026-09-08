@@ -21,13 +21,19 @@ Release and source control boundaries:
   of a new monorepo commit.
 - `migration/imports.json`: original repository heads, worktree digests, and paths.
 
-For remote cutover, create the intended `Runic-Artifex/runic-sdk` repository and
-push `main` with its complete merge ancestry and namespaced tags. No old repository
-needs to be deleted. Preserve imported branch tips too if their additional branch
-history is wanted remotely. Then run the root CI on the new remote before preparing
-new compatibility and release attestations. Archiving old repositories or publishing
-packages is a separate decision.
+Current preview preparation is described in the
+[release guide](../docs/guides/releases/0.2.0-preview.1.md) and
+[human acceptance handoff](preview-human-acceptance.md). The current monorepo release
+definition is derived from `workspace.json`; preserve imported release receipts and
+source pins as history. Full CI is the verification authority. A separate preview
+publication workflow must select the frozen commit's successful run and verify the
+immutable artifacts and required demo-preview acceptance receipts before publication.
 
-The next structural task is the [repository reorganisation](repository-reorganisation.md),
-sequenced after native close interception. It defines the destination layout, move
-order and verification criteria without rewriting import or release evidence.
+Registry ownership under NuGet organization `runic-artifex` and manual sessions on
+this Linux system and the available Windows VM require user-coordinated evidence.
+Automated native CI remains required on all three OS targets. Real macOS interaction,
+unavailable Wayland checks, broader accessibility and independent pilots are deferred
+before v1; record them as follow-ups, not demo-preview blockers or passes. Missing
+required gates delay publication. Candidate-only
+checks do not establish public-registry availability, and public installation smoke
+checks follow successful registry publication.

@@ -116,14 +116,14 @@ importers:
         specifier: 2.11.8
         version: 2.11.8
       '@runic-artifex/application-bridge':
-        specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1
+        specifier: 0.2.0-preview.1
+        version: 0.2.0-preview.1
       '@runic-artifex/desktop':
-        specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1
+        specifier: 0.2.0-preview.1
+        version: 0.2.0-preview.1
       '@runic-artifex/svelte':
-        specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(@runic-artifex/vite-plugin-runic@1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2))(effect@4.0.0-rc.112)(svelte@5.57.0)
+        specifier: 0.2.0-preview.1
+        version: 0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(@runic-artifex/vite-plugin-runic@0.2.0-preview.1(@runic-artifex/application-bridge-tooling@0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2))(effect@4.0.0-rc.112)(svelte@5.57.0)
       bootstrap:
         specifier: 5.3.8
         version: 5.3.8(@popperjs/core@2.11.8)
@@ -135,11 +135,11 @@ importers:
         version: 5.57.0
     devDependencies:
       '@runic-artifex/application-bridge-tooling':
-        specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)
+        specifier: 0.2.0-preview.1
+        version: 0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112)
       '@runic-artifex/vite-plugin-runic':
-        specifier: 1.0.0-preview.1
-        version: 1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2)
+        specifier: 0.2.0-preview.1
+        version: 0.2.0-preview.1(@runic-artifex/application-bridge-tooling@0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2)
       '@sveltejs/vite-plugin-svelte':
         specifier: 7.3.0
         version: 7.3.0(svelte@5.57.0)(vite@8.2.2)
@@ -577,28 +577,28 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@runic-artifex/application-bridge-tooling@1.0.0-preview.1':
-    resolution: {integrity: sha512-42In6kIWEBitPLveK7V1+ld1TgcComFuX1wzuL7xLCrtuMjSQ6SKkv59V1ozmFlcxd+MQIhms3oZX7C+pnligg==}
+  '@runic-artifex/application-bridge-tooling@0.2.0-preview.1':
+    resolution: {integrity: sha512-rG6qI6kuHVl+Sc5j39RAHGOwcWQSvH+ASgpzX+135BBIgF93a2l9Jn/s8s/M2LuRi1qxGpk2Flkp1lTMSd4tmQ==}
     engines: {node: '>=24.18.0 <25'}
     hasBin: true
     peerDependencies:
-      '@runic-artifex/application-bridge': 1.0.0-preview.1
+      '@runic-artifex/application-bridge': 0.2.0-preview.1
       effect: 4.0.0-rc.112
 
-  '@runic-artifex/application-bridge@1.0.0-preview.1':
-    resolution: {integrity: sha512-Pozt/rAJcdOj1aI6aIGj6Y/SEkKRLe1e1NnqdCrJMTyUZjOO2kIjSqPMme5Sneq1Cod6xgQcGTcG3flcvRVT5Q==}
+  '@runic-artifex/application-bridge@0.2.0-preview.1':
+    resolution: {integrity: sha512-cG9vNMv7HCw8f0iMRCgw59Os1jXA6rkGGs9xDMKjY7efQ66dD5CDEyMWMhCoOu9M7p3Gw432v5b2DIeVMnQ9BA==}
     engines: {node: '>=24.18.0 <25'}
 
-  '@runic-artifex/desktop@1.0.0-preview.1':
-    resolution: {integrity: sha512-LRJWvckZIMnOPw+4t6rMzPKPV9QpTdoJ8vgv2purgsZ3fgFVjQotoshakfWGFGwjjoOxgJltWBBRiLhEybCMeg==}
+  '@runic-artifex/desktop@0.2.0-preview.1':
+    resolution: {integrity: sha512-GEMMXqnp4D1+TDHbS9snq61fMj7V/ZnGa2I1buSNLrHLazsCS2hm3zGgtz8+RQcl2jUG2FP6OyzkdyrWl2Bbaw==}
     engines: {node: '>=24.18.0 <25'}
 
-  '@runic-artifex/svelte@1.0.0-preview.1':
-    resolution: {integrity: sha512-Y+MSUqINpEyqTja9J0HAo2EhO4X+CxTv10EYQYcQIYo6hRGE0DRhfXZOfhZdp0lATZzn5Ok44OksWLKONqBa+Q==}
+  '@runic-artifex/svelte@0.2.0-preview.1':
+    resolution: {integrity: sha512-jbc3uRjEVB8jmGyeJjzHvtLfa1JSgjV6MGZD2wg0RO5NHI4e8CdnVzl15Zf50SPNS9bp2vi5ddeVuSAF0pAgsQ==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
-      '@runic-artifex/application-bridge': '>=1.0.0-preview.1 <2'
-      '@runic-artifex/vite-plugin-runic': '>=1.0.0-preview.1 <2'
+      '@runic-artifex/application-bridge': 0.2.0-preview.1
+      '@runic-artifex/vite-plugin-runic': 0.2.0-preview.1
       effect: 4.0.0-rc.112
       svelte: '>=5.46.4 <6'
     peerDependenciesMeta:
@@ -607,11 +607,11 @@ packages:
       '@runic-artifex/vite-plugin-runic':
         optional: true
 
-  '@runic-artifex/vite-plugin-runic@1.0.0-preview.1':
-    resolution: {integrity: sha512-iqQzEizZuLtvM3Fh2GnH7BFWyJWzkI32eGsJt6PAGnTTt713pJIimgoDRgFw8pPliLqDf+j77PUUeXimdi5leg==}
+  '@runic-artifex/vite-plugin-runic@0.2.0-preview.1':
+    resolution: {integrity: sha512-816Fz2LIIMfDD406A1By8v2kVf/fK8zzpT3OgGQmwLd2wun49ReQNeIWYseFWKK21L4E0WFPTj2cUXvstVsb9A==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
-      '@runic-artifex/application-bridge-tooling': 1.0.0-preview.1
+      '@runic-artifex/application-bridge-tooling': 0.2.0-preview.1
       '@vitejs/devtools': ^0.5.2
       vite: ^8.0.0
     peerDependenciesMeta:
@@ -1327,33 +1327,33 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)':
+  '@runic-artifex/application-bridge-tooling@0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112)':
     dependencies:
-      '@runic-artifex/application-bridge': 1.0.0-preview.1
+      '@runic-artifex/application-bridge': 0.2.0-preview.1
       effect: 4.0.0-rc.112
       esbuild: 0.28.2
 
-  '@runic-artifex/application-bridge@1.0.0-preview.1':
+  '@runic-artifex/application-bridge@0.2.0-preview.1':
     dependencies:
       effect: 4.0.0-rc.112
 
-  '@runic-artifex/desktop@1.0.0-preview.1':
+  '@runic-artifex/desktop@0.2.0-preview.1':
     dependencies:
       effect: 4.0.0-rc.112
 
-  '@runic-artifex/svelte@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(@runic-artifex/vite-plugin-runic@1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2))(effect@4.0.0-rc.112)(svelte@5.57.0)':
+  '@runic-artifex/svelte@0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(@runic-artifex/vite-plugin-runic@0.2.0-preview.1(@runic-artifex/application-bridge-tooling@0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2))(effect@4.0.0-rc.112)(svelte@5.57.0)':
     dependencies:
       effect: 4.0.0-rc.112
       svelte: 5.57.0
     optionalDependencies:
-      '@runic-artifex/application-bridge': 1.0.0-preview.1
-      '@runic-artifex/vite-plugin-runic': 1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2)
+      '@runic-artifex/application-bridge': 0.2.0-preview.1
+      '@runic-artifex/vite-plugin-runic': 0.2.0-preview.1(@runic-artifex/application-bridge-tooling@0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2)
 
-  '@runic-artifex/vite-plugin-runic@1.0.0-preview.1(@runic-artifex/application-bridge-tooling@1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2)':
+  '@runic-artifex/vite-plugin-runic@0.2.0-preview.1(@runic-artifex/application-bridge-tooling@0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112))(@vitejs/devtools@0.5.2)(vite@8.2.2)':
     dependencies:
       vite: 8.2.2(@vitejs/devtools@0.5.2)(esbuild@0.28.2)
     optionalDependencies:
-      '@runic-artifex/application-bridge-tooling': 1.0.0-preview.1(@runic-artifex/application-bridge@1.0.0-preview.1)(effect@4.0.0-rc.112)
+      '@runic-artifex/application-bridge-tooling': 0.2.0-preview.1(@runic-artifex/application-bridge@0.2.0-preview.1)(effect@4.0.0-rc.112)
       '@vitejs/devtools': 0.5.2(@devframes/json-render@0.9.12(@devframes/hub@0.9.12(crossws@0.4.12(srvx@1.0.3))(devframe@0.9.12(cac@7.0.0)(srvx@1.0.3)))(devframe@0.9.12(cac@7.0.0)(srvx@1.0.3)))(crossws@0.4.12(srvx@1.0.3))(srvx@1.0.3)(vite@8.2.2)
 
   '@standard-schema/spec@1.1.0': {}

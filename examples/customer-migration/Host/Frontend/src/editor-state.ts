@@ -1,5 +1,7 @@
 import type {
   CustomerInput,
+  NativeContactState,
+  ContactData,
   CustomerRow,
   CustomerSnapshot,
   ValidationIssue,
@@ -80,4 +82,12 @@ export function importContact(
     email: contact.email as string,
     company: contact.company as string,
   };
+}
+
+export interface ContactCandidate { data: ContactData; sequence: number; customerId: string }
+// Only the locally admitted request may offer an imported draft. Reconnect snapshots
+// provide outcomes but cannot replay a side effect or reapply a previously consumed candidate.
+export function receiveContactCandidate(result: NativeContactState, requested?: string, handled?: string): ContactCandidate | undefined {
+  if (result.status === "running" || !requested || result.operationId !== requested || result.operationId === handled || !result.candidate || !result.customerId) return undefined;
+  return { data: result.candidate, sequence: result.draftSequence, customerId: result.customerId };
 }

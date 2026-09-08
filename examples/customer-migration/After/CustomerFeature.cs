@@ -4,13 +4,13 @@ using Runic.Application.Bridge.Generated;
 
 namespace CustomerMigration.After;
 
-public sealed partial class CustomerFeature(CustomerService service)
+public sealed partial class CustomerFeature(CustomerService service, Runic.Platform.IFileDialogs files, Runic.Platform.ITextClipboard clipboard, Runic.Platform.IPlatformCapabilities capabilities)
 {
     private readonly object _gate = new();
     private int _generation;
     private SaveState _save = new(null, "idle", 0, "Ready", []);
     [BridgeSnapshot]
-    private CustomerSnapshot Snapshot() { lock (_gate) return new(service.Read().Select(ToRow).ToArray(), _save, _generation); }
+    private CustomerSnapshot Snapshot() { lock (_gate) return new(service.Read().Select(ToRow).ToArray(), _save, _generation, _native, NativeCapabilities()); }
 
     [BridgeCommand]
     private DraftValidated Validate(ValidateCustomer command) => new(CustomerRules.Validate(ToDraft(command.Draft)).Select(ToIssue).ToArray());
@@ -70,7 +70,7 @@ public sealed record CustomerRow(Guid Id, string Name, string Email, string Comp
 public sealed record CustomerInput(Guid Id, [property: BridgeStringLength(0, 1000)] string Name, [property: BridgeStringLength(0, 1000)] string Email, [property: BridgeStringLength(0, 1000)] string Company, [property: BridgeMinimum(1)] int Version);
 public sealed record ValidationIssue(string Field, string Message);
 public sealed record SaveState(Guid? OperationId, string Status, [property: BridgeMinimum(0), BridgeMaximum(100)] int Progress, string Message, ValidationIssue[] Issues);
-public sealed record CustomerSnapshot(CustomerRow[] Customers, SaveState Save, int Generation);
+public sealed record CustomerSnapshot(CustomerRow[] Customers, SaveState Save, int Generation, NativeContactState Native, NativeAvailability Capabilities);
 public sealed record ValidateCustomer(CustomerInput Draft);
 public sealed record DraftValidated(ValidationIssue[] Issues);
 public sealed record ReloadCustomers;

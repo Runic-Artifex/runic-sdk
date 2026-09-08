@@ -1,0 +1,66 @@
+name: Publish verified preview
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful full CI run at this workflow commit
+        required: true
+      evidence_run_id:
+        description: Run containing reviewed preview-acceptance artifact (candidate.json and receipts.json)
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: publish-0.2.0-preview.1
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'Runic-Artifex/runic-sdk'
+    runs-on: ubuntu-24.04
+    environment: preview
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          node: 'true'
+      - uses: actions/download-artifact@v8
+        with:
+          name: runic-sdk-${{ inputs.ci_run_id }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/packages
+      - uses: actions/download-artifact@v8
+        with:
+          name: preview-acceptance
+          run-id: ${{ inputs.evidence_run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/preview
+      - name: Verify candidate and required receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_RUN: ${{ inputs.ci_run_id }}
+        run: |
+          bun -e 'import c from "./artifacts/preview/candidate.json"; if(c.ciRunId!==process.env.EXPECTED_RUN) throw Error("CI run mismatch")'
+          bun eng/preview/cli.mjs verify artifacts/packages artifacts/preview/candidate.json
+          bun eng/preview/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json
+          bun eng/preview/cli.mjs final-ci artifacts/preview/candidate.json
+      - uses: NuGet/login@v1
+        id: nuget
+        with:
+          # NuGet profile username, not email; configure as a repository variable.
+          # Select organization runic-artifex as the trusted policy owner on nuget.org.
+          user: ${{ vars.NUGET_USER }}
+      - name: Publish exact verified packages through OIDC
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: bun eng/preview/cli.mjs publish artifacts/packages artifacts/preview/candidate.json artifacts/preview/receipts.json
+      - name: Require registry availability and matching contents
+        run: bun eng/preview/cli.mjs registry artifacts/preview/candidate.json

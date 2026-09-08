@@ -11,6 +11,57 @@ import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { root, workspace, run, configuration } from "./run.mjs";
 
+const nativeProviders = new Set([
+  "runic.platform.windows",
+  "runic.platform.linux",
+  "runic.platform.macos",
+]);
+
+function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = false, selectedProvider } = {}) {
+  const assets = JSON.parse(readFileSync(join(consumer, "obj/project.assets.json"), "utf8"));
+  const libraries = Object.keys(assets.libraries);
+  assert.ok(Object.values(assets.libraries).every(library => library.type !== "project"),
+    `${label} leaked a project reference`);
+  for (const library of libraries.filter(name => name.toLowerCase().startsWith("runic."))) {
+    assert.equal(library.split("/")[1], workspace.version, `stale internal dependency ${library}`);
+  }
+  const isolated = platformOnly || label === "Runic.Application.Platform"
+    || label === "Runic.Application.Platform.Desktop" || label === "Runic.Application.CsWebUi"
+    || label === "CS-WebUI with Platform";
+  if (!isolated) return;
+
+  // Inspect the complete restored graph, including dependencies that are not loaded by the canary.
+  const allowedPlatform = new Set(["runic.platform", label.toLowerCase()]);
+  if (label !== "Runic.Platform") allowedPlatform.add("runic.platform.runtime");
+  for (const library of libraries) {
+    const name = library.split("/")[0].toLowerCase();
+    assert.ok(!nativeProviders.has(name) || name === selectedProvider,
+      `${label} unexpectedly depends on native provider ${library}`);
+    assert.ok(desktop || !name.startsWith("microsoft.aspnetcore"),
+      `${label} unexpectedly depends on ASP.NET Core package ${library}`);
+    if (!desktop) {
+      assert.ok(!/^runic\.(desktop|application\.desktop|application\.platform\.desktop|assets\.desktop)(\.|$)/.test(name),
+        `${label} unexpectedly depends on Desktop package ${library}`);
+    }
+    if (platformOnly) {
+      assert.ok(!name.startsWith("runic.") || allowedPlatform.has(name),
+        `${label} unexpectedly depends on host/application package ${library}`);
+      assert.ok(name !== "cswebui", `${label} unexpectedly depends on CS-WebUI`);
+    }
+  }
+  // Desktop currently brings its ASP.NET Core server framework; its optional adapter may do so too.
+  if (desktop) return;
+  const runtime = JSON.parse(readFileSync(join(consumer, `bin/${configuration}/net10.0/Consumer.runtimeconfig.json`), "utf8"));
+  const frameworks = [runtime.runtimeOptions.framework,
+    ...(runtime.runtimeOptions.frameworks ?? []), ...(runtime.runtimeOptions.includedFrameworks ?? [])];
+  assert.ok(!frameworks.some(framework => framework?.name === "Microsoft.AspNetCore.App"),
+    `${label} unexpectedly requires the ASP.NET Core shared framework`);
+  for (const framework of Object.values(assets.project.frameworks ?? {})) {
+    assert.ok(!Object.keys(framework.frameworkReferences ?? {}).includes("Microsoft.AspNetCore.App"),
+      `${label} unexpectedly restores the ASP.NET Core shared framework`);
+  }
+}
+
 export async function verifyPackages() {
   const directory = mkdtempSync(join(tmpdir(), "runic-sdk-consumers-"));
   console.log(`Package-only consumers: ${directory}`);
@@ -74,31 +125,43 @@ export async function verifyPackages() {
       );
     }
     run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], consumer, env);
-    const assets = JSON.parse(
-      readFileSync(join(consumer, "obj/project.assets.json"), "utf8"),
-    );
-    assert.ok(
-      Object.values(assets.libraries).every((l) => l.type !== "project"),
-      `${p.name} leaked a project reference`,
-    );
-    if (p.name === "Runic.Application.CsWebUi") {
-      assert.ok(!Object.keys(assets.libraries).some(name => name.startsWith("Runic.Desktop/")),
-        "CS-WebUI host unexpectedly depends on Desktop");
-      const runtime = JSON.parse(readFileSync(join(consumer, `bin/${configuration}/net10.0/Consumer.runtimeconfig.json`), "utf8"));
-      const frameworks = runtime.runtimeOptions.frameworks ?? [runtime.runtimeOptions.framework];
-      assert.ok(!frameworks.some(framework => framework?.name === "Microsoft.AspNetCore.App"),
-        "CS-WebUI host unexpectedly requires ASP.NET Core");
-    }
-    for (const key of Object.keys(assets.libraries).filter((k) =>
-      k.startsWith("Runic."),
-    )) {
-      assert.equal(
-        key.split("/")[1],
-        workspace.version,
-        `stale internal dependency ${key}`,
-      );
-    }
+    verifyConsumerGraph(consumer, p.name, {
+      platformOnly: p.name === "Runic.Platform" || p.name.startsWith("Runic.Platform."),
+      desktop: p.name === "Runic.Application.Platform.Desktop",
+      selectedProvider: nativeProviders.has(p.name.toLowerCase()) ? p.name.toLowerCase() : undefined,
+    });
   }
+  // Composition must retain isolation too: resolve the shared services through the public API
+  // alongside CS-WebUI without creating a native window or using workspace project references.
+  const sharedConsumer = join(directory, "cswebui-platform");
+  mkdirSync(sharedConsumer);
+  writeFileSync(join(sharedConsumer, "Consumer.csproj"),
+    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="Runic.Application.CsWebUi" Version="${workspace.version}"/><PackageReference Include="Runic.Application.Platform" Version="${workspace.version}"/></ItemGroup></Project>`);
+  writeFileSync(join(sharedConsumer, "Program.cs"), `
+using Microsoft.Extensions.DependencyInjection;
+using Runic.Application.Platform;
+using Runic.Platform;
+[assembly: Runic.Application.RunicApplicationManifest("cswebui-platform-canary")]
+var services = new ServiceCollection();
+services.AddRunicPlatform();
+await using var provider = services.BuildServiceProvider();
+await using var scope = provider.CreateAsyncScope();
+var presentation = scope.ServiceProvider.GetRequiredService<PlatformPresentation>();
+var files = scope.ServiceProvider.GetRequiredService<IFileDialogs>();
+var clipboard = scope.ServiceProvider.GetRequiredService<ITextClipboard>();
+var capabilities = scope.ServiceProvider.GetRequiredService<IPlatformCapabilities>();
+var dispatcher = scope.ServiceProvider.GetRequiredService<IUiDispatcher>();
+if (await files.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }
+    || await clipboard.ReadTextAsync(32) is not PlatformResult<string?>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }
+    || capabilities.GetSnapshot().Statuses.Values.Any(status => status is not CapabilityStatus.Unavailable)
+    || dispatcher.CheckAccess())
+    throw new InvalidOperationException("Unconfigured shared platform services must report unavailable.");
+await presentation.StopAsync();
+Console.WriteLine(typeof(Runic.Application.CsWebUi.CsWebUiApplicationHost).Assembly.GetName().Name);
+Console.WriteLine("CS-WebUI and shared Platform public API composition passed.");
+`);
+  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], sharedConsumer, env);
+  verifyConsumerGraph(sharedConsumer, "CS-WebUI with Platform");
   await verifyToolAndTemplatePackages(directory, nuget, env);
   const frontend = join(directory, "frontend");
   mkdirSync(frontend);
@@ -203,7 +266,7 @@ console.log('Packed npm consumers passed.');
     frontend,
   );
   console.log(
-    `All ${libraries.length} NuGet library consumers, 2 tools, 2 template packages, and 8 npm artifacts passed.`,
+    `All ${libraries.length} NuGet library consumers, CS-WebUI/Platform composition, 2 tools, 2 template packages, and 8 npm artifacts passed.`,
   );
 }
 

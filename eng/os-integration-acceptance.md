@@ -1,10 +1,24 @@
 # OS integration: acceptance scenarios and implementation waves
 
-Status: native implementation planned; internal lifetime prototype started,
-2026-09-07. Managed prototype evidence is described below; native scenarios are
-not certified. These are test specifications for the [API RFC](../docs/guides/application/architecture/os-integration-rfc.md),
-not a replacement for executing native provider tests. Existing host-parity checks
-remain in force.
+Status: shipping extraction and preview integration in progress, 2026-09-08.
+Contracts, runtime, OS providers and application integration now have source in the
+seven platform packages. The retained prototype harness consumes shipping source.
+This is implementation status, not native certification or registry publication.
+These scenarios support the [API RFC](../docs/guides/application/architecture/os-integration-rfc.md)
+and remain the broader acceptance target before v1.
+
+For `0.2.0-preview.1`, the [demo-preview policy](preview-human-acceptance.md) requires
+manual checks on this Linux system and the available Windows VM, plus automated
+native JIT/NativeAOT CI on all three OS targets. Real macOS/sandbox checks,
+unavailable Wayland, broader accessibility and independent pilots are deferred before
+v1 and do not block this demo preview. Retain their pending status without synthetic
+passes. Historical prototype receipts below retain their original source/scope.
+
+The macOS clipboard implementation uses ApplicationServices C Pasteboard APIs and
+CoreFoundation, not `NSPasteboard`. Linux uses GTK `UTF8_STRING`; managed reads are
+bounded after native selection transfer, but GTK native transfer allocation is not
+bounded by that limit. Transfer failures lack a separate GTK permission code and
+report `IoError`; successful ownership does not guarantee persistence after exit.
 
 ## First feature
 
@@ -123,9 +137,9 @@ runtime conditions to probe, not implied by entering `nix develop`.
 - Keep default and minimal Desktop conformance intact. OS services must not require
   features omitted by the minimal ASP.NET Core builder.
 
-## Commit-sized implementation waves
+## Historical prototype wave record and remaining acceptance
 
-The [internal prototype](../tests/dotnet/Runic.Platform.Prototype.Tests/README.md)
+The historical [prototype harness](../tests/dotnet/Runic.Platform.Prototype.Tests/README.md)
 now includes concrete leases, tracked access release, live Desktop/CS-WebUI
 session-scope wiring and native Windows/GTK/macOS picker implementations. The
 macOS runner and picker work from wave 4 was brought forward at the user's request.
@@ -144,5 +158,5 @@ or a signed macOS sandbox; those environment-specific evidence gates remain open
 | 5 | Second MAUI-derived feature, public API review and documentation | Shared patterns proven, dependency/NativeAOT/footprint gates, explicit mobile scope |
 
 Commit each verified wave. Publish packages only through the separately authorized
-release process. Keep this file's planned status until evidence is linked per target;
+release process. Keep target certification pending until evidence is linked per target;
 a CI workflow declaration or a successful fake-provider test is not native proof.

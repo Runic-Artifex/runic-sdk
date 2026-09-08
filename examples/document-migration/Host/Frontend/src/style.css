@@ -1,0 +1,17 @@
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; font-size: 16px; }
+body { margin: 0; }
+main { max-width: 64rem; margin: 2rem auto; padding: 0 1.5rem; }
+h1 { margin-bottom: .4rem; }
+nav { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
+button, textarea { font: inherit; border: 1px solid currentColor; border-radius: .25rem; }
+button { padding: .55rem .8rem; cursor: pointer; }
+button:disabled { cursor: default; opacity: .55; }
+label { display: block; margin-bottom: .5rem; }
+textarea { box-sizing: border-box; width: 100%; min-height: 18rem; padding: .8rem; resize: vertical; tab-size: 4; }
+:focus-visible { outline: 3px solid Highlight; outline-offset: 3px; }
+[role="status"], [role="alert"] { min-height: 1.4em; overflow-wrap: anywhere; }
+[role="alert"] { color: light-dark(#a01818, #ffaaaa); }
+dialog { max-width: min(28rem, 85vw); padding: 1.5rem; }
+dialog button { margin: .4rem; }
+dialog::backdrop { background: #0008; }
+@media (forced-colors: active) { button:disabled { color: GrayText; opacity: 1; } }
