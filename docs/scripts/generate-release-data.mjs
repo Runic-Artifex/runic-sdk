@@ -10,7 +10,8 @@ import { authorityRevision } from './release-authority.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const defaultManifest = resolve(
-  process.env.RUNIC_RELEASE_MANIFEST ?? resolve(repositoryRoot, '../eng/release/runic.release.json'),
+  process.env.RUNIC_RELEASE_MANIFEST ??
+    resolve(repositoryRoot, '../eng/release/runic.release.json'),
 );
 const configuredCompatibilitySet = process.env.RUNIC_COMPATIBILITY_SET ?? null;
 const defaultOutput = resolve(
@@ -218,6 +219,37 @@ function docsProjection(manifest, compatibilitySet, source) {
   };
 }
 
+async function currentCandidate() {
+  const root = resolve(repositoryRoot, '..');
+  const workspaceSource = await readFile(
+    resolve(root, 'eng/workspace.json'),
+    'utf8',
+  );
+  const workspace = JSON.parse(workspaceSource);
+  const sdk = JSON.parse(await readFile(resolve(root, 'global.json'), 'utf8'));
+  const packageJson = JSON.parse(
+    await readFile(resolve(root, 'package.json'), 'utf8'),
+  );
+  return {
+    version: workspace.version,
+    publication: 'unpublished',
+    source: 'eng/workspace.json',
+    workspaceSha256: sha256(workspaceSource),
+    toolchain: {
+      dotnetSdk: sdk.sdk.version,
+      bun: packageJson.engines.bun,
+      node: packageJson.engines.node,
+    },
+    packages: ['nuget', 'npm'].flatMap((ecosystem) =>
+      workspace[ecosystem].map((entry) => ({
+        identity: entry.name,
+        ecosystem,
+        version: workspace.version,
+      })),
+    ),
+  };
+}
+
 async function render(data, outputPath) {
   const config = await prettier.resolveConfig(outputPath);
   return prettier.format(
@@ -299,15 +331,18 @@ async function main() {
     );
 
   const expected = await render(
-    docsProjection(manifest, compatibilitySet, {
-      authorityRevision,
-      manifestSha256: sha256(manifestSource),
-      schemaSha256: sha256(schemaSource),
-      verifierSha256: sha256(verifierSource),
-      compatibilitySetSha256: sha256(compatibilitySetSource),
-      compatibilitySchemaSha256: sha256(compatibilitySchemaSource),
-      compatibilityVerifierSha256: sha256(compatibilityVerifierSource),
-    }),
+    {
+      currentCandidate: await currentCandidate(),
+      ...docsProjection(manifest, compatibilitySet, {
+        authorityRevision,
+        manifestSha256: sha256(manifestSource),
+        schemaSha256: sha256(schemaSource),
+        verifierSha256: sha256(verifierSource),
+        compatibilitySetSha256: sha256(compatibilitySetSource),
+        compatibilitySchemaSha256: sha256(compatibilitySchemaSource),
+        compatibilityVerifierSha256: sha256(compatibilityVerifierSource),
+      }),
+    },
     output,
   );
   let actual;

@@ -12,10 +12,18 @@ const releaseDocs = createReleaseDocs(releaseData);
 export { availabilityLabel, packageInstallCommand, versionLabel };
 export type { ReleaseVersion };
 export const compatibilitySet = releaseData.compatibilitySet;
+export const currentCandidate = releaseData.currentCandidate;
+export const previewGuideUrl =
+  'https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md';
+export const candidateCatalogRows = currentCandidate.packages.map((entry) => ({
+  name: entry.identity,
+  registry: entry.ecosystem === 'nuget' ? 'NuGet' : 'npm',
+  version: entry.version,
+}));
 
 const exactCandidatePackages = (identities: readonly string[]) =>
   identities.map((identity) => {
-    const candidate = compatibilitySet.packages.find(
+    const candidate = currentCandidate.packages.find(
       (entry) => entry.identity === identity,
     );
     if (!candidate) {
@@ -24,23 +32,9 @@ const exactCandidatePackages = (identities: readonly string[]) =>
     return `${candidate.identity}@${candidate.version}`;
   });
 
-const examplesRepository = releaseData.repositories.find(
-  (repository) => repository.id === 'examples',
-)?.currentIdentity;
-if (!examplesRepository) {
-  throw new Error(
-    'Release authority does not register the examples repository.',
-  );
-}
-
-const candidateMaturity = `${compatibilitySet.releaseTrainVersion} local candidate; publication ${compatibilitySet.publication}`;
-const selectedToolchain = compatibilitySet.toolchain as Readonly<
-  Record<string, string>
->;
-const pnpmPrerequisite = selectedToolchain.pnpm
-  ? ` or pnpm ${selectedToolchain.pnpm}`
-  : '';
-const candidatePrerequisites = `.NET SDK ${compatibilitySet.toolchain.dotnetSdk}; Node ${compatibilitySet.toolchain.node} with npm ${compatibilitySet.toolchain.npm}${pnpmPrerequisite}, or Bun ${compatibilitySet.toolchain.bun}; ${compatibilitySet.platformProfiles.join(', ')}`;
+const examplesRepository = 'runic-sdk/examples';
+const candidateMaturity = `${currentCandidate.version} candidate; ${currentCandidate.publication}`;
+const candidatePrerequisites = `.NET SDK ${currentCandidate.toolchain.dotnetSdk}; Bun ${currentCandidate.toolchain.bun}; Node ${currentCandidate.toolchain.node} for npm/pnpm compatibility checks`;
 
 export const choosePathRows = [
   {
@@ -81,7 +75,7 @@ export const choosePathRows = [
       '@runic-artifex/vite-plugin-runic-translations',
       '@runic-artifex/desktop',
     ]),
-    start: `Use ${examplesRepository} and the separately versioned Translations Editor application`,
+    start: `Use ${examplesRepository} for translation SDK integration; standalone Editor distributions are outside this preview`,
   },
 ] as const;
 
@@ -91,10 +85,12 @@ export const {
   activeVersionForProduct,
   activeVersionsArePending,
   distributionsArePending,
-  releaseSummary,
+  releaseSummary: historicalReleaseSummary,
   releaseRows,
   catalogRows,
   migrationRows,
   compatibilityRows,
   distributionRows,
 } = releaseDocs;
+
+export const releaseSummary = `Runic SDK ${currentCandidate.version} is an unpublished candidate: ${currentCandidate.packages.filter((entry) => entry.ecosystem === 'nuget').length} NuGet packages and ${currentCandidate.packages.filter((entry) => entry.ecosystem === 'npm').length} npm packages. Publication awaits required CI, native acceptance, performance, two-hour soak and registry gates.`;

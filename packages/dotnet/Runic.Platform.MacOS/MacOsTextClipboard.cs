@@ -42,10 +42,11 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
 
     private static unsafe PlatformResult<string?> Read(int maximumCharacters)
     {
-        nint board = 0, flavor = 0, data = 0, flavors = 0;
+        nint name = 0, board = 0, flavor = 0, data = 0, flavors = 0;
         try
         {
-            int status = PasteboardCreate(ClipboardName, out board);
+            name = CreateString(ClipboardName);
+            int status = PasteboardCreate(name, out board);
             if (status != 0) return Failed<string?>(status);
             // Initial synchronization establishes the snapshot; prior modifications are expected.
             _ = PasteboardSynchronize(board);
@@ -101,6 +102,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
         finally
         {
             if (board != 0) CFRelease(board);
+            if (name != 0) CFRelease(name);
         }
     }
 
@@ -110,11 +112,12 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
 
     private static unsafe PlatformResult<Unit> Write(string text)
     {
-        nint board = 0, flavor = 0, data = 0;
+        nint name = 0, board = 0, flavor = 0, data = 0;
         try
         {
             byte[] bytes = Utf8.GetBytes(text);
-            int status = PasteboardCreate(ClipboardName, out board);
+            name = CreateString(ClipboardName);
+            int status = PasteboardCreate(name, out board);
             if (status != 0) return Failed<Unit>(status);
             flavor = CreateString("public.utf8-plain-text");
             fixed (byte* pointer = bytes) data = CFDataCreate(0, pointer, bytes.Length);
@@ -130,6 +133,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
             if (data != 0) CFRelease(data);
             if (flavor != 0) CFRelease(flavor);
             if (board != 0) CFRelease(board);
+            if (name != 0) CFRelease(name);
         }
     }
 
@@ -146,13 +150,9 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
     private static readonly System.Text.UnicodeEncoding Utf16BigEndian = new(true, false, true);
     private const string Services = "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
     private const string Foundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
-    // The system framework and exported constant live for the process lifetime.
-    private static class NativeLibraryState
-    {
-        internal static readonly nint Handle = NativeLibrary.Load(Services);
-        static NativeLibraryState() { }
-    }
-    private static nint ClipboardName => Marshal.ReadIntPtr(NativeLibrary.GetExport(NativeLibraryState.Handle, "kPasteboardClipboard"));
+    // kPasteboardClipboard is a CFSTR macro in Pasteboard.h, not a dylib export.
+    // Create an owned CFString for each operation and release it with the board.
+    private const string ClipboardName = "com.apple.pasteboard.clipboard";
     private static unsafe nint CreateString(string value)
     {
         fixed (char* chars = value) return CFStringCreateWithCharacters(0, chars, value.Length);

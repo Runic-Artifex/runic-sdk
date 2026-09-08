@@ -134,7 +134,17 @@ examples and automated consumers do not replace these pilots.
 The user verifies NuGet ownership in organization `runic-artifex` and scopes for all
 new identities and configures
 GitHub OIDC trusted publishing for `Runic-Artifex/runic-sdk`. Configure npm trusted
-publishers for existing identities. Follow the current registry instructions:
+publishers for existing identities with direct `npm publish` permission; new
+publishers default to stage-only permission. After inspecting existing connections
+with `npm trust list PACKAGE`, add a missing connection with:
+
+```sh
+npm trust github PACKAGE --file publish-preview.yml --repo Runic-Artifex/runic-sdk --env preview --allow-publish --yes
+```
+
+Use each exact package identity, authenticate interactively with 2FA, and preserve
+unrelated existing publishers. Repeat for each new identity after bootstrap.
+Follow the current registry instructions:
 [NuGet trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)
 and [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/).
 Record account/scope verification without including credentials or recovery codes.

@@ -203,12 +203,12 @@ test('renders the authority-derived Desktop choose-your-path matrix', async () =
     html,
     /Authority-derived paths for starting a Runic Desktop application/,
   );
-  assert.match(html, /Runic\.Application\.Templates@1\.0\.0-preview\.1/);
-  assert.match(html, /@runic-artifex\/desktop@1\.0\.0-preview\.1/);
-  assert.match(html, /\.NET SDK 10\.0\.400; Node 24\.20\.0 with npm 12\.0\.2/);
+  assert.match(html, /Runic\.Application\.Templates@0\.2\.0-preview\.1/);
+  assert.match(html, /@runic-artifex\/desktop@0\.2\.0-preview\.1/);
+  assert.match(html, /\.NET SDK 10\.0\.400; Bun 1\.4\.2/);
   assert.match(html, /packageManager/);
   assert.match(html, /static frontend/);
-  assert.match(html, /runic-toolkit-examples/);
+  assert.match(html, /runic-sdk\/examples/);
 });
 
 test('builds an accessible branded page for nginx 404 responses', async () => {
@@ -374,7 +374,7 @@ test('renders package and release tables with captions, scoped heads, and overfl
     packageHtml,
     /Runic Artifex canonical package identities and release versions/,
   );
-  assert.match(releaseHtml, /Runic Artifex current release-train versions/);
+  assert.match(releaseHtml, /Runic Artifex historical release-train versions/);
   assert.equal(packageHtml.match(/scope="col"/g)?.length, 5);
   assert.equal(releaseHtml.match(/scope="col"/g)?.length, 8);
 });
@@ -385,7 +385,10 @@ test('renders release, compatibility, and distribution data from the authority',
   const lede = html.match(/<p class="lede">([\s\S]*?)<\/p>/)?.[1];
 
   assert.ok(lede, 'expected the release lede');
-  assert.match(stripMarkup(lede), /release authority/);
+  assert.match(
+    stripMarkup(lede),
+    /0\.2\.0-preview\.1 is an unpublished candidate/,
+  );
   const rows = tableRows(html);
   const expectedRows = releaseData.compatibilityTrains.flatMap((train) =>
     train.lanes
@@ -399,7 +402,7 @@ test('renders release, compatibility, and distribution data from the authority',
       `expected ${entry.product} version in release table`,
     );
   }
-  assert.match(html, /Compatibility lanes are generated from the authority/);
+  assert.match(html, /Historical compatibility lanes/);
   assert.match(html, /Runic\.Translations\.Editor/);
   assert.match(html, /dotnet runic/);
   assert.match(html, /typescript-effect/);
@@ -523,5 +526,40 @@ test('resolves every internal route link and fragment in the prerendered site', 
         );
       }
     }
+  }
+});
+
+test('current preview is discoverable and distinct from historical publication records', async () => {
+  for (const route of ['/packages', '/releases', '/getting-started']) {
+    const html = await render(route);
+    assert.match(html, /0\.2\.0-preview\.1/);
+    assert.match(html, /unpublished/);
+    assert.match(html, /guides\/releases\/0\.2\.0-preview\.1\.md/);
+    assert.match(html, /outside this (?:SDK )?preview/);
+  }
+  const catalog = await render('/packages');
+  for (const entry of releaseData.currentCandidate.packages) {
+    assert.ok(
+      catalog.includes(`${entry.identity}@${entry.version}`),
+      entry.identity,
+    );
+  }
+  const started = await render('/getting-started');
+  assert.doesNotMatch(started, /Products release independently/);
+  assert.doesNotMatch(started, /1\.0\.0-preview\.1/);
+});
+
+test('home and architecture describe the current monorepo preview boundary', async () => {
+  for (const route of ['/', '/architecture']) {
+    const html = stripMarkup(await render(route)).replace(/\s+/g, ' ');
+    assert.match(html, /monorepo/);
+    assert.match(
+      html,
+      /Standalone Translations Editor distributions are outside this preview/,
+    );
+    assert.doesNotMatch(
+      html,
+      /Each product has its own repository|archives from its own repository/,
+    );
   }
 });

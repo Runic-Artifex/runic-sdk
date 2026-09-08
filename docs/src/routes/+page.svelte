@@ -95,10 +95,12 @@
         <h2>Connect products without coupling their cores.</h2>
       </div>
       <p>
-        Each product has its own repository and release cycle. Package-based
-        products own their package families. Official integrations can connect a
-        product to another product, framework, or tool; the product cores do not
-        depend back on those integrations.
+        The Runic SDK monorepo contains the SDK libraries, tools, templates and
+        examples. Its preview package set releases together through NuGet and
+        npm. Standalone Translations Editor distributions are outside this
+        preview. Official integrations can connect a product to another product,
+        framework, or tool; the product cores do not depend back on those
+        integrations.
       </p>
       <p>
         Application Bridge owns its protocol and transport boundary. Frontend
@@ -115,7 +117,7 @@
   <section class="section shell launch-strip">
     <div>
       <Badge variant="outline" class="mb-4 border-primary/30 text-primary"
-        >Public preview</Badge
+        >Preview candidate</Badge
       >
       <h2>Track the release authority.</h2>
       <p>

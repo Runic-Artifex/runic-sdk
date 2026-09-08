@@ -27,8 +27,8 @@
     <p class="lede">
       Each Runic tool works on its own. Integrations connect products, external
       frameworks, or tooling without making a core depend back on them. Those
-      integrations stay in separate packages and are released with the product
-      that owns their behavior.
+      integrations stay in separate packages within the Runic SDK monorepo. The
+      preview package set releases together.
     </p>
   </section>
   <section class="content-grid shell">
@@ -60,14 +60,16 @@
       </p>
     </ContentCard>
     <ContentCard
-      eyebrow="Independent releases"
-      title="Products move at their own pace"
+      eyebrow="SDK release boundary"
+      title="One coordinated preview package set"
     >
       <p>
-        Assets, Translations, Translations Editor, Command Line, Toolkit, and
-        CS-WebUI each keep an independent release history. Package families
-        release registry artifacts; Translations Editor releases desktop
-        archives from its own repository.
+        The runic-sdk monorepo supplies SDK libraries, tools and templates
+        through NuGet and npm. Standalone Translations Editor distributions are
+        outside this preview. Historical product and Editor archive records
+        retain their original meaning and do not certify the current candidate.
+        CS-WebUI remains an independent upstream compatibility product; the SDK
+        includes the Runic.Application.CsWebUi integration.
       </p>
     </ContentCard>
     <ContentCard
@@ -75,8 +77,9 @@
       title="Behavior stays with the product that defines it"
     >
       <p>
-        <code>Runic.Assets</code> lives and releases with Assets. The same rule applies
-        when a product connects to an external framework or development tool.
+        <code>Runic.Assets</code> owns asset behavior within the SDK monorepo. Package
+        boundaries preserve that ownership when a product connects to an external
+        framework or development tool.
       </p>
     </ContentCard>
     <ContentCard
@@ -88,15 +91,16 @@
         Runic Translations owns schemas, compiler behavior, runtime contracts,
         generators, and authoring APIs. Runic Translations Editor uses its
         packages and APIs as a downstream desktop application and owns
-        translator UX, packaging, and releases.
+        translator UX. Its standalone packaging and release are outside this SDK
+        preview.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Preview compatibility" title="Pin the exact versions">
       <p>
-        Integrations pin exact cross-product versions during the preview.
-        Compatibility is verified in the applications that consume the
-        integrations, in frontend builds, and, where applicable, in NativeAOT
-        runs.
+        Pin exact preview versions and upgrade the Runic package set together.
+        Regenerate bridge outputs and retest after upgrades. Compatibility is
+        verified in the applications that consume the integrations, in frontend
+        builds, and, where applicable, in NativeAOT runs.
       </p>
     </ContentCard>
     <ContentCard

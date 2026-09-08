@@ -4,47 +4,70 @@ using Runic.Platform;
 using Runic.Platform.MacOS;
 using Runic.Platform.Runtime;
 
-if (!OperatingSystem.IsMacOS())
+try { Run(); }
+catch (Exception error)
 {
-    try { MacOSPlatformProvider.CreateTextClipboard(new Owner()); throw new InvalidOperationException("Missing OS guard."); }
-    catch (PlatformNotSupportedException) { Console.WriteLine("PASS platform guard (native checks require macOS)"); }
-    return;
+    Console.Error.WriteLine($"FAIL macOS clipboard: {error}");
+    Environment.ExitCode = 1;
 }
-NativeLibrary.Load("/System/Library/Frameworks/AppKit.framework/AppKit");
-var owner = new Owner();
-var clipboard = MacOSPlatformProvider.CreateTextClipboard(owner);
-PasteboardProbe.Clear();
-Check(clipboard.ReadTextAsync(0).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Success { Value: null }, "Absent text became empty text.");
-foreach (string value in new[] { "", "Runic clipboard é 日本語 🜁", "embedded\0nul" })
+
+static void Run()
 {
-    Check(clipboard.WriteTextAsync(value).AsTask().GetAwaiter().GetResult() is PlatformResult<Unit>.Success, "Native write failed.");
-    var read = clipboard.ReadTextAsync(value.Length).AsTask().GetAwaiter().GetResult();
-    Check(read is PlatformResult<string?>.Success success && success.Value == value, "UTF-16 round trip or empty text failed.");
-    if (value.Length != 0) Check(clipboard.ReadTextAsync(value.Length - 1).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge }, "Read bound ignored.");
+    if (!OperatingSystem.IsMacOS())
+    {
+        try { MacOSPlatformProvider.CreateTextClipboard(new Owner()); throw new InvalidOperationException("Missing OS guard."); }
+        catch (PlatformNotSupportedException) { Console.WriteLine("PASS platform guard (native checks require macOS)"); }
+        return;
+    }
+    NativeLibrary.Load("/System/Library/Frameworks/AppKit.framework/AppKit");
+    var owner = new Owner();
+    var clipboard = MacOSPlatformProvider.CreateTextClipboard(owner);
+    PasteboardProbe.Clear();
+    var absent = clipboard.ReadTextAsync(0).AsTask().GetAwaiter().GetResult();
+    Check(absent is PlatformResult<string?>.Success { Value: null }, $"Expected no text after native clear; actual {Describe(absent)}.");
+    foreach (string value in new[] { "", "Runic clipboard é 日本語 🜁", "embedded\0nul" })
+    {
+        var write = clipboard.WriteTextAsync(value).AsTask().GetAwaiter().GetResult();
+        Check(write is PlatformResult<Unit>.Success, $"Native write failed: {write}.");
+        var read = clipboard.ReadTextAsync(value.Length).AsTask().GetAwaiter().GetResult();
+        Check(read is PlatformResult<string?>.Success success && success.Value == value, $"Clipboard round trip failed for expected length {value.Length}; actual {Describe(read)}.");
+        if (value.Length != 0) Check(clipboard.ReadTextAsync(value.Length - 1).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge }, "Read bound ignored.");
+    }
+    foreach (bool bigEndian in new[] { false, true })
+    {
+        var encoding = new System.Text.UnicodeEncoding(bigEndian, true, true);
+        byte[] encoded = [.. encoding.GetPreamble(), .. encoding.GetBytes("日本語 🜁")];
+        PasteboardProbe.SetSecondItem("public.utf16-plain-text", encoded);
+        Check(clipboard.ReadTextAsync(6).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Success { Value: "日本語 🜁" }, "Second-item UTF16/BOM read failed.");
+        Check(clipboard.ReadTextAsync(5).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge }, "UTF16 bound ignored.");
+    }
+    PasteboardProbe.SetSecondItem("public.utf16-plain-text", [0x41]);
+    Check(clipboard.ReadTextAsync(100).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.InvalidData }, "Malformed UTF16 accepted.");
+    const string observation = "Runic independent clipboard observation é 日本語";
+    Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<Unit>.Success, "Observer write failed.");
+    Check(ProcessText("/usr/bin/pbpaste", null) == observation, "Independent pbpaste did not observe native write.");
+    ProcessText("/usr/bin/pbcopy", observation + " external");
+    Check(clipboard.ReadTextAsync(1000).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Success { Value: observation + " external" }, "External pbcopy was not observed.");
+    using var cancelled = new CancellationTokenSource();
+    cancelled.Cancel();
+    try { clipboard.WriteTextAsync("must not write", cancelled.Token).AsTask().GetAwaiter().GetResult(); throw new InvalidOperationException("Cancellation ignored."); }
+    catch (OperationCanceledException) { }
+    Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<Unit>.Success, "Post cancellation retry failed.");
+    owner.Available = false;
+    Check(clipboard.ReadTextAsync(100).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Unavailable, "Closed owner accepted.");
+    Console.WriteLine("PASS native AppKit clipboard with independent pbcopy/pbpaste observation");
+
 }
-foreach (bool bigEndian in new[] { false, true })
+
+static string Describe(PlatformResult<string?> result) => result switch
 {
-    var encoding = new System.Text.UnicodeEncoding(bigEndian, true, true);
-    byte[] encoded = [.. encoding.GetPreamble(), .. encoding.GetBytes("日本語 🜁")];
-    PasteboardProbe.SetSecondItem("public.utf16-plain-text", encoded);
-    Check(clipboard.ReadTextAsync(6).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Success { Value: "日本語 🜁" }, "Second-item UTF16/BOM read failed.");
-    Check(clipboard.ReadTextAsync(5).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge }, "UTF16 bound ignored.");
-}
-PasteboardProbe.SetSecondItem("public.utf16-plain-text", [0x41]);
-Check(clipboard.ReadTextAsync(100).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.InvalidData }, "Malformed UTF16 accepted.");
-const string observation = "Runic independent clipboard observation é 日本語";
-Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<Unit>.Success, "Observer write failed.");
-Check(ProcessText("/usr/bin/pbpaste", null) == observation, "Independent pbpaste did not observe native write.");
-ProcessText("/usr/bin/pbcopy", observation + " external");
-Check(clipboard.ReadTextAsync(1000).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Success { Value: observation + " external" }, "External pbcopy was not observed.");
-using var cancelled = new CancellationTokenSource();
-cancelled.Cancel();
-try { clipboard.WriteTextAsync("must not write", cancelled.Token).AsTask().GetAwaiter().GetResult(); throw new InvalidOperationException("Cancellation ignored."); }
-catch (OperationCanceledException) { }
-Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<Unit>.Success, "Post cancellation retry failed.");
-owner.Available = false;
-Check(clipboard.ReadTextAsync(100).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Unavailable, "Closed owner accepted.");
-Console.WriteLine("PASS native AppKit clipboard with independent pbcopy/pbpaste observation");
+    PlatformResult<string?>.Success { Value: null } => "Success(no text)",
+    PlatformResult<string?>.Success { Value: { Length: 0 } } => "Success(empty text)",
+    PlatformResult<string?>.Success { Value: { } value } => $"Success(text length {value.Length})",
+    PlatformResult<string?>.Unavailable unavailable => $"Unavailable({unavailable.Reason})",
+    PlatformResult<string?>.Failed failed => $"Failed({failed.Code})",
+    _ => result.ToString() ?? "unknown result"
+};
 
 static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 static string ProcessText(string file, string? input)
@@ -78,7 +101,18 @@ sealed class Owner : INativePickerOwner
 
 static partial class PasteboardProbe
 {
-    internal static void Clear() => Send(Send(Class("NSPasteboard"), Selector("generalPasteboard")), Selector("clearContents"));
+    internal static void Clear()
+    {
+        nint pasteboardClass = Class("NSPasteboard");
+        if (pasteboardClass == 0) throw new InvalidOperationException("AppKit NSPasteboard class was not loaded.");
+        nint board = Send(pasteboardClass, Selector("generalPasteboard"));
+        if (board == 0) throw new InvalidOperationException("AppKit returned no general pasteboard.");
+        nint revision = Send(board, Selector("clearContents"));
+        nint types = Send(board, Selector("types"));
+        nint count = types == 0 ? 0 : Send(types, Selector("count"));
+        Console.WriteLine($"Native clear: revision={revision}, remaining formats={count}.");
+        if (count != 0) throw new InvalidOperationException($"Native clear left {count} formats on the pasteboard.");
+    }
     internal static unsafe void SetSecondItem(string flavorName, byte[] bytes)
     {
         nint name = CFStringCreateWithCString(0, "com.apple.pasteboard.clipboard", 0x08000100);

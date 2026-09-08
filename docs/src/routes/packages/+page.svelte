@@ -3,6 +3,9 @@
   import * as Table from '$lib/components/ui/table';
   import {
     availabilityLabel,
+    candidateCatalogRows,
+    currentCandidate,
+    previewGuideUrl,
     catalogRows,
     migrationRows,
     packageInstallCommand,
@@ -44,6 +47,33 @@
     </p>
   </section>
   <section class="content-grid shell">
+    <ContentCard
+      eyebrow="Current SDK preview"
+      title={`${currentCandidate.version} — unpublished`}
+      full
+    >
+      <p>
+        The workspace selects these SDK packages. Upgrade exact preview versions
+        together, regenerate bridge outputs and retest. Standalone Editor
+        distributions are outside this preview.
+      </p>
+      <ul>
+        {#each candidateCatalogRows as row (row.name)}
+          <li>
+            <code>{row.name}@{row.version}</code> — {row.registry}, unpublished
+            candidate
+          </li>
+        {/each}
+      </ul>
+      <a class="text-link" href={previewGuideUrl}
+        >Preview installation and migration guide</a
+      >
+    </ContentCard>
+    <p class="eyebrow">Historical canonical package records</p>
+    <p>
+      The pinned authority below predates this preview. Its pending lane values
+      do not override the workspace candidate inventory above.
+    </p>
     <div class="package-table">
       <Table.Root>
         <Table.Caption class="sr-only">
@@ -130,7 +160,8 @@
       full
     >
       <p>
-        The release manifest is the source of this catalog. A package without a
+        The workspace is the source of the current preview inventory. The pinned
+        release manifest supplies the historical tables. A package without a
         published train version remains explicitly unassigned; this site never
         guesses a version from a repository or registry.
       </p>

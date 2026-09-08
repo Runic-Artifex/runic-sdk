@@ -73,7 +73,8 @@ export const products: Product[] = [
     description:
       'Runic Toolkit connects desktop windows, browser frontends, and .NET hosting around one application model. Its Application Bridge carries named commands and validated events between a frontend and a NativeAOT-safe .NET host.',
     ...releaseMetadata('application'),
-    source: 'https://github.com/Runic-Artifex/runic-toolkit',
+    source:
+      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application',
     bestFor: [
       'Composing .NET desktop and browser applications',
       'NativeAOT-safe application hosting',
@@ -96,7 +97,8 @@ export const products: Product[] = [
     description:
       'Runic Desktop owns native presentation hosting for Runic applications. Its C# backend and TypeScript+Effect frontend are native implementations of one shared presentation contract; neither package wraps the other language runtime.',
     ...releaseMetadata('desktop'),
-    source: 'https://github.com/Runic-Artifex/runic-desktop',
+    source:
+      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop',
     bestFor: [
       'Native-window presentation for C# application backends',
       'TypeScript+Effect frontends using the shared Desktop contract',
@@ -167,7 +169,8 @@ export const products: Product[] = [
     description:
       'Runic Assets lets one validated asset manifest travel through embedded, development, browser, and server hosts. Safe paths, immutable manifests, portable standard-ZIP archives, development sources, and host adapters stay separate from the transport-neutral core.',
     ...releaseMetadata('assets'),
-    source: 'https://github.com/Runic-Artifex/runic-assets',
+    source:
+      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Assets',
     bestFor: [
       'Sharing static assets across hosts',
       'Deterministic embedded and development sources',
@@ -190,7 +193,8 @@ export const products: Product[] = [
     description:
       'Runic Translations discovers one translations/runic.json project with locale-scoped MessageFormat 2 files. Its deterministic compiler generates identifier-safe message calls, locale metadata, request-local SSR support, typed C# and tree-shakable ESM while keeping its runtime ABI portable and NativeAOT-ready.',
     ...releaseMetadata('translations'),
-    source: 'https://github.com/Runic-Artifex/runic-translations',
+    source:
+      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Translations',
     bestFor: [
       'Deterministic localization builds',
       'MessageFormat 2 authoring with generated m.message_id() calls',
@@ -221,7 +225,8 @@ export const products: Product[] = [
     description:
       'Runic Translations Editor opens the same runic.json and MessageFormat 2 files as the compiler. It gives translators a focused workspace for natural text, variables, variants, workflow status, and validation without defining a second authoring format.',
     ...releaseMetadata('editor'),
-    source: 'https://github.com/Runic-Artifex/runic-translations-editor',
+    source:
+      'https://github.com/Runic-Artifex/runic-sdk/tree/main/apps/translations-editor',
     bestFor: [
       'Translating and reviewing MessageFormat 2 projects visually',
       'Managing locales, message structure, variables, and plural variants',
@@ -229,7 +234,7 @@ export const products: Product[] = [
     ],
     boundaries: [
       'Consumes Runic Translations packages as an ordinary downstream application',
-      'Owns the desktop UX, application packaging, and release cadence',
+      'Owns desktop UX; standalone Editor distributions are outside the SDK preview',
       'Does not own the compiler, schemas, runtime ABI, generators, or package releases',
     ],
     kind: 'application',
@@ -249,7 +254,8 @@ export const products: Product[] = [
     description:
       'Runic Command Line separates portable command contracts from execution, hosting, and child-process support. It provides command catalogs and predictable output without requiring reflection or committing applications to one parser.',
     ...releaseMetadata('command-line'),
-    source: 'https://github.com/Runic-Artifex/runic-command-line',
+    source:
+      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.CommandLine',
     bestFor: [
       'NativeAOT command applications',
       'Deterministic machine and human output',

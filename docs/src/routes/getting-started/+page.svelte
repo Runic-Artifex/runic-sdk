@@ -4,6 +4,8 @@
   import * as Table from '$lib/components/ui/table';
   import {
     availabilityLabel,
+    currentCandidate,
+    previewGuideUrl,
     catalogRows,
     choosePathRows,
     distributionRows,
@@ -58,6 +60,16 @@ dotnet run`
     </p>
   </section>
   <section class="content-grid shell">
+    <ContentCard
+      eyebrow="Current SDK preview"
+      title={`${currentCandidate.version} — unpublished`}
+      full
+    >
+      <p>{releaseSummary}</p>
+      <a class="text-link" href={previewGuideUrl}
+        >Read the preview installation and migration guide</a
+      >
+    </ContentCard>
     <ContentCard
       eyebrow="Five-minute app"
       title="Generate, check, and run"
@@ -174,10 +186,10 @@ dotnet run`
       title={`Translations Editor: ${availabilityLabel(editorDistribution?.version)}`}
     >
       <p>
-        Runic Translations Editor is a separate downstream application. Its
-        archive status is recorded independently from the product compatibility
-        lane, so this site only offers a download when its own distribution
-        version is published.
+        Standalone Runic Translations Editor distributions are outside this SDK
+        preview. Its historical archive status is recorded independently from
+        the product compatibility lane, so this site only offers a download when
+        its own distribution version is published.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Composition" title="Connect only when needed">
@@ -189,8 +201,9 @@ dotnet run`
     </ContentCard>
     <ContentCard eyebrow="During preview" title="Keep versions explicit">
       <p>
-        Pin exact preview versions. Products release independently, so update
-        each one on the cadence your application needs.
+        Pin exact preview versions. Upgrade the Runic package set together,
+        regenerate bridge outputs and retest application behavior. Preview APIs
+        and dependency compatibility may change.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Continue" title="Go deeper" full>

@@ -40,7 +40,15 @@ Sealing refuses an existing destination. It records exact package hashes, source
 
 ## Publication
 
-The drafts `eng/preview/publish-preview.yml` and `eng/preview/preview-evidence.yml` must be installed under `.github/workflows/` with the same filenames by the integration owner before the final source freeze. Configure the GitHub `preview` environment, NuGet organization `runic-artifex` ownership and new-package scopes, `vars.NUGET_USER` (the NuGet profile username, not an email address), and trusted publishers for repository `Runic-Artifex/runic-sdk`, workflow `publish-preview.yml`, environment `preview`. npm publishing uses npm under Node, never Bun's publisher.
+The publication and evidence workflows are installed under `.github/workflows/`; matching copies in `eng/preview/` document their release contract. Configure the GitHub `preview` environment, NuGet organization `runic-artifex` ownership and new-package scopes, `vars.NUGET_USER` (the NuGet profile username, not an email address), and trusted publishers for repository `Runic-Artifex/runic-sdk`, workflow `publish-preview.yml`, environment `preview`. npm publishing uses npm under Node, never Bun's publisher.
+
+New npm trusted publishers must explicitly allow direct `npm publish`; the registry's default stage-only permission does not authorize this workflow. After interactive login/2FA, inspect existing publishers with `npm trust list PACKAGE`. If the required publisher is absent, configure each existing package (and each new identity after its verified bootstrap):
+
+```sh
+npm trust github PACKAGE --file publish-preview.yml --repo Runic-Artifex/runic-sdk --env preview --allow-publish --yes
+```
+
+Replace `PACKAGE` with an exact inventory name. Preserve unrelated existing publishers. See the [npm trust command](https://docs.npmjs.com/cli/v12/commands/npm-trust/) for interactive authentication requirements.
 
 The four initially missing npm identities (`@runic-artifex/application-bridge-tooling`, `@runic-artifex/angular`, `@runic-artifex/desktop`, and `@runic-artifex/vite-plugin-runic`) require the approved one-time interactive login/2FA bootstrap with the verified candidate archives. The registry inventory identifies those four names; never infer them from a failed publish. Before each bootstrap, run all four verification commands above and verify every already-published candidate package against registry contents. Run `npm login --registry=https://registry.npmjs.org` interactively, then `npm publish EXACT_VERIFIED_ARCHIVE --tag preview --access public --registry=https://registry.npmjs.org`. Configure that identity's trusted publisher immediately afterward. Do not create placeholder packages. Interactive local bootstrap does not claim GitHub OIDC provenance.
 

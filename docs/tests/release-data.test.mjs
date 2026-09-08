@@ -298,3 +298,51 @@ test('projects canonical packages, archive migrations, and independent distribut
     /active compatibility-lane versions/,
   );
 });
+
+test('current candidate matches the entire workspace without claiming publication', async () => {
+  const workspace = JSON.parse(
+    await readFile(
+      new URL('../../eng/workspace.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  assert.equal(releaseData.currentCandidate.version, workspace.version);
+  assert.equal(releaseData.currentCandidate.publication, 'unpublished');
+  assert.deepEqual(
+    releaseData.currentCandidate.packages,
+    ['nuget', 'npm'].flatMap((ecosystem) =>
+      workspace[ecosystem].map((entry) => ({
+        identity: entry.name,
+        ecosystem,
+        version: workspace.version,
+      })),
+    ),
+  );
+  assert.equal(
+    releaseData.currentCandidate.packages.filter(
+      (entry) => entry.ecosystem === 'nuget',
+    ).length,
+    27,
+  );
+  assert.equal(
+    releaseData.currentCandidate.packages.filter(
+      (entry) => entry.ecosystem === 'npm',
+    ).length,
+    8,
+  );
+  assert.ok(
+    releaseData.currentCandidate.packages.some(
+      (entry) => entry.identity === 'Runic.Application.CsWebUi',
+    ),
+  );
+  assert.ok(
+    releaseData.currentCandidate.packages.some(
+      (entry) => entry.identity === 'Runic.Platform.MacOS',
+    ),
+  );
+  assert.ok(
+    !releaseData.currentCandidate.packages.some((entry) =>
+      entry.identity.includes('Editor'),
+    ),
+  );
+});

@@ -3,6 +3,8 @@
   import * as Table from '$lib/components/ui/table';
   import {
     availabilityLabel,
+    currentCandidate,
+    previewGuideUrl,
     compatibilitySet,
     compatibilityRows,
     distributionRows,
@@ -52,11 +54,39 @@
     <p class="lede">{releaseSummary}</p>
   </section>
   <section class="content-grid shell">
-    <p class="eyebrow">Current availability</p>
+    <ContentCard
+      eyebrow="Current SDK preview"
+      title={currentCandidate.version}
+      full
+    >
+      <p>
+        SDK libraries, tools and templates come from the runic-sdk monorepo.
+        Standalone Translations Editor distributions are outside this preview.
+      </p>
+      <p>
+        Pin exact preview versions and upgrade the Runic package set together.
+        Regenerate bridge outputs and retest. Preview APIs and dependency
+        compatibility may change.
+      </p>
+      <p>
+        Required manual checks use the actual local Linux system and available
+        Windows VM. Other native human checks, accessibility certification and
+        independent pilots are deferred before v1; automated CI and
+        performance/soak gates remain required.
+      </p>
+      <a class="text-link" href={previewGuideUrl}
+        >Read the {currentCandidate.version} installation and migration guide</a
+      >
+    </ContentCard>
+    <p class="eyebrow">Historical release authority records</p>
+    <p>
+      The following pinned records retain their original lane names. They do not
+      describe current preview availability or certify this candidate.
+    </p>
     <div class="package-table">
       <Table.Root>
         <Table.Caption class="sr-only">
-          Runic Artifex current release-train versions
+          Runic Artifex historical release-train versions
         </Table.Caption>
         <Table.Header>
           <Table.Row>
@@ -83,7 +113,7 @@
       </Table.Root>
     </div>
     <ContentCard
-      eyebrow="1.0 profile"
+      eyebrow="Historical 1.0 profile"
       title="Language and toolchain scope is explicit"
       full
     >
@@ -121,7 +151,7 @@
     </ContentCard>
     <ContentCard
       eyebrow="Compatibility"
-      title="Compatibility lanes are generated from the authority"
+      title="Historical compatibility lanes"
       full
     >
       <p>
@@ -157,7 +187,7 @@
       </div>
     </ContentCard>
     <ContentCard
-      eyebrow="Distributions"
+      eyebrow="Historical distributions"
       title={distributionsArePending
         ? 'Release artifacts remain unassigned until published'
         : 'Distribution versions are recorded independently'}
