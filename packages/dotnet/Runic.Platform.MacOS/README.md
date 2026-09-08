@@ -1,0 +1,11 @@
+# Runic.Platform.MacOS
+
+Explicit AppKit file dialogs and text clipboard for embedded Runic Desktop on macOS arm64. Select `MacOSPlatformProvider.CreateFileDialogs(owner)` and `CreateTextClipboard(owner)` using a verified presentation owner from the Desktop adapter. Referencing other providers is unnecessary. Native handles and selected paths remain in C#.
+
+File panels are owned sheets. The retained selected NSURL keeps its security-scoped access until its lease closes; each successful scope start has exactly one stop. A sandboxed selection, or one requiring a security scope, cannot authorize sibling staging: atomic replacement reports unavailable before changing the target. Bookmarks and directories are outside this preview.
+
+Clipboard reads distinguish no text (`null`) from empty text, enforce a UTF-16 character bound before copying to managed memory, and detect concurrent pasteboard replacement. The clipboard uses ApplicationServices C Pasteboard APIs and CoreFoundation to report OSStatus failures without Objective-C exception unwinding. Writes use the native API's actual outcome once native mutation begins. Presentation dispatch must stop accepting new work before scoped shutdown; existing panel cancellation and native resource release drain on AppKit's main queue even after the owner becomes unavailable.
+
+The native clipboard executable in `tests/dotnet/Runic.Platform.MacOS.Tests` tests Unicode, embedded NUL, UTF-16 with both byte orders, later text items after non-text items, malformed data, bounds, cancellation/retry, and independent `pbcopy`/`pbpaste` observations. Run it on macOS both under JIT and after NativeAOT publication. It overwrites the clipboard. The host's real selected-file fixture must additionally be run interactively, including signed sandbox runs, shutdown with open sheets, and owner replacement. Linux guard checks do not count as macOS evidence.
+
+Native clipboard ABI references: [Apple Pasteboard functions](https://developer.apple.com/documentation/applicationservices/applicationservices_functions) and [PasteboardCreate](https://developer.apple.com/documentation/applicationservices/1461248-pasteboardcreate). No extra native shim is packaged.

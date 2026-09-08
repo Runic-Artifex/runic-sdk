@@ -1,6 +1,7 @@
-namespace Runic.Platform.Prototype;
+namespace Runic.Platform.Runtime;
 
-internal sealed class PresentationLifetime : IAsyncDisposable, Runic.Application.Bridge.IApplicationPresentationLifetime
+/// <summary>Owns one presentation generation, drains admitted operations and releases acquired resources.</summary>
+public sealed class PresentationLifetime : IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _shutdown = new();
@@ -13,11 +14,21 @@ internal sealed class PresentationLifetime : IAsyncDisposable, Runic.Application
     private readonly HashSet<PresentationLease> _leases = [];
     private Exception? _cleanupFailure;
 
-    internal PresentationLifetime(Func<bool>? ownerAvailable = null) { Shutdown = _shutdown.Token; _ownerAvailable = ownerAvailable; }
-    internal Guid Generation { get; } = Guid.NewGuid();
-    internal CancellationToken Shutdown { get; }
-    internal bool IsClosing { get { lock (_gate) return _closed is not null; } }
-    internal bool HasOwner
+    /// <summary>Creates a lifetime using a verified owner callback and optional shared generation.</summary>
+    public PresentationLifetime(Func<bool>? ownerAvailable = null, Guid? generation = null)
+    {
+        Shutdown = _shutdown.Token;
+        _ownerAvailable = ownerAvailable;
+        Generation = generation ?? Guid.NewGuid();
+    }
+    /// <summary>The immutable presentation generation.</summary>
+    public Guid Generation { get; }
+    /// <summary>Signals shutdown before admitted operations are drained.</summary>
+    public CancellationToken Shutdown { get; }
+    /// <summary>Whether shutdown has started.</summary>
+    public bool IsClosing { get { lock (_gate) return _closed is not null; } }
+    /// <summary>Whether the verified owner is currently available.</summary>
+    public bool HasOwner
     {
         get
         {
@@ -27,14 +38,18 @@ internal sealed class PresentationLifetime : IAsyncDisposable, Runic.Application
         }
     }
 
+    internal (int OwnedLeaseCount, int PendingOperationCount) GetResourceSnapshot()
+    {
+        lock (_gate) return (_leases.Count, _operations);
+    }
+
     internal bool Own(PresentationLease lease)
     {
         lock (_gate) { if (_closed is not null) return false; return _leases.Add(lease); }
     }
     internal void Forget(PresentationLease lease) { lock (_gate) _leases.Remove(lease); }
 
-    // A native adapter must eventually supply verified identity and dispatch here.
-    // This prototype only models the transition; it cannot certify ownership.
+    // Deterministic conformance uses a synthetic owner; shipping hosts supply the verified callback.
     internal void AttachTestOwner()
     {
         lock (_gate)
@@ -45,7 +60,8 @@ internal sealed class PresentationLifetime : IAsyncDisposable, Runic.Application
         }
     }
 
-    internal IDisposable? TryBeginOperation()
+    /// <summary>Admits work until shutdown; disposing the token signals that work and cleanup have finished.</summary>
+    public IDisposable? TryBeginOperation()
     {
         lock (_gate)
         {
@@ -71,8 +87,10 @@ internal sealed class PresentationLifetime : IAsyncDisposable, Runic.Application
         }
     }
 
+    /// <summary>Starts shutdown and awaits operation drain and resource cleanup.</summary>
     public ValueTask StopAsync() => DisposeAsync();
 
+    /// <summary>Joins the single shared shutdown result.</summary>
     public ValueTask DisposeAsync()
     {
         TaskCompletionSource closed;

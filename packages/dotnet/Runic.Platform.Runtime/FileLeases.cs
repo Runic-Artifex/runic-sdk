@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace Runic.Platform.Prototype;
+namespace Runic.Platform.Runtime;
 
 // One acquired stream, never a path that is reopened after selection. The lease
 // owns it even if the caller forgets to dispose the returned stream.

@@ -1,11 +1,19 @@
-# Internal OS-service prototype
+# OS-service conformance and native fixtures
 
-This non-packable executable contains internal contracts, concrete file leases
-and native provider experiments for the
-[OS integration RFC](../../../docs/guides/application/architecture/os-integration-rfc.md).
-It does not publish a `Runic.Platform` API. The existing Application/Bridge/Desktop
-packages supply the presentation lifetime hook, main-thread runner and verified
-native dispatch boundary used here.
+Status: shipping extraction and preview integration in progress, 2026-09-08.
+This non-packable test executable consumes the implementation extracted into
+`Runic.Platform`, `Runic.Platform.Runtime`, the three OS provider packages,
+`Runic.Application.Platform` and `Runic.Application.Platform.Desktop`. The retained
+prototype project name identifies the test harness, not a private parallel copy of
+the contracts or runtime. See the [OS integration RFC](../../../docs/guides/application/architecture/os-integration-rfc.md)
+and [current preview policy](../../../eng/preview-human-acceptance.md).
+
+Current source implementation is not a claim of registry publication or native
+certification. Demo-preview manual checks cover this Linux system and the available
+Windows VM; automated native JIT/NativeAOT CI remains required on all three OS targets.
+Real macOS/sandbox checks, unavailable Wayland, broader accessibility and independent
+pilots remain explicit follow-ups before v1. Historical receipts below retain their
+original scope and do not certify the extracted candidate.
 
 Run in the repository's Nix development environment:
 
@@ -66,7 +74,7 @@ compositor, desktop portal or sandbox permission grant.
 | Linux | `GtkFileChooserNative` with the actual GtkWindow as transient parent. GTK handles X11/Wayland parent export and portal protocol. Required portal availability is probed off the UI thread. Hide/destroy drains cancellation. Portal-persistent grants are not revoked as if they were SDK-owned. |
 | macOS | `NSOpenPanel`/`NSSavePanel` sheets on the process main thread, with an Objective-C completion block owning its captured context. The selected NSURL is retained; successful SDK calls to `startAccessingSecurityScopedResource` are balanced with `stopAccessingSecurityScopedResource`. Sandbox entitlement checks conservatively constrain staging. No persisted bookmark is claimed. |
 
-The prototype binds these providers only to a verified Desktop embedded owner.
+The shipping integration binds these providers only to a verified Desktop embedded owner.
 CS-WebUI has live service-scope parity, but its current public API does not supply
 a verified browser HWND/NSWindow/GTK dispatcher. Required owned pickers therefore
 remain unavailable there. An installed browser PID is not a substitute. No Desktop
@@ -80,7 +88,7 @@ Native API references:
 
 ## Evidence and limits
 
-The managed suite has 12 grouped scenarios covering admission, late cancellation,
+Historical prototype coverage included 12 grouped scenarios covering admission, late cancellation,
 lease/stream cleanup, staged writes, conflicts, uncertain commits, access-acquisition
 failures, dispatch and DI composition. Its live Desktop test starts the real host
 and drives the session owned by that host through reconnect and blocked-operation
@@ -95,7 +103,7 @@ watchdog; unsupported environments fail rather than silently count as passes.
 The filesystem selection used to check acquired-stream teardown is injected and
 is explicitly **not** sandbox-grant evidence.
 
-Linux GTK/X11 native cancellation and both live host lifetimes have been exercised
+Historical Linux GTK/X11 native cancellation and both live host lifetimes were exercised
 locally in managed and NativeAOT builds, with warnings treated as errors. Windows/macOS native execution is assigned to their CI runners. Actual
 Wayland/portal selection, focus behavior, user permission grants and a signed
 macOS sandbox fixture still require the manual evidence listed in
@@ -104,5 +112,15 @@ cancellation must not be presented as that evidence. CI prepares a signed fixtur
 use its [manual selection instructions](../../../tests/native/platform-sandbox/README.md)
 and `--native-select` to exercise a real user-selected file grant.
 
-Clipboard, customer import/export UI, a second MAUI-derived feature, public
-provider packaging and provider footprint comparisons remain subsequent slices.
+Clipboard source implementations now live in the OS provider packages. Windows uses
+Win32 clipboard APIs; macOS uses ApplicationServices C Pasteboard APIs and
+CoreFoundation, not `NSPasteboard`. Linux uses GTK `UTF8_STRING` selection transfers:
+managed decoding/string allocation is bounded, but GTK receives the native transfer
+before reporting its size, so that limit does not bound native transfer allocation.
+An advertised Linux transfer failure reports `IoError` because GTK does not expose a
+separate permission-refusal code. Successful writes acquire selection ownership;
+clipboard persistence after process exit is not guaranteed.
+
+Customer/document migration integration, package acceptance and provider footprint
+measurements must be judged from their current candidate receipts. Source presence
+and historical prototype passes cannot substitute for those results.

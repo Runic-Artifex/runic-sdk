@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>Runic.Application.Platform</AssemblyName>
+    <RootNamespace>Runic.Application.Platform</RootNamespace>
+    <PackageId>Runic.Application.Platform</PackageId>
+    <Description>Presentation-scoped native services for Runic Application.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
+    <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

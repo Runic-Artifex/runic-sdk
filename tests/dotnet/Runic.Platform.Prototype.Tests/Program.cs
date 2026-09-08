@@ -3,7 +3,8 @@ using Runic.Application;
 using Runic.Application.CsWebUi;
 using Runic.Application.Desktop;
 using Runic.Assets;
-using Runic.Platform.Prototype;
+using Runic.Platform;
+using Runic.Platform.Runtime;
 
 if (args.Contains("--native-select", StringComparer.Ordinal)) return NativeHostTests.Run(manualSelection: true);
 if (args.Contains("--native", StringComparer.Ordinal)) return NativeHostTests.Run();
@@ -20,6 +21,9 @@ internal static class Conformance
     {
         (string Name, Func<Task> Run)[] tests =
         [
+            ("HOST: shipping platform registration and scope integration", HostIntegrationTests.RunAsync),
+            ("PICK: native owner closes after admission before dispatch", NativeOwnerDispatchRace),
+            ("CLIPBOARD: outcomes, cancellation, retry and shutdown drain", ClipboardConformance),
             ("LIVE: Desktop session-owned scopes and shutdown", () => LiveHostTests.RunAsync(csWebUi: false)),
             ("ACCESS: acquisition failure and selected-file permission limits", NativeAccessTests.RunAsync),
             ("FILE: concrete stream access, staging, conflict and commit cancellation", FileLeaseTests.RunAsync),
@@ -43,6 +47,120 @@ internal static class Conformance
         return failures == 0 ? 0 : 1;
     }
 
+    private static async Task NativeOwnerDispatchRace()
+    {
+        foreach (bool save in new[] { false, true })
+        {
+            var owner = new ClosingNativeOwner();
+            await using var lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation);
+            var files = new PresentationFiles(lifetime, new NativePickerBackend(owner, new DispatchingPicker(owner)));
+            var openTask = save ? null : files.OpenFileAsync(new()).AsTask();
+            var saveTask = save ? files.SaveFileAsync(new("document.txt")).AsTask() : null;
+            await owner.Queued.Task;
+            owner.Close();
+            if (save) Check(await saveTask! is PickerResult<ISaveFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed });
+            else Check(await openTask! is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed });
+            Check(lifetime.GetResourceSnapshot().PendingOperationCount == 0);
+        }
+
+        // An arbitrary disposed resource is a provider defect, not an owner-close outcome.
+        var validOwner = new ClosingNativeOwner();
+        var defectiveBackend = new NativePickerBackend(validOwner, new DisposedResourcePicker());
+        await Throws<ObjectDisposedException>(() => defectiveBackend.OpenFileAsync(new()).AsTask());
+        await Throws<ObjectDisposedException>(() => defectiveBackend.SaveFileAsync(new("document.txt")).AsTask());
+    }
+
+    private sealed class ClosingNativeOwner : INativePickerOwner
+    {
+        private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Queued { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Guid Generation { get; } = Guid.NewGuid();
+        public bool IsAvailable => !_closed.Task.IsCompleted;
+        internal void Close() => _closed.TrySetResult();
+        public async ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Queued.TrySetResult();
+            await _closed.Task;
+            throw new OwnerClosedException();
+        }
+    }
+
+    private sealed class DispatchingPicker(INativePickerOwner owner) : INativeFilePicker
+    {
+        public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+        {
+            await owner.InvokeAsync(_ => { }, cancellationToken);
+            return null;
+        }
+    }
+
+    private sealed class DisposedResourcePicker : INativeFilePicker
+    {
+        public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+            => ValueTask.FromException<NativeFileSelection?>(new ObjectDisposedException("provider-resource"));
+    }
+
+    private static async Task ClipboardConformance()
+    {
+        var backend = new ControlledClipboard();
+        var lifetime = Owned();
+        var clipboard = new PresentationClipboard(lifetime, backend);
+        Check(await clipboard.ReadTextAsync(0) is PlatformResult<string?>.Success { Value: null });
+        backend.Text = "";
+        Check(await clipboard.ReadTextAsync(0) is PlatformResult<string?>.Success { Value: "" });
+        backend.Text = "oversized";
+        Check(await clipboard.ReadTextAsync(2) is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge });
+        backend.Failure = FailureCode.PermissionDenied;
+        Check(await clipboard.ReadTextAsync(20) is PlatformResult<string?>.Failed { Code: FailureCode.PermissionDenied });
+        backend.Failure = FailureCode.ResourceBusy;
+        Check(await clipboard.WriteTextAsync("busy") is PlatformResult<Unit>.Failed { Code: FailureCode.ResourceBusy });
+        backend.Failure = null;
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await Throws<OperationCanceledException>(() => clipboard.WriteTextAsync("canceled", canceled.Token).AsTask());
+        Check(await clipboard.WriteTextAsync("retry") is PlatformResult<Unit>.Success);
+        backend.BlockWrite = true;
+        using var late = new CancellationTokenSource();
+        var write = clipboard.WriteTextAsync("actual", late.Token).AsTask();
+        await backend.Started.Task;
+        late.Cancel();
+        var stopped = lifetime.DisposeAsync().AsTask();
+        Check(!stopped.IsCompleted);
+        Check(!backend.Disposed);
+        backend.Finish.TrySetResult();
+        Check(await write is PlatformResult<Unit>.Success);
+        await stopped;
+        Check(backend.Text == "actual" && backend.Disposed);
+        Check(lifetime.GetResourceSnapshot() == (0, 0));
+        Check(await clipboard.ReadTextAsync(20) is PlatformResult<string?>.Unavailable { Reason: UnavailableReason.OwnerClosed });
+    }
+
+    private sealed class ControlledClipboard : ITextClipboard, IAsyncDisposable
+    {
+        internal string? Text;
+        internal FailureCode? Failure;
+        internal bool BlockWrite;
+        internal bool Disposed;
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Finish { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ValueTask<PlatformResult<string?>> ReadTextAsync(int maximumCharacters, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<PlatformResult<string?>>(Failure is { } failure
+                ? new PlatformResult<string?>.Failed(failure) : new PlatformResult<string?>.Success(Text));
+        }
+        public async ValueTask<PlatformResult<Unit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Failure is { } failure) return new PlatformResult<Unit>.Failed(failure);
+            if (BlockWrite) { Started.TrySetResult(); await Finish.Task; }
+            Text = text;
+            return new PlatformResult<Unit>.Success(new());
+        }
+        public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
+    }
+
     private static async Task Capabilities()
     {
         await using var lifetime = new PresentationLifetime();
@@ -53,16 +171,14 @@ internal static class Conformance
         var before = files.GetSnapshot();
         Check(before.Statuses["platform.files.open"] is CapabilityStatus.Unavailable { Reason: UnavailableReason.OwnerUnavailable });
         Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerUnavailable });
-        var unowned = files.OpenFileAsync(new(OwnerPolicy.AllowUnowned)).AsTask();
-        backend.OpenResult.SetResult(new PickerResult<IReadFileLease>.Dismissed());
-        Check(await unowned is PickerResult<IReadFileLease>.Dismissed);
+        await Throws<ArgumentOutOfRangeException>(() => files.OpenFileAsync(new((OwnerPolicy)1)).AsTask());
         Check(files.GetSnapshot().Statuses["platform.dialogs.owned"] is CapabilityStatus.Unavailable);
         lifetime.AttachTestOwner();
         Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Available);
         Check(before.Statuses["platform.files.open"] is CapabilityStatus.Unavailable);
         backend.IsAvailable = false;
         Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.BackendUnavailable });
-        Check(backend.OpenCalls == 1);
+        Check(backend.OpenCalls == 0);
         await lifetime.DisposeAsync();
         Check(files.GetSnapshot().Generation == before.Generation);
         Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Unavailable { Reason: UnavailableReason.OwnerClosed });

@@ -1,10 +1,16 @@
+using Runic.Platform.Windows;
+using Runic.Platform.Linux;
+using Runic.Platform.MacOS;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application;
 using Runic.Application.Bridge;
 using Runic.Application.Desktop;
 using Runic.Desktop;
-using Runic.Platform.Prototype;
+using Runic.Platform;
+using Runic.Platform.Runtime;
+using Runic.Application.Platform;
+using Runic.Application.Platform.Desktop;
 
 internal static class NativeHostTests
 {
@@ -15,11 +21,10 @@ internal static class NativeHostTests
             null, TimeSpan.FromSeconds(manualSelection ? 240 : 90), Timeout.InfiniteTimeSpan);
         DesktopApplicationHost? host = null;
         PresentationLifetime? lifetime = null;
-        var owner = new DesktopPickerOwner(() => host?.Window);
+        var owner = new DesktopNativeOwner(() => host?.Window);
         RunicApplicationBridgeCompositionRegistry.Register(services =>
         {
-            services.AddScoped(_ => new PresentationLifetime(() => owner.IsAvailable));
-            services.AddScoped<IApplicationPresentationLifetime>(provider => provider.GetRequiredService<PresentationLifetime>());
+            services.AddRunicPlatform(_ => new PlatformProvider { OwnerAvailable = () => owner.IsAvailable, Generation = owner.Generation });
             services.AddScoped<IApplicationBridgeDispatcher>(provider =>
             {
                 lifetime = provider.GetRequiredService<PresentationLifetime>();
@@ -66,7 +71,7 @@ internal static class NativeHostTests
         finally { app.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
     }
 
-    private static async Task ExerciseAsync(DesktopApplicationHost host, DesktopPickerOwner owner, PresentationLifetime lifetime, bool manualSelection, CancellationToken deadline)
+    private static async Task ExerciseAsync(DesktopApplicationHost host, DesktopNativeOwner owner, PresentationLifetime lifetime, bool manualSelection, CancellationToken deadline)
     {
         var window = host.Window!;
         await owner.InvokeAsync(handle =>
@@ -79,7 +84,7 @@ internal static class NativeHostTests
         if (manualSelection)
         {
             Console.WriteLine("MANUAL: select a readable file outside the app sandbox; its bytes will not be printed.");
-            var manual = new PresentationFiles(lifetime, NativePickerBackend.Create(owner));
+            var manual = new PresentationFiles(lifetime, new NativePickerBackend(owner, NewPicker(owner).Picker));
             var selectedResult = await manual.OpenFileAsync(new(), deadline);
             if (selectedResult is not PickerResult<IReadFileLease>.Selected selected)
                 throw new InvalidOperationException("Manual native selection must select a file to prove acquired access.");
@@ -133,7 +138,7 @@ internal static class NativeHostTests
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
-    private static (INativeFilePicker Picker, Task Shown) NewPicker(DesktopPickerOwner owner)
+    private static (INativeFilePicker Picker, Task Shown) NewPicker(DesktopNativeOwner owner)
     {
         if (OperatingSystem.IsWindows()) { var picker = new WindowsFilePicker(owner); return (picker, picker.Shown.Task); }
         if (OperatingSystem.IsMacOS()) { var picker = new MacOsFilePicker(owner); return (picker, picker.Shown.Task); }
@@ -141,7 +146,7 @@ internal static class NativeHostTests
         throw new PlatformNotSupportedException();
     }
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
-    private sealed class OwnerRelease(DesktopPickerOwner owner) : IAsyncDisposable
+    private sealed class OwnerRelease(DesktopNativeOwner owner) : IAsyncDisposable
     {
         internal int Releases;
         public ValueTask DisposeAsync() => owner.InvokeAsync(_ => Releases++);

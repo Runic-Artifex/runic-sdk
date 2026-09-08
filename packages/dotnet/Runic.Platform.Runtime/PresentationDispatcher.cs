@@ -1,12 +1,16 @@
-namespace Runic.Platform.Prototype;
+namespace Runic.Platform.Runtime;
 
-internal sealed class OwnerClosedException() : InvalidOperationException("The presentation owner has closed.");
+/// <summary>The native presentation owner is no longer usable.</summary>
+public sealed class OwnerClosedException() : InvalidOperationException("The presentation owner has closed.");
 
-internal sealed class PresentationDispatcher(PresentationLifetime lifetime, Func<bool> checkAccess, Action<Action> post)
+/// <summary>Dispatches once through a synchronous posting adapter, guarded by presentation shutdown.</summary>
+public sealed class PresentationDispatcher(PresentationLifetime lifetime, Func<bool> checkAccess, Action<Action> post)
     : IUiDispatcher
 {
+    /// <inheritdoc />
     public bool CheckAccess() => checkAccess();
 
+    /// <inheritdoc />
     public async ValueTask InvokeAsync(Action action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);

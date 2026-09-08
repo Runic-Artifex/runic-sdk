@@ -1,4 +1,5 @@
-using Runic.Platform.Prototype;
+using Runic.Platform;
+using Runic.Platform.Runtime;
 
 internal static class FileLeaseTests
 {

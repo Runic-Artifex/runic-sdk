@@ -1,15 +1,19 @@
 using System.Runtime.InteropServices;
 
-namespace Runic.Platform.Prototype;
+using Runic.Platform.Runtime;
+
+namespace Runic.Platform.Windows;
 
 // Common Item Dialog ABI, without reflection-based COM marshalling (NativeAOT).
-internal sealed partial class WindowsFilePicker(DesktopPickerOwner owner) : INativeFilePicker
+internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INativeFilePicker
 {
     private const int Cancelled = unchecked((int)0x800704C7);
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
     {
+        if (!OperatingSystem.IsWindows()) throw new NativeBackendUnavailableException();
+        var generation = owner.Generation;
         nint dialog = 0;
         NativeFileSelection? selection = null;
         // Close runs through the same STA queue serviced by Show's modal loop.
@@ -22,23 +26,34 @@ internal sealed partial class WindowsFilePicker(DesktopPickerOwner owner) : INat
             catch (OwnerClosedException) { }
             catch (ObjectDisposedException) { }
         }
-        await owner.InvokeAsync(handle =>
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            dialog = Create(save);
-            try
+            await owner.InvokeAsync(handle =>
             {
-                Configure(dialog, save, suggestedName);
-                Shown.TrySetResult();
-                int result = Show(dialog, handle);
-                if (result == Cancelled) return;
-                Marshal.ThrowExceptionForHR(result);
-                selection = new(GetPath(dialog), null, true);
-            }
-            finally { Release(dialog); dialog = 0; }
-        }, cancellationToken).ConfigureAwait(false);
-        await registration.DisposeAsync().ConfigureAwait(false);
-        await cancellation.ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (handle == 0 || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+                dialog = Create(save);
+                try
+                {
+                    Configure(dialog, save, suggestedName);
+                    Shown.TrySetResult();
+                    int result = Show(dialog, handle);
+                    if (result == Cancelled) return;
+                    Marshal.ThrowExceptionForHR(result);
+                    selection = new(GetPath(dialog), null, true);
+                }
+                finally { Release(dialog); dialog = 0; }
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (COMException error) when (error.HResult == unchecked((int)0x80070005))
+        { throw new UnauthorizedAccessException("Windows denied file dialog access.", error); }
+        catch (COMException error)
+        { throw new IOException("The Windows file dialog failed.", error); }
+        finally
+        {
+            await registration.DisposeAsync().ConfigureAwait(false);
+            await cancellation.ConfigureAwait(false);
+        }
         // The facade releases late selection if cancellation won the delivery race.
         return selection;
     }

@@ -1,12 +1,14 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Runic.Platform.Prototype;
+using Runic.Platform.Runtime;
+
+namespace Runic.Platform.Linux;
 
 // GTK owns X11/Wayland parent export and the portal request. Never substitute a
 // GtkWindow pointer for an XID or a Wayland portal token. No grant is revoked by
 // this provider: portal grants belong to the user's permission store, not us.
-internal sealed partial class LinuxFilePicker(DesktopPickerOwner owner) : INativeFilePicker
+internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativeFilePicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -32,7 +34,7 @@ internal sealed partial class LinuxFilePicker(DesktopPickerOwner owner) : INativ
                 Connect(dialog, "response", ResponsePointer, GCHandle.ToIntPtr(handle), 0, 0);
                 SetModal(dialog, 1);
                 SetLocalOnly(dialog, 1);
-                if (save) { SetOverwrite(dialog, 1); SetName(dialog, suggestedName!); }
+                if (save) { SetOverwrite(dialog, 1); SetName(dialog, suggestedName ?? "Untitled"); }
                 Show(dialog);
                 Shown.TrySetResult();
             }, cancellationToken).ConfigureAwait(false);
@@ -42,7 +44,9 @@ internal sealed partial class LinuxFilePicker(DesktopPickerOwner owner) : INativ
                 try { await owner.InvokeAsync(_ => { Hide(dialog); state.Result.TrySetResult(null); }, CancellationToken.None).ConfigureAwait(false); }
                 catch (Exception error) { state.Result.TrySetException(error); }
             }
-            return await state.Result.Task.ConfigureAwait(false);
+            var result = await state.Result.Task.ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return result;
         }
         finally
         {

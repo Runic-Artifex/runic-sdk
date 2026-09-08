@@ -1,4 +1,4 @@
-namespace Runic.Platform.Prototype;
+namespace Runic.Platform.Runtime;
 
 // The feature can release early; owner shutdown joins the same release. No raw
 // lease escapes the facade, including when shutdown races selection delivery.

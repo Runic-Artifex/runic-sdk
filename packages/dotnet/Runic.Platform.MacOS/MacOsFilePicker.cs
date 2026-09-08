@@ -1,9 +1,11 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Runic.Platform.Prototype;
+using Runic.Platform.Runtime;
 
-internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativeFilePicker
+namespace Runic.Platform.MacOS;
+
+internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativeFilePicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -23,7 +25,7 @@ internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativ
                 Send(panel, Sel("retain"));
                 if (save)
                 {
-                    nint name = String(suggestedName!);
+                    nint name = String(suggestedName ?? "Untitled");
                     try { SendArg(panel, Sel("setNameFieldStringValue:"), name); }
                     finally { Send(name, Sel("release")); }
                 }
@@ -40,7 +42,7 @@ internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativ
                         if (response != 1) { result.TrySetResult(null); return; }
                         nint url = Send(panel, Sel("URL"));
                         if (url == 0) throw new IOException("AppKit returned no selected URL.");
-                        var access = MacOsSecurityAccess.Acquire(url, owner);
+                        var access = MacOsSecurityAccess.Acquire(url);
                         try
                         {
                             string path = Marshal.PtrToStringUTF8(Send(Send(url, Sel("path")), Sel("UTF8String")))
@@ -48,7 +50,8 @@ internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativ
                             // A sandbox's user-selected grant authorizes the selected URL,
                             // not arbitrary sibling staging files. Never invent that access.
                             bool sandboxed = IsSandboxed();
-                            result.TrySetResult(new(path, access, !sandboxed && !access.Started));
+                            if (!result.TrySetResult(new(path, access, !sandboxed && !access.Started)))
+                                access.DisposeAsync().AsTask().GetAwaiter().GetResult();
                         }
                         catch { access.DisposeAsync().AsTask().GetAwaiter().GetResult(); throw; }
                     }
@@ -63,10 +66,11 @@ internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativ
             {
                 try
                 {
-                    await OnOwnerAsync(owner, _ =>
+                    await MacOsMainQueue.InvokeAsync(() =>
                     {
+                        using var pool = new AutoreleasePool();
                         if (!result.Task.IsCompleted) SendArg(panel, Sel("cancel:"), 0);
-                    }, CancellationToken.None).ConfigureAwait(false);
+                    }).ConfigureAwait(false);
                 }
                 catch (Exception error) { result.TrySetException(error); }
             }
@@ -76,20 +80,20 @@ internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativ
         {
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellation.ConfigureAwait(false);
-            if (panel != 0) await OnOwnerAsync(owner, _ => Send(panel, Sel("release")), CancellationToken.None).ConfigureAwait(false);
+            if (panel != 0) await MacOsMainQueue.InvokeAsync(() => { using var pool = new AutoreleasePool(); Send(panel, Sel("release")); }).ConfigureAwait(false);
         }
     }
 
     // Retain the actual NSURL. Balance only the access explicitly started here;
     // false can also mean an ordinary non-scoped URL. Actual file IO checks access.
-    internal sealed class MacOsSecurityAccess(nint url, bool started, DesktopPickerOwner owner) : IAsyncDisposable
+    internal sealed class MacOsSecurityAccess(nint url, bool started) : IAsyncDisposable
     {
         private TaskCompletionSource? _closed;
         internal bool Started => started;
-        internal static MacOsSecurityAccess Acquire(nint url, DesktopPickerOwner owner)
+        internal static MacOsSecurityAccess Acquire(nint url)
         {
             Send(url, Sel("retain"));
-            return new(url, SendBool(url, Sel("startAccessingSecurityScopedResource")) != 0, owner);
+            return new(url, SendBool(url, Sel("startAccessingSecurityScopedResource")) != 0);
         }
         public ValueTask DisposeAsync()
         {
@@ -102,8 +106,9 @@ internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativ
         {
             try
             {
-                await OnOwnerAsync(owner, _ =>
+                await MacOsMainQueue.InvokeAsync(() =>
                 {
+                    using var pool = new AutoreleasePool();
                     if (started) Send(url, Sel("stopAccessingSecurityScopedResource"));
                     Send(url, Sel("release"));
                 }).ConfigureAwait(false);
@@ -157,7 +162,7 @@ internal sealed partial class MacOsFilePicker(DesktopPickerOwner owner) : INativ
         [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "_Block_copy")] private static partial nint BlockCopy(nint block);
         [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "_Block_release")] internal static partial void Release(nint block);
     }
-    private static ValueTask OnOwnerAsync(DesktopPickerOwner owner, Action<nint> action, CancellationToken cancellationToken = default) =>
+    private static ValueTask OnOwnerAsync(INativePickerOwner owner, Action<nint> action, CancellationToken cancellationToken = default) =>
         owner.InvokeAsync(window => { using var pool = new AutoreleasePool(); action(window); }, cancellationToken);
 
     private sealed class AutoreleasePool : IDisposable

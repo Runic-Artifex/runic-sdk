@@ -1,10 +1,12 @@
 using System.Collections.Immutable;
 
-namespace Runic.Platform.Prototype;
+namespace Runic.Platform.Runtime;
 
-internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBackend? backend = null)
+/// <summary>Serializes owned selection and attaches every acquired lease to its presentation.</summary>
+public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBackend? backend = null)
     : IFileDialogs, IPlatformCapabilities
 {
+    /// <inheritdoc />
     public CapabilitySnapshot GetSnapshot()
     {
         CapabilityStatus files = Reason(OwnerPolicy.RequireOwner) is { } reason
@@ -23,12 +25,14 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
         return null;
     }
 
+    /// <inheritdoc />
     public ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
         return PickAsync(options.OwnerPolicy, token => backend!.OpenFileAsync(options, token), value => new PresentationReadLease(lifetime, value), cancellationToken);
     }
 
+    /// <inheritdoc />
     public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);

@@ -8,7 +8,10 @@ using Runic.Application.CsWebUi;
 using Runic.Application.Desktop;
 using Runic.Assets;
 using Runic.Desktop;
-using Runic.Platform.Prototype;
+using Runic.Platform;
+using Runic.Platform.Runtime;
+using Runic.Application.Platform;
+using Runic.Application.Platform.Desktop;
 
 internal static class LiveHostTests
 {
@@ -16,8 +19,7 @@ internal static class LiveHostTests
     {
         var services = new ServiceCollection();
         Feature? feature = null;
-        services.AddScoped(_ => new PresentationLifetime());
-        services.AddScoped<IApplicationPresentationLifetime>(provider => provider.GetRequiredService<PresentationLifetime>());
+        services.AddRunicPlatform();
         services.AddScoped(provider => new Feature(provider.GetRequiredService<PresentationLifetime>()));
         services.AddScoped<IApplicationBridgeDispatcher>(provider => new Dispatcher(feature = provider.GetRequiredService<Feature>()));
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <AssemblyName>Runic.Application.Platform.Desktop</AssemblyName>
+    <RootNamespace>Runic.Application.Platform.Desktop</RootNamespace>
+    <PackageId>Runic.Application.Platform.Desktop</PackageId>
+    <Description>Verified Desktop owner integration for Runic platform services.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Application.Platform/Runic.Application.Platform.csproj" />
+    <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>
