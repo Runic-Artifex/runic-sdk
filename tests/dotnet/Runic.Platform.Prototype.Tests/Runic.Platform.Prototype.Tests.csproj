@@ -18,5 +18,17 @@
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <_NativeHostFrontendInput Include="Frontend/native-host.ts;../../../packages/web/desktop/src/**/*.ts;../../../bun.lock" />
+  </ItemGroup>
+  <Target Name="BuildNativeHostFrontend" Inputs="@(_NativeHostFrontendInput)" Outputs="$(IntermediateOutputPath)native-host.js">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="bun build Frontend/native-host.ts --target browser --format esm --minify --outfile &quot;$(IntermediateOutputPath)native-host.js&quot;" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+  <Target Name="IncludeNativeHostFrontend" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildNativeHostFrontend">
+    <ItemGroup>
+      <EmbeddedResource Include="$(IntermediateOutputPath)native-host.js" LogicalName="Runic.Platform.NativeHost.Frontend" />
+    </ItemGroup>
+  </Target>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

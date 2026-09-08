@@ -70,6 +70,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         await _windowGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             if (_window is { IsOpen: true })
             {
                 throw new InvalidOperationException("This surface already has an open window presentation.");
@@ -170,13 +171,28 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsCurrentWindow(DesktopWindow window) => ReferenceEquals(Volatile.Read(ref _window), window);
 
+    internal async ValueTask RunWindowOperationAsync(DesktopWindow window,
+        DesktopWindowCapabilities capability, Func<ValueTask> operation, CancellationToken cancellationToken)
+    {
+        await _windowGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            ObjectDisposedException.ThrowIf(!ReferenceEquals(_window, window) || !window.IsOpen, window);
+            window.RequireCapability(capability);
+            // Keep replacement behind the admitted native operation, including queued dispatch.
+            await operation().ConfigureAwait(false);
+        }
+        finally { _windowGate.Release(); }
+    }
+
     internal async ValueTask<bool> RequestCloseWindowAsync(DesktopWindow window, CancellationToken cancellationToken)
     {
         Task<bool> decision;
         await _windowGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!ReferenceEquals(_window, window) || !window.IsOpen) return true;
+            if (Volatile.Read(ref _disposed) != 0 || !ReferenceEquals(_window, window) || !window.IsOpen) return true;
             if (!_engine.HasCloseConfirmation)
             {
                 await _engine.ClosePresentationAsync().ConfigureAwait(false);
@@ -217,6 +233,9 @@ public sealed class DesktopSurface : IAsyncDisposable
             return;
         }
 
+        // Reject new admission first, then drain admitted mutations before native teardown.
+        // Native release callbacks use the owner's dispatcher directly and do not acquire this gate.
+        await _windowGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
             await _engine.CloseAsync(cancellationToken).ConfigureAwait(false);
@@ -229,7 +248,9 @@ public sealed class DesktopSurface : IAsyncDisposable
         finally
         {
             _window = null;
-            _windowGate.Dispose();
+            // Queued callers still need to acquire, observe disposal, and release. This
+            // managed semaphore has no allocated wait handle and can be collected with the surface.
+            _windowGate.Release();
             if (detach)
             {
                 _host.Detach(_id);
@@ -239,6 +260,7 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     private void ApplyWindowOptions(DesktopWindowOptions options)
     {
+        _engine.ResetDesktopPresentationOptions();
         _engine.SetSize(options.Width, options.Height);
         if (options.MinimumWidth is { } minimumWidth && options.MinimumHeight is { } minimumHeight)
         {
@@ -419,7 +441,7 @@ public sealed class DesktopWindow : IAsyncDisposable
     public bool FellBack { get; }
     public bool IsOpen => Volatile.Read(ref _disposed) == 0 && _surface.IsCurrentWindow(this)
         && (Browser == BrowserKind.Embedded ? _engine.IsEmbeddedWindowOpen : _engine.IsShown);
-    public ulong ProcessId => _engine.BrowserProcessId;
+    public ulong ProcessId => IsOpen ? _engine.BrowserProcessId : 0;
     public nint NativeHandle => IsOpen ? _engine.NativeWindowHandle : 0;
 
     /// <summary>Whether this live embedded owner supports native-thread callbacks.</summary>
@@ -440,7 +462,7 @@ public sealed class DesktopWindow : IAsyncDisposable
             action(NativeHandle);
         }, cancellationToken);
     }
-    public DesktopWindowCapabilities Capabilities => Browser == BrowserKind.Embedded
+    public DesktopWindowCapabilities Capabilities => IsOpen && Browser == BrowserKind.Embedded
         ? DesktopWindowCapabilities.NativeHandle |
           DesktopWindowCapabilities.Focus |
           DesktopWindowCapabilities.Minimize |
@@ -452,20 +474,20 @@ public sealed class DesktopWindow : IAsyncDisposable
 
     public Task FocusAsync(CancellationToken cancellationToken = default)
     {
-        RequireCapability(DesktopWindowCapabilities.Focus);
-        return _engine.FocusAsync(cancellationToken);
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Focus,
+            () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken).AsTask();
     }
 
     public Task MinimizeAsync(CancellationToken cancellationToken = default)
     {
-        RequireCapability(DesktopWindowCapabilities.Minimize);
-        return _engine.MinimizeAsync(cancellationToken);
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Minimize,
+            () => new ValueTask(_engine.MinimizeAsync(cancellationToken)), cancellationToken).AsTask();
     }
 
     public Task ToggleMaximizedAsync(CancellationToken cancellationToken = default)
     {
-        RequireCapability(DesktopWindowCapabilities.Maximize);
-        return _engine.MaximizeAsync(cancellationToken);
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Maximize,
+            () => new ValueTask(_engine.MaximizeAsync(cancellationToken)), cancellationToken).AsTask();
     }
 
     public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
@@ -540,17 +562,17 @@ public sealed class DesktopWindow : IAsyncDisposable
 
     private ValueTask RequireAndResize(uint width, uint height, CancellationToken cancellationToken)
     {
-        RequireCapability(DesktopWindowCapabilities.Resize);
-        return _engine.ResizePresentationAsync(width, height, cancellationToken);
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Resize,
+            () => _engine.ResizePresentationAsync(width, height, cancellationToken), cancellationToken);
     }
 
     private ValueTask RequireAndMove(uint x, uint y, CancellationToken cancellationToken)
     {
-        RequireCapability(DesktopWindowCapabilities.Move);
-        return _engine.MovePresentationAsync(x, y, cancellationToken);
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Move,
+            () => _engine.MovePresentationAsync(x, y, cancellationToken), cancellationToken);
     }
 
-    private void RequireCapability(DesktopWindowCapabilities capability)
+    internal void RequireCapability(DesktopWindowCapabilities capability)
     {
         if ((Capabilities & capability) == 0)
         {

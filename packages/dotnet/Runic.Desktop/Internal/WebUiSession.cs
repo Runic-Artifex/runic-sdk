@@ -14,10 +14,14 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     private readonly WebUiWindow _window;
     private readonly WebSocket _socket;
+    private readonly object _admissionGate = new();
+    private readonly CancellationTokenSource _receiveStop = new();
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly SemaphoreSlim _eventGate = new(1, 1);
     private readonly ConcurrentDictionary<ushort, TaskCompletionSource<ScriptResult>> _pendingScripts = new();
     private int _authenticated;
+    private int _revoked;
+    private bool _everAuthenticated;
     private int _disposed;
     private int _nextScriptId;
 
@@ -43,10 +47,12 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     public string Cookies { get; }
 
-    public bool IsAuthenticated => Volatile.Read(ref _authenticated) != 0;
+    public bool IsAuthenticated => Volatile.Read(ref _revoked) == 0 && Volatile.Read(ref _authenticated) != 0;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        using var receiveCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _receiveStop.Token);
+        cancellationToken = receiveCancellation.Token;
         ArrayBufferWriter<byte>? multiPacket = null;
         var multiExpected = 0;
         var receiveBuffer = new byte[ReceiveBufferSize];
@@ -91,11 +97,13 @@ internal sealed class WebUiSession : IAsyncDisposable
                 await DispatchAsync(message, cancellationToken).ConfigureAwait(false);
             }
         }
+        catch (OperationCanceledException) when (_receiveStop.IsCancellationRequested)
+        {
+        }
         finally
         {
-            var wasAuthenticated = Interlocked.Exchange(ref _authenticated, 0) != 0;
-            FailPendingScripts(new IOException("The WebUI browser connection was closed."));
-            if (wasAuthenticated)
+            RevokeAdmission();
+            if (_everAuthenticated)
             {
                 await DispatchEventAsync(WebUiEventType.Disconnected, string.Empty, [], CancellationToken.None)
                     .ConfigureAwait(false);
@@ -115,13 +123,14 @@ internal sealed class WebUiSession : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (!IsAuthenticated)
-        {
-            throw new InvalidOperationException("No authenticated WebUI browser is connected.");
-        }
-
         var completion = new TaskCompletionSource<ScriptResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var id = ReserveScriptId(completion);
+        ushort id;
+        lock (_admissionGate)
+        {
+            if (!IsAuthenticated)
+                throw new InvalidOperationException("No authenticated WebUI browser is connected.");
+            id = ReserveScriptId(completion);
+        }
         try
         {
             await SendTextCommandAsync(id, WebUiProtocol.JavaScript, script, cancellationToken).ConfigureAwait(false);
@@ -166,8 +175,42 @@ internal sealed class WebUiSession : IAsyncDisposable
         return SendPacketAsync(WebUiProtocol.CreatePacket(0, WebUiProtocol.SendRaw, payload), cancellationToken);
     }
 
-    public Task CloseBridgeAsync(CancellationToken cancellationToken)
-        => SendPacketAsync(WebUiProtocol.CreatePacket(0, WebUiProtocol.Close, []), cancellationToken);
+    public async Task CloseBridgeAsync(CancellationToken cancellationToken)
+    {
+        // Revocation is authoritative even when the peer ignores the legacy command,
+        // the caller cancels, or a transport send stalls. Never await the event gate:
+        // a capability callback is allowed to close its own session.
+        RevokeAdmission();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            await SendPacketAsync(WebUiProtocol.CreatePacket(0, WebUiProtocol.Close, []), deadline.Token)
+                .ConfigureAwait(false);
+            await CloseAsync(WebSocketCloseStatus.NormalClosure, "The presentation session was revoked.", deadline.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        catch (WebSocketException) { }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            // CloseOutput does not wait for a peer acknowledgement. End a pending
+            // receive too, so an uncooperative peer cannot retain the server session.
+            if (deadline.IsCancellationRequested) _socket.Abort();
+            await _receiveStop.CancelAsync().ConfigureAwait(false);
+        }
+    }
+
+    private void RevokeAdmission()
+    {
+        lock (_admissionGate)
+        {
+            Volatile.Write(ref _revoked, 1);
+            Volatile.Write(ref _authenticated, 0);
+        }
+        FailPendingScripts(new IOException("The WebUI browser connection was closed."));
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -176,7 +219,8 @@ internal sealed class WebUiSession : IAsyncDisposable
             return;
         }
 
-        FailPendingScripts(new ObjectDisposedException(nameof(WebUiSession)));
+        RevokeAdmission();
+        await _receiveStop.CancelAsync().ConfigureAwait(false);
         if (_socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
         {
             await CloseAsync(WebSocketCloseStatus.NormalClosure, "The managed window is closing.", CancellationToken.None)
@@ -221,6 +265,7 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     private async Task DispatchAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
+        if (Volatile.Read(ref _revoked) != 0) return;
         if (payload.Span.SequenceEqual("ping"u8))
         {
             return;
@@ -237,7 +282,7 @@ internal sealed class WebUiSession : IAsyncDisposable
         if (command == WebUiProtocol.CheckToken)
         {
             await SendTokenResultAsync(id, tokenIsValid, cancellationToken).ConfigureAwait(false);
-            if (tokenIsValid)
+            if (tokenIsValid && IsAuthenticated)
             {
                 _ = DispatchEventIgnoringFailureAsync(WebUiEventType.Connected, string.Empty, [], cancellationToken);
             }
@@ -291,6 +336,7 @@ internal sealed class WebUiSession : IAsyncDisposable
             await _eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                if (!IsAuthenticated) return;
                 if (!TryDecodeCall(payload.Span[WebUiProtocol.DataOffset..], out var element, out var arguments))
                 {
                     await SendCallResultAsync(id, WebUiResult.None, cancellationToken).ConfigureAwait(false);
@@ -348,6 +394,7 @@ internal sealed class WebUiSession : IAsyncDisposable
         await _eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (eventType != WebUiEventType.Disconnected && !IsAuthenticated) return;
             await _window.DispatchEventAsync(this, eventType, element, arguments, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -366,7 +413,12 @@ internal sealed class WebUiSession : IAsyncDisposable
                 return;
             }
 
-            Volatile.Write(ref _authenticated, accepted ? 1 : 0);
+            lock (_admissionGate)
+            {
+                if (Volatile.Read(ref _revoked) != 0) return;
+                Volatile.Write(ref _authenticated, accepted ? 1 : 0);
+                _everAuthenticated |= accepted;
+            }
             var names = accepted ? _window.GetBindingNames() : [];
             var bindingBytes = names.Length > 0
                 ? Encoding.UTF8.GetBytes(string.Join(',', names) + ',')

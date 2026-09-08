@@ -1,5 +1,5 @@
-import { Context, Effect, Layer, PubSub, Stream } from "effect";
-import { asTransportError, type DesktopTransportError } from "./errors.js";
+import { Context, Deferred, Effect, Layer, PubSub, Stream } from "effect";
+import { asTransportError, transportError, type DesktopTransportError } from "./errors.js";
 import {
   createDesktopFrameChannel,
   type DesktopFrameChannelOptions,
@@ -28,20 +28,34 @@ export function DesktopTransportLive(
     Effect.gen(function*() {
       const frames = yield* PubSub.dropping<Uint8Array>(256);
       const states = yield* PubSub.sliding<FrameChannelState>(16);
+      const overflow = yield* Deferred.make<never, DesktopTransportError>();
+      let terminalClose: Promise<void> | undefined;
       const channel = yield* Effect.try({
         try: () => createDesktopFrameChannel(options),
         catch: asTransportError,
       });
       const unsubscribe = channel.subscribe((event) => {
         if (event._tag === "Frame") {
-          Effect.runSync(PubSub.publish(frames, event.bytes));
+          if (terminalClose !== undefined) return;
+          if (!Effect.runSync(PubSub.publish(frames, event.bytes))) {
+            const error = transportError(
+              "LimitExceeded",
+              "frame-buffer-overflow",
+              "The Runic Desktop frame consumer exceeded its bounded buffer.",
+            );
+            terminalClose = channel.close(error.message);
+            // Observe rejection immediately; scope teardown joins this same close
+            // and reports any failure instead of starting another close task.
+            void terminalClose.catch(() => undefined);
+            Effect.runSync(Deferred.fail(overflow, error));
+          }
         } else {
           Effect.runSync(PubSub.publish(states, event.state));
         }
       });
       yield* Effect.addFinalizer(() => Effect.gen(function*() {
         unsubscribe();
-        yield* Effect.promise(() => channel.close("Runic Desktop transport scope closed"));
+        yield* Effect.promise(() => terminalClose ?? channel.close("Runic Desktop transport scope closed"));
         yield* PubSub.shutdown(frames);
         yield* PubSub.shutdown(states);
       }));
@@ -53,7 +67,10 @@ export function DesktopTransportLive(
           catch: asTransportError,
         }),
         reconnect: interruptibleReconnect(channel),
-        frames: Stream.fromPubSub(frames),
+        // Acquire the subscription before starting the interruption watcher so
+        // stream startup retains the existing immediate subscription semantics.
+        frames: Stream.unwrap(Effect.map(PubSub.subscribe(frames), (subscription) =>
+          Stream.fromSubscription(subscription).pipe(Stream.interruptWhen(Deferred.await(overflow))))),
         states: Stream.fromPubSub(states),
       };
       return service;

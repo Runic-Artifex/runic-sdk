@@ -42,8 +42,13 @@ internal static class NativeHostTests
         host = new DesktopApplicationHost(new()
         {
             Host = new() { DiagnosticSink = diagnostic => Console.WriteLine($"Desktop: {diagnostic.Code}: {diagnostic.Message}") },
-            Window = new() { Browser = BrowserKind.Embedded, Width = 640, Height = 480 },
-            Surface = new() { Content = """<!doctype html><html><head><script src="webui.js"></script><title>Runic native platform tests</title></head><body>Native platform conformance</body></html>""" },
+            Window = new()
+            {
+                Browser = BrowserKind.Embedded, Width = 640, Height = 480,
+                ConfirmCloseAsync = async token => await host!.Surface!.ExecuteJavaScriptAsync(
+                    "return await globalThis.__runicConfirmClose();", TimeSpan.FromSeconds(10), cancellationToken: token) == "true",
+            },
+            Surface = new() { Content = PublicTransportPage() },
         });
         var builder = new RunicApplicationBuilder(new("platform.native", "0.0.0", "test", []), []);
         builder.UseHost(host);
@@ -74,6 +79,7 @@ internal static class NativeHostTests
     private static async Task ExerciseAsync(DesktopApplicationHost host, DesktopNativeOwner owner, PresentationLifetime lifetime, bool manualSelection, CancellationToken deadline)
     {
         var window = host.Window!;
+        await ExercisePublicTransportCloseAsync(host, deadline);
         await owner.InvokeAsync(handle =>
         {
             Check(handle != 0 && window.CheckNativeAccess(), "Native dispatch did not use the actual owner's thread.");
@@ -138,6 +144,97 @@ internal static class NativeHostTests
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
+    private static string PublicTransportPage()
+    {
+        using var stream = typeof(NativeHostTests).Assembly.GetManifestResourceStream("Runic.Platform.NativeHost.Frontend")
+            ?? throw new InvalidOperationException("The public Desktop transport fixture was not embedded.");
+        using var reader = new StreamReader(stream);
+        var script = reader.ReadToEnd().Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
+        return "<!doctype html><html><head><meta charset=\"utf-8\"><script src=\"runic-desktop.js\"></script>" +
+            "<title>Runic native platform tests</title></head><body>Native platform conformance<script type=\"module\">" +
+            script + "</script></body></html>";
+    }
+
+    private static async Task ExercisePublicTransportCloseAsync(DesktopApplicationHost host, CancellationToken deadline)
+    {
+        var surface = host.Surface!;
+        var window = host.Window!;
+        Task<string> Script(string source) => surface.ExecuteJavaScriptAsync(source, TimeSpan.FromSeconds(5), cancellationToken: deadline);
+        Check(await Script("return 'native public transport ✓';") == "native public transport ✓",
+            "The public Desktop transport did not return an authenticated JavaScript result.");
+        try
+        {
+            await Script("throw new Error('native-script-error-probe');");
+            throw new InvalidOperationException("A JavaScript failure was reported as success.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("native-script-error-probe", StringComparison.Ordinal)) { }
+        await surface.RunJavaScriptAsync("globalThis.__runicCloseProbe.quick++;", deadline);
+        Check(await Script("return globalThis.__runicCloseProbe.quick;") == "1", "Quick JavaScript execution was ignored.");
+
+        await ExercisePublicTransportNavigationAsync(surface, deadline);
+
+        // Model a dirty frontend draft whose confirmation is asynchronous. A second
+        // script must still round-trip while the close decision awaits user input.
+        var veto = window.RequestCloseAsync(deadline).AsTask();
+        while (await Script("return globalThis.__runicCloseProbe.pending;") != "true")
+            await Task.Delay(10, deadline);
+        Check(!veto.IsCompleted && window.IsOpen, "Dirty frontend confirmation did not remain pending.");
+        Check(await Script("return globalThis.__runicCloseProbe.calls;") == "1", "Close confirmation was replayed.");
+        await surface.RunJavaScriptAsync("globalThis.__runicCloseProbe.resolve(false);", deadline);
+        Check(!await veto.WaitAsync(deadline) && window.IsOpen, "A frontend veto closed the native owner.");
+        Check(await Script("return globalThis.__runicCloseProbe.pending;") == "false", "Veto did not finish frontend confirmation.");
+        // The existing picker/shutdown scenario retries close and must now be approved
+        // through this same public transport before the presentation scope is drained.
+        await surface.RunJavaScriptAsync("globalThis.__runicCloseProbe.allow = true;", deadline);
+        Console.WriteLine("PASS public Desktop transport: script result/error/quick execution, native document navigation, asynchronous close veto, and retry readiness.");
+    }
+
+    private static async Task ExercisePublicTransportNavigationAsync(DesktopSurface surface, CancellationToken deadline)
+    {
+        var previousDocument = await surface.ExecuteJavaScriptAsync("return globalThis.__runicCloseProbe.documentId;",
+            TimeSpan.FromSeconds(5), cancellationToken: deadline);
+        string query = "nativeNavigation=" + Guid.NewGuid().ToString("N");
+        string destination = new UriBuilder(surface.Url) { Query = query }.Uri.AbsoluteUri;
+        using var navigation = CancellationTokenSource.CreateLinkedTokenSource(deadline);
+        navigation.CancelAfter(TimeSpan.FromSeconds(15));
+        await surface.NavigateAsync(destination, navigation.Token);
+        Exception? lastTransient = null;
+        try
+        {
+            while (true)
+            {
+                navigation.Token.ThrowIfCancellationRequested();
+                try
+                {
+                    // Both a per-document global and a newly created DOM node must
+                    // change. Updating history or a transport state flag cannot pass.
+                    var receipt = await surface.ExecuteJavaScriptAsync(
+                        "return [location.search, globalThis.__runicCloseProbe?.documentId, document.getElementById('runic-native-document')?.textContent].join('\\n');",
+                        TimeSpan.FromSeconds(1), cancellationToken: navigation.Token);
+                    var parts = receipt.Split('\n');
+                    if (parts.Length == 3 && parts[0] == "?" + query && parts[1] != previousDocument &&
+                        Guid.TryParse(parts[1], out _) && parts[2] == parts[1])
+                    {
+                        Console.WriteLine("PASS public Desktop navigation: changed native document, DOM marker, URL and authenticated session.");
+                        return;
+                    }
+                }
+                catch (Exception error) when (error is IOException or TimeoutException or ObjectDisposedException or System.Net.WebSockets.WebSocketException ||
+                    error is InvalidOperationException && error.Message == "No authenticated WebUI browser is connected.")
+                {
+                    // Navigation tears down the old authenticated connection before
+                    // the replacement document creates its public transport.
+                    lastTransient = error;
+                }
+                await Task.Delay(25, navigation.Token);
+            }
+        }
+        catch (OperationCanceledException) when (navigation.IsCancellationRequested && !deadline.IsCancellationRequested)
+        {
+            throw new TimeoutException("Native navigation did not create and authenticate a new frontend document within 15 seconds.", lastTransient);
+        }
+    }
+
     private static (INativeFilePicker Picker, Task Shown) NewPicker(DesktopNativeOwner owner)
     {
         if (OperatingSystem.IsWindows()) { var picker = new WindowsFilePicker(owner); return (picker, picker.Shown.Task); }

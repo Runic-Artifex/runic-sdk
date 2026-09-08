@@ -1091,6 +1091,25 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal Task ClosePresentationAsync() => StopBrowserAsync();
 
+    // DesktopWindowOptions is a complete generation configuration. Compatibility
+    // WebUiWindow callers retain their incremental settings across close/reopen.
+    internal void ResetDesktopPresentationOptions()
+    {
+        _minimumWidth = null;
+        _minimumHeight = null;
+        _x = null;
+        _y = null;
+        _centered = false;
+        _highContrast = null;
+        _iconFile = null;
+        _profileConfigured = false;
+        _profileName = null;
+        _profilePath = null;
+        _proxyServer = null;
+        _customBrowserArguments = [];
+        _customBrowserParameters = null;
+    }
+
     internal ValueTask ResizePresentationAsync(uint width, uint height, CancellationToken cancellationToken)
     {
         _width = width;

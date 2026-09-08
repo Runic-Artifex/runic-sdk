@@ -145,11 +145,140 @@ test("Effect reconnect interruption closes the owned physical connection", async
   await runtime.dispose();
 });
 
+test("host scripts correlate async, binary, and error results without blocking application frames", async () => {
+  const socket = new FakeSocket(bootstrap.endpoint);
+  const channel = createDesktopFrameChannel({ bootstrap, webSocketFactory: () => socket });
+  const connecting = channel.reconnect(); socket.open();
+  socket.receive(packet(0, 0xf5, Uint8Array.of(1, ...new TextEncoder().encode(`${applicationBridgeCapability},`))));
+  await connecting;
+  const global = globalThis as unknown as Record<string, unknown>;
+  const frames: Uint8Array[] = [];
+  channel.subscribe(event => { if (event._tag === "Frame") frames.push(event.bytes); });
+  try {
+    socket.receive(packet(41, 0xfe, new TextEncoder().encode("return await new Promise(resolve => { globalThis.__runicCloseTestResolve = resolve; });")));
+    const receiver = new TextEncoder().encode(applicationBridgeReceiver);
+    socket.receive(packet(0, 0xf8, Uint8Array.of(...receiver, 0, 42)));
+    assert.deepEqual(frames, [Uint8Array.of(42)], "pending confirmation must not stall bridge frames");
+    (global.__runicCloseTestResolve as (value: boolean) => void)(true);
+    await new Promise(resolve => setImmediate(resolve));
+    let response = socket.sent.at(-1)!;
+    assert.equal(new DataView(response.buffer).getUint16(5, true), 41);
+    assert.equal(response[7], 0xfe); assert.equal(response[8], 0);
+    assert.equal(readZeroTerminated(response, 9), "true");
+    socket.receive(packet(42, 0xfe, new TextEncoder().encode("return new Uint8Array([1, 0, 2]);")));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(socket.sent.at(-1)!.slice(8), Uint8Array.of(0, 1, 0, 2, 0));
+    socket.receive(packet(43, 0xfe, new TextEncoder().encode("throw new Error('confirmation failed');")));
+    await new Promise(resolve => setImmediate(resolve));
+    response = socket.sent.at(-1)!;
+    assert.equal(new DataView(response.buffer).getUint16(5, true), 43);
+    assert.equal(response[8], 1);
+    assert.equal(readZeroTerminated(response, 9), "confirmation failed");
+  } finally { delete global.__runicCloseTestResolve; await channel.close("test complete"); }
+});
+
+test("quick scripts have no reply and scripts require an authenticated connection and host header", async () => {
+  const socket = new FakeSocket(bootstrap.endpoint);
+  const channel = createDesktopFrameChannel({ bootstrap, webSocketFactory: () => socket });
+  const global = globalThis as unknown as Record<string, unknown>;
+  const script = new TextEncoder().encode("globalThis.__runicQuickTest = true;");
+  try {
+    const connecting = channel.reconnect(); socket.open();
+    socket.receive(packet(10, 0xfe, script));
+    assert.equal(global.__runicQuickTest, undefined);
+    socket.receive(packet(0, 0xf5, Uint8Array.of(1, ...new TextEncoder().encode(`${applicationBridgeCapability},`))));
+    await connecting;
+    const count = socket.sent.length;
+    socket.receive(packet(0, 0xfd, script));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(global.__runicQuickTest, true); assert.equal(socket.sent.length, count);
+    socket.receive(packet(0, 0xfd, new TextEncoder().encode("throw new Error('quick failure');")));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(socket.sent.length, count); assert.equal(channel.state, "connected");
+    delete global.__runicQuickTest;
+    const forged = packet(11, 0xfe, script);
+    new DataView(forged.buffer).setUint32(1, bootstrap.token + 1, true);
+    socket.receive(forged);
+    assert.equal(global.__runicQuickTest, undefined); assert.equal(channel.state, "disconnected");
+  } finally { delete global.__runicQuickTest; await channel.close("test complete"); }
+});
+
+test("late script results never cross a reconnect generation", async () => {
+  const sockets: FakeSocket[] = [];
+  const channel = createDesktopFrameChannel({ bootstrap, webSocketFactory: () => {
+    const socket = new FakeSocket(bootstrap.endpoint); sockets.push(socket); return socket;
+  } });
+  const global = globalThis as unknown as Record<string, unknown>;
+  const authenticate = async () => {
+    const connecting = channel.reconnect(); const socket = sockets.at(-1)!; socket.open();
+    socket.receive(packet(0, 0xf5, Uint8Array.of(1, ...new TextEncoder().encode(`${applicationBridgeCapability},`))));
+    await connecting; return socket;
+  };
+  try {
+    const old = await authenticate();
+    old.receive(packet(55, 0xfe, new TextEncoder().encode("return await new Promise(resolve => { globalThis.__runicLateTestResolve = resolve; });")));
+    old.disconnect();
+    const current = await authenticate(); const count = current.sent.length;
+    (global.__runicLateTestResolve as (value: boolean) => void)(true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(current.sent.length, count); assert.equal(old.sent.length, 1);
+  } finally { delete global.__runicLateTestResolve; await channel.close("test complete"); }
+});
+
+test("host close terminates the physical session and prohibits reconnection", async () => {
+  const socket = new FakeSocket(bootstrap.endpoint);
+  const channel = createDesktopFrameChannel({ bootstrap, webSocketFactory: () => socket });
+  const connecting = channel.reconnect(); socket.open();
+  socket.receive(packet(0, 0xf5, Uint8Array.of(1, ...new TextEncoder().encode(`${applicationBridgeCapability},`))));
+  await connecting;
+  socket.receive(packet(0, 0xfa, new Uint8Array()));
+  assert.equal(socket.closeCode, 1000);
+  assert.equal(channel.state, "closed");
+  await assert.rejects(channel.reconnect());
+});
+
+test("host navigation closes the old session before replacing the document", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "location");
+  const socket = new FakeSocket(bootstrap.endpoint);
+  const channel = createDesktopFrameChannel({ bootstrap, webSocketFactory: () => socket });
+  const destinations: string[] = [];
+  Object.defineProperty(globalThis, "location", { configurable: true, value: { replace(url: string) {
+    assert.equal(channel.state, "closed"); assert.equal(socket.closeCode, 1000); destinations.push(url);
+  } } });
+  try {
+    const connecting = channel.reconnect(); socket.open();
+    socket.receive(packet(0, 0xf5, Uint8Array.of(1, ...new TextEncoder().encode(`${applicationBridgeCapability},`))));
+    await connecting;
+    socket.receive(packet(0, 0xfb, new TextEncoder().encode("../next?document=2")));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(destinations, ["../next?document=2"]);
+    await assert.rejects(channel.reconnect());
+  } finally {
+    await channel.close("test complete");
+    if (original) Object.defineProperty(globalThis, "location", original);
+    else Reflect.deleteProperty(globalThis, "location");
+  }
+});
+
+test("Unicode close reasons stay within the WebSocket byte limit and finish teardown", async () => {
+  const socket = new FakeSocket(bootstrap.endpoint);
+  const channel = createDesktopFrameChannel({ bootstrap, webSocketFactory: () => socket });
+  const connecting = channel.reconnect(); socket.open();
+  socket.receive(packet(0, 0xf5, Uint8Array.of(1, ...new TextEncoder().encode(`${applicationBridgeCapability},`))));
+  await connecting;
+  const states: string[] = [];
+  channel.subscribe(event => { if (event._tag === "State") states.push(event.state); });
+  await channel.close("x" + "😀".repeat(31));
+  assert.equal(socket.closeReason, "x" + "😀".repeat(30));
+  assert.equal(socket.readyState, 3); assert.deepEqual(states, ["closed"]);
+});
+
 class FakeSocket implements WebSocketLike {
   public readyState = 0;
   public binaryType: BinaryType = "blob";
   public readonly sent: Uint8Array[] = [];
   public closeCode: number | undefined;
+  public closeReason: string | undefined;
   public readonly url: string;
   public readonly protocols: string | string[] | undefined;
   private readonly listeners = new Map<string, Set<(event: Event | MessageEvent<unknown>) => void>>();
@@ -166,10 +295,14 @@ class FakeSocket implements WebSocketLike {
     this.sent.push(new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
   }
 
-  public close(code?: number): void {
+  public close(code?: number, reason?: string): void {
+    if (new TextEncoder().encode(reason).length > 123) throw new SyntaxError("WebSocket close reason exceeds 123 bytes");
     this.closeCode = code;
+    this.closeReason = reason;
     this.readyState = 3;
   }
+
+  public disconnect(): void { this.close(1000); this.emit("close", new Event("close")); }
 
   public addEventListener(type: "open" | "error" | "close" | "message", listener: never): void {
     let group = this.listeners.get(type);
@@ -201,6 +334,7 @@ class FakeSocket implements WebSocketLike {
 function packet(id: number, command: number, payload: Uint8Array): Uint8Array {
   const result = new Uint8Array(8 + payload.length + 1);
   result[0] = 0xdd;
+  new DataView(result.buffer).setUint32(1, 0xffffffff, true);
   new DataView(result.buffer).setUint16(5, id, true);
   result[7] = command;
   result.set(payload, 8);

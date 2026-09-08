@@ -43,6 +43,10 @@ export interface DesktopFrameChannelOptions {
 }
 
 const signature = 0xdd;
+const javaScript = 0xfe;
+const javaScriptQuick = 0xfd;
+const navigation = 0xfb;
+const closePresentation = 0xfa;
 const callFunction = 0xf9;
 const sendRaw = 0xf8;
 const addBinding = 0xf7;
@@ -263,7 +267,38 @@ class DesktopFrameChannel implements ReconnectableFrameChannel {
       return;
     }
     if (command === addBinding) return;
-    if (this.currentState !== "connected" || command !== sendRaw) return;
+    if (this.currentState !== "connected") return;
+    if (command === closePresentation) {
+      void this.close("Host closed this presentation session");
+      return;
+    }
+    if (command === navigation) {
+      const url = readText(packet, headerSize);
+      // Revoke this channel before replacing the document. The destination must
+      // bootstrap its own session; a pending script cannot reply through it.
+      void this.close("Host navigated this presentation").then(() => globalThis.location.replace(url)).catch(() => {
+        // A browser can refuse navigation; the old session still stays closed.
+      });
+      return;
+    }
+    if (command === javaScript || command === javaScriptQuick) {
+      // Host scripts share the authenticated presentation connection. Never run
+      // a script before admission or send a late result to a replacement socket.
+      // The server wire header uses the host sentinel; the bootstrap token is
+      // carried only by client packets. Authentication belongs to this socket.
+      if (new DataView(packet.buffer, packet.byteOffset, packet.byteLength).getUint32(1, true) !== 0xffffffff) {
+        throw transportError("InvalidFrame", "script-header-invalid", "The host script header is invalid.");
+      }
+      const generation = this.generation;
+      const socket = this.socket;
+      void this.executeJavaScript(packet, command === javaScriptQuick, generation).catch(() => {
+        if (generation !== this.generation || socket !== this.socket || this.currentState === "closed") return;
+        socket?.close(1011, "Runic Desktop script response failed");
+        this.setState("disconnected");
+      });
+      return;
+    }
+    if (command !== sendRaw) return;
     const functionName = readText(packet, headerSize);
     if (functionName !== applicationBridgeReceiver) return;
     const start = headerSize + encoder.encode(functionName).length + 1;
@@ -273,6 +308,29 @@ class DesktopFrameChannel implements ReconnectableFrameChannel {
       throw transportError("LimitExceeded", "frame-limit-exceeded", "The host Application Bridge frame exceeds the configured limit.");
     }
     this.publish({ _tag: "Frame", bytes: frame });
+  }
+
+  private async executeJavaScript(packet: Uint8Array, quick: boolean, generation: number): Promise<void> {
+    const id = new DataView(packet.buffer, packet.byteOffset, packet.byteLength).getUint16(5, true);
+    let failed = false;
+    let value: Uint8Array;
+    try {
+      const script = readText(packet, headerSize);
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (body: string) => () => Promise<unknown>;
+      const result = await new AsyncFunction(script)();
+      if (quick) return;
+      value = result instanceof Uint8Array ? result : encoder.encode(String(result));
+      if (value.byteLength > this.maxFrameBytes) throw new Error("The script result exceeds the configured frame limit.");
+    } catch (error) {
+      if (quick) return;
+      failed = true;
+      value = encoder.encode(error instanceof Error ? error.message : String(error)).slice(0, this.maxFrameBytes);
+    }
+    if (generation !== this.generation || this.currentState !== "connected") return;
+    const response = new Uint8Array(value.length + 2);
+    response[0] = failed ? 1 : 0;
+    response.set(value, 1);
+    this.sendPacket(createPacket(this.bootstrap.token, id, javaScript, response));
   }
 
   private reassemble(bytes: Uint8Array): Uint8Array | undefined {
@@ -374,7 +432,15 @@ function ownedBytes(value: unknown): Uint8Array | undefined {
 }
 
 function boundedCloseReason(reason: string): string {
-  return new TextDecoder().decode(encoder.encode(reason).slice(0, 123));
+  let result = "";
+  let bytes = 0;
+  for (const character of reason) {
+    const size = encoder.encode(character).length;
+    if (bytes + size > 123) break;
+    result += character;
+    bytes += size;
+  }
+  return result;
 }
 
 function isDesktopTransportError(value: unknown): value is DesktopTransportError {
