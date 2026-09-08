@@ -26,6 +26,12 @@
           actForCi = pkgs.act.overrideAttrs (old: {
             patches = (old.patches or [ ]) ++ [ ./eng/ci/act-artifacts.patch ];
           });
+          # AT-SPI 2.60.6 leaks a DBusMessage whenever WebKit embeds an accessibility
+          # tree. Preserve accessibility and release the sender's owned reference.
+          # Remove this patch when the locked upstream source includes the fix.
+          atSpiForRunic = pkgs.at-spi2-core.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [ ./eng/native/at-spi2-core-release-embedded-message.patch ];
+          });
           bunArchive =
             if system == "x86_64-linux" then
               {
@@ -85,6 +91,7 @@
             '';
           };
           linuxRuntimePackages = with pkgs; lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+            atSpiForRunic
             chromium
             gtk3
             webkitgtk_4_1

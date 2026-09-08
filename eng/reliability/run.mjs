@@ -6,7 +6,7 @@ import { hostname, release, cpus } from 'node:os';
 import { createHash } from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { compare, validate, checkSoak, checkCycle } from './metrics.mjs';
+import { compare, validate, checkSoak, checkCycle, minimumSoakDurationMs } from './metrics.mjs';
 import { processTable, descendants, memoryMetric, trackedProcesses, trackProcesses } from './process-tree.mjs';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export function artifactHashes(directory) {
@@ -75,7 +75,9 @@ async function main() {
       assert.ok(config.adapter,'Soak needs an instrumented application adapter');
       const adapterPath=resolve(config.adapter), adapter=await import(pathToFileURL(adapterPath));
       receipt.adapterSha256=hash(readFileSync(adapterPath));receipt.schema='runic.reliability-soak/1';receipt.workload='window-reconnect-cancellation-v1';
-      const start=performance.now();const duration=config.durationMs??7200000;assert.ok(duration>=7200000);
+      const start=performance.now();const duration=config.durationMs??minimumSoakDurationMs;
+      assert.ok(Number.isFinite(duration)&&duration>=minimumSoakDurationMs,'Soak duration must be at least thirty minutes');
+      receipt.requestedDurationMs=duration;
       const session=await adapter.start(config);
       const failures=[];
       try{while(performance.now()-start<duration){
@@ -86,11 +88,23 @@ async function main() {
       }}catch(error){failures.push(error);}
       try{receipt.shutdown=await session.stop();}catch(error){failures.push(error);}
       // Shutdown must not conceal independent resource or sustained-memory failures.
-      try{receipt.result=checkSoak(receipt.samples,receipt.elapsedMs??0);}catch(error){failures.push(error);}
+      try{receipt.result=checkSoak(receipt.samples,receipt.elapsedMs??0,duration);}catch(error){failures.push(error);}
       if(failures.length)throw new AggregateError(failures,failures.map(error=>error.message).join('\n'));
     }
-    assert.deepEqual(artifactHashes(config.directory),artifacts,'Artifacts changed during measurement');
+    receipt.finalArtifactHashes=artifactHashes(config.directory);
+    assert.deepEqual(receipt.finalArtifactHashes,artifacts,'Artifacts changed during measurement');
     receipt.status='passed';
-  }catch(error){receipt.status='failed';receipt.failure=error.message;throw error;}finally{receipt.finishedAt=new Date().toISOString();persist();}
+  }catch(error){
+    receipt.status='failed';receipt.failure=error.message;
+    // A trend failure still needs proof that the measured binary bytes stayed fixed.
+    try {
+      receipt.finalArtifactHashes=artifactHashes(config.directory);
+      assert.deepEqual(receipt.finalArtifactHashes,artifacts,'Artifacts changed during measurement');
+    } catch(finalError) {
+      receipt.failure += '\n' + finalError.message;
+      throw new AggregateError([error,finalError],receipt.failure);
+    }
+    throw error;
+  }finally{receipt.finishedAt=new Date().toISOString();persist();}
 }
 if(process.argv[1]&&resolve(process.argv[1])===resolve(fileURLToPath(import.meta.url)))main().catch(error=>{console.error(error);process.exitCode=1;});

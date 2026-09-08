@@ -286,8 +286,18 @@ internal static class SmokeSoak
         // command, which closes the old bridge before replacing the document.
         if (!hostNavigation)
         {
-            var request = await surface.ExecuteJavaScriptAsync("try { location.reload(); return 'reload requested'; } catch (error) { return 'reload failed: ' + error.stack; }");
-            Console.WriteLine($"Soak script reload outcome: {request}");
+            try
+            {
+                var request = await surface.ExecuteJavaScriptAsync("try { location.reload(); return 'reload requested'; } catch (error) { return 'reload failed: ' + error.stack; }");
+                Console.WriteLine($"Soak script reload outcome: {request}");
+            }
+            catch (IOException error)
+            {
+                // WebView2 may unload the old document before its reply is sent.
+                // The bounded check below must still prove a new complete document,
+                // the unchanged URL and retained session marker before proceeding.
+                Console.WriteLine($"Soak script reload disconnected before acknowledgement: {error.Message}");
+            }
         }
         else await surface.NavigateAsync(original[1]);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));

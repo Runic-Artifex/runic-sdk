@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { authority, sha256, validateCandidate, dependencyOrder, VERSION, REPOSITORY } from './artifacts.mjs';
-import { requiredGates, verifyGates } from './gates.mjs';
+import { requiredGates, verifyGates, companionContext } from './gates.mjs';
 import { verifyRun, expectedCIJobs, repositoryEndpoint } from './ci.mjs';
 test('GitHub repository lookup uses its canonical route without a trailing slash',()=>{
  expect(repositoryEndpoint('')).toBe(`repos/${REPOSITORY}`);
@@ -43,7 +43,7 @@ test('full CI must belong to frozen commit and exact workflow with every job suc
  expect(()=>verifyRun(c,run,jobs,[{...artifacts[0],expired:true}],authority)).toThrow();
 });
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, truncateSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -65,7 +65,7 @@ test('real archives reject stale extras, source, metadata and internal dependenc
  } finally {rmSync(dir,{recursive:true,force:true});}
 });
 
-import { acceptancePolicy } from './policy.mjs';
+import { acceptancePolicy, demoMemoryTrendWaiver } from './policy.mjs';
 test('real package dependencies require registry-specific exact preview ranges',()=>{
  const dir=mkdtempSync(join(tmpdir(),'runic-exact-dependency-test-')), source='a'.repeat(40);
  const inventory=[
@@ -107,22 +107,39 @@ function demoEvidence() {
  body.acceptancePolicy=acceptancePolicy('demo-preview');
  const c={...body,digest:sha256(JSON.stringify(body))};
  const full=receipts(c), base=full[0];
- const r=c.acceptancePolicy.required.map(gate=>full.find(r=>r.gate===gate) ?? {...base,gate,actualNativeInteraction:true});
+ const r=c.acceptancePolicy.required.map(gate=>full.find(r=>r.gate===gate) ?? {...base,gate,actualNativeInteraction:true,...(gate==='soak-thirty-minutes'?{durationSeconds:1800}:{})});
  return [c,{schema:'runic.preview-evidence/1',policy:structuredClone(c.acceptancePolicy),receipts:r}];
 }
-test('demo policy keeps all automated gates and explicitly defers broader human scope',()=>{
+test('demo policy keeps other automated gates and explicitly defers broader human scope',()=>{
  const [c,e]=demoEvidence();verifyGates(c,e);
  expect(c.acceptancePolicy.deferred.every(d=>d.outcome==='deferred')).toBe(true);
  expect(c.acceptancePolicy.required.filter(g=>g.startsWith('native-')).length).toBe(6);
- for(const gate of ['interactive-native-linux-local','interactive-native-windows-vm','native-aot-osx-arm64','performance-matched-baseline','soak-two-hours']) {
+ for(const gate of ['interactive-native-linux-local','interactive-native-windows-vm','native-aot-osx-arm64','performance-matched-baseline','soak-thirty-minutes']) {
   const copy=structuredClone(e);copy.receipts=copy.receipts.filter(r=>r.gate!==gate);expect(()=>verifyGates(c,copy)).toThrow();
  }
  expect(()=>verifyGates(c,e.receipts)).toThrow();
 });
+test('soak duration and gate identity remain specific to the acceptance profile',()=>{
+ const [c,e]=demoEvidence();
+ expect(c.acceptancePolicy.required).toContain('soak-thirty-minutes');
+ expect(c.acceptancePolicy.required).not.toContain('soak-two-hours');
+ expect(requiredGates).toContain('soak-two-hours');
+ expect(requiredGates).not.toContain('soak-thirty-minutes');
+ verifyGates(c,e);
+ for(const seconds of [1799,NaN,Infinity,'1800']) {
+  const copy=structuredClone(e);copy.receipts.find(r=>r.gate==='soak-thirty-minutes').durationSeconds=seconds;
+  expect(()=>verifyGates(c,copy)).toThrow();
+ }
+ const oldGate=structuredClone(e);oldGate.receipts.find(r=>r.gate==='soak-thirty-minutes').gate='soak-two-hours';
+ expect(()=>verifyGates(c,oldGate)).toThrow();
+ const full=candidate(), short=receipts(full);short.find(r=>r.gate==='soak-two-hours').durationSeconds=1800;
+ expect(()=>verifyGates(full,short)).toThrow();
+ verifyGates(full,receipts(full));
+});
 test('demo policy rejects fabricated deferred passes and changed scope',()=>{
  let [c,e]=demoEvidence();e.receipts.push({...e.receipts[0],gate:'pilot-1'});expect(()=>verifyGates(c,e)).toThrow();
  [c,e]=demoEvidence();e.policy.deferred[0].outcome='pass';expect(()=>verifyGates(c,e)).toThrow();
- [c,e]=demoEvidence();e.policy.required=e.policy.required.filter(g=>g!=='soak-two-hours');expect(()=>verifyGates(c,e)).toThrow();
+ [c,e]=demoEvidence();e.policy.required=e.policy.required.filter(g=>g!=='soak-thirty-minutes');expect(()=>verifyGates(c,e)).toThrow();
  expect(()=>acceptancePolicy('skip-everything')).toThrow();
 });
 
@@ -160,4 +177,64 @@ test('expected CI job inventory expands every matrix and rejects ambiguous names
  const jobs={verify:{},native:{name:'Native / ${{ matrix.rid }}',strategy:{matrix:{include:[{rid:'win-x64'},{rid:'linux-x64'},{rid:'osx-arm64'}]}}},web:{name:'Web / ${{ matrix.package }}',strategy:{matrix:'${{ fromJSON(needs.build.outputs.web) }}'}}};
  expect(expectedCIJobs({jobs},[{package:'a'},{package:'b'}])).toEqual(['Native / linux-x64','Native / osx-arm64','Native / win-x64','Web / a','Web / b','verify']);
  delete jobs.native.name;expect(()=>expectedCIJobs({jobs},[{package:'a'}])).toThrow();
+});
+
+function memoryWaiverEvidence() {
+ const [c,e]=demoEvidence(), r=e.receipts.find(r=>r.gate==='soak-thirty-minutes');
+ const raw={schema:'runic.reliability-soak/1',status:'failed',failure:'Memory medians grow in every quarter',sourceRevision:c.source,
+  workload:'window-reconnect-cancellation-v1',adapterSha256:'c'.repeat(64),provenanceSha256:'d'.repeat(64),artifacts:{native:'e'.repeat(64)},environment:{machine:'unit',memoryMetric:'rss',platform:'linux'},finalArtifactHashes:{native:'e'.repeat(64)},
+  elapsedMs:1800000,requestedDurationMs:1800000,shutdown:{elapsedMs:100,observations:[{elapsedMs:100,processes:[]}]},
+  samples:Array.from({length:60},(_,i)=>({operations:{window:true,reconnect:true,cancellation:true},resources:{leases:0,transactions:0,presentations:0,pendingOperations:0},remainingProcesses:0,treeBytes:100+i/100}))};
+ r.outcome='known-issue';r.nativeArtifactHashes=raw.artifacts;
+ r.waiver={schema:'runic.soak-known-issue/1',policy:structuredClone(demoMemoryTrendWaiver),rawReceiptFile:'native-soak.json'};
+ let bytes;
+ const seal=()=>{bytes=Buffer.from(JSON.stringify(raw));r.waiver.rawReceiptSha256=sha256(bytes);};seal();
+ const context={readCompanion:name=>{expect(name).toBe('native-soak.json');return bytes;}};
+ return {c,e,r,raw,seal,context};
+}
+test('demo accepts explicit memory-trend known issue without converting failed raw evidence to pass',()=>{
+ const {c,e,r,raw,context}=memoryWaiverEvidence();verifyGates(c,e,context);
+ expect(raw.status).toBe('failed');expect(r.outcome).toBe('known-issue');
+ expect(acceptancePolicy('full-v1').knownIssues).toBeUndefined();
+ r.outcome='pass';expect(()=>verifyGates(c,e,context)).toThrow();
+});
+test('memory waiver rejects every nonwaivable failure and changed binding',()=>{
+ for(const mutate of [
+  x=>x.raw.status='passed',x=>x.raw.failure+='\nFixture shutdown timeout',x=>x.raw.elapsedMs=1799999,
+  x=>x.raw.requestedDurationMs=7200000,x=>x.raw.samples.splice(0,1),x=>x.raw.samples[0].resources.leases=1,
+  x=>x.raw.samples[0].remainingProcesses=1,x=>x.raw.samples[0].operations.reconnect=false,
+  x=>x.raw.samples.forEach((s,i)=>s.treeBytes=100+i),x=>x.raw.samples.forEach(s=>s.treeBytes=100),
+  x=>x.raw.shutdown=undefined,x=>x.raw.shutdown.observations[0].processes=[{pid:1}],
+  x=>x.raw.shutdown.elapsedMs=15001,x=>x.raw.sourceRevision='f'.repeat(40),
+  x=>x.r.nativeArtifactHashes={},x=>x.r.durationSeconds=1801,
+  x=>x.r.waiver.policy.authorization='invented approval',
+  x=>x.raw.environment.platform='win32',x=>x.raw.environment.platform='darwin',
+  x=>x.raw.finalArtifactHashes=undefined,x=>x.raw.finalArtifactHashes.native='f'.repeat(64),
+  x=>x.raw.samples.forEach((s,i)=>s.treeBytes=100+i/10),
+  x=>x.raw.samples.forEach((s,i)=>s.treeBytes=1e9+i*140000),
+  x=>x.r.waiver.rawReceiptFile='../native-soak.json',
+ ]) {const x=memoryWaiverEvidence();mutate(x);x.seal();expect(()=>verifyGates(x.c,x.e,x.context)).toThrow();}
+ const x=memoryWaiverEvidence();x.r.waiver.rawReceiptSha256='f'.repeat(64);expect(()=>verifyGates(x.c,x.e,x.context)).toThrow();
+ const full=candidate(), all=receipts(full);all.find(r=>r.gate==='soak-two-hours').outcome='known-issue';expect(()=>verifyGates(full,all)).toThrow();
+});
+
+test('waiver requires caller-controlled companion bytes',()=>{
+ const x=memoryWaiverEvidence();expect(()=>verifyGates(x.c,x.e)).toThrow();
+ expect(()=>verifyGates(x.c,x.e,{readCompanion:()=>Buffer.alloc(0)})).toThrow();
+});
+
+test('companion transport reads fixed regular files and rejects traversal, links and oversized files',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'runic-soak-companion-'));
+ try {
+  const path=join(dir,'native-soak.json');writeFileSync(path,'{}');
+  const context=companionContext(dir);expect(context.readCompanion('native-soak.json')).toEqual(Buffer.from('{}'));
+  expect(()=>context.readCompanion('../native-soak.json')).toThrow();
+  truncateSync(path,64*1024*1024+1);expect(()=>context.readCompanion('native-soak.json')).toThrow();
+  rmSync(path);mkdirSync(path);expect(()=>context.readCompanion('native-soak.json')).toThrow();rmSync(path,{recursive:true});
+  if(process.platform!=='win32') {
+   writeFileSync(join(dir,'other.json'),'{}');symlinkSync('other.json',path);
+   expect(()=>context.readCompanion('native-soak.json')).toThrow();
+   symlinkSync(dir,join(dir,'linked-directory'));expect(()=>companionContext(join(dir,'linked-directory'))).toThrow();
+  }
+ } finally {rmSync(dir,{recursive:true,force:true});}
 });

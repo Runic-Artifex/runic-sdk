@@ -114,7 +114,7 @@ test('release inventory follows current identities, not only counts or a histori
 
 test('only maintained workflows use selected-source sealing and gated compressed evidence', () => {
   const workflow = YAML.parse(readFileSync(new URL('../../.github/workflows/preview-evidence.yml', import.meta.url), 'utf8'));
-  expect(Object.keys(workflow.on.workflow_dispatch.inputs).sort()).toEqual(['ci_run_id', 'receipts_gzip_base64']);
+  expect(Object.keys(workflow.on.workflow_dispatch.inputs).sort()).toEqual(['ci_run_id', 'evidence_commit', 'receipts_gzip_base64']);
   expect(workflow.permissions).toEqual({contents: 'read', actions: 'read'});
   const steps = workflow.jobs.evidence.steps;
   expect(steps.find(s => s.uses?.startsWith('actions/checkout')).with.ref).toBeUndefined();
@@ -124,6 +124,9 @@ test('only maintained workflows use selected-source sealing and gated compressed
   expect(validation.run).not.toContain('${{');
   expect(validation.run).toContain('python3 eng/release/decode-evidence.py artifacts/preview/receipts.json');
   expect(validation.run.indexOf(' gates ')).toBeGreaterThan(validation.run.indexOf('decode-evidence.py'));
+  expect(validation.env.EVIDENCE_COMMIT).toBe('${{ inputs.evidence_commit }}');
+  expect(validation.run).toContain('fetch-companion artifacts/preview/receipts.json "$EVIDENCE_COMMIT" artifacts/preview/companions');
+  expect(validation.run.indexOf(' gates ')).toBeGreaterThan(validation.run.indexOf('fetch-companion'));
   const upload = steps.find(s => s.uses?.startsWith('actions/upload-artifact'));
   expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(validation));
   expect(upload.if).toBeUndefined();

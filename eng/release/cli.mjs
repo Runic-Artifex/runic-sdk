@@ -5,8 +5,9 @@ import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { authority, scan, json, sha256, validateCandidate, VERSION, REPOSITORY } from './artifacts.mjs';
-import { verifyGates } from './gates.mjs';
+import { verifyGates, companionContext } from './gates.mjs';
 import { acceptancePolicy } from './policy.mjs';
+import { fetchCompanion } from './companion.mjs';
 import { finalCI } from './ci.mjs';
 import { registryMatches } from './registry.mjs';
 import { runChecked } from './process.mjs';
@@ -36,14 +37,15 @@ if(command==='seal') {
   await verifiedCIBytes(candidate);
   writeFileSync(output,JSON.stringify(candidate,null,2)+'\n',{flag:'wx'});
 } else if(command==='verify') verify(args[0],json(args[1]));
-else if(command==='gates') verifyGates(json(args[0]),json(args[1]));
+else if(command==='fetch-companion') fetchCompanion(json(args[0]),args[1],args[2]);
+else if(command==='gates') verifyGates(json(args[0]),json(args[1]),companionContext(args[2]));
 else if(command==='final-ci') await verifiedCIBytes(json(args[0]));
 else if(command==='registry') {
   const candidate=json(args[0]); validateCandidate(candidate);
   for(const p of candidate.packages) assert(await registryMatches(p,{waitForAvailability:true}),`Not available: ${p.name}`);
 } else if(command==='publish') {
-  const [directory,manifest,receipts]=args, candidate=json(manifest);
-  verify(directory,candidate); verifyGates(candidate,json(receipts)); await verifiedCIBytes(candidate);
+  const [directory,manifest,receipts,companions]=args, candidate=json(manifest);
+  verify(directory,candidate); verifyGates(candidate,json(receipts),companionContext(companions)); await verifiedCIBytes(candidate);
   assert.equal(process.env.GITHUB_REPOSITORY,REPOSITORY,'OIDC publication must run in release repository');
   assert.equal(process.env.GITHUB_SHA,candidate.source,'Publish workflow must run at frozen source');
   assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL,'OIDC unavailable');
@@ -55,4 +57,4 @@ else if(command==='registry') {
     if(p.registry==='npm') run('npm',['publish',path,'--tag','preview','--access','public','--provenance','--registry','https://registry.npmjs.org']);
     else { assert(process.env.NUGET_API_KEY,'NuGet OIDC login missing'); run('dotnet',['nuget','push',path,'--source','https://api.nuget.org/v3/index.json','--api-key',process.env.NUGET_API_KEY]); }
   }
-} else throw new Error('Use seal <packages> <source> <run> <new-manifest> [demo-preview|full-v1], verify <packages> <manifest>, gates <manifest> <receipts>, final-ci <manifest>, registry <manifest>, or publish <packages> <manifest> <receipts>');
+} else throw new Error('Use seal <packages> <source> <run> <new-manifest> [demo-preview|full-v1], verify <packages> <manifest>, fetch-companion <receipts> <evidence-commit-or-empty> <new-companion-directory>, gates <manifest> <receipts> [companion-directory], final-ci <manifest>, registry <manifest>, or publish <packages> <manifest> <receipts> [companion-directory]');

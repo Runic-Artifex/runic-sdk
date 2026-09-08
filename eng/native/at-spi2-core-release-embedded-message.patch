@@ -1,0 +1,10 @@
+--- a/atk-adaptor/bridge.c
++++ b/atk-adaptor/bridge.c
+@@ -614,6 +614,7 @@
+       message = dbus_message_new_method_call (plug_name, plug_path, ATSPI_DBUS_INTERFACE_SOCKET, "Embedded");
+       dbus_message_append_args (message, DBUS_TYPE_STRING, &path, DBUS_TYPE_INVALID);
+       dbus_connection_send (spi_global_app_data->bus, message, NULL);
++      dbus_message_unref (message);
+     }
+   g_free (plug_name);
+   g_free (path);

@@ -14,11 +14,33 @@ export function processTable() {
   }
   throw new Error(`Unsupported process collection platform ${process.platform}`);
 }
+function creationOrder(identity) {
+  // Linux exposes boot-clock ticks; Windows PowerShell JSON uses epoch ms.
+  // macOS ps lstart has second precision. Equal timestamps are legitimate when
+  // parent and child start within the same clock quantum; older children are not.
+  const windows = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/.exec(identity ?? '');
+  const value = windows ? Number(windows[1]) : /^\d+$/.test(identity ?? '') ? Number(identity) : Date.parse(identity);
+  if (!Number.isFinite(value)) throw new Error(`Missing or invalid process creation identity: ${identity}`);
+  return value;
+}
 export function descendants(table, root, identity) {
-  if(identity !== undefined && !table.some(p=>p.pid===root && p.identity===identity)) return [];
-  const ids=new Set([root]); let changed=true;
-  while(changed){changed=false;for(const p of table)if(ids.has(p.parent)&&!ids.has(p.pid)){ids.add(p.pid);changed=true;}}
-  return table.filter(p=>ids.has(p.pid));
+  const rootProcess = table.find(p=>p.pid===root);
+  if (!rootProcess || (identity !== undefined && rootProcess.identity !== identity)) return [];
+  const members = new Map([[root, creationOrder(rootProcess.identity)]]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of table) {
+      if (!members.has(p.parent) || members.has(p.pid)) continue;
+      const created = creationOrder(p.identity);
+      // PPID survives a parent's exit on Windows. A reused parent PID must not
+      // adopt an older unrelated process into measurement or cleanup ownership.
+      if (created < members.get(p.parent)) continue;
+      members.set(p.pid, created);
+      changed = true;
+    }
+  }
+  return table.filter(p=>members.has(p.pid));
 }
 export const memoryMetric=process.platform==='win32'?'sum-process-working-set-bytes':'sum-process-rss-bytes';
 

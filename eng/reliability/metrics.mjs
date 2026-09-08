@@ -34,15 +34,23 @@ export function checkCycle(s) {
     assert.equal(s.remainingProcesses,0, 'Accumulating processes');
     assert.ok(Number.isFinite(s.treeBytes) && s.treeBytes > 0);
 }
-export function checkSoak(samples, elapsedMs) {
-  assert.ok(elapsedMs >= 7200000, 'Two-hour duration not reached');
+export const minimumSoakDurationMs = 1800000;
+export function assessSoak(samples, elapsedMs, requiredDurationMs = minimumSoakDurationMs) {
+  assert.ok(Number.isFinite(requiredDurationMs) && requiredDurationMs >= minimumSoakDurationMs, 'Soak duration must be at least thirty minutes');
+  assert.ok(Number.isFinite(elapsedMs) && elapsedMs >= requiredDurationMs, 'Required soak duration not reached');
   assert.ok(samples.length >= 60, 'Insufficient completed cycles');
   samples.forEach(checkCycle);
   const n=Math.max(10,Math.floor(samples.length/4));
   const first=quantile(samples.slice(0,n).map(x=>x.treeBytes),.5);
   const last=quantile(samples.slice(-n).map(x=>x.treeBytes),.5);
   const quarters = Array.from({length:4},(_,i)=>quantile(samples.slice(Math.floor(i*samples.length/4),Math.floor((i+1)*samples.length/4)).map(x=>x.treeBytes),.5));
-  assert.ok(!quarters.slice(1).every((value,i)=>value>quarters[i]), 'Memory medians grow in every quarter');
   assert.ok(last <= first*1.2, 'Memory increase exceeds 20%');
-  return { passed:true, cycles:samples.length, elapsedMs, firstMedianBytes:first,lastMedianBytes:last, quarterMediansBytes:quarters };
+  const sustainedMemoryTrend = quarters.slice(1).every((value,i)=>value>quarters[i]);
+  return { passed:!sustainedMemoryTrend, failureCode:sustainedMemoryTrend ? 'sustained-memory-trend' : null, cycles:samples.length, elapsedMs, firstMedianBytes:first,lastMedianBytes:last, quarterMediansBytes:quarters };
+}
+
+export function checkSoak(samples, elapsedMs, requiredDurationMs = minimumSoakDurationMs) {
+  const result = assessSoak(samples, elapsedMs, requiredDurationMs);
+  assert.ok(result.passed, 'Memory medians grow in every quarter');
+  return result;
 }

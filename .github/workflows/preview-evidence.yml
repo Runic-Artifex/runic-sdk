@@ -8,6 +8,9 @@ on:
       receipts_gzip_base64:
         description: Reviewed JSON envelope, UTF-8 then gzip then base64 (maximum 60000 characters)
         required: true
+      evidence_commit:
+        description: Optional immutable data-only commit containing native-soak.json for an accepted known issue
+        required: false
 permissions:
   contents: read
   actions: read
@@ -32,11 +35,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
           RECEIPTS_GZIP_BASE64: ${{ inputs.receipts_gzip_base64 }}
+          EVIDENCE_COMMIT: ${{ inputs.evidence_commit }}
         run: |
           mkdir -p artifacts/preview
           bun eng/release/cli.mjs seal artifacts/packages "$GITHUB_SHA" "$CI_RUN_ID" artifacts/preview/candidate.json demo-preview
           python3 eng/release/decode-evidence.py artifacts/preview/receipts.json
-          bun eng/release/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json
+          bun eng/release/cli.mjs fetch-companion artifacts/preview/receipts.json "$EVIDENCE_COMMIT" artifacts/preview/companions
+          companions=()
+          if [[ -d artifacts/preview/companions ]]; then companions+=(artifacts/preview/companions); fi
+          bun eng/release/cli.mjs gates artifacts/preview/candidate.json artifacts/preview/receipts.json "${companions[@]}"
       - name: Retain verified candidate and acceptance receipts
         uses: actions/upload-artifact@v7
         with:

@@ -8,9 +8,9 @@ Use the locked development environment for Bun, Python archive inspection, `gh`,
 
 The currently authorized profile is `demo-preview`. It requires actual selected-file and clipboard interaction on **local Linux** (`interactive-native-linux-local`) and the **available Windows VM** (`interactive-native-windows-vm`). The original Windows/X11/Wayland/macOS/signed-sandbox human profiles, NVDA/VoiceOver/Orca accessibility profiles, and both independent pilots are explicitly recorded as `deferred`, with the user's scope-change authorization. These are not passing results or verified support claims. The local Linux receipt must identify the display system and backend actually tested; it does not establish coverage of another backend.
 
-All engineering checks remain required, including full CI, JIT and NativeAOT on all three operating systems, core/application/package tests, isolation, matched performance, two-hour soak, and independent review. The `full-v1` profile retains the original full acceptance requirements. `policy.mjs` is the exact supported policy definition; arbitrary missing gates or edited policy records are rejected.
+All engineering checks remain required, including full CI, JIT and NativeAOT on all three operating systems, core/application/package tests, isolation, matched performance, a native soak, and independent review. The user-authorized `demo-preview` profile requires `soak-thirty-minutes` with at least 1,800 elapsed seconds. The `full-v1` profile retains `soak-two-hours` with at least 7,200 elapsed seconds and all other original requirements. Resource, operation and shutdown criteria remain required; the explicit demo-only memory-trend exception below does not waive the 20% growth bound. `policy.mjs` is the exact supported policy definition; arbitrary missing gates or edited policy records are rejected.
 
-`seal` defaults to `demo-preview`; append `full-v1` to select the original policy. The complete policy, including each deferred gate and its rationale, is sealed into `candidate.acceptancePolicy`. Changing profiles requires resealing and rebinding acceptance evidence.
+`seal` defaults to `demo-preview`; append `full-v1` to select the original policy. The complete policy, including each deferred gate and its rationale, is sealed into `candidate.acceptancePolicy`. Changing profiles or the supported policy requires resealing and rebinding acceptance evidence. Retain old raw soak receipts unchanged: a policy update does not rename their gate, shorten their recorded duration or associate them with different source/artifact bytes. A 30-minute receipt cannot satisfy `full-v1`.
 
 Create a demo evidence envelope without inventing any passing receipts:
 
@@ -69,3 +69,55 @@ The publishing workflow accepts the CI run ID and a run holding the reviewed `pr
 `bun eng/release/cli.mjs registry artifacts/preview/candidate.json` verifies public availability and contents. Registry indexing may lag. This command retries 404 availability responses and transient 429/503 responses with `Retry-After`, bounded to 12 attempts and three minutes per HTTP lookup. A longer server-requested wait fails without retrying early. Content mismatches fail immediately. Rerun the read-only check later if indexing exceeds that budget. This check alone is **not** the public install/template/tool/application smoke gate. The integration owner must run the independent clean public-registry consumption scenarios after availability, retain their evidence, and only then create the versioned tag and GitHub prerelease matching the sealed candidate. The workflow does not create a tag or release automatically. Existing npm `latest` tags are preserved by publishing solely with `preview`.
 
 Sources: [NuGet trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing), [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/), checked September 8, 2026.
+
+## Demo-only residual memory trend
+
+The user explicitly accepted the small residual memory trend as a preview
+nonblocker. The strict soak runner still reports failure and exits unsuccessfully
+when every quarter median increases. `full-v1` remains strict. This exception
+cannot waive the minimum duration, requested longer duration, 60 completed
+cycles, actual operations, zero resource counters, process cleanup, natural
+shutdown within 15 seconds, or the first/last median 20% growth bound.
+
+A demo soak acceptance receipt may use `outcome: "known-issue"` instead of `pass`,
+with `nativeArtifactHashes` bound to the raw native artifact manifest and a
+`waiver` object of schema `runic.soak-known-issue/1`. Its `policy` must exactly
+match `demoMemoryTrendWaiver` from `eng/release/policy.mjs`; `rawReceiptFile` is
+the fixed companion name `native-soak.json` and `rawReceiptSha256` hashes its
+original UTF-8 bytes. Keep the original raw file unchanged; do not embed it in
+the envelope (which retains its 1 MiB decoder limit). Companion files have a
+64 MiB bound and must be plain files in a trusted directory without symlinks. Ordinary candidate,
+source, package hash, timestamp and validator bindings still apply. The validator
+recomputes cycle and memory checks, checks completed natural shutdown, and
+requires the sole raw failure to be `Memory medians grow in every quarter`.
+The exception is Linux-only, and last-minus-first quarter median growth must
+be at most **5 MiB AND 1%**. The raw receipt must contain `finalArtifactHashes`
+identical to its initial artifact hashes. The runner checks final binary bytes
+even on failure and never turns that failure into a pass; historical receipts
+without this proof are ineligible and must not be retroactively edited.
+A waiver cannot be labeled `pass` or applied to another gate. Reseal the candidate
+policy and bind fresh evidence when source or artifact bytes change.
+
+Observed context, not transferable acceptance: the patched
+`native-atspi-fixed-30m-0c821f62` run completed 5,556 cycles in 1,800,112 ms;
+quarter medians were 522.852 / 523.633 / 524.688 / 525.059 MiB (about 0.42%
+growth). Resource counters were zero and helpers exited naturally in 100.36 ms.
+A system-package contribution is suspected, not established as the sole cause:
+the patched run still grew. This is an acknowledged residual issue, not a
+verified leak fix. Do not substitute that historical run for a changed source.
+
+Transport contract: prepare a public-safe data-only commit in the canonical
+repository containing only `native-soak.json`. Supply its full immutable commit
+ID as `evidence_commit` to the evidence workflow. `fetch-companion` reads the
+commit/tree/blob through the GitHub API, verifies the regular file, size, Git
+object hash and receipt SHA-256, and writes the original bytes plus transport
+metadata. It never checks out or executes the evidence commit. The raw soak's
+source must still match the frozen candidate source, not the evidence commit.
+
+The evidence workflow retains the companion alongside the validated candidate
+and receipts in `preview-acceptance`. Publication consumes that retained
+artifact and rechecks the raw hash and gate constraints. The temporary evidence
+branch can be removed after artifact retention is verified; it must contain no
+private data. When there is no known issue, leave `evidence_commit` empty.
+Missing companion context fails closed. Local `gates` and `publish` commands
+accept the reviewed companion directory as an optional final argument.
