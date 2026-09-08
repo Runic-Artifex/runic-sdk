@@ -1,7 +1,7 @@
 # Preview reliability acceptance
 
 Run these commands in the locked project development shell. The runner never
-builds or republishes artifacts. Build baseline `5afb8b8d` and the candidate
+builds or republishes artifacts. Build the agreed green baseline and the candidate
 separately, record the full source revision and SHA-256 of **every** published
 file at build time, then retain those immutable directories. Do not assign the
 baseline revision to a stale output directory just because the checkout once
@@ -83,7 +83,10 @@ invocation retains its existing single smoke run behavior.
 
 The driver samples the host and native/browser child processes, rejects growth
 in surviving child count, rejects memory growth across every successive quarter or >20% growth between
-first/last quarter median cycle memory, and rejects any child surviving final host shutdown. At least 60
+first/last quarter median cycle memory, and rejects any child surviving the 15-second shutdown deadline (including
+asynchronous browser-helper exit after the host exits). Per-cycle process
+identities and Linux process names/states are retained, along with natural
+shutdown observations. Forced cleanup never satisfies this gate. At least 60
 completed cycles and two elapsed hours are mandatory. The raw cycle records,
 artifact hashes, adapter hash, source revision, environment and timing remain
 in the receipt, including a failed receipt on error. A shorter debug run cannot

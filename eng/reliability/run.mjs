@@ -77,13 +77,17 @@ async function main() {
       receipt.adapterSha256=hash(readFileSync(adapterPath));receipt.schema='runic.reliability-soak/1';receipt.workload='window-reconnect-cancellation-v1';
       const start=performance.now();const duration=config.durationMs??7200000;assert.ok(duration>=7200000);
       const session=await adapter.start(config);
+      const failures=[];
       try{while(performance.now()-start<duration){
         const s=await timeout(session.cycle(),60000,'Soak cycle exceeded 60 seconds');
         // Check every cycle immediately, including all leak counters; duration is checked at completion.
         checkCycle(s);
         receipt.samples.push(s);receipt.elapsedMs=performance.now()-start;persist();
-      }}finally{await session.stop();}
-      receipt.result=checkSoak(receipt.samples,performance.now()-start);
+      }}catch(error){failures.push(error);}
+      try{receipt.shutdown=await session.stop();}catch(error){failures.push(error);}
+      // Shutdown must not conceal independent resource or sustained-memory failures.
+      try{receipt.result=checkSoak(receipt.samples,receipt.elapsedMs??0);}catch(error){failures.push(error);}
+      if(failures.length)throw new AggregateError(failures,failures.map(error=>error.message).join('\n'));
     }
     assert.deepEqual(artifactHashes(config.directory),artifacts,'Artifacts changed during measurement');
     receipt.status='passed';

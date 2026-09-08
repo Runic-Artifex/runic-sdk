@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Runic.Desktop;
 using Runic.Platform;
 using Runic.Platform.Runtime;
@@ -48,10 +50,13 @@ static async Task RunAsyncSmoke()
     {
         await ExerciseFirstWindowAsync(surface, window);
         if (SmokeSoak.Enabled) await SmokeSoak.ExerciseAsync(surface, window, closeGuard);
+        await GtkWidgetLifetime.ObserveAsync(window.NativeHandle);
         await ExerciseCloseGuardAsync(surface, window, closeGuard);
         await window.CloseAsync();
         AssertClosed(window);
     }
+
+    await GtkWidgetLifetime.AssertReleasedAsync();
 
     await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = RestartedPage() }))
     await using (var window = await surface.OpenWindowAsync(new DesktopWindowOptions
@@ -61,7 +66,9 @@ static async Task RunAsyncSmoke()
     }))
     {
         await ExerciseRestartedWindowAsync(surface);
+        await GtkWidgetLifetime.ObserveAsync(window.NativeHandle);
     }
+    await GtkWidgetLifetime.AssertReleasedAsync();
     SmokeSoak.Completed();
     }
 }
@@ -359,4 +366,84 @@ internal static class SmokeSoak
         public ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default) => ValueTask.FromResult<PickerResult<IReadFileLease>>(new PickerResult<IReadFileLease>.Selected(read));
         public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default) => ValueTask.FromResult<PickerResult<ISaveFileLease>>(new PickerResult<ISaveFileLease>.Selected(save));
     }
+}
+
+// Weak native references verify real GTK destruction, including WebKit's hidden
+// key-binding child. Managed disposal alone cannot detect these native leaks.
+internal static partial class GtkWidgetLifetime
+{
+    private static int _observed;
+    private static int _finalized;
+
+    internal static async Task ObserveAsync(nint window)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var request = new Observation(window);
+        var handle = GCHandle.Alloc(request);
+        unsafe
+        {
+            if (AddIdle((nint)(delegate* unmanaged[Cdecl]<nint, int>)&ObserveOnGtk, GCHandle.ToIntPtr(handle)) == 0)
+            {
+                handle.Free();
+                throw new InvalidOperationException("GTK lifetime observation could not be scheduled.");
+            }
+        }
+        await request.Completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    internal static async Task AssertReleasedAsync()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (Volatile.Read(ref _finalized) != Volatile.Read(ref _observed) && elapsed.Elapsed < TimeSpan.FromSeconds(5))
+            await Task.Delay(10);
+        if (_observed == 0 || _observed != _finalized)
+            throw new InvalidOperationException($"GTK widgets survived window disposal: observed {_observed}, finalized {_finalized}.");
+    }
+
+    private sealed record Observation(nint Window)
+    {
+        internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe int ObserveOnGtk(nint data)
+    {
+        var handle = GCHandle.FromIntPtr(data);
+        var request = (Observation)handle.Target!;
+        try
+        {
+            ForAll(request.Window, (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&ObserveWebView, 0);
+            request.Completion.SetResult();
+        }
+        catch (Exception error) { request.Completion.SetException(error); }
+        finally { handle.Free(); }
+        return 0;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void ObserveWebView(nint widget, nint data)
+    {
+        Observe(widget);
+        ForAll(widget, (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&ObserveChild, 0);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ObserveChild(nint widget, nint data) => Observe(widget);
+
+    private static unsafe void Observe(nint widget)
+    {
+        Interlocked.Increment(ref _observed);
+        WeakRef(widget, (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&Finalized, 0);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void Finalized(nint data, nint widget) => Interlocked.Increment(ref _finalized);
+
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_idle_add")]
+    private static partial uint AddIdle(nint callback, nint data);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_container_forall")]
+    private static partial void ForAll(nint container, nint callback, nint data);
+    [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_weak_ref")]
+    private static partial void WeakRef(nint instance, nint callback, nint data);
 }

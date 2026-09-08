@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { descendants, processTable, trackedProcesses, trackProcesses } from './process-tree.mjs';
+import { descendants, processTable, trackedProcesses, trackProcesses, waitForTrackedExit } from './process-tree.mjs';
 export async function start(config) {
   const child=spawn(config.executable,[...(config.arguments??[]),'--soak'],{cwd:config.directory,env:{...process.env,...config.env},stdio:['pipe','pipe','pipe']});
   let failure, ended=false, stderr='', baselineCount, peak=0;
@@ -23,15 +23,16 @@ export async function start(config) {
       const current=collect(); if(collectionError)throw collectionError;
       baselineCount??=current.length;
       const growth=Math.max(0,current.length-baselineCount);
-      return {...result,treeBytes:peak,remainingProcesses:growth,processCount:current.length};
+      return {...result,treeBytes:peak,remainingProcesses:growth,processCount:current.length,processes:current};
     },
     async stop(){
+      const shutdownStarted=performance.now();
       try{
         if(!ended)child.stdin.end('stop\n');
         let timer;const result=await Promise.race([exit,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Fixture shutdown timeout')),15000);})]).finally(()=>clearTimeout(timer));
         if(result.error)throw result.error;
         assert.equal(result.code,0,stderr);assert.equal(result.signal,null);
-        assert.equal(trackedProcesses(processTable(),known).length,0,'Native child process survived fixture shutdown');
+        return await waitForTrackedExit(known,{timeoutMs:Math.max(0,15000-(performance.now()-shutdownStarted))});
       }finally{
         clearInterval(interval);input.close();
         if(!ended){child.kill('SIGKILL');await exit;}

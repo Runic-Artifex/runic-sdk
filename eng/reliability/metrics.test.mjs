@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { compare, validate, checkSoak } from './metrics.mjs';
-import { descendants, trackedProcesses, trackProcesses } from './process-tree.mjs';
+import { descendants, trackedProcesses, trackProcesses, waitForTrackedExit } from './process-tree.mjs';
 function receipt(value=100) {return {schema:'runic.reliability/1',status:'passed',sourceRevision:'a'.repeat(40),artifacts:{app:'b'.repeat(64)},environment:{machine:'test',memoryMetric:'rss'},workload:'fixed',profile:'default',samples:Array.from({length:15},()=>({startupMs:value,peakTreeBytes:value,durationMs:1,exitCode:0,remainingProcesses:0}))};}
 const cycle=()=>({operations:{window:true,reconnect:true,cancellation:true},resources:{leases:0,transactions:0,presentations:0,pendingOperations:0},remainingProcesses:0,treeBytes:100});
 test('comparison rejects reproducible >20% regressions and accepts boundary',()=>{assert.equal(compare(receipt(),receipt(121)).passed,false);assert.equal(compare(receipt(),receipt(120)).passed,true);});
@@ -16,3 +16,14 @@ test("soak rejects sustained growth below startup regression threshold",()=>asse
 test("PID reuse cannot classify unrelated process as owned",()=>{const known=new Map();trackProcesses([{pid:10,identity:"before"}],known);assert.deepEqual(trackedProcesses([{pid:10,identity:"after"}],known),[]);assert.equal(trackedProcesses([{pid:10,identity:"before"}],known).length,1);assert.throws(()=>trackProcesses([{pid:11}],known));});
 
 test("reused root PID cannot adopt a new unrelated process tree",()=>assert.deepEqual(descendants([{pid:1,parent:0,identity:"new"},{pid:2,parent:1,identity:"child"}],1,"old"),[]));
+
+test('shutdown waits for natural helper exit and preserves process observations',async()=>{
+ const process={pid:42,identity:'original',state:'S',bytes:100}; let reads=0;
+ const outcome=await waitForTrackedExit(new Map([[42,'original']]),{table:()=>++reads<3?[process]:[],delay:async()=>{}});
+ assert.equal(outcome.observations.length,3);assert.deepEqual(outcome.observations[0].processes,[process]);
+});
+test('shutdown rejects surviving helpers including zombies, without adopting reused PIDs',async()=>{
+ const known=new Map([[42,'original']]);
+ for(const state of ['S','Z'])await assert.rejects(waitForTrackedExit(known,{timeoutMs:0,table:()=>[{pid:42,identity:'original',state,bytes:0}]}),/survived shutdown deadline/);
+ const outcome=await waitForTrackedExit(known,{timeoutMs:0,table:()=>[{pid:42,identity:'reused',state:'S'}]});assert.equal(outcome.observations[0].processes.length,0);
+});

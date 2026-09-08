@@ -240,6 +240,10 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             return;
         }
 
+        // WebKitGTK's GTK 3 backend can drop its internal key-binding widget before the
+        // container's disposal enumerates children. Destroy children while the
+        // WebView still exposes them, so GTK releases their native resources.
+        Api.DestroyWebViewChildren(_webView);
         _window = 0;
         _webView = 0;
         _nativeShutdown.Cancel();
@@ -489,6 +493,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkWidgetShowAllPointer = Required(_gtk, "gtk_widget_show_all");
                 GtkWidgetHidePointer = Required(_gtk, "gtk_widget_hide");
                 GtkContainerAddPointer = Required(_gtk, "gtk_container_add");
+                GtkContainerForAllPointer = Required(_gtk, "gtk_container_forall");
                 GtkWindowSetDefaultSizePointer = Required(_gtk, "gtk_window_set_default_size");
                 GtkWidgetSetSizeRequestPointer = Required(_gtk, "gtk_widget_set_size_request");
                 GtkWindowSetTitlePointer = Required(_gtk, "gtk_window_set_title");
@@ -554,6 +559,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWindowSetDecoratedPointer { get; }
         private nint GtkWindowSetResizablePointer { get; }
         private nint GtkWidgetDestroyPointer { get; }
+        private nint GtkContainerForAllPointer { get; }
         private nint GtkWindowPresentPointer { get; }
         private nint GtkWindowIconifyPointer { get; }
         private nint GtkWindowMaximizePointer { get; }
@@ -599,6 +605,19 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal void GtkWindowSetPosition(nint window, int position) => ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWindowSetPositionPointer)(window, position);
         internal void GtkWindowSetDecorated(nint window, bool decorated) => ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWindowSetDecoratedPointer)(window, decorated ? 1 : 0);
         internal void GtkWindowSetResizable(nint window, bool resizable) => ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWindowSetResizablePointer)(window, resizable ? 1 : 0);
+        internal void DestroyWebViewChildren(nint webView)
+        {
+            if (webView != 0)
+            {
+                ((delegate* unmanaged[Cdecl]<nint, nint, nint, void>)GtkContainerForAllPointer)(
+                    webView, (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&DestroyChild, GtkWidgetDestroyPointer);
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void DestroyChild(nint widget, nint destroy)
+            => ((delegate* unmanaged[Cdecl]<nint, void>)destroy)(widget);
+
         internal void GtkWidgetDestroy(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWidgetDestroyPointer)(window);
         internal void GtkWindowPresent(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowPresentPointer)(window);
         internal void GtkWindowIconify(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowIconifyPointer)(window);
