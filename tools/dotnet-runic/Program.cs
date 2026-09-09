@@ -8,12 +8,12 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Runic.CommandLine;
+using Runic.CommandLine.Spectre;
 using Runic.CommandLine.Generated;
 namespace Runic.Application.Tool;
 
 internal static class Program
 {
-    private static readonly AsyncLocal<CommandOutputMode?> OutputMode = new();
 
     internal const int Success = 0;
     internal const int DevelopmentFailure = 1;
@@ -25,37 +25,22 @@ internal static class Program
         ArgumentNullException.ThrowIfNull(arguments);
         if (arguments.Length > 0 && arguments[0] == "__bridge-inspect")
             return await BridgeInspectionClient.RunAsync(arguments[1..]).ConfigureAwait(false);
-        var console = new ProcessCommandConsole();
-        ParseOutcome parse = PortableCommandSyntaxAdapter.Instance.Parse(
-            GeneratedCommandCatalog.Create(),
-            arguments.Length == 0 ? ["dev"] : arguments,
-            new ParseSettings(Environment.GetEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName)));
-        if (parse.Kind == ParseOutcomeKind.Help)
+        return await new CommandApp(GeneratedCommandCatalog.Create())
         {
-            string help = HelpFor(parse.HelpRequest?.Path) + "\n";
-            await console.WriteOutAsync(help.AsMemory(), CancellationToken.None).ConfigureAwait(false);
-            return Success;
-        }
-        if (parse.Kind == ParseOutcomeKind.Version)
-        {
-            await console.WriteOutAsync($"dotnet-runic {Version}\n".AsMemory(), CancellationToken.None).ConfigureAwait(false);
-            return Success;
-        }
-        if (parse.Kind != ParseOutcomeKind.Invocation || parse.Invocation is null)
-        {
-            return await PresentParseFailureAsync(parse, console).ConfigureAwait(false);
-        }
-
-        OutputMode.Value = parse.Invocation.OutputClassification.Mode;
-        CommandExecutionResult result = await new CommandExecutor(EmptyScopeFactory.Instance, ToolExitCodePolicy.Instance).ExecuteAsync(
-            new CommandExecutionRequest(parse.Invocation, console, CultureInfo.InvariantCulture, "runic"),
-            new CommandOutputDispatcher()).ConfigureAwait(false);
-        return result.ExitCode;
+            Name = "dotnet runic",
+            CompletionExecutableName = "dotnet-runic",
+            Version = Version,
+        HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
+            Console = new SpectreCommandConsole(),
+            ExitCodePolicy = ToolExitCodePolicy.Instance,
+        }.RunAsync(arguments).ConfigureAwait(false);
     }
 
-    [Command("dev")]
+    [Command("dev", Description = "Run the application with development watchers.")]
+    [DefaultCommand]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Dev(
+        CommandExecutionContext context,
         [Option("--no-restore")] bool noRestore,
         [Option("--no-contracts")] bool noContracts,
         [Option("--no-frontend-watch")] bool noFrontendWatch,
@@ -67,7 +52,7 @@ internal static class Program
         [Option("--configuration")] string configuration = "Debug",
         [Option("--host")] string host = "")
     {
-        return ExecuteAsync("dev", async () =>
+        return ExecuteAsync(context, "dev", async () =>
         {
             var options = new DevOptions(
             string.IsNullOrWhiteSpace(project) ? null : project,
@@ -82,9 +67,10 @@ internal static class Program
         }, stream: !dryRun);
     }
 
-    [Command("size")]
+    [Command("size", Description = "Measure a published application and write a size report.")]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Size(
+        CommandExecutionContext context,
         [Option("--no-aot")] bool noAot,
         [Option("--verify-argument", AllowMultipleValues = true)] IReadOnlyList<string> verifyArguments,
         CancellationToken cancellationToken,
@@ -95,30 +81,32 @@ internal static class Program
         [Option("--configuration")] string configuration = "Release",
         [Option("--report")] string report = "runic-size.json",
         [Option("--verify")] string verify = "") =>
-        ExecuteAsync("size", () => SizeApplication.RunAsync(new SizeOptions(
+        ExecuteAsync(context, "size", () => SizeApplication.RunAsync(new SizeOptions(
             string.IsNullOrWhiteSpace(project) ? null : project, runtime, host, profile,
             configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);
 
-    [Command("doctor")]
+    [Command("doctor", Description = "Check the project and development environment.", Examples = ["dotnet runic doctor --project ./MyApp.csproj"])]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Doctor(
+        CommandExecutionContext context,
         CancellationToken cancellationToken,
         [Option("--project", "-p")] string project = "",
         [Option("--configuration")] string configuration = "Debug")
     {
-        return ExecuteAsync("doctor", async () => await DoctorApplication.RunAsync(
+        return ExecuteAsync(context, "doctor", async () => await DoctorApplication.RunAsync(
             new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration), cancellationToken).ConfigureAwait(false));
     }
 
     [Command("inspect")]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Inspect(
+        CommandExecutionContext context,
         CancellationToken cancellationToken,
         [Option("--project", "-p")] string project = "",
         [Option("--configuration")] string configuration = "Debug",
         [Option("--artifact")] string artifact = "manifest")
     {
-        return ExecuteAsync("inspect", async () => await InspectApplication.RunAsync(
+        return ExecuteAsync(context, "inspect", async () => await InspectApplication.RunAsync(
             string.IsNullOrWhiteSpace(project) ? null : project,
             configuration,
             artifact,
@@ -196,7 +184,7 @@ internal static class Program
         }
     }
 
-    private static async Task<CommandOutcome<ToolCommandResult>> ExecuteAsync(string command, Func<Task<int>> operation, bool stream = false)
+    private static async Task<CommandOutcome<ToolCommandResult>> ExecuteAsync(CommandExecutionContext context, string command, Func<Task<int>> operation, bool stream = false)
     {
         TextWriter originalOutput = Console.Out;
         TextWriter originalError = Console.Error;
@@ -205,8 +193,8 @@ internal static class Program
         {
             // Long-running development output must reach the terminal immediately.
             // JSON invocations reserve stdout for the final command envelope.
-            Console.SetOut(stream ? (OutputMode.Value == CommandOutputMode.Json ? originalError : originalOutput) : output);
-            Console.SetError(stream ? originalError : output);
+            Console.SetOut(stream ? new InvocationTextWriter(context.Console, standardError: false) : output);
+            Console.SetError(stream ? new InvocationTextWriter(context.Console, standardError: true) : output);
             int exitCode = await operation().ConfigureAwait(false);
             return exitCode == Success
                 ? CommandOutcome.Success(new ToolCommandResult(command, exitCode, output.ToString().TrimEnd()))
@@ -269,35 +257,6 @@ internal static class Program
             detail);
     }
 
-    private static async Task<int> PresentParseFailureAsync(ParseOutcome parse, ICommandConsole console)
-    {
-        if (parse.OutputClassification is { IsValid: true, Mode: CommandOutputMode mode } &&
-            parse.Diagnostics.Count > 0)
-        {
-            CommandDiagnostic diagnostic = parse.Diagnostics[0];
-            CommandResponse<ToolCommandResult> response = CommandResponse.Failed<ToolCommandResult>(
-                "runic",
-                "runic",
-                UsageFailure,
-                new CommandFault(diagnostic.Code, diagnostic.Message),
-                parse.Diagnostics);
-            await CommandOutputDispatcher.DispatchAsync(
-                mode,
-                console,
-                CultureInfo.InvariantCulture,
-                response,
-                ToolCommandResultCodec.Instance).ConfigureAwait(false);
-            return UsageFailure;
-        }
-
-        await CommandParsePresentation.WriteHumanAsync(
-            parse,
-            console,
-            static (diagnostic, _) => $"dotnet runic: {diagnostic.Code}: {diagnostic.Message}\n",
-            CultureInfo.InvariantCulture).ConfigureAwait(false);
-        return UsageFailure;
-    }
-
     private static string? BoundedHumanOutput(StringWriter output)
     {
         string text = output.ToString();
@@ -318,112 +277,6 @@ internal static class Program
         }
     }
 
-    private static string HelpFor(CommandPath? path) => path?.ToString() switch
-    {
-        "dev" => DevHelp,
-        "size" => SizeHelp,
-        "doctor" => DoctorHelp,
-        "inspect" => InspectHelp,
-        "migrate" => MigrateHelp,
-        "support" => SupportHelp,
-        _ => RootHelp,
-    };
-
-    private const string RootHelp = """
-        Usage:
-          dotnet runic dev [options] [-- <application-args>...]
-          dotnet runic size --runtime <RID> [options]
-          dotnet runic inspect [options]
-          dotnet runic doctor [options]
-          dotnet runic support [--mode preview|collect|remove] [--editor-diagnostics <zip>] [--destination <path>]
-          dotnet runic migrate [--project path] [--check|--dry-run|--apply]
-
-        Commands:
-          dev       Build the app and coordinate frontend and managed-host watches.
-          size      Publish and measure a fresh distribution with optional behavior verification.
-          doctor    Check SDK, package-manager, lockfile, package-train, and platform prerequisites.
-          inspect   Render deterministic generated application diagnostics.
-          migrate   Inspect or apply the bounded CS-WebUI-to-Runic migration.
-          support   Preview, collect, or remove a private local support envelope.
-
-        Run 'dotnet runic <command> --help' for command options.
-        """;
-
-    private const string DevHelp = """
-        Usage:
-          dotnet runic dev [options] [-- <application-args>...]
-
-        Options:
-          -p, --project <path>       Project file or directory. Default: the current directory.
-          --configuration <name>    MSBuild configuration. Default: Debug.
-          --host <name>             desktop or cswebui; defaults to the project selection.
-          --no-restore              Skip NuGet and frozen frontend dependency restore.
-          --no-contracts            Skip Application Bridge contract generation and verification.
-          --no-frontend-watch       Build frontend assets once without starting Vite or Angular watch.
-          --no-dotnet-watch         Run the managed host once without dotnet watch.
-          --dry-run                 Print the evaluated development plan without starting processes.
-        """;
-
-    private const string SizeHelp = """
-        Usage:
-          dotnet runic size --runtime <RID> [options]
-
-        Options:
-          -p, --project <path>       Project file or directory. Default: current directory.
-          -r, --runtime <RID>        Required target runtime, for example linux-x64.
-          --host <name>             desktop or cswebui; defaults to the project selection.
-          --profile <name>          default or minimal (Desktop only). Default: default.
-          --configuration <name>    Default: Release.
-          --report <path>           New JSON report path. Default: runic-size.json.
-          --no-aot                  Disable NativeAOT; still publish self-contained.
-          --verify <executable>     Optional behavior checker; no shell interpolation.
-          --verify-argument <value> Repeat for checker arguments. Publish directory and
-                                    main executable path are appended automatically.
-
-        Publishes into a fresh directory next to the report. Retains logs, hashes,
-        all files and a ZIP. Culture and diagnostic settings stay project-controlled.
-        Without a successful checker, behavior is explicitly marked not-run.
-        """;
-
-    private const string DoctorHelp = """
-        Usage:
-          dotnet runic doctor [options]
-
-        Options:
-          -p, --project <path>       Project file or directory. Default: the current directory.
-          --configuration <name>    MSBuild configuration to inspect. Default: Debug.
-        """;
-
-    private const string InspectHelp = """
-        Usage:
-          dotnet runic inspect [options]
-
-        Options:
-          -p, --project <path>       Project file or directory. Default: the current directory.
-          --configuration <name>    MSBuild configuration. Default: Debug.
-          --artifact <name>         Artifact to render. Default: manifest.
-        """;
-
-    private const string MigrateHelp = """
-        Usage:
-          dotnet runic migrate [options]
-
-        Options:
-          -p, --project <path>       Project file or directory. Default: the current directory.
-          --check                    Exit unsuccessfully when migration changes are required.
-          --dry-run                  Print the exact migration without writing files.
-          --apply                    Apply the bounded migration.
-        """;
-
-    private const string SupportHelp = """
-        Usage:
-          dotnet runic support [options]
-
-        Options:
-          --mode <mode>              preview, collect, or remove. Default: preview.
-          --editor-diagnostics <zip> Explicit Runic Translations Editor diagnostic archive.
-          --destination <path>       Local support-envelope output or removal path.
-        """;
 }
 
 internal sealed record ToolCommandResult(string Command, int ExitCode, string? Output = null)
@@ -446,42 +299,16 @@ internal sealed class ToolExitCodePolicy : IExitCodePolicy
 [JsonSerializable(typeof(ToolCommandResult))]
 internal sealed partial class ToolCommandJsonContext : JsonSerializerContext;
 
-internal sealed class ToolCommandResultCodec : ICommandResultCodec<ToolCommandResult>
+internal sealed class InvocationTextWriter(ICommandConsole console, bool standardError) : TextWriter
 {
-    internal static ToolCommandResultCodec Instance { get; } = new();
-
-    public string PayloadType => "runic.application.tool/1";
-    public JsonTypeInfo<ToolCommandResult> TypeInfo => ToolCommandJsonContext.Default.ToolCommandResult;
-
-    public ValueTask WriteHumanAsync(
-        ToolCommandResult value,
-        ICommandConsole console,
-        CultureInfo culture,
-        CancellationToken cancellationToken) =>
-        console.WriteOutAsync((value.ToString() + "\n").AsMemory(), cancellationToken);
-}
-
-internal sealed class ProcessCommandConsole : ICommandConsole
-{
-    public bool IsInteractive => !Console.IsInputRedirected && !Console.IsOutputRedirected;
-    public bool IsInputRedirected => Console.IsInputRedirected;
-    public bool IsOutputRedirected => Console.IsOutputRedirected;
-    public bool IsErrorRedirected => Console.IsErrorRedirected;
-    public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) => ValueTask.FromResult(Console.ReadLine());
-    public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) { Console.Out.Write(value.Span); return ValueTask.CompletedTask; }
-    public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken) { Console.OpenStandardOutput().Write(value.Span); return ValueTask.CompletedTask; }
-    public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) { Console.Error.Write(value.Span); return ValueTask.CompletedTask; }
-}
-
-internal sealed class EmptyScopeFactory : ICommandExecutionScopeFactory
-{
-    internal static EmptyScopeFactory Instance { get; } = new();
-    public ICommandExecutionScope CreateScope() => EmptyScope.Instance;
-    private sealed class EmptyScope : ICommandExecutionScope
+    public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+    public override void Write(string? value)
     {
-        internal static EmptyScope Instance { get; } = new();
-        public IServiceProvider Services { get; } = new EmptyServices();
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        if (value is null) return;
+        if (standardError) console.WriteErrorAsync(value.AsMemory(), default).AsTask().GetAwaiter().GetResult();
+        else console.WriteOutAsync(value.AsMemory(), default).AsTask().GetAwaiter().GetResult();
     }
-    private sealed class EmptyServices : IServiceProvider { public object? GetService(Type serviceType) => null; }
+    public override void Write(char value) => Write(value.ToString());
+    public override void Write(ReadOnlySpan<char> value) => Write(value.ToString());
+    public override void WriteLine(string? value) => Write(value + NewLine);
 }

@@ -22,6 +22,7 @@ internal static class BridgeInspection
 
     private static async Task<int> InspectAsync(string path)
     {
+        var console = new Runic.CommandLine.Spectre.SpectreCommandConsole();
         using var workspace = MSBuildWorkspace.Create(new Dictionary<string, string> {
             ["RunicBridgeInspect"] = "true", ["RunicSkipFrontendBuild"] = "true", ["DesignTimeBuild"] = "true"
         });
@@ -34,14 +35,14 @@ internal static class BridgeInspection
         string? ir = lowerer.Inspect(projects.Select(id => project.Solution.GetProject(id)!.AssemblyName!));
         if (ir is null)
         {
-            foreach (Diagnostic error in lowerer.Errors) Console.Error.WriteLine(error.ToString());
-            if (lowerer.Errors.Count == 0) Console.Error.WriteLine("RTKAB2001: The entry project requires one ApplicationBridgeContract root.");
+            foreach (Diagnostic error in lowerer.Errors) await console.WriteErrorAsync((error.ToString() + "\n").AsMemory(), default).ConfigureAwait(false);
+            if (lowerer.Errors.Count == 0) await console.WriteErrorAsync("RTKAB2001: The entry project requires one ApplicationBridgeContract root.\n".AsMemory(), default).ConfigureAwait(false);
             return 1;
         }
         Diagnostic[] failures = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
         if (failures.Length > 0)
         {
-            foreach (Diagnostic failure in failures) Console.Error.WriteLine(failure.ToString());
+            foreach (Diagnostic failure in failures) await console.WriteErrorAsync((failure.ToString() + "\n").AsMemory(), default).ConfigureAwait(false);
             return 1;
         }
         string[] dependencies = projects.SelectMany(id => {

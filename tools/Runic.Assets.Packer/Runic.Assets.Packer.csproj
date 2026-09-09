@@ -20,4 +20,7 @@
                       OutputItemType="Analyzer" />
   </ItemGroup>
   <Import Project="../../eng/build/assets.targets" />
+  <ItemGroup>
+    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
+  </ItemGroup>
 </Project>

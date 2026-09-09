@@ -17,55 +17,17 @@ internal static class PackerApplication
     private const int SourceDirectoryExitCode = 3;
     private const int EntryPointExitCode = 4;
     private const int OperationExitCode = 5;
-    private const string Usage =
-        "Usage: Runic.Assets.Packer <source-directory> <destination-archive> " +
-        "[--entry-point <relative-path>] [--exclude <semicolon-separated-relative-paths>] " +
-        "[--trusted-generated-output]";
-
-    public static async Task<int> RunAsync(string[] args)
+    public static Task<int> RunAsync(string[] args) => new CommandApp(GeneratedCommandCatalog.Create())
     {
-        ArgumentNullException.ThrowIfNull(args);
+        Name = "Runic.Assets.Packer",
+        Version = "0.2",
+        HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
+        Console = new Runic.CommandLine.Spectre.SpectreCommandConsole(),
+        ExitCodePolicy = PackerExitCodePolicy.Instance,
+        OutcomeSink = PackerOutcomeSink.Instance,
+    }.RunAsync(args);
 
-        CommandCatalog catalog = GeneratedCommandCatalog.Create();
-        ParseOutcome parse = PortableCommandSyntaxAdapter.Instance.Parse(
-            catalog,
-            args,
-            ParseSettings.Default);
-        var console = new SystemCommandConsole();
-
-        if (parse.Kind == ParseOutcomeKind.Invocation && parse.Invocation is not null)
-        {
-            CommandExecutionResult execution = await new CommandExecutor(
-                EmptyScopeFactory.Instance,
-                PackerExitCodePolicy.Instance).ExecuteAsync(
-                    new CommandExecutionRequest(
-                        parse.Invocation,
-                        console,
-                        CultureInfo.InvariantCulture,
-                        "runic-assets-packer"),
-                    PackerOutcomeSink.Instance).ConfigureAwait(false);
-            return execution.ExitCode;
-        }
-
-        if (parse.Kind == ParseOutcomeKind.Error)
-        {
-            int exitCode = CommandParsePresentation.GetExitCode(
-                parse,
-                static _ => UsageExitCode);
-            await CommandParsePresentation.WriteHumanAsync(
-                parse,
-                console,
-                static (_, _) => Usage + Environment.NewLine,
-                CultureInfo.InvariantCulture).ConfigureAwait(false);
-            return exitCode;
-        }
-
-        await console.WriteErrorAsync((Usage + Environment.NewLine).AsMemory(), CancellationToken.None)
-            .ConfigureAwait(false);
-        return UsageExitCode;
-    }
-
-    [Command("pack")]
+    [Command("pack", Description = "Package a directory as a Runic asset archive.")]
     [DefaultCommand]
     [CommandResult("runic.assets.pack-result/1", typeof(PackerJsonContext))]
     internal static async Task<CommandOutcome<PackerResult>> PackAsync(
@@ -207,6 +169,8 @@ internal static class PackerApplication
             IReadOnlyList<CommandDiagnostic> diagnostics,
             CancellationToken cancellationToken)
         {
+            if (context.OutputMode == CommandOutputMode.Json)
+                return new CommandOutputDispatcher().WriteAsync(command, context, outcome, codec, exitCode, diagnostics, cancellationToken);
             if (outcome.IsSuccess && outcome.Value is PackerResult result)
             {
                 return context.Console.WriteOutAsync(
@@ -236,51 +200,6 @@ internal static class PackerApplication
         };
     }
 
-    private sealed class EmptyScopeFactory : ICommandExecutionScopeFactory
-    {
-        public static EmptyScopeFactory Instance { get; } = new();
-
-        public ICommandExecutionScope CreateScope() => EmptyScope.Instance;
-
-        private sealed class EmptyScope : ICommandExecutionScope
-        {
-            public static EmptyScope Instance { get; } = new();
-
-            public IServiceProvider Services { get; } = EmptyServices.Instance;
-
-            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-        }
-
-        private sealed class EmptyServices : IServiceProvider
-        {
-            public static EmptyServices Instance { get; } = new();
-
-            public object? GetService(Type serviceType) => null;
-        }
-    }
-
-    private sealed class SystemCommandConsole : ICommandConsole
-    {
-        public bool IsInputRedirected => Console.IsInputRedirected;
-
-        public bool IsOutputRedirected => Console.IsOutputRedirected;
-
-        public bool IsErrorRedirected => Console.IsErrorRedirected;
-
-        public bool IsInteractive => !IsInputRedirected && !IsOutputRedirected;
-
-        public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) =>
-            ValueTask.FromResult(Console.ReadLine());
-
-        public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) =>
-            new(Console.Out.WriteAsync(value, cancellationToken));
-
-        public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken) =>
-            Console.OpenStandardOutput().WriteAsync(value, cancellationToken);
-
-        public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) =>
-            new(Console.Error.WriteAsync(value, cancellationToken));
-    }
 }
 
 internal sealed record PackerResult(long ArchiveLength);
