@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Runic.Platform.Linux.Gtk4</AssemblyName>
+    <RootNamespace>Runic.Platform.Linux.Gtk4</RootNamespace>
+    <PackageId>Runic.Platform.Linux.Gtk4</PackageId>
+    <Description>GTK 4 clipboard and XDG portal-parent provider for Runic applications on Linux.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

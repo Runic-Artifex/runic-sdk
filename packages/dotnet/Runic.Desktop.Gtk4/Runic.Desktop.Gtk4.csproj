@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <AssemblyName>Runic.Desktop.Gtk4</AssemblyName>
+    <RootNamespace>Runic.Desktop.Gtk4</RootNamespace>
+    <PackageId>Runic.Desktop.Gtk4</PackageId>
+    <Title>Runic Desktop GTK 4</Title>
+    <Description>Explicit GTK 4 and WebKitGTK 6 embedded presentation provider for Runic Desktop.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
+    <PackageReference Include="GirCore.Gtk-4.0" />
+    <PackageReference Include="GirCore.WebKit-6.0" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>
