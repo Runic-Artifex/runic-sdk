@@ -11,6 +11,9 @@ directly from `Main`, before an await, and keep every GTK4 desktop operation in
 the callback:
 
 ```csharp
+using Runic.Desktop;
+using Runic.Desktop.Gtk4;
+
 return Gtk4Application.Run(async () =>
 {
     await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -38,5 +41,9 @@ for portal-first file dialogs, so KDE uses its own picker.
 The native smoke runs GTK4/WebKit6 under isolated X11: bridge JavaScript,
 close veto/retry, sequential DesktopHost windows, capability reporting, GTK
 window/WebView weak finalization, GTK clipboard round-trip, and X11 portal
-parent export. The GTK4 Wayland path and accessibility/session behavior still
-need dedicated real-session coverage; GTK3 remains supported for that reason.
+parent export. JIT and NativeAOT execution both pass under the locked Nix
+environment (GTK 4.22.4 / WebKitGTK 6 2.52.6). A separate real KDE Wayland check
+passes window creation, portal parent export/release and native destruction;
+it does not exercise the real desktop clipboard. Accessibility, IME, focus,
+scaling, sandboxed packaging and broader distribution coverage remain follow-up
+work. GTK3 remains supported.

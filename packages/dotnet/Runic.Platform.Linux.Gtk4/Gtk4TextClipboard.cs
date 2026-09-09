@@ -30,7 +30,7 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                 return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed);
             }
 
-            var request = new ReadRequest(maximumCharacters, cancellationToken);
+            using var request = new ReadRequest(maximumCharacters, cancellationToken);
             await owner.InvokeAsync(_ =>
             {
                 dispatched = true;
@@ -43,7 +43,6 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                 catch
                 {
                     handle.Free();
-                    request.Dispose();
                     throw;
                 }
             }, cancellationToken).ConfigureAwait(false);
@@ -274,7 +273,6 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                 Free(text);
             }
             handle.Free();
-            request.Dispose();
         }
     }
 

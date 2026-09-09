@@ -101,6 +101,7 @@ static async Task RunAsync()
     var owner = new HostOwner((IDesktopNativeDispatchWindowHost)host);
     await using (var portalParent = await Gtk4PlatformProvider.CreatePortalWindowOwner(owner).ExportParentAsync())
     {
+        Console.WriteLine($"GTK4 smoke: exported {portalParent.Identifier.Split(':')[0]} portal parent.");
         if (!portalParent.Identifier.StartsWith("x11:", StringComparison.Ordinal) &&
             !portalParent.Identifier.StartsWith("wayland:", StringComparison.Ordinal))
         {
@@ -115,11 +116,31 @@ static async Task RunAsync()
     var clipboard = Gtk4PlatformProvider.CreateTextClipboard(owner);
     try
     {
+        if (await clipboard.WriteTextAsync("") is not PlatformResult<Unit>.Success ||
+            await clipboard.ReadTextAsync(0) is not PlatformResult<string?>.Success { Value: "" })
+        {
+            throw new InvalidOperationException("GTK 4 empty clipboard text was not preserved.");
+        }
         if (await clipboard.WriteTextAsync("Runic GTK4 clipboard") is not PlatformResult<Unit>.Success ||
             await clipboard.ReadTextAsync(64) is not PlatformResult<string?>.Success { Value: "Runic GTK4 clipboard" })
         {
             throw new InvalidOperationException("GTK 4 clipboard round-trip failed.");
         }
+        if (await clipboard.ReadTextAsync(3) is not PlatformResult<string?>.Failed { Code: FailureCode.TooLarge })
+        {
+            throw new InvalidOperationException("GTK 4 clipboard character bound was not enforced.");
+        }
+        var successor = Gtk4PlatformProvider.CreateTextClipboard(owner);
+        try
+        {
+            _ = await successor.WriteTextAsync("successor");
+            await ((IAsyncDisposable)clipboard).DisposeAsync();
+            if (await successor.ReadTextAsync(64) is not PlatformResult<string?>.Success { Value: "successor" })
+            {
+                throw new InvalidOperationException("GTK 4 disposal cleared another writer's clipboard content.");
+            }
+        }
+        finally { await ((IAsyncDisposable)successor).DisposeAsync(); }
     }
     finally
     {
