@@ -34,3 +34,9 @@ Runic.Desktop.PresentationSession
 Runic.Desktop.RequestCancellationReason
 Runic.Desktop.StructuredPayload
 Runic.Desktop.DesktopEventLoop
+Runic.Desktop.LinuxDesktopOptions
+Runic.Desktop.LinuxEmbeddedBackend
+Runic.Desktop.LinuxDesktopRuntime
+Runic.Desktop.ILinuxDesktopWindowHostFactory
+Runic.Desktop.IDesktopNativeDispatchWindowHost
+Runic.Desktop.LinuxEmbeddedBackendAvailability

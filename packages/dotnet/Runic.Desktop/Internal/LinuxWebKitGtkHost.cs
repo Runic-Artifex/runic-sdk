@@ -48,7 +48,6 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(options);
-        LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk3WebKit41);
         if (!IsSupported)
         {
             throw new PlatformNotSupportedException(
@@ -60,6 +59,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             return;
         }
 
+        LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk3WebKit41);
         _options = options;
         try
         {

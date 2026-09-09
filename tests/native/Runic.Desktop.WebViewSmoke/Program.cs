@@ -17,7 +17,7 @@ using var watchdog = new Timer(static _ =>
 try
 {
     SmokeSoak.Watchdog = watchdog;
-    if (!DesktopPlatform.IsEmbeddedWindowAvailable)
+    if (!DesktopPlatform.GetAvailability(null, CreateHostOptions().Linux).Presentations.Any(static presentation => presentation.Browser == BrowserKind.Embedded && presentation.IsAvailable))
     {
         throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
     }
@@ -206,6 +206,7 @@ static void AssertClosed(DesktopWindow window)
 
 static DesktopHostOptions CreateHostOptions() => new()
 {
+    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
     DiagnosticSink = diagnostic => Console.Error.WriteLine(
         $"Desktop diagnostic: {diagnostic.Category}/{diagnostic.Code}: {diagnostic.Message}"),
 };

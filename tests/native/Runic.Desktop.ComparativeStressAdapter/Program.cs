@@ -11,6 +11,7 @@ var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
 
 await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
 {
+    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
     WaitForConnection = false,
 });
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions

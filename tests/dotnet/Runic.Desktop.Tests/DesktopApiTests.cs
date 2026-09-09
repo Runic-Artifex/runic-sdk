@@ -29,6 +29,44 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task LinuxEmbeddedSelectionIsRequiredAndActionable()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        await using var host = await DesktopHost.StartAsync();
+        var availability = host.GetPresentationPreflight(new() { Browser = BrowserKind.Embedded });
+        Assert.False(availability.IsAvailable);
+        Assert.Equal("linux-embedded-backend-not-selected", availability.Diagnostic?.Code);
+        await using var surface = await host.CreateSurfaceAsync();
+        var error = await Assert.ThrowsAsync<DesktopException>(async () => await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded }));
+        Assert.Equal("linux-embedded-backend-not-selected", error.Code);
+    }
+
+    [Fact]
+    public async Task Gtk4SelectionRequiresItsOptionalProvider()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        await using var host = await DesktopHost.StartAsync(new() { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 } });
+        Assert.Equal("gtk4-provider-missing", host.GetPresentationPreflight(new() { Browser = BrowserKind.Embedded }).Diagnostic?.Code);
+    }
+
+    [Fact]
+    public async Task LinuxFactoryMustMatchTheDeclaredBackend()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(async () => await DesktopHost.StartAsync(new()
+        {
+            Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+            WindowHostFactory = new TaggedLinuxFactory(),
+        }));
+    }
+
+    private sealed class TaggedLinuxFactory : ILinuxDesktopWindowHostFactory
+    {
+        public LinuxEmbeddedBackend Backend => LinuxEmbeddedBackend.Gtk4WebKit6;
+        public bool IsSupported => false;
+        public IDesktopWindowHost Create() => throw new NotSupportedException();
+    }
+
+    [Fact]
     public void StructuredPayloadRejectsDuplicateKeysWithStableRedactedError()
     {
         var error = Assert.Throws<DesktopException>(() => StructuredPayload.Parse(

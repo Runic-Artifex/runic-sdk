@@ -59,7 +59,7 @@ dotnet run --project samples/Runic.Desktop.Sample -- --webview
 
 - Windows uses the Microsoft Edge WebView2 Runtime.
 - macOS uses the system WebKit framework.
-- Linux requires GTK 3, WebKitGTK 4.1 or 4.0, and a graphical display.
+- Linux requires explicit `DesktopHostOptions.Linux.EmbeddedBackend` selection: GTK3/WebKitGTK 4.1, or the optional `Runic.Desktop.Gtk4` provider with GTK4/WebKitGTK 6.0, plus a graphical display.
 
 Applications can provide an `IDesktopWindowHostFactory` in immutable host
 options without replacing the managed server, transport, capabilities, or

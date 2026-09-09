@@ -29,3 +29,32 @@ or WebView. Sensitive permissions remain denied unless the window opts into a
 typed grant. Direct legacy capability failures retain a redacted, correlated
 host diagnostic; the TypeScript transport maps its own frontend failures to
 typed correlation-bearing errors.
+
+Linux embedded hosting requires an explicit selection before opening a window:
+
+```csharp
+var options = new DesktopHostOptions
+{
+    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+};
+await using var host = await DesktopHost.StartAsync(options);
+```
+
+GTK4 also requires the main-thread entry point in
+[Runic.Desktop.Gtk4](../Runic.Desktop.Gtk4/README.md), along with
+`Gtk4WebKit6` and `Gtk4WindowHostFactory`. Follow that provider's complete
+startup example before introducing a top-level `await`.
+
+Runic applications pass the same options through `DesktopApplicationHostOptions.Host`.
+No Linux toolkit is selected by default. Browser-only applications need no GTK
+selection. `DesktopPlatform.GetLinuxEmbeddedBackends()` inspects both library sets
+without loading either toolkit; `host.GetPresentationPreflight(...)` evaluates the
+configured provider. A process cannot change GTK versions after claiming a backend.
+`EmbeddedThenBrowser` remains an explicit browser fallback, never a GTK3/GTK4 retry.
+GTK4 stays optional; existing first-party applications explicitly retain GTK3.
+
+The optional native dispatcher interface lets application platform services use the
+same owner/lifetime checks with custom hosts. Window capabilities are forwarded from
+the provider, including operations unavailable under GTK4/Wayland. For native file
+pickers and clipboard, register the matching GTK platform provider and the
+[portal service](../Runic.Platform.Linux.Portal/README.md).

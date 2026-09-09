@@ -6,7 +6,7 @@ using Runic.Desktop;
 
 var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-await using var host = await DesktopHost.StartAsync();
+await using var host = await DesktopHost.StartAsync(new() { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } });
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
     Content = ComparisonContent.Html,

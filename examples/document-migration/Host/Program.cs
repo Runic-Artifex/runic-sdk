@@ -41,6 +41,7 @@ DesktopApplicationHost? desktop = null;
 var native = args.Contains("--native");
 desktop = new DesktopApplicationHost(new()
 {
+    Host = new DesktopHostOptions { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } },
     Title = "Documents · Runic",
     OpenWindow = !args.Contains("--serve"),
     Surface = new DesktopSurfaceOptions { ContentHandler = assets.ToDesktopContentHandler() },
@@ -65,7 +66,14 @@ var builder = RunicApplication.CreateBuilder(args).UseHost(desktop);
 if (native)
     builder.Services.AddRunicDesktopPlatform(() => desktop?.Window, owner => new PlatformProvider
     {
+#if RUNIC_PLATFORM_Linux
+        // These migration examples require atomic sibling replacement on save.
+        // Portal grants cover only the chosen file, so keep the explicit native
+        // compatibility path until a suitable directory-access policy is available.
+        Files = SelectedProvider.CreateGtkNativeFileDialogs(owner),
+#else
         Files = SelectedProvider.CreateFileDialogs(owner),
+#endif
     });
 else builder.Services.AddRunicPlatform();
 #else
