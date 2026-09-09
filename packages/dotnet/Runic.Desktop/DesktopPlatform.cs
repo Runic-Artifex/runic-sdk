@@ -66,6 +66,22 @@ public static class DesktopPlatform
         return new DesktopAvailabilityResult(GetPlatformName(), presentations);
     }
 
+    /// <summary>Inspects both Linux runtime candidates without choosing or loading either toolkit.</summary>
+    public static IReadOnlyList<LinuxEmbeddedBackendAvailability> GetLinuxEmbeddedBackends() =>
+    [
+        Inspect(LinuxEmbeddedBackend.Gtk3WebKit41, "libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"),
+        Inspect(LinuxEmbeddedBackend.Gtk4WebKit6, "libgtk-4.so.1", "libwebkitgtk-6.0.so.4"),
+    ];
+
+    private static LinuxEmbeddedBackendAvailability Inspect(LinuxEmbeddedBackend backend, string gtk, string webkit)
+    {
+        bool discovered = LinuxDesktopRuntime.IsLibraryAvailable(gtk) && LinuxDesktopRuntime.IsLibraryAvailable(webkit);
+        return new(backend, discovered, discovered ? null : Missing(
+            backend == LinuxEmbeddedBackend.Gtk3WebKit41 ? "webkitgtk-runtime-missing" : "webkitgtk6-runtime-missing",
+            $"The runtime libraries for {backend} were not discovered.",
+            $"Install {gtk} and {webkit} in the native loader search path. GTK4 also requires the Runic.Desktop.Gtk4 provider."));
+    }
+
     /// <summary>Opens a URL through the operating system's default URL handler.</summary>
     public static void OpenUrl(string url)
     {

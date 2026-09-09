@@ -6,8 +6,10 @@ namespace Runic.Desktop.Internal;
 
 internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 {
-    private static readonly GtkApi Api = new();
-    private static readonly GtkDispatcher Dispatcher = new(Api);
+    private static readonly Lazy<GtkApi> NativeApi = new(static () => new());
+    private static GtkApi Api => NativeApi.Value;
+    private static readonly Lazy<GtkDispatcher> NativeDispatcher = new(static () => new(Api));
+    private static GtkDispatcher Dispatcher => NativeDispatcher.Value;
 
     private readonly TaskCompletionSource _closed = NewCompletionSource();
     private nint _window;
@@ -29,7 +31,10 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
     public event EventHandler? Closed;
 
-    internal static bool IsSupported => OperatingSystem.IsLinux() && Api.IsAvailable;
+    internal static bool IsSupported => OperatingSystem.IsLinux()
+        && LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk3WebKit41)
+        && LinuxDesktopRuntime.IsLibraryAvailable("libgtk-3.so.0")
+        && LinuxDesktopRuntime.IsLibraryAvailable("libwebkit2gtk-4.1.so.0");
 
     public bool IsOpen => Volatile.Read(ref _isOpen) != 0;
 

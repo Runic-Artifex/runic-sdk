@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
 namespace Runic.Desktop;
 
 /// <summary>The explicitly selected Linux embedded toolkit and WebKit ABI.</summary>
@@ -19,6 +22,35 @@ public interface ILinuxDesktopWindowHostFactory : IDesktopWindowHostFactory
 public static class LinuxDesktopRuntime
 {
     private static int _backend;
+    /// <summary>Inspects Linux loader paths without loading a toolkit into this process.</summary>
+    /// <remarks>Checks the process search path and the system ldconfig cache. Native initialization remains the final runtime check.</remarks>
+    public static bool IsLibraryAvailable(string libraryName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(libraryName);
+        if (libraryName != Path.GetFileName(libraryName)) throw new ArgumentException("Use a library filename.", nameof(libraryName));
+        if (!OperatingSystem.IsLinux()) return false;
+        string architecture = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "aarch64" : "x86_64";
+        string[] standard = [AppContext.BaseDirectory, "/lib", "/usr/lib", "/lib64", "/usr/lib64", $"/lib/{architecture}-linux-gnu", $"/usr/lib/{architecture}-linux-gnu"];
+        var paths = (Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries).Concat(standard);
+        if (paths.Any(path => File.Exists(Path.Combine(path, libraryName)))) return true;
+        try
+        {
+            using var cache = Process.Start(new ProcessStartInfo("/sbin/ldconfig")
+            {
+                ArgumentList = { "-p" }, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
+            });
+            if (cache is null) return false;
+            var output = cache.StandardOutput.ReadToEndAsync();
+            var error = cache.StandardError.ReadToEndAsync();
+            if (!cache.WaitForExit(1000)) { cache.Kill(); cache.WaitForExit(); return false; }
+            _ = error.GetAwaiter().GetResult();
+            return output.GetAwaiter().GetResult().Split('\n').Any(line =>
+                line.TrimStart().StartsWith(libraryName + " ", StringComparison.Ordinal)
+                && line.Split("=>", StringSplitOptions.TrimEntries) is [_, var path] && File.Exists(path));
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException) { return false; }
+    }
+
     /// <summary>Claims the toolkit before native initialization. A process cannot switch toolkits.</summary>
     public static void ClaimBackend(LinuxEmbeddedBackend backend)
     {

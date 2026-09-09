@@ -44,3 +44,10 @@ public sealed record DesktopAvailabilityResult(
         .Select(static presentation => presentation.Diagnostic!)
         .ToArray();
 }
+
+/// <summary>Reports native library discovery for one Linux toolkit without loading it.</summary>
+/// <remarks>Library discovery is not proof of a compatible ABI, graphical session, or registered provider.</remarks>
+public sealed record LinuxEmbeddedBackendAvailability(
+    LinuxEmbeddedBackend Backend,
+    bool LibrariesDiscovered,
+    DesktopDiagnostic? Diagnostic);
