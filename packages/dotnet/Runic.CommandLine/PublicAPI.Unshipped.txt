@@ -85,6 +85,7 @@ namespace Runic.CommandLine
     }
     public sealed class CommandCatalogBuilder
     {
+        public Runic.CommandLine.CommandCatalogBuilder Present<T>(string path, Runic.CommandLine.CommandHumanPresenter<T> presenter);
         public Runic.CommandLine.CommandCatalogBuilder GlobalOption(string id, string name, Runic.CommandLine.CommandArity arity, Runic.CommandLine.CommandHelp? help = null, params string[] aliases);
         public Runic.CommandLine.CommandCatalogBuilder CommandPath<TOptions, THandler, TResult>(string path, System.Action<Runic.CommandLine.CommandBuilder<TOptions, THandler, TResult>> configure) where THandler : notnull, Runic.CommandLine.ICommandHandler<TOptions, TResult>;
 
@@ -100,6 +101,8 @@ namespace Runic.CommandLine
     }
     public sealed class CommandAttribute : System.Attribute
     {
+        public bool Hidden { get; set; }
+        public string? LongDescription { get; set; }
         public string[] Examples { get; set; }
 
         public string? Description { get; set; }
@@ -113,6 +116,11 @@ namespace Runic.CommandLine
     }
     public sealed class ArgumentAttribute : System.Attribute
     {
+        public bool Hidden { get; set; }
+        public Runic.CommandLine.CommandPathKind PathKind { get; set; }
+        public bool MustExist { get; set; }
+        public double Minimum { get; set; }
+        public double Maximum { get; set; }
         public string? ValueName { get; set; }
         public string[] Choices { get; set; }
         public bool Sensitive { get; set; }
@@ -126,6 +134,13 @@ namespace Runic.CommandLine
     }
     public sealed class OptionAttribute : System.Attribute
     {
+        public bool Hidden { get; set; }
+        public Runic.CommandLine.CommandPathKind PathKind { get; set; }
+        public bool MustExist { get; set; }
+        public double Minimum { get; set; }
+        public double Maximum { get; set; }
+        public string[] Requires { get; set; }
+        public string[] ConflictsWith { get; set; }
         public string? EnvironmentVariable { get; set; }
 
         public string? ValueName { get; set; }
@@ -379,6 +394,14 @@ namespace Runic.CommandLine
     }
     public sealed class CommandHelp
     {
+        public bool Hidden { get; init; }
+        public string? LongDescription { get; init; }
+        public Runic.CommandLine.CommandPathKind PathKind { get; init; }
+        public bool MustExist { get; init; }
+        public double? Minimum { get; init; }
+        public double? Maximum { get; init; }
+        public System.Collections.Generic.IReadOnlyList<string> Requires { get; init; }
+        public System.Collections.Generic.IReadOnlyList<string> ConflictsWith { get; init; }
         public CommandHelp(string? description = null, string? valueName = null, string? defaultValue = null, System.Collections.Generic.IEnumerable<string>? choices = null, System.Collections.Generic.IEnumerable<string>? examples = null, bool acceptsNegativeNumbers = false, string? environmentVariable = null);
         public string? Description { get; }
         public string? ValueName { get; }
@@ -455,4 +478,15 @@ namespace Runic.CommandLine.Hosting
     {
         public System.Action<System.Exception>? ExceptionObserver { get; init; }
     }
+}
+
+namespace Runic.CommandLine
+{
+    public enum CommandPathKind
+    {
+        None = 0,
+        File = 1,
+        Directory = 2,
+    }
+    public delegate System.Threading.Tasks.ValueTask CommandHumanPresenter<in T>(T value, Runic.CommandLine.ICommandConsole console, System.Globalization.CultureInfo culture, System.Threading.CancellationToken cancellationToken);
 }

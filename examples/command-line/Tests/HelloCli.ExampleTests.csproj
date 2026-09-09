@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/command-line.props" />
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../HelloCli.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/command-line.targets" />
+</Project>

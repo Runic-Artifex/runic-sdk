@@ -69,6 +69,24 @@ public sealed class CommandCatalogBuilder
         return this;
     }
 
+    /// <summary>Registers human rendering for an existing generated or manual command without replacing its JSON codec.</summary>
+    public CommandCatalogBuilder Present<T>(string path, CommandHumanPresenter<T> presenter)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(presenter);
+        List<CommandBuilderNode> siblings = _commands;
+        CommandBuilderNode? node = null;
+        foreach (string segment in path.Split(' '))
+        {
+            node = siblings.Find(candidate => candidate.Name == segment);
+            if (node is null) throw new ArgumentException("The presentation path must name a registered command.", nameof(path));
+            siblings = node.Children;
+        }
+        if (node is CommandGroupBuilderNode) throw new ArgumentException("A help-only group has no result to present.", nameof(path));
+        node!.HumanPresenter = presenter;
+        return this;
+    }
+
     /// <summary>Validates and freezes all registered definitions.</summary>
     public CommandCatalog Build()
     {
@@ -306,6 +324,8 @@ internal sealed class TypedCommandBuilderNode<TOptions, THandler, TResult> : Com
 
     internal override void ValidateRegistration(string location, List<CommandCatalogIssue> issues)
     {
+        if (HumanPresenter is not null && HumanPresenter is not CommandHumanPresenter<TResult>)
+            issues.Add(new CommandCatalogIssue("RCLI0020", location, "The human presenter type must match the command result type."));
         _frozenPayloadType = null;
         _frozenTypeInfo = null;
 
@@ -357,7 +377,7 @@ internal sealed class TypedCommandBuilderNode<TOptions, THandler, TResult> : Com
             Binder!,
             HandlerFactory!,
             new FrozenCommandResultCodec<TResult>(
-                ResultCodec!,
+                HumanPresenter is CommandHumanPresenter<TResult> presenter ? new PresentedCommandResultCodec<TResult>(ResultCodec!, presenter) : ResultCodec!,
                 _frozenPayloadType!,
                 _frozenTypeInfo!));
 }
@@ -375,6 +395,7 @@ internal abstract class CommandBuilderNode
         Name = name;
     }
 
+    internal object? HumanPresenter { get; set; }
     internal string Name { get; }
 
     internal IReadOnlyList<string> Aliases => _aliases;
@@ -517,6 +538,17 @@ internal abstract class CommandBuilderNode
 
     private void ValidateOptions(string path, List<CommandCatalogIssue> issues)
     {
+        foreach (var entry in ParameterHelp)
+        {
+            CommandHelp help = entry.Value;
+            if (!Enum.IsDefined(help.PathKind) || (help.MustExist && help.PathKind == CommandPathKind.None) ||
+                (help.Minimum is { } min && !double.IsFinite(min)) || (help.Maximum is { } max && !double.IsFinite(max)) || help.Minimum > help.Maximum)
+                issues.Add(new CommandCatalogIssue("RCLI0021", path, "Invalid path or numeric validation metadata."));
+            foreach (string target in System.Linq.Enumerable.Concat(help.Requires, help.ConflictsWith))
+                if (target == entry.Key || !_options.Exists(option => option.Id == target) || !_options.Exists(option => option.Id == entry.Key))
+                    issues.Add(new CommandCatalogIssue("RCLI0022", path, "Option relationships must name distinct registered option IDs."));
+        }
+
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var spellings = new HashSet<string>(StringComparer.Ordinal);
         foreach (OptionDefinition option in _options)

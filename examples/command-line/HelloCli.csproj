@@ -8,6 +8,7 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="hello-world/**/*.cs;Tests/**/*.cs" />
     <ProjectReference Include="../../packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
     <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
     <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

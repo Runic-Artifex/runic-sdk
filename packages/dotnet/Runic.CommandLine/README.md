@@ -287,3 +287,57 @@ option. Direct callers can use
 When a global option reuses a command-local definition, its name, arity and alias
 set must match. Alias ordering is irrelevant; mismatches fail catalog validation
 with `RCLI0019`, rather than producing command-dependent parsing behavior.
+
+## Discovery, validation and custom results
+
+`Hidden = true` on `[Command]`, `[Option]` or `[Argument]` omits that entry from
+help listings and completion. Hidden commands/options still parse when explicitly
+specified; this is discoverability metadata, not access control. A command's
+`LongDescription` adds extended help below its summary. Close command and option
+typos receive suggestions from visible catalog spellings only. Suggestions never
+execute corrections and never include option values.
+
+`FileInfo` and `DirectoryInfo` parameters bind directly and infer file/directory
+completion metadata. Strings can opt in with `PathKind = CommandPathKind.File`
+or `.Directory`. `MustExist = true` checks the requested path kind before the
+handler runs. These are input checks, not security guarantees: the handler still
+opens the file and handles permissions, replacement and filesystem races.
+
+Use `Minimum`/`Maximum` for inclusive numeric input bounds. `Requires` and
+`ConflictsWith` refer to stable option IDs, not spellings: parameter `dryRun`
+gets ID `dry-run`. Presence includes captured environment fallback; an environment
+flag set to `false` is absent. Dependencies do not make an optional flag implicit.
+The builder uses the same `CommandHelp` properties. Range/path/relationship checks
+run during execution before binding/handler invocation; hosted classification
+remains free of filesystem reads. Invalid input returns a safe `RCLI2002` usage
+fault naming the parameter, without echoing its value.
+
+```csharp
+[Command("copy", Description = "Copy a file.")]
+internal static Task Copy(
+    [Option("--source", MustExist = true)] FileInfo source,
+    [Option("--destination", PathKind = CommandPathKind.File)] string destination,
+    [Option("--overwrite", ConflictsWith = ["dry-run"])] bool overwrite,
+    [Option("--dry-run")] bool dryRun,
+    CancellationToken cancellationToken) => /* application operation */ Task.CompletedTask;
+```
+
+Customize a generated command's human result without another handler or codec:
+
+```csharp
+var catalog = GeneratedCommandCatalog.Create(builder =>
+    builder.Present<Report>("report", (report, console, culture, token) =>
+        console.WriteOutAsync($"Processed {report.Count} items\n".AsMemory(), token)));
+```
+
+The command's declared result payload identity and source-generated JSON metadata
+remain unchanged. The delegate only runs in human mode. Register against a
+canonical command path; a mismatched result type is a catalog validation error.
+
+Completion scripts add filesystem hints for visible, non-sensitive path options
+and aliases, including directory-only hints. Bash and PowerShell also handle
+`--option=value`. Other candidate lists remain static across the catalog; this is
+not a context-aware CLI parser embedded in each shell. Install scripts explicitly
+in your shell's completion setup (Zsh requires `compinit`); Runic never modifies
+shell profiles. The shell's ordinary filename fallback serves positional paths.
+See the [complete examples](../../../examples/command-line/README.md).

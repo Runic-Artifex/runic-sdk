@@ -127,6 +127,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
 
         if (!TryResolveCommand(catalog, tokens, out ResolvedCommand? resolved, settings.TransportOutputOptionName) || resolved is null)
         {
+            int unknownIndex = Math.Min(LeadingCommandIndex(catalog, tokens, settings.TransportOutputOptionName), tokens.Length - 1);
             return Error(
                 UnknownCommandCode,
                 "unknown-command",
@@ -134,7 +135,8 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                 arguments: TrySplitOutput(tokens[0], settings.TransportOutputOptionName, out _)
                     ? [settings.TransportOutputOptionName]
                     : [SafeUnknownCommand(tokens[0])],
-                outputClassification: initialOutputClassification);
+                outputClassification: initialOutputClassification,
+                suggestion: CommandSuggestions.Commands(tokens[unknownIndex], catalog.Commands));
         }
 
         if (resolved.Command.TryGetOption(settings.TransportOutputOptionName, out _))
@@ -279,7 +281,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                             index,
                             resolved.Path,
                             [SafeUnknownOption(token)],
-                            CurrentOutputClassification());
+                            CurrentOutputClassification(), CommandSuggestions.Options(token, resolved.Command, settings.TransportOutputOptionName));
                 }
 
                 if (optionBindingIndexes.TryGetValue(option.Id, out int bindingIndex) &&
@@ -379,6 +381,10 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                     CurrentOutputClassification());
             }
         }
+
+        if (resolved.Command.IsGroup && positionalTokens.Count > 0)
+            return Error(UnknownCommandCode, "unknown-command", positionalTokens[0].Index, resolved.Path,
+                outputClassification: CurrentOutputClassification(), suggestion: CommandSuggestions.Commands(positionalTokens[0].Value, resolved.Command.Subcommands));
 
         ParseOutcome? argumentError = BindArguments(
             resolved.Command.Arguments,
@@ -575,13 +581,8 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         return false;
     }
 
-    private static bool TryResolveCommand(
-        CommandCatalog catalog,
-        string[] tokens,
-        out ResolvedCommand? resolved,
-        string transportOutputOptionName = "--output")
+    private static int LeadingCommandIndex(CommandCatalog catalog, string[] tokens, string transportOutputOptionName)
     {
-        resolved = null;
         int start = 0;
         while (start < tokens.Length)
         {
@@ -595,6 +596,17 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
             }
             break;
         }
+        return start;
+    }
+
+    private static bool TryResolveCommand(
+        CommandCatalog catalog,
+        string[] tokens,
+        out ResolvedCommand? resolved,
+        string transportOutputOptionName = "--output")
+    {
+        resolved = null;
+        int start = LeadingCommandIndex(catalog, tokens, transportOutputOptionName);
         CommandDescriptor? command = null;
         if (start >= tokens.Length || !catalog.TryGetCommand(tokens[start], out command) || command is null)
         {
@@ -928,12 +940,13 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         int tokenIndex,
         CommandPath? path = null,
         IReadOnlyList<string>? arguments = null,
-        CommandOutputClassification? outputClassification = null)
+        CommandOutputClassification? outputClassification = null,
+        string? suggestion = null)
     {
         CommandDiagnostic diagnostic = Diagnostic(
             code,
             kind,
-            MessageFor(kind) + (arguments is { Count: > 0 } && kind is not "unknown-command" ? " (" + arguments[0] + ")" : ""),
+            MessageFor(kind) + (arguments is { Count: > 0 } && kind is not "unknown-command" ? " (" + arguments[0] + ")" : "") + (suggestion is not null ? " Did you mean '" + suggestion + "'?" : ""),
             tokenIndex,
             path ?? CommandPath.Root,
             arguments);

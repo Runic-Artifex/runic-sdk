@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Linq;
 
 namespace Runic.CommandLine;
 
@@ -21,16 +22,17 @@ public static class CommandHelpFormatter
         if (path.Count > 0) text.Append(' ').Append(path);
         else if (catalog.Commands.Count > 0) text.Append(" <command>");
         if (command is not null)
-            foreach (CommandArgumentDescriptor argument in command.Arguments)
+            foreach (CommandArgumentDescriptor argument in command.Arguments.Where(argument => !argument.Help.Hidden))
                 text.Append(' ').Append(argument.Arity.Minimum == 0 ? '[' : '<').Append(argument.Help.ValueName ?? argument.Name)
                     .Append(argument.Arity.Maximum != 1 ? "..." : "").Append(argument.Arity.Minimum == 0 ? ']' : '>');
         text.Append(" [options]\n");
         if (command?.Help.Description is { } description) text.Append('\n').Append(description).Append('\n');
+        if (command?.Help.LongDescription is { } details) text.Append('\n').Append(details).Append('\n');
         var children = command?.Subcommands ?? catalog.Commands;
         if (children.Count > 0)
         {
             text.Append("\nCommands:\n");
-            foreach (CommandDescriptor child in children)
+            foreach (CommandDescriptor child in children.Where(child => !child.Help.Hidden))
                 text.Append("  ").Append(child.Name).Append(ReferenceEquals(child, catalog.DefaultCommand) ? " (default)" : "").Append(child.Aliases.Count > 0 ? " (" + string.Join(", ", child.Aliases) + ")" : "")
                     .Append("  ").Append(child.Help.Description ?? child.DescriptionKey).Append('\n');
         }
@@ -38,12 +40,12 @@ public static class CommandHelpFormatter
         if (command?.Arguments.Count > 0)
         {
             text.Append("\nArguments:\n");
-            foreach (CommandArgumentDescriptor argument in command.Arguments)
+            foreach (CommandArgumentDescriptor argument in command.Arguments.Where(argument => !argument.Help.Hidden))
                 Parameter(text, argument.Name, argument.Help, argument.DescriptionKey, argument.IsSensitive, argument.Arity.Minimum > 0);
         }
         text.Append("\nOptions:\n");
         if (command is not null)
-            foreach (CommandOptionDescriptor option in command.Options)
+            foreach (CommandOptionDescriptor option in command.Options.Where(option => !option.Help.Hidden))
                 Parameter(text, string.Join(", ", new[] { option.Name }.ConcatAliases(option.Aliases)) +
                     (option.Arity.Maximum != 0 ? " <" + (option.Help.ValueName ?? option.Id) + (option.Arity.Maximum != 1 ? "..." : "") + ">" : ""),
                     option.Help, option.DescriptionKey, option.IsSensitive, option.IsRequired);
@@ -63,6 +65,11 @@ public static class CommandHelpFormatter
         if (!sensitive && help.DefaultValue is { } value) text.Append(" [default: ").Append(value).Append(']');
         if (!sensitive && help.Choices.Count > 0) text.Append(" [choices: ").AppendJoin(", ", help.Choices).Append(']');
         if (help.EnvironmentVariable is { } environment) text.Append(" [env: ").Append(environment).Append(']');
+        if (help.PathKind != CommandPathKind.None) text.Append(help.MustExist ? " [existing " : " [").Append(help.PathKind.ToString().ToLowerInvariant()).Append(']');
+        if (help.Minimum is { } min) text.Append(" [min: ").Append(min.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+        if (help.Maximum is { } max) text.Append(" [max: ").Append(max.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+        if (help.Requires.Count > 0) text.Append(" [requires: ").AppendJoin(", ", help.Requires).Append(']');
+        if (help.ConflictsWith.Count > 0) text.Append(" [conflicts: ").AppendJoin(", ", help.ConflictsWith).Append(']');
         text.Append('\n');
     }
 

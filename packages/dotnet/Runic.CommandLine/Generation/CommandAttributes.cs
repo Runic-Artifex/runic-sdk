@@ -11,8 +11,12 @@ public sealed class CommandAttribute : Attribute
 
     /// <summary>Gets the canonical command name.</summary>
     public string Name { get; }
+    /// <summary>Gets or sets whether this entry is hidden from discovery.</summary>
+    public bool Hidden { get; set; }
     /// <summary>Gets or sets descriptive help.</summary>
     public string? Description { get; set; }
+    /// <summary>Gets or sets extended command help.</summary>
+    public string? LongDescription { get; set; }
     /// <summary>Gets or sets runnable examples.</summary>
     public string[] Examples { get; set; } = [];
 }
@@ -27,8 +31,18 @@ public sealed class DefaultCommandAttribute : Attribute
 [AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
 public sealed class ArgumentAttribute : Attribute
 {
+    /// <summary>Gets or sets whether this entry is hidden from discovery.</summary>
+    public bool Hidden { get; set; }
     /// <summary>Gets or sets descriptive help.</summary>
     public string? Description { get; set; }
+    /// <summary>Gets or sets path completion and validation metadata.</summary>
+    public CommandPathKind PathKind { get; set; }
+    /// <summary>Gets or sets whether a path must exist before the handler runs.</summary>
+    public bool MustExist { get; set; }
+    /// <summary>Gets or sets the inclusive numeric minimum; NaN leaves it unspecified.</summary>
+    public double Minimum { get; set; } = double.NaN;
+    /// <summary>Gets or sets the inclusive numeric maximum; NaN leaves it unspecified.</summary>
+    public double Maximum { get; set; } = double.NaN;
     /// <summary>Gets or sets the value placeholder.</summary>
     public string? ValueName { get; set; }
     /// <summary>Gets or sets the allowed values.</summary>
@@ -64,14 +78,29 @@ public sealed class OptionAttribute : Attribute
 {
     /// <summary>Gets or sets an environment fallback used only when the option is absent.</summary>
     public string? EnvironmentVariable { get; set; }
+    /// <summary>Gets or sets whether this entry is hidden from discovery.</summary>
+    public bool Hidden { get; set; }
     /// <summary>Gets or sets descriptive help.</summary>
     public string? Description { get; set; }
+    /// <summary>Gets or sets path completion and validation metadata.</summary>
+    public CommandPathKind PathKind { get; set; }
+    /// <summary>Gets or sets whether a path must exist before the handler runs.</summary>
+    public bool MustExist { get; set; }
+    /// <summary>Gets or sets the inclusive numeric minimum; NaN leaves it unspecified.</summary>
+    public double Minimum { get; set; } = double.NaN;
+    /// <summary>Gets or sets the inclusive numeric maximum; NaN leaves it unspecified.</summary>
+    public double Maximum { get; set; } = double.NaN;
     /// <summary>Gets or sets the value placeholder.</summary>
     public string? ValueName { get; set; }
     /// <summary>Gets or sets the allowed values.</summary>
     public string[] Choices { get; set; } = [];
     /// <summary>Gets or sets whether values are sensitive.</summary>
     public bool Sensitive { get; set; }
+
+    /// <summary>Gets or sets required companion option IDs.</summary>
+    public string[] Requires { get; set; } = [];
+    /// <summary>Gets or sets mutually exclusive option IDs.</summary>
+    public string[] ConflictsWith { get; set; } = [];
 
     /// <summary>Initializes an option with its canonical spelling and optional aliases.</summary>
     public OptionAttribute(string name, params string[] aliases)

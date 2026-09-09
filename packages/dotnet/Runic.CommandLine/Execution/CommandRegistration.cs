@@ -102,9 +102,10 @@ internal sealed class CommandRegistration<TOptions, THandler, TResult> : Command
                     context.CorrelationId));
 
                 cancellationToken.ThrowIfCancellationRequested();
-                CommandOutcome<TOptions> binding = await _binder
-                    .BindAsync(request.Invocation, cancellationToken)
-                    .ConfigureAwait(false);
+                CommandFault? inputFault = CommandInputValidation.Validate(request.Invocation);
+                CommandOutcome<TOptions> binding = inputFault is not null
+                    ? CommandOutcome.Failure<TOptions>(CommandExitCategory.Usage, inputFault)
+                    : await _binder.BindAsync(request.Invocation, cancellationToken).ConfigureAwait(false);
                 if (binding is null)
                 {
                     throw new InvalidOperationException("The command options binder returned null.");

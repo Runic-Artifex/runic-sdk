@@ -1,18 +1,12 @@
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
 using Runic.CommandLine.Spectre;
+using Runic.CommandLine.Examples;
 
 if (args is ["--hosted", .. var hostedArgs])
     return await HostedExample.RunAsync(hostedArgs, CancellationToken.None);
 
-return await new CommandApp(GeneratedCommandCatalog.Create())
-{
-    ScopeFactory = HostedExample.CreateCommandScopes(),
-    Name = "hello",
-    Version = "1.0.0",
-    HelpPresenter = new SpectreHelpPresenter(),
-    Console = new SpectreCommandConsole(),
-}.RunAsync(args);
+return await ExampleApplication.Create(new SpectreCommandConsole()).RunAsync(args);
 
 internal static class Commands
 {
@@ -20,15 +14,17 @@ internal static class Commands
     [DefaultCommand]
     internal static string Greet(
         [Argument(Description = "Person to greet.")] string name = "world",
-        [Option("--count", "-n", Description = "Number of greetings."), ValidateWith(typeof(CountValidator))] int count = 1) =>
+        [Option("--count", "-n", Description = "Number of greetings.", Minimum = 1, Maximum = 100)] int count = 1) =>
         string.Join('\n', Enumerable.Repeat($"Hello, {name}!", count));
 
     [Command("config show", Description = "Show the chosen environment.")]
     internal static string Config([Option("--environment", EnvironmentVariable = "HELLO_ENV", Choices = ["local", "production"])] string environment = "local") => environment;
 
     [Command("work", Description = "Demonstrate progress and cancellation.")]
-    internal static Task Work(ICommandConsole console, CancellationToken cancellationToken) =>
-        new SpectreCommandConsole(console).WithProgressAsync("Preparing greeting", async (progress, token) =>
+    internal static Task Work(ICommandConsole console, [FromServices] HostedExample.ApplicationServices services,
+        CancellationToken cancellationToken,
+        [Option("--verbose", "-v")] bool verbose = false) =>
+        new SpectreCommandConsole(console).WithProgressAsync(verbose ? services.Greeting + ": preparing greeting" : "Preparing greeting", async (progress, token) =>
         {
             for (int i = 1; i <= 4; i++)
             {
@@ -36,9 +32,4 @@ internal static class Commands
                 progress.Report(i * 25);
             }
         }, cancellationToken);
-}
-
-internal sealed class CountValidator : ICommandValueValidator<int>
-{
-    public static bool IsValid(int value) => value is > 0 and <= 100;
 }

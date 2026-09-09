@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/examples/">
     <Project Path="examples/command-line/HelloCli.csproj" />
+    <Project Path="examples/command-line/hello-world/HelloWorld.csproj" />
+    <Project Path="examples/command-line/Tests/HelloCli.ExampleTests.csproj" />
     <Project Path="examples/document-migration/Domain/DocumentDomain.csproj" />
     <Project Path="examples/document-migration/Before/DocumentMvvm.csproj" />
     <Project Path="examples/document-migration/After/DocumentApplication.csproj" />

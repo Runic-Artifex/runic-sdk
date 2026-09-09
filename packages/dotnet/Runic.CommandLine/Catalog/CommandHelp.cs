@@ -33,6 +33,35 @@ public sealed class CommandHelp
     public bool AcceptsNegativeNumbers { get; }
     /// <summary>Gets the environment variable used when an option is absent.</summary>
     public string? EnvironmentVariable { get; }
+    /// <summary>Gets whether this entry is omitted from discovery, help listings and suggestions. Explicit invocation remains supported.</summary>
+    public bool Hidden { get; init; }
+    /// <summary>Gets extended command help shown after the summary.</summary>
+    public string? LongDescription { get; init; }
+    /// <summary>Gets the path completion and validation kind.</summary>
+    public CommandPathKind PathKind { get; init; }
+    /// <summary>Gets whether a path must already exist. Checked during execution, not hosted classification.</summary>
+    public bool MustExist { get; init; }
+    /// <summary>Gets the inclusive numeric minimum.</summary>
+    public double? Minimum { get; init; }
+    /// <summary>Gets the inclusive numeric maximum.</summary>
+    public double? Maximum { get; init; }
+    private IReadOnlyList<string> _requires = Array.Empty<string>();
+    private IReadOnlyList<string> _conflictsWith = Array.Empty<string>();
+    /// <summary>Gets option IDs required when this option is supplied, including captured environment values.</summary>
+    public IReadOnlyList<string> Requires { get => _requires; init => _requires = CommandDescriptor.Freeze(value); }
+    /// <summary>Gets option IDs forbidden when this option is supplied.</summary>
+    public IReadOnlyList<string> ConflictsWith { get => _conflictsWith; init => _conflictsWith = CommandDescriptor.Freeze(value); }
     /// <summary>Gets empty metadata.</summary>
     public static CommandHelp Empty { get; } = new();
+}
+
+/// <summary>Describes filesystem completion and validation without selecting a UI toolkit.</summary>
+public enum CommandPathKind
+{
+    /// <summary>No filesystem semantics.</summary>
+    None = 0,
+    /// <summary>A file path.</summary>
+    File = 1,
+    /// <summary>A directory path.</summary>
+    Directory = 2,
 }

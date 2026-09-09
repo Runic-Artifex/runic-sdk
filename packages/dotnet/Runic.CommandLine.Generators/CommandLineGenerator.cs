@@ -148,6 +148,21 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
             return new ParameterModel(parameter, ParameterKind.Service, parameter.Name, null, ImmutableArray<string>.Empty, null, false);
         }
         if (count == 0) return new ParameterModel(parameter, ParameterKind.Context, parameter.Name, null, ImmutableArray<string>.Empty, null, false);
+        AttributeData valueMetadata = option ?? argument!;
+        double? minimum = valueMetadata.NamedArguments.FirstOrDefault(p => p.Key == "Minimum").Value.Value is double lower && !double.IsNaN(lower) ? lower : null;
+        double? maximum = valueMetadata.NamedArguments.FirstOrDefault(p => p.Key == "Maximum").Value.Value is double upper && !double.IsNaN(upper) ? upper : null;
+        bool invalidRange = (minimum is { } low && double.IsInfinity(low)) || (maximum is { } high && double.IsInfinity(high)) || minimum > maximum;
+        if ((minimum is not null || maximum is not null) && parameter.HasExplicitDefaultValue && parameter.ExplicitDefaultValue is not null)
+        {
+            if (!double.TryParse(System.Convert.ToString(parameter.ExplicitDefaultValue, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out double number) || double.IsNaN(number) || double.IsInfinity(number) || number < minimum || number > maximum)
+                invalidRange = true;
+        }
+        if (invalidRange)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, parameter.Locations.FirstOrDefault(), methodName, "numeric range/default", parameter.Name));
+            return null;
+        }
+
         if (option is not null && parameter.HasExplicitDefaultValue && GetRequired(option))
         {
             context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
@@ -259,7 +274,7 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
             }
 
             AttributeData commandAttribute = FindAttribute(command.Method, "Runic.CommandLine.CommandAttribute")!;
-            source.Append(".WithHelp(new global::Runic.CommandLine.CommandHelp(description: ").Append(NamedString(commandAttribute, "Description")).Append(", examples: ").Append(NamedArray(commandAttribute, "Examples")).Append("))");
+            source.Append(".WithHelp(new global::Runic.CommandLine.CommandHelp(description: ").Append(NamedString(commandAttribute, "Description")).Append(", examples: ").Append(NamedArray(commandAttribute, "Examples")).Append(") { Hidden = ").Append(NamedBool(commandAttribute, "Hidden")).Append(", LongDescription = ").Append(NamedString(commandAttribute, "LongDescription")).Append(" })");
             foreach (ParameterModel parameter in command.Parameters.Where(static p => p.Kind is ParameterKind.Option or ParameterKind.Argument))
             {
                 AttributeData metadata = FindAttribute(parameter.Symbol, parameter.Kind == ParameterKind.Option ? "Runic.CommandLine.OptionAttribute" : "Runic.CommandLine.ArgumentAttribute")!;
@@ -270,7 +285,11 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
                 if (choices == "[]" && scalar.TypeKind == TypeKind.Enum) choices = "[" + string.Join(", ", scalar.GetMembers().OfType<IFieldSymbol>().Where(static f => f.HasConstantValue).Select(static f => Literal(f.Name))) + "]";
                 source.Append(".ParameterHelp(").Append(Literal(parameter.Id)).Append(", new global::Runic.CommandLine.CommandHelp(description: ").Append(NamedString(metadata, "Description"))
                     .Append(", valueName: ").Append(NamedString(metadata, "ValueName")).Append(", defaultValue: ").Append(parameter.HasDefault && parameter.DefaultValue is not null ? Literal(Convert.ToString(parameter.DefaultValue, CultureInfo.InvariantCulture)!) : "null")
-                    .Append(", environmentVariable: ").Append(NamedString(metadata, "EnvironmentVariable")).Append(", choices: ").Append(choices).Append(", acceptsNegativeNumbers: ").Append(numeric ? "true" : "false").Append("))");
+                    .Append(", environmentVariable: ").Append(NamedString(metadata, "EnvironmentVariable")).Append(", choices: ").Append(choices).Append(", acceptsNegativeNumbers: ").Append(numeric ? "true" : "false").Append(") { Hidden = ").Append(NamedBool(metadata, "Hidden"))
+                    .Append(", PathKind = (global::Runic.CommandLine.CommandPathKind)").Append(PathKind(metadata, scalar))
+                    .Append(", MustExist = ").Append(NamedBool(metadata, "MustExist"))
+                    .Append(", Minimum = ").Append(NamedBound(metadata, "Minimum")).Append(", Maximum = ").Append(NamedBound(metadata, "Maximum"))
+                    .Append(", Requires = ").Append(NamedArray(metadata, "Requires")).Append(", ConflictsWith = ").Append(NamedArray(metadata, "ConflictsWith")).Append(" })");
             }
             source.Append(".BindWith(__Binder").Append(index).Append(".Instance).CreateHandlerWith(__Factory").Append(index).Append(".Instance).Produces(__Codec").Append(index).Append(".Instance))").AppendLine();
         }
@@ -320,6 +339,16 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
         source.Append("    private sealed class __Codec").Append(index).Append(" : global::Runic.CommandLine.ICommandResultCodec<").Append(result).AppendLine("> { public static __Codec" + index + " Instance { get; } = new(); public string PayloadType => " + Literal(command.PayloadType) + "; public global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<" + result + "> TypeInfo => (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<" + result + ">)new " + Type(command.JsonContext) + "().GetTypeInfo(typeof(" + result + "))!; public global::System.Threading.Tasks.ValueTask WriteHumanAsync(" + result + " value, global::Runic.CommandLine.ICommandConsole console, global::System.Globalization.CultureInfo culture, global::System.Threading.CancellationToken cancellationToken) => " + humanBody + "; }");
     }
 
+    private static string NamedBool(AttributeData metadata, string name) => metadata.NamedArguments.Any(p => p.Key == name && p.Value.Value is true) ? "true" : "false";
+    private static string NamedBound(AttributeData metadata, string name)
+    {
+        object? value = metadata.NamedArguments.FirstOrDefault(p => p.Key == name).Value.Value;
+        return value is double number && !double.IsNaN(number) ? double.IsPositiveInfinity(number) ? "double.PositiveInfinity" : double.IsNegativeInfinity(number) ? "double.NegativeInfinity" : number.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "D" : "null";
+    }
+    private static int PathKind(AttributeData metadata, ITypeSymbol scalar) =>
+        metadata.NamedArguments.FirstOrDefault(p => p.Key == "PathKind").Value.Value is int kind ? kind :
+        scalar.ToDisplayString().TrimEnd('?') == "System.IO.FileInfo" ? 1 : scalar.ToDisplayString().TrimEnd('?') == "System.IO.DirectoryInfo" ? 2 : 0;
+
     private static string ValueForInvocation(ParameterModel parameter) => parameter.Kind switch
     {
         ParameterKind.Argument or ParameterKind.Option => "options." + EscapeIdentifier(parameter.Symbol.Name),
@@ -361,6 +390,7 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
     {
         if (type is INamedTypeSymbol nullable && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T) return Conversion(nullable.TypeArguments[0], value, id);
         if (type.TypeKind == TypeKind.Enum) return "global::Runic.CommandLine.GeneratedCommandBinding.ParseEnum<" + Type(type) + ">(" + value + ", " + Literal(id) + ")";
+        if (type.ToDisplayString().TrimEnd('?') is "System.IO.FileInfo" or "System.IO.DirectoryInfo") return "new " + Type(type) + "(" + value + ")";
         return type.SpecialType switch
         {
         SpecialType.System_String => value,
@@ -391,7 +421,7 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
         return result is not null;
     }
 
-    private static bool IsValueType(ITypeSymbol type) => type.TypeKind == TypeKind.Enum || (type is INamedTypeSymbol nullable && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && IsValueType(nullable.TypeArguments[0])) || type.SpecialType is SpecialType.System_String or SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_Decimal or SpecialType.System_Double || type.ToDisplayString() == "System.Guid" || IsBoolean(type);
+    private static bool IsValueType(ITypeSymbol type) => type.ToDisplayString().TrimEnd('?') is "System.IO.FileInfo" or "System.IO.DirectoryInfo" || type.TypeKind == TypeKind.Enum || (type is INamedTypeSymbol nullable && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && IsValueType(nullable.TypeArguments[0])) || type.SpecialType is SpecialType.System_String or SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_Decimal or SpecialType.System_Double || type.ToDisplayString() == "System.Guid" || IsBoolean(type);
     private static bool IsBoolean(ITypeSymbol type) => type.SpecialType == SpecialType.System_Boolean;
     private static ITypeSymbol? ElementType(ITypeSymbol type) => type is IArrayTypeSymbol array ? array.ElementType : type is INamedTypeSymbol named && IsNamedDefinition(named, "System.Collections.Generic", "IReadOnlyList`1") ? named.TypeArguments[0] : null;
     private static bool IsList(ITypeSymbol type) => ElementType(type) is { } element && IsValueType(element);

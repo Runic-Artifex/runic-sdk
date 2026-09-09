@@ -5,10 +5,14 @@ using Spectre.Console;
 
 namespace Runic.CommandLine.Tests;
 
-internal static class ApplicationTests
+internal static partial class ApplicationTests
 {
     public static IReadOnlyList<TestCase> All { get; } =
     [
+        new("roadmap/hidden-items-stay-invocable", HiddenItems),
+        new("roadmap/suggestions-are-safe-and-scoped", Suggestions),
+        new("roadmap/paths-ranges-and-option-relationships", InputConstraints),
+        new("roadmap/custom-human-presenter-preserves-json", HumanPresenter),
         new("app/generated-completion-command-is-not-intercepted", OwnedCompletion),
         new("app/generated-string-default-and-prefix-output", DefaultAndPrefix),
         new("app/generated-negative-nullable-enum-and-list", TypedValues),
