@@ -35,7 +35,9 @@ var testClipboard = new TestClipboard();
 var testFiles = new TestFiles();
 services.AddRunicPlatform(_ => new PlatformProvider { Clipboard = testClipboard, OwnerAvailable = () => true });
 services.AddScoped<IFileDialogs>(_ => testFiles);
-services.AddSingleton(new CustomerService(store, TimeSpan.FromMilliseconds(30)));
+TaskCompletionSource? saveGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+services.AddSingleton(new CustomerService(store, TimeSpan.Zero,
+    token => saveGate?.Task.WaitAsync(token) ?? Task.CompletedTask));
 CustomersBridgeContract.ConfigureServices(services);
 await using var provider = services.BuildServiceProvider();
 await using var session = ApplicationBridgeSessionFactory.Create(provider);
@@ -76,16 +78,20 @@ var started = await Dispatch("SaveCustomer", Draft());
 Check(started.Kind == "receipt", $"Save admitted: {started.Payload}");
 Guid operation = started.Payload.GetProperty("operationId").GetGuid();
 var busy = await Dispatch("SaveCustomer", Draft());
-Check(busy.Kind == "error" && busy.Payload.GetProperty("code").GetString() == "Busy", "Concurrent session saves are rejected");
+Check(busy.Kind == "error" && busy.Payload.TryGetProperty("code", out var busyCode) && busyCode.GetString() == "Busy", $"Concurrent session saves are rejected: {busy.Payload}");
+saveGate.SetResult();
+saveGate = null;
 var saved = await Terminal(operation);
 Check(saved.GetProperty("save").GetProperty("status").GetString() == "saved", "Save reports success");
 Check(store.Read()[0] == originalStore.Read()[0], "MVVM and Runic produce identical persisted business state");
 
+saveGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
 started = await Dispatch("SaveCustomer", Draft("Cancelled edit", version: 2));
 operation = started.Payload.GetProperty("operationId").GetGuid();
 var cancellation = await session.DispatchAsync(Frame("cancelOperation", new { operationId = operation }));
 Check(cancellation.Payload.GetProperty("accepted").GetBoolean(), "Cancellation accepted");
 var cancelled = await Terminal(operation);
+saveGate = null;
 Check(cancelled.GetProperty("save").GetProperty("status").GetString() == "cancelled", "Cancellation reaches terminal state");
 Check(store.Read()[0].Name == "Alex Updated" && store.Read()[0].Version == 2, "Cancelled work is not committed");
 
