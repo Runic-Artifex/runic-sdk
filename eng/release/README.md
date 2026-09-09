@@ -24,6 +24,13 @@ The `policy` object has schema `runic.preview-policy/1`, with `profile`, `author
 
 Pack npm manifests with `gitHead` set to the full source commit and NuGet nuspec repository metadata with that same commit. Repository URLs must resolve to `https://github.com/Runic-Artifex/runic-sdk`. Internal package dependencies must pin this exact preview. Place only distributable `.nupkg` files in `artifacts/packages/nuget` and only `.tgz` files in `artifacts/packages/npm`. No additional files or directories are accepted inside `artifacts/packages`.
 
+Pack the final npm archives before the NuGet application templates. Their npm,
+pnpm and Bun locks are stamped in disposable staging files using those archive
+bytes; source locks remain development inputs. `bun eng/release/verify-template-locks.mjs`
+checks all twelve locks inside the completed NuGet package against the final npm
+archives. Candidate-feed acceptance may redirect npm download URLs, but must never
+repair shipped versions or integrity hashes.
+
 After a frozen commit has a successful full push CI run:
 
 ```sh

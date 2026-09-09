@@ -300,6 +300,8 @@ jobs:
       - uses: ./.github/actions/restore-build
       - name: Pack the verified build inputs
         run: bun eng/run.mjs pack-built
+      - name: Verify shipped template lock integrity
+        run: bun eng/release/verify-template-locks.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
       - uses: actions/upload-artifact@v7

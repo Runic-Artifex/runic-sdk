@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Regenerate maintained starter locks against this checkout's package candidates.
-// Never publishes. Candidate hashes are rebound by template acceptance tests.
+// Never publishes. Final archive hashes are stamped into staged locks at packaging.
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

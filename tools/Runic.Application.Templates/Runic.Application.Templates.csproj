@@ -14,6 +14,7 @@
     <NoDefaultExcludes>true</NoDefaultExcludes>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <TemplatePackContentRoot>$(MSBuildProjectDirectory)/obj/template-pack-content/</TemplatePackContentRoot>
+    <RunicTemplateNpmDirectory Condition="'$(RunicTemplateNpmDirectory)' == ''">$(MSBuildProjectDirectory)/../../artifacts/packages/npm</RunicTemplateNpmDirectory>
     <RunicAssetsTemplateVersion Condition="'$(RunicAssetsTemplateVersion)' == ''">$(RunicAssetsPackageVersion)</RunicAssetsTemplateVersion>
     <ApplicationBridgeTemplateVersion Condition="'$(ApplicationBridgeTemplateVersion)' == ''">0.2.0-preview.1</ApplicationBridgeTemplateVersion>
     <RunicAngularTemplateVersion Condition="'$(RunicAngularTemplateVersion)' == ''">0.2.0-preview.1</RunicAngularTemplateVersion>
@@ -61,7 +62,10 @@
                       Lines="$(_AngularStampedTemplateJson)"
                       Overwrite="true" />
 
+    <Exec Command="bun &quot;$(MSBuildProjectDirectory)/../../eng/release/stage-template-locks.mjs&quot; &quot;$(MSBuildProjectDirectory)/content&quot; &quot;$(RunicTemplateNpmDirectory)&quot; &quot;$(TemplatePackContentRoot)&quot;" />
+
     <ItemGroup>
+      <Content Remove="content/**/package-lock.json;content/**/pnpm-lock.yaml;content/**/bun.lock" />
       <Content Remove="content/react/.template.config/template.json" />
       <Content Remove="content/vue/.template.config/template.json" />
       <Content Remove="content/svelte/.template.config/template.json" />
@@ -71,6 +75,10 @@
       <Content Include="$(TemplatePackContentRoot)vue/.template.config/template.json" Pack="true" PackagePath="content/content/vue/.template.config/" />
       <Content Include="$(TemplatePackContentRoot)svelte/.template.config/template.json" Pack="true" PackagePath="content/content/svelte/.template.config/" />
       <Content Include="$(TemplatePackContentRoot)angular/.template.config/template.json" Pack="true" PackagePath="content/content/angular/.template.config/" />
+      <Content Include="$(TemplatePackContentRoot)react/Frontend/*" Pack="true" PackagePath="content/content/react/Frontend/" />
+      <Content Include="$(TemplatePackContentRoot)vue/Frontend/*" Pack="true" PackagePath="content/content/vue/Frontend/" />
+      <Content Include="$(TemplatePackContentRoot)svelte/Frontend/*" Pack="true" PackagePath="content/content/svelte/Frontend/" />
+      <Content Include="$(TemplatePackContentRoot)angular/Frontend/*" Pack="true" PackagePath="content/content/angular/Frontend/" />
     </ItemGroup>
   </Target>
   <Import Project="../../eng/build/application.targets" />

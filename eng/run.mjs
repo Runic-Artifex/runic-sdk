@@ -105,6 +105,10 @@ function pack(built = false) {
   const npm = resolve(root, "artifacts/packages/npm");
   mkdirSync(nuget, { recursive: true });
   mkdirSync(npm, { recursive: true });
+  // Template lock integrities must describe the final gitHead-stamped archives.
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  for (const p of orderedPackages())
+    packNpm(resolve(root, p.path), npm, revision);
   for (const p of workspace.nuget) {
     run("dotnet", [
       "pack",
@@ -117,9 +121,7 @@ function pack(built = false) {
       `-p:PackageVersion=${workspace.version}`,
     ]);
   }
-  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-  for (const p of orderedPackages())
-    packNpm(resolve(root, p.path), npm, revision);
+  run("bun", ["eng/release/verify-template-locks.mjs"]);
 }
 function affected() {
   const base = process.argv[3];
