@@ -1,9 +1,12 @@
 # Run the SDK workflow locally
 
+Local workflow execution is optional and useful for CI debugging. Use
+`bun run test <scope>` during normal development and let GitHub run full CI.
+
 `.github/workflows/ci.yml` owns verification. GitHub Actions and local `act` runs
 execute the same jobs, composite setup actions, commands and dependency graph.
 `eng/run.mjs` supplies build/package primitives; it does not maintain another
-verification pipeline. Root `test` and `verify` are aliases for `ci`.
+verification pipeline. Root `test` and `verify` select focused local checks; they do not launch containers.
 
 ## Prerequisites and commands
 

@@ -6,7 +6,7 @@ Run all workspace commands from the SDK root. Install the versions in `global.js
 ```sh
 bun run bootstrap
 bun run build
-bun run ci --job managed --matrix suite:application
+bun run test command-line
 ```
 
 Use `RunicSdk.Core.slnx` for libraries, tools and managed tests, or `RunicSdk.slnx`
@@ -43,21 +43,32 @@ they are excluded from the active workspace.
 
 ## Verify a change
 
-Run the relevant package tests during development. Before completing a structural
-or packaging change, run:
+Run the relevant tests and build/type checks for your change. The focused runner
+uses the current checkout and incremental builds, without containers:
 
 ```sh
-bun run ci --list         # Discover jobs in the GitHub workflow
-bun run ci                # Run that workflow locally on Linux
-bun run ci --job templates # Template checks with build/package prerequisites
+bun run test --list
+bun run test command-line
+bun run test web/application-bridge
+bun run test eng/release/contracts.test.mjs
+bun run test tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj
 ```
 
-Local CI needs Docker or rootless Podman; see [setup and reruns](eng/ci/README.md).
-The workflow installs npm 12.0.2 and pnpm 12.3.4 where compatibility tests need
-them. GitHub also exercises native window close handling and NativeAOT on Windows
-x64 and macOS Apple Silicon. `bun run affected <base-ref>` reports changed components and their
-consumers; it does not replace verification. Keep generated contracts and lockfiles
-current, and document platform checks that could not run locally.
+`bun run verify <scope>` is an alias for the same focused checks. Calling either
+without a scope lists the available checks and explicitly reports that no tests
+ran. Managed groups build/run their executable suites; single .NET test projects
+use `dotnet test` when appropriate. Package scripts own their web tests.
+
+GitHub runs full CI, including package/template consumers and native checks on
+Linux x64, Windows x64 and macOS arm64. Do not routinely duplicate the entire
+workflow locally. `bun run affected <base-ref>` helps select relevant components
+and consumers; include consumers when changing a shared contract.
+
+For workflow debugging, `bun run ci --job templates` or `bun run ci` can run the
+GitHub workflow locally with Docker/Podman. See [local CI](eng/ci/README.md).
+Keep generated contracts and locks current. Stop after relevant checks pass unless
+new changes or failures justify more verification. Manual native/UI checks and
+soaks are scoped to the behavior being changed, not every PR or release.
 
 Repository scripts, build tools and verification use Bun 1.4.2. Use `bun run --bun`
 when invoking package scripts so Node shebangs also run under Bun. Node is retained

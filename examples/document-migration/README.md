@@ -92,24 +92,11 @@ from the development environment; choose `GDK_BACKEND=x11` for the headless X11 
 The exporter replaces Runic project references with exact package references,
 removes checkout imports, and relies on packaged generators/build tooling.
 It refuses to overwrite an existing candidate directory. It does not install MAUI
-workloads, publish artifacts, or claim tests passed. Record the source commit,
-package hashes, OS/environment and scenario with every acceptance receipt.
+workloads, publish artifacts, or claim tests passed. Record failures with the package version, OS and reproduction steps.
 
-## Demo-preview evidence and deferred coverage
+## Manual checks
 
-Automated tests exercise the real bridge with simulated providers and portable
-before/after behavior. Package-only browser checks establish consumer, lifecycle,
-draft and unavailable-service behavior; they do not establish native selection.
-The demo preview still requires automated JIT and NativeAOT CI on Windows x64,
-Linux x64 and macOS arm64, plus manual checks on the available Windows VM and this
-Linux system. Record the actual Linux display-server profile and tested package
-hashes. Exercise open, edit-during-open, save-during-edit, dismissal,
-cancellation/retry, dirty-close, and process restart followed by reopening the saved
-file. Repeat affected checks against the frozen release bytes.
-
-Real macOS interaction and signed-sandbox checks, Wayland checks if unavailable on
-this Linux system, broader accessibility certification (NVDA, Orca, VoiceOver,
-IME, high contrast and display scaling), and independent developer pilots are
-explicitly deferred before v1. They are not claimed as passed and do not block this
-demo preview. Required automated, package-consumer, review, performance and soak
-checks remain governed by the current release policy.
+Use a brief native session when changing dialogs, clipboard, focus or window
+lifecycle in this example. Record affected scenarios and any bugs in the PR or
+issue. Routine releases do not require repeating the demos or collecting
+acceptance receipts. See the [current release policy](../../eng/release/README.md).

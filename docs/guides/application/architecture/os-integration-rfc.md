@@ -1,5 +1,8 @@
 # RFC: OS services for Runic applications
 
+> Historical first-preview scope. Its acceptance gates are retired for future
+> SDK releases; see the [current release policy](../../../../eng/release/README.md).
+
 Status: shipping extraction and preview integration in progress, 2026-09-08.
 Public contracts/runtime and provider source now live in the seven platform packages
 below; the [conformance harness](../../../../tests/dotnet/Runic.Platform.Prototype.Tests/README.md)

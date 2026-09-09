@@ -107,10 +107,10 @@ test('verification gate includes all jobs and candidates are independent of test
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });
 
-test('local aliases use the workflow and Linux selection leaves native OS coverage to GitHub', () => {
+test('local checks are focused and Linux workflow selection leaves native OS coverage to GitHub', () => {
   const scripts = JSON.parse(readFileSync(resolve(root, 'package.json'))).scripts;
-  assert.equal(scripts.test, 'bun run ci');
-  assert.equal(scripts.verify, 'bun run ci');
+  assert.equal(scripts.test, 'bun eng/test.mjs');
+  assert.equal(scripts.verify, 'bun eng/test.mjs');
   const args = actArguments(['--job', 'templates'], 'runner', '/artifacts', 1234, '/snapshot');
   assert.equal(args[args.indexOf('--workflows') + 1], '/snapshot/.github/workflows/ci.yml');
   assert.equal(args[args.indexOf('--directory') + 1], '/snapshot');

@@ -1,5 +1,8 @@
 # OS integration acceptance scenarios
 
+> Historical first-preview scope. Its acceptance gates are retired for future
+> SDK releases; see the [current release policy](release/README.md).
+
 These scenarios exercise the shared platform contracts, runtime, three OS providers
 and presentation-scoped application integration. They support the
 [API RFC](../docs/guides/application/architecture/os-integration-rfc.md) and define

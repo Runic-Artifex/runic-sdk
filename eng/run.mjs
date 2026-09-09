@@ -200,13 +200,16 @@ async function main() {
     case "affected":
       affected();
       break;
+    case "example:documents":
     case "example:customers":
       core();
       web("build");
       run("dotnet", [
         "run",
         "--project",
-        "examples/customer-migration/Host/CustomerDesktop.csproj",
+        command === "example:documents"
+          ? "examples/document-migration/Host/DocumentDesktop.csproj"
+          : "examples/customer-migration/Host/CustomerDesktop.csproj",
         "-c",
         configuration,
         "--",
@@ -244,7 +247,7 @@ async function main() {
       break;
     default:
       throw new Error(
-        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:customers, verify:customers, dev:docs, or dev:editor. Run bun run ci for workflow verification.",
+        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:customers, example:documents, verify:customers, dev:docs, or dev:editor. Run bun run ci for workflow verification.",
       );
   }
 }

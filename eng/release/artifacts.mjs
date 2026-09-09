@@ -10,7 +10,7 @@ export const REPOSITORY = 'Runic-Artifex/runic-sdk';
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export const json = path => JSON.parse(readFileSync(path, 'utf8'));
 export function authority(workspace) {
-  assert.equal(workspace.version, VERSION, 'Synchronize workspace version before sealing');
+  assert.equal(workspace.version, VERSION, 'Synchronize workspace package versions');
   for (const registry of ['nuget', 'npm']) {
     assert(workspaceAuthority[registry].length > 0, `Empty ${registry} authority`);
     assert.deepEqual(workspace[registry].map(p => p.name).sort(), workspaceAuthority[registry].map(p => p.name).sort(), `Inventory differs from current ${registry} authority`);

@@ -19,9 +19,10 @@ for the environment requirements and regression checks.
 nix develop             # Linux: use the complete pinned environment
 bun run bootstrap       # One frozen npm workspace install and .NET restore
 bun run build           # SDK, editor, current example, and documentation
-bun run ci --job managed --matrix suite:application # Actual CI jobs locally (Linux)
+bun run test command-line # Focused checks in the current checkout
 bun run example:counter # Small member-based bridge example
 bun run example:customers # Customer editor migrated away from CommunityToolkit MVVM
+bun run example:documents # Open, edit and save text documents
 bun run dev:docs        # Documentation development server
 bun run dev:editor      # Build and launch the translations editor
 ```
@@ -42,7 +43,7 @@ platform webview runtime described in [Desktop guidance](docs/guides/desktop/win
 | `tests` | Managed/native suites, package/template consumers and required fixtures |
 | `specs` | Shared protocols, schemas and conformance corpora |
 | `docs` | Documentation site and product/architecture guides |
-| `eng` | Shared build policy, verification, inventory and release/migration evidence |
+| `eng` | Shared build policy, focused checks, package inventory and release tooling |
 
 Source dependencies use explicit `ProjectReference` and `workspace:*` links.
 They never fall back to a published Runic package when a sibling project is missing.
@@ -69,7 +70,7 @@ defines the proposed CS-WebUI/Desktop parity work and size-tuning experiments.
 bun run pack             # Materialize the current workspace NuGet and npm inventory
 bun run verify-packages  # Install archives into isolated consumers outside this checkout
 bun run verify:templates # Packed React/Vue/Svelte/Angular apps with npm, pnpm, and Bun
-bun run ci               # Same GitHub workflow locally, including Linux native checks
+bun run ci               # Optional: debug the GitHub workflow locally
 bun run affected main    # Changed components plus their dependent components
 ```
 
@@ -88,17 +89,10 @@ NativeAOT and footprint checks target Linux x64, Windows x64 and macOS Apple Sil
 a separate platform test concern.
 
 The [0.2.0-preview.1 release guide](docs/guides/releases/0.2.0-preview.1.md)
-defines the intended 27 NuGet and 8 npm package preview, supported service boundaries,
-installation and compatibility commitments. The [human acceptance handoff](eng/preview-human-acceptance.md)
-tracks required Linux/Windows manual and registry evidence, plus follow-ups before
-v1 for real macOS, unavailable Wayland, broader accessibility and independent pilots.
-Publication waits for required demo-preview gates, including the exact frozen
-candidate's full CI on all three OS targets and current acceptance receipts.
+describes that release's installation and compatibility boundaries. For future
+releases, follow the [current release guide](eng/release/README.md): run the preview
+workflow on main to test, package, publish and create the GitHub release.
 
-Current release tooling in `eng/release` validates exact candidate artifacts and
-acceptance receipts. The root CI produces candidates; the separate gated publication
-workflow publishes only after the required checks pass.
-
-See [local CI tooling](eng/ci/README.md) for Docker/Podman setup, job selection,
-source snapshots, artifacts and reruns. `bun run test` and `bun run verify` are
-aliases for `bun run ci`; the workflow is the single verification authority.
+Use `bun run test <scope>` or `bun run verify <scope>` for focused local checks;
+`--list` shows the available scopes. Full CI runs on GitHub. The [local CI
+tooling](eng/ci/README.md) remains available for workflow debugging with Docker/Podman.
