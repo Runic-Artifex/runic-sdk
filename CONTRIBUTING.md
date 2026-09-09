@@ -84,3 +84,15 @@ installed npm/Node consumer. See the
 Vue template type checking remains an explicit npm/Node compatibility check
 because the pinned `vue-tsc` relies on Node behavior; the template's build is also
 verified with only Bun and .NET on PATH.
+
+## Linux embedded runtimes
+
+The locked flake includes GTK3/WebKitGTK 4.1 and GTK4/WebKitGTK 6.0, TLS/GIO
+modules, GStreamer codecs, session D-Bus tools, GTK/KDE portal backends and Xvfb.
+Use `direnv exec . pkg-config --modversion gtk4 webkitgtk-6.0` to inspect the
+selected native versions. The shell does not start portal daemons or select the
+application's GTK backend; the desktop session owns portal service configuration.
+
+Run isolated Xvfb checks with `GDK_BACKEND=x11` explicitly. An inherited
+`WAYLAND_DISPLAY` can otherwise make GTK choose the user's Wayland session despite
+Xvfb. Real Wayland and desktop chooser checks use the intended session separately.
