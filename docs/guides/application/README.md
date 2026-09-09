@@ -1,8 +1,8 @@
-# Runic Toolkit documentation
+# Runic Application documentation
 
-Runic Toolkit provides reusable .NET application hosting, desktop capability
+Runic Application provides reusable .NET application hosting, desktop capability
 contracts, application bridge infrastructure, frontend SDK infrastructure,
-framework adapters, and Toolkit-specific developer tools.
+framework adapters, and application developer tools.
 
 - [Architecture](architecture/README.md)
 - [Application Bridge direction](architecture/application-bridge.md)
@@ -17,5 +17,6 @@ framework adapters, and Toolkit-specific developer tools.
 
 Runnable applications live in
 [`examples`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples).
-Flow, Runic Translations, Command Line, and Assets each evolve in their own
-repository and own any Toolkit integration package they publish.
+Application, Desktop, Assets, Translations, and Command Line are developed in
+the SDK monorepo and publish as one coordinated package set. CS-WebUI is
+maintained independently; Flow is archived.

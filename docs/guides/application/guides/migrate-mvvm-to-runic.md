@@ -77,7 +77,9 @@ feature's viewmodel and CommunityToolkit reference from its new application path
 The reference keeps `Before/` only as comparative evidence: `After/` and `Host/`
 have no dependency on it.
 
-A MAUI migration follows the same responsibility split, but its Shell navigation,
+The completed [MAUI-derived document reference](../../../../examples/document-migration/README.md)
+uses the same responsibility split for open, save, cancellation, and dirty-close
+protection. It does not run a compiled MAUI host. A MAUI migration’s Shell navigation,
 permissions, storage, activation and mobile lifecycle need their own platform work.
 Do not infer mobile support from successful compilation of shared business code.
 

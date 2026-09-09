@@ -7,7 +7,7 @@
 - [`Runic.Application.Testing`](../../../../packages/dotnet/Runic.Application.Testing/README.md)
 - [`Runic.Application.Templates`](../../../../tools/Runic.Application.Templates/README.md)
 - [`Runic.Application.Bridge`](../../../../packages/dotnet/Runic.Application.Bridge/README.md)
-- [`Runic.Application.Bridge.Generators`](../../../../packages/dotnet/Runic.Application.Bridge.Generators/README.md)
+- [Bridge generator implementation](../../../../packages/dotnet/Runic.Application.Bridge.Generators/README.md) (bundled in `Runic.Application.Bridge`, not a separate package)
 
 ## Tools and web packages
 

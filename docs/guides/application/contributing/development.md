@@ -6,8 +6,8 @@ Work from the `runic-sdk` root in the pinned Nix environment:
 nix develop
 bun run bootstrap
 bun run build
-bun run ci --list
-bun run ci --job managed --matrix suite:application
+bun run test --list
+bun run test application
 ```
 
 `RunicSdk.Core.slnx` contains SDK libraries, tools and managed tests;
@@ -15,9 +15,10 @@ bun run ci --job managed --matrix suite:application
 use Debug by default; the CI workflow uses Release. First-party tools use Bun.
 Node and npm/pnpm are retained for explicit package-manager compatibility checks.
 
-## Run GitHub Actions locally
+## Debug GitHub Actions locally
 
-On Linux, enable Docker or the rootless Podman socket, then run the actual SDK
+GitHub owns full CI. Use this optional workflow runner to investigate CI-specific
+failures, rather than as a prerequisite for ordinary changes. On Linux, enable Docker or the rootless Podman socket, then run the actual SDK
 workflow in its Ubuntu runner container:
 
 ```sh

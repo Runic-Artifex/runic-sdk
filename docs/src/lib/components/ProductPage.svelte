@@ -9,7 +9,7 @@
   import type { Product } from '$lib/docs-data';
   import {
     catalogRows,
-    currentCandidate,
+    currentRelease,
     packageInstallCommand,
     versionLabel,
   } from '$lib/release-docs';
@@ -81,7 +81,9 @@
             : `Install ${product.shortName}`}</ActionLink
         >
       {:else}
-        <ActionLink href={product.source}>View source</ActionLink>
+        <ActionLink href={product.source}
+          >{isArchived ? 'Migration guidance' : 'View source'}</ActionLink
+        >
       {/if}
       {#if !isArchived && !isIndependent && !hasPublishedVersion && !isApplication}
         <ActionLink
@@ -159,14 +161,22 @@
         <p class="eyebrow">Availability</p>
         <h2>Release status</h2>
         <Notice
-          title={isIndependent
-            ? 'External WebUI binding'
-            : isApplication
-              ? 'Source application'
-              : `${currentCandidate.version} — unpublished`}
+          title={isArchived
+            ? 'Retired project'
+            : isIndependent
+              ? 'External WebUI binding'
+              : isApplication
+                ? 'Source application'
+                : `Runic SDK ${currentRelease.version}`}
         >
           <p>
-            {#if isIndependent}
+            {#if isArchived}
+              Runic Flow is no longer an active product. Start with
+              <a href={resolve('/products/[slug]', { slug: 'runic-toolkit' })}
+                >Runic Application</a
+              >
+              for current application composition and bridge APIs.
+            {:else if isIndependent}
               CS-WebUI is maintained separately. The SDK's
               Runic.Application.CsWebUi adapter shares application APIs while
               reporting native platform services unavailable.
@@ -174,15 +184,12 @@
               Standalone Translations Editor distributions are outside this SDK
               preview. Build and run the application from this repository.
             {:else}
-              These packages are part of the unpublished SDK candidate. A
-              package version in source does not establish registry
-              availability.
+              Install these packages from NuGet and npm. Keep Runic packages on
+              the same preview version.
             {/if}
           </p>
-          <a
-            class="text-link"
-            href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md"
-            >Preview installation and migration guide</a
+          <a class="text-link" href={currentRelease.url} rel="external"
+            >Release notes and migration guidance</a
           >
         </Notice>
       </section>
@@ -204,7 +211,7 @@
           </div>
           {#if !isApplication}
             <p>
-              Release-train version:
+              SDK version:
               <code>{availabilityVersion?.value ?? 'Version unassigned'}</code>
             </p>
           {/if}

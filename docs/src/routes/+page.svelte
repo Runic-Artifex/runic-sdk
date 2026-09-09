@@ -10,14 +10,14 @@
 </script>
 
 <svelte:head>
-  <title>Open-source .NET tools that work independently · Runic Artifex</title>
+  <title>Runic SDK for .NET and TypeScript applications · Runic Artifex</title>
   <meta
     name="description"
     content="Open-source .NET tools for desktop and browser UI, application hosting, assets, localization, and command-line applications."
   />
   <meta
     property="og:title"
-    content="Open-source .NET tools that work independently · Runic Artifex"
+    content="Runic SDK for .NET and TypeScript applications · Runic Artifex"
   />
   <meta
     property="og:description"
@@ -25,7 +25,7 @@
   />
   <meta
     name="twitter:title"
-    content="Open-source .NET tools that work independently · Runic Artifex"
+    content="Runic SDK for .NET and TypeScript applications · Runic Artifex"
   />
   <meta
     name="twitter:description"
@@ -36,7 +36,7 @@
 <div>
   <section class="hero shell">
     <div class="hero-copy">
-      <p class="eyebrow">Open-source tools for .NET applications</p>
+      <p class="eyebrow">Runic SDK</p>
       <h1>Build with only the tools you need.</h1>
       <p class="lede">
         Runic Artifex is a family of open-source .NET tools for desktop and
@@ -45,7 +45,8 @@
         integrations when needed.
       </p>
       <div class="actions">
-        <ActionLink href={resolve('/products')}>Explore the products</ActionLink
+        <ActionLink href={resolve('/getting-started')}
+          >Build your first app</ActionLink
         >
         <ActionLink href={resolve('/architecture')} variant="outline"
           >See how they fit together</ActionLink
@@ -57,12 +58,12 @@
       aria-label="Runic Artifex product relationship summary"
     >
       <div class="map-core">
-        <span>Application composition</span><strong>Runic Toolkit</strong>
+        <span>Application composition</span><strong>Runic Application</strong>
       </div>
       <div class="map-ring">
-        <span>Bridge</span><span>Assets</span><span>Translations</span><span
-          >Editor</span
-        ><span>CLI</span><span>CS-WebUI</span>
+        <span>Bridge</span><span>Desktop</span><span>Assets</span><span
+          >Translations</span
+        ><span>CLI</span>
       </div>
       <p>Products own their cores and official integrations.</p>
     </Card.Root>
@@ -96,11 +97,10 @@
       </div>
       <p>
         The Runic SDK monorepo contains the SDK libraries, tools, templates and
-        examples. Its preview package set releases together through NuGet and
-        npm. Standalone Translations Editor distributions are outside this
-        preview. Official integrations can connect a product to another product,
-        framework, or tool; the product cores do not depend back on those
-        integrations.
+        examples. Its package set releases together through NuGet and npm.
+        Translations Editor is available from source. Official integrations can
+        connect a product to another product, framework, or tool; the product
+        cores do not depend back on those integrations.
       </p>
       <p>
         Application Bridge owns its protocol and transport boundary. Frontend
@@ -117,15 +117,15 @@
   <section class="section shell launch-strip">
     <div>
       <Badge variant="outline" class="mb-4 border-primary/30 text-primary"
-        >Preview candidate</Badge
+        >Published SDK</Badge
       >
-      <h2>Track the release authority.</h2>
+      <h2>Install the published SDK.</h2>
       <p>
         {releaseSummary}
       </p>
     </div>
     <ActionLink href={resolve('/releases')} variant="outline"
-      >Check release status</ActionLink
+      >Read release notes</ActionLink
     >
   </section>
 </div>

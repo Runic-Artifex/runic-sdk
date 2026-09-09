@@ -1,65 +1,56 @@
 <script lang="ts">
   import ContentCard from '$lib/components/ContentCard.svelte';
-  import { currentCandidate, candidateCatalogRows } from '$lib/release-docs';
+  import {
+    currentRelease,
+    catalogRows,
+    packageInstallCommand,
+  } from '$lib/release-docs';
 </script>
 
 <svelte:head>
   <title>Package catalog · Runic Artifex</title>
   <meta
     name="description"
-    content="Browse Runic Artifex packages by registry, product, current version, and public availability."
+    content="Install published Runic SDK packages from NuGet and npm."
   />
-  <meta
-    property="og:title"
-    content="Find packages by product and registry · Runic Artifex"
-  />
+  <meta property="og:title" content="Package catalog · Runic Artifex" />
   <meta
     property="og:description"
-    content="Browse Runic Artifex packages by registry, product, current version, and public availability."
+    content="Install published Runic SDK packages from NuGet and npm."
   />
-  <meta
-    name="twitter:title"
-    content="Find packages by product and registry · Runic Artifex"
-  />
+  <meta name="twitter:title" content="Package catalog · Runic Artifex" />
   <meta
     name="twitter:description"
-    content="Browse Runic Artifex packages by registry, product, current version, and public availability."
+    content="Install published Runic SDK packages from NuGet and npm."
   />
 </svelte:head>
-
 <div>
   <section class="page-hero shell">
     <p class="eyebrow">Packages</p>
-    <h1>Find packages by product and registry.</h1>
+    <h1>Install the components you need.</h1>
     <p class="lede">
-      Browse canonical package identities and their authority-owned release
-      status. Package versions remain candidates until publication is verified.
+      These packages are available in Runic SDK {currentRelease.version}. Keep
+      Runic dependencies on the same preview version.
     </p>
   </section>
   <section class="content-grid shell">
-    <ContentCard
-      eyebrow="Current SDK preview"
-      title={`${currentCandidate.version} — unpublished`}
-      full
-    >
+    <ContentCard eyebrow="Public registries" title="NuGet and npm" full>
       <p>
-        The workspace selects these SDK packages. Upgrade exact preview versions
-        together, regenerate bridge outputs and retest. Standalone Editor
-        distributions are outside this preview.
+        No GitHub package feed or token is required. Run .NET package commands
+        from your project directory and npm commands from your frontend
+        directory. For local .NET tools, create a manifest with <code
+          >dotnet new tool-manifest</code
+        > if the project does not already have one.
       </p>
-      <ul>
-        {#each candidateCatalogRows as row (row.name)}
-          <li>
-            <code>{row.name}@{row.version}</code> — {row.registry}, unpublished
-            candidate
-          </li>
+      <div class="package-list">
+        {#each catalogRows as row (row.name)}
+          <section>
+            <h2><a href={row.registryUrl} rel="external">{row.name}</a></h2>
+            <p>{row.product} · {row.registry}</p>
+            <pre><code>{packageInstallCommand(row)}</code></pre>
+          </section>
         {/each}
-      </ul>
-      <a
-        class="text-link"
-        href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md"
-        >Preview installation and migration guide</a
-      >
+      </div>
     </ContentCard>
   </section>
 </div>

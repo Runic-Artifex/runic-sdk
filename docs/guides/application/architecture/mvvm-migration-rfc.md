@@ -1,7 +1,7 @@
 # RFC: Migrating application behavior out of MVVM
 
-Status: direction accepted; first reference implementation delivered. SDK forms,
-operation ergonomics, platform services, and automated migration remain proposals.
+Status: customer and MAUI-derived document reference implementations delivered.
+Reusable forms, operation ergonomics, and automated migration remain design work.
 
 ## Product promise
 
@@ -28,9 +28,11 @@ regression tests cover accepted, declined, malformed and mismatched replies.
 Managed tests compare saved business state and verify rejected edits, cancellation,
 conflicts, scoped state, and reconnect. Browser acceptance drives the actual C# host.
 
-The first target is desktop WPF migration. A MAUI-derived feature is the next
-validation target; portable viewmodel reuse does not establish MAUI platform or
-mobile-host compatibility. The initial coexistence model is separate applications
+The customer reference covers desktop WPF migration. The completed
+[document reference](../../../../examples/document-migration/README.md) extracts
+MAUI-derived document orchestration into shared services, Runic commands, and a
+React draft. Its MAUI page is a reference fixture, not a compiled MAUI host; this
+does not establish MAUI platform or mobile-host compatibility. The initial coexistence model is separate applications
 sharing libraries. Hosting Runic controls inside WPF/MAUI remains a separate decision.
 
 ## Responsibility boundaries
@@ -98,9 +100,9 @@ Publish a platform capability matrix and keep platform-specific APIs available.
 Do not force a lowest-common-denominator contract or advertise unsupported parity.
 These priorities complement the existing desktop delivery roadmap.
 
-## Acceptance for the next milestone
+## Evaluating future helpers
 
-Migrate a second production-style feature using the reference approach. Measure
+The customer and document features provide two concrete reference cases. Measure
 first-success time, handwritten coordination code, source diagnostics, startup,
 input latency and recovery behavior. Introduce reusable forms/operation APIs only
 where both implementations demonstrate the same need. Verify native close and file

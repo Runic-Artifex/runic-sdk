@@ -1,23 +1,17 @@
-# Quality gates
+# Verification
 
-The required pull-request check is the final `verify` job in
-`.github/workflows/ci.yml`. It succeeds only when all build, managed, web,
-engineering, framework-consumer, bridge, editor, documentation, customer,
-package-consumer, template, native and footprint jobs succeed.
+Run focused tests and relevant build/type checks for the behavior you changed.
+Use `bun run test --list` to find checks and `bun run test <scope>` to run them.
+`bun run verify <scope>` is an alias for the same focused runner. See the
+[contribution guide](../../../../CONTRIBUTING.md) for examples.
 
-Run the Linux portion of the same workflow locally with `bun run ci`. Use
-`--job <id>` to select a job and its prerequisites. The root `test` and `verify`
-commands are aliases for this runner, not separate verification scripts.
+GitHub owns the full CI workflow, including package and template consumers and
+native checks on Linux x64, Windows x64 and macOS arm64. For workflow debugging,
+`bun run ci --job <id>` runs a selected job and its prerequisites locally; see
+[local CI](../../../../eng/ci/README.md).
 
-Linux x64, Windows x64 and macOS Apple Silicon have native checks. A local Linux
-pass does not certify Windows or macOS behavior. See the
-[local CI guide](../../../../eng/ci/README.md) for setup and platform limits.
-
-Build outputs carry a source digest and toolchain identity; downstream jobs check
-both before reuse. Source and lockfile checks compare each job's final files with
-its starting files, allowing developers to verify uncommitted work. Candidate
-packages are tested outside the source workspace and are never published by CI.
-
-Independent jobs can be rerun after a transient failure without repeating unrelated
-successful suites. A GitHub rerun uses its original commit; pushed fixes need a new
-run. Acceptance receipts apply only to their recorded source and artifact hashes.
+Passing the relevant checks completes local verification unless new changes or
+failures justify more work. Scope manual native/UI checks to behavior automation
+cannot cover. Soaks and benchmarks are regression investigation tools, not routine
+publication prerequisites. The [release policy](../../../../eng/release/README.md)
+is authoritative; historical acceptance records do not add release gates.

@@ -1,29 +1,35 @@
 # Getting started
 
-From the SDK root, enter the pinned development environment and run the application
-CI suite locally (Linux with Docker or rootless Podman):
+Install the published application templates from NuGet.org. Choose an exact
+`<VERSION>` from the [published package catalog](https://docs.runic-artifex.eu/packages/)
+and use the matching NuGet and npm package set.
 
 ```bash
-nix develop
-bun run ci --job managed --matrix suite:application
+dotnet new install Runic.Application.Templates::<VERSION>
+dotnet new runic-app-svelte --name MyApp --packageManager pnpm
+cd MyApp
+dotnet tool restore
+dotnet runic doctor
+dotnet run
 ```
 
-For application code, configure the Runic Artifex GitHub NuGet and npm package
-feeds, then reference the smallest package set required by the chosen host and
-frontend. The initial prerelease workflow publishes version-matched Toolkit
-NuGet packages and the framework-neutral npm runtime:
+Install the .NET 10 SDK and a supported JavaScript package manager; the
+[template guide](../../../../tools/Runic.Application.Templates/README.md) describes
+runtime requirements and package-manager choices. `dotnet runic doctor` checks
+platform prerequisites. Replace `svelte` with `react`, `vue`, or `angular` to
+choose a frontend. Generated applications use public NuGet.org and npm packages;
+GitHub package-feed credentials are not required.
 
-- `Runic.Application.Bridge`
-- `Runic.Application.Bridge.Generators`
-- `Runic.Application.Desktop`
-- `Runic.Desktop`
-- `@runic-artifex/application-bridge`
-- `@runic-artifex/svelte` for Svelte 5 projects
-- `@runic-artifex/sveltekit` for native-hosted SvelteKit projects
-- `@runic-artifex/vite-plugin-runic` for Vite 8 development and DevTools
+The template supplies a version-matched tool manifest, frontend lockfile, bridge
+contract, generated dispatcher, and production asset build. Run
+`dotnet run -- --smoke-test` for a headless bridge check. Publishing embeds the
+built frontend, so deployed applications do not need a JavaScript toolchain.
 
-Use [`examples`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples)
-for runnable, package-only applications. React and Vue exercise the controller
-directly. Angular uses the official controller-owned DI and signal projection;
-Svelte uses the official Svelte-owned lifecycle projection
-while retaining the same single Application Bridge runtime.
+For an existing application, select only the packages your host and frontend
+need from the catalog. `Runic.Application.Bridge` bundles its source generator;
+do not add a separate `Runic.Application.Bridge.Generators` package reference.
+See [Application Bridge](../guides/application-bridge.md) and
+[framework integrations](../guides/frontend-frameworks.md).
+
+Explore [runnable examples](../../../../examples/README.md) for complete applications.
+To change the SDK itself, follow [source development](../contributing/development.md).

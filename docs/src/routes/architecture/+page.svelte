@@ -28,7 +28,7 @@
       Each Runic tool works on its own. Integrations connect products, external
       frameworks, or tooling without making a core depend back on them. Those
       integrations stay in separate packages within the Runic SDK monorepo. The
-      preview package set releases together.
+      SDK package set releases together.
     </p>
   </section>
   <section class="content-grid shell">
@@ -61,14 +61,14 @@
     </ContentCard>
     <ContentCard
       eyebrow="SDK release boundary"
-      title="One coordinated preview package set"
+      title="One coordinated SDK package set"
     >
       <p>
         The runic-sdk monorepo supplies SDK libraries, tools and templates
-        through NuGet and npm. Standalone Translations Editor distributions are
-        outside this preview. All package families share the SDK release
-        workflow. CS-WebUI remains an independent upstream compatibility
-        product; the SDK includes the Runic.Application.CsWebUi integration.
+        through NuGet and npm. Translations Editor is available from source. All
+        package families share the SDK release workflow. CS-WebUI remains an
+        independent upstream compatibility product; the SDK includes the
+        Runic.Application.CsWebUi integration.
       </p>
     </ContentCard>
     <ContentCard
@@ -90,8 +90,8 @@
         Runic Translations owns schemas, compiler behavior, runtime contracts,
         generators, and authoring APIs. Runic Translations Editor uses its
         packages and APIs as a downstream desktop application and owns
-        translator UX. Its standalone packaging and release are outside this SDK
-        preview.
+        translator UX. It is available from source; the SDK package catalog does
+        not include an Editor distribution.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Preview compatibility" title="Pin the exact versions">

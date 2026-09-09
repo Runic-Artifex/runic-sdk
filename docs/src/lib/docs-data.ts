@@ -52,6 +52,26 @@ function releaseMetadata(releaseProduct: ReleaseProductId): ReleaseMetadata {
 
 export const products: Product[] = [
   {
+    slug: 'runic-flow',
+    name: 'Runic Flow',
+    shortName: 'Flow',
+    icon: '/products/runic-toolkit.png',
+    kicker: 'Historical project',
+    summary: 'Historical Runic Flow information and migration guidance.',
+    description:
+      'Runic Flow is retired. New applications should use Runic Application and its Application Bridge for frontend commands and events.',
+    releaseProduct: null,
+    version: null,
+    versionState: 'unassigned',
+    availability: 'archived',
+    source:
+      'https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/preview-migration.md',
+    bestFor: ['Understanding an older Runic integration before migrating'],
+    boundaries: [
+      'No current SDK package or forwarding package is published under the Runic Flow name',
+    ],
+  },
+  {
     slug: 'runic-toolkit',
     name: 'Runic Application',
     shortName: 'Application',
@@ -121,7 +141,7 @@ export const products: Product[] = [
     ],
     boundaries: [
       'Tracks the WebUI 2.5 beta ABI and unmodified upstream native source',
-      'Is maintained and released independently of the Runic v1 compatibility set',
+      'Is maintained and released independently of the SDK release set',
       'Is not the implementation underneath Runic Desktop',
     ],
   },
@@ -171,14 +191,13 @@ export const products: Product[] = [
     ],
     boundaries: [
       'Independent of every UI framework',
-      'The general IDE language server is planned for 2.0, not 1.0',
       'The canonical protocol identifier is runic.translations/1',
       'The canonical .NET package family is Runic.Translations.*',
       'The desktop authoring experience and its releases belong to Runic Translations Editor',
     ],
     related: {
       href: '/products/runic-translations-editor/',
-      label: 'Explore Translations Editor',
+      label: 'Explore the source-only Editor',
     },
   },
   {
@@ -231,13 +250,13 @@ export const products: Product[] = [
     boundaries: [
       'No UI-framework dependency',
       'Parser-neutral abstractions are independently consumable',
-      'A future Toolkit adapter remains owned by Command Line',
     ],
   },
 ];
 
 export const activeProducts = products.filter(
-  (product) => product.availability !== 'archived',
+  (product) =>
+    product.availability !== 'archived' && product.kind !== 'application',
 );
 
 export function getProduct(slug: string) {

@@ -1,0 +1,216 @@
+{
+  "version": "0.2.0-preview.1",
+  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.2.0-preview.1",
+  "packages": [
+    {
+      "identity": "Runic.Assets",
+      "ecosystem": "nuget",
+      "product": "assets",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Assets.AspNetCore",
+      "ecosystem": "nuget",
+      "product": "assets",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Assets.Desktop",
+      "ecosystem": "nuget",
+      "product": "assets",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.CommandLine",
+      "ecosystem": "nuget",
+      "product": "command-line",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.CommandLine.Processes",
+      "ecosystem": "nuget",
+      "product": "command-line",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.CommandLine.Testing",
+      "ecosystem": "nuget",
+      "product": "command-line",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Desktop",
+      "ecosystem": "nuget",
+      "product": "desktop",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Bridge",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Desktop",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Hosting",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Testing",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Templates",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "dotnet-template"
+    },
+    {
+      "identity": "dotnet-runic",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "dotnet-tool"
+    },
+    {
+      "identity": "Runic.Translations",
+      "ecosystem": "nuget",
+      "product": "translations",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Translations.Build",
+      "ecosystem": "nuget",
+      "product": "translations",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Translations.Tooling",
+      "ecosystem": "nuget",
+      "product": "translations",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Translations.Templates",
+      "ecosystem": "nuget",
+      "product": "translations",
+      "installKind": "dotnet-template"
+    },
+    {
+      "identity": "dotnet-runic-translations",
+      "ecosystem": "nuget",
+      "product": "translations",
+      "installKind": "dotnet-tool"
+    },
+    {
+      "identity": "Runic.Application.CsWebUi",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Runtime",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Windows",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Linux",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.MacOS",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Platform",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Platform.Desktop",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "@runic-artifex/application-bridge",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/application-bridge-tooling",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/angular",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/desktop",
+      "ecosystem": "npm",
+      "product": "desktop",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/vite-plugin-runic-translations",
+      "ecosystem": "npm",
+      "product": "translations",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/vite-plugin-runic",
+      "ecosystem": "npm",
+      "product": "vite",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/svelte",
+      "ecosystem": "npm",
+      "product": "svelte",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/sveltekit",
+      "ecosystem": "npm",
+      "product": "svelte",
+      "installKind": "npm-package"
+    }
+  ]
+}

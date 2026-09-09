@@ -20,7 +20,11 @@ test('translation schemas have canonical owned identifiers', async () => {
   for (const name of names) {
     const source = await readFile(path.join(schemaRoot, name), 'utf8');
     const schema = JSON.parse(source);
-    assert.equal(source, await readFile(path.join(specificationRoot, name), 'utf8'), name);
+    assert.equal(
+      source,
+      await readFile(path.join(specificationRoot, name), 'utf8'),
+      name,
+    );
     assert.equal(schema.$id, canonicalRoot + name, name);
     assert.equal(
       schema.$schema,

@@ -4,28 +4,25 @@ export type ReleaseVersion = {
 };
 export type InstallKind =
   'nuget-package' | 'dotnet-template' | 'dotnet-tool' | 'npm-package';
-export type ReleaseData = {
-  readonly currentCandidate: {
-    readonly version: string;
-    readonly publication: 'unpublished';
-    readonly packages: readonly {
-      readonly identity: string;
-      readonly ecosystem: 'nuget' | 'npm';
-      readonly version: string;
-      readonly product: string;
-      readonly installKind: InstallKind;
-    }[];
-  };
+export type PublishedRelease = {
+  readonly version: string;
+  readonly url: string;
+  readonly packages: readonly {
+    readonly identity: string;
+    readonly ecosystem: string;
+    readonly product: string;
+    readonly installKind: string;
+  }[];
 };
 export function versionLabel(version: ReleaseVersion | undefined) {
   return version?.value ?? 'Version unassigned';
 }
 export function availabilityLabel(version: ReleaseVersion | undefined) {
-  return version?.state === 'published' ? 'Published' : 'Unpublished candidate';
+  return version?.state === 'published' ? 'Published' : 'Not published';
 }
 export function packageInstallCommand(entry: {
   readonly name: string;
-  readonly installKind?: InstallKind;
+  readonly installKind?: string;
   readonly version: ReleaseVersion | undefined;
 }) {
   if (entry.version?.state !== 'published' || !entry.version.value)
@@ -41,14 +38,18 @@ export function packageInstallCommand(entry: {
       return `npm install --save-exact ${entry.name}@${entry.version.value}`;
   }
 }
-export function createReleaseDocs(data: ReleaseData) {
+export function createReleaseDocs(release: PublishedRelease) {
   const version: ReleaseVersion = {
-    state: 'unpublished',
-    value: data.currentCandidate.version,
+    state: 'published',
+    value: release.version,
   };
-  const catalogRows = data.currentCandidate.packages.map((entry) => ({
+  const catalogRows = release.packages.map((entry) => ({
     name: entry.identity,
     registry: entry.ecosystem === 'nuget' ? 'NuGet' : 'npm',
+    registryUrl:
+      entry.ecosystem === 'nuget'
+        ? `https://www.nuget.org/packages/${entry.identity}/${release.version}`
+        : `https://www.npmjs.com/package/${entry.identity}/v/${release.version}`,
     productId: entry.product,
     product: entry.product,
     installKind: entry.installKind,
@@ -56,7 +57,6 @@ export function createReleaseDocs(data: ReleaseData) {
   }));
   return {
     catalogRows,
-    activeVersionsArePending: true,
     activeVersionForProduct: (product: string) =>
       catalogRows.some((row) => row.productId === product)
         ? version

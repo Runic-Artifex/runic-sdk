@@ -1,56 +1,84 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { promisify } from 'node:util';
 import test from 'node:test';
-import { releaseData } from '../src/lib/generated/release-data.ts';
+import publishedRelease from '../src/lib/published-release.json' with { type: 'json' };
 import {
   createReleaseDocs,
   packageInstallCommand,
 } from '../src/lib/release-docs-core.ts';
-const run = promisify(execFile);
 
-test('generated catalog matches every workspace package and remains unpublished', async () => {
-  await run(process.execPath, ['scripts/generate-release-data.mjs', '--check']);
-  const workspace = JSON.parse(
-    await readFile(
-      new URL('../../eng/workspace.json', import.meta.url),
-      'utf8',
+test('published catalog has unique installable packages and matching registry links', () => {
+  const rows = createReleaseDocs(publishedRelease).catalogRows;
+  assert.equal(new Set(rows.map((row) => row.name)).size, rows.length);
+  for (const row of rows) {
+    assert.ok(packageInstallCommand(row), row.name);
+    assert.ok(row.registryUrl.endsWith(`/${publishedRelease.version}`));
+  }
+  assert.ok(rows.some((row) => row.name === 'Runic.Application.Templates'));
+  assert.ok(
+    rows.some((row) => row.name === '@runic-artifex/application-bridge'),
+  );
+  assert.ok(
+    rows.every(
+      (row) =>
+        !row.name.includes('Editor') &&
+        row.name !== 'Runic.Application.Bridge.Generators',
     ),
   );
-  const candidate = releaseData.currentCandidate;
-  assert.equal(candidate.version, workspace.version);
-  assert.equal(candidate.publication, 'unpublished');
-  assert.match(candidate.workspaceSha256, /^[a-f0-9]{64}$/);
-  assert.deepEqual(
-    candidate.packages.map((p) => p.identity),
-    [...workspace.nuget, ...workspace.npm].map((p) => p.name),
-  );
-  assert.equal(
-    new Set(candidate.packages.map((p) => p.identity)).size,
-    candidate.packages.length,
-  );
-  assert(candidate.packages.some((p) => p.identity === 'Runic.Platform.MacOS'));
-  assert(
-    candidate.packages.some((p) => p.identity === 'Runic.Application.CsWebUi'),
-  );
-  assert(candidate.packages.every((p) => !p.identity.includes('Editor')));
-  for (const entry of createReleaseDocs(releaseData).catalogRows)
-    assert.equal(packageInstallCommand(entry), undefined);
 });
 
-test('public commands require published state, not just a candidate version', () => {
-  const entry = {
-    name: 'Runic.Application',
-    installKind: 'nuget-package',
-    version: { state: 'unpublished', value: '0.2.0-preview.1' },
-  };
-  assert.equal(packageInstallCommand(entry), undefined);
+test('commands cover libraries, templates, tools and npm packages', () => {
+  const version = { state: 'published', value: '1.2.3-preview.4' };
+  for (const [name, installKind, expected] of [
+    [
+      'Runic.Application',
+      'nuget-package',
+      'dotnet add package Runic.Application --version 1.2.3-preview.4',
+    ],
+    [
+      'Runic.Application.Templates',
+      'dotnet-template',
+      'dotnet new install Runic.Application.Templates::1.2.3-preview.4',
+    ],
+    [
+      'dotnet-runic',
+      'dotnet-tool',
+      'dotnet tool install --local dotnet-runic --version 1.2.3-preview.4',
+    ],
+    [
+      '@runic-artifex/desktop',
+      'npm-package',
+      'npm install --save-exact @runic-artifex/desktop@1.2.3-preview.4',
+    ],
+  ])
+    assert.equal(
+      packageInstallCommand({ name, installKind, version }),
+      expected,
+    );
   assert.equal(
     packageInstallCommand({
-      ...entry,
-      version: { ...entry.version, state: 'published' },
+      name: 'Future',
+      installKind: 'nuget-package',
+      version: { state: 'unpublished', value: '2.0.0' },
     }),
-    'dotnet add package Runic.Application --version 0.2.0-preview.1',
+    undefined,
   );
+});
+
+test('catalog uses its published snapshot even when development packages change', () => {
+  const release = {
+    version: '1.0.0',
+    url: 'https://example.com/release',
+    packages: [
+      {
+        identity: 'Released',
+        ecosystem: 'nuget',
+        product: 'application',
+        installKind: 'nuget-package',
+      },
+    ],
+  };
+  const docs = createReleaseDocs(release);
+  assert.equal(docs.catalogRows.length, 1);
+  assert.equal(docs.activeVersionForProduct('application').value, '1.0.0');
+  assert.equal(docs.activeVersionForProduct('future'), undefined);
 });

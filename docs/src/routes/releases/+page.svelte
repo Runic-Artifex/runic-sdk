@@ -1,64 +1,76 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import ContentCard from '$lib/components/ContentCard.svelte';
-  import { currentCandidate, releaseSummary } from '$lib/release-docs';
+  import { currentRelease, releaseSummary } from '$lib/release-docs';
 </script>
 
 <svelte:head>
-  <title>Release status · Runic Artifex</title>
+  <title>Releases · Runic Artifex</title>
   <meta
     name="description"
-    content="See the release train, compatibility lanes, package migration status, and explicitly assigned versions."
+    content="Published Runic SDK versions, release notes and upgrade guidance."
   />
-  <meta
-    property="og:title"
-    content="See assigned release versions · Runic Artifex"
-  />
+  <meta property="og:title" content="Releases · Runic Artifex" />
   <meta
     property="og:description"
-    content="See the release train, compatibility lanes, package migration status, and explicitly assigned versions."
+    content="Published Runic SDK versions, release notes and upgrade guidance."
   />
-  <meta
-    name="twitter:title"
-    content="See assigned release versions · Runic Artifex"
-  />
+  <meta name="twitter:title" content="Releases · Runic Artifex" />
   <meta
     name="twitter:description"
-    content="See the release train, compatibility lanes, package migration status, and explicitly assigned versions."
+    content="Published Runic SDK versions, release notes and upgrade guidance."
   />
 </svelte:head>
-
 <div>
   <section class="page-hero shell">
-    <p class="eyebrow">Release status</p>
-    <h1>See assigned release versions.</h1>
+    <p class="eyebrow">Releases</p>
+    <h1>Install a published SDK release.</h1>
     <p class="lede">{releaseSummary}</p>
   </section>
   <section class="content-grid shell">
     <ContentCard
-      eyebrow="Current SDK preview"
-      title={currentCandidate.version}
+      eyebrow="Published release"
+      title={currentRelease.version}
       full
     >
       <p>
-        SDK libraries, tools and templates come from the runic-sdk monorepo.
-        Standalone Translations Editor distributions are outside this preview.
+        SDK libraries, tools and templates are published together from the
+        runic-sdk repository. Copy exact installation commands from the <a
+          class="text-link"
+          href={resolve('/packages')}>package catalog</a
+        >, or
+        <a class="text-link" href={resolve('/getting-started')}
+          >create your first app</a
+        >.
       </p>
       <p>
-        Pin exact preview versions and upgrade the Runic package set together.
-        Regenerate bridge outputs and retest. Preview APIs and dependency
-        compatibility may change.
+        <a class="text-link" href={currentRelease.url} rel="external"
+          >Read the release notes</a
+        >
+        for changes, migration steps and known issues.
+        <a
+          class="text-link"
+          href="https://github.com/Runic-Artifex/runic-sdk/releases"
+          >All releases</a
+        > remain available on GitHub.
       </p>
+    </ContentCard>
+    <ContentCard eyebrow="Upgrading" title="Update the components you use">
       <p>
-        Required manual checks use the actual local Linux system and available
-        Windows VM. Other native human checks, accessibility certification and
-        independent pilots are deferred before v1; automated CI and
-        performance/soak gates remain required.
+        Keep Runic packages on the same preview version, restore dependencies
+        and rebuild to regenerate bridge code. Check the behavior your
+        application relies on. Preview APIs can change; release notes describe
+        any required migration.
       </p>
-      <a
-        class="text-link"
-        href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md"
-        >Read the {currentCandidate.version} installation and migration guide</a
-      >
+    </ContentCard>
+    <ContentCard eyebrow="Other projects" title="Separate availability">
+      <p>
+        The Translations Editor is a source application in the SDK repository;
+        standalone distributions are not included in this release. <a
+          href="https://github.com/Runic-Artifex/cs-webui/releases"
+          >CS-WebUI releases</a
+        > are maintained separately.
+      </p>
     </ContentCard>
   </section>
 </div>

@@ -1,214 +1,139 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import ContentCard from '$lib/components/ContentCard.svelte';
-  import * as Table from '$lib/components/ui/table';
   import {
-    currentCandidate,
     catalogRows,
-    choosePathRows,
     packageInstallCommand,
-    releaseSummary,
+    currentRelease,
   } from '$lib/release-docs';
-
-  const templatePackage = catalogRows.find(
+  const template = catalogRows.find(
     (entry) => entry.name === 'Runic.Application.Templates',
-  );
-  const templateInstallCommand = templatePackage
-    ? packageInstallCommand(templatePackage)
-    : undefined;
-  const quickStart = templateInstallCommand
-    ? `${templateInstallCommand}
-dotnet new runic-app-svelte --name MyApp --packageManager pnpm
+  )!;
+  const quickStart = `${packageInstallCommand(template)}
+dotnet new runic-app-svelte --name MyApp --packageManager bun
 cd MyApp
 dotnet tool restore
 dotnet runic doctor
-dotnet run`
-    : undefined;
+dotnet run`;
 </script>
 
 <svelte:head>
   <title>Getting started · Runic Artifex</title>
   <meta
     name="description"
-    content="Choose the focused Runic Artifex product that solves your next application problem."
+    content="Create a desktop app with C# application logic and your choice of web frontend."
   />
   <meta property="og:title" content="Getting started · Runic Artifex" />
   <meta
     property="og:description"
-    content="Choose the focused Runic Artifex product that solves your next application problem."
+    content="Create a desktop app with C# application logic and your choice of web frontend."
   />
   <meta name="twitter:title" content="Getting started · Runic Artifex" />
   <meta
     name="twitter:description"
-    content="Choose the focused Runic Artifex product that solves your next application problem."
+    content="Create a desktop app with C# application logic and your choice of web frontend."
   />
 </svelte:head>
 
 <div>
   <section class="page-hero shell">
     <p class="eyebrow">Getting started</p>
-    <h1>Start from what you’re building.</h1>
+    <h1>Build your first Runic app.</h1>
     <p class="lede">
-      Runic Artifex is not one mandatory stack. Start with one product, then add
-      an official integration when it needs to work with another product.
+      Use C# for application logic and React, Vue, Svelte or Angular for the
+      frontend. The template connects them and opens your app in a desktop
+      window.
     </p>
   </section>
   <section class="content-grid shell">
     <ContentCard
-      eyebrow="Current SDK preview"
-      title={`${currentCandidate.version} — unpublished`}
+      eyebrow="Before you start"
+      title="Install the prerequisites"
       full
     >
-      <p>{releaseSummary}</p>
-      <a
-        class="text-link"
-        href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/0.2.0-preview.1.md"
-        >Read the preview installation and migration guide</a
-      >
-    </ContentCard>
-    <ContentCard
-      eyebrow="Five-minute app"
-      title="Generate, check, and run"
-      full
-    >
-      {#if quickStart}
-        <pre><code>{quickStart}</code></pre>
-      {:else}
-        <p>
-          The copy-and-paste install command will appear here when the release
-          authority records a published template version. A source branch or
-          local candidate version is deliberately not presented as public.
-        </p>
-      {/if}
       <p>
-        The template accepts <code>npm</code>, <code>pnpm</code>, or
-        <code>bun</code> through <code>--packageManager</code> and commits
-        exactly one matching lock file. Vite and Angular CLI stay behind the
-        standard
-        <code>dev</code>, <code>build</code>, and <code>typecheck</code>
-        scripts. Vite+ can optionally run those scripts with <code>vp run</code> while
-        the underlying manager and lock remain authoritative. Publishing embeds the
-        static frontend, so the target machine does not need a JavaScript runtime
-        or package manager.
+        You need the <a href="https://dotnet.microsoft.com/download/dotnet/10.0"
+          >.NET 10 SDK</a
+        >
+        and <a href="https://bun.sh">Bun 1.4 or later</a> for the commands
+        below. You can also use Node.js 24 with npm or pnpm by changing
+        <code>--packageManager</code>.
       </p>
-    </ContentCard>
-    <ContentCard eyebrow="Getting started" title="What are you building?" full>
-      <ul>
-        <li>
-          Native presentation for a Runic application? Start with <a
-            href={resolve('/products/[slug]', { slug: 'runic-desktop' })}
-            >Runic Desktop</a
-          >.
-        </li>
-        <li>
-          Direct upstream WebUI compatibility from .NET? Choose <a
-            href={resolve('/products/[slug]', { slug: 'cs-webui' })}>CS-WebUI</a
-          >.
-        </li>
-        <li>
-          One application across desktop and browser? Start with <a
-            href={resolve('/products/[slug]', { slug: 'runic-toolkit' })}
-            >Runic Toolkit</a
-          >.
-        </li>
-        <li>
-          Portable static assets? Start with <a
-            href={resolve('/products/[slug]', { slug: 'runic-assets' })}
-            >Runic Assets</a
-          >.
-        </li>
-        <li>
-          Localization contracts and builds? Start with <a
-            href={resolve('/products/[slug]', { slug: 'runic-translations' })}
-            >Runic Translations</a
-          >.
-        </li>
-        <li>
-          A translator-facing workspace? Use <a
-            href={resolve('/products/[slug]', {
-              slug: 'runic-translations-editor',
-            })}>Runic Translations Editor</a
-          >.
-        </li>
-        <li>
-          A NativeAOT command-line application? Start with <a
-            href={resolve('/products/[slug]', { slug: 'runic-command-line' })}
-            >Runic Command Line</a
-          >.
-        </li>
-      </ul>
-    </ContentCard>
-    <div class="package-table">
-      <Table.Root>
-        <Table.Caption class="sr-only">
-          Authority-derived paths for starting a Runic Desktop application
-        </Table.Caption>
-        <Table.Header>
-          <Table.Row>
-            <Table.Head scope="col">Path</Table.Head>
-            <Table.Head scope="col">Maturity</Table.Head>
-            <Table.Head scope="col">Prerequisites</Table.Head>
-            <Table.Head scope="col">Exact candidate packages</Table.Head>
-            <Table.Head scope="col">Template or example</Table.Head>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {#each choosePathRows as row (row.path)}
-            <Table.Row>
-              <Table.Cell>{row.path}</Table.Cell>
-              <Table.Cell>{row.maturity}</Table.Cell>
-              <Table.Cell>{row.prerequisites}</Table.Cell>
-              <Table.Cell>
-                <span class="grid gap-1">
-                  {#each row.packages as packageIdentity (packageIdentity)}
-                    <code>{packageIdentity}</code>
-                  {/each}
-                </span>
-              </Table.Cell>
-              <Table.Cell>{row.start}</Table.Cell>
-            </Table.Row>
-          {/each}
-        </Table.Body>
-      </Table.Root>
-    </div>
-    <ContentCard eyebrow="Release status" title="Use recorded release versions">
       <p>
-        {releaseSummary} Use the package catalog to choose SDK components; do not
-        infer an install version from a repository branch or package name.
+        Run <code>dotnet runic doctor</code> in the generated project to see the native
+        dependencies for your operating system. On Linux, the embedded host uses GTK
+        3 and WebKitGTK 4.1; Windows uses WebView2 and macOS uses its system WebView.
       </p>
     </ContentCard>
     <ContentCard
-      eyebrow="Application preview"
-      title="Translations Editor: source application"
+      eyebrow={`SDK ${currentRelease.version}`}
+      title="Create and run"
+      full
     >
+      <pre><code>{quickStart}</code></pre>
       <p>
-        Standalone Runic Translations Editor distributions are outside this SDK
-        preview. Build the editor from source; no standalone download is
-        included.
+        This installs the published template from NuGet. Runic frontend packages
+        come from npm; no GitHub package feed or token is needed. The first run
+        restores dependencies and starts the frontend development server.
+      </p>
+      <p>
+        Replace <code>svelte</code> with <code>react</code>, <code>vue</code> or
+        <code>angular</code> to choose your frontend. Vue type checking also needs
+        Node.js when using Bun.
       </p>
     </ContentCard>
-    <ContentCard eyebrow="Composition" title="Connect only when needed">
+    <ContentCard eyebrow="Make it yours" title="Change the counter" full>
       <p>
-        Application Bridge keeps frontend adapters separate from the native
-        application contract. Renderer packages project the validated boundary
-        without making the application core depend on a UI framework.
+        The generated app contains a counter, a typed Application Bridge
+        contract and a C# command handler. Change the page in <code
+          >Frontend</code
+        >, then follow its increment command into the host. UI state stays in
+        your frontend; application commands run in C#.
       </p>
-    </ContentCard>
-    <ContentCard eyebrow="During preview" title="Keep versions explicit">
       <p>
-        Pin exact preview versions. Upgrade the Runic package set together,
-        regenerate bridge outputs and retest application behavior. Preview APIs
-        and dependency compatibility may change.
-      </p>
-    </ContentCard>
-    <ContentCard eyebrow="Continue" title="Go deeper" full>
-      <p>
-        <a class="text-link" href={resolve('/products')}>Compare products</a>,
-        read the
         <a class="text-link" href={resolve('/application-bridge')}
-          >Application Bridge guide</a
-        >, or check
-        <a class="text-link" href={resolve('/packages')}>package availability</a
+          >Learn how the bridge works</a
+        >, or explore the
+        <a
+          class="text-link"
+          href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/document-migration"
+          >document application example</a
+        > for editing, saving and native file dialogs.
+      </p>
+    </ContentCard>
+    <ContentCard eyebrow="Share your app" title="Publish for your platform">
+      <pre><code>dotnet publish -c Release</code></pre>
+      <p>
+        Publishing embeds the static frontend in the application. Users do not
+        need a JavaScript runtime or package manager. The target platform’s
+        native WebView dependencies still apply.
+      </p>
+    </ContentCard>
+    <ContentCard eyebrow="Existing project" title="Add one capability">
+      <p>
+        You can adopt Application, Desktop, Assets, Translations or Command Line
+        separately. Choose a package and copy its installation command from the <a
+          class="text-link"
+          href={resolve('/packages')}>package catalog</a
+        >.
+      </p>
+      <p>
+        The Application Bridge source generator is included with <code
+          >Runic.Application.Bridge</code
+        >; it does not need a separate package install.
+      </p>
+    </ContentCard>
+    <ContentCard eyebrow="Next steps" title="Keep building" full>
+      <p>
+        Read the <a class="text-link" href={currentRelease.url} rel="external"
+          >release notes</a
+        >
+        when upgrading preview versions. Keep Runic packages on the same version.
+        For SDK contributions, use the
+        <a
+          class="text-link"
+          href="https://github.com/Runic-Artifex/runic-sdk/blob/main/CONTRIBUTING.md"
+          >contributor guide</a
         >.
       </p>
     </ContentCard>

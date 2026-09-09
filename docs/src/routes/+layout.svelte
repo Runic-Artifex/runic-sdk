@@ -163,7 +163,7 @@
               >
               <Sheet.Description>
                 Explore Runic Artifex products, architecture, packages, and
-                release readiness.
+                release notes.
               </Sheet.Description>
             </Sheet.Header>
             <Separator />
@@ -220,7 +220,7 @@
           <span class="brand-mark" aria-hidden="true"></span>
           <span
             ><strong>Runic Artifex</strong><small
-              >The map of independent tools and explicit seams.</small
+              >SDK libraries, tools, and application guides.</small
             ></span
           >
         </a>
@@ -235,7 +235,7 @@
         <strong>Project</strong><a href="https://runic-artifex.eu/"
           >Runic Artifex website</a
         ><a href="https://github.com/Runic-Artifex">GitHub organization</a><a
-          href={resolve('/releases')}>Release status</a
+          href={resolve('/releases')}>Release notes</a
         ><a
           href="https://github.com/Runic-Artifex/.github/blob/main/SECURITY.md"
           >Security</a

@@ -43,7 +43,7 @@
 
 <div>
   <section class="page-hero shell">
-    <p class="eyebrow">Runic Toolkit</p>
+    <p class="eyebrow">Runic Application</p>
     <h1>
       Connect a frontend to .NET through one validated application contract.
     </h1>

@@ -39,7 +39,8 @@
     "verify:customers": "bun eng/run.mjs verify:customers",
     "verify:bridge": "bun eng/bridge/verify-artifacts.mjs",
     "ci": "bun eng/ci/local.mjs",
-    "dependencies:audit": "bun eng/dependencies/audit.mjs"
+    "dependencies:audit": "bun eng/dependencies/audit.mjs",
+    "docs:release": "bun docs/scripts/update-release.mjs"
   },
   "devDependencies": {
     "typescript": "6.0.3",

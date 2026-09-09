@@ -1,10 +1,10 @@
 # Migrating an application to the preview
 
-Use exact candidate versions and preserve domain logic before changing UI
+Use exact published versions from the [package catalog](https://docs.runic-artifex.eu/packages/) and preserve domain logic before changing UI
 orchestration. Start with the [customer migration reference](../../../examples/customer-migration/README.md)
-and its before/after feature. The MAUI-derived document demonstration is the second
-required reference; its final source and acceptance evidence must be linked from the
-release notes once integrated.
+and the completed [MAUI-derived document reference](../../../examples/document-migration/README.md).
+Both preserve shared domain behavior while replacing presentation orchestration;
+the document fixture does not establish a compiled MAUI or mobile host.
 
 1. Keep validation, import/export formats and document rules in ordinary C# domain
    code. Map UI actions to Runic commands and expose serializable state.
@@ -33,9 +33,9 @@ Test failures and unavailable capabilities are part of the UI contract. Successf
 clipboard writes must not be reported as canceled after they have taken effect.
 
 Upgrading between previews may require source changes and regenerated bridge code.
-Use the exact Effect release candidate documented in the release guide. Re-run both
-host and package-consumer acceptance after upgrading; development project references
-do not prove the published dependency graph works.
+Use the Effect dependency version declared by the selected published packages.
+Regenerate contracts and run the host and package-consumer checks affected by the
+upgrade; development project references alone do not exercise the published graph.
 
 ## Translation catalogs
 

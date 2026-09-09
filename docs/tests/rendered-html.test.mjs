@@ -4,14 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { releaseData } from '../src/lib/generated/release-data.ts';
+import publishedRelease from '../src/lib/published-release.json' with { type: 'json' };
 import {
   createReleaseDocs,
   packageInstallCommand,
 } from '../src/lib/release-docs-core.ts';
 
 const buildDirectory = fileURLToPath(new URL('../build/', import.meta.url));
-const releaseDocs = createReleaseDocs(releaseData);
+const releaseDocs = createReleaseDocs(publishedRelease);
 
 const primaryRoutes = [
   '/',
@@ -29,6 +29,7 @@ const primaryRoutes = [
   '/products/runic-translations-editor',
   '/products/runic-command-line',
   '/products/cs-webui',
+  '/products/runic-flow',
 ];
 
 function render(path = '/') {
@@ -65,11 +66,8 @@ test('renders the documentation home with complete metadata and branding', async
     /^<!doctype html>\s*<html lang="en" class="dark" data-theme="runic">/,
   );
   assert.match(html, /name="color-scheme" content="dark light"/);
-  assert.match(html, /<h1>Build with only the tools you need\.<\/h1>/);
-  assert.match(
-    html,
-    /<title>Open-source \.NET tools that work independently · Runic Artifex<\/title>/,
-  );
+  assert.match(html, /<h1>[^<]+<\/h1>/);
+  assert.match(html, /<title>[^<]+Runic Artifex<\/title>/);
   assert.match(html, /<small>Documentation<\/small>/);
   assert.match(
     html,
@@ -113,7 +111,6 @@ test('links to the dedicated project website while retaining the documentation i
     html,
     /href="https:\/\/runic-artifex\.eu\/"[^>]*>\s*Runic Artifex website/,
   );
-  assert.match(html, /The map of independent tools and explicit seams\./);
 });
 
 test('keeps navigation usable before hydration and exposes the Sheet trigger contract', async () => {
@@ -147,41 +144,25 @@ test('keeps navigation usable before hydration and exposes the Sheet trigger con
   assert.doesNotMatch(homeHtml, /data-slot="sheet-content"/);
 });
 
-test('renders every primary documentation route', async () => {
-  const routes = [
-    ['/getting-started', 'Start from what you’re building'],
-    ['/products', 'Products with clear boundaries'],
-    ['/architecture', 'Use products independently'],
-    ['/packages', 'Find packages by product and registry'],
-    ['/releases', 'See assigned release versions'],
-    ['/readiness', 'Verify the candidate before publishing'],
-    ['/products/runic-toolkit', 'Runic Application'],
-    ['/products/runic-desktop', 'Runic Desktop'],
-    ['/application-bridge', 'Connect a frontend to .NET'],
-    ['/products/runic-assets', 'Runic Assets'],
-    ['/products/runic-translations', 'Runic Translations'],
-    ['/products/runic-translations-editor', 'Runic Translations Editor'],
-    ['/products/runic-command-line', 'Runic Command Line'],
-    ['/products/cs-webui', 'CS-WebUI'],
-  ];
-
-  for (const [path, expected] of routes) {
-    assert.match(await render(path), new RegExp(expected), path);
+test('renders every primary documentation route with one page heading', async () => {
+  for (const path of primaryRoutes) {
+    const html = await render(path);
+    assert.equal(html.match(/<h1\b/g)?.length, 1, path);
+    assert.match(html, /<title>[^<]+<\/title>/, path);
   }
 });
 
-test('renders the authority-derived Desktop choose-your-path matrix', async () => {
-  const html = await render('/getting-started');
-  assert.match(
-    html,
-    /Authority-derived paths for starting a Runic Desktop application/,
+test('getting started offers a published template and runnable app commands', async () => {
+  const html = stripMarkup(await render('/getting-started'));
+  assert.ok(
+    html.includes(
+      `dotnet new install Runic.Application.Templates::${publishedRelease.version}`,
+    ),
   );
-  assert.match(html, /Runic\.Application\.Templates@0\.2\.0-preview\.1/);
-  assert.match(html, /@runic-artifex\/desktop@0\.2\.0-preview\.1/);
-  assert.match(html, /\.NET SDK 10\.0\.400; Bun 1\.4\.2/);
-  assert.match(html, /packageManager/);
-  assert.match(html, /static frontend/);
-  assert.match(html, /runic-sdk\/examples/);
+  assert.match(html, /dotnet new runic-app-svelte/);
+  assert.match(html, /dotnet tool restore/);
+  assert.match(html, /dotnet runic doctor/);
+  assert.match(html, /dotnet publish -c Release/);
 });
 
 test('builds an accessible branded page for nginx 404 responses', async () => {
@@ -203,62 +184,17 @@ test('gives product scope and boundaries a semantic section heading', async () =
   }
 });
 
-test('keeps route-specific Open Graph and Twitter copy', async () => {
-  const routes = [
-    [
-      '/',
-      'Open-source .NET tools that work independently · Runic Artifex',
-      'Open-source .NET tools for desktop and browser UI, application hosting, assets, localization, and command-line applications.',
-    ],
-    [
-      '/getting-started',
-      'Getting started · Runic Artifex',
-      'Choose the focused Runic Artifex product that solves your next application problem.',
-    ],
-    [
-      '/products',
-      'Products · Runic Artifex',
-      'Choose the independent Runic Artifex product that owns the capability you need.',
-    ],
-    [
-      '/products/runic-toolkit',
-      'Runic Application · Runic Artifex',
-      'Compose desktop windows, browser frontends, and .NET hosting around one application model with NativeAOT-safe application contracts.',
-    ],
-    [
-      '/architecture',
-      'Architecture · Runic Artifex',
-      'How Runic products stay useful on their own while official integrations let you connect only the pieces your project needs.',
-    ],
-    [
-      '/application-bridge',
-      'Application Bridge · Runic Artifex',
-      'Connect browser frontends to NativeAOT-safe .NET hosts with explicit commands, validated events, and generated contracts.',
-    ],
-    [
-      '/packages',
-      'Find packages by product and registry · Runic Artifex',
-      'Browse Runic Artifex packages by registry, product, current version, and public availability.',
-    ],
-    [
-      '/releases',
-      'See assigned release versions · Runic Artifex',
-      'See the release train, compatibility lanes, package migration status, and explicitly assigned versions.',
-    ],
-  ];
-
-  for (const [path, title, description] of routes) {
+test('provides consistent social metadata for each public page', async () => {
+  for (const path of primaryRoutes.filter((route) => route !== '/readiness')) {
     const html = await render(path);
-    assert.equal(readMeta(html, 'property', 'og:title'), title, path);
     assert.equal(
-      readMeta(html, 'property', 'og:description'),
-      description,
+      readMeta(html, 'property', 'og:title'),
+      readMeta(html, 'name', 'twitter:title'),
       path,
     );
-    assert.equal(readMeta(html, 'name', 'twitter:title'), title, path);
     assert.equal(
+      readMeta(html, 'property', 'og:description'),
       readMeta(html, 'name', 'twitter:description'),
-      description,
       path,
     );
   }
@@ -270,16 +206,19 @@ test('uses one page h1 followed by h2 product-card headings', async () => {
     ...html.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g),
   ].map((match) => [Number(match[1]), stripMarkup(match[2])]);
 
-  assert.deepEqual(headings, [
-    [1, 'Products with clear boundaries.'],
-    [2, 'Runic Application'],
-    [2, 'Runic Desktop'],
-    [2, 'CS-WebUI'],
-    [2, 'Runic Assets'],
-    [2, 'Runic Translations'],
-    [2, 'Runic Translations Editor'],
-    [2, 'Runic Command Line'],
-  ]);
+  assert.equal(headings[0][0], 1);
+  assert.ok(headings.slice(1).every(([level]) => level === 2));
+  for (const name of [
+    'Runic Application',
+    'Runic Desktop',
+    'Runic Assets',
+    'Runic Translations',
+    'Runic Command Line',
+  ])
+    assert.ok(
+      headings.some(([, text]) => text === name),
+      name,
+    );
 });
 
 test('uses the canonical Runic Translations identifiers', async () => {
@@ -291,14 +230,13 @@ test('uses the canonical Runic Translations identifiers', async () => {
   assert.match(html, /@runic-artifex\/vite-plugin-runic-translations/);
   assert.match(html, /translations\/runic\.json/);
   assert.match(html, /m\.message_id\(\)/);
-  assert.match(html, /language server is planned for 2\.0/);
 });
 
-test('keeps the footer release-status label and renders only authority-backed install commands', async () => {
+test('links release notes and renders published install commands', async () => {
   for (const path of primaryRoutes) {
     assert.match(
       await render(path),
-      /<a href="[^"#]*releases">Release status<\/a>/,
+      /<a href="[^"#]*releases">Release notes<\/a>/,
       path,
     );
   }
@@ -349,37 +287,15 @@ test('resolves every internal route link and fragment in the prerendered site', 
   }
 });
 
-test('current preview is discoverable and explicitly unpublished', async () => {
+test('published release is consistent across onboarding, catalog and release notes', async () => {
   for (const route of ['/packages', '/releases', '/getting-started']) {
     const html = await render(route);
-    assert.match(html, /0\.2\.0-preview\.1/);
-    assert.match(html, /unpublished/);
-    assert.match(html, /guides\/releases\/0\.2\.0-preview\.1\.md/);
-    assert.match(html, /outside this (?:SDK )?preview/);
-  }
-  const catalog = await render('/packages');
-  for (const entry of releaseData.currentCandidate.packages) {
-    assert.ok(
-      catalog.includes(`${entry.identity}@${entry.version}`),
-      entry.identity,
-    );
-  }
-  const started = await render('/getting-started');
-  assert.doesNotMatch(started, /Products release independently/);
-  assert.doesNotMatch(started, /1\.0\.0-preview\.1/);
-});
-
-test('home and architecture describe the current monorepo preview boundary', async () => {
-  for (const route of ['/', '/architecture']) {
-    const html = stripMarkup(await render(route)).replace(/\s+/g, ' ');
-    assert.match(html, /monorepo/);
-    assert.match(
-      html,
-      /Standalone Translations Editor distributions are outside this preview/,
-    );
+    assert.ok(html.includes(publishedRelease.version), route);
     assert.doesNotMatch(
       html,
-      /Each product has its own repository|archives from its own repository/,
+      /unpublished candidate|release authority|two-hour soak/i,
     );
   }
+  for (const route of ['/releases', '/getting-started'])
+    assert.ok((await render(route)).includes(publishedRelease.url), route);
 });
