@@ -3,6 +3,7 @@
     <Project Path="apps/translations-editor/Runic.Translations.Editor.csproj" />
   </Folder>
   <Folder Name="/examples/">
+    <Project Path="examples/command-line/HelloCli.csproj" />
     <Project Path="examples/document-migration/Domain/DocumentDomain.csproj" />
     <Project Path="examples/document-migration/Before/DocumentMvvm.csproj" />
     <Project Path="examples/document-migration/After/DocumentApplication.csproj" />
@@ -36,6 +37,7 @@
     <Project Path="packages/dotnet/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj" />
     <Project Path="packages/dotnet/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj" />
     <Project Path="packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" />
+    <Project Path="packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
     <Project Path="packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
     <Project Path="packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
     <Project Path="packages/dotnet/Runic.Translations.Authoring/Runic.Translations.Authoring.csproj" />

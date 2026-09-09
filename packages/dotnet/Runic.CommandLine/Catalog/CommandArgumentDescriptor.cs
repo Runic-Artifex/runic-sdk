@@ -8,14 +8,19 @@ public sealed class CommandArgumentDescriptor
         string name,
         CommandArity arity,
         bool isSensitive,
-        string? descriptionKey)
+        string? descriptionKey,
+        CommandHelp? help = null)
     {
         Id = id;
         Name = name;
         Arity = arity;
         IsSensitive = isSensitive;
         DescriptionKey = descriptionKey;
+        Help = help ?? CommandHelp.Empty;
     }
+
+    /// <summary>Gets shared help and value metadata.</summary>
+    public CommandHelp Help { get; }
 
     /// <summary>Gets the stable parameter identifier used by binders.</summary>
     public string Id { get; }

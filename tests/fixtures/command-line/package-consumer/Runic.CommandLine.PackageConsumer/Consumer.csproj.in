@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <PackageReference Include="Runic.CommandLine" Version="@PACKAGE_VERSION@" />
+    <PackageReference Include="Runic.CommandLine.Spectre" Version="@PACKAGE_VERSION@" />
     <PackageReference Include="Runic.CommandLine.Processes" Version="@PACKAGE_VERSION@" />
   </ItemGroup>
 </Project>

@@ -8,6 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
+using Runic.CommandLine.Hosting;
+using Runic.CommandLine.Spectre;
+using global::Spectre.Console;
 
 namespace Runic.CommandLine.AotSmoke;
 
@@ -28,9 +31,33 @@ internal static class Program
             new CommandOutputDispatcher()).ConfigureAwait(false);
         if (!execution.IsSuccess || execution.ExitCode != CommandExitCodes.Success || !ValidateEnvelope(console.StandardOutput)) return 20;
 
+        var human = new BufferCommandConsole();
+        var presenter = new Runic.CommandLine.Spectre.SpectreCommandConsole(human, width: 40, color: false);
+        await presenter.WriteAsync(new global::Spectre.Console.Table().AddColumn("Status").AddRow("Ready")).ConfigureAwait(false);
+        if (!human.StandardOutput.Contains("Ready", StringComparison.Ordinal)) return 30;
+        await presenter.WithProgressAsync("Checking", static (_, _) => Task.CompletedTask).ConfigureAwait(false);
+        var runnerOutput = new BufferCommandConsole();
+        if (await new CommandApp(catalog) { Console = runnerOutput, HandleCancelKeyPress = false, ParseSettings = ParseSettings.Default }.RunAsync(["ping", "--output=json"]).ConfigureAwait(false) != 0) return 40;
+        using (JsonDocument ping = JsonDocument.Parse(runnerOutput.StandardOutput))
+            if (ping.RootElement.GetProperty("payload").GetString() != "pong") return 50;
+        var hosted = new CommandLineHostingAdapter(catalog, new CommandExecutor(EmptyScopeFactory.Instance))
+        {
+            Presentation = new() { Name = "smoke", HelpPresenter = new SpectreHelpPresenter() },
+        };
+        var hostedHelp = new BufferCommandConsole();
+        if (await hosted.PresentAsync(hosted.Classify(new(["help", "ping"])), new SpectreCommandConsole(hostedHelp),
+            CultureInfo.InvariantCulture, "hosted-help").ConfigureAwait(false) != 0 || !hostedHelp.StandardOutput.Contains("ping", StringComparison.Ordinal)) return 60;
+        var hostedOutput = new BufferCommandConsole();
+        if (!(await hosted.ExecuteAsync(new(hosted.Classify(new(["ping", "--output=json"])), hostedOutput,
+            CultureInfo.InvariantCulture, "hosted-ping", new CommandOutputDispatcher())).ConfigureAwait(false)).IsSuccess) return 70;
+        using (JsonDocument ping = JsonDocument.Parse(hostedOutput.StandardOutput))
+            if (ping.RootElement.GetProperty("payload").GetString() != "pong") return 80;
         Console.Out.Write(console.StandardOutput);
         return 0;
     }
+
+    [Command("ping")]
+    internal static string Ping() => "pong";
 
     [Command("smoke")]
     [DefaultCommand]

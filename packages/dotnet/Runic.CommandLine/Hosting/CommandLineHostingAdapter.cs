@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Runic.CommandLine;
@@ -30,6 +31,9 @@ public sealed class CommandLineHostingAdapter : IHostedCommandLineAdapter
         _syntaxAdapter = syntaxAdapter ?? PortableCommandSyntaxAdapter.Instance;
     }
 
+    /// <summary>Gets framework presentation shared with the standalone runner.</summary>
+    public CommandPresentation Presentation { get; init; } = new();
+
     /// <inheritdoc />
     public HostedCommandLineDecision Classify(HostedCommandLineLaunchInput input)
     {
@@ -45,15 +49,21 @@ public sealed class CommandLineHostingAdapter : IHostedCommandLineAdapter
                 owner: _decisionOwner);
         }
 
+        if (input.Arguments.Count == 2 && input.Arguments[0] == "completion" && !_catalog.TryGetCommand("completion", out _))
+            return new HostedCommandLineDecision(HostedCommandLineDecisionKind.Completion, input, owner: _decisionOwner);
+
         ParseOutcome outcome = _syntaxAdapter.Parse(
             _catalog,
             input.Arguments.ToArray(),
             new ParseSettings(
                 input.OutputEnvironmentValue,
                 input.DefaultOutputMode,
-                input.TransportOutputOptionName));
+                input.TransportOutputOptionName)
+            {
+                GetEnvironmentVariable = name => input.EnvironmentVariables.TryGetValue(name, out string? value) ? value : null,
+            });
 
-        return outcome.Kind switch
+        HostedCommandLineDecision decision = outcome.Kind switch
         {
             ParseOutcomeKind.Invocation when outcome.Invocation is not null =>
                 new HostedCommandLineDecision(
@@ -72,7 +82,7 @@ public sealed class CommandLineHostingAdapter : IHostedCommandLineAdapter
                     owner: _decisionOwner,
                     path: outcome.HelpRequest.Path,
                     diagnostics: outcome.Diagnostics,
-                    outputClassification: outcome.OutputClassification),
+                    outputClassification: outcome.OutputClassification) { ParseOutcome = outcome },
             ParseOutcomeKind.Version =>
                 new HostedCommandLineDecision(
                     HostedCommandLineDecisionKind.Version,
@@ -80,7 +90,7 @@ public sealed class CommandLineHostingAdapter : IHostedCommandLineAdapter
                     invocation: null,
                     owner: _decisionOwner,
                     diagnostics: outcome.Diagnostics,
-                    outputClassification: outcome.OutputClassification),
+                    outputClassification: outcome.OutputClassification) { ParseOutcome = outcome },
             ParseOutcomeKind.Error =>
                 new HostedCommandLineDecision(
                     HostedCommandLineDecisionKind.Invalid,
@@ -88,9 +98,27 @@ public sealed class CommandLineHostingAdapter : IHostedCommandLineAdapter
                     invocation: null,
                     owner: _decisionOwner,
                     diagnostics: outcome.Diagnostics,
-                    outputClassification: outcome.OutputClassification),
+                    outputClassification: outcome.OutputClassification) { ParseOutcome = outcome },
             _ => throw new InvalidOperationException("The command syntax adapter returned an incomplete outcome."),
         };
+        return decision;
+    }
+
+    /// <summary>Presents help, version, usage errors or completion without creating a scope or owning host cancellation.</summary>
+    public ValueTask<int> PresentAsync(HostedCommandLineDecision decision, ICommandConsole console,
+        CultureInfo culture, string correlationId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+        ArgumentNullException.ThrowIfNull(console);
+        ArgumentNullException.ThrowIfNull(culture);
+        ArgumentException.ThrowIfNullOrWhiteSpace(correlationId);
+        decision.ValidateOwner(_decisionOwner);
+        if (decision.Kind == HostedCommandLineDecisionKind.Completion)
+            return Presentation.GuardAsync(() => Presentation.WriteCompletionAsync(_catalog, decision.Arguments[1], decision.LaunchInput.TransportOutputOptionName, console, cancellationToken), cancellationToken);
+        if (decision.Kind is not (HostedCommandLineDecisionKind.Help or HostedCommandLineDecisionKind.Version or HostedCommandLineDecisionKind.Invalid) || decision.ParseOutcome is null)
+            throw new InvalidOperationException("Presentation requires a framework decision created by this adapter.");
+        return Presentation.GuardAsync(() => Presentation.WriteAsync(_catalog, decision.ParseOutcome, decision.LaunchInput.TransportOutputOptionName,
+            console, culture, correlationId, cancellationToken), cancellationToken);
     }
 
     /// <inheritdoc />
@@ -104,7 +132,7 @@ public sealed class CommandLineHostingAdapter : IHostedCommandLineAdapter
             invocation,
             input.Console,
             input.Culture,
-            input.CorrelationId);
+            input.CorrelationId) { ExceptionObserver = input.ExceptionObserver };
         CommandExecutionResult result = await _executor.ExecuteAsync(
             request,
             input.OutcomeSink,

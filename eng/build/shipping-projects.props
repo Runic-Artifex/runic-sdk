@@ -6,6 +6,7 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" PackageId="Runic.Assets.Desktop" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" PackageId="Runic.CommandLine" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj" PackageId="Runic.CommandLine.Processes" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" PackageId="Runic.CommandLine.Spectre" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" PackageId="Runic.CommandLine.Testing" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" PackageId="Runic.Desktop" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application/Runic.Application.csproj" PackageId="Runic.Application" />

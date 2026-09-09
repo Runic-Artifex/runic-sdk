@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Runic.CommandLine;
 
@@ -41,7 +42,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         ResolvedCommand? preScanResolved = null;
         if (tokens.Length > 0)
         {
-            _ = TryResolveCommand(catalog, tokens, out preScanResolved);
+            _ = TryResolveCommand(catalog, tokens, out preScanResolved, settings.TransportOutputOptionName);
         }
 
         TransportOutputScan transportOutput = ScanTransportOutput(
@@ -65,12 +66,42 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                 outputClassification: initialOutputClassification);
         }
 
-        if (tokens.Length == 0)
+        if (tokens.Length == 0 && catalog.DefaultCommand is null)
         {
             return Error(UnknownCommandCode, "unknown-command", 0, outputClassification: initialOutputClassification);
         }
 
+        var helpTokens = new List<string>();
+        foreach (string token in tokens) helpTokens.Add(token);
+        for (int i = 0; i < helpTokens.Count; i++)
+        {
+            if (helpTokens[i] == "--") break;
+            if (TryGetGlobalOption(catalog, helpTokens[i], out CommandOptionDescriptor? globalHelp, out string? globalHelpValue))
+            {
+                helpTokens.RemoveAt(i);
+                if (globalHelp!.Arity.Maximum != 0 && globalHelpValue is null && i < helpTokens.Count) helpTokens.RemoveAt(i);
+                i--;
+                continue;
+            }
+            if (TrySplitOutput(helpTokens[i], settings.TransportOutputOptionName, out string? inline))
+            {
+                helpTokens.RemoveAt(i);
+                if (inline is null && i < helpTokens.Count) helpTokens.RemoveAt(i);
+                i--;
+            }
+        }
+        if (helpTokens.Count > 1 && helpTokens[0] == "help")
+        {
+            string[] pathTokens = helpTokens.GetRange(1, helpTokens.Count - 1).ToArray();
+            if (catalog.TryResolve(pathTokens, out CommandDescriptor? helpCommand, out int consumed) && consumed == pathTokens.Length)
+            {
+                TryResolveCommand(catalog, pathTokens, out ResolvedCommand? helpResolved);
+                return CompleteSpecial(initialOutputClassification, classification => ParseOutcome.FromHelp(new HelpRequest(helpResolved!.Path), classification));
+            }
+        }
+
         if (TryFindRootSpecial(
+            catalog,
             tokens,
             settings.TransportOutputOptionName,
             out RootSpecial rootSpecial,
@@ -94,7 +125,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                 : CompleteSpecial(initialOutputClassification, ParseOutcome.FromVersion);
         }
 
-        if (!TryResolveCommand(catalog, tokens, out ResolvedCommand? resolved) || resolved is null)
+        if (!TryResolveCommand(catalog, tokens, out ResolvedCommand? resolved, settings.TransportOutputOptionName) || resolved is null)
         {
             return Error(
                 UnknownCommandCode,
@@ -116,7 +147,10 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                 outputClassification: initialOutputClassification);
         }
 
-        return ParseCommand(resolved, tokens, settings, initialOutputClassification);
+        ParseOutcome parsed = ParseCommand(resolved, tokens, settings, initialOutputClassification);
+        return resolved.Command.IsGroup && parsed.Kind == ParseOutcomeKind.Invocation
+            ? ParseOutcome.FromHelp(new HelpRequest(resolved.Path), initialOutputClassification)
+            : parsed;
     }
 
     private static ParseOutcome ParseCommand(
@@ -131,12 +165,13 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         CommandOutputMode? explicitOutputMode = null;
         bool outputSeen = false;
         bool recognizeOptions = true;
-        int index = resolved.Consumed;
+        int index = 0;
 
         CommandOutputClassification CurrentOutputClassification() => selectedOutputClassification;
 
         while (index < tokens.Length)
         {
+            if (index == resolved.Start && resolved.Consumed > index) { index = resolved.Consumed; continue; }
             string token = tokens[index];
             if (recognizeOptions && string.Equals(token, "--", StringComparison.Ordinal))
             {
@@ -221,7 +256,8 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                 continue;
             }
 
-            if (recognizeOptions && TryResolveOption(
+            bool negativeArgument = ArgumentAt(resolved.Command.Arguments, positionalTokens.Count)?.Help.AcceptsNegativeNumbers == true && token.StartsWith('-') && double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+            if (recognizeOptions && !negativeArgument && TryResolveOption(
                     resolved.Command,
                     token,
                     out CommandOptionDescriptor? option,
@@ -321,6 +357,17 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
 
         foreach (CommandOptionDescriptor option in resolved.Command.Options)
         {
+            if (!optionBindingIndexes.ContainsKey(option.Id) && option.Help.EnvironmentVariable is { } variable && settings.GetEnvironmentVariable?.Invoke(variable) is { } environmentValue)
+            {
+                bool flag = option.Arity.Maximum == 0;
+                if (flag && !bool.TryParse(environmentValue, out _))
+                    return Error("RCLI1014", "invalid-environment-value", tokens.Length, resolved.Path, [option.Name], CurrentOutputClassification());
+                if (!flag || bool.Parse(environmentValue))
+                {
+                    optionBindingIndexes.Add(option.Id, optionBindings.Count);
+                    optionBindings.Add(new MutableBinding(option.Id, flag ? [] : [environmentValue]));
+                }
+            }
             if (option.IsRequired && !optionBindingIndexes.ContainsKey(option.Id))
             {
                 return Error(
@@ -345,12 +392,25 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
             return argumentError;
         }
 
-        CommandOutputClassification outputClassification = ClassifyOutput(explicitOutputMode, settings);
+        CommandOutputClassification outputClassification = selectedOutputClassification;
         if (!outputClassification.IsValid)
         {
             return OutputError(outputClassification, 0, resolved.Path);
         }
 
+        foreach (MutableBinding binding in optionBindings)
+        {
+            CommandOptionDescriptor? descriptor = null;
+            foreach (CommandOptionDescriptor candidate in resolved.Command.Options) if (candidate.Id == binding.Id) descriptor = candidate;
+            if (descriptor is not null && !ValuesAllowed(binding.Values, descriptor.Help))
+                return Error("RCLI1015", "invalid-choice", tokens.Length, resolved.Path, [descriptor.Name], CurrentOutputClassification());
+        }
+        foreach (CommandValueBinding binding in argumentBindings!)
+        {
+            foreach (CommandArgumentDescriptor descriptor in resolved.Command.Arguments)
+                if (descriptor.Id == binding.Id && !ValuesAllowed(binding.Values, descriptor.Help))
+                    return Error("RCLI1015", "invalid-choice", tokens.Length, resolved.Path, [descriptor.Name], CurrentOutputClassification());
+        }
         var frozenOptions = new CommandValueBinding[optionBindings.Count];
         for (int optionIndex = 0; optionIndex < optionBindings.Count; optionIndex++)
         {
@@ -365,6 +425,28 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                 frozenOptions,
                 argumentBindings!,
                 outputClassification));
+    }
+
+    private static CommandArgumentDescriptor? ArgumentAt(IReadOnlyList<CommandArgumentDescriptor> arguments, int position)
+    {
+        foreach (CommandArgumentDescriptor argument in arguments)
+        {
+            if (argument.Arity.Maximum is null || position < argument.Arity.Maximum) return argument;
+            position -= argument.Arity.Maximum.Value;
+        }
+        return null;
+    }
+
+    private static bool ValuesAllowed(IReadOnlyList<string> values, CommandHelp help)
+    {
+        if (help.Choices.Count == 0) return true;
+        foreach (string value in values)
+        {
+            bool found = false;
+            foreach (string choice in help.Choices) if (string.Equals(value, choice, StringComparison.OrdinalIgnoreCase)) found = true;
+            if (!found) return false;
+        }
+        return true;
     }
 
     private static ParseOutcome? ConsumeOptionValues(
@@ -382,7 +464,9 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         while (values.Count < maximum && index < tokens.Length)
         {
             string candidate = tokens[index];
-            bool boundary = recognizeOptions && IsOptionBoundary(command, candidate, transportOutputOptionName);
+            bool negativeNumber = option.Help.AcceptsNegativeNumbers && candidate.StartsWith('-')
+                && double.TryParse(candidate, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+            bool boundary = recognizeOptions && !negativeNumber && IsOptionBoundary(command, candidate, transportOutputOptionName);
             if (boundary)
             {
                 if (values.Count < option.Arity.Minimum)
@@ -448,6 +532,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                     "missing-argument",
                     endTokenIndex,
                     path,
+                    [descriptor.Name],
                     outputClassification: outputClassification);
             }
 
@@ -479,13 +564,39 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         return null;
     }
 
+    private static bool TryGetGlobalOption(CommandCatalog catalog, string token, out CommandOptionDescriptor? option, out string? value)
+    {
+        foreach (CommandDescriptor command in catalog.Commands)
+        {
+            if (TryResolveOption(command, token, out option, out value, out _) && option?.IsGlobal == true) return true;
+        }
+        option = null;
+        value = null;
+        return false;
+    }
+
     private static bool TryResolveCommand(
         CommandCatalog catalog,
         string[] tokens,
-        out ResolvedCommand? resolved)
+        out ResolvedCommand? resolved,
+        string transportOutputOptionName = "--output")
     {
         resolved = null;
-        if (!catalog.TryGetCommand(tokens[0], out CommandDescriptor? command) || command is null)
+        int start = 0;
+        while (start < tokens.Length)
+        {
+            if (TrySplitOutput(tokens[start], transportOutputOptionName, out string? inline)) { start += inline is null ? 2 : 1; continue; }
+            CommandOptionDescriptor? global = null;
+            if (TryGetGlobalOption(catalog, tokens[start], out CommandOptionDescriptor? candidate, out string? value))
+            {
+                global = candidate!;
+                start += value is not null || global.Arity.Maximum == 0 ? 1 : 2;
+                continue;
+            }
+            break;
+        }
+        CommandDescriptor? command = null;
+        if (start >= tokens.Length || !catalog.TryGetCommand(tokens[start], out command) || command is null)
         {
             command = catalog.DefaultCommand;
             if (command is null) return false;
@@ -494,7 +605,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         }
 
         var path = new List<string> { command.Name };
-        int consumed = 1;
+        int consumed = start + 1;
         while (consumed < tokens.Length &&
                command.TryGetSubcommand(tokens[consumed], out CommandDescriptor? child) &&
                child is not null)
@@ -504,7 +615,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
             consumed++;
         }
 
-        resolved = new ResolvedCommand(command, new CommandPath(path), consumed);
+        resolved = new ResolvedCommand(command, new CommandPath(path), consumed, start);
         return true;
     }
 
@@ -709,6 +820,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         (command is not null && TryResolveOption(command, token, out _, out _, out _));
 
     private static bool TryFindRootSpecial(
+        CommandCatalog catalog,
         string[] tokens,
         string transportOutputOptionName,
         out RootSpecial special,
@@ -729,6 +841,12 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                     index++;
                 }
 
+                continue;
+            }
+
+            if (TryGetGlobalOption(catalog, token, out CommandOptionDescriptor? global, out string? globalValue))
+            {
+                if (global!.Arity.Maximum != 0 && globalValue is null) index++;
                 continue;
             }
 
@@ -815,7 +933,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         CommandDiagnostic diagnostic = Diagnostic(
             code,
             kind,
-            MessageFor(kind),
+            MessageFor(kind) + (arguments is { Count: > 0 } && kind is not "unknown-command" ? " (" + arguments[0] + ")" : ""),
             tokenIndex,
             path ?? CommandPath.Root,
             arguments);
@@ -848,6 +966,8 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
 
     private static string MessageFor(string kind) => kind switch
     {
+        "invalid-environment-value" => "The environment fallback is not valid for this option.",
+        "invalid-choice" => "The value must be one of the choices shown in --help.",
         "unknown-option" => "An unrecognized option was supplied.",
         "unknown-command" => "An unrecognized command was supplied.",
         "missing-option-value" => "A required option value is missing.",
@@ -903,7 +1023,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
     private sealed record ResolvedCommand(
         CommandDescriptor Command,
         CommandPath Path,
-        int Consumed);
+        int Consumed, int Start = 0);
 
     private sealed record IndexedToken(string Value, int Index);
 

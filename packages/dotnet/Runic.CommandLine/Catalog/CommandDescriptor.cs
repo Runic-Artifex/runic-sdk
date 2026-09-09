@@ -17,11 +17,13 @@ public sealed class CommandDescriptor
         IReadOnlyList<CommandOptionDescriptor> options,
         IReadOnlyList<CommandArgumentDescriptor> arguments,
         IReadOnlyList<CommandDescriptor> subcommands,
-        CommandRegistration registration)
+        CommandRegistration registration,
+        CommandHelp? help = null)
     {
         Name = name;
         Aliases = aliases;
         DescriptionKey = descriptionKey;
+        Help = help ?? CommandHelp.Empty;
         Options = options;
         Arguments = arguments;
         Subcommands = subcommands;
@@ -48,6 +50,9 @@ public sealed class CommandDescriptor
         }
     }
 
+    /// <summary>Gets shared help and value metadata.</summary>
+    public CommandHelp Help { get; }
+
     /// <summary>Gets the canonical command name.</summary>
     public string Name { get; }
 
@@ -65,6 +70,9 @@ public sealed class CommandDescriptor
 
     /// <summary>Gets child commands in registration order.</summary>
     public IReadOnlyList<CommandDescriptor> Subcommands { get; }
+
+    /// <summary>Gets whether this node only groups child commands.</summary>
+    public bool IsGroup => Registration is CommandGroupRegistration;
 
     internal CommandRegistration Registration { get; }
 

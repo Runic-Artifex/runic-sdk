@@ -176,9 +176,23 @@ internal static class Program
         if (failureJson.RootElement.GetProperty("success").GetBoolean() ||
             failureJson.RootElement.GetProperty("diagnostics")[0].GetProperty("code").GetString() != "RCLI3002") return 38;
 
+        var runnerConsole = new BufferCommandConsole();
+        int runnerExit = await new CommandApp(GeneratedCommandCatalog.Create())
+        {
+            Console = new Runic.CommandLine.Spectre.SpectreCommandConsole(runnerConsole, color: false),
+            HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
+            HandleCancelKeyPress = false,
+            ParseSettings = ParseSettings.Default,
+        }.RunAsync(["ping", "--output=json"]).ConfigureAwait(false);
+        if (runnerExit != 0) return 95;
+        using (JsonDocument ping = JsonDocument.Parse(runnerConsole.StandardOutput))
+            if (ping.RootElement.GetProperty("payload").GetString() != "pong") return 96;
         Console.Out.Write(console.StandardOutput);
         return 0;
     }
+
+    [Command("ping")]
+    internal static string Ping() => "pong";
 
     [Command("smoke")]
     [CommandResult("runic.commandline.consumer/1", typeof(ConsumerJsonContext))]

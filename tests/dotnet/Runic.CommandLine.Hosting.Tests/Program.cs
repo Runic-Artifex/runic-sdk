@@ -7,15 +7,25 @@ using System.Threading;
 using System.Threading.Tasks;
 using Runic.CommandLine;
 using Runic.CommandLine.Hosting;
+using Runic.CommandLine.Testing;
+using Runic.CommandLine.Spectre;
 
 return await HostingAdapterTests.RunAsync();
 
-internal static class HostingAdapterTests
+internal static partial class HostingAdapterTests
 {
     public static async Task<int> RunAsync()
     {
         (string Name, Func<ValueTask> Body)[] tests =
         [
+            ("review/completion-respects-custom-transport", CompletionTransport),
+            ("review/catalog-completion-command-and-alias-win", CatalogCompletion),
+            ("review/global-alias-mismatch-is-rejected", GlobalAliases),
+            ("review/framework-presentation-is-cancellable", PresentationCancellation),
+            ("review/framework-failures-are-observed-without-retry", PresentationFailures),
+            ("presentation/shared-runner-parity-and-no-scopes", PresentationParity),
+            ("classification/parameter-environment-is-copied", EnvironmentSnapshot),
+            ("execution/exception-observer-keeps-public-fault-safe", ExceptionObservation),
             ("classification/is-pure-and-maps-parser-outcomes", ClassificationIsPure),
             ("classification/replays-captured-output-inputs", CapturedOutputPrecedence),
             ("classification/error-preserves-transport-output", ErrorPreservesTransportOutput),
@@ -43,6 +53,92 @@ internal static class HostingAdapterTests
 
         Console.WriteLine($"SUMMARY passed={tests.Length - failures} failed={failures} total={tests.Length}");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static async ValueTask PresentationParity()
+    {
+        var scopes = new TrackingScopeFactory();
+        var catalog = CreateCatalog(new DelegateBinder(), new TrackingHandlerFactory());
+        var adapter = new CommandLineHostingAdapter(catalog, new CommandExecutor(scopes))
+        {
+            Presentation = new() { Name = "hosted", Version = "1.2.3", HelpPresenter = new SpectreHelpPresenter() },
+        };
+        foreach (string[] args in new string[][] { ["help", "run"], ["--version"], ["completion", "bash"], ["completion", "invalid"], ["unknown"], ["--help", "--output=json"], ["unknown", "--output=json"] })
+        {
+            var hosted = new TestCommandConsole();
+            var standalone = new TestCommandConsole();
+            var decision = adapter.Classify(new(args));
+            int exit = await adapter.PresentAsync(decision, new SpectreCommandConsole(hosted), CultureInfo.InvariantCulture, "hosted-test");
+            int expected = await new CommandApp(catalog)
+            {
+                Name = "hosted", Version = "1.2.3", HelpPresenter = new SpectreHelpPresenter(),
+                Console = new SpectreCommandConsole(standalone), HandleCancelKeyPress = false, ParseSettings = ParseSettings.Default,
+            }.RunAsync(args);
+            AssertEqual(expected, exit);
+            AssertEqual(standalone.StandardError, hosted.StandardError);
+            if (Array.Exists(args, arg => arg == "--output=json"))
+            {
+                using var frame = CommandTestEnvelope.Parse(hosted.StandardOutput);
+                using var expectedFrame = CommandTestEnvelope.Parse(standalone.StandardOutput);
+                AssertEqual(expectedFrame.RootElement.GetProperty("command").GetString(), frame.RootElement.GetProperty("command").GetString());
+                AssertEqual(expectedFrame.RootElement.GetProperty("payload").ToString(), frame.RootElement.GetProperty("payload").ToString());
+                AssertEqual("hosted-test", frame.RootElement.GetProperty("requestId").GetString());
+            }
+            else AssertEqual(standalone.StandardOutput, hosted.StandardOutput);
+        }
+        AssertEqual(0, scopes.Created);
+        var ui = adapter.Classify(new([], emptyInputFallback: EmptyInputFallback.UserInterface));
+        AssertThrows<InvalidOperationException>(() => adapter.PresentAsync(ui, new SilentConsole(), CultureInfo.InvariantCulture, "ui").AsTask().GetAwaiter().GetResult());
+        var other = new CommandLineHostingAdapter(catalog, new CommandExecutor(scopes));
+        AssertThrows<InvalidOperationException>(() => other.PresentAsync(adapter.Classify(new(["--help"])), new SilentConsole(), CultureInfo.InvariantCulture, "other").AsTask().GetAwaiter().GetResult());
+    }
+
+    private static async ValueTask EnvironmentSnapshot()
+    {
+        string? bound = null;
+        var binder = new DelegateBinder((invocation, _) =>
+        {
+            bound = invocation.Options.Count == 0 ? null : invocation.Options[0].Values[0];
+            return ValueTask.FromResult(CommandOutcome.Success(new Options()));
+        });
+        var catalog = new CommandCatalogBuilder().Command<Options, Handler, Result>("run", command => command
+            .Option("value", "--value", CommandArity.ExactlyOne)
+            .ParameterHelp("value", new CommandHelp(environmentVariable: "HOST_VALUE"))
+            .BindWith(binder).CreateHandlerWith(new TrackingHandlerFactory()).Produces(ResultCodec.Instance)).Build();
+        var adapter = new CommandLineHostingAdapter(catalog, new CommandExecutor(new TrackingScopeFactory()));
+        var values = new Dictionary<string, string?> { ["HOST_VALUE"] = "captured" };
+        var input = new HostedCommandLineLaunchInput(["run"]) { EnvironmentVariables = values };
+        values["HOST_VALUE"] = "mutated";
+        var decision = adapter.Classify(input);
+        await adapter.ExecuteAsync(new(decision, new SilentConsole(), CultureInfo.InvariantCulture, "env", new CapturingSink()));
+        AssertEqual("captured", bound);
+        decision = adapter.Classify(new(["run", "--value", "explicit"]) { EnvironmentVariables = values });
+        await adapter.ExecuteAsync(new(decision, new SilentConsole(), CultureInfo.InvariantCulture, "explicit", new CapturingSink()));
+        AssertEqual("explicit", bound);
+        string? previous = Environment.GetEnvironmentVariable("HOST_VALUE");
+        try
+        {
+            Environment.SetEnvironmentVariable("HOST_VALUE", "process-value-must-not-leak");
+            decision = adapter.Classify(new(["run"]));
+            await adapter.ExecuteAsync(new(decision, new SilentConsole(), CultureInfo.InvariantCulture, "absent", new CapturingSink()));
+            AssertEqual<string?>(null, bound);
+        }
+        finally { Environment.SetEnvironmentVariable("HOST_VALUE", previous); }
+    }
+
+    private static async ValueTask ExceptionObservation()
+    {
+        var failure = new InvalidOperationException("private-host-secret");
+        var catalog = CreateCatalog(new DelegateBinder(), new TrackingHandlerFactory((_, _, _) => throw failure));
+        var adapter = new CommandLineHostingAdapter(catalog, new CommandExecutor(new TrackingScopeFactory()));
+        var console = new TestCommandConsole();
+        Exception? observed = null;
+        var result = await adapter.ExecuteAsync(new(adapter.Classify(new(["run", "--output=json"])), console,
+            CultureInfo.InvariantCulture, "fault", new CommandOutputDispatcher()) { ExceptionObserver = exception => observed = exception });
+        AssertTrue(ReferenceEquals(failure, observed));
+        AssertTrue(!result.IsSuccess);
+        using var frame = CommandTestEnvelope.Parse(console.StandardOutput);
+        AssertTrue(!console.StandardOutput.Contains("private-host-secret", StringComparison.Ordinal));
     }
 
     private static ValueTask ClassificationIsPure()

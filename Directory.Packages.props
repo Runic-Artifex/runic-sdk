@@ -6,6 +6,7 @@
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="CsWebUi" Version="2.5.0-beta.4.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" Condition="$([System.String]::Copy('$(MSBuildProjectName)').StartsWith('Runic.Translations')) or '$(MSBuildProjectName)' == 'dotnet-runic-translations'" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />

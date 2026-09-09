@@ -1,0 +1,15 @@
+#nullable enable
+namespace Runic.CommandLine.Spectre
+{
+    public sealed class SpectreCommandConsole : Runic.CommandLine.ICommandConsole
+    {
+        public SpectreCommandConsole(Runic.CommandLine.ICommandConsole? inner = null, int? width = null, bool? color = null, bool? unicode = null);
+        public System.Threading.Tasks.ValueTask WriteAsync(Spectre.Console.Rendering.IRenderable value, bool standardError = false, System.Threading.CancellationToken cancellationToken = default);
+        public System.Threading.Tasks.Task WithProgressAsync(string description, System.Func<System.IProgress<double>, System.Threading.CancellationToken, System.Threading.Tasks.Task> operation, System.Threading.CancellationToken cancellationToken = default);
+        public System.Threading.Tasks.ValueTask<string?> PromptAsync(string prompt, string? fallback = null, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed class SpectreHelpPresenter : Runic.CommandLine.ICommandHelpPresenter
+    {
+        public SpectreHelpPresenter();
+    }
+}

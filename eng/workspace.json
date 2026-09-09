@@ -57,6 +57,10 @@
       "project": "packages/dotnet/Runic.CommandLine.Processes/Runic.CommandLine.Processes.csproj"
     },
     {
+      "name": "Runic.CommandLine.Spectre",
+      "project": "packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj"
+    },
+    {
       "name": "Runic.CommandLine.Testing",
       "project": "packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj"
     },
@@ -163,7 +167,9 @@
         "eng/build/command-line.targets",
         "eng/branding/command-line",
         "specs/command-line",
-        "tests/fixtures/command-line/package-consumer"
+        "tests/fixtures/command-line/package-consumer",
+        "packages/dotnet/Runic.CommandLine.Spectre",
+        "examples/command-line"
       ]
     },
     "desktop": {

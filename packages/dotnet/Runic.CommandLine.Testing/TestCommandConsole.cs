@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,6 +9,11 @@ namespace Runic.CommandLine.Testing;
 /// <summary>Provides a deterministic in-memory console for command tests.</summary>
 public sealed class TestCommandConsole : ICommandConsole
 {
+    private readonly Queue<string?> _input = new();
+
+    /// <summary>Queues a line or EOF for an interactive test.</summary>
+    public void QueueInput(string? line) => _input.Enqueue(line);
+
     private readonly StringBuilder _standardOutput = new();
     private readonly StringBuilder _standardError = new();
 
@@ -18,19 +24,19 @@ public sealed class TestCommandConsole : ICommandConsole
     public string StandardError => _standardError.ToString();
 
     /// <inheritdoc />
-    public bool IsInteractive => false;
+    public bool IsInteractive { get; init; }
     /// <inheritdoc />
-    public bool IsInputRedirected => true;
+    public bool IsInputRedirected { get; init; } = true;
     /// <inheritdoc />
-    public bool IsOutputRedirected => true;
+    public bool IsOutputRedirected { get; init; } = true;
     /// <inheritdoc />
-    public bool IsErrorRedirected => true;
+    public bool IsErrorRedirected { get; init; } = true;
 
     /// <inheritdoc />
     public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<string?>(null);
+        return ValueTask.FromResult(_input.Count > 0 ? _input.Dequeue() : null);
     }
 
     /// <inheritdoc />

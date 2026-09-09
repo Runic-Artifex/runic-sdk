@@ -16,81 +16,118 @@ The package targets `net10.0` and includes its portable contracts and host
 launch classification. It is a preview package: test updates before adopting
 them in a production command contract.
 
-## Register and run a command
+## A complete command-line application
 
-## Method-first commands
-
-The package includes its incremental generator as an analyzer asset. Mark a
-non-private static method and create the generated catalog; no assembly scan,
-reflection activation, or handwritten binder is involved. Supported input types
-are `string`, `int`, `long`, `decimal`, `double`, `Guid`, and Boolean flags.
-Decimals always use invariant culture. Services must be explicit with
-`[FromServices]`; cancellation, `CommandExecutionContext`, and
-`ICommandConsole` are supplied by the invocation.
+The package includes its incremental generator. Define a static method and run the
+catalog; no custom options binder, result DTO, JSON context, service provider or
+Generic Host is needed for this example:
 
 ```csharp
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
 
-[Command("greet")]
-[CommandResult("example.greeting/1", typeof(AppJsonContext))]
-internal static Greeting Greet([Argument] string name, [Option("--formal")] bool formal) =>
-    new(formal ? $"Good day, {name}." : $"Hello, {name}!");
+return await new CommandApp(GeneratedCommandCatalog.Create())
+{
+    Name = "hello",
+    Version = "1.0.0",
+}.RunAsync(args);
 
-CommandCatalog catalog = GeneratedCommandCatalog.Create();
-
-[JsonSerializable(typeof(Greeting))]
-internal partial class AppJsonContext : JsonSerializerContext;
+internal static class Commands
+{
+    [Command("greet", Description = "Say hello.", Examples = ["hello greet Ada"])]
+    [DefaultCommand]
+    internal static string Greet([Argument] string name = "world") => $"Hello, {name}!";
+}
 ```
 
-Generated registrations compose at the catalog boundary: use the existing
-explicit builder API for commands needing custom binders, result presentation,
-or parser-specific integration, and combine its root registrations before
-building your application catalog. The generator reports duplicate command
-names, invalid method signatures, and unsupported parameter types at build
-time. Mark one method with `[DefaultCommand]` when it receives positional input
-without a command token. Scalar options may use C# defaults, and repeated
-`IReadOnlyList<string>` options preserve encounter order. A trailing
-`[Argument(AllowMultipleValues = true)] IReadOnlyList<string>` receives all
-remaining positional tokens in order, including option-looking values after
-`--`. The remaining subset
-excludes instance methods, subcommands, optional positional values, repeated
-non-string values, custom conversion, and custom human result formatting.
+`hello`, `hello Ada`, and `hello greet Ada` execute the default command.
+`hello help greet` and `hello greet --help` show catalog help. `hello --output json
+greet Ada` emits one versioned response. An application without a default command
+shows help for an empty invocation; the lower-level parser retains its existing
+empty-input classification for hosted UI launch decisions.
 
-Set `[Option("--source", Required = true)]` when syntax, rather than binding,
-owns presence validation. Missing required options yield the parser-owned
-`RCLI1012` diagnostic with the canonical option spelling and command path;
-required flags must be present and required repeated options need an occurrence.
+See the runnable [command-line example](../../../examples/command-line/README.md).
 
-`CommandParsePresentation` maps parser diagnostics to application-owned human
-text and exit codes without reparsing. Handlers retain `CommandOutcome<T>` and
-the application exit policy for domain codes such as 2/3/4/5.
+## Method-first inputs and results
 
-For an application-owned `--output` option, choose a different framework
-transport option in the captured settings, for example
-`new ParseSettings(transportOutputOptionName: "--runic-output")`. The parser
-then reserves `--runic-output human|json` and leaves `--output` to the command.
-Built-in `--help` and `--version` cannot be used as transport spellings.
-The reserved transport is scanned before command syntax is reported (up to
-`--`), so parse errors retain the selected output classification regardless of
-where a valid transport value occurs. Use `parse.OutputClassification` to choose
-human or JSON presentation without re-reading captured arguments. Invalid,
-missing, and duplicate transport values retain only safe parser diagnostics.
-Help and root-version outcomes use that same classification, whether the
-transport appears before or after the special token.
-The root-only legacy token `help` is equivalent to `--help`; `help` remains a
-reserved catalog command name. It accepts only framework transport options;
-other following tokens yield the safe parser-owned `RCLI1013` diagnostic.
-Generated `IReadOnlyList<string>` options use one value per occurrence by
-default; add `[Option("--documents", AllowMultipleValues = true)]` to accept
-`--documents a b` as well as repeated occurrences. Values end at the next
-option and remain in encounter order.
-Set `AllowMultipleOccurrences = false` to keep variadic values for a single
-occurrence while rejecting a second occurrence with the canonical option
-diagnostic.
-For application forwarding, use one trailing
-`[Argument(AllowMultipleValues = true)] IReadOnlyList<string> appArgs`; this
-preserves `dotnet runic dev -- --application-option -3` without a second parser.
+- Scalars: strings, integers, long integers, decimals, doubles, GUIDs, enums and
+  nullable scalars. Boolean options are presence flags; nullable Boolean options
+  accept an explicit Boolean value.
+- C# defaults and nullable inputs are optional. A non-nullable scalar option with
+  no default is required. `Required = true` explicitly requires flags and lists.
+- Arrays and `IReadOnlyList<T>` support the scalar types above. Options append one
+  value per occurrence; `AllowMultipleValues = true` also accepts several values
+  after one occurrence. A variadic positional must be last.
+- `[Option(..., Description = "...", ValueName = "PATH", Choices = ["a", "b"],
+  EnvironmentVariable = "APP_VALUE", Sensitive = true)]` supplies shared metadata.
+  Explicit input wins over the environment, then C# defaults. Sensitive defaults
+  and choices are excluded from help and completion.
+- Generated numeric metadata permits separated negative numbers. Other
+  option-looking data still requires `--` or an equals value. Unknown options and
+  duplicate scalar options remain errors.
+- `[Command("config show")]` creates a help-only `config` group automatically.
+  `GeneratedCommandCatalog.Create(builder => builder.GlobalOption("verbose",
+  "--verbose", CommandArity.Zero))` adds an option to all commands; it may precede
+  the command. Read shared bindings from `ParsedInvocation.Options` in a binder.
+- `[ConvertWith(typeof(Converter))]` selects an `ICommandValueConverter<T>` with
+  static `Parse(string)`. `[ValidateWith(typeof(Validator))]` selects an
+  `ICommandValueValidator<T>` with static `IsValid(T)`. Converted values are stored
+  once during binding and reused by the handler.
+- `string`, `void`, `Task` and `ValueTask` results have built-in codecs. Typed
+  application payloads retain `[CommandResult("example.result/1", typeof(JsonContext))]`
+  and source-generated JSON metadata. An `int` result is payload data, never an
+  implicit exit code. Use `CommandOutcome<T>` and an exit policy for domain exits.
+
+CancellationToken, CommandExecutionContext and ICommandConsole parameters are
+injected automatically; other services use `[FromServices]`. Instance methods and
+runtime assembly discovery are intentionally outside the generated model.
+
+## Presentation and testing
+
+`CommandApp` owns parsing, output environment selection, help, version, Ctrl+C,
+execution and exit mapping. Configure `ScopeFactory`, `ExitCodePolicy`,
+`OutcomeSink`, or `PresentFrameworkRequest` to preserve existing application
+contracts during migration. Set `HandleCancelKeyPress = false` when an embedding
+host already owns process signals.
+
+Install optional `Runic.CommandLine.Spectre`, then set `Console = new
+SpectreCommandConsole()` and `HelpPresenter = new SpectreHelpPresenter()`.
+The adapter supports literal text, Spectre renderables, progress, and prompts.
+ANSI is disabled for redirected output, `NO_COLOR`, and `TERM=dumb`.
+For handler presentation, wrap the **injected** console so the current invocation's
+capabilities and stream routing are retained.
+
+JSON output reserves stdout for the envelope. The injected handler console routes
+incidental output to stderr and disables reads. Direct process-global Console
+writes remain the application's responsibility. `ExceptionObserver` receives
+internal failures for application logging while public faults remain sanitized.
+
+`completion bash|zsh|fish|powershell` generates static word-list completions from
+the catalog. Set `CompletionExecutableName` when the help-facing name contains
+spaces (for example, `dotnet runic`). These scripts offer declared commands,
+options and simple choices; they do not perform dynamic filesystem or service
+lookups and do not restrict candidates to the current subcommand.
+
+`Runic.CommandLine.Testing` supplies `CommandAppTester`, a configurable
+`TestCommandConsole` with queued input, and strict JSON frame assertions. Supply
+explicit ParseSettings to keep environment-dependent tests deterministic.
+
+### Migrating from 0.2
+
+Existing explicit catalogs, payload identities and exit policies continue to work.
+Replace duplicated startup with `CommandApp` progressively. Retain domain outcome
+sinks and custom framework presenters when scripts depend on an existing envelope.
+
+Generated nullable inputs now bind absence as null, optional positional defaults
+are honored, and required non-nullable scalar options fail during parsing. Binding
+errors identify the parameter and expected type without echoing its value. `help
+<command-path>`, prefix output selection, and empty default-command invocations
+are now accepted. The version-1 machine envelope has not changed.
+
+For applications with their own `--output` option, keep
+`new ParseSettings(transportOutputOptionName: "--runic-output")`. Set its
+`GetEnvironmentVariable` callback if that application also declares parameter
+environment fallbacks. `ParseSettings` itself never reads the process environment.
 
 ## Register and run a command
 
@@ -154,3 +191,99 @@ see [examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/dotnet
 or [report an issue](https://github.com/Runic-Artifex/runic-sdk/issues).
 Runic.CommandLine is maintained by Runic Artifex and licensed under the
 [MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).
+
+## Commands inside a Runic application
+
+Use `CommandLineHostingAdapter` when the application already owns startup,
+services, cancellation and the choice between CLI and UI. It uses the same
+catalog, generated binders, executor and framework presentation as `CommandApp`.
+It does not start a Generic Host, subscribe to Ctrl+C, or dispose your application.
+
+```csharp
+using Runic.CommandLine;
+using Runic.CommandLine.Hosting;
+using Runic.CommandLine.Spectre;
+
+// applicationCommandScopes supplies the application's services to command handlers.
+var cli = new CommandLineHostingAdapter(catalog, new CommandExecutor(applicationCommandScopes))
+{
+    Presentation = new()
+    {
+        Name = "my-app",
+        Version = version,
+        HelpPresenter = new SpectreHelpPresenter(),
+        ExceptionObserver = RecordInternalException,
+    },
+};
+var console = new SpectreCommandConsole();
+var launch = new HostedCommandLineLaunchInput(args,
+    outputEnvironmentValue: Environment.GetEnvironmentVariable("RUNIC_COMMANDLINE_OUTPUT"),
+    emptyInputFallback: EmptyInputFallback.UserInterface)
+{
+    EnvironmentVariables = new Dictionary<string, string?>
+    {
+        ["MY_APP_ENV"] = Environment.GetEnvironmentVariable("MY_APP_ENV"),
+    },
+};
+var decision = cli.Classify(launch);
+if (decision.Kind == HostedCommandLineDecisionKind.UserInterface)
+    return await OpenApplicationUiAsync(applicationStopping);
+if (!decision.CanExecute)
+    return await cli.PresentAsync(decision, console, culture, correlationId, applicationStopping);
+return (await cli.ExecuteAsync(new(decision, console, culture, correlationId, new CommandOutputDispatcher())
+{
+    ExceptionObserver = RecordInternalException,
+}, applicationStopping)).ExitCode;
+```
+
+The application captures only the environment values its options declare.
+`EnvironmentVariables` copies that dictionary; missing keys never fall back to the
+process environment. Explicit arguments override captured values, which override
+handler defaults. Output-format selection continues to use the separate captured
+`outputEnvironmentValue`. Names in the parameter snapshot are matched exactly.
+
+`Classify` creates no service scope. `PresentAsync` handles scoped help, version,
+usage failures and `completion bash|zsh|fish|powershell`, also without a scope.
+Help and errors respect human/JSON output selection; completion intentionally
+writes the raw script. Completion remains a static word list. Existing hosts
+may keep their own presenters and use the decision's public diagnostics instead.
+`PresentAsync` accepts framework decisions created by that same adapter and
+rejects UI and invocation decisions. It is available on the concrete adapter;
+the existing `IHostedCommandLineAdapter` classify/execute contract is unchanged.
+
+`ExecuteAsync` owns only the invocation scope returned by your scope factory.
+Use `[FromServices]` for handler dependencies. Pass your host's cancellation token
+and set `ExceptionObserver` to your internal logging callback; exception details
+stay out of public faults. If you customize exit codes, supply the same policy to
+`CommandExecutor` and `Presentation.ExitCodePolicy`. An explicit empty-input UI
+policy wins even when the catalog declares a default command.
+
+See the runnable [hosted example](../../../examples/command-line/HostedExample.cs)
+for service injection and the complete launch flow. The example's UI branch is a
+console placeholder for an application's existing UI launcher.
+
+### Framework presentation failures and command ownership
+
+Help, version, usage-error and completion presentation honor cancellation in both
+runners. Cancellation returns the configured `Cancelled` exit code. Other nonfatal
+presentation failures return the configured `HostFailure` exit code and notify
+`CommandApp.ExceptionObserver` or, for hosted presentation,
+`CommandPresentation.ExceptionObserver`. Execution continues to use the observer
+on `HostedCommandLineExecutionInput`. Observer failures do not replace the original
+exit result. Fatal runtime failures propagate.
+
+A presenter or output stream may already have written partial output when it
+fails. The framework therefore does not retry output or append a second error
+frame; use the exit code and your internal observer to detect these failures.
+Argument/decision ownership errors in `PresentAsync` remain API usage exceptions.
+
+A catalog-owned root command or alias named `completion` takes precedence over the
+built-in script command. This works for manual and generated catalogs. Built-in
+scripts use the configured transport selector (for example `--runic-output`).
+With a custom selector, they retain `--output` only if it is an actual catalog
+option. Direct callers can use
+`CommandCompletion.Generate(catalog, executable, shell, outputOptionName)`.
+
+When a global option reuses a command-local definition, its name, arity and alias
+set must match. Alias ordering is irrelevant; mismatches fail catalog validation
+with `RCLI0019`, rather than producing command-dependent parsing behavior.

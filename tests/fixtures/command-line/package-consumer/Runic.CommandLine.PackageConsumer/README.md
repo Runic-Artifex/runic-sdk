@@ -6,7 +6,8 @@ The script consumes the existing candidate feed and restores the template consum
 into a fresh package cache. It proves managed and host-runtime NativeAOT execution
 on the selected platform. It does not rebuild or repack the candidates.
 
-The consumer uses the kernel's packaged method-first analyzer,
+The consumer uses the optional Spectre package and CommandApp with a built-in string codec,
+as well as the kernel's packaged method-first analyzer,
 the Hosting adapter, application-owned JSON metadata, and a bounded
 `ProcessRunner` child command. It also proves an application-owned `--output`
 option alongside a configured `--runic-output` transport option and variadic

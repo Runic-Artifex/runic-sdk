@@ -70,6 +70,18 @@ public sealed class CommandExecutionRequest
         }
     }
 
+    /// <summary>Gets or sets an opt-in observer for internal failures. Exceptions from this callback are ignored.</summary>
+    public Action<Exception>? ExceptionObserver { get; init; }
+
+    internal ICommandConsole HandlerConsole => Invocation.OutputClassification.Mode == CommandOutputMode.Json
+        ? new MachineHandlerConsole(Console) : Console;
+
+    internal void ObserveException(Exception exception)
+    {
+        try { ExceptionObserver?.Invoke(exception); }
+        catch (Exception observerException) when (observerException is not (OutOfMemoryException or AccessViolationException)) { }
+    }
+
     /// <summary>Gets the neutral parsed invocation.</summary>
     public ParsedInvocation Invocation { get; }
 

@@ -25,8 +25,10 @@ public sealed class CommandOptionDescriptor
         CommandOptionRepeatPolicy repeatPolicy,
         bool isRequired,
         bool isSensitive,
-        string? descriptionKey)
+        string? descriptionKey,
+        CommandHelp? help = null, bool isGlobal = false)
     {
+        IsGlobal = isGlobal;
         Id = id;
         Name = name;
         Aliases = aliases;
@@ -35,10 +37,17 @@ public sealed class CommandOptionDescriptor
         IsRequired = isRequired;
         IsSensitive = isSensitive;
         DescriptionKey = descriptionKey;
+        Help = help ?? CommandHelp.Empty;
     }
+
+    /// <summary>Gets whether this option can precede a root command.</summary>
+    public bool IsGlobal { get; }
 
     /// <summary>Gets the stable parameter identifier used by binders.</summary>
     public string Id { get; }
+
+    /// <summary>Gets shared help and value metadata.</summary>
+    public CommandHelp Help { get; }
 
     /// <summary>Gets the canonical option spelling, including its prefix.</summary>
     public string Name { get; }

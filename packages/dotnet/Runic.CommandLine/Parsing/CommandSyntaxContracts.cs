@@ -55,6 +55,9 @@ public sealed class ParseSettings
         TransportOutputOptionName = transportOutputOptionName;
     }
 
+    /// <summary>Gets or sets captured parameter environment values. Explicit options take precedence.</summary>
+    public Func<string, string?>? GetEnvironmentVariable { get; init; }
+
     /// <summary>Gets the captured output environment value, including an invalid value.</summary>
     public string? OutputEnvironmentValue { get; }
 

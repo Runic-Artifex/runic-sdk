@@ -4,6 +4,11 @@ namespace Runic.CommandLine.Testing
     public sealed class TestCommandConsole : Runic.CommandLine.ICommandConsole
     {
         public TestCommandConsole();
+        public bool IsInteractive { get; init; }
+        public bool IsInputRedirected { get; init; }
+        public bool IsOutputRedirected { get; init; }
+        public bool IsErrorRedirected { get; init; }
+        public void QueueInput(string? line);
         public string StandardError { get; }
         public string StandardOutput { get; }
     }
@@ -28,4 +33,14 @@ namespace Runic.CommandLine.Testing
         public static Runic.CommandLine.ParsedInvocation Parse(Runic.CommandLine.CommandCatalog catalog, params string[] args);
         public static Runic.CommandLine.ParsedInvocation Parse(Runic.CommandLine.CommandCatalog catalog, Runic.CommandLine.ParseSettings settings, params string[] args);
     }
+}
+
+namespace Runic.CommandLine.Testing
+{
+    public sealed class CommandAppTester
+    {
+        public CommandAppTester(System.Func<Runic.CommandLine.Testing.TestCommandConsole, Runic.CommandLine.CommandApp> createApp);
+        public System.Threading.Tasks.Task<Runic.CommandLine.Testing.CommandAppTestResult> RunAsync(string[] args, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed record CommandAppTestResult(int ExitCode, string StandardOutput, string StandardError);
 }

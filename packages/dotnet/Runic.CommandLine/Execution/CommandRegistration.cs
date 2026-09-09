@@ -91,7 +91,7 @@ internal sealed class CommandRegistration<TOptions, THandler, TResult> : Command
 
                 context = new CommandExecutionContext(
                     scope.Services,
-                    request.Console,
+                    request.HandlerConsole,
                     request.Invocation.Path,
                     request.Invocation.OutputClassification.Mode!.Value,
                     request.Culture,
@@ -155,6 +155,7 @@ internal sealed class CommandRegistration<TOptions, THandler, TResult> : Command
             }
             catch (Exception exception) when (!IsFatal(exception))
             {
+                request.ObserveException(exception);
                 outcome = HostFailure();
                 diagnostics = NoDiagnostics;
             }
@@ -177,6 +178,7 @@ internal sealed class CommandRegistration<TOptions, THandler, TResult> : Command
                 }
                 catch (Exception exception) when (!IsFatal(exception))
                 {
+                    request.ObserveException(exception);
                     outcome = HostFailure();
                     diagnostics = NoDiagnostics;
                 }
@@ -193,8 +195,8 @@ internal sealed class CommandRegistration<TOptions, THandler, TResult> : Command
             outcome = HostFailure();
             diagnostics = NoDiagnostics;
         }
-        context ??= new CommandExecutionContext(
-            EmptyServiceProvider.Instance,
+        context = new CommandExecutionContext(
+            context?.Services ?? EmptyServiceProvider.Instance,
             request.Console,
             request.Invocation.Path,
             request.Invocation.OutputClassification.Mode!.Value,
@@ -226,6 +228,7 @@ internal sealed class CommandRegistration<TOptions, THandler, TResult> : Command
         }
         catch (Exception exception) when (!IsFatal(exception))
         {
+            request.ObserveException(exception);
             outcome = HostFailure();
             diagnostics = NoDiagnostics;
             exitCode = exitCodePolicy.GetExitCode(outcome.ExitCategory);

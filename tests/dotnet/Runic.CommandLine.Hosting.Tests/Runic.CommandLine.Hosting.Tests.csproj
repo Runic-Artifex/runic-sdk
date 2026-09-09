@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\packages\dotnet\Runic.CommandLine\Runic.CommandLine.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
   </ItemGroup>
   <Import Project="../../../eng/build/command-line.targets" />
 </Project>

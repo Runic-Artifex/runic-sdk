@@ -11,6 +11,10 @@ public sealed class CommandAttribute : Attribute
 
     /// <summary>Gets the canonical command name.</summary>
     public string Name { get; }
+    /// <summary>Gets or sets descriptive help.</summary>
+    public string? Description { get; set; }
+    /// <summary>Gets or sets runnable examples.</summary>
+    public string[] Examples { get; set; } = [];
 }
 
 /// <summary>Marks one generated command as the root fallback for positional-only invocation.</summary>
@@ -23,6 +27,15 @@ public sealed class DefaultCommandAttribute : Attribute
 [AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
 public sealed class ArgumentAttribute : Attribute
 {
+    /// <summary>Gets or sets descriptive help.</summary>
+    public string? Description { get; set; }
+    /// <summary>Gets or sets the value placeholder.</summary>
+    public string? ValueName { get; set; }
+    /// <summary>Gets or sets the allowed values.</summary>
+    public string[] Choices { get; set; } = [];
+    /// <summary>Gets or sets whether values are sensitive.</summary>
+    public bool Sensitive { get; set; }
+
     /// <summary>Initializes an argument using its parameter name as the stable identifier.</summary>
     public ArgumentAttribute()
     {
@@ -49,6 +62,17 @@ public sealed class ArgumentAttribute : Attribute
 [AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
 public sealed class OptionAttribute : Attribute
 {
+    /// <summary>Gets or sets an environment fallback used only when the option is absent.</summary>
+    public string? EnvironmentVariable { get; set; }
+    /// <summary>Gets or sets descriptive help.</summary>
+    public string? Description { get; set; }
+    /// <summary>Gets or sets the value placeholder.</summary>
+    public string? ValueName { get; set; }
+    /// <summary>Gets or sets the allowed values.</summary>
+    public string[] Choices { get; set; } = [];
+    /// <summary>Gets or sets whether values are sensitive.</summary>
+    public bool Sensitive { get; set; }
+
     /// <summary>Initializes an option with its canonical spelling and optional aliases.</summary>
     public OptionAttribute(string name, params string[] aliases)
     {

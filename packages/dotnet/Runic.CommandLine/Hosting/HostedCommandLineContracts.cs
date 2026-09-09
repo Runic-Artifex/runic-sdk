@@ -35,6 +35,9 @@ public enum HostedCommandLineDecisionKind
 
     /// <summary>An explicit empty-input policy selected the host user interface.</summary>
     UserInterface = 4,
+
+    /// <summary>A shell completion script was requested.</summary>
+    Completion = 5,
 }
 
 /// <summary>Contains replayable launch inputs without reading process-global state.</summary>
@@ -75,6 +78,21 @@ public sealed class HostedCommandLineLaunchInput
         EmptyInputFallback = emptyInputFallback;
         DefaultOutputMode = defaultOutputMode;
         TransportOutputOptionName = transportOutputOptionName;
+    }
+
+    private IReadOnlyDictionary<string, string?> _environmentVariables = new ReadOnlyDictionary<string, string?>(new Dictionary<string, string?>());
+
+    /// <summary>Gets a copied snapshot of named parameter environment values. Missing entries never read the process environment.</summary>
+    public IReadOnlyDictionary<string, string?> EnvironmentVariables
+    {
+        get => _environmentVariables;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            var snapshot = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var entry in value) snapshot.Add(entry.Key, entry.Value);
+            _environmentVariables = new ReadOnlyDictionary<string, string?>(snapshot);
+        }
     }
 
     /// <summary>Gets the immutable captured argument sequence.</summary>
@@ -131,6 +149,7 @@ public sealed class HostedCommandLineDecision
 
         Kind = kind;
         ArgumentNullException.ThrowIfNull(input);
+        LaunchInput = input;
         Arguments = input.Arguments;
         _invocation = invocation;
         _owner = owner;
@@ -159,6 +178,15 @@ public sealed class HostedCommandLineDecision
 
     /// <summary>Gets whether this decision can be executed by the command-line engine.</summary>
     public bool CanExecute => Kind == HostedCommandLineDecisionKind.Invocation;
+
+    internal HostedCommandLineLaunchInput LaunchInput { get; }
+    internal ParseOutcome? ParseOutcome { get; init; }
+
+    internal void ValidateOwner(object owner)
+    {
+        if (!ReferenceEquals(_owner, owner))
+            throw new InvalidOperationException("The decision belongs to another adapter.");
+    }
 
     internal ParsedInvocation GetInvocation(object owner)
     {
@@ -236,6 +264,9 @@ public sealed class HostedCommandLineExecutionInput
 
     /// <summary>Gets the opaque invocation correlation identifier.</summary>
     public string CorrelationId { get; }
+
+    /// <summary>Gets an observer for internal exceptions, which are not exposed in public faults.</summary>
+    public Action<Exception>? ExceptionObserver { get; init; }
 
     /// <summary>Gets the outcome presentation sink.</summary>
     public ICommandOutcomeSink OutcomeSink { get; }

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/command-line.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicCommandLineDefaultTargetFramework)</TargetFramework>
+    <RunicCommandLineShippingProject>true</RunicCommandLineShippingProject>
+    <PackageId>Runic.CommandLine.Spectre</PackageId>
+    <Description>Spectre.Console presentation for Runic Command Line applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.CommandLine/Runic.CommandLine.csproj" />
+    <PackageReference Include="Spectre.Console" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="PublicAPI.Unshipped.txt" Pack="true" PackagePath="" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/command-line.targets" />
+</Project>

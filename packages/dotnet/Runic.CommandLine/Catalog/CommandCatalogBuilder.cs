@@ -9,6 +9,18 @@ public sealed class CommandCatalogBuilder
 {
     private readonly List<CommandBuilderNode> _commands = [];
     private string? _defaultCommandName;
+    private readonly List<Action<CommandBuilderNode>> _globalOptions = [];
+
+    /// <summary>Adds an option to every command. It may also precede the command path.</summary>
+    public CommandCatalogBuilder GlobalOption(string id, string name, CommandArity arity, CommandHelp? help = null, params string[] aliases)
+    {
+        ArgumentNullException.ThrowIfNull(aliases);
+        if (!((arity.Minimum == 0 && arity.Maximum == 0) || (arity.Minimum == 1 && arity.Maximum == 1)))
+            throw new ArgumentException("Global options must be flags or single required values.", nameof(arity));
+        string[] copy = (string[])aliases.Clone();
+        _globalOptions.Add(node => node.AddGlobalOption(id, name, arity, help, copy));
+        return this;
+    }
 
     /// <summary>Selects a registered root command to receive tokens without a leading command name.</summary>
     public CommandCatalogBuilder DefaultCommand(string name)
@@ -37,9 +49,30 @@ public sealed class CommandCatalogBuilder
         return this;
     }
 
+    /// <summary>Registers a command at a space-separated path, creating help-only parent groups.</summary>
+    public CommandCatalogBuilder CommandPath<TOptions, THandler, TResult>(string path, Action<CommandBuilder<TOptions, THandler, TResult>> configure)
+        where THandler : notnull, ICommandHandler<TOptions, TResult>
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(configure);
+        string[] segments = path.Split(' ');
+        List<CommandBuilderNode> siblings = _commands;
+        for (int i = 0; i < segments.Length - 1; i++)
+        {
+            CommandBuilderNode? parent = siblings.Find(node => node.Name == segments[i]);
+            if (parent is null) { parent = new CommandGroupBuilderNode(segments[i]); siblings.Add(parent); }
+            siblings = parent.Children;
+        }
+        var command = new CommandBuilder<TOptions, THandler, TResult>(segments[^1]);
+        configure(command);
+        siblings.Add(command.Node);
+        return this;
+    }
+
     /// <summary>Validates and freezes all registered definitions.</summary>
     public CommandCatalog Build()
     {
+        foreach (CommandBuilderNode command in _commands) AddGlobals(command);
         var issues = new List<CommandCatalogIssue>();
         ValidateSiblings(_commands, "root", issues);
 
@@ -69,6 +102,12 @@ public sealed class CommandCatalogBuilder
             }
         }
         return new CommandCatalog(CommandDescriptor.Freeze(descriptors), defaultCommand);
+    }
+
+    private void AddGlobals(CommandBuilderNode node)
+    {
+        foreach (Action<CommandBuilderNode> add in _globalOptions) add(node);
+        foreach (CommandBuilderNode child in node.Children) AddGlobals(child);
     }
 
     internal static void ValidateSiblings(
@@ -209,6 +248,22 @@ public sealed class CommandBuilder<TOptions, THandler, TResult>
         return this;
     }
 
+    /// <summary>Sets shared command help metadata.</summary>
+    public CommandBuilder<TOptions, THandler, TResult> WithHelp(CommandHelp help)
+    {
+        ArgumentNullException.ThrowIfNull(help);
+        _node.Help = help;
+        return this;
+    }
+
+    /// <summary>Sets shared metadata for a registered parameter identifier.</summary>
+    public CommandBuilder<TOptions, THandler, TResult> ParameterHelp(string id, CommandHelp help)
+    {
+        ArgumentNullException.ThrowIfNull(help);
+        _node.ParameterHelp.Add(id, help);
+        return this;
+    }
+
     /// <summary>Adds a typed child command.</summary>
     public CommandBuilder<TChildOptions, TChildHandler, TChildResult> Subcommand<TChildOptions, TChildHandler, TChildResult>(
         string name)
@@ -323,8 +378,11 @@ internal abstract class CommandBuilderNode
     internal string Name { get; }
 
     internal IReadOnlyList<string> Aliases => _aliases;
+    internal List<CommandBuilderNode> Children => _subcommands;
 
     private string? DescriptionKey { get; set; }
+    internal CommandHelp Help { get; set; } = CommandHelp.Empty;
+    internal Dictionary<string, CommandHelp> ParameterHelp { get; } = new(StringComparer.Ordinal);
 
     internal void AddAliases(IEnumerable<string> aliases)
     {
@@ -364,6 +422,17 @@ internal abstract class CommandBuilderNode
 
         _options.Add(new OptionDefinition(id, name, aliasCopy, arity, repeatPolicy, isRequired, isSensitive, descriptionKey));
     }
+
+    internal void AddGlobalOption(string id, string name, CommandArity arity, CommandHelp? help, string[] aliases)
+    {
+        OptionDefinition? existing = _options.Find(option => option.Id == id);
+        if (existing is not null && (existing.Name != name || existing.Arity != arity || !new HashSet<string>(existing.Aliases, StringComparer.Ordinal).SetEquals(aliases)))
+            throw new CommandCatalogValidationException([new CommandCatalogIssue("RCLI0019", Name, "A global option conflicts with a command-local definition.")]);
+        if (existing is null) AddOption(id, name, arity, CommandOptionRepeatPolicy.Error, false, null, false, aliases);
+        GlobalOptionIds.Add(id);
+        if (help is not null) ParameterHelp[id] = help;
+    }
+    private HashSet<string> GlobalOptionIds { get; } = new(StringComparer.Ordinal);
 
     internal void AddArgument(string id, string name, CommandArity arity, bool isSensitive, string? descriptionKey)
     {
@@ -414,7 +483,8 @@ internal abstract class CommandBuilderNode
                 option.RepeatPolicy,
                 option.IsRequired,
                 option.IsSensitive,
-                option.DescriptionKey));
+                option.DescriptionKey,
+                ParameterHelp.GetValueOrDefault(option.Id), GlobalOptionIds.Contains(option.Id)));
         }
 
         var arguments = new List<CommandArgumentDescriptor>(_arguments.Count);
@@ -425,7 +495,8 @@ internal abstract class CommandBuilderNode
                 argument.Name,
                 argument.Arity,
                 argument.IsSensitive,
-                argument.DescriptionKey));
+                argument.DescriptionKey,
+                ParameterHelp.GetValueOrDefault(argument.Id)));
         }
 
         var children = new List<CommandDescriptor>(_subcommands.Count);
@@ -441,7 +512,7 @@ internal abstract class CommandBuilderNode
             CommandDescriptor.Freeze(options),
             CommandDescriptor.Freeze(arguments),
             CommandDescriptor.Freeze(children),
-            CreateRegistration());
+            CreateRegistration(), Help);
     }
 
     private void ValidateOptions(string path, List<CommandCatalogIssue> issues)
@@ -588,4 +659,18 @@ internal abstract class CommandBuilderNode
         CommandArity Arity,
         bool IsSensitive,
         string? DescriptionKey);
+}
+
+internal sealed class CommandGroupBuilderNode(string name) : CommandBuilderNode(name)
+{
+    internal override void ValidateRegistration(string location, List<CommandCatalogIssue> issues) { }
+    internal override CommandRegistration CreateRegistration() => new CommandGroupRegistration();
+}
+
+internal sealed class CommandGroupRegistration : CommandRegistration
+{
+    internal override System.Threading.Tasks.ValueTask<CommandExecutionResult> ExecuteAsync(
+        CommandDescriptor command, CommandExecutionRequest request, ICommandExecutionScopeFactory scopeFactory,
+        IExitCodePolicy exitCodePolicy, ICommandOutcomeSink outcomeSink, ICommandExecutionObserver? observer,
+        System.Threading.CancellationToken cancellationToken) => throw new InvalidOperationException("Command groups display help and cannot be executed.");
 }
