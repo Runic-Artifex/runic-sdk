@@ -158,8 +158,8 @@
         same application contract.
       </p>
       <p>
-        These integrations intentionally support Svelte 5 only. Framework
-        adapters do not duplicate transport, reconnect, or protocol state.
+        The Svelte adapters support Svelte 5. Frontend adapters share the bridge
+        runtime for transport, reconnect, and protocol state.
       </p>
     </ContentCard>
     <ContentCard
@@ -173,8 +173,8 @@
           : 'Use the recorded release versions'}
       >
         <p>
-          This list is generated from the release authority. Install commands
-          are shown only for entries with a published version.
+          Install these integration packages from NuGet and npm. Their versions
+          come from the same published SDK catalog as the rest of the docs.
         </p>
         <ul>
           {#each bridgePackages as entry (entry.name)}

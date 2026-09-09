@@ -1,9 +1,19 @@
 # Runic SDK
 
-One development checkout for Runic's application framework, desktop host, assets,
-translations, command line, frontend integrations, translations editor, examples,
-and documentation. NuGet and npm packages retain their existing identities and
-can still be consumed independently.
+Build native desktop applications with C# logic and React, Vue, Svelte or Angular.
+Adopt Application, Desktop, Assets, Translations and Command Line independently;
+the SDK's NuGet and npm packages release together.
+
+## Start building an application
+
+Follow the [getting-started guide](https://docs.runic-artifex.eu/getting-started/)
+to install the published templates and run an app. For an existing project, copy
+the install command for the capability you need from the
+[package catalog](https://docs.runic-artifex.eu/packages/).
+
+Explore the [customer editor](examples/customer-migration/README.md) and
+[document application](examples/document-migration/README.md) for complete examples.
+The instructions below are for contributing to the SDK itself.
 
 ## Start developing
 
@@ -39,7 +49,7 @@ platform webview runtime described in [Desktop guidance](docs/guides/desktop/win
 | `packages/dotnet`, `packages/web` | Published libraries, generators and framework integrations |
 | `tools` | CLI, bridge inspector, asset packer, translation compiler and templates |
 | `apps` | First-party applications |
-| `examples` | Maintained counter and customer migration references |
+| `examples` | Maintained counter, customer and document examples |
 | `tests` | Managed/native suites, package/template consumers and required fixtures |
 | `specs` | Shared protocols, schemas and conformance corpora |
 | `docs` | Documentation site and product/architecture guides |
@@ -53,7 +63,7 @@ translation compiler pin remains local. Product-specific analyzer/build policies
 are explicitly imported from `eng/build`. Template lockfiles and isolated fixtures are independent
 consumer evidence, not additional development workspaces.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership and verification, for development guidance.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership, development and verification guidance.
 
 ## Migrating existing applications
 
@@ -88,9 +98,9 @@ checks, packages and template consumers. Managed desktop, native window/close,
 NativeAOT and footprint checks target Linux x64, Windows x64 and macOS Apple Silicon. Broader native UI certification remains
 a separate platform test concern.
 
-The [0.2.0-preview.1 release guide](docs/guides/releases/0.2.0-preview.1.md)
-describes that release's installation and compatibility boundaries. For future
-releases, follow the [current release guide](eng/release/README.md): run the preview
+Published versions and migration notes are linked from the
+[release page](https://docs.runic-artifex.eu/releases/). Maintainers follow the
+[current release guide](eng/release/README.md): run the preview
 workflow on main to test, package, publish and create the GitHub release.
 
 Use `bun run test <scope>` or `bun run verify <scope>` for focused local checks;
