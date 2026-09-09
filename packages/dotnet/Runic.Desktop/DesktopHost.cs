@@ -33,13 +33,16 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <summary>Inspects presentations available under this host's browser and embedded-host configuration.</summary>
     public DesktopAvailabilityResult GetAvailability()
     {
-        var availability = DesktopPlatform.GetAvailability(_options.BrowserFolder);
+        var availability = DesktopPlatform.GetAvailability(_options.BrowserFolder, _options.Linux);
         if (_options.WindowHostFactory is null)
         {
             return availability;
         }
 
-        var customHostAvailable = _options.WindowHostFactory.IsSupported;
+        var selectionDiagnostic = OperatingSystem.IsLinux() && _options.WindowHostFactory is ILinuxDesktopWindowHostFactory
+            ? DesktopPlatform.GetLinuxSelectionDiagnostic(_options.Linux, _options.WindowHostFactory)
+            : null;
+        var customHostAvailable = selectionDiagnostic is null && _options.WindowHostFactory.IsSupported;
         var presentations = availability.Presentations
             .Where(static presentation => presentation.Browser != BrowserKind.Embedded)
             .Append(new DesktopPresentationAvailability(
@@ -56,7 +59,7 @@ public sealed class DesktopHost : IAsyncDisposable
                     : DesktopWindowCapabilities.None,
                 customHostAvailable
                     ? null
-                    : new DesktopDiagnostic(
+                    : selectionDiagnostic ?? new DesktopDiagnostic(
                         DesktopErrorCategory.Unavailable,
                         "custom-window-host-unavailable",
                         "The configured embedded-window host is unavailable.",
@@ -110,7 +113,7 @@ public sealed class DesktopHost : IAsyncDisposable
         var core = isolatedCore ?? _core;
         var security = ToCorePolicy(configured.Security ?? _options.Security);
         IWebUiEmbeddedHostFactory embeddedFactory = _options.WindowHostFactory is null
-            ? WebUiEmbeddedHostFactory.Instance
+            ? new WebUiEmbeddedHostFactory(_options.Linux.EmbeddedBackend)
             : new DesktopWindowHostFactoryAdapter(_options.WindowHostFactory);
         var runtime = new PresentationSurfaceRuntimeOptions(
             rootFolder,
@@ -255,6 +258,11 @@ public sealed class DesktopHost : IAsyncDisposable
 
     private static void ValidateOptions(DesktopHostOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options.Linux);
+        if (options.Linux.EmbeddedBackend is { } backend && !Enum.IsDefined(backend))
+            throw new ArgumentOutOfRangeException(nameof(options));
+        if (options.WindowHostFactory is ILinuxDesktopWindowHostFactory linux && options.Linux.EmbeddedBackend != linux.Backend)
+            throw new ArgumentException("Linux.EmbeddedBackend must match the configured Linux window host factory.", nameof(options));
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfNegative(options.Port);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(options.Port, ushort.MaxValue);

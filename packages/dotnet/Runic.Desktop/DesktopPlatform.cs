@@ -31,7 +31,10 @@ public static class DesktopPlatform
     public static bool IsHighContrast => WebUiSystemTheme.IsHighContrast;
 
     /// <summary>Inspects installed browsers and embedded-WebView prerequisites without opening a window.</summary>
-    public static DesktopAvailabilityResult GetAvailability(string? browserFolder = null)
+    public static DesktopAvailabilityResult GetAvailability(string? browserFolder = null) => GetAvailability(browserFolder, new LinuxDesktopOptions());
+
+    /// <summary>Inspects presentations for an explicit Linux backend.</summary>
+    public static DesktopAvailabilityResult GetAvailability(string? browserFolder, LinuxDesktopOptions linux)
     {
         var presentations = new List<DesktopPresentationAvailability>();
         foreach (var browser in DiscoverableBrowsers)
@@ -45,7 +48,7 @@ public static class DesktopPlatform
                 installation is null ? MissingBrowser(browser) : null));
         }
 
-        var embeddedDiagnostic = GetEmbeddedDiagnostic();
+        var embeddedDiagnostic = GetEmbeddedDiagnostic(linux);
         var embeddedAvailable = embeddedDiagnostic is null;
         presentations.Add(new DesktopPresentationAvailability(
             BrowserKind.Embedded,
@@ -70,7 +73,7 @@ public static class DesktopPlatform
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
-    internal static DesktopDiagnostic? GetEmbeddedDiagnostic()
+    internal static DesktopDiagnostic? GetEmbeddedDiagnostic(LinuxDesktopOptions? linux = null)
     {
         if (OperatingSystem.IsWindows() && !WebUiEmbeddedHostFactory.Instance.IsSupported)
         {
@@ -81,13 +84,11 @@ public static class DesktopPlatform
         }
         if (OperatingSystem.IsLinux())
         {
-            if (!WebUiEmbeddedHostFactory.Instance.IsSupported)
-            {
-                return Missing(
-                    "webkitgtk-runtime-missing",
-                    "GTK 3 and WebKitGTK 4.1 or 4.0 are unavailable.",
-                    "Install GTK 3 and WebKitGTK 4.1 (or 4.0), or select an installed browser.");
-            }
+            var selection = GetLinuxSelectionDiagnostic(linux ?? new LinuxDesktopOptions(), null);
+            if (selection is not null) return selection;
+            if (!LinuxWebKitGtkHost.IsSupported)
+                return Missing("webkitgtk-runtime-missing", "GTK 3 and WebKitGTK 4.1 are unavailable.",
+                    "Install GTK 3 and WebKitGTK 4.1, or select an installed browser.");
             if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DISPLAY")) &&
                 string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
             {
@@ -111,6 +112,19 @@ public static class DesktopPlatform
                 "The current platform has no built-in embedded WebView host.",
                 "Provide an IDesktopWindowHostFactory or select an installed browser.");
         }
+        return null;
+    }
+
+    internal static DesktopDiagnostic? GetLinuxSelectionDiagnostic(LinuxDesktopOptions linux, IDesktopWindowHostFactory? factory)
+    {
+        if (linux.EmbeddedBackend is not { } backend)
+            return Missing("linux-embedded-backend-not-selected", "No Linux embedded backend is selected.",
+                "Set DesktopHostOptions.Linux.EmbeddedBackend to Gtk3WebKit41 or Gtk4WebKit6; register Gtk4WindowHostFactory for GTK4.");
+        if (!Enum.IsDefined(backend)) throw new ArgumentOutOfRangeException(nameof(linux));
+        if (!LinuxDesktopRuntime.CanUse(backend))
+            return Missing("linux-embedded-backend-conflict", "Another Linux toolkit is already initialized.", "Start a new process to select a different toolkit.");
+        if (backend == LinuxEmbeddedBackend.Gtk4WebKit6 && factory is not ILinuxDesktopWindowHostFactory { Backend: LinuxEmbeddedBackend.Gtk4WebKit6 })
+            return Missing("gtk4-provider-missing", "The optional GTK4 window provider is not configured.", "Reference Runic.Desktop.Gtk4 and set WindowHostFactory to Gtk4WindowHostFactory.");
         return null;
     }
 

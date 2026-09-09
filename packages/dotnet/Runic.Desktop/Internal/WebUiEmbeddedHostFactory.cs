@@ -1,13 +1,13 @@
 namespace Runic.Desktop.Internal;
 
-internal sealed class WebUiEmbeddedHostFactory : IWebUiEmbeddedHostFactory
+internal sealed class WebUiEmbeddedHostFactory(LinuxEmbeddedBackend? linuxBackend = null) : IWebUiEmbeddedHostFactory
 {
     internal static WebUiEmbeddedHostFactory Instance { get; } = new();
 
     public bool IsSupported => OperatingSystem.IsWindows()
         ? WindowsWebView2Host.IsSupported
         : OperatingSystem.IsLinux()
-            ? LinuxWebKitGtkHost.IsSupported
+            ? linuxBackend == LinuxEmbeddedBackend.Gtk3WebKit41 && LinuxDesktopRuntime.CanUse(linuxBackend.Value) && LinuxWebKitGtkHost.IsSupported
             : OperatingSystem.IsMacOS() && MacOsWkWebViewHost.IsSupported;
 
     public IWebUiEmbeddedHost Create()
@@ -18,6 +18,8 @@ internal sealed class WebUiEmbeddedHostFactory : IWebUiEmbeddedHostFactory
         }
         if (OperatingSystem.IsLinux())
         {
+            if (linuxBackend != LinuxEmbeddedBackend.Gtk3WebKit41)
+                throw new PlatformNotSupportedException("Select Linux.EmbeddedBackend explicitly and register its optional factory for GTK4.");
             return new LinuxWebKitGtkHost();
         }
         if (OperatingSystem.IsMacOS())

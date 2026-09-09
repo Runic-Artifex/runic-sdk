@@ -43,10 +43,11 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(options);
+        LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk3WebKit41);
         if (!IsSupported)
         {
             throw new PlatformNotSupportedException(
-                "WebKitGTK 4.1 or 4.0 and GTK 3 are required for embedded WebViews on Linux.");
+                "WebKitGTK 4.1 and GTK 3 are required for embedded WebViews on Linux.");
         }
         if (IsOpen)
         {
@@ -478,7 +479,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             if (!OperatingSystem.IsLinux()
                 || !TryLoad(["libgtk-3.so.0"], out _gtk)
                 || !TryLoad(["libgobject-2.0.so.0"], out _gObject)
-                || !TryLoad(["libwebkit2gtk-4.1.so.0", "libwebkit2gtk-4.0.so.37"], out _webkit))
+                || !TryLoad(["libwebkit2gtk-4.1.so.0"], out _webkit))
             {
                 return;
             }

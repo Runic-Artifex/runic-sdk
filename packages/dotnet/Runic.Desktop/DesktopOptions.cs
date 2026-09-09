@@ -47,6 +47,9 @@ public sealed record DesktopHostOptions
     /// <summary>Gets the TCP port, where zero selects an ephemeral port.</summary>
     public int Port { get; init; }
 
+    /// <summary>Gets explicit Linux embedded-backend selection.</summary>
+    public LinuxDesktopOptions Linux { get; init; } = new();
+
     /// <summary>Gets the listener exposure policy.</summary>
     public DesktopNetworkExposure NetworkExposure { get; init; } = DesktopNetworkExposure.Loopback;
 

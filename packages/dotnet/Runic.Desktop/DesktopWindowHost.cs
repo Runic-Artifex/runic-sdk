@@ -10,6 +10,14 @@ public interface IDesktopWindowHostFactory
     IDesktopWindowHost Create();
 }
 
+/// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>
+public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
+{
+    bool SupportsNativeDispatch { get; }
+    bool CheckNativeAccess();
+    ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken);
+}
+
 /// <summary>Hosts one Desktop surface in a platform-native window.</summary>
 public interface IDesktopWindowHost : IAsyncDisposable
 {
@@ -78,6 +86,12 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     public bool IsOpen => _host.IsOpen;
 
     public bool SupportsCloseConfirmation => _host.SupportsCloseConfirmation;
+    public bool SupportsNativeDispatch => _host is IDesktopNativeDispatchWindowHost { SupportsNativeDispatch: true };
+    public bool CheckNativeAccess() => _host is IDesktopNativeDispatchWindowHost native && native.CheckNativeAccess();
+    public ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>
+        _host is IDesktopNativeDispatchWindowHost native
+            ? native.DispatchNativeAsync(action, cancellationToken)
+            : ValueTask.FromException(new NotSupportedException("This host does not expose native dispatch."));
 
     public nint NativeHandle => _host.NativeHandle;
 
