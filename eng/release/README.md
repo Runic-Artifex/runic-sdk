@@ -38,8 +38,9 @@ If publication or registry indexing fails, rerun the failed job in the same run.
 It reuses the tested artifacts, checks already published versions for matching
 contents, and publishes only missing packages. Do not rerun successful producers
 unnecessarily. Changed package contents require a new version. The GitHub release
-is created only after the public smoke succeeds; an existing release for the same
-source is preserved on retry. If artifacts expire, prepare a new version/run.
+is created only after the public smoke succeeds. Assets upload to a draft before
+it becomes public, so interrupted uploads can be resumed. An existing published
+release for the same source is preserved on retry. If artifacts expire, prepare a new version/run.
 
 The smoke installs a .NET library and the CLI tool, runs them, and installs/imports
 the npm application bridge outside the checkout. The wider template/framework

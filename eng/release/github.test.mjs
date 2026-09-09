@@ -15,7 +15,7 @@ function fixture(mode, check) {
     writeFileSync(join(packages, 'npm', 'test.tgz'), 'npm fixture');
     writeFileSync(join(packages, 'nuget', 'test.nupkg'), 'nuget fixture');
     const calls = join(directory, 'calls.jsonl');
-    writeFileSync(join(bin, 'gh'), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';\nconst args=process.argv.slice(2);appendFileSync(process.env.TEST_CALLS,JSON.stringify(args)+'\\n');\nif(args[0]==='release'&&args[1]==='view')process.exit(process.env.TEST_MODE==='existing'||process.env.TEST_MODE==='wrong-release'?0:1);\nif(args[0]==='api'){if(process.env.TEST_MODE==='new')process.exit(1);console.log(process.env.TEST_MODE.startsWith('wrong')?'f'.repeat(40):process.env.TEST_SOURCE);}\n`, {mode: 0o755});
+    writeFileSync(join(bin, 'gh'), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';\nconst args=process.argv.slice(2);appendFileSync(process.env.TEST_CALLS,JSON.stringify(args)+'\\n');\nif(args[0]==='release'&&args[1]==='view'){if(!['existing','wrong-release','draft'].includes(process.env.TEST_MODE))process.exit(1);console.log(JSON.stringify({isDraft:process.env.TEST_MODE==='draft',targetCommitish:process.env.TEST_SOURCE}));}\nif(args[0]==='api'){if(process.env.TEST_MODE==='new')process.exit(1);console.log(process.env.TEST_MODE.startsWith('wrong')?'f'.repeat(40):process.env.TEST_SOURCE);}\n`, {mode: 0o755});
     const result = spawnSync(process.execPath, [join(root, 'eng/release/github.mjs'), packages, output], {
       cwd: root, encoding: 'utf8', env: {...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, TEST_MODE: mode, TEST_SOURCE: source, TEST_CALLS: calls},
     });
@@ -29,7 +29,10 @@ test('new release uploads only distributables and their checksum', () => fixture
   const archive = execFileSync('tar', ['-tzf', join(output, name)], {encoding: 'utf8'});
   expect(archive).toContain('npm/test.tgz'); expect(archive).toContain('nuget/test.nupkg');
   const create = calls.find(args => args[0] === 'release' && args[1] === 'create');
-  expect(create.slice(-2)).toEqual([join(output, name), join(output, 'SHA256SUMS')]);
+  expect(create).toContain('--draft');
+  const upload = calls.find(args => args[1] === 'upload');
+  expect(upload.slice(-2)).toEqual([join(output, name), join(output, 'SHA256SUMS')]);
+  expect(calls.at(-1)).toContain('--draft=false');
 }));
 test('retry preserves existing release while conflicting release or tag prevents creation', () => {
   fixture('existing', (result, output, calls) => {
@@ -40,3 +43,10 @@ test('retry preserves existing release while conflicting release or tag prevents
     expect(result.status).not.toBe(0); expect(calls.some(args => args[1] === 'create')).toBe(false);
   });
 });
+
+test('an interrupted draft upload is resumed before the release becomes public', () => fixture('draft', (result, output, calls) => {
+  expect(result.status).toBe(0);
+  expect(calls.some(args => args[1] === 'create')).toBe(false);
+  expect(calls.find(args => args[1] === 'upload')).toContain('--clobber');
+  expect(calls.at(-1)).toContain('--draft=false');
+}));
