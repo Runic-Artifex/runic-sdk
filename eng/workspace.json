@@ -147,6 +147,18 @@
     {
       "name": "Runic.Application.Platform.Desktop",
       "project": "packages/dotnet/Runic.Application.Platform.Desktop/Runic.Application.Platform.Desktop.csproj"
+    },
+    {
+      "name": "Runic.Desktop.Gtk4",
+      "project": "packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj"
+    },
+    {
+      "name": "Runic.Platform.Linux.Portal",
+      "project": "packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj"
+    },
+    {
+      "name": "Runic.Platform.Linux.Gtk4",
+      "project": "packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj"
     }
   ],
   "components": {
@@ -188,7 +200,9 @@
         "eng/branding/desktop",
         "specs/desktop",
         "tests/fixtures/desktop/evidence",
-        "tests/fixtures/desktop/samples"
+        "tests/fixtures/desktop/samples",
+        "packages/dotnet/Runic.Desktop.Gtk4",
+        "tests/native/Runic.Desktop.Gtk4.Smoke"
       ]
     },
     "assets": {
@@ -372,7 +386,10 @@
         "tests/dotnet/Runic.Platform.Windows.Tests",
         "tests/dotnet/Runic.Platform.Linux.Tests",
         "tests/dotnet/Runic.Platform.MacOS.Tests",
-        "tests/native/platform-sandbox"
+        "tests/native/platform-sandbox",
+        "packages/dotnet/Runic.Platform.Linux.Portal",
+        "packages/dotnet/Runic.Platform.Linux.Gtk4",
+        "tests/dotnet/Runic.Platform.Linux.Portal.Tests"
       ]
     }
   }

@@ -29,5 +29,8 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" PackageId="Runic.Platform.MacOS" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Platform/Runic.Application.Platform.csproj" PackageId="Runic.Application.Platform" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Platform.Desktop/Runic.Application.Platform.Desktop.csproj" PackageId="Runic.Application.Platform.Desktop" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" PackageId="Runic.Desktop.Gtk4" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" PackageId="Runic.Platform.Linux.Portal" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" PackageId="Runic.Platform.Linux.Gtk4" />
   </ItemGroup>
 </Project>

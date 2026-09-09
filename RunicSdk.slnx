@@ -42,6 +42,9 @@
     <Project Path="packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
     <Project Path="packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
     <Project Path="packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
     <Project Path="packages/dotnet/Runic.Translations.Authoring/Runic.Translations.Authoring.csproj" />
     <Project Path="packages/dotnet/Runic.Translations.Build/Runic.Translations.Build.csproj" />
     <Project Path="packages/dotnet/Runic.Translations.Generator/Runic.Translations.Generator.csproj" />
@@ -54,6 +57,7 @@
   <Folder Name="/tests/dotnet/">
     <Project Path="tests/dotnet/Runic.Platform.Windows.Tests/Runic.Platform.Windows.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.Linux.Portal.Tests/Runic.Platform.Linux.Portal.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.MacOS.Tests/Runic.Platform.MacOS.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.CsWebUi.Tests/Runic.Application.CsWebUi.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Bridge.CounterTests/Runic.Application.Bridge.CounterTests.csproj" />
@@ -93,6 +97,7 @@
     <Project Path="tests/native/Runic.CommandLine.AotSmoke/Runic.CommandLine.AotSmoke.csproj" />
     <Project Path="tests/native/Runic.Desktop.ComparativeStressAdapter/Runic.Desktop.ComparativeStressAdapter.csproj" />
     <Project Path="tests/native/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj" />
+    <Project Path="tests/native/Runic.Desktop.Gtk4.Smoke/Runic.Desktop.Gtk4.Smoke.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" />
