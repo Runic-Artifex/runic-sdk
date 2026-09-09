@@ -6,6 +6,11 @@ public interface IDesktopWindowHostFactory
     /// <summary>Gets whether the required platform runtime is available.</summary>
     bool IsSupported { get; }
 
+    /// <summary>Gets the operations advertised by this provider before opening.</summary>
+    DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+        DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move;
+
     /// <summary>Creates a new, initially closed host.</summary>
     IDesktopWindowHost Create();
 }
@@ -23,6 +28,11 @@ public interface IDesktopWindowHost : IAsyncDisposable
 {
     /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
     bool SupportsCloseConfirmation => false;
+
+    /// <summary>Gets operations supported by the native window.</summary>
+    DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+        DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move;
 
     event EventHandler? Closed;
     bool IsOpen { get; }
@@ -86,6 +96,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     public bool IsOpen => _host.IsOpen;
 
     public bool SupportsCloseConfirmation => _host.SupportsCloseConfirmation;
+    public DesktopWindowCapabilities Capabilities => _host.Capabilities;
     public bool SupportsNativeDispatch => _host is IDesktopNativeDispatchWindowHost { SupportsNativeDispatch: true };
     public bool CheckNativeAccess() => _host is IDesktopNativeDispatchWindowHost native && native.CheckNativeAccess();
     public ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>

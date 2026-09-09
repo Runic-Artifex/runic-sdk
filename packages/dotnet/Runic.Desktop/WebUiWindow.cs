@@ -137,6 +137,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     /// <summary>Gets the native embedded-window handle, or zero outside WebView mode.</summary>
     public nint NativeWindowHandle => _embeddedHost?.NativeHandle ?? 0;
+    internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost?.Capabilities ?? DesktopWindowCapabilities.None;
+
     internal bool SupportsNativeDispatch => _embeddedHost?.SupportsNativeDispatch == true;
     internal bool CheckNativeAccess() => _embeddedHost?.CheckNativeAccess() == true;
     internal ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>

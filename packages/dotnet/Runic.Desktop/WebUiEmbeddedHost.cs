@@ -15,6 +15,9 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
 {
     /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
     bool SupportsCloseConfirmation => false;
+    DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+        DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move;
 
     bool SupportsNativeDispatch => false;
     bool CheckNativeAccess() => false;

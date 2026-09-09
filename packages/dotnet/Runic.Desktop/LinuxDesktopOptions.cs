@@ -28,6 +28,7 @@ public static class LinuxDesktopRuntime
         if (previous != 0 && previous != value)
             throw new InvalidOperationException("A different Linux embedded toolkit has already initialized in this process. Start a new process to change backends.");
     }
-    internal static bool CanUse(LinuxEmbeddedBackend backend) =>
+    /// <summary>Gets whether the backend is compatible with the process toolkit claim, without loading it.</summary>
+    public static bool CanUse(LinuxEmbeddedBackend backend) =>
         Volatile.Read(ref _backend) is var value && (value == 0 || value == (int)backend + 1);
 }

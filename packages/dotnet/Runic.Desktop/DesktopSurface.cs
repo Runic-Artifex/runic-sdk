@@ -463,12 +463,7 @@ public sealed class DesktopWindow : IAsyncDisposable
         }, cancellationToken);
     }
     public DesktopWindowCapabilities Capabilities => IsOpen && Browser == BrowserKind.Embedded
-        ? DesktopWindowCapabilities.NativeHandle |
-          DesktopWindowCapabilities.Focus |
-          DesktopWindowCapabilities.Minimize |
-          DesktopWindowCapabilities.Maximize |
-          DesktopWindowCapabilities.Resize |
-          DesktopWindowCapabilities.Move |
+        ? _engine.WindowCapabilities |
           (_engine.SupportsCloseConfirmation ? DesktopWindowCapabilities.CloseConfirmation : DesktopWindowCapabilities.None)
         : DesktopWindowCapabilities.None;
 

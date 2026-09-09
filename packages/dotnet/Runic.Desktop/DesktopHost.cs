@@ -50,12 +50,7 @@ public sealed class DesktopHost : IAsyncDisposable
                 customHostAvailable,
                 ExecutablePath: null,
                 customHostAvailable
-                    ? DesktopWindowCapabilities.NativeHandle |
-                      DesktopWindowCapabilities.Focus |
-                      DesktopWindowCapabilities.Minimize |
-                      DesktopWindowCapabilities.Maximize |
-                      DesktopWindowCapabilities.Resize |
-                      DesktopWindowCapabilities.Move
+                    ? _options.WindowHostFactory.Capabilities
                     : DesktopWindowCapabilities.None,
                 customHostAvailable
                     ? null
