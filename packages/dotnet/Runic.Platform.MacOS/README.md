@@ -9,3 +9,11 @@ Clipboard reads distinguish no text (`null`) from empty text, enforce a UTF-16 c
 The native clipboard executable in `tests/dotnet/Runic.Platform.MacOS.Tests` tests Unicode, embedded NUL, UTF-16 with both byte orders, later text items after non-text items, malformed data, bounds, cancellation/retry, and independent `pbcopy`/`pbpaste` observations. Run it on macOS both under JIT and after NativeAOT publication. It overwrites the clipboard. The host's real selected-file fixture must additionally be run interactively, including signed sandbox runs, shutdown with open sheets, and owner replacement. Linux guard checks do not count as macOS evidence.
 
 Native clipboard ABI references: [Apple Pasteboard functions](https://developer.apple.com/documentation/applicationservices/applicationservices_functions) and [PasteboardCreate](https://developer.apple.com/documentation/applicationservices/1461248-pasteboardcreate). No extra native shim is packaged.
+
+## Desktop services
+
+Application-scoped appearance and notification providers, and owned file opening,
+application choice and reveal, are described in the
+[desktop services guide](../../../docs/guides/desktop-services.md). It includes
+composition, native API choices, installation/activation requirements, retained
+file access and the per-platform verification status.

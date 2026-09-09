@@ -10,6 +10,8 @@ public sealed record PlatformProvider
 {
     /// <summary>Gets the optional file picker backend.</summary>
     public IPickerBackend? Files { get; init; }
+    /// <summary>Gets the optional owned native file handoff backend.</summary>
+    public IDesktopFileLauncher? FileLauncher { get; init; }
     /// <summary>Gets the optional text clipboard backend.</summary>
     public ITextClipboard? Clipboard { get; init; }
     /// <summary>Gets the verified owner availability probe.</summary>
@@ -62,6 +64,8 @@ public static class PlatformServiceCollectionExtensions
         services.AddScoped(provider => new PresentationClipboard(provider.GetRequiredService<PresentationLifetime>(),
             provider.GetRequiredService<PlatformProvider>().Clipboard));
         services.AddScoped<ITextClipboard>(provider => provider.GetRequiredService<PresentationClipboard>());
+        services.AddScoped(provider => new PresentationFileLauncher(provider.GetRequiredService<PresentationLifetime>(), provider.GetRequiredService<PlatformProvider>().FileLauncher));
+        services.AddScoped<IDesktopFileLauncher>(provider => provider.GetRequiredService<PresentationFileLauncher>());
         services.AddScoped<IPlatformCapabilities, Capabilities>();
         services.AddScoped<IUiDispatcher>(provider =>
             provider.GetRequiredService<PlatformProvider>().CreateDispatcher?.Invoke(provider.GetRequiredService<PresentationLifetime>())
@@ -69,12 +73,12 @@ public static class PlatformServiceCollectionExtensions
         return services;
     }
 
-    private sealed class Capabilities(PresentationFiles files, PresentationClipboard clipboard) : IPlatformCapabilities
+    private sealed class Capabilities(PresentationFiles files, PresentationClipboard clipboard, PresentationFileLauncher launcher) : IPlatformCapabilities
     {
         public CapabilitySnapshot GetSnapshot()
         {
             var snapshot = files.GetSnapshot();
-            return snapshot with { Statuses = snapshot.Statuses.SetItems(clipboard.GetSnapshot().Statuses) };
+            return snapshot with { Statuses = snapshot.Statuses.SetItems(clipboard.GetSnapshot().Statuses).SetItems(launcher.GetSnapshot().Statuses) };
         }
     }
 

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Tmds.DBus.Protocol;
 
@@ -12,7 +13,7 @@ internal interface IPortalTransport
 
 // The small fixed protocol is encoded explicitly: no reflection, dynamic proxy or
 // runtime code generation enters the NativeAOT path.
-internal sealed class PortalTransport(string? address = null, string destination = "org.freedesktop.portal.Desktop") : IPortalTransport
+internal sealed class PortalTransport(string? address = null, string destination = "org.freedesktop.portal.Desktop", SafeHandle? file = null, bool ask = false) : IPortalTransport
 {
     private const string Root = "/org/freedesktop/portal/desktop";
     private const string RequestInterface = "org.freedesktop.portal.Request";
@@ -22,6 +23,13 @@ internal sealed class PortalTransport(string? address = null, string destination
     {
         using var connection = new DBusConnection(address ?? DBusAddress.Session ?? throw new Runic.Platform.Runtime.NativeBackendUnavailableException());
         await connection.ConnectAsync().AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+        if (file is not null)
+        {
+            uint version = await connection.CallMethodAsync(VersionRequest(connection),
+                static (message, _) => message.GetBodyReader().ReadVariantValue().GetUInt32()).WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+            if (version < (ask || method == "OpenDirectory" ? 3u : 2u))
+                throw new Runic.Platform.Runtime.NativeBackendUnavailableException();
+        }
         string prefix = "/org/freedesktop/portal/desktop/request/" + connection.UniqueName![1..].Replace('.', '_') + "/";
         string token = "runic_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         string handle = prefix + token;
@@ -79,16 +87,27 @@ internal sealed class PortalTransport(string? address = null, string destination
         }
     }
 
+    private MessageBuffer VersionRequest(DBusConnection connection)
+    {
+        using var writer = connection.GetMessageWriter();
+        writer.WriteMethodCallHeader(destination: destination, path: Root, @interface: "org.freedesktop.DBus.Properties", member: "Get", signature: "ss");
+        writer.WriteString("org.freedesktop.portal.OpenURI"); writer.WriteString("version");
+        return writer.CreateMessage();
+    }
+
     private MessageBuffer CreateRequest(DBusConnection connection, string parent, string method, string argument, string token)
     {
         using var writer = connection.GetMessageWriter();
-        bool openUri = method == "OpenURI";
+        bool openUri = method == "OpenURI" || file is not null;
         writer.WriteMethodCallHeader(destination: destination, path: Root,
-            @interface: openUri ? "org.freedesktop.portal.OpenURI" : "org.freedesktop.portal.FileChooser", member: method, signature: "ssa{sv}");
+            @interface: openUri ? "org.freedesktop.portal.OpenURI" : "org.freedesktop.portal.FileChooser", member: method, signature: file is null ? "ssa{sv}" : "sha{sv}");
         writer.WriteString(parent);
-        writer.WriteString(openUri ? argument : method == "SaveFile" ? "Save file" : "Open file");
+        if (file is not null) writer.WriteHandle(new BorrowedHandle(file));
+        else writer.WriteString(openUri ? argument : method == "SaveFile" ? "Save file" : "Open file");
         var dictionary = writer.WriteDictionaryStart();
         writer.WriteDictionaryEntryStart(); writer.WriteString("handle_token"); writer.WriteVariant(VariantValue.String(token));
+        if (file is not null && ask)
+        { writer.WriteDictionaryEntryStart(); writer.WriteString("ask"); writer.WriteVariant(VariantValue.Bool(true)); }
         if (!openUri)
         { writer.WriteDictionaryEntryStart(); writer.WriteString("modal"); writer.WriteVariant(VariantValue.Bool(true)); }
         if (method == "SaveFile")
@@ -118,4 +137,19 @@ internal sealed class PortalTransport(string? address = null, string destination
         }
         return (message.PathAsString!, new PortalResponse(code, uris));
     }
+    // Tmds takes ownership of the wrapper. Retain, but never close, the caller's file handle.
+    private sealed class BorrowedHandle : SafeHandle
+    {
+        private readonly SafeHandle _source;
+        internal BorrowedHandle(SafeHandle source) : base(-1, true)
+        {
+            bool retained = false;
+            source.DangerousAddRef(ref retained);
+            _source = source;
+            SetHandle(source.DangerousGetHandle());
+        }
+        public override bool IsInvalid => handle == -1;
+        protected override bool ReleaseHandle() { _source.DangerousRelease(); return true; }
+    }
+
 }

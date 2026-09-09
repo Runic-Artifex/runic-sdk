@@ -23,6 +23,21 @@ if (bridgeComposition is not ApplicationBridgeSession bridgeSession)
 }
 await bridgeSession.DisposeAsync();
 
+var stopOrder = new System.Collections.Generic.List<string>();
+var stopBuilder = RunicApplication.CreateBuilder([]).UseHost(new StopOrderHost(stopOrder));
+stopBuilder.Services.AddSingleton<IApplicationStoppingParticipant>(new StopParticipant(stopOrder));
+await using (var stopApplication = stopBuilder.Build()) { await stopApplication.RunAsync(); }
+if (!stopOrder.SequenceEqual(new[] { "participant", "host", "dispose" })) return 30;
+stopOrder.Clear();
+var failedStopBuilder = RunicApplication.CreateBuilder([]).UseHost(new StopOrderHost(stopOrder));
+failedStopBuilder.Services.AddSingleton<IApplicationStoppingParticipant>(_ => throw new InvalidOperationException("provider creation failed"));
+await using (var failedStopApplication = failedStopBuilder.Build())
+{
+    try { await failedStopApplication.RunAsync(); return 31; }
+    catch (AggregateException) { }
+}
+if (!stopOrder.SequenceEqual(new[] { "host", "dispose" })) return 32;
+
 DeterministicApplicationTestHost host = new(
     DateTimeOffset.UnixEpoch,
     4,
@@ -195,3 +210,15 @@ if (!controlledStopHost.Lifecycle.SequenceEqual(["start", "wait", "stop", "dispo
 await application.DisposeAsync();
 Console.WriteLine(host.Manifest.ToJson());
 return 0;
+
+sealed class StopParticipant(System.Collections.Generic.List<string> calls) : IApplicationStoppingParticipant
+{
+    public ValueTask StopAsync() { calls.Add("participant"); return ValueTask.CompletedTask; }
+}
+sealed class StopOrderHost(System.Collections.Generic.List<string> calls) : IApplicationHost
+{
+    public ValueTask StartAsync(ApplicationCompositionManifest manifest, ReadOnlyMemory<string> arguments, IServiceProvider services, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public ValueTask WaitForShutdownAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public ValueTask StopAsync(CancellationToken cancellationToken) { calls.Add("host"); return ValueTask.CompletedTask; }
+    public ValueTask DisposeAsync() { calls.Add("dispose"); return ValueTask.CompletedTask; }
+}

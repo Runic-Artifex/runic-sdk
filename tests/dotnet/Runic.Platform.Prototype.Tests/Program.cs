@@ -6,6 +6,7 @@ using Runic.Assets;
 using Runic.Platform;
 using Runic.Platform.Runtime;
 
+if (args.Contains("--native-services", StringComparer.Ordinal)) return NativeHostTests.Run(manualDesktopServices: true);
 if (args.Contains("--native-select", StringComparer.Ordinal)) return NativeHostTests.Run(manualSelection: true);
 if (args.Contains("--native", StringComparer.Ordinal)) return NativeHostTests.Run();
 if (args.Contains("--live-cswebui", StringComparer.Ordinal))
@@ -21,6 +22,7 @@ internal static class Conformance
     {
         (string Name, Func<Task> Run)[] tests =
         [
+            ("DESKTOP: settings lifecycle, input validation and retained handoff", DesktopServicesTests.RunAsync),
             ("HOST: shipping platform registration and scope integration", HostIntegrationTests.RunAsync),
             ("PICK: native owner closes after admission before dispatch", NativeOwnerDispatchRace),
             ("CLIPBOARD: outcomes, cancellation, retry and shutdown drain", ClipboardConformance),

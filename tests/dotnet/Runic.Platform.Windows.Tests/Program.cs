@@ -5,6 +5,11 @@ using Runic.Platform.Runtime;
 using Runic.Platform.Windows;
 
 if (args.Length > 0) return NativeTests.Run(args);
+var xml = System.Xml.Linq.XElement.Parse(WindowsDesktopNotifications.ToastXml(new("saved", "<Title>", "A & B")
+{ Actions = [new("open", "Open <result>")], ActivationUri = new Uri("runic-test://result/1") }));
+Check(xml.Descendants("text").First().Value == "<Title>");
+Check(xml.Descendants("action").Single().Attribute("activationType")?.Value == "protocol");
+Check(xml.Descendants("action").Single().Attribute("arguments")?.Value.Contains("runic-action=open") == true);
 BufferTests.Run();
 var owner = new Owner();
 var native = new FakeClipboard();

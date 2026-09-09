@@ -70,13 +70,27 @@ internal sealed class LocalAtomicFileReplacement : IAtomicFileReplacement
     }
 }
 
-internal sealed class SaveFileLease : ISaveFileLease
+internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
 {
     private readonly object _gate = new();
     private readonly string _path;
     private readonly byte[]? _original;
     private readonly IAtomicFileReplacement _replacement;
     private readonly IAsyncDisposable? _access;
+    private int _handoffs;
+    private readonly TaskCompletionSource _handoffsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public async ValueTask<PlatformResult<Unit>> LaunchAsync(IDesktopFileLauncher launcher,
+        DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(launcher);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed is not null, this);
+            _handoffs++;
+        }
+        try { return await launcher.LaunchAsync(_path, operation, cancellationToken).ConfigureAwait(false); }
+        finally { lock (_gate) if (--_handoffs == 0 && _closed is not null) _handoffsDrained.TrySetResult(); }
+    }
     private FileWriteTransaction? _transaction;
     private TaskCompletionSource? _closed;
 
@@ -144,6 +158,7 @@ internal sealed class SaveFileLease : ISaveFileLease
         {
             if (_closed is not null) return new(_closed.Task);
             completion = _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (_handoffs == 0) _handoffsDrained.TrySetResult();
         }
         _ = ReleaseAsync(completion);
         return new(completion.Task);
@@ -151,6 +166,7 @@ internal sealed class SaveFileLease : ISaveFileLease
 
     private async Task ReleaseAsync(TaskCompletionSource completion)
     {
+        await _handoffsDrained.Task.ConfigureAwait(false);
         List<Exception> failures = [];
         try { if (_transaction is not null) await _transaction.DisposeAsync().ConfigureAwait(false); } catch (Exception error) { failures.Add(error); }
         try { if (_access is not null) await _access.DisposeAsync().ConfigureAwait(false); } catch (Exception error) { failures.Add(error); }

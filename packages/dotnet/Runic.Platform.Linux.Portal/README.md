@@ -29,7 +29,7 @@ explicitly use `LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner)` with GT
 There is no automatic fallback to toolkit dialogs, including when a portal fails.
 
 `OpenUriAsync(owner, uri)` uses OpenURI for HTTP, HTTPS and mailto links. Local-file
-opening requires passing a file descriptor and is not exposed by this URI helper.
+opening uses the separate `CreateFileLauncher(owner)` service and passes a retained file descriptor.
 Ordinary text clipboard access remains with the selected GTK provider; the Clipboard
 portal is tied to Remote Desktop/Input Capture sessions. Background, Inhibit, Print
 and ScreenCast permissions are not requested by a generic window or file service.
@@ -44,3 +44,11 @@ Protocol checks run with:
 ```sh
 direnv exec . dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -- --dbus
 ```
+
+## Desktop services
+
+Application-scoped appearance and notification providers, and owned file opening,
+application choice and reveal, are described in the
+[desktop services guide](../../../docs/guides/desktop-services.md). It includes
+composition, native API choices, installation/activation requirements, retained
+file access and the per-platform verification status.

@@ -12,7 +12,7 @@ function Document() {
   const closeDialog = useRef<HTMLDialogElement>(null);
   const decide = useRef<((allow: boolean) => void) | null>(null);
   const current = useRef({ editor, pending }); current.current = { editor, pending };
-  const busy = pending || ["opening", "saving"].includes(editor.snapshot?.status ?? "");
+  const busy = pending || ["opening", "saving", "launching", "choosing", "revealing"].includes(editor.snapshot?.status ?? "");
   const failure = (value: unknown) => setError(value && typeof value === "object" && "message" in value ? String(value.message) : "Connection failed. Reconnect to recover operation state.");
   useEffect(() => {
     const update = (snapshot: Parameters<typeof receive>[1]) => setEditor(state => receive(state, snapshot));
@@ -23,7 +23,7 @@ function Document() {
   useEffect(() => {
     const confirm = async () => {
       const { editor, pending } = current.current;
-      if (pending || ["opening", "saving"].includes(editor.snapshot?.status ?? "")) { setError("Finish or cancel the operation before closing."); return false; }
+      if (pending || ["opening", "saving", "launching", "choosing", "revealing"].includes(editor.snapshot?.status ?? "")) { setError("Finish or cancel the operation before closing."); return false; }
       if (!dirty(editor)) return true;
       if (decide.current) return false;
       closeDialog.current?.showModal();
@@ -32,7 +32,7 @@ function Document() {
     window.confirmDocumentClose = confirm;
     const protect = (event: BeforeUnloadEvent) => {
       const { editor, pending } = current.current;
-      if (dirty(editor) || pending || ["opening", "saving"].includes(editor.snapshot?.status ?? "")) { event.preventDefault(); event.returnValue = ""; }
+      if (dirty(editor) || pending || ["opening", "saving", "launching", "choosing", "revealing"].includes(editor.snapshot?.status ?? "")) { event.preventDefault(); event.returnValue = ""; }
     };
     window.addEventListener("beforeunload", protect);
     return () => { delete window.confirmDocumentClose; window.removeEventListener("beforeunload", protect); decide.current?.(false); };
@@ -48,6 +48,8 @@ function Document() {
     <nav aria-label="Document actions">
       <button disabled={busy || dirty(editor)} onClick={() => void run({ _tag: "OpenDocument", revision: editor.revision })}>Open…</button>
       <button disabled={busy} onClick={() => void run({ _tag: "SaveDocument", text: editor.text, revision: editor.revision })}>Save as…</button>
+      {([['open', 'Open result'], ['choose', 'Open with…'], ['reveal', 'Show in folder']] as const).map(([action, label]) =>
+        <button key={action} disabled={busy || !editor.snapshot?.hasResult} onClick={() => void run({ _tag: "LaunchDocumentResult", action, revision: editor.revision })}>{label}</button>)}
       <button disabled={!editor.snapshot?.operationId || !busy} onClick={() => { const id = editor.snapshot?.operationId; if (id) void bridge.cancel(id).catch(failure); }}>Cancel operation</button>
       <button disabled={busy} onClick={() => { if (!dirty(editor) || window.confirm("Discard unsaved changes?")) setEditor(state => ({ ...edit(state, ""), saved: "" })); }}>New</button>
     </nav>

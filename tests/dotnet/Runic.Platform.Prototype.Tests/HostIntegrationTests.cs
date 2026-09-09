@@ -21,9 +21,10 @@ internal static class HostIntegrationTests
         Check(!ReferenceEquals(files, second.ServiceProvider.GetRequiredService<IFileDialogs>()), "Presentations must not share native work.");
         Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }, "Browser file picker must report unavailable.");
         Check(await clipboard.ReadTextAsync(1024) is PlatformResult<string?>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }, "Browser clipboard must report unavailable.");
+        Check(await first.ServiceProvider.GetRequiredService<IDesktopFileLauncher>().LaunchAsync(Path.GetTempPath()) is PlatformResult<Unit>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }, "Browser file launcher must report unavailable.");
         var capabilities = first.ServiceProvider.GetRequiredService<IPlatformCapabilities>();
         var snapshot = capabilities.GetSnapshot();
-        Check(snapshot.Statuses.Count == 5 && snapshot.Statuses.Values.All(value => value is CapabilityStatus.Unavailable), "Absent providers must report all capabilities unavailable.");
+        Check(snapshot.Statuses.Count == 6 && snapshot.Statuses.Values.All(value => value is CapabilityStatus.Unavailable), "Absent providers must report all capabilities unavailable.");
         Check(snapshot.Generation != second.ServiceProvider.GetRequiredService<IPlatformCapabilities>().GetSnapshot().Generation, "Presentation generations must be distinct.");
         var lifetime = first.ServiceProvider.GetRequiredService<IApplicationPresentationLifetime>();
         await Task.WhenAll(lifetime.StopAsync().AsTask(), lifetime.StopAsync().AsTask());

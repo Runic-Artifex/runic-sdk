@@ -31,7 +31,9 @@ public enum FailureCode
     /// <summary>An input/output operation failed.</summary>
     IoError,
     /// <summary>The destination changed since acquisition.</summary>
-    Conflict
+    Conflict,
+    /// <summary>The user dismissed a native interactive operation.</summary>
+    UserDismissed
 }
 
 /// <summary>Ownership requirements for native dialogs. This preview supports owned dialogs only.</summary>

@@ -52,7 +52,13 @@ try
 }
 finally { Directory.Delete(saveDirectory, recursive: true); }
 Console.WriteLine("PASS portal ownership, cancellation, local URI and access-grant checks.");
+if (args.Contains("--settings"))
+{
+    await using var settings = PortalPlatformProvider.CreateSettings();
+    Console.WriteLine(await settings.ReadAsync());
+}
 if (!args.Contains("--dbus")) return;
+await DesktopPortalTests.RunAsync();
 using var service = new DBusConnection(DBusAddress.Session!);
 await service.ConnectAsync();
 var fake = new PortalService(service);

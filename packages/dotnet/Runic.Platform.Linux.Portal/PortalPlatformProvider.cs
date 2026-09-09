@@ -7,6 +7,21 @@ namespace Runic.Platform.Linux.Portal;
 /// <summary>Direct desktop portal services, independent of GTK version.</summary>
 public static class PortalPlatformProvider
 {
+    /// <summary>Creates application-scoped appearance preferences without selecting a GTK toolkit.</summary>
+    public static IDesktopSettings CreateSettings() => new PortalDesktopSettings();
+    /// <summary>Creates application-scoped notifications. Disposal leaves delivered notifications in the desktop.</summary>
+    public static IDesktopNotifications CreateNotifications(string? applicationId = null)
+    {
+        if (applicationId is not null && (applicationId.Length > 255 || !applicationId.Contains('.')
+            || applicationId.Split('.').Any(part => part.Length == 0 || char.IsAsciiDigit(part[0])
+                || part.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '_' and not '-'))))
+            throw new ArgumentException("Use the installed application's reverse-DNS D-Bus identifier.", nameof(applicationId));
+        return new PortalNotifications(applicationId: applicationId);
+    }
+    /// <summary>Creates owned local-file handoff operations.</summary>
+    public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
+    { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }
+
     /// <summary>Creates portal-only file dialogs bound to a verified presentation.</summary>
     public static IPickerBackend CreateFileDialogs(IPortalWindowOwner owner, Action<PortalDiagnostic>? diagnosticSink = null)
     {

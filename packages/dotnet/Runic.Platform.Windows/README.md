@@ -17,3 +17,11 @@ write fails; failures must not be interpreted as preservation of previous text.
 Native interop uses static imports and raw COM vtables for NativeAOT. Windows JIT,
 NativeAOT and actual interactive selection acceptance are release gates; portable
 conformance alone does not certify the Windows environment.
+
+## Desktop services
+
+Application-scoped appearance and notification providers, and owned file opening,
+application choice and reveal, are described in the
+[desktop services guide](../../../docs/guides/desktop-services.md). It includes
+composition, native API choices, installation/activation requirements, retained
+file access and the per-platform verification status.

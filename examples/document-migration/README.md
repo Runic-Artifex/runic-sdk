@@ -14,7 +14,7 @@ An uncertain commit must be inspected by the user before any retry. Cleanup
 failures are reported separately and never replace an acknowledged or uncertain
 write outcome.
 
-The Runic application exposes two cancellable commands and an authoritative
+The Runic application exposes cancellable open/save/result-launch commands and an authoritative
 operation snapshot. React owns the text draft, edit revision, and dirty-close
 policy. Operation results carry the revision captured by the command. A late open
 never replaces a newer edit; a completed save marks only the captured text saved.
@@ -100,3 +100,16 @@ Use a brief native session when changing dialogs, clipboard, focus or window
 lifecycle in this example. Record affected scenarios and any bugs in the PR or
 issue. Routine releases do not require repeating the demos or collecting
 acceptance receipts. See the [current release policy](../../eng/release/README.md).
+
+## Native result actions
+
+After Save as succeeds, Open result, Open with… and Show in folder use the retained
+save lease. Only the action name crosses the bridge; its path and access grant
+stay in C#. Replacing the result or closing the presentation releases the lease.
+A save-complete notification offers the same open/reveal actions when native
+notification authorization and installed application identity are available.
+Windows uses `Runic.DocumentMigration` as its installed AUMID; macOS requires an
+application bundle. A development executable may report notifications unavailable
+while save/open/reveal remain usable. See the [desktop services guide](../../docs/guides/desktop-services.md)
+for packaging and relaunch semantics. Browser/CS-WebUI result launching remains
+explicitly unavailable. Notification failure never changes an acknowledged save.

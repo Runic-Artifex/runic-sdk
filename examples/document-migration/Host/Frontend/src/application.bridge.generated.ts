@@ -2,6 +2,10 @@
 import { Schema } from "effect";
 import { bridge, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
 
+export type LaunchDocumentResult = { readonly "_tag": "LaunchDocumentResult"; readonly "action": string; readonly "revision": number; };
+export const LaunchDocumentResult: Schema.Codec<LaunchDocumentResult> = Schema.Struct({ "_tag": Schema.Literal("LaunchDocumentResult"), "action": Schema.String.pipe(Schema.check(Schema.isMinLength(1)), Schema.check(Schema.isMaxLength(6))), "revision": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))) }).annotate({ identifier: "LaunchDocumentResult" });
+export type LaunchDocumentResultEncoded = Schema.Codec.Encoded<typeof LaunchDocumentResult>;
+
 export type OpenDocument = { readonly "_tag": "OpenDocument"; readonly "revision": number; };
 export const OpenDocument: Schema.Codec<OpenDocument> = Schema.Struct({ "_tag": Schema.Literal("OpenDocument"), "revision": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))) }).annotate({ identifier: "OpenDocument" });
 export type OpenDocumentEncoded = Schema.Codec.Encoded<typeof OpenDocument>;
@@ -22,8 +26,8 @@ export type DocumentStarted = { readonly "_tag": "DocumentStarted"; readonly "op
 export const DocumentStarted: Schema.Codec<DocumentStarted> = Schema.Struct({ "_tag": Schema.Literal("DocumentStarted"), "operationId": Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), "snapshot": Schema.suspend(() => DocumentSnapshot) }).annotate({ identifier: "DocumentStarted" });
 export type DocumentStartedEncoded = Schema.Codec.Encoded<typeof DocumentStarted>;
 
-export type DocumentSnapshot = { readonly "capturedRevision": number; readonly "cleanupFailed": boolean; readonly "generation": number; readonly "name": null | string; readonly "operationId": string | null; readonly "status": string; readonly "text": null | string; };
-export const DocumentSnapshot: Schema.Codec<DocumentSnapshot> = Schema.Struct({ "capturedRevision": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "cleanupFailed": Schema.Boolean, "generation": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "name": Schema.Union([Schema.Null, Schema.String]), "operationId": Schema.Union([Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), Schema.Null]), "status": Schema.String, "text": Schema.Union([Schema.Null, Schema.String]) }).annotate({ identifier: "DocumentSnapshot" });
+export type DocumentSnapshot = { readonly "capturedRevision": number; readonly "cleanupFailed": boolean; readonly "generation": number; readonly "hasResult": boolean; readonly "name": null | string; readonly "operationId": string | null; readonly "status": string; readonly "text": null | string; };
+export const DocumentSnapshot: Schema.Codec<DocumentSnapshot> = Schema.Struct({ "capturedRevision": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "cleanupFailed": Schema.Boolean, "generation": Schema.Int.check(Schema.isBetween({ minimum: -9007199254740991, maximum: 9007199254740991 })).pipe(Schema.check(Schema.isGreaterThanOrEqualTo(-2147483648)), Schema.check(Schema.isLessThanOrEqualTo(2147483647))), "hasResult": Schema.Boolean, "name": Schema.Union([Schema.Null, Schema.String]), "operationId": Schema.Union([Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)), Schema.Null]), "status": Schema.String, "text": Schema.Union([Schema.Null, Schema.String]) }).annotate({ identifier: "DocumentSnapshot" });
 export type DocumentSnapshotEncoded = Schema.Codec.Encoded<typeof DocumentSnapshot>;
 
 const definition = defineApplicationBridgeContract({
@@ -31,13 +35,14 @@ const definition = defineApplicationBridgeContract({
   csharp: {"contractName":"Documents","namespace":"Runic.Application.Generated"},
   snapshot: DocumentSnapshot,
   commands: [
+    bridge.command(LaunchDocumentResult, { receipt: DocumentStarted, startsOperation: true, cancellable: true, advancesRevision: true }),
     bridge.command(OpenDocument, { receipt: DocumentStarted, startsOperation: true, cancellable: true, advancesRevision: true }),
     bridge.command(SaveDocument, { receipt: DocumentStarted, startsOperation: true, cancellable: true, advancesRevision: true }),
   ],
   events: [DocumentChanged],
   errors: [DocumentRejected],
 });
-export const applicationBridge = materializeApplicationBridgeContract(definition, "bc3aaa1e8ffccc21f5b8123cc53d9dde24d912040dc72014f2d7143c76165bff");
+export const applicationBridge = materializeApplicationBridgeContract(definition, "2e813412640a033280b96b1080293a5ebdb02d1d693f59eb7ae874b4d87475f7");
 export type DocumentsCommand = Schema.Schema.Type<typeof applicationBridge.command>;
 export type DocumentsReceipt = Schema.Schema.Type<typeof applicationBridge.receipt>;
 export type DocumentsEvent = Schema.Schema.Type<typeof applicationBridge.event>;

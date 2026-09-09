@@ -5,6 +5,38 @@
       {
         "assembly": "DocumentApplication",
         "definitions": {
+          "command:LaunchDocumentResult": {
+            "kind": "object",
+            "properties": {
+              "_tag": {
+                "optional": false,
+                "type": {
+                  "kind": "literal",
+                  "value": "LaunchDocumentResult"
+                }
+              },
+              "action": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maxLength": 6,
+                    "minLength": 1
+                  },
+                  "kind": "string"
+                }
+              },
+              "revision": {
+                "optional": false,
+                "type": {
+                  "constraints": {
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  "kind": "integer"
+                }
+              }
+            }
+          },
           "command:OpenDocument": {
             "kind": "object",
             "properties": {
@@ -157,6 +189,12 @@
                   "kind": "integer"
                 }
               },
+              "hasResult": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
               "name": {
                 "optional": false,
                 "type": {
@@ -217,6 +255,18 @@
         ],
         "members": [
           {
+            "adapter": "__Runic_949dc01d3fb4",
+            "advancesRevision": true,
+            "cancellable": true,
+            "kind": "command",
+            "member": "Launch",
+            "owner": "global::DocumentMigration.After.DocumentFeature",
+            "receipt": "DocumentStarted",
+            "schema": "receipt:DocumentStarted",
+            "startsOperation": true,
+            "tag": "LaunchDocumentResult"
+          },
+          {
             "adapter": "__Runic_7a234f24fa37",
             "advancesRevision": true,
             "cancellable": true,
@@ -255,6 +305,7 @@
         ],
         "registrar": "Runic.Application.Bridge.Generated.Module_391156560deb543e",
         "types": {
+          "command:LaunchDocumentResult": "global::DocumentMigration.After.LaunchDocumentResult",
           "command:OpenDocument": "global::DocumentMigration.After.OpenDocument",
           "command:SaveDocument": "global::DocumentMigration.After.SaveDocument",
           "error:DocumentRejected": "global::DocumentMigration.After.DocumentRejected",
@@ -284,13 +335,20 @@
   "fingerprint": {
     "algorithm": "sha256",
     "scope": "wire",
-    "value": "bc3aaa1e8ffccc21f5b8123cc53d9dde24d912040dc72014f2d7143c76165bff"
+    "value": "2e813412640a033280b96b1080293a5ebdb02d1d693f59eb7ae874b4d87475f7"
   },
   "format": "runic.application-bridge-ir",
   "formatVersion": 1,
   "wire": {
     "canonicalEncoding": "runic-json-v1",
     "commands": [
+      {
+        "advancesRevision": true,
+        "cancellable": true,
+        "name": "LaunchDocumentResult",
+        "receipt": "DocumentStarted",
+        "startsOperation": true
+      },
       {
         "advancesRevision": true,
         "cancellable": true,
@@ -307,6 +365,38 @@
       }
     ],
     "definitions": {
+      "command:LaunchDocumentResult": {
+        "kind": "object",
+        "properties": {
+          "_tag": {
+            "optional": false,
+            "type": {
+              "kind": "literal",
+              "value": "LaunchDocumentResult"
+            }
+          },
+          "action": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maxLength": 6,
+                "minLength": 1
+              },
+              "kind": "string"
+            }
+          },
+          "revision": {
+            "optional": false,
+            "type": {
+              "constraints": {
+                "maximum": 2147483647,
+                "minimum": 0
+              },
+              "kind": "integer"
+            }
+          }
+        }
+      },
       "command:OpenDocument": {
         "kind": "object",
         "properties": {
@@ -673,6 +763,12 @@
                 "minimum": -2147483648
               },
               "kind": "integer"
+            }
+          },
+          "hasResult": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
             }
           },
           "name": {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -89,6 +90,8 @@ public sealed class ApplicationHost : IAsyncDisposable
     private readonly IApplicationHost _host;
     private readonly ServiceProvider _services;
     private int _run;
+    private Task? _stopping;
+    private readonly object _stopGate = new();
 
     /// <summary>Initializes a host from the generated manifest and selected integration.</summary>
     public ApplicationHost(
@@ -136,7 +139,7 @@ public sealed class ApplicationHost : IAsyncDisposable
         {
             try
             {
-                await _host.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                await StopAsync().ConfigureAwait(false);
             }
             catch
             {
@@ -158,13 +161,30 @@ public sealed class ApplicationHost : IAsyncDisposable
         {
             try
             {
-                await _host.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                await StopAsync().ConfigureAwait(false);
             }
             catch when (waitFailure is not null)
             {
                 // The wait fault is the primary observable application failure.
             }
         }
+    }
+
+    private Task StopAsync()
+    {
+        lock (_stopGate) return _stopping ??= StopCoreAsync();
+    }
+    private async Task StopCoreAsync()
+    {
+        List<Exception> errors = [];
+        try
+        {
+            foreach (var participant in _services.GetServices<IApplicationStoppingParticipant>())
+                try { await participant.StopAsync().ConfigureAwait(false); } catch (Exception error) { errors.Add(error); }
+        }
+        catch (Exception error) { errors.Add(error); }
+        try { await _host.StopAsync(CancellationToken.None).ConfigureAwait(false); } catch (Exception error) { errors.Add(error); }
+        if (errors.Count > 0) throw new AggregateException("Application shutdown failed.", errors);
     }
 
     /// <inheritdoc />
@@ -197,4 +217,11 @@ public interface IApplicationMainThreadHost
 {
     /// <summary>Runs from the process main thread until application work and cleanup complete.</summary>
     void Run(Func<Task> application);
+}
+
+/// <summary>Drains application-owned native resources before the host stops its event loop.</summary>
+public interface IApplicationStoppingParticipant
+{
+    /// <summary>Stops accepting work and asynchronously drains submitted work. Implementations must be idempotent.</summary>
+    ValueTask StopAsync();
 }

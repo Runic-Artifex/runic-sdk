@@ -15,10 +15,10 @@ using Runic.Application.Platform.Desktop;
 internal static class NativeHostTests
 {
     // Synchronous entry: Application.Run owns AppKit's process-main-thread pump.
-    internal static int Run(bool manualSelection = false)
+    internal static int Run(bool manualSelection = false, bool manualDesktopServices = false)
     {
         using var watchdog = new Timer(_ => { Console.Error.WriteLine("FAIL native platform test exceeded 90 seconds."); Environment.Exit(1); },
-            null, TimeSpan.FromSeconds(manualSelection ? 240 : 90), Timeout.InfiniteTimeSpan);
+            null, TimeSpan.FromSeconds(manualSelection || manualDesktopServices ? 300 : 90), Timeout.InfiniteTimeSpan);
         DesktopApplicationHost? host = null;
         PresentationLifetime? lifetime = null;
         var owner = new DesktopNativeOwner(() => host?.Window);
@@ -75,15 +75,18 @@ internal static class NativeHostTests
         });
         var builder = new RunicApplicationBuilder(new("platform.native", "0.0.0", "test", []), []);
         builder.UseHost(host);
+        Task exercise = Task.CompletedTask;
+        if (manualDesktopServices) builder.Services.AddSingleton<IApplicationStoppingParticipant>(new DrainDesktopServices(() => exercise));
         var app = builder.Build();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(manualSelection ? 210 : 60));
-        Task exercise = Task.Run(async () =>
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(manualSelection || manualDesktopServices ? 270 : 60));
+        exercise = Task.Run(async () =>
         {
             try
             {
                 while (!owner.IsAvailable) await Task.Delay(10, deadline.Token);
                 var active = lifetime ?? throw new InvalidOperationException("No live scoped lifetime.");
-                await ExerciseAsync(host, owner, active, manualSelection, deadline.Token);
+                if (manualDesktopServices) await DesktopServicesNativeSmoke.RunAsync(owner, deadline.Token);
+                else await ExerciseAsync(host, owner, active, manualSelection, deadline.Token);
             }
             finally { await deadline.CancelAsync(); }
         });
@@ -99,8 +102,21 @@ internal static class NativeHostTests
         finally { app.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
     }
 
+    private sealed class DrainDesktopServices(Func<Task> pending) : IApplicationStoppingParticipant
+    {
+        public async ValueTask StopAsync() => await pending().ConfigureAwait(false);
+    }
+
     private static async Task ExerciseAsync(DesktopApplicationHost host, DesktopNativeOwner owner, PresentationLifetime lifetime, bool manualSelection, CancellationToken deadline)
     {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
+        {
+            await using var settings = OperatingSystem.IsWindows() ? WindowsPlatformProvider.CreateSettings() : MacOSPlatformProvider.CreateSettings();
+            var appearance = await settings.ReadAsync(deadline);
+            Check(appearance is PlatformResult<DesktopAppearance>.Success, $"Native appearance API failed: {appearance}");
+            Console.WriteLine($"Native desktop appearance: {appearance}");
+        }
+
         var window = host.Window!;
         await ExercisePublicTransportCloseAsync(host, deadline);
         await owner.InvokeAsync(handle =>

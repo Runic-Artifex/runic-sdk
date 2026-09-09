@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { dirty, edit, emptyEditor, receive } from "./editor-state";
-const result = (status: string, generation: number, text: string, capturedRevision = 0) => ({ status, generation, text, capturedRevision, operationId: null, name: "document.txt", cleanupFailed: false });
+const result = (status: string, generation: number, text: string, capturedRevision = 0) => ({ status, generation, text, capturedRevision, operationId: null, name: "document.txt", cleanupFailed: false, hasResult: false });
 test("late open does not overwrite an edit", () => {
   const state = receive(edit(emptyEditor, "new edit"), result("opened", 1, "disk"));
   expect(state.text).toBe("new edit"); expect(dirty(state)).toBe(true);

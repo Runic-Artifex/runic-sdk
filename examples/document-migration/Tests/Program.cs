@@ -109,6 +109,20 @@ Check((await Command(new { _tag = "OpenDocument", revision = 8 })).GetProperty("
 files.Bytes = new byte[DocumentService.MaximumBytes + 1];
 Check((await Command(new { _tag = "OpenDocument", revision = 8 })).GetProperty("status").GetString() == "too-large", "Oversized read bounded");
 Check(files.ActiveLeases == 0, "Failure paths dispose leases");
+var resultFiles = new TestFiles();
+var resultLauncher = new TestLauncher();
+var resultNotifications = new TestNotifications();
+await using (var resultService = new DocumentService(resultFiles, resultLauncher, resultNotifications))
+{
+    Check((await resultService.SaveAsync("result", default)).Status == "saved", "Native result save acknowledged");
+    Check(resultFiles.ActiveLeases == 1, "Saved result retains access for later handoff");
+    Check((await resultService.LaunchResultAsync(DesktopFileOperation.ChooseApplication, default)).Status == "launched", "Open with uses retained lease");
+    Check(resultLauncher.Last == DesktopFileOperation.ChooseApplication, "Application choice remains explicit");
+    resultNotifications.Activate("reveal");
+    await resultLauncher.Revealed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    Check(resultLauncher.Last == DesktopFileOperation.Reveal, "Notification action opens saved result");
+}
+Check(resultFiles.ActiveLeases == 0 && resultNotifications.Removed, "Presentation completion releases access and withdraws result notification");
 Console.WriteLine($"Document migration: {assertions} assertions passed. Simulated providers; no native evidence claimed.");
 
 sealed class TestFiles : IFileDialogs
@@ -139,8 +153,10 @@ sealed class TestFiles : IFileDialogs
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult<Stream>(_stream = new(owner.Bytes)); }
         public ValueTask DisposeAsync() { _stream?.Dispose(); owner.ActiveLeases--; owner.CancelOnReadDispose?.Cancel(); return ValueTask.CompletedTask; }
     }
-    sealed class Save(TestFiles owner) : ISaveFileLease
+    sealed class Save(TestFiles owner) : ISaveFileLease, ILaunchableFileLease
     {
+        public ValueTask<PlatformResult<Unit>> LaunchAsync(IDesktopFileLauncher launcher, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
+            => launcher.LaunchAsync(Path.Combine(Path.GetTempPath(), "document.txt"), operation, cancellationToken);
         public string DisplayName => "document.txt";
         public ValueTask<PlatformResult<IFileWriteTransaction>> BeginWriteAsync(FileWritePolicy policy, CancellationToken token = default)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Success(new Write(owner))); }
@@ -158,4 +174,23 @@ sealed class TestFiles : IFileDialogs
         }
         public ValueTask DisposeAsync() { _stream.Dispose(); if (owner.ThrowWriteDispose) throw new IOException("cleanup failed"); return ValueTask.CompletedTask; }
     }
+}
+
+sealed class TestLauncher : IDesktopFileLauncher
+{
+    public DesktopFileOperation Last;
+    public TaskCompletionSource Revealed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
+    { Last = operation; if (operation == DesktopFileOperation.Reveal) Revealed.TrySetResult(); return ValueTask.FromResult<PlatformResult<Unit>>(new PlatformResult<Unit>.Success(new())); }
+}
+sealed class TestNotifications : IDesktopNotifications
+{
+    public event EventHandler<DesktopNotificationActivation>? Activated;
+    public DesktopNotification? Sent;
+    public bool Removed;
+    public void Activate(string action) => Activated?.Invoke(this, new(Sent!.Id, action));
+    public ValueTask<PlatformResult<Unit>> RequestPermissionAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult<PlatformResult<Unit>>(new PlatformResult<Unit>.Success(new()));
+    public ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default) { Sent = notification; return RequestPermissionAsync(cancellationToken); }
+    public ValueTask<PlatformResult<Unit>> RemoveAsync(string id, CancellationToken cancellationToken = default) { Removed = id == Sent?.Id; return RequestPermissionAsync(cancellationToken); }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

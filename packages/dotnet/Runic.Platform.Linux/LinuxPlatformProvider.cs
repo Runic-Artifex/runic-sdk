@@ -6,6 +6,14 @@ namespace Runic.Platform.Linux;
 /// <summary>Explicitly selects GTK services without loading another OS provider.</summary>
 public static class LinuxPlatformProvider
 {
+    /// <summary>Creates toolkit-independent portal appearance preferences.</summary>
+    public static IDesktopSettings CreateSettings() => Portal.PortalPlatformProvider.CreateSettings();
+    /// <summary>Creates application-scoped desktop portal notifications.</summary>
+    public static IDesktopNotifications CreateNotifications(string? applicationId = null) => Portal.PortalPlatformProvider.CreateNotifications(applicationId);
+    /// <summary>Creates owned file handoffs for a GTK3 presentation.</summary>
+    public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
+    { ArgumentNullException.ThrowIfNull(owner); return Portal.PortalPlatformProvider.CreateFileLauncher(new Gtk3PortalWindowOwner(owner)); }
+
     /// <summary>Creates dialogs bound to the verified GTK presentation owner.</summary>
     public static IPickerBackend CreateFileDialogs(INativePickerOwner owner)
     {
