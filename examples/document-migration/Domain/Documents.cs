@@ -22,7 +22,7 @@ public sealed class DocumentService(IFileDialogs files, IDesktopFileLauncher? la
             var outcome = await file.LaunchAsync(launcher, operation, token);
             return new(outcome switch
             {
-                PlatformResult<Unit>.Success => operation == DesktopFileOperation.Reveal ? "revealed" : "launched",
+                PlatformResult<Unit>.Success => "handoff-requested",
                 PlatformResult<Unit>.Failed failure => $"failed:{failure.Code}",
                 PlatformResult<Unit>.Unavailable unavailable => $"unavailable:{unavailable.Reason}",
                 _ => "result-unavailable"

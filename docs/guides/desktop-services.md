@@ -83,6 +83,10 @@ Desktop settings, focus modes and user policy can suppress notifications.
 `RequestPermissionAsync` prompts on macOS; Windows checks notification settings;
 Linux checks the portal because it has no separate authorization request.
 Permission denial, missing backend and resource limits remain typed outcomes.
+On Windows, a newly registered app may not have a notification settings entry
+until its first submission. That specific missing-entry result permits an attempt;
+`ShowAsync` still enforces native registration and OS policy. This is not a promise
+that the app is authorized or the notification will be visible.
 Cancellation prevents queued work. After submission, the native completion is
 observed rather than reporting a potentially misleading cancellation.
 
@@ -187,7 +191,10 @@ application has finished reading the file. No shell-command string is constructe
 Portal parent export, chooser cancellation and owner replacement retain their
 existing semantics. Cocoa picker cancellation drains the queued cancel callback
 before releasing its panel. Windows shell operations report the actual result
-once the owned native call starts. User dismissal is `FailureCode.UserDismissed`.
+once the owned native call starts. User dismissal is `FailureCode.UserDismissed` when the native API distinguishes
+it. Windows Open With can return `S_OK` even on dismissal. Its success therefore
+acknowledges shell handling, not application selection or file launch; do not use
+it to report that the user opened a file.
 
 References: [OpenURI portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.OpenURI.html),
 [SHOpenWithDialog](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shopenwithdialog),
@@ -195,7 +202,9 @@ References: [OpenURI portal](https://flatpak.github.io/xdg-desktop-portal/docs/d
 [NSWorkspace](https://developer.apple.com/documentation/appkit/nsworkspace).
 
 The document migration example adds Open result, Open with and Show in folder,
-plus a save-complete notification routed to its retained result. It withdraws the
+plus a save-complete notification routed to its retained result. Successful file
+handoff reports “Request sent to desktop”, including completion of Windows Open
+With, rather than claiming the user selected an application. It withdraws the
 notification when the presentation ends; it does not pretend its temporary lease
 survives process exit. Applications needing durable export notifications must
 persist a result identifier and reacquire authorized access on relaunch.
@@ -208,12 +217,22 @@ FDs and cancellation under JIT and NativeAOT. The live local Settings portal was
 also read successfully. Interactive desktop notification delivery/relaunch and
 file-manager UI remain distinct from this protocol evidence.
 
-Windows and macOS providers compile in the managed conformance build. Windows
-XML/protocol routes have portable checks; actual OS notification consent, installed
-identity/relaunch and file-manager interactions remain unverified on this Linux
-machine. Existing Windows/macOS native JIT/AOT jobs now also read native appearance
-preferences. Record those OS results before describing the corresponding UI paths
-as verified. No provider is deferred and no shipping version is assigned here.
+The Windows 11 VM passed native preference reads and lifecycle checks under JIT
+and NativeAOT. Fresh installed notification identities passed first submission,
+replacement and withdrawal under both runtimes after fixing the first-use settings
+precheck. NativeAOT live button callbacks and protocol relaunch after sender exit
+passed; body and button each launched a new process with the correct action.
+File opening, Explorer selection, explicit Notepad selection and Open With
+cancellation were inspected in the VM. Cancellation exposed Windows' success-on-
+dismissal behavior, which is documented above. Permission-denial classification
+has portable regression checks; OS policy-toggle behavior was not established by
+the VM experiment and is not claimed as verified.
+
+macOS providers compile in the managed conformance build; bundled authorization,
+cold activation and file-manager interaction still require native validation.
+Existing native JIT/AOT jobs also read appearance preferences. These VM results
+are not a new GitHub CI run. No provider is deferred and no shipping version is
+assigned here.
 
 The shared suites verify shutdown ordering, observer cancellation/recovery,
 retained-access handoff, presentation scope and document behaviour. Editor build,
@@ -231,3 +250,45 @@ AUMID or optional Linux D-Bus identity; use a bundled macOS executable. Press En
 to withdraw the test notification and clean up the temporary file. This opt-in
 fixture roots the new native interop in the existing NativeAOT consumer without
 showing consent prompts or opening external applications during ordinary CI.
+
+### Focused Windows interactive checks
+
+Use `RUNIC_TEST_SERVICE=Open`, `ChooseApplication` or `Reveal` with
+`--native-services` to exercise one file operation without notification setup.
+`All` is the default. Failed/unavailable operations now fail the run. A coordinator
+may set `RUNIC_TEST_CONFIRM_FILE` to a fresh absolute path and create it only after
+inspecting the UI; otherwise press Enter in the fixture console. This keeps the
+result alive for inspection without relying on console focus. An existing receipt
+or EOF is not accepted as confirmation.
+
+The Windows provider test executable additionally supports:
+
+```powershell
+$env:RUNIC_TEST_APP_ID = 'Your.Installed.TestIdentity'
+# First submission, same-ID replacement and withdrawal; use a fresh installed ID.
+Runic.Platform.Windows.Tests.exe --native-notifications submit
+# Wait for the Open result button (or set RUNIC_TEST_EXPECT_ACTION=default for body).
+Runic.Platform.Windows.Tests.exe --native-notifications live
+# Leave a protocol notification, dispose the provider, then exit the sending process.
+Runic.Platform.Windows.Tests.exe --native-notifications relaunch
+Runic.Platform.Windows.Tests.exe --native-notifications remove
+```
+
+For the relaunch check, register a **test-owned** `runic-p1-test` URI scheme to invoke
+that executable with `--notification-activation "%1" "<absolute receipt path>"`.
+The test validates the fixed notification route and writes the new process ID,
+notification ID and action to a fresh receipt. Confirm the sender has exited
+before clicking either the notification body or Open result, then verify the new
+process ID and expected action. Test body and button separately with fresh receipts.
+This is an opt-in fixture, not application registration performed by the SDK.
+Remove test-owned shortcuts/registry entries and delivered notifications afterward.
+The same modes work with the executable's NativeAOT publish.
+
+For a disposable Windows test identity, the repository provides
+`tests/native/windows-notifications/Configure-TestIdentity.ps1`. Invoke it with
+`-Action Install -AppId Runic.Tests.Notifications.<unique-suffix> -Executable <exe>`
+and optionally `-ProtocolReceipt <fresh-absolute-path>`. It creates only per-user
+test registration, requires a fresh identity, and refuses to replace an existing
+test protocol. Withdraw the notification first, then use `-Action Remove -AppId`
+with the same ID to remove the test shortcut/registration. OS-owned notification
+history may persist, so use another suffix for each first-use regression run.

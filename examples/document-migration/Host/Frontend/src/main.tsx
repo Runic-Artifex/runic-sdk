@@ -54,7 +54,7 @@ function Document() {
       <button disabled={busy} onClick={() => { if (!dirty(editor) || window.confirm("Discard unsaved changes?")) setEditor(state => ({ ...edit(state, ""), saved: "" })); }}>New</button>
     </nav>
     <label htmlFor="document">Document text</label><textarea id="document" rows={24} value={editor.text} onChange={event => setEditor(state => edit(state, event.target.value))} />
-    <p role="status">{editor.snapshot?.status ?? "Ready"}{editor.snapshot?.name ? ` · ${editor.snapshot.name}` : ""}</p><p role="alert">{error}{editor.snapshot?.cleanupFailed ? " Native access cleanup failed. The reported write outcome still applies; do not retry automatically." : ""}</p>
+    <p role="status">{editor.snapshot?.status === "handoff-requested" ? "Request sent to desktop" : editor.snapshot?.status ?? "Ready"}{editor.snapshot?.name ? ` · ${editor.snapshot.name}` : ""}</p><p role="alert">{error}{editor.snapshot?.cleanupFailed ? " Native access cleanup failed. The reported write outcome still applies; do not retry automatically." : ""}</p>
     <p>Open is disabled while there are unsaved changes. Save them or choose New to discard. Edits remain available while operations run.</p>
     <dialog ref={closeDialog} aria-labelledby="close-title" onCancel={event => { event.preventDefault(); close(false); }}><h2 id="close-title">Discard unsaved document?</h2><p>Your latest edits have not been saved.</p><button autoFocus onClick={() => close(false)}>Keep editing</button><button onClick={() => close(true)}>Discard and close</button></dialog>
   </main>;

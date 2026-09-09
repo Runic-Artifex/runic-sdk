@@ -43,6 +43,8 @@ public interface IDesktopNotifications : IAsyncDisposable
     /// <summary>Raised on a worker thread; dispatch window work through its presentation.</summary>
     event EventHandler<DesktopNotificationActivation>? Activated;
     /// <summary>Requests or checks OS authorization; Windows and Linux do not show a separate consent prompt.</summary>
+    /// <remarks>Windows may not have settings for a newly registered app. Success permits an attempt;
+    /// submission still enforces native registration and policy and never guarantees visibility.</remarks>
     ValueTask<PlatformResult<Unit>> RequestPermissionAsync(CancellationToken cancellationToken = default);
     /// <summary>Submits or replaces a notification; success acknowledges submission, not visibility.</summary>
     ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default);
@@ -63,6 +65,9 @@ public enum DesktopFileOperation
 public interface IDesktopFileLauncher
 {
     /// <summary>The caller must retain any sandbox/security-scoped access until the operation completes.</summary>
+    /// <remarks>Success acknowledges native handling, not that another application opened the file.
+    /// Windows Open With can report success even when dismissed; UserDismissed is returned only
+    /// when the native API distinguishes dismissal.</remarks>
     ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
         CancellationToken cancellationToken = default);
 }

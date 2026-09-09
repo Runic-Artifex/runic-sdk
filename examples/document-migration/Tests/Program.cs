@@ -116,7 +116,7 @@ await using (var resultService = new DocumentService(resultFiles, resultLauncher
 {
     Check((await resultService.SaveAsync("result", default)).Status == "saved", "Native result save acknowledged");
     Check(resultFiles.ActiveLeases == 1, "Saved result retains access for later handoff");
-    Check((await resultService.LaunchResultAsync(DesktopFileOperation.ChooseApplication, default)).Status == "launched", "Open with uses retained lease");
+    Check((await resultService.LaunchResultAsync(DesktopFileOperation.ChooseApplication, default)).Status == "handoff-requested", "Open with acknowledges handoff without claiming selection");
     Check(resultLauncher.Last == DesktopFileOperation.ChooseApplication, "Application choice remains explicit");
     resultNotifications.Activate("reveal");
     await resultLauncher.Revealed.Task.WaitAsync(TimeSpan.FromSeconds(3));

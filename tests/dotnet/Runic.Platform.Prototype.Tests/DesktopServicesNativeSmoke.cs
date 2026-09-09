@@ -10,6 +10,15 @@ internal static class DesktopServicesNativeSmoke
     internal static async Task RunAsync(DesktopNativeOwner owner, CancellationToken token)
     {
         var applicationId = Environment.GetEnvironmentVariable("RUNIC_TEST_APP_ID");
+        var service = Environment.GetEnvironmentVariable("RUNIC_TEST_SERVICE") ?? "All";
+        DesktopFileOperation? selectedOperation = service switch
+        {
+            "All" => null,
+            "Open" => DesktopFileOperation.Open,
+            "ChooseApplication" => DesktopFileOperation.ChooseApplication,
+            "Reveal" => DesktopFileOperation.Reveal,
+            _ => throw new ArgumentException("RUNIC_TEST_SERVICE must be All, Open, ChooseApplication or Reveal."),
+        };
         IDesktopFileLauncher launcher;
         IDesktopNotifications notifications;
         if (OperatingSystem.IsWindows())
@@ -30,29 +39,56 @@ internal static class DesktopServicesNativeSmoke
         await using (notifications)
         {
             notifications.Activated += (_, activation) => Console.WriteLine($"Notification action: {activation}");
-            var permission = await notifications.RequestPermissionAsync(token);
-            Console.WriteLine($"Notification authorization/backend: {permission}");
-            if (permission is PlatformResult<Unit>.Success)
-                Console.WriteLine($"Notification submission: {await notifications.ShowAsync(new("native-services", "Runic desktop services", "Test the Open result action, then return to the terminal.") { Actions = [new("open", "Open result")] }, token)}");
+            if (selectedOperation is null)
+            {
+                RequireSuccess(await notifications.RequestPermissionAsync(token), "notification eligibility");
+                RequireSuccess(await notifications.ShowAsync(new("native-services", "Runic desktop services", "Test the Open result action, then return to the terminal.")
+                { Actions = [new("open", "Open result")] }, token), "notification submission");
+            }
             string directory = Path.Combine(Path.GetTempPath(), "runic-desktop-services-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             try
             {
                 var path = Path.Combine(directory, "result.txt");
                 await File.WriteAllTextAsync(path, "Runic native file handoff smoke test.\n", token);
-                foreach (var operation in Enum.GetValues<DesktopFileOperation>())
+                foreach (var operation in selectedOperation is { } selected ? [selected] : Enum.GetValues<DesktopFileOperation>())
                 {
                     Console.WriteLine($"Exercise {operation}; choose or dismiss the native application picker when it appears.");
-                    Console.WriteLine(await launcher.LaunchAsync(path, operation, token));
+                    var result = await launcher.LaunchAsync(path, operation, token);
+                    Console.WriteLine($"{operation}: {result}");
+                    if (operation == DesktopFileOperation.ChooseApplication && result is PlatformResult<Unit>.Failed { Code: FailureCode.UserDismissed })
+                        Console.WriteLine("Picker dismissal reported by the native API.");
+                    else RequireSuccess(result, operation.ToString());
+                    if (OperatingSystem.IsWindows() && operation == DesktopFileOperation.ChooseApplication)
+                        Console.WriteLine("Windows success acknowledges shell handling, including dismissal; confirm the visible outcome separately.");
                 }
                 Console.WriteLine("Inspect the notification action output and opened file-manager/application windows. Press Enter to withdraw the notification and finish.");
-                await Console.In.ReadLineAsync(token);
+                var receipt = Environment.GetEnvironmentVariable("RUNIC_TEST_CONFIRM_FILE");
+                if (receipt is null)
+                {
+                    if (await Console.In.ReadLineAsync(token) is null) throw new InvalidOperationException("No interactive confirmation was supplied.");
+                }
+                else
+                {
+                    // A coordinator creates this fresh test-owned file only after inspecting the UI.
+                    if (File.Exists(receipt)) throw new InvalidOperationException("Confirmation file must not already exist.");
+                    Console.WriteLine($"Waiting for UI confirmation file: {receipt}");
+                    while (!File.Exists(receipt)) await Task.Delay(100, token);
+                }
             }
             finally
             {
-                await notifications.RemoveAsync("native-services", CancellationToken.None);
-                Directory.Delete(directory, recursive: true);
+                try
+                {
+                    if (selectedOperation is null) RequireSuccess(await notifications.RemoveAsync("native-services", CancellationToken.None), "notification withdrawal");
+                }
+                finally { Directory.Delete(directory, recursive: true); }
             }
         }
+    }
+    private static void RequireSuccess(PlatformResult<Unit> result, string operation)
+    {
+        if (result is not PlatformResult<Unit>.Success) throw new InvalidOperationException($"{operation} failed: {result}");
+        Console.WriteLine($"PASS {operation}: native API accepted the request.");
     }
 }

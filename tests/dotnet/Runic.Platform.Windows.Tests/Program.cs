@@ -4,7 +4,16 @@ using Runic.Platform;
 using Runic.Platform.Runtime;
 using Runic.Platform.Windows;
 
+if (args.Length > 0 && args[0] is "--native-notifications" or "--notification-activation")
+    return await NotificationTests.RunAsync(args);
 if (args.Length > 0) return NativeTests.Run(args);
+Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070490), 0) is PlatformResult<Unit>.Success);
+Check(WindowsDesktopNotifications.NotificationSettingResult(0, 0) is PlatformResult<Unit>.Success);
+foreach (var setting in new[] { 1, 2, 3, 4, 99 })
+    Check(WindowsDesktopNotifications.NotificationSettingResult(0, setting) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied });
+Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070005), 0) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied });
+Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80004005), 0) is PlatformResult<Unit>.Unavailable);
+Console.WriteLine("PASS notification first-use eligibility, denial and backend failure classification");
 var xml = System.Xml.Linq.XElement.Parse(WindowsDesktopNotifications.ToastXml(new("saved", "<Title>", "A & B")
 { Actions = [new("open", "Open <result>")], ActivationUri = new Uri("runic-test://result/1") }));
 Check(xml.Descendants("text").First().Value == "<Title>");

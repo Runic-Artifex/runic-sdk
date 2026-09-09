@@ -18,8 +18,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
     {
         unsafe
         {
-            int setting = 0; Check(((delegate* unmanaged[Stdcall]<nint, int*, int>)Slot(notifier, 8))(notifier, &setting));
-            return setting == 0 ? Success() : new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
+            return ReadSetting(notifier);
         }
     }, cancellationToken);
     public ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
@@ -29,8 +28,8 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
         {
             unsafe
             {
-                int setting = 0; Check(((delegate* unmanaged[Stdcall]<nint, int*, int>)Slot(notifier, 8))(notifier, &setting));
-                if (setting != 0) return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
+                var permission = ReadSetting(notifier);
+                if (permission is not PlatformResult<Unit>.Success) return permission;
             }
             if (_toasts.Count >= 64 && !_toasts.ContainsKey(notification.Id)) return new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy);
             nint document = 0, io = 0, factory = 0, toast = 0, properties = 0, handler = 0; long token = 0;
@@ -98,6 +97,24 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
         }
         finally { _gate.Release(); }
     }
+    private static unsafe PlatformResult<Unit> ReadSetting(nint notifier)
+    {
+        int setting = 0;
+        int result = ((delegate* unmanaged[Stdcall]<nint, int*, int>)Slot(notifier, 8))(notifier, &setting);
+        return NotificationSettingResult(result, setting);
+    }
+
+    internal static PlatformResult<Unit> NotificationSettingResult(int result, int setting)
+    {
+        // Windows has no per-app notification settings entry before the first Show.
+        // ERROR_NOT_FOUND means eligibility is unknown, not that the backend is absent.
+        // Permit submission; Show still enforces native registration and OS policy.
+        if (result == unchecked((int)0x80070490)) return Success();
+        if (result == unchecked((int)0x80070005)) return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
+        if (result < 0) return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
+        return setting == 0 ? Success() : new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
+    }
+
     internal static string ToastXml(DesktopNotification notification)
     {
         var toast = new XElement("toast", new XAttribute("launch", notification.ActivationUri is null ? "default" : ActivationTarget(notification, "default")));

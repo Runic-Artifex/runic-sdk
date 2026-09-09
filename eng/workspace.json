@@ -387,6 +387,7 @@
         "tests/dotnet/Runic.Platform.Linux.Tests",
         "tests/dotnet/Runic.Platform.MacOS.Tests",
         "tests/native/platform-sandbox",
+        "tests/native/windows-notifications",
         "packages/dotnet/Runic.Platform.Linux.Portal",
         "packages/dotnet/Runic.Platform.Linux.Gtk4",
         "tests/dotnet/Runic.Platform.Linux.Portal.Tests"

@@ -30,6 +30,8 @@ internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : ID
                             fixed (char* fileName = path)
                             {
                                 var info = new OpenWithInfo { File = (nint)fileName, Flags = 4 }; // OAIF_EXEC: open once.
+                                // S_OK also occurs on dismissal on Windows 11. It acknowledges shell
+                                // handling; this API cannot reliably prove selection or launch.
                                 result = FromHResult(SHOpenWithDialog(window, in info));
                             }
                         }

@@ -17,7 +17,7 @@ internal static class NativeHostTests
     // Synchronous entry: Application.Run owns AppKit's process-main-thread pump.
     internal static int Run(bool manualSelection = false, bool manualDesktopServices = false)
     {
-        using var watchdog = new Timer(_ => { Console.Error.WriteLine("FAIL native platform test exceeded 90 seconds."); Environment.Exit(1); },
+        using var watchdog = new Timer(_ => { Console.Error.WriteLine("FAIL native platform test exceeded its watchdog deadline."); Environment.Exit(1); },
             null, TimeSpan.FromSeconds(manualSelection || manualDesktopServices ? 300 : 90), Timeout.InfiniteTimeSpan);
         DesktopApplicationHost? host = null;
         PresentationLifetime? lifetime = null;
@@ -95,7 +95,9 @@ internal static class NativeHostTests
             try { app.Run(deadline.Token); }
             catch (OperationCanceledException) when (deadline.IsCancellationRequested) { }
             exercise.GetAwaiter().GetResult();
-            Console.WriteLine("PASS native owner dispatch, picker cancellation, close interception and scoped release.");
+            Console.WriteLine(manualDesktopServices
+                ? "PASS requested desktop service API checks and manual confirmation."
+                : "PASS native owner dispatch, picker cancellation, close interception and scoped release.");
             return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }
