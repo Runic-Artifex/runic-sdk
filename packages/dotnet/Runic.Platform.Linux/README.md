@@ -1,15 +1,20 @@
 # Runic.Platform.Linux
 
-Explicit GTK 3 file dialogs and text clipboard for Linux x64. Register this provider
+Portal file dialogs with GTK3 parenting and text clipboard for Linux x64. Register this provider
 only in the Linux Desktop host; the package references the shared runtime and no
 Desktop, ASP.NET Core, Windows or macOS assemblies. Factory creation does not
 initialize GTK or load native libraries. Supply the verified GTK owner dispatcher.
 
-`LinuxPlatformProvider.CreateFileDialogs(owner)` uses an owned modal native chooser.
-GTK handles X11 and Wayland parenting. Flatpak, Snap and `GTK_USE_PORTAL=1` require a
-responsive session desktop portal. Portal-backed selections reject sibling staging
-before a save transaction can change a file. A session bus, GTK 3, a display and an
-appropriate portal backend must be installed by the application environment.
+`LinuxPlatformProvider.CreateFileDialogs(owner)` uses direct XDG portal dialogs,
+with GTK3 X11/Wayland parent export. The desktop chooses the portal backend, so
+Plasma can show KDE's picker. A failed parent export never opens an unparented
+window, and a missing portal never triggers an implicit toolkit fallback.
+
+`CreateGtkNativeFileDialogs(owner)` explicitly selects the previous GTK-native
+chooser for an unsandboxed compatibility application. Flatpak and Snap must use
+the portal path. Portal selections reject sibling staging before an atomic save
+transaction changes a file; see [portal behavior](../Runic.Platform.Linux.Portal/README.md).
+A session bus, GTK3, a display and the appropriate portal backend must be installed.
 
 `CreateTextClipboard(owner)` serves UTF-8 text with GTK selection ownership.
 Read limits bound managed decoding and string allocation; GTK itself receives the

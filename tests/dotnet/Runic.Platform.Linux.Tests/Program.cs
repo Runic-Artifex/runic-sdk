@@ -29,9 +29,27 @@ await using (var broken = LinuxPlatformProvider.CreateTextClipboard(new Disappea
     try { await broken.ReadTextAsync(30); throw new InvalidOperationException("Unexpected dispatcher failure was swallowed."); }
     catch (InvalidOperationException error) when (error.Message == "dispatcher defect") { }
 }
-if (!args.Contains("--native")) { Console.WriteLine("PASS Linux clipboard owner dispatch races."); return; }
+if (!args.Contains("--native") && !args.Contains("--portal-cancel")) { Console.WriteLine("PASS Linux clipboard owner dispatch races."); return; }
 await using var owner = new GtkOwner();
 await using var clipboard = LinuxPlatformProvider.CreateTextClipboard(owner);
+await using (var parent = await new Gtk3PortalWindowOwner(owner).ExportParentAsync())
+{
+    Check(parent.Identifier.StartsWith("x11:", StringComparison.Ordinal) || parent.Identifier.StartsWith("wayland:", StringComparison.Ordinal), "native portal parent export");
+    Console.WriteLine("PASS GTK3 portal parent export: " + parent.Identifier.Split(':')[0]);
+}
+if (args.Contains("--portal-cancel"))
+{
+    var files = LinuxPlatformProvider.CreateFileDialogs(owner);
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+    try
+    {
+        var result = await files.OpenFileAsync(new OpenFileOptions(), cancellation.Token);
+        throw new InvalidOperationException("Expected a live portal request cancelled by the caller; got " + result);
+    }
+    catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+    Console.WriteLine("PASS real desktop portal request and cancellation; clipboard untouched.");
+    return;
+}
 await owner.InvokeAsync(_ => Native.Clear(Native.Clipboard(Native.Atom("CLIPBOARD", 0))));
 Check(await clipboard.ReadTextAsync(30) is PlatformResult<string?>.Success { Value: null }, "no text");
 Check(await clipboard.WriteTextAsync("") is PlatformResult<Unit>.Success, "empty write");
@@ -114,15 +132,18 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
         thread = new Thread(() =>
         {
             if (Native.Init(0, 0) == 0) { started.SetException(new InvalidOperationException("GTK display unavailable")); return; }
+            nint window = Native.NewWindow(0);
+            Native.Show(window);
             started.SetResult();
             while (!stopping)
             {
                 while (Native.Iteration(0, 0) != 0) { }
                 if (queue.TryDequeue(out var item))
-                    try { item.Item1(0); var after = AfterDispatch; AfterDispatch = null; after?.Invoke(); item.Item2.SetResult(); } catch (Exception e) { item.Item2.SetException(e); }
+                    try { item.Item1(window); var after = AfterDispatch; AfterDispatch = null; after?.Invoke(); item.Item2.SetResult(); } catch (Exception e) { item.Item2.SetException(e); }
                 while (Native.Iteration(0, 0) != 0) { }
                 Thread.Sleep(1);
             }
+            Native.Destroy(window);
         });
         thread.Start();
     }
@@ -138,6 +159,9 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
 }
 static partial class Native
 {
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_window_new")] internal static partial nint NewWindow(int type);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_show")] internal static partial void Show(nint window);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_destroy")] internal static partial void Destroy(nint window);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_init_check")] internal static partial int Init(nint argc, nint argv);
     [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_main_context_iteration")] internal static partial int Iteration(nint context, int block);
     [LibraryImport("libgdk-3.so.0", EntryPoint = "gdk_atom_intern", StringMarshalling = StringMarshalling.Utf8)] internal static partial nint Atom(string name, int only);

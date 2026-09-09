@@ -6,6 +6,9 @@
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="Tmds.DBus.Protocol" Version="0.95.1" />
+    <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
+    <PackageVersion Include="GirCore.WebKit-6.0" Version="0.8.1" />
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="CsWebUi" Version="2.5.0-beta.4.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" Condition="$([System.String]::Copy('$(MSBuildProjectName)').StartsWith('Runic.Translations')) or '$(MSBuildProjectName)' == 'dotnet-runic-translations'" />
@@ -40,6 +43,9 @@
     <PackageVersion Include="Runic.Assets.AspNetCore" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.Desktop" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.CommandLine" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Desktop.Gtk4" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.Linux.Gtk4" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.Linux.Portal" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Desktop" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Translations" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Translations.Build" Version="$(RunicSdkVersion)" />

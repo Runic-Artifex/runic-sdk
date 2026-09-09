@@ -5,13 +5,14 @@
     <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Runic.Platform.Linux</PackageId>
-    <Description>Owned GTK file dialogs and text clipboard for Runic applications on Linux.</Description>
+    <PackageId>Runic.Platform.Linux.Portal</PackageId>
+    <Description>Direct XDG desktop portal file dialogs and URI opening for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <PackageReference Include="Tmds.DBus.Protocol" />
+    <InternalsVisibleTo Include="Runic.Platform.Linux.Portal.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
