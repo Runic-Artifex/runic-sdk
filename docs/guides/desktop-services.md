@@ -1,5 +1,8 @@
 # Desktop preferences, notifications and file handoff
 
+For temporary idle-sleep suppression during an explicit operation, see
+[operation-scoped inhibition](desktop/inhibition.md).
+
 Runic's P1 desktop services have Linux, Windows and macOS providers. Select the
 provider explicitly; GTK3 versus GTK4 remains a separate window-host decision.
 There is no fallback from a failed portal to a different toolkit.

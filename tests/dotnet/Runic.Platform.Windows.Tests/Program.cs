@@ -4,6 +4,8 @@ using Runic.Platform;
 using Runic.Platform.Runtime;
 using Runic.Platform.Windows;
 
+if (args.Length > 0 && args[0] == "--native-inhibition")
+    return await InhibitionTests.RunAsync(args.Contains("--inspect-power-requests", StringComparer.Ordinal));
 if (args.Length > 0 && args[0] is "--native-notifications" or "--notification-activation")
     return await NotificationTests.RunAsync(args);
 if (args.Length > 0) return NativeTests.Run(args);

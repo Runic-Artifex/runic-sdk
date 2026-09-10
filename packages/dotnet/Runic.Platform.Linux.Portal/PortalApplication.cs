@@ -22,6 +22,9 @@ public sealed class PortalApplication
         ApplicationId = applicationId; _diagnosticSink = diagnosticSink;
     }
 
+    /// <summary>Creates operation-scoped idle power inhibition associated with a presentation owner.</summary>
+    public IDesktopInhibition CreateInhibition(IPortalWindowOwner owner)
+    { ArgumentNullException.ThrowIfNull(owner); return new PortalInhibition(owner, this); }
     /// <summary>Creates application-scoped appearance preferences.</summary>
     public IDesktopSettings CreateSettings() => new PortalDesktopSettings(application: this);
     /// <summary>Creates application-scoped notifications; only one service may own this application bus name.</summary>

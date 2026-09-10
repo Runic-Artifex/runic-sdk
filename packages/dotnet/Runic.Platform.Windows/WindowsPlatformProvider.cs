@@ -5,6 +5,10 @@ namespace Runic.Platform.Windows;
 /// <summary>Explicitly selects the Windows provider without probing or loading other providers.</summary>
 public static class WindowsPlatformProvider
 {
+    /// <summary>Creates operation-scoped idle power inhibition.</summary>
+    public static IDesktopInhibition CreateInhibition()
+    { if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(); return new WindowsDesktopInhibition(); }
+
     /// <summary>Creates observable Windows appearance preferences.</summary>
     public static IDesktopSettings CreateSettings()
     { if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(); return new WindowsDesktopSettings(); }

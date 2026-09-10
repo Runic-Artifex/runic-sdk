@@ -59,6 +59,7 @@ if (args.Contains("--settings"))
 }
 if (!args.Contains("--dbus")) return;
 await DesktopPortalTests.RunAsync();
+await InhibitionTests.RunAsync();
 await PortalRecoveryTests.RunAsync();
 using var service = new DBusConnection(DBusAddress.Session!);
 await service.ConnectAsync();

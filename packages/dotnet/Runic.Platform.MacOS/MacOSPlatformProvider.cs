@@ -5,6 +5,10 @@ namespace Runic.Platform.MacOS;
 /// <summary>Explicit AppKit provider selection; no native initialization occurs until used.</summary>
 public static class MacOSPlatformProvider
 {
+    /// <summary>Creates operation-scoped idle power inhibition.</summary>
+    public static IDesktopInhibition CreateInhibition()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopInhibition(); }
+
     /// <summary>Creates appearance preferences. The AppKit main loop must be running before use.</summary>
     public static IDesktopSettings CreateSettings()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopSettings(); }

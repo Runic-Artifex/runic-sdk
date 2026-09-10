@@ -12,6 +12,11 @@
       "path": "data/org.freedesktop.portal.Notification.xml",
       "file": "org.freedesktop.portal.Notification.xml",
       "sha256": "7865846cf488863d816a954338a4c01f94d80d2e98bbaa2857e81c572ba90590"
+    },
+    {
+      "path": "data/org.freedesktop.portal.Inhibit.xml",
+      "file": "org.freedesktop.portal.Inhibit.xml",
+      "sha256": "6b17d2666fbb0ea0ccf85df53b64dec705bedfba21275fd2972fc516b6450e30"
     }
   ]
 }
