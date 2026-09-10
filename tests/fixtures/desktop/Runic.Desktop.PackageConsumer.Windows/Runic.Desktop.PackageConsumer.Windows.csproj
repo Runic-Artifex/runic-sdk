@@ -10,8 +10,8 @@
 
   <ItemGroup>
     <!-- This project deliberately names no WebView2 package. It verifies that
-         the Runic.Desktop package carries the native loader to a clean
-         Windows-targeted consumer without exposing the WebView2 API. -->
+         the Runic.Desktop package carries the native loader (JIT DLL or AOT
+         static library) without exposing the WebView2 API. -->
     <PackageReference Include="Runic.Desktop" Version="$(RunicDesktopPackageVersion)" />
   </ItemGroup>
 </Project>

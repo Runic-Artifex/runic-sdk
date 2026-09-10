@@ -531,7 +531,10 @@ jobs:
         shell: bash
         run: |
           dotnet publish tests/native/Runic.Desktop.WebViewSmoke -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/webview-aot
-          ./artifacts/webview-aot/Runic.Desktop.WebViewSmoke.exe
+          test ! -e artifacts/webview-aot/WebView2Loader.dll
+          mkdir artifacts/webview-exe-only
+          cp artifacts/webview-aot/Runic.Desktop.WebViewSmoke.exe artifacts/webview-exe-only/
+          (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe)
       - name: Publish generated member bridge with NativeAOT
         shell: bash
         run: |

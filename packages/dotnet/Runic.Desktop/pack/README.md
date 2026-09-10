@@ -58,6 +58,9 @@ dotnet run --project samples/Runic.Desktop.Sample -- --webview
 ## Platform WebViews
 
 - Windows uses the Microsoft Edge WebView2 Runtime.
+  Windows x64/ARM64 NativeAOT publishes link the WebView2 loader into the
+  executable automatically; no adjacent `WebView2Loader.dll` is required.
+  The Edge runtime must still be installed. JIT builds retain the native DLL.
 - macOS uses the system WebKit framework.
 - Linux requires explicit `DesktopHostOptions.Linux.EmbeddedBackend` selection: GTK3/WebKitGTK 4.1, or the optional `Runic.Desktop.Gtk4` provider with GTK4/WebKitGTK 6.0, plus a graphical display.
 

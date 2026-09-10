@@ -91,8 +91,19 @@ public static class DesktopPlatform
 
     internal static DesktopDiagnostic? GetEmbeddedDiagnostic(LinuxDesktopOptions? linux = null)
     {
-        if (OperatingSystem.IsWindows() && !WebUiEmbeddedHostFactory.Instance.IsSupported)
+        if (OperatingSystem.IsWindows())
         {
+            try
+            {
+                if (WindowsWebView2Interop.IsAvailable()) return null;
+            }
+            catch (Exception error) when (error is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
+            {
+                return Missing("webview2-loader-unavailable",
+                    "The WebView2 native loader is missing, incompatible, or could not be loaded.",
+                    "For JIT builds, deploy the matching WebView2Loader.dll native asset. For NativeAOT, publish with Runic.Desktop's transitive build targets to link the loader into the executable.");
+            }
+            catch (System.Runtime.InteropServices.COMException) { }
             return Missing(
                 "webview2-runtime-missing",
                 "The Microsoft Edge WebView2 Runtime is unavailable.",

@@ -7,7 +7,7 @@ namespace Runic.Desktop.Internal;
 // The stable Win32 ABI in the pinned SDK's build/native/include/WebView2.h.
 // Only native pointers cross this boundary; no runtime-generated COM wrappers
 // or assembly-location discovery are needed by NativeAOT applications.
-internal static class WindowsWebView2Interop
+internal static partial class WindowsWebView2Interop
 {
     internal const int NavigateSlot = 5;
     internal const int PermissionRequestedSlot = 23;
@@ -25,6 +25,20 @@ internal static class WindowsWebView2Interop
     internal const int PermissionStateSlot = 7;
     internal const int PermissionHandledSlot = 10;
     private static readonly Lazy<nint> Loader = new(LoadLoader);
+
+    static WindowsWebView2Interop()
+    {
+        NativeLibrary.SetDllImportResolver(typeof(WindowsWebView2Interop).Assembly,
+            (name, _, _) => name == "WebView2Loader" ? Loader.Value : 0);
+    }
+
+    // NativeAOT binds these imports to the SDK's static loader. JIT builds use
+    // the resolver above for the NuGet native asset's portable/RID layout.
+    [LibraryImport("WebView2Loader")]
+    private static unsafe partial int GetAvailableCoreWebView2BrowserVersionString(char* folder, nint* version);
+
+    [LibraryImport("WebView2Loader")]
+    private static unsafe partial int CreateCoreWebView2EnvironmentWithOptions(char* folder, char* profile, nint options, nint callback);
 
     private static nint LoadLoader()
     {
@@ -53,17 +67,13 @@ internal static class WindowsWebView2Interop
     internal static unsafe bool IsAvailable()
     {
         nint version = 0;
-        var getVersion = (delegate* unmanaged[Stdcall]<char*, nint*, int>)NativeLibrary.GetExport(
-            Loader.Value, "GetAvailableCoreWebView2BrowserVersionString");
-        try { return getVersion(null, &version) >= 0 && version != 0; }
+        try { return GetAvailableCoreWebView2BrowserVersionString(null, &version) >= 0 && version != 0; }
         finally { Marshal.FreeCoTaskMem(version); }
     }
 
     internal static unsafe void CreateEnvironment(string? profile, nint options, nint callback)
     {
-        var create = (delegate* unmanaged[Stdcall]<char*, char*, nint, nint, int>)NativeLibrary.GetExport(
-            Loader.Value, "CreateCoreWebView2EnvironmentWithOptions");
-        fixed (char* profilePath = profile) Marshal.ThrowExceptionForHR(create(null, profilePath, options, callback));
+        fixed (char* profilePath = profile) Marshal.ThrowExceptionForHR(CreateCoreWebView2EnvironmentWithOptions(null, profilePath, options, callback));
     }
 
     internal static unsafe void CreateController(nint environment, nint window, nint callback)
