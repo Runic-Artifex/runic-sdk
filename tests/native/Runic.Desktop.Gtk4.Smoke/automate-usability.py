@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real GTK4 fixture through AT-SPI in a disposable test VM."""
+"""Exercise the real GTK4 fixture through AT-SPI in a disposable test desktop."""
 import argparse
 import json
 import os
@@ -58,6 +58,8 @@ class Suite:
         self.passed = []
         self.orca = None
         self.speech = []
+        self.gnome_input = None
+        self.accessibility_enabled = None
 
     def wait(self, check, seconds=20):
         deadline = time.monotonic() + seconds
@@ -95,20 +97,58 @@ class Suite:
         self.passed.append(name)
         print("PASS " + name, flush=True)
 
+    def set_accessibility(self, enabled=None):
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        if enabled is None:
+            self.accessibility_enabled = bus.call_sync("org.a11y.Bus", "/org/a11y/bus",
+                "org.freedesktop.DBus.Properties", "Get",
+                GLib.Variant("(ss)", ("org.a11y.Status", "IsEnabled")), None, 0, 5000, None).unpack()[0]
+            enabled = True
+        bus.call_sync("org.a11y.Bus", "/org/a11y/bus", "org.freedesktop.DBus.Properties", "Set",
+                      GLib.Variant("(ssv)", ("org.a11y.Status", "IsEnabled", GLib.Variant("b", enabled))),
+                      None, 0, 5000, None)
+
     def picker(self, title):
+        if self.args.kde_pickers:
+            app = unique(applications(), lambda n: n.name == "xdg-desktop-portal-kde")
+            return unique(tree(app), lambda n: n.getRoleName() == "dialog" and n.name == title)
         app = unique(applications(), lambda n: n.name == "org.gnome.Nautilus")
         return unique(tree(app), lambda n: n.getRoleName() == "frame" and n.name == title)
 
     def choose(self, title, path):
+        if self.args.kde_pickers:
+            frame = self.wait(lambda: self.picker(title))
+            def labelled(n):
+                return n.getRoleName() == "combo box" and any(
+                    relation.getRelationType() == pyatspi.RELATION_LABELLED_BY and any(
+                        relation.getTarget(i).name == "Name:" for i in range(relation.getNTargets()))
+                    for relation in n.getRelationSet())
+            combo = unique(tree(frame), labelled)
+            entry = unique(tree(combo), lambda n: n.getRoleName() == "text")
+            if not entry.queryEditableText().setTextContents(str(path)):
+                raise RuntimeError("KDE's native filename field rejected the path")
+            self.wait(lambda: entry.queryText().getText(0, -1) == str(path))
+            button = self.wait(lambda: unique(tree(frame), lambda n: n.getRoleName() == "button"
+                and n.name == ("Open" if title == "Open file" else "Save") and "Press" in action_names(n)))
+            invoke(button, "Press")
+            return
         frame = self.wait(lambda: self.picker(title))
+        self.wait(lambda: frame.getState().contains(pyatspi.STATE_ACTIVE))
         toolbar = self.wait(lambda: unique(tree(self.picker(title)), lambda n: n.getRoleName() == "tool bar" and "toolbar.edit-location" in action_names(n)))
         invoke(toolbar, "toolbar.edit-location")
         entry = self.wait(lambda: unique(tree(self.picker(title)), lambda n:
             n.getRoleName() == "text" and "activate" in action_names(n)
             and n.getState().contains(pyatspi.STATE_FOCUSED)))
-        if not entry.queryEditableText().setTextContents(str(path.parent)):
+        if not entry.queryEditableText().setTextContents(str(path.parent) + "/"):
             raise RuntimeError("Native location entry rejected the path")
-        invoke(entry, "activate")
+        self.wait(lambda: entry.queryText().getText(0, -1) == str(path.parent) + "/")
+        if self.gnome_input is None:
+            raise RuntimeError("GNOME chooser navigation requires compositor input")
+        bus, interface, session = self.gnome_input
+        for pressed in (True, False):
+            bus.call_sync(interface, session, interface + ".Session", "NotifyKeyboardKeycode",
+                          GLib.Variant("(ub)", (28, pressed)), None, 0, 5000, None)
+            time.sleep(0.05)
         cell = self.wait(lambda: unique(tree(self.picker(title)), lambda n:
             n.getRoleName() == "table cell" and n.name == path.name + ". File"))
         if not cell.parent.querySelection().selectChild(cell.getIndexInParent()):
@@ -121,13 +161,53 @@ class Suite:
     def snapshot(self):
         nodes = []
         for app in applications():
-            if "runic" in app.name.lower() or app.name == "org.gnome.Nautilus":
+            if "runic" in app.name.lower() or app.name in {"org.gnome.Nautilus", "xdg-desktop-portal-kde"}:
                 for node in tree(app):
                     nodes.append({"application": app.name, "role": node.getRoleName(),
                                   "name": node.name, "actions": action_names(node)})
                     if len(nodes) >= 2000:
                         break
         (self.output / "accessibility.json").write_text(json.dumps(nodes, indent=2))
+
+    def establish_gnome_input(self):
+        # Keep a compositor keyboard alive for the whole headless test: removing
+        # its last input device drops the seat focus used by keyboard and Orca.
+        # A new headless session starts in the overview. Accessible widget focus
+        # alone does not give its window keyboard focus or activate Orca's script.
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        interface = "org.gnome.Mutter.RemoteDesktop"
+        session = bus.call_sync(interface, "/org/gnome/Mutter/RemoteDesktop", interface,
+                                "CreateSession", None, None, 0, 5000, None).unpack()[0]
+        def call(method, parameters=None):
+            return bus.call_sync(interface, session, interface + ".Session", method,
+                                 parameters, None, 0, 5000, None)
+        try:
+            call("Start")
+            self.gnome_input = (bus, interface, session)
+            call("NotifyKeyboardKeycode", GLib.Variant("(ub)", (1, True)))
+            time.sleep(0.05)
+            call("NotifyKeyboardKeycode", GLib.Variant("(ub)", (1, False)))
+            time.sleep(0.3)
+            frame = unique(tree(self.fixture()), lambda n: n.getRoleName() == "frame")
+            if not frame.getState().contains(pyatspi.STATE_ACTIVE):
+                call("NotifyKeyboardKeycode", GLib.Variant("(ub)", (56, True)))
+                try:
+                    call("NotifyKeyboardKeycode", GLib.Variant("(ub)", (15, True)))
+                    time.sleep(0.05)
+                    call("NotifyKeyboardKeycode", GLib.Variant("(ub)", (15, False)))
+                finally:
+                    call("NotifyKeyboardKeycode", GLib.Variant("(ub)", (56, False)))
+                self.wait(lambda: frame.getState().contains(pyatspi.STATE_ACTIVE))
+        except Exception:
+            self.stop_gnome_input()
+            raise
+
+    def stop_gnome_input(self):
+        if self.gnome_input is not None:
+            bus, interface, session = self.gnome_input
+            self.gnome_input = None
+            bus.call_sync(interface, session, interface + ".Session", "Stop",
+                          None, None, 0, 5000, None)
 
     def check_gnome_keyboard(self):
         if "GNOME" not in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
@@ -235,6 +315,13 @@ class Suite:
         if sink not in sinks:
             raise RuntimeError("Requested audio sink does not exist")
         (self.output / "pipewire-before.json").write_text(json.dumps(nodes, indent=2))
+        # Force a real focus transition for the first field too; a fresh GTK
+        # window may already focus it before Orca observes the active window.
+        initial = self.button("Finish session")
+        if not initial.queryComponent().grabFocus():
+            raise RuntimeError("Could not establish initial screen-reader focus")
+        self.wait(lambda: initial.getState().contains(pyatspi.STATE_FOCUSED))
+        time.sleep(0.5)
         for index, (label, role) in enumerate([("Your name", "entry"), ("Composition text", "entry"), ("Open file", "button")]):
             wav = self.output / f"speech-{index}.wav"
             capture_name = f"runic-orca-capture-{os.getpid()}-{index}"
@@ -306,9 +393,18 @@ class Suite:
                               Gio.DBusCallFlags.NONE, 5000, None)
         return set(value.unpack()[0])
 
+    def kde_inhibitors(self):
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        value = bus.call_sync("org.kde.Solid.PowerManagement", "/org/kde/Solid/PowerManagement/PolicyAgent",
+            "org.freedesktop.DBus.Properties", "Get",
+            GLib.Variant("(ss)", ("org.kde.Solid.PowerManagement.PolicyAgent", "ActiveInhibitions")),
+            None, Gio.DBusCallFlags.NONE, 5000, None)
+        return {tuple(inhibition) for inhibition in value.unpack()[0]}
+
     def run(self):
         failure = None
         try:
+            self.set_accessibility()
             if any("runic" in a.name.lower() for a in applications()):
                 raise RuntimeError("Close other Runic fixtures before running this suite")
             if self.args.orca:
@@ -319,6 +415,8 @@ class Suite:
             self.wait(lambda: "USABILITY READY" in self.log.read_text(), self.args.startup_timeout)
             required = {"Your name", "Composition text", "Open file", "Finish session"}
             self.wait(lambda: required <= {n.name for n in tree(self.fixture())})
+            if "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
+                self.establish_gnome_input()
             self.snapshot()
             self.passed_check("native accessible control names")
             if self.args.orca:
@@ -335,18 +433,18 @@ class Suite:
                 raise RuntimeError("Accessible target action did not reach the page")
             self.passed_check("native action reaches WebView and snapshot")
             is_gnome = "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
-            before = self.gnome_inhibitors() if is_gnome else set()
+            inhibitors = self.gnome_inhibitors if is_gnome else self.kde_inhibitors
+            desktop = "GNOME" if is_gnome else "PowerDevil"
+            before = inhibitors()
             self.step("Hold inhibition", "RESULT Inhibition request held.")
-            if is_gnome:
-                held = self.wait(lambda: self.gnome_inhibitors() - before)
-                if len(held) != 1:
-                    raise RuntimeError("Expected one additional GNOME inhibitor")
+            held = self.wait(lambda: inhibitors() - before)
+            if len(held) != 1:
+                raise RuntimeError(f"Expected one additional {desktop} inhibitor")
             self.step("Release inhibition", "RESULT Inhibition released.")
-            if is_gnome:
-                self.wait(lambda: not (held & self.gnome_inhibitors()))
-                self.passed_check("GNOME registers and removes the native inhibition request")
+            self.wait(lambda: not (held & inhibitors()))
+            self.passed_check(f"{desktop} registers and removes the native inhibition request")
             self.passed_check("portal inhibition acquire and release")
-            if self.args.gnome_pickers:
+            if self.args.gnome_pickers or self.args.kde_pickers:
                 inputs = Path.home() / "runic-sandbox-inputs"
                 target = inputs / "save-target.txt"
                 original = target.read_bytes()
@@ -361,7 +459,11 @@ class Suite:
                 self.passed_check("portal grant reads document while sibling remains denied")
                 offset = len(self.log.read_text())
                 self.click("Open file")
-                invoke(self.wait(lambda: self.picker("Open file")), "window.close")
+                frame = self.wait(lambda: self.picker("Open file"))
+                if self.args.kde_pickers:
+                    invoke(unique(tree(frame), lambda n: n.getRoleName() == "button" and n.name == "Cancel"), "Press")
+                else:
+                    invoke(frame, "window.close")
                 self.expect("RESULT Dismissed", offset)
                 self.passed_check("native chooser cancellation")
                 offset = len(self.log.read_text())
@@ -371,6 +473,13 @@ class Suite:
                 def save_result():
                     if "AtomicReplaceUnavailable" in self.log.read_text()[offset:]:
                         return True
+                    if self.args.kde_pickers:
+                        app = unique(applications(), lambda n: n.name == "xdg-desktop-portal-kde")
+                        alerts = [n for n in tree(app) if n.getRoleName() == "dialog" and n.name == "Overwrite File?"]
+                        buttons = [n for alert in alerts for n in tree(alert) if n.getRoleName() == "button" and n.name == "Overwrite"]
+                        if len(buttons) == 1:
+                            invoke(buttons[0], "Press")
+                        return False
                     app = unique(applications(), lambda n: n.name == "org.gnome.Nautilus")
                     alerts = [n for n in tree(app) if n.getRoleName() == "alert" and n.name == "Replace When Saving?"]
                     buttons = [n for alert in alerts for n in tree(alert) if n.getRoleName() == "button" and n.name == "Replace"]
@@ -396,6 +505,10 @@ class Suite:
                 pass
         finally:
             self.stop_orca()
+            try:
+                self.stop_gnome_input()
+            except Exception as error:
+                failure = failure or "Compositor input cleanup failed: " + str(error)
             if self.process and self.process.poll() is None:
                 os.killpg(self.process.pid, signal.SIGTERM)
                 try:
@@ -403,6 +516,11 @@ class Suite:
                 except subprocess.TimeoutExpired:
                     os.killpg(self.process.pid, signal.SIGKILL)
                     self.process.wait(timeout=5)
+            if self.accessibility_enabled is not None:
+                try:
+                    self.set_accessibility(self.accessibility_enabled)
+                except Exception as error:
+                    failure = failure or "Accessibility cleanup failed: " + str(error)
             report = {"passed": self.passed, "failure": failure,
                       "desktop": os.environ.get("XDG_CURRENT_DESKTOP"),
                       "manual": ["spoken announcement quality", "visual IME candidate placement",
@@ -417,9 +535,11 @@ class Suite:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New directory for logs and results")
-    parser.add_argument("--gnome-pickers", action="store_true", help="Also exercise Nautilus Flatpak grant/save/cancel dialogs")
+    pickers = parser.add_mutually_exclusive_group()
+    pickers.add_argument("--kde-pickers", action="store_true", help="Exercise the KDE Flatpak grant/save/cancel dialogs")
+    pickers.add_argument("--gnome-pickers", action="store_true", help="Also exercise Nautilus Flatpak grant/save/cancel dialogs")
     parser.add_argument("--gnome-keyboard", action="store_true", help="Exercise compositor keyboard navigation and real IBus Pinyin")
-    parser.add_argument("--orca", action="store_true", help="Verify native focus, Orca speech and captured VM sink audio")
+    parser.add_argument("--orca", action="store_true", help="Verify native focus, Orca speech and captured desktop sink audio")
     parser.add_argument("--audio-sink", help="Explicit PipeWire sink name; never captures the microphone")
     parser.add_argument("--startup-timeout", type=int, default=300)
     parser.add_argument("--timeout", type=int, default=600, help="Overall deadline, including startup")
@@ -429,7 +549,7 @@ if __name__ == "__main__":
         args.command.pop(0)
     if not args.command:
         parser.error("A fixture launch command is required")
-    if Path("/etc/hostname").read_text().strip() not in {"runic-portal", "runic-headless-gnome"}:
+    if Path("/etc/hostname").read_text().strip() not in {"runic-portal", "runic-headless-gnome", "runic-headless-kde"}:
         parser.error("Run only inside a disposable Runic test VM or container")
     def expired(signum, frame):
         raise TimeoutError("Suite deadline reached or termination requested")

@@ -1,172 +1,80 @@
-# Headless desktop container experiment
+# Isolated Linux desktop test containers
 
-This is an opt-in feasibility probe, not a replacement for the desktop VM suite.
-The full GNOME session, Settings portal, PipeWire and virtual display now pass
-the session probe both in the disposable VM and in managed nspawn directly on
-the host. The full native usability suite also passes in both configurations, including
-independently observed inhibition acquisition/release.
-Build using the SDK's locked Git-aware flake:
+Managed systemd-nspawn is the preferred Linux integration runner. The separate
+GNOME and Plasma configurations start real desktop sessions with independent
+Wayland displays, session buses, portal backends and PipeWire instances. They
+use software rendering and have no host desktop sockets, home, physical devices
+or external network bindings. See the [container automation guide](../../docs/guides/desktop/container-automation.md)
+for preparation, builds, execution and collected results.
 
-```sh
-nix build .#nixosConfigurations.runic-headless-gnome.config.system.build.nspawn \
-  --out-link artifacts/runic-headless-gnome
-```
+`run.py` owns the container lifecycle. It uses the activated host's managed-nspawn
+support, a prepared foreign-owned base, and fresh volatile state for each run.
+Only the immutable Nix store, selected fixture inputs and optional Flatpak runtime
+are shared read-only. GNOME uses Mutter's headless backend; Plasma uses KWin's
+virtual backend. Service drop-ins preserve the normal desktop session dependencies.
+The disposable account is `runic`, password `runic`.
 
-The launcher name is `bin/run-runic-headless-gnome-nspawn`. Run it in a disposable
-NixOS VM with the same store available, from an empty task-owned working directory:
+## Host prerequisites
 
-```sh
-sudo systemd-run --unit=runic-headless-probe --property=Delegate=yes \
-  --working-directory=/absolute/task-owned/directory \
-  /absolute/path/to/bin/run-runic-headless-gnome-nspawn \
-  --register=yes --console=pipe
-```
+The host needs active `systemd-nsresourced` and `systemd-mountfsd` sockets and
+systemd's BTF-enabled user-namespace guard. On the development host this is
+configured in `/home/viktor/my-flakes`: the BTF header is derived reproducibly
+from the selected kernel package. Merely enabling the sockets was insufficient;
+the activated systemd build must report `+BTF`.
 
-The locked upstream test launcher shares the read-only Nix store, uses
-`--private-users=no`, and exposes parent proc/sys under `/run/host` for its test
-infrastructure. It is intended here for trusted test code inside a disposable
-VM. Do not treat it as a hardened host container or pass host desktop sockets
-into it. Host managed/unprivileged nspawn support is a separate configuration
-workstream. The container has no external network, physical GPU, or host home
-binding. Its disposable `runic` account has password `runic`.
+Prepare the base once as described in the guide. Its parent must belong to the
+invoking user; the root and initial `usr/bin` directories must be root-owned
+before `systemd-dissect --shift ... foreign`. Relative ownership is preserved by
+shifting, so shifting a user-owned root does not create a usable guest root.
+The runner verifies foreign-root ownership and uses `--private-users=managed`
+with `--private-users-ownership=foreign`. No per-desktop system activation or
+privileged preparation is required afterward.
 
-For commands in the registered container:
+Use the host's activated systemd tools rather than the SDK shell's unpatched
+package. Commands in the guest run through its system manager as `runic`, with a
+home working directory. Enter the guest PID namespace as well as its mount/user
+namespaces: retaining a host PID with a guest `/proc` view produces misleading
+portal and sandbox failures.
 
-```sh
-sudo systemd-run -M runic-headless-gnome --uid=runic --wait --pipe \
-  /run/current-system/sw/bin/env XDG_RUNTIME_DIR=/run/user/1000 \
-  DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-  /run/current-system/sw/bin/gdbus call --session \
-  --dest org.gnome.Mutter.DisplayConfig \
-  --object-path /org/gnome/Mutter/DisplayConfig \
-  --method org.gnome.Mutter.DisplayConfig.GetCurrentState
-```
+## Nested application sandboxes
 
-On 2026-09-10, booted inside the GNOME test VM, this configuration ran GNOME
-Shell 50.4 with llvmpipe, its own `/run/user/1000/runic-wayland` socket and a
-1280×800@60 virtual monitor reported by Mutter. Its session bus ID differed from
-the parent desktop's bus. PipeWire was active. Enabling `hardware.graphics`
-was necessary: without Mesa drivers, Clutter could not initialize its renderer.
-No parent Wayland, session D-Bus or PipeWire socket was shared.
+WebKit and Flatpak keep their bubblewrap sandboxes enabled. Managed nspawn's
+masked proc initially prevented WebKit from mounting a nested PID namespace's
+proc. `runic-pristine-proc.service` creates an auxiliary proc for the **guest PID
+namespace** at `/run/runic-proc-private/proc`, beneath a root-owned `0700`
+directory, with `nosuid,nodev,noexec`. The test user cannot traverse it. This
+satisfies the kernel's proc visibility check without exposing host proc.
+`PrivateMounts=false` keeps this mount in the guest namespace for nested sandboxes.
 
-Starting Shell alone originally left `org.gnome.SessionManager` absent and
-portal activation failed on a session dependency. The configuration now starts
-`gnome-session --session=gnome`, overriding only its Shell service to select the
-headless backend. It preserves normal GNOME session and portal dependencies.
-The packaged read-only probe verifies `IsSessionRunning`, a virtual monitor,
-the Settings portal and active PipeWire:
+The service also binds only that proc's `sys/user` directory onto guest
+`/proc/sys/user`. Flatpak's `--disable-userns` needs to lower its own nested user
+namespace limit; nspawn otherwise masks this directory read-only. These limits
+are resolved against the caller's current user namespace by the kernel, not the
+host's global namespace. A before/after test lowered the limit in a nested user
+namespace and verified its parent's limit remained unchanged. Other nspawn proc
+masks remain in place. Both mounts are removed on service shutdown.
 
-```sh
-nix build .#nixosConfigurations.runic-headless-gnome.config.system.build.runicSessionProbe \
-  --out-link artifacts/runic-session-probe
-```
+The standard-runtime Flatpak tests verify granted document access while direct
+access to the private sibling remains denied. They also reject atomic replacement
+without changing the original destination. Runtime preparation includes the
+pinned GNOME Platform and Mesa GL extension; omitting the latter prevents the
+sandboxed WebView from rendering.
 
-Execute `bin/runic-session-probe` inside the container as `runic`, with
-`XDG_RUNTIME_DIR=/run/user/1000` and
-`DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus`. It prints JSON and fails
-nonzero if a required service or virtual monitor is absent.
+References: [systemd proc masking investigation](https://github.com/systemd/systemd/issues/34226),
+[bubblewrap nested proc report](https://github.com/containers/bubblewrap/issues/707),
+[Linux per-user-namespace limits](https://github.com/torvalds/linux/blob/master/kernel/ucount.c).
 
-The ordinary native usability runner accepts this container's hostname. Build
-`config.system.build.runicContainerFixture` from the same configuration for a
-launcher that supplies ICU, OpenSSL and GTK/WebKit runtime libraries. Its first
-argument is the absolute path to the NativeAOT executable. The container enables
-NixOS's `nix-ld` support, preserving the executable identity used by GTK/AT-SPI.
-Keep the executable's `Runic.Desktop.Gtk4.Smoke` name for the runner's lookup.
-When using `systemd-run`, specify `--working-directory=/home/runic` and
-`PATH=/run/current-system/sw/bin`; launching from `/` makes .NET's configuration
-watcher traverse the filesystem, including the shared store.
+## Coverage and legacy runners
 
-The full native usability suite passed on 2026-09-10: accessible control names,
-WebView snapshot/action, GNOME inhibitor registration/removal, portal inhibition
-acquisition/release, and pending-picker invalidation on owner closure. The first
-inhibition failure was a missing desktop entry, not a headless-session limitation:
-the portal rejected registration of `com.runic.tests.Activation`. The configuration
-now installs that identity with the fixture launcher. Keep the fixture executable
-at `/home/runic/Runic.Desktop.Gtk4.Smoke`. Shared portal registration also emits an
-actionable diagnostic when the desktop rejects an explicit application ID.
-Picker grant/save flows, notifications, IME and audio still need container runs.
-Add a separate Plasma configuration and repeat before claiming parity.
-Nested Flatpak grants and WebKit sandbox behavior require their own execution;
-a running compositor does not establish those results.
+The container guide records executable coverage and remaining work. Linux VM
+helpers are legacy fallback while input, scaling and notification coverage moves
+to containers. New Linux orchestration belongs in this runner. Hardware, physical
+power transitions and different-kernel behavior remain distinct from headless
+shared-kernel integration tests; they do not make VMs a permanent prerequisite
+for portal testing. Windows VM and real macOS testing are separate workstreams.
 
-Stop the task-owned container after collecting diagnostics:
-
-```sh
-sudo systemctl stop runic-headless-probe
-```
-
-## Managed containers directly on the host
-
-The host must supply active `systemd-nsresourced` and `systemd-mountfsd` sockets,
-with systemd's BTF-enabled user-namespace guard. Merely enabling the sockets was
-insufficient with the locked package: its automatic header detection cannot read
-the live kernel inside a Nix build. The host configuration now derives the header
-from its selected kernel package. The resulting systemd build reports `+BTF`.
-
-Managed directory roots need foreign UID ownership. Prepare a task-owned root
-once with administrator credentials, then launch unprivileged:
-
-```sh
-sudo install -d -o root -g root -m 0755 /absolute/test-root \
-  /absolute/test-root/usr /absolute/test-root/usr/bin
-sudo systemd-dissect --shift /absolute/test-root foreign
-containerSystem=$(nix build --no-link --print-out-paths \
-  .#nixosConfigurations.runic-headless-gnome.config.system.build.toplevel)
-systemd-nspawn --user --directory=/absolute/test-root \
-  --private-users=managed --private-users-ownership=foreign \
-  --private-network --bind-ro=/nix/store --register=no \
-  --machine=runic-managed-gnome --console=interactive "$containerSystem/init"
-```
-
-Use a new, empty task-owned path. The initial directories must be root-owned
-before shifting: `systemd-dissect --shift` preserves relative ownership, so a
-user-owned root remains user-owned inside the container. This makes systemd
-reject runtime directory provisioning as an unsafe ownership transition.
-
-`--private-users-ownership=map` does not provide the required mapping in managed
-mode. The explicit foreign mode maps the on-disk ownership into the allocated
-namespace. On 2026-09-10, this path booted directly on the host, accepted ordinary
-`runic` login and passed the packaged GNOME session/display/Settings/PipeWire
-probe. The initial user-owned root caused post-authentication login failure and
-missing graphics drivers; correcting only the initial directory owners fixed
-both without changing PAM or sandbox settings. No host display/session sockets
-are bound.
-
-The initial NativeAOT run exposed a managed-container sandbox prerequisite:
-WebKit's nested bubblewrap could not mount `/newroot/proc`. The configuration
-below resolves it while retaining WebKit's sandbox and nspawn's proc masks.
-
-The container now starts `runic-pristine-proc.service` before the test user's
-manager. It mounts a second proc filesystem for the **container's PID namespace**
-at `/run/runic-proc-private/proc`, beneath a root-owned `0700` directory, with
-`nosuid,nodev,noexec`. The kernel can then permit bubblewrap's nested proc mount
-without removing nspawn's ordinary `/proc` masks. The test user cannot traverse
-the auxiliary mount. It must remain in the guest mount namespace, so the service
-uses `PrivateMounts=false`; this does not expose a host proc mount. The mount is
-removed when the service stops.
-
-A managed-container before/after probe reproduced the original failure, then
-passed as UID 1000 with the auxiliary mount. The nested PID namespace exposed
-only its own processes, while the outer proc masks remained. The integrated
-service passed the complete five-check native suite in both the VM-contained
-launcher and managed nspawn directly on the host. The latter was repeated using
-the guest system manager to launch the runner as `runic`: accessible names,
-WebView action/snapshot, observed GNOME inhibitor registration/removal, portal
-acquire/release and pending-picker invalidation all passed. When entering a
-managed container for automation, launch through its system manager or enter
-its PID namespace as well as its mount/user namespaces; a process retaining a
-host PID with a guest `/proc` view produces misleading portal/sandbox failures.
-This establishes native-suite parity, not Flatpak or physical-device coverage.
-See the upstream [systemd proc masking investigation](https://github.com/systemd/systemd/issues/34226)
-and [bubblewrap nested proc report](https://github.com/containers/bubblewrap/issues/707).
-
-The locked NixOS Python driver also supports nspawn nodes. A focused host run
-booted successfully inside the Nix build sandbox, but SUID wrapper creation
-failed there and the user manager could not establish PAM authentication.
-Do not disable PAM or application sandboxes to turn that result green. Treat
-managed execution outside the build sandbox as a separate runner candidate.
-
-Retain VM jobs for boot/login, seat and
-virtual device behavior, power transitions, and kernel-dependent isolation.
-See the [systemd desktop session model](https://github.com/systemd/systemd/blob/main/docs/DESKTOP_ENVIRONMENTS.md)
-and [PyGObject headless Mutter testing](https://gnome.pages.gitlab.gnome.org/pygobject/guide/testing.html).
+The upstream `config.system.build.nspawn` test launcher and NixOS test driver were
+used during exploration. They are not the supported host execution path: the
+former exposes parent proc/sys for its test infrastructure, while the latter
+failed SUID/PAM setup in the Nix build sandbox. The managed runner resolves these
+constraints without disabling authentication or application sandboxes.

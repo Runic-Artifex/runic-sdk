@@ -27,6 +27,14 @@
             ./nixos/portal-container/gnome.nix
           ];
         };
+        runic-headless-kde = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            "${nixpkgs}/nixos/modules/virtualisation/nspawn-container"
+            "${nixpkgs}/nixos/modules/virtualisation/guest-networking-options.nix"
+            ./nixos/portal-container/kde.nix
+          ];
+        };
         runic-portal-kde = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs.runicSource = self.outPath;
@@ -43,11 +51,15 @@
         };
       };
 
-      # Opt-in CPU transcription for captured test-VM speech; keep it out of
+      # Opt-in CPU transcription for captured test-desktop speech; keep it out of
       # the normal SDK shell and do not require a GPU or a cloud service.
       packages = forAllSystems (system:
         let pkgs = import nixpkgs { inherit system; };
         in {
+          desktop-flatpak-tools = pkgs.buildEnv {
+            name = "runic-desktop-flatpak-tools";
+            paths = [ pkgs.flatpak pkgs.bash pkgs.coreutils pkgs.nix ];
+          };
           vm-whisper-model = pkgs.fetchurl {
             url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
             sha256 = "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002";

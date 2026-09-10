@@ -1,6 +1,9 @@
 # GTK4 sandbox fixture
 
-This is a disposable Linux VM test application, not a production packaging recipe.
+This is a disposable Linux desktop test application, not a production packaging recipe.
+Use the [container runner](../../../../docs/guides/desktop/container-automation.md)
+for automated runtime preparation and execution. The manual guest steps below
+remain available for the legacy VM helpers.
 It uses a standard GNOME Platform runtime so both the application sandbox and
 WebKit's nested process sandbox work without exposing `/nix/store` or the home
 directory. Network permission serves Runic's localhost bridge; the nested WebKit

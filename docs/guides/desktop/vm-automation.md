@@ -1,4 +1,8 @@
-# Desktop VM automation
+# Desktop VM automation (legacy Linux runner)
+
+Use [managed desktop containers](container-automation.md) for new Linux automation.
+The commands below remain available while the remaining VM coverage is migrated.
+Windows VM and real macOS testing are unaffected.
 
 The first unattended GTK4 runner is implemented in
 `tests/native/Runic.Desktop.Gtk4.Smoke/automate-usability.py`. It drives the real
@@ -25,8 +29,8 @@ diagnostic artifacts, not a new release approval requirement.
 
 The common sequence checks accessible control names, a native button action
 reaching the WebView, inhibition acquisition/release, and invalidation of a
-pending picker when its owner closes. In GNOME it additionally observes the
-actual SessionManager inhibitor appearing and disappearing. This verifies a
+pending picker when its owner closes. It also observes the
+actual GNOME SessionManager or KDE PowerDevil inhibitor appearing and disappearing. This verifies a
 registered request, not whether the machine physically suspends.
 
 For the standard-runtime Flatpak fixture, follow its
@@ -48,8 +52,8 @@ It fails if the sandbox denial check did not run. It only uses the disposable
 On 2026-09-10 this entire sequence passed in the GNOME Wayland VM using NativeAOT
 and `org.gnome.Platform/x86_64/50`, runtime commit
 `545da92354a265d2c3572c91c39ac14dd7e74f9d8f9b66744ad50f478d2497c5`.
-The first automated run reused the interactive test VM; clean-image repeatability
-and the KDE adapter remain follow-ups. Do not infer either from this result.
+The first automated run reused the interactive test VM. Fresh-state lifecycle
+and the KDE adapter subsequently passed in the managed container runner.
 
 ## Orca and recorded speech
 
@@ -142,47 +146,34 @@ Unlike setting an accessible text value, this exercises the input method. It
 uses compositor virtual input, not a physical keyboard or the guest's emulated
 USB device. Visual candidate placement and physical device behavior remain
 separate checks. The compositor API does not depend on QEMU, making this adapter
-usable in a future container desktop too.
+used by the managed GNOME container too.
 
 ## Containers and VMs
 
-The [headless GNOME container experiment](../../../nixos/portal-container/README.md)
-has demonstrated a full headless GNOME session, independent Wayland display,
-Settings portal and PipeWire in both VM-contained and host-managed nspawn.
-The full native usability suite passes in both, including independently
-observed inhibition acquisition/release. Installing the fixture desktop ID fixed
-portal registration; a root-only auxiliary proc mount in the container PID
-namespace fixed managed-host WebKit startup while preserving its sandbox.
-Plasma and Flatpak container parity remain unverified.
-Keep the VM suite while completing that experiment. A shared-kernel container
-is promising for frequent native UI tests; VM coverage remains useful for a
-clean boot, graphical login/seat, virtual hardware and kernel-dependent sandbox
-behavior. Container results should identify their runtime explicitly.
+The [managed container runner](container-automation.md) now boots independent
+GNOME/Plasma sessions with fresh state, runs the shared suite, collects logs and
+shuts down on success or failure. Both desktops pass Flatpak chooser/sandbox,
+native inhibition and Orca/audio checks; GNOME also passes compositor input and
+Pinyin. Linux VM helpers remain legacy fallback while the remaining coverage
+moves to containers. No host desktop sockets or physical devices are shared.
 
 ## Extending the suite
 
-Use the NixOS Python test driver for Linux boot, login, guest commands, QEMU
-keyboard/mouse input, screenshots and log collection. The pinned nixpkgs already
-contains GNOME and Plasma test examples. Reuse our desktop modules, with separate
-KDE/GNOME jobs, rather than automating a maintainer's desktop or installing both
-portal stacks in one guest. Prepare the fixture and dependencies before the test
-phase; downloads and builds should not consume an interaction timeout. Keep the
-standard Flatpak runtime pinned and available to the guest without granting
-access to the host Nix store.
+Extend managed containers for Linux. Prepare immutable fixtures and pinned
+runtime dependencies before the interaction phase, and keep GNOME/Plasma jobs
+separate. Windows VM and real macOS adapters remain independent workstreams.
 
 | Area | Automation approach and next assertion |
 | --- | --- |
-| VM lifecycle | Add a NixOS test-driver entry point around the guest runner; boot to Wayland, collect artifacts even on failure, shut down only its own guest. Run one desktop at a time initially. |
-| KDE pickers/inhibition | Add an adapter from the actual Qt accessibility tree and observe PowerDevil's native inhibition state. Require the same grant/save/cancel assertions as GNOME. |
 | Keyboard and IME | GNOME compositor typing, Tab/Shift+Tab and real IBus Pinyin now pass. Extend to KDE/Fcitx5 and device-level input where needed. Changing an accessible text value does not test an IME. |
-| Scaling and targeting | Set actual Mutter/KScreen display scales, read them back, use QEMU pointer input at measured control bounds, and verify hit counts. Retain screenshots for caret/candidate placement. CSS zoom and an AT-SPI button action do not establish physical targeting. |
+| Scaling and targeting | Set actual Mutter/KScreen display scales, read them back, use compositor pointer input at measured control bounds, and verify hit counts. Retain screenshots for caret/candidate placement. CSS zoom and an AT-SPI button action do not establish physical targeting. |
 | Notifications | Activate the visible notification action through the shell UI. Assert the receiver PID and native focused-window result for both live and cold launch. Calling the application's D-Bus callback directly would bypass the activation-token behavior under test. |
-| Accessibility | Native roles/focus, Orca speech records, recorded audio and optional local ASR now work in GNOME. Extend to values, physical focus order/events and KDE. Listening remains useful for announcement quality. |
+| Accessibility | Native roles/focus, Orca speech records, recorded audio and optional local ASR now work in GNOME and KDE. Extend to values and physical focus order/events. Listening remains useful for announcement quality. |
 | Windows | Use the existing interactive VM login and Windows UI Automation for WebView2/WinUI dialogs, with the same fixture outcomes and isolated temporary files. Run executable-only NativeAOT publishes and the existing native power-request checks. Session-0 SSH alone cannot cover interactive display behavior. |
 | macOS | Add an AXUIElement/Accessibility adapter and native assertions after the real Mac is available. Keep native support explicitly untested until then. |
 
-Start these as focused, opt-in VM jobs. Move stable scenarios into CI after a
-fresh-image run establishes their dependencies and failure handling. Preserve
+Start these as focused, opt-in desktop jobs. Move stable scenarios into CI with
+the same prepared dependencies and failure handling. Preserve
 structured results, native logs and failure screenshots; do not add broad soaks,
 mandatory manual gates or retry failures until they happen to pass. Visual IME
 placement, spoken quality and real power transitions are still outside the
