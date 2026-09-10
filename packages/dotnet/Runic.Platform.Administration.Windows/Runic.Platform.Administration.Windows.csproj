@@ -8,11 +8,12 @@
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <PackageId>Runic.Platform.Administration.Windows</PackageId>
     <Description>Host-independent Windows administration capabilities for Runic.</Description>
-
-    <IsPackable>false</IsPackable>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <IsPackable>true</IsPackable>
     <IsPublishable>false</IsPublishable>
-
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup><InternalsVisibleTo Include="Runic.Platform.Administration.Windows.Tests" /><PackageReference Include="System.DirectoryServices.Protocols" /></ItemGroup>
+  <ItemGroup><None Include="README.md" Pack="true" PackagePath="/" /><None Include="docs/**/*.md" Pack="true" PackagePath="docs/" /></ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

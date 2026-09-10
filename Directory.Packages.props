@@ -32,6 +32,7 @@
     <PackageVersion Include="Tomlyn" Version="2.10.1" />
     <PackageVersion Include="Runic.Platform" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Runtime" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.Administration.Windows" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Windows" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.MacOS" Version="$(RunicSdkVersion)" />
