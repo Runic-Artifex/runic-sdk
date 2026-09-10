@@ -51,6 +51,73 @@ and `org.gnome.Platform/x86_64/50`, runtime commit
 The first automated run reused the interactive test VM; clean-image repeatability
 and the KDE adapter remain follow-ups. Do not infer either from this result.
 
+## Orca and recorded speech
+
+Add `--orca` to the guest command to check native focus and screen-reader audio:
+
+```sh
+runic-portal-automate --output "$HOME/.cache/runic-automation/orca-1" \
+  --orca --gnome-pickers -- flatpak run --user com.runic.tests.Sandbox
+```
+
+This starts an owned Orca instance, focuses **Your name**, **Composition text**
+and **Open file** through native AT-SPI, verifies their entry/button roles and
+focused state, and captures eight seconds of output for each control. It refuses
+to replace an existing Orca instance and stops its own reader/recorder on failure.
+The VM's virtual PipeWire sink works without headphones or a physical sound card.
+If the VM has multiple sinks, supply `--audio-sink <node.name>` explicitly. The
+runner records a sink monitor, never a microphone. See PipeWire's
+[pw-record options](https://docs.pipewire.org/page_man_pw-cat_1.html) and
+[sink capture property](https://pipewire.pages.freedesktop.org/pipewire/devel/group__pw__keys.html).
+
+The native check requires Orca's actual speech-output records for each label and
+role plus complete, sustained, non-silent PCM recordings. A click, silence, or
+truncated WAV fails. `speech.json`, `orca.debug`, `pipewire-before.json`, recorder
+logs and `speech-*.wav` retain the evidence. The pinned PipeWire 1.6.8 recorder
+returns status 1 at its sample limit because its success flag is set on playback
+drain; the runner narrowly accepts that case only with the exact sample count
+and clean recorder diagnostics. See the
+[upstream recorder implementation](https://github.com/PipeWire/pipewire/blob/1.6.8/src/tools/pw-cat.c).
+
+Optionally cross-check those recordings with local CPU Whisper. Build the tool
+and checksum-pinned English model on the host, outside the normal SDK shell:
+
+```sh
+nix build .#vm-whisper --out-link artifacts/vm-whisper
+nix build .#vm-whisper-model --out-link artifacts/vm-whisper-model
+
+# Copy the guest result directory through the VM exchange directory first.
+direnv exec . python3 -B tests/native/Runic.Desktop.Gtk4.Smoke/transcribe-speech.py \
+  /path/to/copied/orca-1 --model artifacts/vm-whisper-model \
+  --whisper artifacts/vm-whisper/bin/whisper-cli \
+  --output /path/to/new/transcripts
+```
+
+This uses locked whisper.cpp 1.9.2 with base.en, four CPU threads and no cloud
+service. The model is an opt-in approximately 148 MB dependency. The script
+requires the native checks to have passed, rechecks the WAV, and compares the
+recognized label and role. Expected phrases are never passed as recognition
+prompts. It retains the transcript and recognizer diagnostics, and returns
+nonzero for mismatches; inspect both audio and Orca output before attributing
+an ASR mismatch to Runic. Recognition can invent text in non-speech audio, so it
+cannot replace the independent native and PCM assertions. See the
+[Whisper model card](https://github.com/openai/whisper/blob/main/model-card.md)
+and [whisper.cpp](https://github.com/ggml-org/whisper.cpp).
+
+On 2026-09-10, GNOME Wayland with Orca 50.2, speech-dispatcher 0.12.1 and
+PipeWire 1.6.8 passed the full Flatpak sequence with the audio extension. Local
+Whisper independently recognized all three labels and their entry/button roles.
+This verifies focus-triggered speech and acoustic output; it does not test
+physical Tab navigation, pronunciation in other languages, or announcement
+quality. Those distinctions also apply when no person listens to the recording.
+
+The audio checks have focused negative tests:
+
+```sh
+direnv exec . python3 -B -m unittest discover \
+  -s tests/native/Runic.Desktop.Gtk4.Smoke -p test_speech_audio.py
+```
+
 ## Extending the suite
 
 Use the NixOS Python test driver for Linux boot, login, guest commands, QEMU
@@ -69,7 +136,7 @@ access to the host Nix store.
 | Keyboard and IME | Send QEMU keyboard events through IBus/Fcitx5; assert real composition events and committed text in the fixture. Changing an accessible text value does not test an IME. |
 | Scaling and targeting | Set actual Mutter/KScreen display scales, read them back, use QEMU pointer input at measured control bounds, and verify hit counts. Retain screenshots for caret/candidate placement. CSS zoom and an AT-SPI button action do not establish physical targeting. |
 | Notifications | Activate the visible notification action through the shell UI. Assert the receiver PID and native focused-window result for both live and cold launch. Calling the application's D-Bus callback directly would bypass the activation-token behavior under test. |
-| Accessibility | Extend native assertions to roles, values, focus order and events; capture Orca/speech-dispatcher output for regressions. A spoken usability check remains useful for announcement quality. |
+| Accessibility | Native roles/focus, Orca speech records, recorded audio and optional local ASR now work in GNOME. Extend to values, physical focus order/events and KDE. Listening remains useful for announcement quality. |
 | Windows | Use the existing interactive VM login and Windows UI Automation for WebView2/WinUI dialogs, with the same fixture outcomes and isolated temporary files. Run executable-only NativeAOT publishes and the existing native power-request checks. Session-0 SSH alone cannot cover interactive display behavior. |
 | macOS | Add an AXUIElement/Accessibility adapter and native assertions after the real Mac is available. Keep native support explicitly untested until then. |
 

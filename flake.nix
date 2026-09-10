@@ -35,6 +35,24 @@
         };
       };
 
+      # Opt-in CPU transcription for captured test-VM speech; keep it out of
+      # the normal SDK shell and do not require a GPU or a cloud service.
+      packages = forAllSystems (system:
+        let pkgs = import nixpkgs { inherit system; };
+        in {
+          vm-whisper-model = pkgs.fetchurl {
+            url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
+            sha256 = "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002";
+          };
+          vm-whisper = pkgs.whisper-cpp.override {
+            cudaSupport = false;
+            rocmSupport = false;
+            vulkanSupport = false;
+            withSDL = false;
+            withFFmpegSupport = false;
+          };
+        });
+
       devShells = forAllSystems (
         system:
         let

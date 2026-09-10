@@ -117,5 +117,6 @@ picker and inhibition fixture. GNOME includes IBus Intelligent Pinyin; KDE
 includes Fcitx5 Pinyin with the Wayland frontend. Use actual compositor display
 scales for scaling checks. `runic-atspi` runs the maintained native accessibility
 inspector; `runic-portal-automate` drives the unattended checks described above.
-Spoken screen-reader output and visual candidate placement remain separate from
-accessible-control and button-action assertions.
+The optional `--orca` automation records real screen-reader output for native
+focus changes. Listening for announcement quality and visual candidate placement
+remain separate from accessible-control and button-action assertions.

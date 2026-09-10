@@ -10,6 +10,7 @@ import time
 import traceback
 
 import pyatspi
+from speech_audio import inspect_audio
 from gi.repository import GLib, Gio
 
 
@@ -55,6 +56,8 @@ class Suite:
         self.log = self.output / "fixture.log"
         self.process = None
         self.passed = []
+        self.orca = None
+        self.speech = []
 
     def wait(self, check, seconds=20):
         deadline = time.monotonic() + seconds
@@ -126,6 +129,94 @@ class Suite:
                         break
         (self.output / "accessibility.json").write_text(json.dumps(nodes, indent=2))
 
+    def start_orca(self):
+        if subprocess.run(["pgrep", "-x", "orca"], stdout=subprocess.DEVNULL).returncode == 0:
+            raise RuntimeError("Close the existing Orca instance first; this runner only owns its own reader")
+        with (self.output / "orca-process.log").open("w") as log:
+            self.orca = subprocess.Popen(["orca", "--debug", "--debug-file", str(self.output / "orca.debug")],
+                                         stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        # Orca buffers its debug file; wait on its real service registration.
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.wait(lambda: bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                  "org.freedesktop.DBus", "NameHasOwner", GLib.Variant("(s)", ("org.gnome.Orca.Service",)),
+                  None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0], 30)
+
+    def check_orca(self):
+        nodes = json.loads(subprocess.check_output(["pw-dump"], text=True, timeout=5))
+        sinks = [n["info"]["props"]["node.name"] for n in nodes
+                 if n.get("info", {}).get("props", {}).get("media.class") == "Audio/Sink"]
+        sink = self.args.audio_sink
+        if sink is None:
+            if len(sinks) != 1:
+                raise RuntimeError("Expected one VM audio sink; choose one explicitly with --audio-sink")
+            sink = sinks[0]
+        if sink not in sinks:
+            raise RuntimeError("Requested audio sink does not exist")
+        (self.output / "pipewire-before.json").write_text(json.dumps(nodes, indent=2))
+        for index, (label, role) in enumerate([("Your name", "entry"), ("Composition text", "entry"), ("Open file", "button")]):
+            wav = self.output / f"speech-{index}.wav"
+            capture_name = f"runic-orca-capture-{os.getpid()}-{index}"
+            props = json.dumps({"stream.capture.sink": True, "node.name": capture_name})
+            with (self.output / f"capture-{index}.log").open("w") as log:
+                capture = subprocess.Popen(["pw-record", "--target", sink, "-P", props,
+                                            "--rate", "16000", "--channels", "1", "--format", "s16",
+                                            "--sample-count", "128000", str(wav)],
+                                           stdout=log, stderr=subprocess.STDOUT)
+            try:
+                def linked():
+                    if capture.poll() is not None:
+                        raise RuntimeError("PipeWire recorder exited before focus")
+                    graph = json.loads(subprocess.check_output(["pw-dump"], text=True, timeout=5))
+                    return any(n.get("info", {}).get("props", {}).get("node.name") == capture_name
+                               and n["info"].get("state") == "running" for n in graph)
+                self.wait(linked, 10)
+                control = unique(tree(self.fixture()), lambda n: n.name == label and n.getRoleName() == role)
+                if not control.queryComponent().grabFocus():
+                    raise RuntimeError("Native focus was rejected: " + label)
+                self.wait(lambda: control.getState().contains(pyatspi.STATE_FOCUSED))
+                capture_exit = capture.wait(timeout=12)
+                # pw-cat 1.6.8 exits 1 at its sample limit: only playback drain
+                # sets EXIT_SUCCESS upstream. Require a complete PCM recording
+                # and reject diagnostics rather than treating every exit 1 as OK.
+                diagnostics = (self.output / f"capture-{index}.log").read_text().strip()
+                if capture_exit not in (0, 1) or diagnostics != str(wav):
+                    raise RuntimeError("PipeWire recording failed: " + diagnostics)
+            finally:
+                if capture.poll() is None:
+                    capture.send_signal(signal.SIGINT)
+                    try:
+                        capture.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        capture.kill()
+                        capture.wait(timeout=3)
+            metrics = inspect_audio(wav)
+            if metrics["duration_seconds"] != 8:
+                raise RuntimeError("PipeWire did not capture the complete sample count")
+            self.speech.append({"label": label, "role": role, "audio": wav.name, "sink": sink,
+                                "recorder_exit_code": capture_exit, "metrics": metrics})
+        # Stopping our reader flushes its own debug file. These are actual Orca
+        # speech requests; DOM text or a Whisper transcript cannot substitute.
+        self.stop_orca()
+        debug = (self.output / "orca.debug").read_text()
+        spoken = [line.split("SPEECH OUTPUT: ", 1)[1] for line in debug.splitlines() if "SPEECH OUTPUT: " in line]
+        for item in self.speech:
+            for expected in (item["label"], item["role"]):
+                if not any(line.startswith((repr(expected) + " ", repr(expected + ".") + " ")) for line in spoken):
+                    raise RuntimeError("Orca did not request the expected speech: " + expected)
+        (self.output / "speech.json").write_text(json.dumps({"captures": self.speech, "orca_output": spoken,
+            "orca_version": subprocess.check_output(["orca", "--version"], text=True, timeout=10).strip(),
+            "pipewire_version": subprocess.check_output(["pw-record", "--version"], text=True, timeout=5).strip()}, indent=2) + "\n")
+        self.passed_check("native focus and Orca label/role speech with recorded PipeWire audio")
+
+    def stop_orca(self):
+        if self.orca and self.orca.poll() is None:
+            os.killpg(self.orca.pid, signal.SIGTERM)
+            try:
+                self.orca.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(self.orca.pid, signal.SIGKILL)
+                self.orca.wait(timeout=5)
+
     def gnome_inhibitors(self):
         bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         value = bus.call_sync("org.gnome.SessionManager", "/org/gnome/SessionManager",
@@ -138,6 +229,8 @@ class Suite:
         try:
             if any("runic" in a.name.lower() for a in applications()):
                 raise RuntimeError("Close other Runic fixtures before running this suite")
+            if self.args.orca:
+                self.start_orca()
             with self.log.open("w") as log:
                 self.process = subprocess.Popen(self.args.command, stdout=log, stderr=subprocess.STDOUT,
                                                 start_new_session=True)
@@ -146,6 +239,8 @@ class Suite:
             self.wait(lambda: required <= {n.name for n in tree(self.fixture())})
             self.snapshot()
             self.passed_check("native accessible control names")
+            if self.args.orca:
+                self.check_orca()
             self.click("Target hits: 0")
             self.wait(lambda: self.button("Target hits: 1"))
             offset = len(self.log.read_text())
@@ -216,6 +311,7 @@ class Suite:
             except Exception:
                 pass
         finally:
+            self.stop_orca()
             if self.process and self.process.poll() is None:
                 os.killpg(self.process.pid, signal.SIGTERM)
                 try:
@@ -225,7 +321,7 @@ class Suite:
                     self.process.wait(timeout=5)
             report = {"passed": self.passed, "failure": failure,
                       "desktop": os.environ.get("XDG_CURRENT_DESKTOP"),
-                      "manual": ["spoken screen reader", "real IME and candidate placement",
+                      "manual": ["spoken announcement quality", "real IME and candidate placement",
                                  "physical pointer targeting at desktop scales", "notification focus"]}
             (self.output / "results.json").write_text(json.dumps(report, indent=2) + "\n")
         if failure:
@@ -236,6 +332,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New directory for logs and results")
     parser.add_argument("--gnome-pickers", action="store_true", help="Also exercise Nautilus Flatpak grant/save/cancel dialogs")
+    parser.add_argument("--orca", action="store_true", help="Verify native focus, Orca speech and captured VM sink audio")
+    parser.add_argument("--audio-sink", help="Explicit PipeWire sink name; never captures the microphone")
     parser.add_argument("--startup-timeout", type=int, default=300)
     parser.add_argument("--timeout", type=int, default=600, help="Overall deadline, including startup")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="Fixture command after --")

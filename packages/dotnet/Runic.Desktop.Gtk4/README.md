@@ -54,7 +54,8 @@ keyboard navigation and real Pinyin at 100%, 200% and 150% desktop scaling.
 The standard-runtime NativeAOT Flatpak additionally passed unattended grant,
 cancellation, atomic-save rejection and picker-owner closure checks.
 
-Spoken screen-reader output and the corresponding KDE usability/sandbox checks
-remain pending, as does broader distribution coverage. See the
+GNOME also passes automated Orca label/role speech, PipeWire audio capture and
+local transcription checks. Announcement quality, corresponding KDE usability/
+sandbox checks and broader distribution coverage remain follow-ups. See the
 [VM automation guide](../../../docs/guides/desktop/vm-automation.md) for reproducible
 commands and the limits of each assertion. GTK3 remains supported.

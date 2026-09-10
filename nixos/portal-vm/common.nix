@@ -19,7 +19,7 @@ let
   portalAutomation = pkgs.writeShellApplication {
     name = "runic-portal-automate";
     text = ''
-      exec ${accessibilityInspector}/bin/runic-atspi ${../../tests/native/Runic.Desktop.Gtk4.Smoke/automate-usability.py} "$@"
+      exec ${accessibilityInspector}/bin/runic-atspi ${../../tests/native/Runic.Desktop.Gtk4.Smoke}/automate-usability.py "$@"
     '';
   };
   portalTest = pkgs.writeShellApplication {
@@ -163,6 +163,7 @@ in
   };
 
   system.build.runicAtspi = accessibilityInspector;
+  system.build.runicAutomation = portalAutomation;
 
   boot.kernelParams = [ "console=ttyS0" ];
   system.name = "runic-portal-${portalDesktop}";
@@ -216,6 +217,7 @@ in
 
   environment.systemPackages = with pkgs; [
     accessibilityInspector
+    orca
     portalAutomation
     bubblewrap
     xdg-dbus-proxy
