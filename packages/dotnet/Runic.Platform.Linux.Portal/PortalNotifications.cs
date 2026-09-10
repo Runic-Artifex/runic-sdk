@@ -4,7 +4,8 @@ using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
-internal sealed class PortalNotifications(string? address = null, string destination = "org.freedesktop.portal.Desktop", string? applicationId = null) : IDesktopNotifications
+internal sealed class PortalNotifications(string? address = null, string destination = "org.freedesktop.portal.Desktop", string? applicationId = null,
+    Action<PortalDiagnostic>? diagnosticSink = null) : IDesktopNotifications
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, DesktopNotification> _sent = new(StringComparer.Ordinal);
@@ -42,6 +43,16 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 try
                 {
                     await connection.ConnectAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                    // Owning a well-known bus name alone does not associate this connection
+                    // with a desktop application in xdg-desktop-portal.
+                    if (applicationId is not null && !File.Exists("/.flatpak-info") && Environment.GetEnvironmentVariable("SNAP") is null)
+                    {
+                        await connection.CallMethodAsync(Register(connection, applicationId))
+                            .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                        Diagnose("portal-notification-identity-registered", "The notification connection registered its desktop identity.", "The matching desktop entry controls application attribution.");
+                    }
+                    else if (applicationId is null)
+                        Diagnose("portal-notification-identity-unspecified", "No desktop application ID was supplied for notifications.", "Supply an installed reverse-DNS desktop ID; an unidentified host application may lose notification actions or history.");
                     if (applicationId is not null)
                     {
                         connection.AddMethodHandler(new ActivationHandler(this, applicationId));
@@ -81,6 +92,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
                     throw;
                 }
                 if (remove is not null) _sent.TryRemove(remove, out _);
+                Diagnose("portal-notification-request-accepted", "The portal accepted the notification request.", "Acceptance does not confirm popup delivery, history retention or action activation.");
             }
             else
             {
@@ -91,10 +103,12 @@ internal sealed class PortalNotifications(string? address = null, string destina
             return new PlatformResult<Unit>.Success(new Unit());
         }
         catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.portal.Error.NotAllowed" or "org.freedesktop.DBus.Error.AccessDenied")
-        { return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied); }
+        { Diagnose("portal-notification-permission-denied", error.ErrorName, "Check application identity and desktop notification permissions."); return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied); }
         catch (NotificationCapacityException) { return new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy); }
         catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
         {
+            Diagnose("portal-notification-backend-unavailable", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
+                "Check session portal services and the installed desktop entry for the supplied application ID.");
             _actions?.Dispose(); _actions = null; _connection?.Dispose(); _connection = null;
             return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
         }
@@ -107,12 +121,27 @@ internal sealed class PortalNotifications(string? address = null, string destina
     }
     private void Raise(DesktopNotificationActivation activation)
     {
+        Diagnose("portal-notification-action-received", "The desktop invoked a notification action.", "Application observers are dispatched on a worker thread.");
         ThreadPool.QueueUserWorkItem(_ =>
         {
             if (_disposed) return;
             foreach (EventHandler<DesktopNotificationActivation> observer in Activated?.GetInvocationList() ?? [])
                 try { observer(this, activation); } catch { /* Native event delivery must survive an application observer. */ }
         });
+    }
+    private void Diagnose(string code, string message, string remedy)
+    {
+        try { diagnosticSink?.Invoke(new PortalDiagnostic(code, message, remedy)); }
+        catch { /* Diagnostic observers cannot change platform outcomes. */ }
+    }
+    private MessageBuffer Register(DBusConnection connection, string id)
+    {
+        using var writer = connection.GetMessageWriter();
+        writer.WriteMethodCallHeader(destination: destination, path: "/org/freedesktop/portal/desktop",
+            @interface: "org.freedesktop.host.portal.Registry", member: "Register", signature: "sa{sv}");
+        writer.WriteString(id);
+        var options = writer.WriteDictionaryStart(); writer.WriteDictionaryEnd(options);
+        return writer.CreateMessage();
     }
     private MessageBuffer Add(DBusConnection connection, DesktopNotification notification)
     {

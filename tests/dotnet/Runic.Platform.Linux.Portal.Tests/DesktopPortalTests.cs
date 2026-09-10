@@ -49,9 +49,24 @@ internal static class DesktopPortalTests
         await using var installed = new PortalNotifications(destination: connection.UniqueName!, applicationId: appId);
         var cold = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         installed.Activated += (_, activation) => cold.TrySetResult(activation);
+        service.Calls.Clear();
         Check(await installed.RequestPermissionAsync() is PlatformResult<Unit>.Success, "installed application name acquired");
+        Check(service.RegisteredId == appId && service.Calls is ["Register", "Get"], "host identity registered before notification capability call");
         await connection.CallMethodAsync(Activation(connection, appId));
         Check((await cold.Task.WaitAsync(TimeSpan.FromSeconds(3))) is { NotificationId: "previous-process", ActionId: "open" }, "activation without in-memory notification history");
+        foreach (var (error, denied) in new[] { ("org.freedesktop.portal.Error.Failed", false), ("org.freedesktop.portal.Error.NotAllowed", true) })
+        {
+            service.RegistrationError = error;
+            service.Calls.Clear();
+            var diagnostics = new List<string>();
+            await using var invalidIdentity = new PortalNotifications(destination: connection.UniqueName!, applicationId: "org.runic.MissingIdentity",
+                diagnosticSink: diagnostic => { diagnostics.Add(diagnostic.Code); throw new InvalidOperationException("observer failure"); });
+            var rejected = await invalidIdentity.ShowAsync(new("rejected", "Title", "Body"));
+            Check(denied ? rejected is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }
+                : rejected is PlatformResult<Unit>.Unavailable { Reason: UnavailableReason.BackendUnavailable }, "registration failure remains typed despite diagnostic observer failure");
+            Check(service.Calls is ["Register"] && diagnostics.Count == 1, "failed identity registration prevents notification submission and emits a diagnostic");
+        }
+        service.RegistrationError = null;
         Console.WriteLine("PASS desktop portals: settings, notification permission/actions, installed activation and owned file descriptors.");
     }
     private static MessageBuffer Activation(DBusConnection connection, string destination)
@@ -72,10 +87,22 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
     internal string? Removed, Parent, FileContents;
     internal bool Ask, Deny;
     internal uint Version = 3;
+    internal string? RegisteredId;
+    internal string? RegistrationError;
+    internal List<string> Calls = [];
     public ValueTask HandleMethodAsync(MethodContext context)
     {
         var reader = context.Request.GetBodyReader();
-        if (context.Request.MemberAsString == "ReadAll")
+        Calls.Add(context.Request.MemberAsString!);
+        if (context.Request.MemberAsString == "Register")
+        {
+            if (RegistrationError is { } error) { context.ReplyError(error, "Registration failed"); return ValueTask.CompletedTask; }
+            RegisteredId = reader.ReadString();
+            var options = reader.ReadDictionaryStart();
+            CheckRegistrationOptions(reader.HasNext(options));
+            using var writer = context.CreateReplyWriter(null); context.Reply(writer.CreateMessage());
+        }
+        else if (context.Request.MemberAsString == "ReadAll")
         {
             using var writer = context.CreateReplyWriter("a{sa{sv}}");
             var namespaces = writer.WriteDictionaryStart();
@@ -118,4 +145,6 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
         }
         return ValueTask.CompletedTask;
     }
+    private static void CheckRegistrationOptions(bool hasOptions)
+    { if (hasOptions) throw new InvalidOperationException("Unexpected registry options."); }
 }

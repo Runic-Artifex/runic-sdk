@@ -34,7 +34,7 @@ internal static class DesktopServicesNativeSmoke
         else
         {
             launcher = LinuxPlatformProvider.CreateFileLauncher(owner);
-            notifications = LinuxPlatformProvider.CreateNotifications(applicationId);
+            notifications = LinuxPlatformProvider.CreateNotifications(applicationId, diagnostic => Console.WriteLine($"Notification diagnostic: {diagnostic}"));
         }
         await using (notifications)
         {

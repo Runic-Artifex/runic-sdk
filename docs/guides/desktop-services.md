@@ -103,13 +103,34 @@ available. Disposing the service detaches callbacks but leaves delivered items.
 
 The implementation uses Notification v1 `AddNotification`, `RemoveNotification`
 and `ActionInvoked`; version-2-only sound, image and category extensions are not
-required. With an application ID, it owns that D-Bus name and exports the fixed
+required. For an unsandboxed application, a supplied ID is registered on the
+notification connection through `org.freedesktop.host.portal.Registry` **before**
+any notification portal call. This requires the host Registry interface and an
+installed matching `.desktop` file; registration failure is reported rather than
+silently sending an unidentified notification. Flatpak/Snap applications retain
+their sandbox-assigned portal identity. Owning a D-Bus name alone does not give a
+host application's portal connection an identity.
+
+With an application ID, it also owns that D-Bus name and exports the fixed
 `org.freedesktop.Application.ActivateAction` notification route. An existing owner
 produces `ResourceBusy`; the SDK does not replace it. Configure your package's
 matching `.desktop` identity and session D-Bus `.service` activation entry, with an
 absolute installed executable in `Exec`. Flatpak packaging must permit ownership
 of that application name. Do not use this helper alongside another owner of the
 same application bus name.
+
+For troubleshooting, pass `diagnosticSink` to `CreateNotifications`. Diagnostics
+report registration, accepted requests, native errors and received actions without
+logging notification text or activation URIs. Without an application ID, the portal
+must infer identity; an empty inferred ID can prevent KDE action dispatch and
+application attribution. Use an installed identity when testing those behaviors.
+The Rust `ashpd` library exposes the same registration step through
+[`register_host_app_with_connection`](https://github.com/bilelmoussaoui/ashpd/blob/main/client/src/registry.rs).
+
+Popup expiry, retention in notification history, and withdrawal are separate
+events. Desktop policy controls history; `RemoveAsync` explicitly withdraws the
+item. The interactive notification test withdraws its item after activation or
+its 120-second timeout, so inspect history before that cleanup runs.
 
 At startup subscribe to `Activated`, then call `RequestPermissionAsync` to connect
 and acquire the name, before displaying notifications. The notification target
