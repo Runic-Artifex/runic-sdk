@@ -6,6 +6,7 @@
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="System.DirectoryServices.Protocols" Version="10.0.10" />
     <PackageVersion Include="Tmds.DBus.Protocol" Version="0.95.1" />
     <PackageVersion Include="Tmds.DBus.Generator" Version="0.95.1" />
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />

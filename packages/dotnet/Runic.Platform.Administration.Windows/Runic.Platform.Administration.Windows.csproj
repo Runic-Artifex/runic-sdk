@@ -13,6 +13,6 @@
     <IsPublishable>false</IsPublishable>
 
   </PropertyGroup>
-  <ItemGroup><InternalsVisibleTo Include="Runic.Platform.Administration.Windows.Tests" /></ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="Runic.Platform.Administration.Windows.Tests" /><PackageReference Include="System.DirectoryServices.Protocols" /></ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>
