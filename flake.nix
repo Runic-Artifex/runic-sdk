@@ -6,7 +6,7 @@
   };
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -15,6 +15,22 @@
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
     in
     {
+      # The portal backends are intentionally split into two images. A picker
+      # or notification therefore cannot accidentally be served by the host
+      # desktop's preferred backend.
+      nixosConfigurations = {
+        runic-portal-kde = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs.runicSource = self.outPath;
+          modules = [ ./nixos/portal-vm/kde.nix ];
+        };
+        runic-portal-gnome = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs.runicSource = self.outPath;
+          modules = [ ./nixos/portal-vm/gnome.nix ];
+        };
+      };
+
       devShells = forAllSystems (
         system:
         let
