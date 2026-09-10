@@ -12,6 +12,10 @@
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <PackageReference Include="Tmds.DBus.Protocol" />
+    <PackageReference Include="Tmds.DBus.Generator" PrivateAssets="all" />
+    <AdditionalFiles Include="Protocol/*.xml" Namespace="Runic.Platform.Linux.Portal.Protocol" DBusGeneratorMode="Proxy" />
+    <None Remove="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json" />
+    <None Include="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json" Pack="true" PackagePath="protocol/" />
     <InternalsVisibleTo Include="Runic.Platform.Linux.Portal.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>

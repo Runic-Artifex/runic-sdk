@@ -101,6 +101,10 @@ available. Disposing the service detaches callbacks but leaves delivered items.
 
 ### Linux identity and relaunch
 
+Registry and Notification wire bindings are generated from pinned upstream XML
+using Tmds.DBus.Generator. See the [implementation audit](portal-implementation-audit.md)
+for the handwritten lifecycle responsibilities and remaining follow-ups.
+
 The implementation uses Notification v1 `AddNotification`, `RemoveNotification`
 and `ActionInvoked`; version-2-only sound, image and category extensions are not
 required. For an unsandboxed application, a supplied ID is registered on the

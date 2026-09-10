@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/flatpak/xdg-desktop-portal",
+  "revision": "1d20fadc304f6601452b5db65ed91197dba77041",
+  "tag": "1.22.1",
+  "files": [
+    {
+      "path": "data/org.freedesktop.host.portal.Registry.xml",
+      "file": "org.freedesktop.host.portal.Registry.xml",
+      "sha256": "dbb1a35b43fd26d32ef2e21cb442dc4e0d9071deef0d0e9c97011eb754daa351"
+    },
+    {
+      "path": "data/org.freedesktop.portal.Notification.xml",
+      "file": "org.freedesktop.portal.Notification.xml",
+      "sha256": "7865846cf488863d816a954338a4c01f94d80d2e98bbaa2857e81c572ba90590"
+    }
+  ]
+}

@@ -19,18 +19,14 @@ internal sealed class PortalNotifications(string? address = null, string destina
     public ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Notification(notification);
-        return ExecuteAsync(connection =>
-        {
-            if (_sent.Count >= 64 && !_sent.ContainsKey(notification.Id)) throw new NotificationCapacityException();
-            return Add(connection, notification);
-        }, cancellationToken, notification);
+        return ExecuteAsync(proxy => proxy.AddNotificationAsync(notification.Id, NotificationOptions(notification)), cancellationToken, notification);
     }
     public ValueTask<PlatformResult<Unit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Identifier(id);
-        return ExecuteAsync(connection => Remove(connection, id), cancellationToken, remove: id);
+        return ExecuteAsync(proxy => proxy.RemoveNotificationAsync(id), cancellationToken, remove: id);
     }
-    private async ValueTask<PlatformResult<Unit>> ExecuteAsync(Func<DBusConnection, MessageBuffer>? request,
+    private async ValueTask<PlatformResult<Unit>> ExecuteAsync(Func<Protocol.Notification, Task>? request,
         CancellationToken cancellationToken, DesktopNotification? notification = null, string? remove = null)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -47,7 +43,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
                     // with a desktop application in xdg-desktop-portal.
                     if (applicationId is not null && !File.Exists("/.flatpak-info") && Environment.GetEnvironmentVariable("SNAP") is null)
                     {
-                        await connection.CallMethodAsync(Register(connection, applicationId))
+                        await new Protocol.Registry(connection, destination, "/org/freedesktop/portal/desktop").RegisterAsync(applicationId, new())
                             .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
                         Diagnose("portal-notification-identity-registered", "The notification connection registered its desktop identity.", "The matching desktop entry controls application attribution.");
                     }
@@ -59,17 +55,9 @@ internal sealed class PortalNotifications(string? address = null, string destina
                         if (!await connection.TryRequestNameAsync(applicationId, RequestNameOptions.None).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false))
                             throw new NotificationCapacityException();
                     }
-                    _actions = await connection.AddMatchAsync(new MatchRule
-                    {
-                        Type = MessageType.Signal,
-                        Sender = destination,
-                        Path = "/org/freedesktop/portal/desktop",
-                        Interface = "org.freedesktop.portal.Notification",
-                        Member = "ActionInvoked"
-                    },
-                        static (message, _) => { var r = message.GetBodyReader(); return (r.ReadString(), r.ReadString()); },
-                        value => { if (value.HasValue) OnAction(value.Value.Item1, value.Value.Item2); },
-                        emitOnCapturedContext: false).AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                    _actions = await new Protocol.Notification(connection, destination, "/org/freedesktop/portal/desktop")
+                        .WatchActionInvokedAsync(value => OnAction(value.Id, value.Action), emitOnCapturedContext: false)
+                        .AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
                     _connection = connection;
                 }
                 catch { connection.Dispose(); throw; }
@@ -78,10 +66,10 @@ internal sealed class PortalNotifications(string? address = null, string destina
             if (request is not null)
             {
                 // Observe the actual reply after a native submission; cancellation only prevents queued work.
-                var message = request(_connection);
+                if (notification is not null && _sent.Count >= 64 && !_sent.ContainsKey(notification.Id)) throw new NotificationCapacityException();
                 DesktopNotification? previous = null;
                 if (notification is not null) { _sent.TryGetValue(notification.Id, out previous); _sent[notification.Id] = notification; }
-                try { await _connection.CallMethodAsync(message).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); }
+                try { await request(new Protocol.Notification(_connection, destination, "/org/freedesktop/portal/desktop")).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); }
                 catch
                 {
                     if (notification is not null)
@@ -96,7 +84,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
             }
             else
             {
-                var version = await _connection.CallMethodAsync(PermissionRequest(_connection), static (m, _) => m.GetBodyReader().ReadVariantValue().GetUInt32())
+                var version = await new Protocol.Notification(_connection, destination, "/org/freedesktop/portal/desktop").GetVersionAsync()
                     .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
                 if (version < 1) return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
             }
@@ -134,29 +122,20 @@ internal sealed class PortalNotifications(string? address = null, string destina
         try { diagnosticSink?.Invoke(new PortalDiagnostic(code, message, remedy)); }
         catch { /* Diagnostic observers cannot change platform outcomes. */ }
     }
-    private MessageBuffer Register(DBusConnection connection, string id)
+    // The XML describes this extensible dictionary only as a{sv}. Keep its
+    // notification semantics handwritten; the generator owns the wire envelope.
+    private Dictionary<string, VariantValue> NotificationOptions(DesktopNotification notification)
     {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: destination, path: "/org/freedesktop/portal/desktop",
-            @interface: "org.freedesktop.host.portal.Registry", member: "Register", signature: "sa{sv}");
-        writer.WriteString(id);
-        var options = writer.WriteDictionaryStart(); writer.WriteDictionaryEnd(options);
-        return writer.CreateMessage();
-    }
-    private MessageBuffer Add(DBusConnection connection, DesktopNotification notification)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: destination, path: "/org/freedesktop/portal/desktop",
-            @interface: "org.freedesktop.portal.Notification", member: "AddNotification", signature: "sa{sv}");
-        writer.WriteString(notification.Id);
-        var options = writer.WriteDictionaryStart();
-        foreach (var (name, value) in new[] { ("title", notification.Title), ("body", notification.Body), ("default-action", applicationId is null ? "default" : "app.runic-notification") })
-        { writer.WriteDictionaryEntryStart(); writer.WriteString(name); writer.WriteVariant(VariantValue.String(value)); }
+        var options = new Dictionary<string, VariantValue>
+        {
+            ["title"] = VariantValue.String(notification.Title),
+            ["body"] = VariantValue.String(notification.Body),
+            ["default-action"] = VariantValue.String(applicationId is null ? "default" : "app.runic-notification"),
+        };
         if (applicationId is not null)
-        { writer.WriteDictionaryEntryStart(); writer.WriteString("default-action-target"); writer.WriteVariant(VariantValue.String(Target(notification, "default"))); }
+            options["default-action-target"] = VariantValue.String(Target(notification, "default"));
         if (!notification.Actions.IsEmpty)
         {
-            writer.WriteDictionaryEntryStart(); writer.WriteString("buttons");
             var buttons = new Array<Dict<string, VariantValue>>();
             foreach (var action in notification.Actions)
             {
@@ -165,25 +144,9 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 if (applicationId is not null) button.Add("target", VariantValue.String(Target(notification, action.Id)));
                 buttons.Add(button);
             }
-            writer.WriteVariant(buttons);
+            options["buttons"] = buttons;
         }
-        writer.WriteDictionaryEnd(options);
-        return writer.CreateMessage();
-    }
-    private MessageBuffer Remove(DBusConnection connection, string id)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: destination, path: "/org/freedesktop/portal/desktop",
-            @interface: "org.freedesktop.portal.Notification", member: "RemoveNotification", signature: "s");
-        writer.WriteString(id); return writer.CreateMessage();
-    }
-    private MessageBuffer PermissionRequest(DBusConnection connection)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: destination, path: "/org/freedesktop/portal/desktop",
-            @interface: "org.freedesktop.DBus.Properties", member: "Get", signature: "ss");
-        writer.WriteString("org.freedesktop.portal.Notification"); writer.WriteString("version");
-        return writer.CreateMessage();
+        return options;
     }
     public async ValueTask DisposeAsync()
     {
