@@ -30,6 +30,28 @@
       categories = [ "Development" ];
     })
   ];
+  # nspawn masks parts of /proc. Linux then rejects a nested proc mount as
+  # "too revealing" unless this PID namespace also has a pristine proc mount.
+  # Keep that mount inaccessible to the test user; never bind the host's proc.
+  systemd.services.runic-pristine-proc = {
+    description = "Permit nested WebKit proc mounts within the container PID namespace";
+    wantedBy = [ "multi-user.target" ];
+    requiredBy = [ "user@1000.service" ];
+    before = [ "user@1000.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      RuntimeDirectory = "runic-proc-private";
+      RuntimeDirectoryMode = "0700";
+      # The mount must remain visible in the guest mount namespace.
+      PrivateMounts = false;
+      ExecStart = [
+        "${pkgs.coreutils}/bin/mkdir -p /run/runic-proc-private/proc"
+        "${pkgs.util-linux}/bin/mount -t proc -o nosuid,nodev,noexec proc /run/runic-proc-private/proc"
+      ];
+      ExecStop = "${pkgs.util-linux}/bin/umount /run/runic-proc-private/proc";
+    };
+  };
   systemd.user.services.runic-headless-desktop = {
     description = "Independent headless GNOME test session";
     wantedBy = [ "default.target" ];

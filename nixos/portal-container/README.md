@@ -3,8 +3,8 @@
 This is an opt-in feasibility probe, not a replacement for the desktop VM suite.
 The full GNOME session, Settings portal, PipeWire and virtual display now pass
 the session probe both in the disposable VM and in managed nspawn directly on
-the host. The full native usability suite also passes in the VM-contained
-configuration, including independently observed inhibition acquisition/release.
+the host. The full native usability suite also passes in both configurations, including
+independently observed inhibition acquisition/release.
 Build using the SDK's locked Git-aware flake:
 
 ```sh
@@ -132,14 +132,33 @@ missing graphics drivers; correcting only the initial directory owners fixed
 both without changing PAM or sandbox settings. No host display/session sockets
 are bound.
 
-The NativeAOT fixture then exposed a separate managed-container limitation:
-WebKit's nested bubblewrap sandbox failed with `Can't mount proc on
-/newroot/proc: Operation not permitted`, and its D-Bus proxy could not start.
-Thus native application parity on the managed host is **not** established.
-Investigate the nested PID/proc mount requirements before running Flatpak there.
-Do not disable WebKit's sandbox or expose the host's proc/session mounts merely
-to make the test pass. The VM-contained launcher has a different privilege/proc
-model; its partial native success does not prove managed-host equivalence.
+The initial NativeAOT run exposed a managed-container sandbox prerequisite:
+WebKit's nested bubblewrap could not mount `/newroot/proc`. The configuration
+below resolves it while retaining WebKit's sandbox and nspawn's proc masks.
+
+The container now starts `runic-pristine-proc.service` before the test user's
+manager. It mounts a second proc filesystem for the **container's PID namespace**
+at `/run/runic-proc-private/proc`, beneath a root-owned `0700` directory, with
+`nosuid,nodev,noexec`. The kernel can then permit bubblewrap's nested proc mount
+without removing nspawn's ordinary `/proc` masks. The test user cannot traverse
+the auxiliary mount. It must remain in the guest mount namespace, so the service
+uses `PrivateMounts=false`; this does not expose a host proc mount. The mount is
+removed when the service stops.
+
+A managed-container before/after probe reproduced the original failure, then
+passed as UID 1000 with the auxiliary mount. The nested PID namespace exposed
+only its own processes, while the outer proc masks remained. The integrated
+service passed the complete five-check native suite in both the VM-contained
+launcher and managed nspawn directly on the host. The latter was repeated using
+the guest system manager to launch the runner as `runic`: accessible names,
+WebView action/snapshot, observed GNOME inhibitor registration/removal, portal
+acquire/release and pending-picker invalidation all passed. When entering a
+managed container for automation, launch through its system manager or enter
+its PID namespace as well as its mount/user namespaces; a process retaining a
+host PID with a guest `/proc` view produces misleading portal/sandbox failures.
+This establishes native-suite parity, not Flatpak or physical-device coverage.
+See the upstream [systemd proc masking investigation](https://github.com/systemd/systemd/issues/34226)
+and [bubblewrap nested proc report](https://github.com/containers/bubblewrap/issues/707).
 
 The locked NixOS Python driver also supports nspawn nodes. A focused host run
 booted successfully inside the Nix build sandbox, but SUID wrapper creation
