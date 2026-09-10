@@ -148,12 +148,14 @@ var shares = new WindowsShareClient("fileserver.example.test");
 foreach (var share in shares.Enumerate()) Console.WriteLine(share);
 var snapshot = shares.Find("FixtureShare");
 if (snapshot is not null)
-    Console.WriteLine($"{snapshot.Path}: security descriptor {snapshot.SecurityDescriptor.Length} bytes");
+    Console.WriteLine($"{snapshot.Path}: stored security: {snapshot.SecurityDescriptor?.Length.ToString() ?? "absent"}");
 ~~~
 
 On a disposable server, Create accepts ShareSpecification. Update can replace
 description, maximum uses or the complete self-relative security descriptor.
-Null preserves each field. Decode with RawSecurityDescriptor when needed; retain
+On reads, a null SecurityDescriptor means Windows returned no stored descriptor;
+it is not an empty (deny-all) DACL and does not describe filesystem permissions.
+On updates, null preserves each field. Decode present descriptors with RawSecurityDescriptor when needed; retain
 unknown ACEs, ordering and inheritance when editing. Delete removes the share,
 not its directory or files.
 

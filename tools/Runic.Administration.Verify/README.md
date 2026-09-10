@@ -39,6 +39,31 @@ Use --only to isolate a failing capability:
 Available local selections: shortcuts, services, tasks, firewall, shares, system,
 processes, networks. No --only means every capability in the selected suite.
 
+## Comparing handwritten and CsWin32 backends
+
+The default is `--backend cswin32`. All capabilities now use generated Win32/COM
+bindings; LDAP retains System.DirectoryServices.Protocols. The handwritten
+comparison backend applies only to **shares and firewall**. Domain runs reject
+`--backend` because they have no alternate implementation.
+
+On the disposable VM, use the same executable and identity for both runs:
+
+~~~powershell
+.\Runic.AdminVerify.exe local --allow-changes --only firewall,shares --backend handwritten
+.\Runic.AdminVerify.exe local --allow-changes --only firewall,shares --backend cswin32
+~~~
+
+Run them sequentially and check cleanup results. Each uses unique fixture names.
+Both execute exactly the same verification code and assertions; there is no
+fallback to the other backend. Keep both reports: JSON records `Backend`, and the
+text report explicitly labels the shares/firewall backend. Omitting
+`--allow-changes` performs inspection only and skips mutation checks.
+
+The generated implementation uses pinned CsWin32 0.3.333 with unmanaged bindings
+and preserved HRESULTs. Public constructors always use generated bindings; only
+the verifier can select the handwritten comparison implementations. No runtime/SDK
+installation is needed on the VM, and no generated native type is public.
+
 ## Domain, DNS and Group Policy
 
 Use a disposable test domain and the current Windows account's delegated/admin
@@ -108,8 +133,9 @@ are not run. Mutation checks are explicitly skipped without --allow-changes.
 Local: OS/BIOS/membership, process snapshots, network enumeration, shortcut
 metadata/Unicode/UNC/collision/malformed data, service configuration and
 start/pause/continue/stop/PID, task XML preservation and real execution/exit result,
-disabled firewall-rule updates and duplicate handling, share security-descriptor
-preservation and repeated deletion.
+disabled firewall-rule updates and duplicate handling, cleanup/absence checks even
+when firewall creation throws, optional stored share security, explicit owner/group/ACL
+roundtrips, security-descriptor preservation and repeated deletion.
 
 Domain: RootDSE and explicit OU lookup; page-size-one search, user/group/computer
 creation, membership and SPNs, attribute edits/rename, binary SID, password reset,
@@ -123,6 +149,22 @@ filter associations, denied-rights matrices, all firewall protocol transitions,
 DNS sibling-record concurrency, service failure/reboot actions, other
 architectures and all Windows Server versions. The VM runs themselves have not
 been executed on the development machine.
+
+## Retesting firewall and share failures
+
+On the disposable VM, run the rebuilt executable from an elevated terminal:
+
+~~~powershell
+.\Runic.AdminVerify.exe local --allow-changes --only firewall,shares
+~~~
+
+Keep both report.json and report.txt. A failed firewall Add now includes native
+protocol/port/profile details, and cleanup checks whether the attempted rule exists.
+Share tests use two independent fixtures: `shares.default-security` allows an
+absent stored descriptor; `shares.explicit-security` requires the supplied ACL.
+Both verify metadata preservation, ACL updates and cleanup. A failure in one
+fixture does not prevent the other from running. These mutation checks must still run on the VM;
+a successful NativeAOT build or read-only local run does not validate them.
 
 ## Build from the SDK checkout
 
