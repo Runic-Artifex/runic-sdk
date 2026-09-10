@@ -3,25 +3,25 @@ using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
-internal sealed class PortalDesktopSettings(string? address = null, string destination = "org.freedesktop.portal.Desktop") : DesktopSettingsSource
+internal sealed class PortalDesktopSettings(string? address = null, string destination = "org.freedesktop.portal.Desktop", PortalApplication? application = null) : DesktopSettingsSource
 {
     private static readonly string[] Namespaces = ["org.freedesktop.appearance"];
     protected override async ValueTask<PlatformResult<DesktopAppearance>> ReadCoreAsync(CancellationToken cancellationToken)
     {
         try
         {
-            using var connection = new DBusConnection(address ?? DBusAddress.Session ?? throw new NativeBackendUnavailableException());
-            await connection.ConnectAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-            return new PlatformResult<DesktopAppearance>.Success(await connection.CallMethodAsync(Request(connection),
+            using var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
+            var connection = session.Connection;
+            return new PlatformResult<DesktopAppearance>.Success(await connection.CallMethodAsync(Request(connection, session.Destination),
                 static (message, _) => Read(message)).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false));
         }
         catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
         { return new PlatformResult<DesktopAppearance>.Unavailable(UnavailableReason.BackendUnavailable); }
     }
-    private MessageBuffer Request(DBusConnection connection)
+    private static MessageBuffer Request(DBusConnection connection, string peer)
     {
         using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: destination, path: "/org/freedesktop/portal/desktop",
+        writer.WriteMethodCallHeader(destination: peer, path: "/org/freedesktop/portal/desktop",
             @interface: "org.freedesktop.portal.Settings", member: "ReadAll", signature: "as");
         writer.WriteArray(Namespaces);
         return writer.CreateMessage();

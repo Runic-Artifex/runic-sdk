@@ -13,7 +13,7 @@ internal interface IPortalTransport
 
 // The small fixed protocol is encoded explicitly: no reflection, dynamic proxy or
 // runtime code generation enters the NativeAOT path.
-internal sealed class PortalTransport(string? address = null, string destination = "org.freedesktop.portal.Desktop", SafeHandle? file = null, bool ask = false) : IPortalTransport
+internal sealed class PortalTransport(string? address = null, string destination = "org.freedesktop.portal.Desktop", SafeHandle? file = null, bool ask = false, PortalApplication? application = null) : IPortalTransport
 {
     private const string Root = "/org/freedesktop/portal/desktop";
     private const string RequestInterface = "org.freedesktop.portal.Request";
@@ -21,11 +21,11 @@ internal sealed class PortalTransport(string? address = null, string destination
 
     public async ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken)
     {
-        using var connection = new DBusConnection(address ?? DBusAddress.Session ?? throw new Runic.Platform.Runtime.NativeBackendUnavailableException());
-        await connection.ConnectAsync().AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+        using var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
+        var connection = session.Connection;
         if (file is not null)
         {
-            uint version = await connection.CallMethodAsync(VersionRequest(connection),
+            uint version = await connection.CallMethodAsync(VersionRequest(connection, session.Destination),
                 static (message, _) => message.GetBodyReader().ReadVariantValue().GetUInt32()).WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
             if (version < (ask || method == "OpenDirectory" ? 3u : 2u))
                 throw new Runic.Platform.Runtime.NativeBackendUnavailableException();
@@ -51,7 +51,7 @@ internal sealed class PortalTransport(string? address = null, string destination
         }, emitOnCapturedContext: false, flags: ObserverFlags.EmitAll).AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
         using var subscription = await connection.AddMatchAsync(new MatchRule
         {
-            Type = MessageType.Signal, Sender = destination, PathNamespace = prefix.TrimEnd('/'),
+            Type = MessageType.Signal, Sender = session.Destination, PathNamespace = prefix.TrimEnd('/'),
             Interface = RequestInterface, Member = "Response",
         }, static (message, _) => ReadResponse(message), notification =>
         {
@@ -65,7 +65,7 @@ internal sealed class PortalTransport(string? address = null, string destination
             // Subscribe before invoking: portals may signal before the method reply.
             // Let the bounded method reply finish even on cancellation so an older
             // portal's returned handle can also be closed.
-            handle = await connection.CallMethodAsync(CreateRequest(connection, parent, method, argument, token),
+            handle = await connection.CallMethodAsync(CreateRequest(connection, session.Destination, parent, method, argument, token),
                 static (message, _) => message.GetBodyReader().ReadObjectPath().ToString()).WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false);
             if (!handle.StartsWith(prefix, StringComparison.Ordinal))
                 throw new IOException("The portal returned an invalid request handle.");
@@ -81,25 +81,25 @@ internal sealed class PortalTransport(string? address = null, string destination
         {
             if (!completed && handle.StartsWith(prefix, StringComparison.Ordinal))
             {
-                try { await connection.CallMethodAsync(CreateClose(connection, handle)).WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false); }
+                try { await connection.CallMethodAsync(CreateClose(connection, session.Destination, handle)).WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false); }
                 catch (Exception error) when (error is DBusExceptionBase or TimeoutException or IOException) { /* Connection disposal also releases request ownership. */ }
             }
         }
     }
 
-    private MessageBuffer VersionRequest(DBusConnection connection)
+    private static MessageBuffer VersionRequest(DBusConnection connection, string peer)
     {
         using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: destination, path: Root, @interface: "org.freedesktop.DBus.Properties", member: "Get", signature: "ss");
+        writer.WriteMethodCallHeader(destination: peer, path: Root, @interface: "org.freedesktop.DBus.Properties", member: "Get", signature: "ss");
         writer.WriteString("org.freedesktop.portal.OpenURI"); writer.WriteString("version");
         return writer.CreateMessage();
     }
 
-    private MessageBuffer CreateRequest(DBusConnection connection, string parent, string method, string argument, string token)
+    private MessageBuffer CreateRequest(DBusConnection connection, string peer, string parent, string method, string argument, string token)
     {
         using var writer = connection.GetMessageWriter();
         bool openUri = method == "OpenURI" || file is not null;
-        writer.WriteMethodCallHeader(destination: destination, path: Root,
+        writer.WriteMethodCallHeader(destination: peer, path: Root,
             @interface: openUri ? "org.freedesktop.portal.OpenURI" : "org.freedesktop.portal.FileChooser", member: method, signature: file is null ? "ssa{sv}" : "sha{sv}");
         writer.WriteString(parent);
         if (file is not null) writer.WriteHandle(new BorrowedHandle(file));
@@ -116,10 +116,10 @@ internal sealed class PortalTransport(string? address = null, string destination
         return writer.CreateMessage();
     }
 
-    private MessageBuffer CreateClose(DBusConnection connection, string path)
+    private static MessageBuffer CreateClose(DBusConnection connection, string peer, string path)
     {
         using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: destination, path: path, @interface: RequestInterface, member: "Close");
+        writer.WriteMethodCallHeader(destination: peer, path: path, @interface: RequestInterface, member: "Close");
         return writer.CreateMessage();
     }
 

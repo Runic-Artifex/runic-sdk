@@ -33,8 +33,9 @@ internal static class DesktopServicesNativeSmoke
         }
         else
         {
-            launcher = LinuxPlatformProvider.CreateFileLauncher(owner);
-            notifications = LinuxPlatformProvider.CreateNotifications(applicationId, diagnostic => Console.WriteLine($"Notification diagnostic: {diagnostic}"));
+            var portals = new Runic.Platform.Linux.Portal.PortalApplication(applicationId, diagnostic => Console.WriteLine($"Portal diagnostic: {diagnostic}"));
+            launcher = portals.CreateFileLauncher(new Gtk3PortalWindowOwner(owner));
+            notifications = portals.CreateNotifications();
         }
         await using (notifications)
         {

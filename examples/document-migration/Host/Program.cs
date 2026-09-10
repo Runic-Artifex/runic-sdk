@@ -65,6 +65,9 @@ var builder = RunicApplication.CreateBuilder(args).UseHost(desktop);
 #if RUNIC_PLATFORM_Linux || RUNIC_PLATFORM_Windows || RUNIC_PLATFORM_MacOS
 if (native)
 {
+#if RUNIC_PLATFORM_Linux
+    var portals = new Runic.Platform.Linux.Portal.PortalApplication(Environment.GetEnvironmentVariable("RUNIC_DESKTOP_APP_ID"));
+#endif
     builder.Services.AddRunicDesktopPlatform(() => desktop?.Window, owner => new PlatformProvider
     {
 #if RUNIC_PLATFORM_Linux
@@ -75,8 +78,15 @@ if (native)
 #else
         Files = SelectedProvider.CreateFileDialogs(owner),
 #endif
+#if RUNIC_PLATFORM_Linux
+        FileLauncher = portals.CreateFileLauncher(new Runic.Platform.Linux.Gtk3PortalWindowOwner(owner)),
+#else
         FileLauncher = SelectedProvider.CreateFileLauncher(owner),
+#endif
     });
+#if RUNIC_PLATFORM_Linux
+    builder.Services.AddRunicDesktopServices(_ => portals.CreateSettings(), _ => portals.CreateNotifications());
+#else
     builder.Services.AddRunicDesktopServices(_ => SelectedProvider.CreateSettings(), _ =>
 #if RUNIC_PLATFORM_Windows
         SelectedProvider.CreateNotifications("Runic.DocumentMigration")
@@ -84,6 +94,7 @@ if (native)
         SelectedProvider.CreateNotifications()
 #endif
     );
+#endif
 }
 else builder.Services.AddRunicPlatform();
 #else

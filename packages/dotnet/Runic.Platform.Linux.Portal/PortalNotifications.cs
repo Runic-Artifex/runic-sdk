@@ -5,8 +5,11 @@ using Tmds.DBus.Protocol;
 namespace Runic.Platform.Linux.Portal;
 
 internal sealed class PortalNotifications(string? address = null, string destination = "org.freedesktop.portal.Desktop", string? applicationId = null,
-    Action<PortalDiagnostic>? diagnosticSink = null) : IDesktopNotifications
+    Action<PortalDiagnostic>? diagnosticSink = null, PortalApplication? application = null) : IDesktopNotifications
 {
+    private readonly PortalApplication _application = application ?? new PortalApplication(applicationId, diagnosticSink);
+    private string? ApplicationId => _application.ApplicationId;
+    private PortalConnection? _session;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, DesktopNotification> _sent = new(StringComparer.Ordinal);
     private DBusConnection? _connection;
@@ -33,34 +36,32 @@ internal sealed class PortalNotifications(string? address = null, string destina
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_session?.OwnerChanged.IsCancellationRequested == true)
+            {
+                Diagnose("portal-notification-owner-changed", "The portal service was replaced.", "Reconnecting and registering before the next request; submitted notifications are not replayed.");
+                ResetConnection();
+            }
             if (_connection is null)
             {
-                var connection = new DBusConnection(address ?? DBusAddress.Session ?? throw new NativeBackendUnavailableException());
+                var session = await PortalConnection.OpenAsync(address, destination, _application, cancellationToken).ConfigureAwait(false);
+                var connection = session.Connection;
                 try
                 {
-                    await connection.ConnectAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-                    // Owning a well-known bus name alone does not associate this connection
-                    // with a desktop application in xdg-desktop-portal.
-                    if (applicationId is not null && !File.Exists("/.flatpak-info") && Environment.GetEnvironmentVariable("SNAP") is null)
-                    {
-                        await new Protocol.Registry(connection, destination, "/org/freedesktop/portal/desktop").RegisterAsync(applicationId, new())
-                            .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-                        Diagnose("portal-notification-identity-registered", "The notification connection registered its desktop identity.", "The matching desktop entry controls application attribution.");
-                    }
-                    else if (applicationId is null)
+                    if (ApplicationId is null)
                         Diagnose("portal-notification-identity-unspecified", "No desktop application ID was supplied for notifications.", "Supply an installed reverse-DNS desktop ID; an unidentified host application may lose notification actions or history.");
-                    if (applicationId is not null)
+                    if (ApplicationId is not null)
                     {
-                        connection.AddMethodHandler(new ActivationHandler(this, applicationId));
-                        if (!await connection.TryRequestNameAsync(applicationId, RequestNameOptions.None).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false))
+                        connection.AddMethodHandler(new ActivationHandler(this, ApplicationId));
+                        if (!await connection.TryRequestNameAsync(ApplicationId, RequestNameOptions.None).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false))
                             throw new NotificationCapacityException();
                     }
-                    _actions = await new Protocol.Notification(connection, destination, "/org/freedesktop/portal/desktop")
-                        .WatchActionInvokedAsync(value => OnAction(value.Id, value.Action), emitOnCapturedContext: false)
+                    _actions = await new Protocol.Notification(connection, session.Destination, "/org/freedesktop/portal/desktop")
+                        .WatchActionInvokedAsync(value => { if (!session.OwnerChanged.IsCancellationRequested) OnAction(value.Id, value.Action); }, emitOnCapturedContext: false)
                         .AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
                     _connection = connection;
+                    _session = session;
                 }
-                catch { connection.Dispose(); throw; }
+                catch { session.Dispose(); throw; }
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (request is not null)
@@ -69,7 +70,13 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 if (notification is not null && _sent.Count >= 64 && !_sent.ContainsKey(notification.Id)) throw new NotificationCapacityException();
                 DesktopNotification? previous = null;
                 if (notification is not null) { _sent.TryGetValue(notification.Id, out previous); _sent[notification.Id] = notification; }
-                try { await request(new Protocol.Notification(_connection, destination, "/org/freedesktop/portal/desktop")).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); }
+                try
+                {
+                    try { await request(new Protocol.Notification(_connection, _session!.Destination, "/org/freedesktop/portal/desktop"))
+                        .WaitAsync(TimeSpan.FromSeconds(5), _session.OwnerChanged).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (_session!.OwnerChanged.IsCancellationRequested)
+                    { throw new NativeBackendUnavailableException(); }
+                }
                 catch
                 {
                     if (notification is not null)
@@ -84,8 +91,9 @@ internal sealed class PortalNotifications(string? address = null, string destina
             }
             else
             {
-                var version = await new Protocol.Notification(_connection, destination, "/org/freedesktop/portal/desktop").GetVersionAsync()
+                var version = await new Protocol.Notification(_connection, _session!.Destination, "/org/freedesktop/portal/desktop").GetVersionAsync()
                     .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                if (_session!.OwnerChanged.IsCancellationRequested) throw new NativeBackendUnavailableException();
                 if (version < 1) return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
             }
             return new PlatformResult<Unit>.Success(new Unit());
@@ -97,7 +105,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
         {
             Diagnose("portal-notification-backend-unavailable", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
                 "Check session portal services and the installed desktop entry for the supplied application ID.");
-            _actions?.Dispose(); _actions = null; _connection?.Dispose(); _connection = null;
+            ResetConnection();
             return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
         }
         finally { _gate.Release(); }
@@ -117,11 +125,12 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 try { observer(this, activation); } catch { /* Native event delivery must survive an application observer. */ }
         });
     }
-    private void Diagnose(string code, string message, string remedy)
+    private void ResetConnection()
     {
-        try { diagnosticSink?.Invoke(new PortalDiagnostic(code, message, remedy)); }
-        catch { /* Diagnostic observers cannot change platform outcomes. */ }
+        _actions?.Dispose(); _actions = null;
+        _session?.Dispose(); _session = null; _connection = null;
     }
+    private void Diagnose(string code, string message, string remedy) => _application.Diagnose(code, message, remedy);
     // The XML describes this extensible dictionary only as a{sv}. Keep its
     // notification semantics handwritten; the generator owns the wire envelope.
     private Dictionary<string, VariantValue> NotificationOptions(DesktopNotification notification)
@@ -130,9 +139,9 @@ internal sealed class PortalNotifications(string? address = null, string destina
         {
             ["title"] = VariantValue.String(notification.Title),
             ["body"] = VariantValue.String(notification.Body),
-            ["default-action"] = VariantValue.String(applicationId is null ? "default" : "app.runic-notification"),
+            ["default-action"] = VariantValue.String(ApplicationId is null ? "default" : "app.runic-notification"),
         };
-        if (applicationId is not null)
+        if (ApplicationId is not null)
             options["default-action-target"] = VariantValue.String(Target(notification, "default"));
         if (!notification.Actions.IsEmpty)
         {
@@ -140,8 +149,8 @@ internal sealed class PortalNotifications(string? address = null, string destina
             foreach (var action in notification.Actions)
             {
                 var button = new Dict<string, VariantValue> { { "label", VariantValue.String(action.Label) },
-                    { "action", VariantValue.String(applicationId is null ? action.Id : "app.runic-notification") } };
-                if (applicationId is not null) button.Add("target", VariantValue.String(Target(notification, action.Id)));
+                    { "action", VariantValue.String(ApplicationId is null ? action.Id : "app.runic-notification") } };
+                if (ApplicationId is not null) button.Add("target", VariantValue.String(Target(notification, action.Id)));
                 buttons.Add(button);
             }
             options["buttons"] = buttons;
@@ -151,7 +160,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
     public async ValueTask DisposeAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);
-        try { if (_disposed) return; _disposed = true; _actions?.Dispose(); _connection?.Dispose(); _sent.Clear(); Activated = null; }
+        try { if (_disposed) return; _disposed = true; ResetConnection(); _sent.Clear(); Activated = null; }
         finally { _gate.Release(); }
     }
     private static string Target(DesktopNotification notification, string action) =>

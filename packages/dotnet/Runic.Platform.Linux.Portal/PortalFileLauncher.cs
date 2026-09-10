@@ -4,7 +4,7 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Linux.Portal;
 
-internal sealed partial class PortalFileLauncher(IPortalWindowOwner owner) : IDesktopFileLauncher
+internal sealed partial class PortalFileLauncher(IPortalWindowOwner owner, PortalApplication? application = null) : IDesktopFileLauncher
 {
     public async ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
@@ -15,7 +15,7 @@ internal sealed partial class PortalFileLauncher(IPortalWindowOwner owner) : IDe
         if (file.IsInvalid) return new PlatformResult<Unit>.Failed(Marshal.GetLastPInvokeError() is 1 or 13 ? FailureCode.PermissionDenied : FailureCode.IoError);
         try
         {
-            var response = await PortalRequest.RunAsync(owner, new PortalTransport(file: file, ask: operation == DesktopFileOperation.ChooseApplication),
+            var response = await PortalRequest.RunAsync(owner, new PortalTransport(file: file, ask: operation == DesktopFileOperation.ChooseApplication, application: application),
                 operation == DesktopFileOperation.Reveal ? "OpenDirectory" : "OpenFile", "", cancellationToken).ConfigureAwait(false);
             return response.Code switch
             {

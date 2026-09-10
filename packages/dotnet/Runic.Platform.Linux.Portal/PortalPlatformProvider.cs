@@ -11,14 +11,8 @@ public static class PortalPlatformProvider
     public static IDesktopSettings CreateSettings() => new PortalDesktopSettings();
     /// <summary>Creates application-scoped notifications. Disposal leaves delivered notifications in the desktop.</summary>
     /// <remarks>A supplied host ID requires a matching installed desktop entry and the host Registry portal. Diagnostic callbacks never receive notification text.</remarks>
-    public static IDesktopNotifications CreateNotifications(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null)
-    {
-        if (applicationId is not null && (applicationId.Length > 255 || !applicationId.Contains('.')
-            || applicationId.Split('.').Any(part => part.Length == 0 || char.IsAsciiDigit(part[0])
-                || part.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '_' and not '-'))))
-            throw new ArgumentException("Use the installed application's reverse-DNS D-Bus identifier.", nameof(applicationId));
-        return new PortalNotifications(applicationId: applicationId, diagnosticSink: diagnosticSink);
-    }
+    public static IDesktopNotifications CreateNotifications(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) =>
+        new PortalApplication(applicationId, diagnosticSink).CreateNotifications();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }
@@ -34,7 +28,10 @@ public static class PortalPlatformProvider
     public static IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new UnparentedOwner());
 
     /// <summary>Asks the desktop to open an HTTP, HTTPS or mail URI for this presentation.</summary>
-    public static async ValueTask<PlatformResult<Unit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default)
+    public static ValueTask<PlatformResult<Unit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
+        OpenUriCoreAsync(owner, uri, null, cancellationToken);
+
+    internal static async ValueTask<PlatformResult<Unit>> OpenUriCoreAsync(IPortalWindowOwner owner, Uri uri, PortalApplication? application, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(uri);
@@ -42,14 +39,14 @@ public static class PortalPlatformProvider
             throw new ArgumentException("Only absolute HTTP, HTTPS and mailto URIs are supported. Local files require a file-descriptor portal request.", nameof(uri));
         try
         {
-            var response = await PortalRequest.RunAsync(owner, new PortalTransport(), "OpenURI", uri.AbsoluteUri, cancellationToken).ConfigureAwait(false);
+            var response = await PortalRequest.RunAsync(owner, new PortalTransport(application: application), "OpenURI", uri.AbsoluteUri, cancellationToken).ConfigureAwait(false);
             return response.Code == 0 ? new PlatformResult<Unit>.Success(new Unit()) : new PlatformResult<Unit>.Failed(FailureCode.IoError);
         }
         catch (OwnerClosedException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed); }
         catch (NativeBackendUnavailableException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
     }
 
-    private sealed class UnparentedOwner : IExplicitUnparentedOwner
+    internal sealed class UnparentedOwner : IExplicitUnparentedOwner
     {
         public Guid Generation { get; } = Guid.NewGuid();
         public bool IsAvailable => true;

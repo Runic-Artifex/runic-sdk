@@ -90,14 +90,29 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
     internal string? RegisteredId;
     internal string? RegistrationError;
     internal List<string> Calls = [];
+    internal string? RequiredIdentity;
+    internal Dictionary<string, string> RegisteredPeers = [];
+    internal int UnidentifiedCalls;
+    internal bool HoldNotification;
+    internal TaskCompletionSource NotificationHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource ReleaseNotification = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public ValueTask HandleMethodAsync(MethodContext context)
     {
         var reader = context.Request.GetBodyReader();
         Calls.Add(context.Request.MemberAsString!);
+        if (context.Request.MemberAsString != "Register" && RequiredIdentity is { } expected
+            && (!RegisteredPeers.TryGetValue(context.Request.SenderAsString!, out var actual) || actual != expected))
+        {
+            UnidentifiedCalls++;
+            context.ReplyError("org.freedesktop.portal.Error.NotAllowed", "Unidentified connection");
+            return ValueTask.CompletedTask;
+        }
         if (context.Request.MemberAsString == "Register")
         {
             if (RegistrationError is { } error) { context.ReplyError(error, "Registration failed"); return ValueTask.CompletedTask; }
             RegisteredId = reader.ReadString();
+            if (!RegisteredPeers.TryAdd(context.Request.SenderAsString!, RegisteredId))
+            { context.ReplyError("org.freedesktop.portal.Error.Failed", "Already registered"); return ValueTask.CompletedTask; }
             var options = reader.ReadDictionaryStart();
             CheckRegistrationOptions(reader.HasNext(options));
             using var writer = context.CreateReplyWriter(null); context.Reply(writer.CreateMessage());
@@ -119,6 +134,7 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
         {
             if (Deny) { context.ReplyError("org.freedesktop.portal.Error.NotAllowed", "Disabled by user"); return ValueTask.CompletedTask; }
             string id = reader.ReadString();
+            if (HoldNotification) return HoldAsync(context);
             using var signal = connection.GetMessageWriter();
             signal.WriteSignalHeader(path: Path, @interface: "org.freedesktop.portal.Notification", member: "ActionInvoked", signature: "ssav");
             signal.WriteString(id); signal.WriteString("open"); signal.WriteArray(System.Array.Empty<VariantValue>());
@@ -130,9 +146,13 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
         else
         {
             Parent = reader.ReadString();
-            using var handle = reader.ReadHandle<SafeFileHandle>();
-            var bytes = new byte[64]; var length = RandomAccess.Read(handle, bytes, 0);
-            FileContents = System.Text.Encoding.UTF8.GetString(bytes, 0, length);
+            if (context.Request.SignatureAsString == "sha{sv}")
+            {
+                using var handle = reader.ReadHandle<SafeFileHandle>();
+                var bytes = new byte[64]; var length = RandomAccess.Read(handle, bytes, 0);
+                FileContents = System.Text.Encoding.UTF8.GetString(bytes, 0, length);
+            }
+            else _ = reader.ReadString(); // URI or picker title.
             string token = ""; Ask = false;
             var options = reader.ReadDictionaryStart();
             while (reader.HasNext(options))
@@ -144,6 +164,12 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
             using var reply = context.CreateReplyWriter("o"); reply.WriteObjectPath(new ObjectPath(requestPath)); context.Reply(reply.CreateMessage());
         }
         return ValueTask.CompletedTask;
+    }
+    private async ValueTask HoldAsync(MethodContext context)
+    {
+        NotificationHeld.TrySetResult();
+        await ReleaseNotification.Task;
+        using var writer = context.CreateReplyWriter(null); context.Reply(writer.CreateMessage());
     }
     private static void CheckRegistrationOptions(bool hasOptions)
     { if (hasOptions) throw new InvalidOperationException("Unexpected registry options."); }

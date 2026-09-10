@@ -101,6 +101,38 @@ available. Disposing the service detaches callbacks but leaves delivered items.
 
 ### Linux identity and relaunch
 
+Configure a `PortalApplication` once and use it for every portal-backed service:
+
+```csharp
+var portals = new PortalApplication("org.example.MyApp", diagnosticSink);
+builder.Services.AddRunicDesktopServices(
+    _ => portals.CreateSettings(), _ => portals.CreateNotifications());
+builder.Services.AddRunicDesktopPlatform(() => desktop.Window, owner =>
+{
+    var parent = new Gtk3PortalWindowOwner(owner); // Or the GTK4 owner adapter.
+    return new PlatformProvider
+    {
+        Files = portals.CreateFileDialogs(parent),
+        FileLauncher = portals.CreateFileLauncher(parent),
+    };
+});
+```
+
+The configuration object owns no native resources. Each service retains its own
+connection and disposal responsibilities; there is no process-global mutable
+identity. `portals.OpenUriAsync` and `CreateUnparentedFileDialogs` use the same
+configuration. The document-migration example accepts `RUNIC_DESKTOP_APP_ID` once
+at composition for its portal services; its explicitly selected GTK-native
+atomic-save compatibility path remains a separate choice.
+
+On portal service replacement, in-flight operations report unavailable rather
+than being replayed. The next notification operation recreates its connection,
+registers the same identity and reinstalls action handling. Calls cannot migrate
+to a new portal instance between identity registration and submission. This does
+not promise that the desktop preserves previously delivered notifications or
+requests across its own restart.
+
+
 Registry and Notification wire bindings are generated from pinned upstream XML
 using Tmds.DBus.Generator. See the [implementation audit](portal-implementation-audit.md)
 for the handwritten lifecycle responsibilities and remaining follow-ups.

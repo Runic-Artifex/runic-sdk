@@ -3,14 +3,32 @@
 Direct XDG desktop portal file dialogs and URI opening, independent of GTK.
 The session portal chooses the desktop backend: a GTK Runic window can therefore
 use KDE's file chooser on Plasma. This package uses the MIT-licensed
-`Tmds.DBus.Protocol` 0.95.1 with a fixed, reflection-free protocol implementation.
+`Tmds.DBus.Protocol` 0.95.1 with NativeAOT-compatible bindings; Registry and
+Notification bindings are generated from pinned upstream XML.
 
 ```csharp
+// Configure once at application composition. Install the matching .desktop file.
+var portals = new PortalApplication("org.example.MyApp",
+    diagnostic => Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Remediation}"));
 var parent = new Gtk3PortalWindowOwner(desktopNativeOwner); // Runic.Platform.Linux
 // Or Gtk4PortalWindowOwner from Runic.Platform.Linux.Gtk4.
-var files = PortalPlatformProvider.CreateFileDialogs(parent,
-    diagnostic => Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Remediation}"));
+var files = portals.CreateFileDialogs(parent);
+var launcher = portals.CreateFileLauncher(parent);
+// Register these as application-scoped services and dispose them at shutdown.
+var settings = portals.CreateSettings();
+var notifications = portals.CreateNotifications();
 ```
+
+`PortalApplication` is immutable and has no connection or disposal requirement.
+Its settings, notifications, file dialogs, file handoffs and URI opening all use
+one application ID, registering each owned host connection before portal calls.
+Existing static factories remain available for desktop-inferred identity.
+
+Calls are bound to a specific portal service owner. An interrupted operation
+returns unavailable; it is never replayed automatically. Notifications detect
+portal replacement and recreate/register their connection before the next call.
+File operations and settings reads open a fresh identified connection per request.
+Only the notification service owns the application's activation bus name.
 
 Presentation-bound requests require a valid exported X11/Wayland parent. Failure
 to export never silently opens an unparented dialog. An application with no native
