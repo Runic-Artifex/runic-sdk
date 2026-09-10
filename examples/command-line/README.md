@@ -1,5 +1,12 @@
 # From one command to an application
 
+Use the SDK development environment for the checkout commands below. For a
+package-based application, reference matching versions of `Runic.CommandLine`
+and optionally `Runic.CommandLine.Spectre`; the core package includes its source
+generator. The follow-up APIs are unreleased and are not in 0.2.0-preview.1.
+The [package-consumer check](../../tests/fixtures/command-line/package-consumer/Runic.CommandLine.PackageConsumer/README.md)
+compiles these tutorial sources against packed NuGet artifacts outside the checkout.
+
 Use the SDK development environment. Each step below is a maintained, compiled
 example; there is no supporting implementation hidden outside the linked files.
 

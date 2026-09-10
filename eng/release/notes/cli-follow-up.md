@@ -38,5 +38,5 @@ writes remain outside invocation-console isolation.
 Completions provide static catalog candidates and filesystem hints for path
 options, not full command-context filtering or remote completion. Hidden entries
 are omitted from discovery, not protected by authorization. File checks do not
-replace safe application IO or grant filesystem permissions. GTK 4 and portal
-work is a separate investigation and is not part of this CLI release.
+replace safe application IO or grant filesystem permissions. Native GTK and portal changes are documented separately; their platform-specific
+validation must not be inferred from these CLI checks.

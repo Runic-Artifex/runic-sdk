@@ -75,3 +75,30 @@ generated application runtimes. Upgrade tool and build packages together.
 Runic's source-built Translations Editor demonstrates the English/German TOML
 workflow and MF2 count messages; final automated UI acceptance remains pending.
 Standalone Editor distributions are outside this preview.
+
+## Command line follow-up (unreleased)
+
+The next preview adds `CommandApp` for standalone entry points and shared
+presentation for `CommandLineHostingAdapter` in hosted applications. These APIs
+are not in the published 0.2.0-preview.1 packages; use the next coordinated version
+when it is released. Keep all Runic package versions aligned.
+
+Start with the [compiled examples](../../../examples/command-line/README.md).
+Replace manual help/version/parse/execute branching with `CommandApp.RunAsync`.
+Keep domain validation in command methods. Add `Runic.CommandLine.Spectre` for
+`SpectreCommandConsole` and `SpectreHelpPresenter`; JSON output remains the
+structured Runic protocol. Use `Runic.CommandLine.Testing` to test the same
+application factory in memory.
+
+For an application with its own lifetime, keep `CommandLineHostingAdapter`:
+classify input, select the application's UI for `UserInterface`, call
+`PresentAsync` for help/version/invalid input, and `ExecuteAsync` for invocations.
+Configure `Presentation` with the application name, version and Spectre help
+presenter. Supply application services through invocation scopes and pass the
+application stopping token. Scope disposal must not dispose application-owned
+singletons. The adapter does not install process signal handlers or start a UI.
+
+Non-nullable scalar options without defaults are required. Use nullable types or
+explicit defaults for optional values. Keep global/local option declarations
+consistent. Machine output belongs on stdout; progress and diagnostics use the
+configured invocation console. Direct `System.Console` writes bypass that contract.

@@ -27,3 +27,9 @@ directory so the isolated package cache and NativeAOT output stay bounded.
 The fresh package cache and isolated feed prove that the consumer resolves only
 the packed artifacts and their declared dependencies before managed and NativeAOT
 execution.
+
+The same run copies the maintained `hello-world` and command-tree tutorial C#
+sources outside the checkout and builds them with PackageReferences. It executes
+the greeting and hosted service, help and empty-input UI-selection paths. This
+checks that the tutorials need no repository-only generator/build imports.
+The application UI branch is a console fixture; it does not open a desktop window.
