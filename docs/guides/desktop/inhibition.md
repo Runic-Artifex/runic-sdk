@@ -57,6 +57,10 @@ requires elevation for `powercfg`; acquiring the leases itself was verified
 without elevation. Neither check forces the machine to sleep or changes power
 settings.
 
+CI runs the `--system-only` variant against both JIT and NativeAOT outputs so
+service-session runners still cover real power requests. Display inhibition is
+covered by the interactive Windows VM test, not inferred from that CI variant.
+
 Sources: [Inhibit portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Inhibit.html),
 [pinned portal permission handling](https://github.com/flatpak/xdg-desktop-portal/blob/1d20fadc304f6601452b5db65ed91197dba77041/src/inhibit.c),
 [Windows power requests](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest),

@@ -4,14 +4,14 @@ using Runic.Platform.Windows;
 
 internal static class InhibitionTests
 {
-    internal static async Task<int> RunAsync(bool inspectPowerRequests)
+    internal static async Task<int> RunAsync(bool inspectPowerRequests, bool systemOnly)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native inhibition requires Windows.");
         var provider = WindowsPlatformProvider.CreateInhibition();
         string firstReason = "Runic system export " + Guid.NewGuid().ToString("N");
         string secondReason = "Runic display presentation " + Guid.NewGuid().ToString("N");
         await using var first = await AcquireAsync(provider, DesktopInhibitionEffects.SystemSleep, firstReason);
-        await using var second = await AcquireAsync(provider, DesktopInhibitionEffects.SystemSleep | DesktopInhibitionEffects.DisplaySleep, secondReason);
+        await using var second = await AcquireAsync(provider, DesktopInhibitionEffects.SystemSleep | (systemOnly ? DesktopInhibitionEffects.None : DesktopInhibitionEffects.DisplaySleep), secondReason);
         if (inspectPowerRequests) await CheckRequestsAsync(firstReason, secondReason, true, true);
         await Task.WhenAll(first.DisposeAsync().AsTask(), first.DisposeAsync().AsTask());
         if (inspectPowerRequests) await CheckRequestsAsync(firstReason, secondReason, false, true);
@@ -25,7 +25,7 @@ internal static class InhibitionTests
             throw new InvalidOperationException("Cancelled acquisition succeeded.");
         }
         catch (OperationCanceledException) { }
-        Console.WriteLine("PASS native Windows inhibition: independent acquisition, idempotent disposal and cancellation" +
+        Console.WriteLine("PASS native Windows inhibition (" + (systemOnly ? "system sleep only; display not tested" : "system and display sleep") + "): independent acquisition, idempotent disposal and cancellation" +
             (inspectPowerRequests ? "; powercfg confirms both requests, independent removal and final cleanup." : ". OS power policy was not inspected."));
         return 0;
     }

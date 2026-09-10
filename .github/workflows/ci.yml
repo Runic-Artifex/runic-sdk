@@ -497,6 +497,13 @@ jobs:
       - name: Publish native clipboard conformance with NativeAOT
         timeout-minutes: 10
         run: dotnet publish tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/clipboard-aot
+      - name: Verify Windows system-sleep inhibition with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --native-inhibition --system-only
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --native-inhibition --system-only
       - name: Verify NativeAOT GTK clipboard
         if: runner.os == 'Linux'
         timeout-minutes: 3
