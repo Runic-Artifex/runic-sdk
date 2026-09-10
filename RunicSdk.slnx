@@ -56,6 +56,8 @@
     <Project Path="tests/fixtures/desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
   </Folder>
   <Folder Name="/tests/dotnet/">
+    <Project Path="tests/dotnet/Runic.Platform.Administration.Windows.Tests/Runic.Platform.Administration.Windows.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.Administration.Windows.ApiTests/Runic.Platform.Administration.Windows.ApiTests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Windows.Tests/Runic.Platform.Windows.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Portal.Tests/Runic.Platform.Linux.Portal.Tests.csproj" />
