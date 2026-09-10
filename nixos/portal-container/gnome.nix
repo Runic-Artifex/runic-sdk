@@ -27,13 +27,14 @@
   systemd.user.services."org.gnome.Shell@".overrideStrategy = "asDropin";
   systemd.user.services."org.gnome.Shell@".serviceConfig.ExecStart = [
     ""
-    "${pkgs.gnome-shell}/bin/gnome-shell --wayland --no-x11 --headless --virtual-monitor 1280x800 --wayland-display runic-wayland"
+    "${pkgs.gnome-shell}/bin/gnome-shell --wayland --no-x11 --headless --virtual-monitor 2880x1800 --wayland-display runic-wayland"
   ];
   # Keep the ordinary session manager/portal dependencies. Only the compositor
   # backend changes; starting Shell alone omits graphical-session startup.
   programs.dconf.profiles.user.databases = [ {
     locks = [ "/org/gnome/desktop/input-sources/sources" ];
     settings = {
+      "org/gnome/mutter".experimental-features = [ "scale-monitor-framebuffer" ];
       "org/gnome/desktop/session".idle-delay = lib.gvariant.mkUint32 0;
       "org/gnome/desktop/screensaver".lock-enabled = false;
       "org/gnome/desktop/interface".toolkit-accessibility = true;

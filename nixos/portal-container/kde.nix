@@ -27,7 +27,7 @@
   systemd.user.services.plasma-kwin_wayland.path = [ "/run/current-system/sw" ];
   systemd.user.services.plasma-kwin_wayland.serviceConfig.ExecStart = [
     ""
-    "${lib.getBin pkgs.kdePackages.kwin}/bin/kwin_wayland_wrapper --xwayland --virtual --width 1280 --height 800"
+    "${lib.getBin pkgs.kdePackages.kwin}/bin/kwin_wayland_wrapper --xwayland --virtual --width 2560 --height 1600"
   ];
   systemd.user.settings.Manager.DefaultEnvironment = [
     "XDG_CURRENT_DESKTOP=KDE" "XDG_SESSION_TYPE=wayland" "WAYLAND_DISPLAY=wayland-0" "QT_ACCESSIBILITY=1"

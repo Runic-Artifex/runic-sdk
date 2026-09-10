@@ -66,9 +66,10 @@ References: [systemd proc masking investigation](https://github.com/systemd/syst
 
 ## Coverage and legacy runners
 
-The container guide records executable coverage and remaining work. Linux VM
-helpers are legacy fallback while input, scaling and notification coverage moves
-to containers. New Linux orchestration belongs in this runner. Hardware, physical
+The container guide records executable coverage and remaining work. Both desktops
+now have compositor input/Pinyin, real scale/pointer and live/cold notification
+automation. Linux VM helpers are deprecated compatibility tools. New Linux
+orchestration belongs in this runner. Hardware, physical
 power transitions and different-kernel behavior remain distinct from headless
 shared-kernel integration tests; they do not make VMs a permanent prerequisite
 for portal testing. Windows VM and real macOS testing are separate workstreams.

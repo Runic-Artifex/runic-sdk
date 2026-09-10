@@ -14,38 +14,7 @@ from speech_audio import inspect_audio
 from gi.repository import GLib, Gio
 
 
-def tree(root, depth=0):
-    if depth > 40:
-        return
-    yield root
-    for child in root:
-        if child is not None:
-            yield from tree(child, depth + 1)
-
-
-def applications():
-    return [a for a in pyatspi.Registry.getDesktop(0) if a is not None]
-
-
-def unique(nodes, predicate):
-    matches = [n for n in nodes if predicate(n)]
-    if len(matches) != 1:
-        raise RuntimeError(f"Expected one accessible match, found {len(matches)}")
-    return matches[0]
-
-
-def action_names(node):
-    try:
-        actions = node.queryAction()
-        return [actions.getName(i) for i in range(actions.nActions)]
-    except (NotImplementedError, GLib.Error):
-        return []
-
-
-def invoke(node, name):
-    names = action_names(node)
-    if name not in names or not node.queryAction().doAction(names.index(name)):
-        raise RuntimeError(f"Native action rejected: {node.name}: {name}")
+from native_accessibility import tree, applications, unique, action_names, invoke
 
 
 class Suite:
@@ -209,20 +178,31 @@ class Suite:
             bus.call_sync(interface, session, interface + ".Session", "Stop",
                           None, None, 0, 5000, None)
 
-    def check_gnome_keyboard(self):
-        if "GNOME" not in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
-            raise RuntimeError("The compositor keyboard adapter currently requires GNOME")
-        previous_engine = subprocess.check_output(["ibus", "engine"], text=True, timeout=5).strip()
+    def check_keyboard(self):
+        kde = self.args.kde_keyboard
+        query = ["fcitx5-remote", "-n"] if kde else ["ibus", "engine"]
+        def engine():
+            return subprocess.check_output(query, text=True, timeout=5).strip()
+        previous_engine = engine() or ("keyboard-us" if kde else "xkb:us::eng")
+        keyboard = None
         bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         destination = "org.gnome.Mutter.RemoteDesktop"
-        session = bus.call_sync(destination, "/org/gnome/Mutter/RemoteDesktop", destination,
-                                "CreateSession", None, None, 0, 5000, None).unpack()[0]
+        session = None
+        if kde:
+            from kde_input import KdeInput
+            keyboard = KdeInput()
+        else:
+            session = bus.call_sync(destination, "/org/gnome/Mutter/RemoteDesktop", destination,
+                                    "CreateSession", None, None, 0, 5000, None).unpack()[0]
         def call(method, signature=None, values=()):
             return bus.call_sync(destination, session, destination + ".Session", method,
                                  GLib.Variant(signature, values) if signature else None,
                                  None, 0, 5000, None)
         def key(code, pressed):
-            call("NotifyKeyboardKeycode", "(ub)", (code, pressed))
+            if kde:
+                keyboard.key(code, pressed)
+            else:
+                call("NotifyKeyboardKeycode", "(ub)", (code, pressed))
         def tap(code):
             key(code, True)
             try:
@@ -234,22 +214,25 @@ class Suite:
             return unique(tree(self.fixture()), lambda n: n.name == label and n.getRoleName() == "entry")
         def switch_engine(target):
             for _ in range(8):
-                if subprocess.check_output(["ibus", "engine"], text=True, timeout=5).strip() == target:
+                if engine() == target:
                     return
-                key(125, True)  # GNOME's real Super+Space input-source switch.
+                modifier = 29 if kde else 125  # Fcitx Ctrl+Space / GNOME Super+Space.
+                key(modifier, True)
                 try:
                     tap(57)
                 finally:
-                    key(125, False)
+                    key(modifier, False)
                 time.sleep(0.3)
             raise RuntimeError("Could not select the configured input source: " + target)
         try:
-            call("Start")
-            switch_engine("xkb:us::eng")
+            if not kde:
+                call("Start")
             name = field("Your name")
             if not name.queryComponent().grabFocus():
                 raise RuntimeError("Could not establish the initial keyboard focus")
             self.wait(lambda: name.getState().contains(pyatspi.STATE_FOCUSED))
+            previous_engine = self.wait(engine)
+            switch_engine("keyboard-us" if kde else "xkb:us::eng")
             for code in (19, 22, 49, 23, 46):  # evdev: r u n i c
                 tap(code)
             self.wait(lambda: name.queryText().getText(0, -1) == "runic")
@@ -265,8 +248,9 @@ class Suite:
             tap(15)
             self.wait(lambda: composition.getState().contains(pyatspi.STATE_FOCUSED))
             self.passed_check("compositor keyboard typing and Tab/Shift+Tab focus navigation")
-            switch_engine("libpinyin")
-            self.wait(lambda: subprocess.check_output(["ibus", "engine"], text=True, timeout=5).strip() == "libpinyin")
+            target_engine = "pinyin" if kde else "libpinyin"
+            switch_engine(target_engine)
+            self.wait(lambda: engine() == target_engine)
             for code in (49, 23, 35, 30, 24):  # n i h a o
                 tap(code)
             # Let the real input method publish preedit/candidates before commit.
@@ -284,12 +268,149 @@ class Suite:
                     e["type"] == "compositionend" and e.get("data") == "你好" for e in events):
                 raise RuntimeError("Real IME composition events were not observed")
             (self.output / "keyboard-ime.json").write_text(json.dumps(states[0], ensure_ascii=False, indent=2) + "\n")
-            self.passed_check("real IBus Pinyin composition and commit through compositor input")
+            self.passed_check(f"real {'Fcitx5' if kde else 'IBus'} Pinyin composition and commit through compositor input")
         finally:
             try:
+                if kde:
+                    field("Composition text").queryComponent().grabFocus()
+                    self.wait(lambda: engine())
                 switch_engine(previous_engine)
             finally:
-                call("Stop")
+                if keyboard:
+                    keyboard.close()
+                else:
+                    call("Stop")
+
+    def check_gnome_scaling(self):
+        bus, destination, session = self.gnome_input
+        def input_call(method, parameters):
+            bus.call_sync(destination, session, destination + ".Session", method, parameters, None, 0, 5000, None)
+        def key(code, pressed):
+            input_call("NotifyKeyboardKeycode", GLib.Variant("(ub)", (code, pressed)))
+            time.sleep(0.05)
+        def state():
+            return bus.call_sync("org.gnome.Mutter.DisplayConfig", "/org/gnome/Mutter/DisplayConfig",
+                "org.gnome.Mutter.DisplayConfig", "GetCurrentState", None, None, 0, 5000, None).unpack()
+        current = state()
+        if len(current[1]) != 1 or len(current[2]) != 1 or tuple(current[2][0][:2]) != (0, 0):
+            raise RuntimeError("Scaling requires one virtual monitor at the origin")
+        monitor = current[1][0]
+        mode = unique(monitor[1], lambda m: m[6].get("is-current", False))
+        previous = current[2][0][2]
+        def apply(scale):
+            config = [(0, 0, scale, 0, True, [(monitor[0][0], mode[0], {})])]
+            bus.call_sync("org.gnome.Mutter.DisplayConfig", "/org/gnome/Mutter/DisplayConfig",
+                "org.gnome.Mutter.DisplayConfig", "ApplyMonitorsConfig",
+                GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})", (state()[0], 1, config, {})), None, 0, 5000, None)
+            self.wait(lambda: state()[2][0][2] == scale)
+        records = []
+        try:
+            # Establish a deterministic window origin through the real desktop
+            # maximize shortcut. The shell's top-bar bounds locate its work area.
+            key(125, True)
+            try:
+                key(103, True)
+                key(103, False)
+            finally:
+                key(125, False)
+            for scale in (1, 1.5, 2):
+                apply(scale)
+                time.sleep(0.5)
+                target = self.button("Target hits: " + str(1 + len(records)))
+                bounds = target.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+                shell = unique(applications(), lambda a: a.name == "gnome-shell")
+                activities = unique(tree(shell), lambda n: n.name == "Activities" and n.getRoleName() == "toggle button")
+                bar = activities.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
+                document = unique(tree(self.fixture()), lambda n: n.getRoleName() == "document web")
+                embedding = document.parent
+                while embedding is not None and embedding.getRoleName() != "panel":
+                    embedding = embedding.parent
+                if embedding is None:
+                    raise RuntimeError("Could not locate the WebView's native embedding panel")
+                origin = embedding.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+                x = origin.x + bounds.x + bounds.width / 2
+                y = bar.y + bar.height + origin.y + bounds.y + bounds.height / 2
+                print(f"SCALE {scale} pointer {x},{y}; top bar {bar.height}", flush=True)
+                # Home at the right edge to avoid GNOME's top-left hot corner.
+                # Clamp each axis separately; a diagonal may stop at one edge.
+                input_call("NotifyPointerMotionRelative", GLib.Variant("(dd)", (100000., 0.)))
+                time.sleep(0.05)
+                input_call("NotifyPointerMotionRelative", GLib.Variant("(dd)", (0., -100000.)))
+                time.sleep(0.05)
+                input_call("NotifyPointerMotionRelative", GLib.Variant("(dd)", (x - (mode[1] / scale - 1), y)))
+                time.sleep(0.1)
+                for pressed in (True, False):
+                    input_call("NotifyPointerButton", GLib.Variant("(ib)", (272, pressed)))
+                    time.sleep(0.05)
+                self.wait(lambda: self.button("Target hits: " + str(2 + len(records))))
+                offset = len(self.log.read_text())
+                self.step("Record snapshot", "RESULT Snapshot recorded.")
+                states = [json.loads(line[len("USABILITY "):]) for line in self.log.read_text()[offset:].splitlines()
+                          if line.startswith("USABILITY {")]
+                if len(states) != 1 or states[0]["hits"] != 2 + len(records):
+                    raise RuntimeError("Compositor pointer hit did not reach the application")
+                if abs(states[0]["width"] - mode[1] / scale) > 4:
+                    raise RuntimeError("Window did not occupy the expected maximized work area")
+                records.append({"scale": scale, "display": state(), "bounds": [bounds.x, bounds.y, bounds.width, bounds.height],
+                                "pointer": [x, y], "embedding": [origin.x, origin.y, origin.width, origin.height], "top_bar": [bar.x, bar.y, bar.width, bar.height], "page": states[0]})
+            (self.output / "scaling.json").write_text(json.dumps(records, indent=2) + "\n")
+            self.passed_check("Mutter 100/150/200 percent scales with compositor pointer targeting")
+        finally:
+            apply(previous)
+            # Restore the ordinary window before the portal picker checks.
+            key(125, True)
+            try:
+                key(108, True)
+                key(108, False)
+            finally:
+                key(125, False)
+
+    def check_kde_scaling(self):
+        from kde_input import KdeInput, windows
+        def output():
+            outputs = json.loads(subprocess.check_output(["kscreen-doctor", "-j"], text=True, timeout=5))["outputs"]
+            return unique(outputs, lambda n: n["enabled"] and n["connected"])
+        monitor = output()
+        previous = monitor["scale"]
+        records = []
+        try:
+            for scale in (1, 1.5, 2):
+                subprocess.run(["kscreen-doctor", f"output.{monitor['id']}.scale.{scale}"], check=True, timeout=5,
+                               stdout=subprocess.DEVNULL)
+                self.wait(lambda: output()["scale"] == scale)
+                time.sleep(0.5)
+                # Output changes recreate EIS devices/regions; use the new mapping.
+                keyboard = KdeInput()
+                try:
+                    target = self.button("Target hits: " + str(1 + len(records)))
+                    bounds = target.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+                    x, y, width, height = bounds.x, bounds.y, bounds.width, bounds.height
+                    if min(x, y) < 0 or min(width, height) <= 0:
+                        raise RuntimeError(f"Invalid native target bounds: {bounds}")
+                    window = unique(windows(), lambda w: "runic" in w["resourceClass"].lower() and w["caption"] == "Runic Desktop")
+                    # GTK's Wayland accessibility coordinates are local to its
+                    # surface. KWin's buffer origin supplies desktop placement.
+                    click_x = window["buffer"]["x"] + x + width / 2
+                    click_y = window["buffer"]["y"] + y + height / 2
+                    print(f"SCALE {scale} pointer {click_x},{click_y}", flush=True)
+                    keyboard.click(click_x, click_y)
+                    self.wait(lambda: self.button("Target hits: " + str(2 + len(records))))
+                    offset = len(self.log.read_text())
+                    self.step("Record snapshot", "RESULT Snapshot recorded.")
+                    states = [json.loads(line[len("USABILITY "):]) for line in self.log.read_text()[offset:].splitlines()
+                              if line.startswith("USABILITY {")]
+                    if len(states) != 1 or states[0]["hits"] != 2 + len(records):
+                        raise RuntimeError("Compositor pointer hit did not reach the application")
+                    records.append({"scale": scale, "output": output(), "bounds": [x, y, width, height],
+                                    "window": window, "pointer": [click_x, click_y], "page": states[0]})
+                finally:
+                    keyboard.close()
+            (self.output / "scaling.json").write_text(json.dumps(records, indent=2) + "\n")
+            self.passed_check("KWin 100/150/200 percent scales with compositor pointer targeting")
+        finally:
+            subprocess.run(["kscreen-doctor", f"output.{monitor['id']}.scale.{previous}"], check=True, timeout=5,
+                           stdout=subprocess.DEVNULL)
+            self.wait(lambda: output()["scale"] == previous)
 
     def start_orca(self):
         if subprocess.run(["pgrep", "-x", "orca"], stdout=subprocess.DEVNULL).returncode == 0:
@@ -421,8 +542,8 @@ class Suite:
             self.passed_check("native accessible control names")
             if self.args.orca:
                 self.check_orca()
-            if self.args.gnome_keyboard:
-                self.check_gnome_keyboard()
+            if self.args.gnome_keyboard or self.args.kde_keyboard:
+                self.check_keyboard()
             self.click("Target hits: 0")
             self.wait(lambda: self.button("Target hits: 1"))
             offset = len(self.log.read_text())
@@ -432,6 +553,10 @@ class Suite:
             if len(states) != 1 or states[0]["hits"] != 1:
                 raise RuntimeError("Accessible target action did not reach the page")
             self.passed_check("native action reaches WebView and snapshot")
+            if self.args.kde_scaling:
+                self.check_kde_scaling()
+            if self.args.gnome_scaling:
+                self.check_gnome_scaling()
             is_gnome = "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
             inhibitors = self.gnome_inhibitors if is_gnome else self.kde_inhibitors
             desktop = "GNOME" if is_gnome else "PowerDevil"
@@ -497,7 +622,7 @@ class Suite:
                 raise RuntimeError("Fixture failed after closing its owner")
             self.passed_check("pending picker invalidated when owner closes")
         except Exception as error:
-            failure = str(error)
+            failure = f"{type(error).__name__}: {error}"
             (self.output / "failure.txt").write_text(traceback.format_exc())
             try:
                 self.snapshot()
@@ -525,7 +650,7 @@ class Suite:
                       "desktop": os.environ.get("XDG_CURRENT_DESKTOP"),
                       "manual": ["spoken announcement quality", "visual IME candidate placement",
                                  "physical pointer targeting at desktop scales", "notification focus"]}
-            if not self.args.gnome_keyboard:
+            if not (self.args.gnome_keyboard or self.args.kde_keyboard):
                 report["manual"].append("real keyboard navigation and IME composition")
             (self.output / "results.json").write_text(json.dumps(report, indent=2) + "\n")
         if failure:
@@ -538,7 +663,12 @@ if __name__ == "__main__":
     pickers = parser.add_mutually_exclusive_group()
     pickers.add_argument("--kde-pickers", action="store_true", help="Exercise the KDE Flatpak grant/save/cancel dialogs")
     pickers.add_argument("--gnome-pickers", action="store_true", help="Also exercise Nautilus Flatpak grant/save/cancel dialogs")
-    parser.add_argument("--gnome-keyboard", action="store_true", help="Exercise compositor keyboard navigation and real IBus Pinyin")
+    keyboards = parser.add_mutually_exclusive_group()
+    keyboards.add_argument("--kde-keyboard", action="store_true", help="Exercise KWin EIS keyboard navigation and real Fcitx5 Pinyin")
+    keyboards.add_argument("--gnome-keyboard", action="store_true", help="Exercise compositor keyboard navigation and real IBus Pinyin")
+    scales = parser.add_mutually_exclusive_group()
+    scales.add_argument("--gnome-scaling", action="store_true", help="Check actual Mutter scales and pointer targeting")
+    scales.add_argument("--kde-scaling", action="store_true", help="Check actual KWin scales and EIS pointer targeting")
     parser.add_argument("--orca", action="store_true", help="Verify native focus, Orca speech and captured desktop sink audio")
     parser.add_argument("--audio-sink", help="Explicit PipeWire sink name; never captures the microphone")
     parser.add_argument("--startup-timeout", type=int, default=300)
@@ -551,6 +681,11 @@ if __name__ == "__main__":
         parser.error("A fixture launch command is required")
     if Path("/etc/hostname").read_text().strip() not in {"runic-portal", "runic-headless-gnome", "runic-headless-kde"}:
         parser.error("Run only inside a disposable Runic test VM or container")
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+    if (args.kde_keyboard or args.kde_scaling or args.kde_pickers) and desktop != "KDE":
+        parser.error("KDE adapters require the KDE desktop")
+    if (args.gnome_keyboard or args.gnome_pickers or args.gnome_scaling) and desktop != "GNOME":
+        parser.error("GNOME adapters require the GNOME desktop")
     def expired(signum, frame):
         raise TimeoutError("Suite deadline reached or termination requested")
     signal.signal(signal.SIGALRM, expired)

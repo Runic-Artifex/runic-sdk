@@ -4,8 +4,8 @@ Managed systemd-nspawn is the preferred direction for Linux desktop integration
 checks. GNOME's full Flatpak/input/audio sequence runs without QEMU or a host
 Wayland, session D-Bus, PipeWire, home-directory or device bind. Plasma has a
 separate configuration so each desktop selects its own portal implementations.
-The Linux VM helpers are legacy fallback while the remaining container coverage
-is completed; new Linux orchestration work belongs here.
+The Linux VM helpers are deprecated compatibility tools; new Linux orchestration
+work belongs here.
 
 ## Prepare once
 
@@ -84,11 +84,12 @@ python3 -B nixos/portal-container/run.py \
   --desktop gnome --system artifacts/container-gnome \
   --root /tmp/runic-desktop-base/root \
   --inputs artifacts/container-inputs --runtime artifacts/container-runtime \
-  --output artifacts/container-results/gnome-1 --flatpak --orca --keyboard
+  --output artifacts/container-results/gnome-1 --flatpak --orca --keyboard --scaling --notifications
 ```
 
-For Plasma, use `--desktop kde --system artifacts/container-kde` with
-`--flatpak --orca`; the keyboard adapter currently supports GNOME only.
+For Plasma, use `--desktop kde --system artifacts/container-kde` with the same
+options. `--notifications` also needs the ordinary NativeAOT executable in the
+input directory, even when the usability suite uses Flatpak.
 
 Use a new output directory for each run. The host launcher uses the **active host
 systemd** tools, then launches the suite through the guest system manager as
@@ -111,7 +112,7 @@ Optional local Whisper validation uses the same
 `results` directory. The container run checks actual Orca speech requests and
 non-silent PCM independently; ASR does not replace those assertions.
 
-## Remaining replacement work
+## Compositor input and notifications
 
 Plasma also covers its native Qt chooser, Flatpak grants/cancellation/atomic-write
 rejection, PowerDevil registration/removal and Orca/PipeWire audio. Its Qt
@@ -119,11 +120,44 @@ accessibility bridge must be enabled before inspecting dialogs; the runner sets
 and restores the session accessibility status. PowerDevil is explicitly enabled
 because NixOS normally omits power management in containers.
 
-KDE/Fcitx5 compositor keyboard input remains to be automated. KWin exposes an
-EIS RemoteDesktop connection suitable for a guest-only input adapter; no host
-input-device bind is needed for that investigation. Notification live/cold action focus,
-actual scale changes and pointer targeting also remain to be moved to the
-container runners. Visual announcement/candidate quality and real hardware or
-power transitions require separate assessment; a shared-kernel headless test
-cannot establish those results. These are coverage limitations, not additional
-release approval gates. Windows VM and future real-macOS testing are unchanged.
+Both keyboard adapters send real compositor input: Mutter RemoteDesktop for
+GNOME and KWin EIS with the locked libei for Plasma. They type `runic`, verify
+Tab/Shift+Tab focus order, switch the input source with the desktop shortcut,
+compose and commit `你好`, then check native text and application composition
+events. Fcitx5 source restoration refocuses an entry because its active input
+context disappears when a button takes focus. No host `/dev/uinput` is shared.
+
+`--scaling` applies actual 100%, 150% and 200% compositor display scales, reads
+them back, clicks the target with compositor pointer input, verifies the hit
+counter and records the page's pixel ratio and geometry in `scaling.json`.
+Plasma uses KScreen plus a temporary read-only KWin script to map GTK's local
+surface bounds into desktop coordinates. GNOME maximizes the test window using
+the real desktop shortcut, uses the shell top bar to locate the work area, and
+reads the native panel that embeds the WebView to account for window decorations.
+Its pointer starts at the right edge to avoid the overview hot corner.
+The virtual displays are large enough for the fixture at 200%. Scale and input
+source changes are restored. These checks do not substitute CSS zoom or native
+button actions for pointer input, and do not claim physical USB device coverage.
+
+`--notifications` installs a temporary receiver service for the fixture identity
+already present when the desktop boots. It refreshes D-Bus service discovery and
+verifies that the receiver is activatable. It activates the visible **Open result**
+action through Plasma's native accessibility action or GNOME's real pointer
+hover/click. The fixture verifies the actual action ID, activation token, process
+ID and native GTK focused-window state for both live and cold activation. The
+cold sender must exit first and the receiver must have a different PID. Calling
+the application's activation callback directly is not part of this test.
+
+Notification results and logs are collected in `results/notifications`. The
+runner waits for the preceding popup and bus owner to disappear, removes its
+temporary service, and cleans up owned receiver processes. GNOME keeps its
+pointer inside the banner between hover and click so the action row stays open.
+
+## Remaining coverage
+
+Visual candidate placement, announcement quality, physical input devices and real
+hardware/power transitions remain distinct from these headless integration
+checks. Further accessibility values/events and CI host provisioning can extend
+the runner. Windows VM and future real-macOS testing are unchanged. Linux VM
+helpers are deprecated compatibility tools; new Linux test work belongs in the
+managed container runner. These coverage limitations do not add release gates.

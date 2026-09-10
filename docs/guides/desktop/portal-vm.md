@@ -1,4 +1,9 @@
-# NixOS portal test VMs
+# NixOS portal test VMs (deprecated)
+
+Use the [managed desktop container runner](container-automation.md) for Linux
+portal, input, scaling and notification tests. These VM helpers remain available
+for compatibility and explicit VM investigations; they are no longer the default
+Linux workflow. Windows VM testing is unaffected.
 
 The SDK flake provides two isolated graphical NixOS VMs for native portal
 acceptance. Build exactly one desktop at a time:

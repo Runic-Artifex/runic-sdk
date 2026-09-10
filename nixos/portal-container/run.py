@@ -23,7 +23,9 @@ def main():
     parser.add_argument('--output', type=Path, required=True, help='New host results directory')
     parser.add_argument('--flatpak', action='store_true')
     parser.add_argument('--orca', action='store_true')
+    parser.add_argument('--notifications', action='store_true', help='Check visible live/cold notification actions')
     parser.add_argument('--keyboard', action='store_true')
+    parser.add_argument('--scaling', action='store_true', help='Compositor scale and pointer checks')
     args = parser.parse_args()
     args.root = args.root.resolve(strict=True)
     args.system = args.system.resolve(strict=True)
@@ -39,9 +41,9 @@ def main():
             parser.error('Input/runtime directories must be immutable Nix store paths')
     if args.flatpak and not args.runtime:
         parser.error('--flatpak requires --runtime')
-    if args.keyboard and args.desktop != 'gnome':
-        parser.error('The keyboard adapter currently supports GNOME only')
     required = ['install-flatpak.sh', 'Runic.Desktop.Gtk4.Smoke.flatpak'] if args.flatpak else ['Runic.Desktop.Gtk4.Smoke']
+    if args.notifications and args.flatpak:
+        required.append('Runic.Desktop.Gtk4.Smoke')
     if any(not (args.inputs / name).is_file() for name in required):
         parser.error('Missing fixture inputs: ' + ', '.join(required))
     args.output.mkdir(parents=True, exist_ok=False)
@@ -117,11 +119,18 @@ def main():
                 fixture = [GUEST + 'runic-container-fixture', '/home/runic/Runic.Desktop.Gtk4.Smoke', '--usability']
             options = ['--orca'] if args.orca else []
             if args.keyboard:
-                options.append('--gnome-keyboard')
+                options.append('--gnome-keyboard' if args.desktop == 'gnome' else '--kde-keyboard')
+            if args.scaling:
+                options.append('--kde-scaling' if args.desktop == 'kde' else '--gnome-scaling')
             if args.flatpak:
                 options.append('--gnome-pickers' if args.desktop == 'gnome' else '--kde-pickers')
             guest([GUEST + 'runic-portal-automate', '--output', guest_output, '--startup-timeout', '60',
                    *options, '--', *fixture], timeout=660, stdout=log, stderr=subprocess.STDOUT)
+            if args.notifications:
+                if args.flatpak:
+                    guest([GUEST + 'cp', '/run/runic-test-input/Runic.Desktop.Gtk4.Smoke', '/home/runic/Runic.Desktop.Gtk4.Smoke'])
+                guest([GUEST + 'runic-notification-automate', '--output', guest_output + '/notifications',
+                       '--fixture', '/home/runic/Runic.Desktop.Gtk4.Smoke'], timeout=180, stdout=log, stderr=subprocess.STDOUT)
     finally:
         # Even failed log collection or shutdown must reap our nspawn process.
         try:

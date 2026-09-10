@@ -1,7 +1,8 @@
-# Desktop VM automation (legacy Linux runner)
+# Desktop VM automation (deprecated Linux runner)
 
 Use [managed desktop containers](container-automation.md) for new Linux automation.
-The commands below remain available while the remaining VM coverage is migrated.
+The commands below remain available for compatibility; the maintained Linux
+portal/input/scaling/notification workflow runs in containers.
 Windows VM and real macOS testing are unaffected.
 
 The first unattended GTK4 runner is implemented in
@@ -152,10 +153,9 @@ used by the managed GNOME container too.
 
 The [managed container runner](container-automation.md) now boots independent
 GNOME/Plasma sessions with fresh state, runs the shared suite, collects logs and
-shuts down on success or failure. Both desktops pass Flatpak chooser/sandbox,
-native inhibition and Orca/audio checks; GNOME also passes compositor input and
-Pinyin. Linux VM helpers remain legacy fallback while the remaining coverage
-moves to containers. No host desktop sockets or physical devices are shared.
+shuts down on success or failure. Both desktops support Flatpak chooser/sandbox,
+native inhibition, Orca/audio, compositor input/Pinyin, actual scale/pointer
+checks and live/cold notification focus. Linux VM helpers are deprecated. No host desktop sockets or physical devices are shared.
 
 ## Extending the suite
 
@@ -165,9 +165,9 @@ separate. Windows VM and real macOS adapters remain independent workstreams.
 
 | Area | Automation approach and next assertion |
 | --- | --- |
-| Keyboard and IME | GNOME compositor typing, Tab/Shift+Tab and real IBus Pinyin now pass. Extend to KDE/Fcitx5 and device-level input where needed. Changing an accessible text value does not test an IME. |
-| Scaling and targeting | Set actual Mutter/KScreen display scales, read them back, use compositor pointer input at measured control bounds, and verify hit counts. Retain screenshots for caret/candidate placement. CSS zoom and an AT-SPI button action do not establish physical targeting. |
-| Notifications | Activate the visible notification action through the shell UI. Assert the receiver PID and native focused-window result for both live and cold launch. Calling the application's D-Bus callback directly would bypass the activation-token behavior under test. |
+| Keyboard and IME | GNOME/IBus and KDE/Fcitx5 compositor typing, Tab/Shift+Tab and Pinyin pass in containers. Physical devices remain separate. Changing an accessible text value does not test an IME. |
+| Scaling and targeting | The container adapters set/read actual Mutter/KScreen scales and verify compositor pointer hits at 100%, 150% and 200%. Visual caret/candidate placement remains separate. CSS zoom and an AT-SPI button action do not establish physical targeting. |
+| Notifications | The container adapter activates the visible shell action and asserts the token, receiver PID and native focused-window result for live and cold launch. Calling the application's D-Bus callback directly would bypass the activation-token behavior under test. |
 | Accessibility | Native roles/focus, Orca speech records, recorded audio and optional local ASR now work in GNOME and KDE. Extend to values and physical focus order/events. Listening remains useful for announcement quality. |
 | Windows | Use the existing interactive VM login and Windows UI Automation for WebView2/WinUI dialogs, with the same fixture outcomes and isolated temporary files. Run executable-only NativeAOT publishes and the existing native power-request checks. Session-0 SSH alone cannot cover interactive display behavior. |
 | macOS | Add an AXUIElement/Accessibility adapter and native assertions after the real Mac is available. Keep native support explicitly untested until then. |
