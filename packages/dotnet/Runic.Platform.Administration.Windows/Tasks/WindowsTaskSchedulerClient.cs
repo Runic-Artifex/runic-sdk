@@ -1,3 +1,6 @@
+using Windows.Win32.System.TaskScheduler;
+using Windows.Win32.System.Variant;
+using Windows.Win32.Foundation;
 using System.Collections.Immutable;
 using System.Xml.Linq;
 using Runic.Platform.Administration.Windows.Internal;
@@ -58,7 +61,7 @@ public sealed class WindowsTaskSchedulerClient
         return Execute(service =>
         {
             using var root = GetFolder(service, "\\");
-            return Delete(root, 12, folderPath, "Delete task folder");
+            return Delete(root, false, folderPath, "Delete task folder");
         }, cancellationToken);
     }
 
@@ -88,7 +91,7 @@ public sealed class WindowsTaskSchedulerClient
         {
             using var root = GetFolder(service, "\\");
             using var task = FindTask(root, path) ?? throw NativeError.Win32("Update scheduled task", 2);
-            var xml = Automation.GetString(task, 20, "Read task XML");
+            var xml = TaskRead.String(task, TaskString.TaskXml, "Read task XML");
             return Register(service, path, TaskXml.Parse(TaskXml.Update(xml, update)), 4 | 16, password);
         }, cancellationToken);
     }
@@ -100,7 +103,7 @@ public sealed class WindowsTaskSchedulerClient
         return Execute(service =>
         {
             using var root = GetFolder(service, "\\");
-            return Delete(root, 15, path, "Delete scheduled task");
+            return Delete(root, true, path, "Delete scheduled task");
         }, cancellationToken);
     }
 
@@ -112,7 +115,7 @@ public sealed class WindowsTaskSchedulerClient
         {
             using var root = GetFolder(service, "\\");
             using var task = FindTask(root, path) ?? throw NativeError.Win32("Enable scheduled task", 2);
-            Automation.SetBoolean(task, 11, enabled, "Enable scheduled task");
+            TaskRead.SetEnabled(task, enabled, "Enable scheduled task");
             return true;
         }, cancellationToken);
     }
@@ -155,11 +158,11 @@ public sealed class WindowsTaskSchedulerClient
 
     private static unsafe void ValidateXml(ComObject service, string xml)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var root = GetFolder(service, "\\");
         using var text = new BString(xml);
         nint result = 0;
-        var status = ((delegate* unmanaged[Stdcall]<nint, nint, nint, int, Variant, Variant, int, Variant, nint*, int>)root.Slot(16))(
-            root.Pointer, 0, text.Pointer, 1, default, default, 0, default, &result);
+        var status = ((ITaskFolder*)root.Pointer)->RegisterTask(default, text.Native, 1, default, default, 0, default, (IRegisteredTask**)&result).Value;
         try { NativeError.Check(status, "Validate scheduled task XML"); }
         finally { if (result != 0) ComObject.Own(result).Dispose(); }
     }
@@ -173,12 +176,12 @@ public sealed class WindowsTaskSchedulerClient
 
     private unsafe ComObject Connect()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         var service = ComObject.Create(new("0f87369f-a4e5-4cfc-bd3e-73e6154572dd"), new("2faba4c7-4da9-4013-9697-20cc3fd40f85"));
         try
         {
             using var server = _machineName is null ? null : new BString(_machineName);
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, Variant, Variant, Variant, Variant, int>)service.Slot(10))(
-                service.Pointer, server is null ? default : Variant.String(server.Pointer), default, default, default), "Connect Task Scheduler");
+            NativeError.Check(((ITaskService*)service.Pointer)->Connect(server is null ? default : NativeVariant.String(server.Pointer), default, default, default).Value, "Connect Task Scheduler");
             return service;
         }
         catch { service.Dispose(); throw; }
@@ -199,17 +202,18 @@ public sealed class WindowsTaskSchedulerClient
 
     private static unsafe ComObject GetFolder(ComObject service, string path)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var name = new BString(path);
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)service.Slot(7))(service.Pointer, name.Pointer, &result), "Open task folder");
-        return ComObject.Own(result);
+        return ComObject.FromResult(((ITaskService*)service.Pointer)->GetFolder(name.Native, (ITaskFolder**)&result).Value, result, "Open task folder");
     }
 
     private static unsafe ComObject? FindTask(ComObject folder, string path)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var name = new BString(path);
         nint result = 0;
-        var status = ((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)folder.Slot(13))(folder.Pointer, name.Pointer, &result);
+        var status = ((ITaskFolder*)folder.Pointer)->GetTask(name.Native, (IRegisteredTask**)&result).Value;
         if (IsMissing(status)) return null;
         NativeError.Check(status, "Find scheduled task");
         return ComObject.Own(result);
@@ -217,53 +221,55 @@ public sealed class WindowsTaskSchedulerClient
 
     private static bool IsMissing(int status) => status is unchecked((int)0x80070002) or unchecked((int)0x80070003);
 
-    private static unsafe ComObject Collection(ComObject folder, int slot, int flags, string operation)
+    private static unsafe ComObject Collection(ComObject folder, bool tasks, int flags, string operation)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, nint*, int>)folder.Slot(slot))(folder.Pointer, flags, &result), operation);
+        NativeError.Check((tasks ? ((ITaskFolder*)folder.Pointer)->GetTasks(flags, (IRegisteredTaskCollection**)&result) : ((ITaskFolder*)folder.Pointer)->GetFolders(flags, (ITaskFolderCollection**)&result)).Value, operation);
         return ComObject.Own(result);
     }
 
-    private static unsafe ComObject Item(ComObject collection, int index)
+    private static unsafe ComObject Item(ComObject collection, int index, bool tasks)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, Variant, nint*, int>)collection.Slot(8))(collection.Pointer, Variant.Int32(index), &result), "Read scheduler collection item");
-        return ComObject.Own(result);
+        return ComObject.FromResult((tasks ? ((IRegisteredTaskCollection*)collection.Pointer)->get_Item(NativeVariant.Int32(index), (IRegisteredTask**)&result) : ((ITaskFolderCollection*)collection.Pointer)->get_Item(NativeVariant.Int32(index), (ITaskFolder**)&result)).Value, result, "Read scheduler collection item");
     }
 
     private static ImmutableArray<ScheduledTaskSnapshot> EnumerateTasks(ComObject service, string path)
     {
         using var folder = GetFolder(service, path);
-        using var collection = Collection(folder, 14, 1, "Enumerate scheduled tasks");
-        var count = Automation.GetInt32(collection, 7, "Read task count");
+        using var collection = Collection(folder, true, 1, "Enumerate scheduled tasks");
+        var count = TaskRead.Int32(collection, TaskInteger.TaskCount, "Read task count");
         var result = ImmutableArray.CreateBuilder<ScheduledTaskSnapshot>();
-        for (var i = 1; i <= count; i++) { using var task = Item(collection, i); result.Add(Snapshot(task)); }
+        for (var i = 1; i <= count; i++) { using var task = Item(collection, i, true); result.Add(Snapshot(task)); }
         return result.ToImmutable();
     }
 
     private static ImmutableArray<string> EnumerateFolders(ComObject service, string path)
     {
         using var folder = GetFolder(service, path);
-        using var collection = Collection(folder, 10, 0, "Enumerate task folders");
-        var count = Automation.GetInt32(collection, 7, "Read task folder count");
+        using var collection = Collection(folder, false, 0, "Enumerate task folders");
+        var count = TaskRead.Int32(collection, TaskInteger.FolderCount, "Read task folder count");
         var result = ImmutableArray.CreateBuilder<string>();
-        for (var i = 1; i <= count; i++) { using var item = Item(collection, i); result.Add(Automation.GetString(item, 8, "Read task folder path")); }
+        for (var i = 1; i <= count; i++) { using var item = Item(collection, i, false); result.Add(TaskRead.String(item, TaskString.FolderPath, "Read task folder path")); }
         return result.ToImmutable();
     }
 
     private static unsafe void CreateFolder(ComObject service, string path)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var root = GetFolder(service, "\\");
         using var name = new BString(path);
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, Variant, nint*, int>)root.Slot(11))(root.Pointer, name.Pointer, default, &result), "Create task folder");
-        using var folder = ComObject.Own(result);
+        using var folder = ComObject.FromResult(((ITaskFolder*)root.Pointer)->CreateFolder(name.Native, default, (ITaskFolder**)&result).Value, result, "Create task folder");
     }
 
-    private static unsafe bool Delete(ComObject folder, int slot, string path, string operation)
+    private static unsafe bool Delete(ComObject folder, bool task, string path, string operation)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var name = new BString(path);
-        var result = ((delegate* unmanaged[Stdcall]<nint, nint, int, int>)folder.Slot(slot))(folder.Pointer, name.Pointer, 0);
+        var result = (task ? ((ITaskFolder*)folder.Pointer)->DeleteTask(name.Native, 0) : ((ITaskFolder*)folder.Pointer)->DeleteFolder(name.Native, 0)).Value;
         if (IsMissing(result)) return false;
         NativeError.Check(result, operation);
         return true;
@@ -271,22 +277,23 @@ public sealed class WindowsTaskSchedulerClient
 
     private static unsafe TaskPrincipal ReadPrincipal(ComObject service, XDocument document)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         nint pointer = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, uint, nint*, int>)service.Slot(9))(service.Pointer, 0, &pointer), "Create task definition");
-        using var definition = ComObject.Own(pointer);
+        using var definition = ComObject.FromResult(((ITaskService*)service.Pointer)->NewTask(0, (ITaskDefinition**)&pointer).Value, pointer, "Create task definition");
         using var xml = new BString(document.ToString(SaveOptions.DisableFormatting));
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, int>)definition.Slot(20))(definition.Pointer, xml.Pointer), "Read native task definition");
-        using var principal = Automation.GetObject(definition, 15, "Read native task principal");
-        var mode = (TaskLogonType)Automation.GetInt32(principal, 13, "Read native task logon type");
+        NativeError.Check(((ITaskDefinition*)definition.Pointer)->put_XmlText(xml.Native).Value, "Read native task definition");
+        using var principal = TaskRead.Principal(definition, "Read native task principal");
+        var mode = (TaskLogonType)TaskRead.Int32(principal, TaskInteger.LogonType, "Read native task logon type");
         if (!Enum.IsDefined(mode)) throw NativeError.Win32("Read task logon type", 13);
-        var identity = Automation.GetString(principal, mode == TaskLogonType.Group ? 15 : 11, "Read task identity");
+        var identity = TaskRead.String(principal, mode == TaskLogonType.Group ? TaskString.GroupId : TaskString.UserId, "Read task identity");
         NativeError.Text(identity, nameof(document));
-        return new(identity, mode, Automation.GetInt32(principal, 17, "Read task run level") == 1);
+        return new(identity, mode, TaskRead.Int32(principal, TaskInteger.RunLevel, "Read task run level") == 1);
     }
 
 
     private static unsafe ScheduledTaskSnapshot Register(ComObject service, string path, XDocument document, int flags, string? password)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         var principal = ReadPrincipal(service, document);
         var identity = principal.Identity;
         var mode = principal.LogonType;
@@ -299,41 +306,40 @@ public sealed class WindowsTaskSchedulerClient
         using var user = new BString(identity);
         using var secret = password is null ? null : new BString(password);
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, nint, int, Variant, Variant, int, Variant, nint*, int>)root.Slot(16))(
-            root.Pointer, name.Pointer, xml.Pointer, flags, Variant.String(user.Pointer),
-            secret is null ? default : Variant.String(secret.Pointer), (int)mode, default, &result), "Register scheduled task");
-        using var task = ComObject.Own(result);
+        using var task = ComObject.FromResult(((ITaskFolder*)root.Pointer)->RegisterTask(name.Native, xml.Native, flags, NativeVariant.String(user.Pointer), secret is null ? default : NativeVariant.String(secret.Pointer), (TASK_LOGON_TYPE)mode, default, (IRegisteredTask**)&result).Value, result, "Register scheduled task");
         return Snapshot(task);
     }
 
     private static ScheduledTaskSnapshot Snapshot(ComObject task) => new(
-        Automation.GetString(task, 7, "Read task name"), Automation.GetString(task, 8, "Read task path"),
-        (ScheduledTaskState)Automation.GetInt32(task, 9, "Read task state"), Automation.GetBoolean(task, 10, "Read task enabled state"),
-        Date(task, 15), Automation.GetInt32(task, 16, "Read task result"), Date(task, 18),
-        Automation.GetString(task, 20, "Read task XML"));
+        TaskRead.String(task, TaskString.TaskName, "Read task name"), TaskRead.String(task, TaskString.TaskPath, "Read task path"),
+        (ScheduledTaskState)TaskRead.Int32(task, TaskInteger.TaskState, "Read task state"), TaskRead.Enabled(task, "Read task enabled state"),
+        Date(task, false), TaskRead.Int32(task, TaskInteger.TaskResult, "Read task result"), Date(task, true),
+        TaskRead.String(task, TaskString.TaskXml, "Read task XML"));
 
-    private static unsafe DateTime? Date(ComObject task, int slot)
+    private static unsafe DateTime? Date(ComObject task, bool next)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         double value;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, double*, int>)task.Slot(slot))(task.Pointer, &value), "Read task timestamp");
+        NativeError.Check((next ? ((IRegisteredTask*)task.Pointer)->get_NextRunTime(&value) : ((IRegisteredTask*)task.Pointer)->get_LastRunTime(&value)).Value, "Read task timestamp");
         return value == 0 ? null : NativeError.Date(value);
     }
 
     private static unsafe RunningTaskSnapshot Run(ComObject service, string path)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var root = GetFolder(service, "\\");
         using var task = FindTask(root, path) ?? throw NativeError.Win32("Run scheduled task", 2);
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, Variant, nint*, int>)task.Slot(12))(task.Pointer, default, &result), "Run scheduled task");
-        using var running = ComObject.Own(result);
-        return new(Automation.GetString(running, 8, "Read task instance"), Automation.GetString(running, 9, "Read running task path"),
-            (ScheduledTaskState)Automation.GetInt32(running, 10, "Read running task state"));
+        using var running = ComObject.FromResult(((IRegisteredTask*)task.Pointer)->Run(default, (IRunningTask**)&result).Value, result, "Run scheduled task");
+        return new(TaskRead.String(running, TaskString.InstanceGuid, "Read task instance"), TaskRead.String(running, TaskString.RunningPath, "Read running task path"),
+            (ScheduledTaskState)TaskRead.Int32(running, TaskInteger.RunningState, "Read running task state"));
     }
 
     private static unsafe void Stop(ComObject service, string path)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var root = GetFolder(service, "\\");
         using var task = FindTask(root, path) ?? throw NativeError.Win32("Stop scheduled task", 2);
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, int>)task.Slot(23))(task.Pointer, 0), "Stop scheduled task");
+        NativeError.Check(((IRegisteredTask*)task.Pointer)->Stop(0).Value, "Stop scheduled task");
     }
 }

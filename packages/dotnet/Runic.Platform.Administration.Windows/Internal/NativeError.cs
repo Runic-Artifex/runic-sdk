@@ -17,7 +17,8 @@ internal static class NativeError
         {
             5 or 1314 or 1326 or unchecked((int)0x80041003) => AdministrationErrorCategory.AccessDenied,
             2 or 3 or 53 or 64 or 67 or 1060 or 1722 or 1726 => AdministrationErrorCategory.Unavailable,
-            80 or 183 or 1056 or 1072 or 1073 => AdministrationErrorCategory.Conflict,
+            // NERR_DuplicateShare (lmerr.h): an existing SMB share name.
+            80 or 183 or 1056 or 1072 or 1073 or 2118 => AdministrationErrorCategory.Conflict,
             13 or 24 or 87 or unchecked((int)0x80041318) or unchecked((int)0x8004131D) => AdministrationErrorCategory.InvalidData,
             unchecked((int)0x80040154) or unchecked((int)0x80041315) or unchecked((int)0x8004100E) or unchecked((int)0x80041010) => AdministrationErrorCategory.Unavailable,
             _ => AdministrationErrorCategory.NativeFailure

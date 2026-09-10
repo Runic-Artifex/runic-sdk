@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Platform.Administration.Windows.Internal;
 
+// Handwritten firewall comparison backend only. Production uses generated VARIANT.
 // Windows x64 VARIANT layout, including the two-pointer BRECORD union member.
 // These values are passed by value according to the native interface signatures.
 [StructLayout(LayoutKind.Explicit, Size = 24)]
@@ -17,6 +18,7 @@ internal struct Variant
 internal sealed class BString : IDisposable
 {
     internal nint Pointer { get; private set; }
+    internal unsafe global::Windows.Win32.Foundation.BSTR Native => new((char*)Pointer);
     internal BString(string value) => Pointer = Marshal.StringToBSTR(value);
     public void Dispose()
     {

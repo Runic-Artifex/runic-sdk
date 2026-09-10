@@ -1,3 +1,5 @@
+using Windows.Win32;
+using Windows.Win32.System.Com;
 using System.Runtime.InteropServices;
 
 namespace Runic.Platform.Administration.Windows.Internal;
@@ -9,15 +11,29 @@ internal sealed unsafe partial class ComObject : IDisposable
     internal static ComObject Own(nint pointer) => pointer == 0 ? throw NativeError.Win32("Read COM object", 13) : new(pointer);
     internal static ComObject Create(Guid classId, Guid interfaceId)
     {
-        NativeError.Check(CoCreateInstance(in classId, 0, 1, in interfaceId, out var result), "Activate Windows COM component");
-        return new(result);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
+        void* result = null;
+        var status = PInvoke.CoCreateInstance(&classId, null, CLSCTX.CLSCTX_INPROC_SERVER, &interfaceId, &result);
+        return FromResult(status.Value, (nint)result, "Activate Windows COM component");
     }
     internal ComObject Query(Guid interfaceId)
     {
-        nint result;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, Guid*, nint*, int>)Slot(0))(Pointer, &interfaceId, &result), "Query Windows COM interface");
-        return new(result);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
+        void* result = null;
+        var status = ((IUnknown*)Pointer)->QueryInterface(&interfaceId, &result);
+        return FromResult(status.Value, (nint)result, "Query Windows COM interface");
     }
+    internal static ComObject FromResult(int status, nint pointer, string operation)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
+        if (status < 0)
+        {
+            if (pointer != 0) ((IUnknown*)pointer)->Release();
+            NativeError.Check(status, operation);
+        }
+        return Own(pointer);
+    }
+    // Only the retained handwritten firewall comparison backend uses numbered slots.
     internal nint Slot(int index)
     {
         ObjectDisposedException.ThrowIf(Pointer == 0, this);
@@ -25,10 +41,9 @@ internal sealed unsafe partial class ComObject : IDisposable
     }
     public void Dispose()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
         if (Pointer == 0) return;
-        ((delegate* unmanaged[Stdcall]<nint, uint>)Slot(2))(Pointer);
+        ((IUnknown*)Pointer)->Release();
         Pointer = 0;
     }
-    [LibraryImport("ole32.dll")]
-    private static partial int CoCreateInstance(in Guid classId, nint outer, uint context, in Guid interfaceId, out nint result);
 }

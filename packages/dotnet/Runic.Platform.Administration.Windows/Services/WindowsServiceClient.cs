@@ -1,3 +1,6 @@
+using Windows.Win32;
+using Windows.Win32.System.Services;
+using ServiceHandle = Windows.Win32.CloseServiceHandleSafeHandle;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -21,18 +24,21 @@ public sealed partial class WindowsServiceClient
 
     private ServiceHandle Manager(uint access)
     {
-        var pointer = ServiceNative.OpenSCManager(_machineName, null, access);
-        if (pointer == 0) throw NativeError.Win32("Open Service Control Manager", Marshal.GetLastPInvokeError());
-        return new(pointer);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        var pointer = PInvoke.OpenSCManager(_machineName, null, access);
+        if (pointer.IsInvalid) { var error = Marshal.GetLastPInvokeError(); pointer.Dispose(); throw NativeError.Win32("Open Service Control Manager", error); }
+        return pointer;
     }
 
     private ServiceHandle? Open(string name, uint access, bool allowMissing = false)
     {
         NativeError.Text(name, nameof(name));
         using var manager = Manager(1);
-        var pointer = ServiceNative.OpenService(manager, name, access);
-        if (pointer != 0) return new(pointer);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        var pointer = PInvoke.OpenService(manager, name, access);
+        if (!pointer.IsInvalid) return pointer;
         var error = Marshal.GetLastPInvokeError();
+        pointer.Dispose();
         if (allowMissing && error == 1060) return null;
         throw NativeError.Win32("Open service", error);
     }
@@ -40,6 +46,7 @@ public sealed partial class WindowsServiceClient
     /// <summary>Enumerates Win32 services, including inactive services, without reading privileged configuration.</summary>
     public unsafe ImmutableArray<ServiceSummary> Enumerate()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var manager = Manager(4);
         var rows = ImmutableArray.CreateBuilder<ServiceSummary>();
         var buffer = new byte[256 * 1024];
@@ -49,12 +56,12 @@ public sealed partial class WindowsServiceClient
             int success;
             do
             {
-                success = ServiceNative.Enumerate(manager, 0, 0x30, 3, data, (uint)buffer.Length, out _, out var count, ref resume, null);
+                success = PInvoke.EnumServicesStatusEx(manager, 0, (ENUM_SERVICE_TYPE)0x30, (ENUM_SERVICE_STATE)3, buffer, out _, out var count, ref resume, null).Value;
                 var error = Marshal.GetLastPInvokeError();
                 if (success == 0 && error != 234) throw NativeError.Win32("Enumerate services", error);
-                var nativeRows = (ServiceNative.EnumRow*)data;
+                var nativeRows = (ENUM_SERVICE_STATUS_PROCESSW*)data;
                 for (var i = 0u; i < count; i++)
-                    rows.Add(new(ServiceNative.Text(nativeRows[i].Name), ServiceNative.Text(nativeRows[i].DisplayName), nativeRows[i].Status.Snapshot()));
+                    rows.Add(new(ServiceNative.Text(nativeRows[i].lpServiceName), ServiceNative.Text(nativeRows[i].lpDisplayName), nativeRows[i].ServiceStatusProcess.Snapshot()));
                 if (success == 0 && count == 0) throw NativeError.Win32("Enumerate services", 13);
             } while (success == 0);
         }
@@ -79,33 +86,33 @@ public sealed partial class WindowsServiceClient
         ImmutableArray<string> dependencies;
         fixed (byte* data = configBuffer)
         {
-            var config = (ServiceNative.Config*)data;
-            display = ServiceNative.Text(config->DisplayName);
-            binary = ServiceNative.Text(config->BinaryPath);
-            account = ServiceNative.Text(config->Account);
-            group = ServiceNative.Text(config->LoadOrderGroup);
-            type = config->Type; error = config->Error; start = config->Start;
-            dependencies = ReadMultiString(config->Dependencies);
+            var config = (QUERY_SERVICE_CONFIGW*)data;
+            display = ServiceNative.Text(config->lpDisplayName);
+            binary = ServiceNative.Text(config->lpBinaryPathName);
+            account = ServiceNative.Text(config->lpServiceStartName);
+            group = ServiceNative.Text(config->lpLoadOrderGroup);
+            type = (uint)config->dwServiceType; error = (uint)config->dwErrorControl; start = (uint)config->dwStartType;
+            dependencies = ReadMultiString(config->lpDependencies.Value);
         }
         var descriptionBuffer = ReadConfig(service, 1);
         string description;
-        fixed (byte* data = descriptionBuffer) description = ServiceNative.Text(*(char**)data);
+        fixed (byte* data = descriptionBuffer) description = ((SERVICE_DESCRIPTIONW*)data)->lpDescription.ToString();
         var delayedBuffer = ReadConfig(service, 3);
         bool delayed;
-        fixed (byte* data = delayedBuffer) delayed = *(int*)data != 0;
+        fixed (byte* data = delayedBuffer) delayed = ((SERVICE_DELAYED_AUTO_START_INFO*)data)->fDelayedAutostart;
         var flagsBuffer = ReadConfig(service, 4);
         bool nonCrash;
-        fixed (byte* data = flagsBuffer) nonCrash = *(int*)data != 0;
+        fixed (byte* data = flagsBuffer) nonCrash = ((SERVICE_FAILURE_ACTIONS_FLAG*)data)->fFailureActionsOnNonCrashFailures;
         var failureBuffer = ReadConfig(service, 2);
         ServiceFailurePolicy policy;
         fixed (byte* data = failureBuffer)
         {
-            var failure = (ServiceNative.FailureActions*)data;
+            var failure = (SERVICE_FAILURE_ACTIONSW*)data;
             var actions = ImmutableArray.CreateBuilder<ServiceFailureAction>();
-            for (var i = 0u; i < failure->Count; i++)
-                actions.Add(new((ServiceFailureActionKind)failure->Actions[i].Kind, TimeSpan.FromMilliseconds(failure->Actions[i].Delay)));
-            policy = new(failure->Reset == uint.MaxValue ? null : TimeSpan.FromSeconds(failure->Reset),
-                actions.ToImmutable(), ServiceNative.Text(failure->RebootMessage), ServiceNative.Text(failure->Command), nonCrash);
+            for (var i = 0u; i < failure->cActions; i++)
+                actions.Add(new((ServiceFailureActionKind)failure->lpsaActions[i].Type, TimeSpan.FromMilliseconds(failure->lpsaActions[i].Delay)));
+            policy = new(failure->dwResetPeriod == uint.MaxValue ? null : TimeSpan.FromSeconds(failure->dwResetPeriod),
+                actions.ToImmutable(), ServiceNative.Text(failure->lpRebootMsg), ServiceNative.Text(failure->lpCommand), nonCrash);
         }
         return new(name, display, binary, account, dependencies, (ServiceStartMode)start, type, error, group, description, delayed, policy, ReadStatus(service));
     }
@@ -125,6 +132,7 @@ public sealed partial class WindowsServiceClient
 
     private static unsafe byte[] ReadConfig(ServiceHandle service, uint level)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         uint size = 0;
         for (var attempt = 0; attempt < 4; attempt++)
         {
@@ -134,8 +142,8 @@ public sealed partial class WindowsServiceClient
             {
                 uint needed;
                 var success = level == 0
-                    ? ServiceNative.QueryServiceConfig(service, data, size, out needed)
-                    : ServiceNative.QueryServiceConfig2(service, level, data, size, out needed);
+                    ? PInvoke.QueryServiceConfig(service, buffer, out needed).Value
+                    : PInvoke.QueryServiceConfig2W(service, (SERVICE_CONFIG)level, buffer, out needed).Value;
                 if (success != 0) return buffer;
                 var error = Marshal.GetLastPInvokeError();
                 if (error != 122) throw NativeError.Win32("Read service configuration", error);
@@ -148,16 +156,18 @@ public sealed partial class WindowsServiceClient
 
     private static unsafe ServiceStatus ReadStatus(ServiceHandle service)
     {
-        ServiceNative.Status status;
-        NativeError.CheckWin32(ServiceNative.QueryServiceStatusEx(service, 0, &status, (uint)sizeof(ServiceNative.Status), out _), "Read service status");
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        SERVICE_STATUS_PROCESS status;
+        NativeError.CheckWin32(PInvoke.QueryServiceStatusEx(service, 0, new Span<byte>(&status, sizeof(SERVICE_STATUS_PROCESS)), out _).Value, "Read service status");
         return status.Snapshot();
     }
 
     /// <summary>Starts a service. Already running is reported as a native conflict.</summary>
     public void Start(string name)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var service = Open(name, 0x10)!;
-        NativeError.CheckWin32(ServiceNative.StartService(service, 0, 0), "Start service");
+        NativeError.CheckWin32(PInvoke.StartService(service, default).Value, "Start service");
     }
 
     /// <summary>Requests a stop; use WaitForStateAsync to observe completion.</summary>
@@ -169,17 +179,18 @@ public sealed partial class WindowsServiceClient
 
     private unsafe void Control(string name, uint control, uint access)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var service = Open(name, access)!;
-        ServiceNative.Status status;
-        NativeError.CheckWin32(ServiceNative.ControlService(service, control, &status), "Control service");
+        NativeError.CheckWin32(PInvoke.ControlService(service, control, out _).Value, "Control service");
     }
 
     /// <summary>Marks an existing service for deletion. Returns false only if it was absent; deletion may be deferred by Windows.</summary>
     public bool Delete(string name)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var service = Open(name, 0x10000, true);
         if (service is null) return false;
-        NativeError.CheckWin32(ServiceNative.DeleteService(service), "Delete service");
+        NativeError.CheckWin32(PInvoke.DeleteService(service).Value, "Delete service");
         return true;
     }
 

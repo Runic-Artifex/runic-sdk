@@ -1,3 +1,6 @@
+using System.Runtime.InteropServices;
+using Windows.Win32.Foundation;
+using Windows.Win32.Networking.NetworkListManager;
 using System.Collections.Immutable;
 using Runic.Platform.Administration.Windows.Internal;
 
@@ -36,29 +39,46 @@ public sealed class WindowsNetworkClient : IWindowsNetworkClient
 
     private static unsafe ImmutableArray<WindowsNetworkSnapshot> Enumerate()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var manager = ComObject.Create(new("dcb00c01-570f-4a9b-8d69-199fdba5723b"), new("dcb00000-570f-4a9b-8d69-199fdba5723b"));
         nint pointer = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, nint*, int>)manager.Slot(7))(manager.Pointer, 3, &pointer), "Enumerate Windows networks");
-        using var iterator = ComObject.Own(pointer);
+        using var iterator = ComObject.FromResult(((INetworkListManager*)manager.Pointer)->GetNetworks(NLM_ENUM_NETWORK.NLM_ENUM_NETWORK_ALL, (IEnumNetworks**)&pointer).Value, pointer, "Enumerate Windows networks");
         var result = ImmutableArray.CreateBuilder<WindowsNetworkSnapshot>();
         while (true)
         {
             nint networkPointer = 0;
             uint fetched = 0;
-            var status = ((delegate* unmanaged[Stdcall]<nint, uint, nint*, uint*, int>)iterator.Slot(8))(iterator.Pointer, 1, &networkPointer, &fetched);
+            var status = ((IEnumNetworks*)iterator.Pointer)->Next(1, (INetwork**)&networkPointer, &fetched).Value;
             NativeError.Check(status, "Read Windows network");
             if (fetched == 0) break;
             using var network = ComObject.Own(networkPointer);
+            var native = (INetwork*)network.Pointer;
             Guid id;
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, Guid*, int>)network.Slot(11))(network.Pointer, &id), "Read network ID");
-            result.Add(new(id, Automation.GetString(network, 7, "Read network name"),
-                Automation.GetString(network, 9, "Read network description"),
-                (WindowsNetworkCategory)Automation.GetInt32(network, 18, "Read network category"),
-                Automation.GetInt32(network, 12, "Read network domain type"),
-                Automation.GetInt32(network, 17, "Read network connectivity"),
-                Automation.GetBoolean(network, 16, "Read network connection state"),
-                Automation.GetBoolean(network, 15, "Read network Internet state")));
+            NativeError.Check(native->GetNetworkId(&id).Value, "Read network ID");
+            NLM_NETWORK_CATEGORY category;
+            NativeError.Check(native->GetCategory(&category).Value, "Read network category");
+            NLM_DOMAIN_TYPE domain;
+            NativeError.Check(native->GetDomainType(&domain).Value, "Read network domain type");
+            NLM_CONNECTIVITY connectivity;
+            NativeError.Check(native->GetConnectivity(&connectivity).Value, "Read network connectivity");
+            VARIANT_BOOL connected, internet;
+            NativeError.Check(native->get_IsConnected(&connected).Value, "Read network connection state");
+            NativeError.Check(native->get_IsConnectedToInternet(&internet).Value, "Read network Internet state");
+            result.Add(new(id, ReadText(native, false), ReadText(native, true),
+                (WindowsNetworkCategory)category, (int)domain, (int)connectivity, connected.Value != 0, internet.Value != 0));
         }
         return result.ToImmutable();
+    }
+
+    private static unsafe string ReadText(INetwork* network, bool description)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        BSTR text = default;
+        try
+        {
+            NativeError.Check((description ? network->GetDescription(&text) : network->GetName(&text)).Value, "Read network text");
+            return text.Value == null ? "" : Marshal.PtrToStringBSTR((nint)text.Value);
+        }
+        finally { if (text.Value != null) Marshal.FreeBSTR((nint)text.Value); }
     }
 }

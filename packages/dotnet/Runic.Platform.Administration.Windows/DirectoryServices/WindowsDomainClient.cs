@@ -1,3 +1,6 @@
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Networking.ActiveDirectory;
 using System.Runtime.InteropServices;
 using Runic.Platform.Administration.Windows.Internal;
 
@@ -52,52 +55,35 @@ public sealed partial class WindowsDomainClient
     /// <summary>Reads join state and domain role; a workgroup is a successful result, not a failed domain query.</summary>
     public unsafe DomainMembership GetMembership()
     {
-        var status = NetGetJoinInformation(_computerName, out var name, out var state);
-        if (status != 0) throw NativeError.Win32("Read computer join state", status);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
+        var status = PInvoke.NetGetJoinInformation(_computerName, out var name, out var state);
+        if (status != 0) throw NativeError.Win32("Read computer join state", unchecked((int)status));
         try
         {
-            status = DsRoleGetPrimaryDomainInformation(_computerName, 1, out var role);
-            if (status != 0) throw NativeError.Win32("Read computer domain role", status);
-            try { return new((DomainJoinState)state, Marshal.PtrToStringUni(name) ?? "", (ComputerDomainRole)(*(uint*)role)); }
-            finally { DsRoleFreeMemory(role); }
+            byte* role = null;
+            status = PInvoke.DsRoleGetPrimaryDomainInformation(_computerName, DSROLE_PRIMARY_DOMAIN_INFO_LEVEL.DsRolePrimaryDomainInfoBasic, ref role);
+            if (status != 0) throw NativeError.Win32("Read computer domain role", unchecked((int)status));
+            try { return new((DomainJoinState)state, name.ToString(), (ComputerDomainRole)((DSROLE_PRIMARY_DOMAIN_INFO_BASIC*)role)->MachineRole); }
+            finally { PInvoke.DsRoleFreeMemory(role); }
         }
-        finally { _ = NetApiBufferFree(name); }
+        finally { _ = PInvoke.NetApiBufferFree(name.Value); }
     }
 
     /// <summary>Discovers a DNS-named directory controller, with optional primary-controller and writable requirements.</summary>
     public unsafe DomainControllerInfo DiscoverController(string? domainName = null, bool requirePrimary = false, bool requireWritable = true)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
         if (domainName is not null) NativeError.Text(domainName, nameof(domainName));
         var flags = 0x40000000u | 0x10u | (requirePrimary ? 0x80u : 0) | (requireWritable ? 0x1000u : 0);
-        var status = DsGetDcNameW(_computerName, domainName, 0, null, flags, out var pointer);
-        if (status != 0) throw NativeError.Win32("Discover domain controller", status);
+        var status = PInvoke.DsGetDcName(_computerName, domainName, null, null, flags, out var pointer);
+        if (status != 0) throw NativeError.Win32("Discover domain controller", unchecked((int)status));
         try
         {
-            var value = (Controller*)pointer;
-            return new(Text(value->Name), Text(value->Address), value->AddressType, value->DomainId,
-                Text(value->DomainName), Text(value->ForestName), value->Flags, Text(value->ControllerSite), Text(value->ClientSite));
+            var value = pointer;
+            return new(value->DomainControllerName.ToString(), value->DomainControllerAddress.ToString(), value->DomainControllerAddressType, value->DomainGuid,
+                value->DomainName.ToString(), value->DnsForestName.ToString(), value->Flags, value->DcSiteName.ToString(), value->ClientSiteName.ToString());
         }
-        finally { _ = NetApiBufferFree(pointer); }
+        finally { _ = PInvoke.NetApiBufferFree(pointer); }
     }
 
-    private static string Text(nint pointer) => Marshal.PtrToStringUni(pointer) ?? "";
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Controller
-    {
-        internal nint Name, Address;
-        internal uint AddressType;
-        internal Guid DomainId;
-        internal nint DomainName, ForestName;
-        internal uint Flags;
-        internal nint ControllerSite, ClientSite;
-    }
-    [LibraryImport("netapi32.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int NetGetJoinInformation(string? server, out nint name, out int state);
-    [LibraryImport("netapi32.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int DsRoleGetPrimaryDomainInformation(string? server, int level, out nint buffer);
-    [LibraryImport("netapi32.dll")] private static partial void DsRoleFreeMemory(nint buffer);
-    [LibraryImport("netapi32.dll")] private static partial int NetApiBufferFree(nint buffer);
-    [LibraryImport("netapi32.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int DsGetDcNameW(string? computer, string? domain, nint domainGuid, string? site, uint flags, out nint info);
 }

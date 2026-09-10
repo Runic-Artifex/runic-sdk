@@ -907,14 +907,14 @@ type Runic.Platform.Administration.Windows.Services.WindowsServiceClient : Syste
   method System.Void Update(System.String name, Runic.Platform.Administration.Windows.Services.ServiceUpdate update, System.String password = null)
 type Runic.Platform.Administration.Windows.Shares.ShareSnapshot : System.Object abstract=False sealed=True
   interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shares.ShareSnapshot]
-  ctor (System.String Name, System.String Path, System.String Description, System.UInt32 NativeType, System.UInt32 MaximumUses, System.UInt32 CurrentUses, System.Collections.Immutable.ImmutableArray`1[System.Byte] SecurityDescriptor)
+  ctor (System.String Name, System.String Path, System.String Description, System.UInt32 NativeType, System.UInt32 MaximumUses, System.UInt32 CurrentUses, System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]] SecurityDescriptor)
   method Runic.Platform.Administration.Windows.Shares.ShareSnapshot <Clone>$()
   method System.Boolean Equals(Runic.Platform.Administration.Windows.Shares.ShareSnapshot other)
   method System.Boolean Equals(System.Object obj)
   method System.Int32 GetHashCode()
   method System.String ToString()
-  method System.Void Deconstruct(out System.String& Name, out System.String& Path, out System.String& Description, out System.UInt32& NativeType, out System.UInt32& MaximumUses, out System.UInt32& CurrentUses, out System.Collections.Immutable.ImmutableArray`1[System.Byte]& SecurityDescriptor)
-  property System.Collections.Immutable.ImmutableArray`1[System.Byte] SecurityDescriptor { get; init; }
+  method System.Void Deconstruct(out System.String& Name, out System.String& Path, out System.String& Description, out System.UInt32& NativeType, out System.UInt32& MaximumUses, out System.UInt32& CurrentUses, out System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]]& SecurityDescriptor)
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]] SecurityDescriptor { get; init; }
   property System.String Description { get; init; }
   property System.String Name { get; init; }
   property System.String Path { get; init; }

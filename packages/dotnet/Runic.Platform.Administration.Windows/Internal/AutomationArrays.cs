@@ -1,3 +1,4 @@
+// Used only by the handwritten firewall comparison backend. Production uses GeneratedArrays.
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 

@@ -1,3 +1,7 @@
+using Windows.Win32.Foundation;
+using Windows.Win32.System.Com;
+using Windows.Win32.UI.Shell;
+using Windows.Win32.UI.WindowsAndMessaging;
 using Runic.Platform.Administration.Windows.Internal;
 
 namespace Runic.Platform.Administration.Windows.Shortcuts;
@@ -5,6 +9,9 @@ namespace Runic.Platform.Administration.Windows.Shortcuts;
 /// <summary>Local shell-link operations, executed on an owned COM apartment without a desktop owner.</summary>
 public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
 {
+    [System.Runtime.Versioning.SupportedOSPlatformGuard("windows6.1")]
+    private static bool Supported => OperatingSystem.IsWindowsVersionAtLeast(6, 1);
+
     private static readonly Guid ClassId = new("00021401-0000-0000-C000-000000000046");
     private static readonly Guid InterfaceId = new("000214F9-0000-0000-C000-000000000046");
     private static readonly Guid PersistenceId = new("0000010b-0000-0000-C000-000000000046");
@@ -77,8 +84,11 @@ public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
         }), cancellationToken);
     }
 
-    private static unsafe void Resolve(ComObject link, uint flags) =>
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, uint, int>)link.Slot(19))(link.Pointer, 0, flags), "Resolve shell link");
+    private static unsafe void Resolve(ComObject link, uint flags)
+    {
+        if (!Supported) throw new PlatformNotSupportedException();
+        NativeError.Check(((IShellLinkW*)link.Pointer)->Resolve(default, flags).Value, "Resolve shell link");
+    }
 
     private static string ValidatePath(string path)
     {
@@ -113,12 +123,13 @@ public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
 
     private static unsafe ComObject Load(string path)
     {
+        if (!Supported) throw new PlatformNotSupportedException();
         var link = ComObject.Create(ClassId, InterfaceId);
         try
         {
             using var file = link.Query(PersistenceId);
             fixed (char* text = path)
-                NativeError.Check(((delegate* unmanaged[Stdcall]<nint, char*, uint, int>)file.Slot(5))(file.Pointer, text, 0), "Load shell link");
+                NativeError.Check(((IPersistFile*)file.Pointer)->Load(text, 0).Value, "Load shell link");
             return link;
         }
         catch { link.Dispose(); throw; }
@@ -126,12 +137,13 @@ public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
 
     private static unsafe void Save(ComObject link, string path, bool replace)
     {
+        if (!Supported) throw new PlatformNotSupportedException();
         var staging = Path.Combine(Path.GetDirectoryName(path)!, ".runic-" + Guid.NewGuid().ToString("N") + ".lnk");
         try
         {
             using var file = link.Query(PersistenceId);
             fixed (char* text = staging)
-                NativeError.Check(((delegate* unmanaged[Stdcall]<nint, char*, int, int>)file.Slot(6))(file.Pointer, text, 0), "Save shell link");
+                NativeError.Check(((IPersistFile*)file.Pointer)->Save(text, false).Value, "Save shell link");
             File.Move(staging, path, replace);
         }
         finally
@@ -143,32 +155,49 @@ public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
         }
     }
 
-    private static unsafe void SetText(ComObject link, int slot, string value)
+    private enum TextField { Path, Description, WorkingDirectory, Arguments }
+    private static unsafe void SetText(ComObject link, TextField field, string value)
     {
+        if (!Supported) throw new PlatformNotSupportedException();
         fixed (char* text = value)
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, char*, int>)link.Slot(slot))(link.Pointer, text), "Set shell-link field");
+            NativeError.Check((field switch
+            {
+                TextField.Path => ((IShellLinkW*)link.Pointer)->SetPath(text),
+                TextField.Description => ((IShellLinkW*)link.Pointer)->SetDescription(text),
+                TextField.WorkingDirectory => ((IShellLinkW*)link.Pointer)->SetWorkingDirectory(text),
+                TextField.Arguments => ((IShellLinkW*)link.Pointer)->SetArguments(text),
+                _ => throw new ArgumentOutOfRangeException(nameof(field))
+            }).Value, "Set shell-link field");
     }
 
     private static unsafe void Apply(ComObject link, ShellLinkUpdate update)
     {
-        if (update.TargetPath is { } target) SetText(link, 20, target);
-        if (update.Description is { } description) SetText(link, 7, description);
-        if (update.WorkingDirectory is { } workingDirectory) SetText(link, 9, workingDirectory);
-        if (update.Arguments is { } arguments) SetText(link, 11, arguments);
+        if (!Supported) throw new PlatformNotSupportedException();
+        if (update.TargetPath is { } target) SetText(link, TextField.Path, target);
+        if (update.Description is { } description) SetText(link, TextField.Description, description);
+        if (update.WorkingDirectory is { } workingDirectory) SetText(link, TextField.WorkingDirectory, workingDirectory);
+        if (update.Arguments is { } arguments) SetText(link, TextField.Arguments, arguments);
         if (update.Icon is { } icon)
             fixed (char* text = icon.Path)
-                NativeError.Check(((delegate* unmanaged[Stdcall]<nint, char*, int, int>)link.Slot(17))(link.Pointer, text, icon.Index), "Set shell-link icon");
+                NativeError.Check(((IShellLinkW*)link.Pointer)->SetIconLocation(text, icon.Index).Value, "Set shell-link icon");
         if (update.ShowState is { } state)
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, int>)link.Slot(15))(link.Pointer, (int)state), "Set shell-link show state");
+            NativeError.Check(((IShellLinkW*)link.Pointer)->SetShowCmd((SHOW_WINDOW_CMD)state).Value, "Set shell-link show state");
         if (update.Hotkey is { } hotkey)
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, ushort, int>)link.Slot(13))(link.Pointer, hotkey), "Set shell-link hotkey");
+            NativeError.Check(((IShellLinkW*)link.Pointer)->SetHotkey(hotkey).Value, "Set shell-link hotkey");
     }
 
-    private static unsafe string GetText(ComObject link, int slot)
+    private static unsafe string GetText(ComObject link, TextField field)
     {
+        if (!Supported) throw new PlatformNotSupportedException();
         var buffer = new char[TextCapacity];
         fixed (char* text = buffer)
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, char*, int, int>)link.Slot(slot))(link.Pointer, text, buffer.Length), "Read shell-link field");
+            NativeError.Check((field switch
+            {
+                TextField.Description => ((IShellLinkW*)link.Pointer)->GetDescription(text, buffer.Length),
+                TextField.WorkingDirectory => ((IShellLinkW*)link.Pointer)->GetWorkingDirectory(text, buffer.Length),
+                TextField.Arguments => ((IShellLinkW*)link.Pointer)->GetArguments(text, buffer.Length),
+                _ => throw new ArgumentOutOfRangeException(nameof(field))
+            }).Value, "Read shell-link field");
         return FromBuffer(buffer);
     }
 
@@ -181,16 +210,18 @@ public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
 
     private static unsafe ShellLinkSnapshot Read(ComObject link)
     {
+        if (!Supported) throw new PlatformNotSupportedException();
         var path = new char[TextCapacity];
         var icon = new char[TextCapacity];
-        int index, show;
+        int index;
+        SHOW_WINDOW_CMD show;
         ushort hotkey;
         fixed (char* text = path)
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, char*, int, nint, uint, int>)link.Slot(3))(link.Pointer, text, path.Length, 0, 4), "Read shell-link target");
+            NativeError.Check(((IShellLinkW*)link.Pointer)->GetPath(text, path.Length, null, 4).Value, "Read shell-link target");
         fixed (char* text = icon)
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, char*, int, int*, int>)link.Slot(16))(link.Pointer, text, icon.Length, &index), "Read shell-link icon");
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int*, int>)link.Slot(14))(link.Pointer, &show), "Read shell-link show state");
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, ushort*, int>)link.Slot(12))(link.Pointer, &hotkey), "Read shell-link hotkey");
-        return new(FromBuffer(path), GetText(link, 10), GetText(link, 8), GetText(link, 6), new(FromBuffer(icon), index), show, hotkey);
+            NativeError.Check(((IShellLinkW*)link.Pointer)->GetIconLocation(text, icon.Length, &index).Value, "Read shell-link icon");
+        NativeError.Check(((IShellLinkW*)link.Pointer)->GetShowCmd(&show).Value, "Read shell-link show state");
+        NativeError.Check(((IShellLinkW*)link.Pointer)->GetHotkey(&hotkey).Value, "Read shell-link hotkey");
+        return new(FromBuffer(path), GetText(link, TextField.Arguments), GetText(link, TextField.WorkingDirectory), GetText(link, TextField.Description), new(FromBuffer(icon), index), (int)show, hotkey);
     }
 }

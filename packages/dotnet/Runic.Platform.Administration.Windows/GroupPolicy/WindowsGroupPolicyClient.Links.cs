@@ -1,3 +1,5 @@
+using Windows.Win32.Foundation;
+using Windows.Win32.System.GroupPolicy;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -14,11 +16,11 @@ public sealed partial class WindowsGroupPolicyClient
         NativeError.Text(targetDistinguishedName, nameof(targetDistinguishedName));
         return Execute((_, domain) =>
         {
-            using var target = StringObject(domain, 13, targetDistinguishedName, "Open GPO link target");
-            using var links = Automation.GetObject(target, 13, "Read GPO links");
+            using var target = StringObject(domain, GpmLookup.Som, targetDistinguishedName, "Open GPO link target");
+            using var links = GpmRead.GetObject(target, GpmGetObject.SOMGetGPOLinks, "Read GPO links");
             var result = ImmutableArray.CreateBuilder<GroupPolicyLink>();
-            var count = Automation.GetInt32(links, 7, "Read GPO link count");
-            for (var i = 1; i <= count; i++) { using var link = Item(links, i); result.Add(Link(link)); }
+            var count = GpmRead.GetInt32(links, GpmGetInt32.GPOLinksCollectionCount, "Read GPO link count");
+            for (var i = 1; i <= count; i++) { using var link = Item(links, GpmCollection.Links, i); result.Add(Link(link)); }
             return result.OrderBy(link => link.Order).ToImmutableArray();
         }, cancellationToken);
     }
@@ -39,10 +41,10 @@ public sealed partial class WindowsGroupPolicyClient
         NativeError.Text(targetDistinguishedName, nameof(targetDistinguishedName));
         return Execute((_, domain) =>
         {
-            using var target = StringObject(domain, 13, targetDistinguishedName, "Open GPO link target");
+            using var target = StringObject(domain, GpmLookup.Som, targetDistinguishedName, "Open GPO link target");
             using var link = FindLink(target, id) ?? throw NativeError.Win32("Update GPO link", 2);
-            if (enabled is { } enable) Automation.SetBoolean(link, 10, enable, "Set GPO link enabled state");
-            if (enforced is { } enforce) Automation.SetBoolean(link, 12, enforce, "Set GPO link enforcement");
+            if (enabled is { } enable) GpmRead.SetBoolean(link, GpmSetBoolean.GPOLinkEnabled, enable, "Set GPO link enabled state");
+            if (enforced is { } enforce) GpmRead.SetBoolean(link, GpmSetBoolean.GPOLinkEnforced, enforce, "Set GPO link enforcement");
             return true;
         }, cancellationToken);
     }
@@ -53,10 +55,10 @@ public sealed partial class WindowsGroupPolicyClient
         NativeError.Text(targetDistinguishedName, nameof(targetDistinguishedName));
         return Execute((_, domain) =>
         {
-            using var target = StringObject(domain, 13, targetDistinguishedName, "Open GPO link target");
+            using var target = StringObject(domain, GpmLookup.Som, targetDistinguishedName, "Open GPO link target");
             using var link = FindLink(target, id);
             if (link is null) return false;
-            Call(link, 15, "Delete GPO link");
+            DeleteObject(link, true, "Delete GPO link");
             return true;
         }, cancellationToken);
     }
@@ -67,8 +69,8 @@ public sealed partial class WindowsGroupPolicyClient
         NativeError.Text(targetDistinguishedName, nameof(targetDistinguishedName));
         return Execute((_, domain) =>
         {
-            using var target = StringObject(domain, 13, targetDistinguishedName, "Open GPO inheritance target");
-            return Automation.GetBoolean(target, 7, "Read blocked GPO inheritance");
+            using var target = StringObject(domain, GpmLookup.Som, targetDistinguishedName, "Open GPO inheritance target");
+            return GpmRead.GetBoolean(target, GpmGetBoolean.SOMGPOInheritanceBlocked, "Read blocked GPO inheritance");
         }, cancellationToken);
     }
 
@@ -78,8 +80,8 @@ public sealed partial class WindowsGroupPolicyClient
         NativeError.Text(targetDistinguishedName, nameof(targetDistinguishedName));
         return Execute((_, domain) =>
         {
-            using var target = StringObject(domain, 13, targetDistinguishedName, "Open GPO inheritance target");
-            Automation.SetBoolean(target, 8, blocked, "Set blocked GPO inheritance");
+            using var target = StringObject(domain, GpmLookup.Som, targetDistinguishedName, "Open GPO inheritance target");
+            GpmRead.SetBoolean(target, GpmSetBoolean.SOMGPOInheritanceBlocked, blocked, "Set blocked GPO inheritance");
             return true;
         }, cancellationToken);
     }
@@ -143,17 +145,17 @@ public sealed partial class WindowsGroupPolicyClient
         Execute((_, domain) =>
         {
             using var gpo = Required(domain, id);
-            using var security = Automation.GetObject(gpo, 24, "Read GPO security");
+            using var security = GpmRead.GetObject(gpo, GpmGetObject.GPOGetSecurityInfo, "Read GPO security");
             var result = ImmutableArray.CreateBuilder<GroupPolicyPermissionEntry>();
-            var count = Automation.GetInt32(security, 7, "Read GPO permission count");
+            var count = GpmRead.GetInt32(security, GpmGetInt32.SecurityInfoCount, "Read GPO permission count");
             for (var i = 1; i <= count; i++)
             {
-                using var permission = Item(security, i);
-                using var trustee = Automation.GetObject(permission, 11, "Read GPO trustee");
-                result.Add(new(Automation.GetString(trustee, 7, "Read trustee SID"), Automation.GetString(trustee, 8, "Read trustee name"),
-                    Automation.GetString(trustee, 9, "Read trustee domain"), Automation.GetInt32(permission, 10, "Read GPO permission"),
-                    Automation.GetBoolean(permission, 7, "Read inherited permission"), Automation.GetBoolean(permission, 8, "Read inheritable permission"),
-                    Automation.GetBoolean(permission, 9, "Read denied permission")));
+                using var permission = Item(security, GpmCollection.Permissions, i);
+                using var trustee = GpmRead.GetObject(permission, GpmGetObject.PermissionTrustee, "Read GPO trustee");
+                result.Add(new(GpmRead.GetString(trustee, GpmGetString.TrusteeTrusteeSid, "Read trustee SID"), GpmRead.GetString(trustee, GpmGetString.TrusteeTrusteeName, "Read trustee name"),
+                    GpmRead.GetString(trustee, GpmGetString.TrusteeTrusteeDomain, "Read trustee domain"), GpmRead.GetInt32(permission, GpmGetInt32.PermissionPermission, "Read GPO permission"),
+                    GpmRead.GetBoolean(permission, GpmGetBoolean.PermissionInherited, "Read inherited permission"), GpmRead.GetBoolean(permission, GpmGetBoolean.PermissionInheritable, "Read inheritable permission"),
+                    GpmRead.GetBoolean(permission, GpmGetBoolean.PermissionDenied, "Read denied permission")));
             }
             return result.ToImmutable();
         }, cancellationToken);
@@ -173,10 +175,9 @@ public sealed partial class WindowsGroupPolicyClient
         return Execute((gpm, domain) =>
         {
             using var gpo = Required(domain, id);
-            using var security = Automation.GetObject(gpo, 24, "Read GPO security");
-            using var identity = StringObject(gpm, 13, trustee, "Resolve GPO trustee");
-            SetObject(security, 12, identity.Pointer, "Remove GPO trustee permissions");
-            SetObject(gpo, 25, security.Pointer, "Save GPO security");
+            using var security = GpmRead.GetObject(gpo, GpmGetObject.GPOGetSecurityInfo, "Read GPO security");
+            RemoveTrustee(security, trustee);
+            SetObject(gpo, GpmObjectField.Security, security.Pointer, "Save GPO security");
             return true;
         }, cancellationToken);
     }
@@ -188,18 +189,18 @@ public sealed partial class WindowsGroupPolicyClient
         _ => throw NativeError.Win32("Read GPO directory text", 13)
     };
 
-    private static GroupPolicyLink Link(ComObject value) => new(NativeError.ParseGuid(Automation.GetString(value, 7, "Read linked GPO ID")),
-        Automation.GetString(value, 8, "Read linked GPO domain"), Automation.GetInt32(value, 13, "Read GPO link order"),
-        Automation.GetBoolean(value, 9, "Read GPO link enabled state"), Automation.GetBoolean(value, 11, "Read GPO link enforcement"));
+    private static GroupPolicyLink Link(ComObject value) => new(NativeError.ParseGuid(GpmRead.GetString(value, GpmGetString.GPOLinkGPOID, "Read linked GPO ID")),
+        GpmRead.GetString(value, GpmGetString.GPOLinkGPODomain, "Read linked GPO domain"), GpmRead.GetInt32(value, GpmGetInt32.GPOLinkSOMLinkOrder, "Read GPO link order"),
+        GpmRead.GetBoolean(value, GpmGetBoolean.GPOLinkEnabled, "Read GPO link enabled state"), GpmRead.GetBoolean(value, GpmGetBoolean.GPOLinkEnforced, "Read GPO link enforcement"));
 
     private static ComObject? FindLink(ComObject target, Guid id)
     {
-        using var links = Automation.GetObject(target, 13, "Read GPO links");
-        var count = Automation.GetInt32(links, 7, "Read GPO link count");
+        using var links = GpmRead.GetObject(target, GpmGetObject.SOMGetGPOLinks, "Read GPO links");
+        var count = GpmRead.GetInt32(links, GpmGetInt32.GPOLinksCollectionCount, "Read GPO link count");
         for (var i = 1; i <= count; i++)
         {
-            var link = Item(links, i);
-            try { if (NativeError.ParseGuid(Automation.GetString(link, 7, "Read linked GPO ID")) == id) return link; }
+            var link = Item(links, GpmCollection.Links, i);
+            try { if (NativeError.ParseGuid(GpmRead.GetString(link, GpmGetString.GPOLinkGPOID, "Read linked GPO ID")) == id) return link; }
             catch { link.Dispose(); throw; }
             link.Dispose();
         }
@@ -208,36 +209,52 @@ public sealed partial class WindowsGroupPolicyClient
 
     private static unsafe void CreateLink(ComObject domain, Guid id, string targetDn, int order, bool enabled, bool enforced)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var gpo = Required(domain, id);
-        using var target = StringObject(domain, 13, targetDn, "Open GPO link target");
+        using var target = StringObject(domain, GpmLookup.Som, targetDn, "Open GPO link target");
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, nint, nint*, int>)target.Slot(11))(
-            target.Pointer, order, gpo.Pointer, &result), "Create GPO link");
-        using var link = ComObject.Own(result);
-        Automation.SetBoolean(link, 10, enabled, "Set GPO link enabled state");
-        Automation.SetBoolean(link, 12, enforced, "Set GPO link enforcement");
+        using var link = ComObject.FromResult(((IGPMSOM*)target.Pointer)->CreateGPOLink(order, (IGPMGPO*)gpo.Pointer, (IGPMGPOLink**)&result).Value, result, "Create GPO link");
+        GpmRead.SetBoolean(link, GpmSetBoolean.GPOLinkEnabled, enabled, "Set GPO link enabled state");
+        GpmRead.SetBoolean(link, GpmSetBoolean.GPOLinkEnforced, enforced, "Set GPO link enforcement");
     }
 
-    private static unsafe void SetObject(ComObject target, int slot, nint value, string operation) =>
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, int>)target.Slot(slot))(target.Pointer, value), operation);
+    private enum GpmObjectField { Security, WmiFilter, Permission }
+    private static unsafe void SetObject(ComObject target, GpmObjectField field, nint value, string operation)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        var status = field switch
+        {
+            GpmObjectField.Security => ((IGPMGPO*)target.Pointer)->SetSecurityInfo((IGPMSecurityInfo*)value),
+            GpmObjectField.WmiFilter => ((IGPMGPO*)target.Pointer)->SetWMIFilter((IGPMWMIFilter*)value),
+            GpmObjectField.Permission => ((IGPMSecurityInfo*)target.Pointer)->Add((IGPMPermission*)value),
+            _ => throw new ArgumentOutOfRangeException(nameof(field))
+        };
+        NativeError.Check(status.Value, operation);
+    }
+
+    private static unsafe void RemoveTrustee(ComObject security, string trustee)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        using var name = new BString(trustee);
+        NativeError.Check(((IGPMSecurityInfo*)security.Pointer)->RemoveTrustee(name.Native).Value, "Remove GPO trustee permissions");
+    }
 
     private static void SetWmiFilter(ComObject domain, Guid id, string? path)
     {
         using var gpo = Required(domain, id);
-        using var filter = path is null ? null : StringObject(domain, 15, path, "Open GPO WMI filter");
-        SetObject(gpo, 19, filter?.Pointer ?? 0, "Set GPO WMI filter");
+        using var filter = path is null ? null : StringObject(domain, GpmLookup.WmiFilter, path, "Open GPO WMI filter");
+        SetObject(gpo, GpmObjectField.WmiFilter, filter?.Pointer ?? 0, "Set GPO WMI filter");
     }
 
     private static unsafe void Grant(ComObject gpm, ComObject domain, Guid id, string trustee, GroupPolicyPermissionLevel level, bool inheritable)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var gpo = Required(domain, id);
-        using var security = Automation.GetObject(gpo, 24, "Read GPO security");
+        using var security = GpmRead.GetObject(gpo, GpmGetObject.GPOGetSecurityInfo, "Read GPO security");
         using var identity = new BString(trustee);
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, int, short, nint*, int>)gpm.Slot(11))(
-            gpm.Pointer, identity.Pointer, (int)level, inheritable ? (short)-1 : (short)0, &result), "Create GPO permission");
-        using var permission = ComObject.Own(result);
-        SetObject(security, 10, permission.Pointer, "Grant GPO permission");
-        SetObject(gpo, 25, security.Pointer, "Save GPO security");
+        using var permission = ComObject.FromResult(((IGPM*)gpm.Pointer)->CreatePermission(identity.Native, (GPMPermissionType)level, new VARIANT_BOOL(inheritable ? (short)-1 : (short)0), (IGPMPermission**)&result).Value, result, "Create GPO permission");
+        SetObject(security, GpmObjectField.Permission, permission.Pointer, "Grant GPO permission");
+        SetObject(gpo, GpmObjectField.Security, security.Pointer, "Save GPO security");
     }
 }

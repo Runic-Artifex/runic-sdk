@@ -1,3 +1,8 @@
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.System.Com;
+using Windows.Win32.System.GroupPolicy;
+using Windows.Win32.System.Variant;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using Runic.Platform.Administration.Windows.Internal;
@@ -24,11 +29,11 @@ public sealed partial class WindowsGroupPolicyClient
     public Task<ImmutableArray<GroupPolicySnapshot>> EnumerateAsync(CancellationToken cancellationToken = default) =>
         Execute((gpm, domain) =>
         {
-            using var criteria = Automation.GetObject(gpm, 12, "Create GPO search criteria");
-            using var collection = ObjectArgument(domain, 11, criteria.Pointer, "Search GPOs");
+            using var criteria = GpmRead.GetObject(gpm, GpmGetObject.CreateSearchCriteria, "Create GPO search criteria");
+            using var collection = SearchGpos(domain, criteria.Pointer, "Search GPOs");
             var result = ImmutableArray.CreateBuilder<GroupPolicySnapshot>();
-            var count = Automation.GetInt32(collection, 7, "Read GPO count");
-            for (var i = 1; i <= count; i++) { using var gpo = Item(collection, i); result.Add(Snapshot(gpo)); }
+            var count = GpmRead.GetInt32(collection, GpmGetInt32.GPOCollectionCount, "Read GPO count");
+            for (var i = 1; i <= count; i++) { using var gpo = Item(collection, GpmCollection.Gpos, i); result.Add(Snapshot(gpo)); }
             return result.ToImmutable();
         }, cancellationToken);
 
@@ -46,8 +51,8 @@ public sealed partial class WindowsGroupPolicyClient
         NativeError.Text(displayName, nameof(displayName));
         return Execute((_, domain) =>
         {
-            using var gpo = Automation.GetObject(domain, 9, "Create GPO");
-            SetText(gpo, 8, displayName, "Set GPO display name");
+            using var gpo = GpmRead.GetObject(domain, GpmGetObject.DomainCreateGPO, "Create GPO");
+            SetDisplayName(gpo, displayName, "Set GPO display name");
             return Snapshot(gpo);
         }, cancellationToken);
     }
@@ -59,7 +64,7 @@ public sealed partial class WindowsGroupPolicyClient
         return Execute((_, domain) =>
         {
             using var gpo = Required(domain, id);
-            SetText(gpo, 8, displayName, "Set GPO display name");
+            SetDisplayName(gpo, displayName, "Set GPO display name");
             return true;
         }, cancellationToken);
     }
@@ -70,7 +75,7 @@ public sealed partial class WindowsGroupPolicyClient
         {
             using var gpo = Find(domain, id);
             if (gpo is null) return false;
-            Call(gpo, 26, "Delete GPO");
+            DeleteObject(gpo, false, "Delete GPO");
             return true;
         }, cancellationToken);
 
@@ -79,8 +84,8 @@ public sealed partial class WindowsGroupPolicyClient
         Execute((_, domain) =>
         {
             using var gpo = Required(domain, id);
-            if (userEnabled is { } user) Automation.SetBoolean(gpo, 20, user, "Set GPO user state");
-            if (computerEnabled is { } computer) Automation.SetBoolean(gpo, 21, computer, "Set GPO computer state");
+            if (userEnabled is { } user) GpmRead.SetBoolean(gpo, GpmSetBoolean.GPOSetUserEnabled, user, "Set GPO user state");
+            if (computerEnabled is { } computer) GpmRead.SetBoolean(gpo, GpmSetBoolean.GPOSetComputerEnabled, computer, "Set GPO computer state");
             return true;
         }, cancellationToken);
 
@@ -128,73 +133,131 @@ public sealed partial class WindowsGroupPolicyClient
 
     private unsafe ComObject Domain(ComObject gpm)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var name = new BString(_domainName);
         using var controller = new BString(_controller);
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, nint, int, nint*, int>)gpm.Slot(7))(
-            gpm.Pointer, name.Pointer, controller.Pointer, 0, &result), "Open GPMC domain");
-        return ComObject.Own(result);
+        return ComObject.FromResult(((IGPM*)gpm.Pointer)->GetDomain(name.Native, controller.Native, 0, (IGPMDomain**)&result).Value, result, "Open GPMC domain");
     }
 
     private static ComObject Required(ComObject domain, Guid id) => Find(domain, id) ?? throw NativeError.Win32("Find GPO", 2);
     private static ComObject? Find(ComObject domain, Guid id)
     {
         if (id == Guid.Empty) throw new ArgumentException("A GPO GUID is required.", nameof(id));
-        try { return StringObject(domain, 10, id.ToString("B"), "Find GPO"); }
+        try { return StringObject(domain, GpmLookup.Gpo, id.ToString("B"), "Find GPO"); }
         catch (WindowsAdministrationException error) when (error.NativeErrorCode is unchecked((int)0x80072030) or unchecked((int)0x80070002)) { return null; }
     }
 
-    private static unsafe ComObject StringObject(ComObject value, int slot, string argument, string operation)
+    private enum GpmLookup { Gpo, BackupDirectory, Backup, MigrationTable, Som, WmiFilter }
+    private enum GpmCollection { Gpos, Messages, Links, Permissions }
+    private enum GpmDate { Created, Modified, Backup }
+
+    private static unsafe ComObject StringObject(ComObject source, GpmLookup lookup, string argument, string operation)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var text = new BString(argument);
-        nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)value.Slot(slot))(value.Pointer, text.Pointer, &result), operation);
-        return ComObject.Own(result);
+        nint value = 0;
+        var status = lookup switch
+        {
+            GpmLookup.Gpo => ((IGPMDomain*)source.Pointer)->GetGPO(text.Native, (IGPMGPO**)&value),
+            GpmLookup.BackupDirectory => ((IGPM*)source.Pointer)->GetBackupDir(text.Native, (IGPMBackupDir**)&value),
+            GpmLookup.Backup => ((IGPMBackupDir*)source.Pointer)->GetBackup(text.Native, (IGPMBackup**)&value),
+            GpmLookup.MigrationTable => ((IGPM*)source.Pointer)->GetMigrationTable(text.Native, (IGPMMigrationTable**)&value),
+            GpmLookup.Som => ((IGPMDomain*)source.Pointer)->GetSOM(text.Native, (IGPMSOM**)&value),
+            GpmLookup.WmiFilter => ((IGPMDomain*)source.Pointer)->GetWMIFilter(text.Native, (IGPMWMIFilter**)&value),
+            _ => throw new ArgumentOutOfRangeException(nameof(lookup))
+        };
+        return ComObject.FromResult(status.Value, value, operation);
     }
 
-    private static unsafe ComObject ObjectArgument(ComObject value, int slot, nint argument, string operation)
+    private static unsafe ComObject SearchGpos(ComObject domain, nint criteria, string operation)
     {
-        nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)value.Slot(slot))(value.Pointer, argument, &result), operation);
-        return ComObject.Own(result);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        IGPMGPOCollection* result = null;
+        var status = ((IGPMDomain*)domain.Pointer)->SearchGPOs((IGPMSearchCriteria*)criteria, &result);
+        return ComObject.FromResult(status.Value, (nint)result, operation);
     }
 
-    private static unsafe ComObject Item(ComObject collection, int index)
+    private static unsafe ComObject Item(ComObject collection, GpmCollection kind, int index)
     {
-        nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, nint*, int>)collection.Slot(8))(collection.Pointer, index, &result), "Read GPMC collection item");
-        return ComObject.Own(result);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        VARIANT value = default;
+        try
+        {
+            var status = kind switch
+            {
+                GpmCollection.Gpos => ((IGPMGPOCollection*)collection.Pointer)->get_Item(index, &value),
+                GpmCollection.Messages => ((IGPMStatusMsgCollection*)collection.Pointer)->get_Item(index, &value),
+                GpmCollection.Links => ((IGPMGPOLinksCollection*)collection.Pointer)->get_Item(index, &value),
+                GpmCollection.Permissions => ((IGPMSecurityInfo*)collection.Pointer)->get_Item(index, &value),
+                _ => throw new ArgumentOutOfRangeException(nameof(kind))
+            };
+            NativeError.Check(status.Value, "Read GPMC collection item");
+            var iid = kind switch
+            {
+                GpmCollection.Gpos => IGPMGPO.IID_Guid,
+                GpmCollection.Messages => IGPMStatusMessage.IID_Guid,
+                GpmCollection.Links => IGPMGPOLink.IID_Guid,
+                GpmCollection.Permissions => IGPMPermission.IID_Guid,
+                _ => throw new ArgumentOutOfRangeException(nameof(kind))
+            };
+            return VariantObject(value, iid);
+        }
+        finally { _ = PInvoke.VariantClear(&value); }
     }
 
-    private static unsafe void Call(ComObject value, int slot, string operation) =>
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int>)value.Slot(slot))(value.Pointer), operation);
-
-    private static unsafe void SetText(ComObject value, int slot, string text, string operation)
+    private static unsafe ComObject VariantObject(VARIANT value, Guid iid)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        if (value.vt is not (VARENUM.VT_DISPATCH or VARENUM.VT_UNKNOWN) || value.punkVal == null)
+            throw NativeError.Win32("Read GPMC result object", 13);
+        void* result = null;
+        var status = value.punkVal->QueryInterface(&iid, &result);
+        return ComObject.FromResult(status.Value, (nint)result, "Read typed GPMC result object");
+    }
+
+    private static unsafe void DeleteObject(ComObject value, bool link, string operation)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        NativeError.Check((link ? ((IGPMGPOLink*)value.Pointer)->Delete() : ((IGPMGPO*)value.Pointer)->Delete()).Value, operation);
+    }
+
+    private static unsafe void SetDisplayName(ComObject value, string text, string operation)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var argument = new BString(text);
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, int>)value.Slot(slot))(value.Pointer, argument.Pointer), operation);
+        NativeError.Check(((IGPMGPO*)value.Pointer)->put_DisplayName(argument.Native).Value, operation);
     }
 
-    private static unsafe DateTime Date(ComObject value, int slot)
+    private static unsafe DateTime Date(ComObject value, GpmDate field)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         double date;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, double*, int>)value.Slot(slot))(value.Pointer, &date), "Read GPMC timestamp");
+        var status = field switch
+        {
+            GpmDate.Created => ((IGPMGPO*)value.Pointer)->get_CreationTime(&date),
+            GpmDate.Modified => ((IGPMGPO*)value.Pointer)->get_ModificationTime(&date),
+            GpmDate.Backup => ((IGPMBackup*)value.Pointer)->get_Timestamp(&date),
+            _ => throw new ArgumentOutOfRangeException(nameof(field))
+        };
+        NativeError.Check(status.Value, "Read GPMC timestamp");
         return NativeError.Date(date);
     }
 
     private static GroupPolicySnapshot Snapshot(ComObject gpo) => new(
-        NativeError.ParseGuid(Automation.GetString(gpo, 10, "Read GPO ID")), Automation.GetString(gpo, 7, "Read GPO name"),
-        Automation.GetString(gpo, 11, "Read GPO domain"), Automation.GetString(gpo, 9, "Read GPO directory path"),
-        Date(gpo, 12), Date(gpo, 13), Automation.GetBoolean(gpo, 22, "Read GPO user state"),
-        Automation.GetBoolean(gpo, 23, "Read GPO computer state"), WmiFilterPath(gpo));
+        NativeError.ParseGuid(GpmRead.GetString(gpo, GpmGetString.GPOID, "Read GPO ID")), GpmRead.GetString(gpo, GpmGetString.GPODisplayName, "Read GPO name"),
+        GpmRead.GetString(gpo, GpmGetString.GPODomainName, "Read GPO domain"), GpmRead.GetString(gpo, GpmGetString.GPOPath, "Read GPO directory path"),
+        Date(gpo, GpmDate.Created), Date(gpo, GpmDate.Modified), GpmRead.GetBoolean(gpo, GpmGetBoolean.GPOIsUserEnabled, "Read GPO user state"),
+        GpmRead.GetBoolean(gpo, GpmGetBoolean.GPOIsComputerEnabled, "Read GPO computer state"), WmiFilterPath(gpo));
 
     private static unsafe string? WmiFilterPath(ComObject gpo)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         nint result = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint*, int>)gpo.Slot(18))(gpo.Pointer, &result), "Read GPO WMI filter");
+        NativeError.Check(((IGPMGPO*)gpo.Pointer)->GetWMIFilter((IGPMWMIFilter**)&result).Value, "Read GPO WMI filter");
         if (result == 0) return null;
         using var filter = ComObject.Own(result);
-        return Automation.GetString(filter, 7, "Read WMI filter path");
+        return GpmRead.GetString(filter, GpmGetString.WMIFilterPath, "Read WMI filter path");
     }
 
     private static void AbsolutePath(string path)
@@ -205,107 +268,103 @@ public sealed partial class WindowsGroupPolicyClient
 
     private static unsafe ImmutableArray<GroupPolicyStatusMessage> CheckResult(ComObject result, string operation)
     {
-        using var messages = Automation.GetObject(result, 7, "Read GPMC status messages");
-        var count = Automation.GetInt32(messages, 7, "Read GPMC status count");
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        using var messages = GpmRead.GetObject(result, GpmGetObject.ResultStatus, "Read GPMC status messages");
+        var count = GpmRead.GetInt32(messages, GpmGetInt32.StatusMsgCollectionCount, "Read GPMC status count");
         var values = ImmutableArray.CreateBuilder<GroupPolicyStatusMessage>();
         for (var i = 1; i <= count; i++)
         {
-            using var message = Item(messages, i);
-            var error = ((delegate* unmanaged[Stdcall]<nint, int>)message.Slot(8))(message.Pointer);
-            var code = ((delegate* unmanaged[Stdcall]<nint, int>)message.Slot(11))(message.Pointer);
-            values.Add(new(error, code, Automation.GetString(message, 12, "Read GPMC message"),
-                Automation.GetString(message, 9, "Read GPMC extension"), Automation.GetString(message, 10, "Read GPMC setting"),
-                Automation.GetString(message, 7, "Read GPMC object path")));
+            using var message = Item(messages, GpmCollection.Messages, i);
+            var error = ((IGPMStatusMessage*)message.Pointer)->ErrorCode().Value;
+            var code = ((IGPMStatusMessage*)message.Pointer)->OperationCode().Value;
+            values.Add(new(error, code, GpmRead.GetString(message, GpmGetString.StatusMessageMessage, "Read GPMC message"),
+                GpmRead.GetString(message, GpmGetString.StatusMessageExtensionName, "Read GPMC extension"), GpmRead.GetString(message, GpmGetString.StatusMessageSettingsName, "Read GPMC setting"),
+                GpmRead.GetString(message, GpmGetString.StatusMessageObjectPath, "Read GPMC object path")));
         }
-        var status = ((delegate* unmanaged[Stdcall]<nint, int>)result.Slot(9))(result.Pointer);
+        var status = ((IGPMResult*)result.Pointer)->OverallStatus().Value;
         if (status < 0) throw new GroupPolicyOperationException(operation, status, values.ToImmutable());
         return values.ToImmutable();
     }
 
-    private static unsafe ComObject ResultObject(ComObject result)
+    private static unsafe ComObject ResultObject(ComObject result, Guid iid)
     {
-        Variant value = default;
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        VARIANT value = default;
         try
         {
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, Variant*, int>)result.Slot(8))(result.Pointer, &value), "Read GPMC operation result");
-            if (value.Type is not (9 or 13) || value.Pointer == 0) throw NativeError.Win32("Read GPMC result object", 13);
-            ((delegate* unmanaged[Stdcall]<nint, uint>)(*(nint**)value.Pointer)[1])(value.Pointer);
-            return ComObject.Own(value.Pointer);
+            NativeError.Check(((IGPMResult*)result.Pointer)->get_Result(&value).Value, "Read GPMC operation result");
+            return VariantObject(value, iid);
         }
-        finally { _ = AutomationArrays.VariantClear(&value); }
+        finally { _ = PInvoke.VariantClear(&value); }
     }
 
     private static unsafe GroupPolicyOperationResult<GroupPolicyBackup> Backup(ComObject gpo, string directory, string comment)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using (gpo)
         using (var target = new BString(directory))
         using (var annotation = new BString(comment))
         {
             nint resultPointer = 0;
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, nint, nint, nint, nint*, int>)gpo.Slot(27))(
-                gpo.Pointer, target.Pointer, annotation.Pointer, 0, 0, &resultPointer), "Back up GPO");
-            using var result = ComObject.Own(resultPointer);
+            using var result = ComObject.FromResult(((IGPMGPO*)gpo.Pointer)->Backup(target.Native, annotation.Native, null, null, (IGPMResult**)&resultPointer).Value, resultPointer, "Back up GPO");
             var messages = CheckResult(result, "Back up GPO");
-            using var backup = ResultObject(result);
-            return new(new(NativeError.ParseGuid(Automation.GetString(backup, 7, "Read backup ID")),
-                NativeError.ParseGuid(Automation.GetString(backup, 8, "Read backed-up GPO ID")), Automation.GetString(backup, 9, "Read backup domain"),
-                Automation.GetString(backup, 10, "Read backup name"), Date(backup, 11), Automation.GetString(backup, 12, "Read backup comment"),
-                Automation.GetString(backup, 13, "Read backup directory")), messages);
+            using var backup = ResultObject(result, IGPMBackup.IID_Guid);
+            return new(new(NativeError.ParseGuid(GpmRead.GetString(backup, GpmGetString.BackupID, "Read backup ID")),
+                NativeError.ParseGuid(GpmRead.GetString(backup, GpmGetString.BackupGPOID, "Read backed-up GPO ID")), GpmRead.GetString(backup, GpmGetString.BackupGPODomain, "Read backup domain"),
+                GpmRead.GetString(backup, GpmGetString.BackupGPODisplayName, "Read backup name"), Date(backup, GpmDate.Backup), GpmRead.GetString(backup, GpmGetString.BackupComment, "Read backup comment"),
+                GpmRead.GetString(backup, GpmGetString.BackupBackupDir, "Read backup directory")), messages);
         }
     }
 
     private static ComObject OpenBackup(ComObject gpm, string directory, Guid backupId)
     {
         if (backupId == Guid.Empty) throw new ArgumentException("A backup GUID is required.", nameof(backupId));
-        using var backupDirectory = StringObject(gpm, 8, directory, "Open GPO backup directory");
-        return StringObject(backupDirectory, 8, backupId.ToString("B"), "Open GPO backup");
+        using var backupDirectory = StringObject(gpm, GpmLookup.BackupDirectory, directory, "Open GPO backup directory");
+        return StringObject(backupDirectory, GpmLookup.Backup, backupId.ToString("B"), "Open GPO backup");
     }
 
     private static unsafe GroupPolicyOperationResult<GroupPolicySnapshot> Import(ComObject gpm, ComObject domain, Guid id, string directory,
         Guid backupId, GroupPolicyImportOptions options)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var gpo = Required(domain, id);
         using var backup = OpenBackup(gpm, directory, backupId);
-        using var table = options.MigrationTablePath is null ? null : StringObject(gpm, 16, options.MigrationTablePath, "Open migration table");
-        Variant migration = table is null ? default : new() { Type = 9, Pointer = table.Pointer };
+        using var table = options.MigrationTablePath is null ? null : StringObject(gpm, GpmLookup.MigrationTable, options.MigrationTablePath, "Open migration table");
+        VARIANT migration = table is null ? default : new() { vt = VARENUM.VT_DISPATCH, pdispVal = (IDispatch*)table.Pointer };
         nint resultPointer = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, nint, Variant*, nint, nint, nint*, int>)gpo.Slot(28))(
-            gpo.Pointer, options.RequireMigrationTableMappings ? 1 : 0, backup.Pointer, table is null ? null : &migration, 0, 0, &resultPointer), "Import GPO");
-        using var result = ComObject.Own(resultPointer);
+        using var result = ComObject.FromResult(((IGPMGPO*)gpo.Pointer)->Import(options.RequireMigrationTableMappings ? 1 : 0, (IGPMBackup*)backup.Pointer, table is null ? null : &migration, null, null, (IGPMResult**)&resultPointer).Value, resultPointer, "Import GPO");
         var messages = CheckResult(result, "Import GPO");
-        using var updated = ResultObject(result);
+        using var updated = ResultObject(result, IGPMGPO.IID_Guid);
         return new(Snapshot(updated), messages);
     }
 
     private static unsafe GroupPolicyOperationResult<GroupPolicySnapshot> Restore(ComObject gpm, ComObject domain, string directory, Guid backupId)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var backup = OpenBackup(gpm, directory, backupId);
         nint resultPointer = 0;
-        NativeError.Check(((delegate* unmanaged[Stdcall]<nint, nint, int, nint, nint, nint*, int>)domain.Slot(12))(
-            domain.Pointer, backup.Pointer, 0, 0, 0, &resultPointer), "Restore GPO");
-        using var result = ComObject.Own(resultPointer);
+        using var result = ComObject.FromResult(((IGPMDomain*)domain.Pointer)->RestoreGPO((IGPMBackup*)backup.Pointer, 0, null, null, (IGPMResult**)&resultPointer).Value, resultPointer, "Restore GPO");
         var messages = CheckResult(result, "Restore GPO");
-        using var restored = ResultObject(result);
+        using var restored = ResultObject(result, IGPMGPO.IID_Guid);
         return new(Snapshot(restored), messages);
     }
 
     private static unsafe GroupPolicyOperationResult<string> Report(ComObject gpo, GroupPolicyReportFormat format)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using (gpo)
         {
             nint pointer = 0;
-            NativeError.Check(((delegate* unmanaged[Stdcall]<nint, int, nint, nint, nint*, int>)gpo.Slot(29))(
-                gpo.Pointer, (int)format, 0, 0, &pointer), "Generate GPO report");
-            using var result = ComObject.Own(pointer);
+            using var result = ComObject.FromResult(((IGPMGPO*)gpo.Pointer)->GenerateReport((GPMReportType)format, null, null, (IGPMResult**)&pointer).Value, pointer, "Generate GPO report");
             var messages = CheckResult(result, "Generate GPO report");
-            Variant value = default;
+            VARIANT value = default;
             try
             {
-                NativeError.Check(((delegate* unmanaged[Stdcall]<nint, Variant*, int>)result.Slot(8))(result.Pointer, &value), "Read GPO report");
-                if (value.Type != 8) throw NativeError.Win32("Read GPO report text", 13);
-                return new(value.Pointer == 0 ? "" : Marshal.PtrToStringBSTR(value.Pointer), messages);
+                NativeError.Check(((IGPMResult*)result.Pointer)->get_Result(&value).Value, "Read GPO report");
+                if (value.vt != VARENUM.VT_BSTR) throw NativeError.Win32("Read GPO report text", 13);
+                return new(value.bstrVal.Value == null ? "" : Marshal.PtrToStringBSTR((nint)value.bstrVal.Value), messages);
             }
-            finally { _ = AutomationArrays.VariantClear(&value); }
+            finally { _ = PInvoke.VariantClear(&value); }
         }
     }
 }

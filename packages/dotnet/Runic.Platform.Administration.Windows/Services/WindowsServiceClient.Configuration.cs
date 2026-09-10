@@ -1,3 +1,6 @@
+using Windows.Win32;
+using Windows.Win32.System.Services;
+using ServiceHandle = Windows.Win32.CloseServiceHandleSafeHandle;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using Runic.Platform.Administration.Windows.Internal;
@@ -10,6 +13,7 @@ public sealed partial class WindowsServiceClient
     /// <remarks>If a later step fails, the created service remains. Inspect its state before deciding how to recover. Password is never retained.</remarks>
     public unsafe void Create(ServiceSpecification specification, string? password = null)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         ArgumentNullException.ThrowIfNull(specification);
         NativeError.Text(specification.Name, nameof(specification.Name));
         NativeError.Text(specification.BinaryCommandLine, nameof(specification.BinaryCommandLine));
@@ -31,11 +35,11 @@ public sealed partial class WindowsServiceClient
         var dependencies = MultiString(specification.Dependencies);
         fixed (char* deps = dependencies)
         {
-            var pointer = ServiceNative.CreateService(manager, specification.Name, specification.DisplayName ?? specification.Name,
-                2 | (specification.FailurePolicy is null ? 0u : 0x10u), 0x10, (uint)specification.StartMode, 1,
-                specification.BinaryCommandLine, null, 0, deps, specification.AccountName, password);
-            if (pointer == 0) throw NativeError.Win32("Create service", Marshal.GetLastPInvokeError());
-            using var service = new ServiceHandle(pointer);
+            var pointer = PInvoke.CreateService(manager, specification.Name, specification.DisplayName ?? specification.Name,
+                2 | (specification.FailurePolicy is null ? 0u : 0x10u), (ENUM_SERVICE_TYPE)0x10, (SERVICE_START_TYPE)specification.StartMode, (SERVICE_ERROR)1,
+                specification.BinaryCommandLine, null, dependencies, specification.AccountName, password);
+            using var service = pointer;
+            if (pointer.IsInvalid) throw NativeError.Win32("Create service", Marshal.GetLastPInvokeError());
             ApplySupplemental(service, update);
         }
     }
@@ -43,6 +47,7 @@ public sealed partial class WindowsServiceClient
     /// <summary>Updates only supplied fields. Password changes require an explicit AccountName. Native changes are not transactional.</summary>
     public unsafe void Update(string name, ServiceUpdate update, string? password = null)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         ArgumentNullException.ThrowIfNull(update);
         Validate(update, password);
         using var service = Open(name, 2 | 1 | (update.FailurePolicy is null ? 0u : 0x10u))!;
@@ -50,14 +55,14 @@ public sealed partial class WindowsServiceClient
         {
             var config = ReadConfig(service, 0);
             fixed (byte* data = config)
-                if (((ServiceNative.Config*)data)->Start != 2)
+                if (((QUERY_SERVICE_CONFIGW*)data)->dwStartType != SERVICE_START_TYPE.SERVICE_AUTO_START)
                     throw new ArgumentException("Delayed start requires automatic start.", nameof(update));
         }
         var dependencies = update.Dependencies is { } values ? MultiString(values) : null;
         fixed (char* deps = dependencies)
-            NativeError.CheckWin32(ServiceNative.ChangeServiceConfig(service, uint.MaxValue,
-                update.StartMode is { } mode ? (uint)mode : uint.MaxValue, uint.MaxValue,
-                update.BinaryCommandLine, null, 0, deps, update.AccountName, password, update.DisplayName), "Update service configuration");
+            NativeError.CheckWin32(PInvoke.ChangeServiceConfig(service, (ENUM_SERVICE_TYPE)uint.MaxValue,
+                update.StartMode is { } mode ? (SERVICE_START_TYPE)mode : (SERVICE_START_TYPE)uint.MaxValue, (SERVICE_ERROR)uint.MaxValue,
+                update.BinaryCommandLine, null, dependencies, update.AccountName, password, update.DisplayName).Value, "Update service configuration");
         ApplySupplemental(service, update);
     }
 
@@ -101,38 +106,39 @@ public sealed partial class WindowsServiceClient
 
     private static unsafe void ApplySupplemental(ServiceHandle service, ServiceUpdate update)
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         if (update.Description is { } description)
             fixed (char* text = description)
             {
-                var pointer = text;
-                NativeError.CheckWin32(ServiceNative.ChangeServiceConfig2(service, 1, &pointer), "Update service description");
+                var pointer = new SERVICE_DESCRIPTIONW { lpDescription = text };
+                NativeError.CheckWin32(PInvoke.ChangeServiceConfig2W(service, (SERVICE_CONFIG)1, &pointer).Value, "Update service description");
             }
         if (update.DelayedAutomaticStart is { } delayed)
         {
-            var value = delayed ? 1 : 0;
-            NativeError.CheckWin32(ServiceNative.ChangeServiceConfig2(service, 3, &value), "Update delayed service start");
+            var value = new SERVICE_DELAYED_AUTO_START_INFO { fDelayedAutostart = delayed };
+            NativeError.CheckWin32(PInvoke.ChangeServiceConfig2W(service, (SERVICE_CONFIG)3, &value).Value, "Update delayed service start");
         }
         if (update.FailurePolicy is { } policy)
         {
-            var actions = policy.Actions.Select(action => new ServiceNative.FailureAction
+            var actions = policy.Actions.Select(action => new SC_ACTION
             {
-                Kind = (uint)action.Kind, Delay = (uint)action.Delay.TotalMilliseconds
+                Type = (SC_ACTION_TYPE)action.Kind, Delay = (uint)action.Delay.TotalMilliseconds
             }).ToArray();
             // A non-null pointer with zero count explicitly clears recovery actions.
-            var storage = actions.Length == 0 ? new ServiceNative.FailureAction[1] : actions;
-            fixed (ServiceNative.FailureAction* nativeActions = storage)
+            var storage = actions.Length == 0 ? new SC_ACTION[1] : actions;
+            fixed (SC_ACTION* nativeActions = storage)
             fixed (char* command = policy.Command)
             fixed (char* message = policy.RebootMessage)
             {
-                var failure = new ServiceNative.FailureActions
+                var failure = new SERVICE_FAILURE_ACTIONSW
                 {
-                    Reset = policy.ResetPeriod is { } reset ? (uint)reset.TotalSeconds : uint.MaxValue,
-                    Command = command, RebootMessage = message, Count = (uint)actions.Length, Actions = nativeActions
+                    dwResetPeriod = policy.ResetPeriod is { } reset ? (uint)reset.TotalSeconds : uint.MaxValue,
+                    lpCommand = command, lpRebootMsg = message, cActions = (uint)actions.Length, lpsaActions = nativeActions
                 };
-                NativeError.CheckWin32(ServiceNative.ChangeServiceConfig2(service, 2, &failure), "Update service recovery actions");
+                NativeError.CheckWin32(PInvoke.ChangeServiceConfig2W(service, (SERVICE_CONFIG)2, &failure).Value, "Update service recovery actions");
             }
-            var value = policy.OnNonCrashFailures ? 1 : 0;
-            NativeError.CheckWin32(ServiceNative.ChangeServiceConfig2(service, 4, &value), "Update service failure detection");
+            var value = new SERVICE_FAILURE_ACTIONS_FLAG { fFailureActionsOnNonCrashFailures = policy.OnNonCrashFailures };
+            NativeError.CheckWin32(PInvoke.ChangeServiceConfig2W(service, (SERVICE_CONFIG)4, &value).Value, "Update service failure detection");
         }
     }
 }

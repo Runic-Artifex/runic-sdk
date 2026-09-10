@@ -1,3 +1,5 @@
+using Windows.Win32;
+using Windows.Win32.System.SystemInformation;
 using System.Buffers.Binary;
 using System.Collections.Immutable;
 using System.Globalization;
@@ -45,18 +47,19 @@ public sealed partial class WindowsSystemInformationClient : IWindowsSystemInfor
     /// <inheritdoc/>
     public unsafe WindowsOperatingSystemInfo GetOperatingSystem()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
         NativeError.Windows();
-        VersionInfo info = default;
-        info.Size = (uint)sizeof(VersionInfo);
-        var status = RtlGetVersion(&info);
-        if (status != 0) throw NativeError.Win32("Read OS version", unchecked((int)RtlNtStatusToDosError(status)));
+        OSVERSIONINFOEXW info = default;
+        info.dwOSVersionInfoSize = (uint)sizeof(OSVERSIONINFOEXW);
+        var status = global::Windows.Wdk.PInvoke.RtlGetVersion((OSVERSIONINFOW*)&info);
+        if (status.Value != 0) throw NativeError.Win32("Read OS version", unchecked((int)PInvoke.RtlNtStatusToDosError(status)));
         try
         {
             using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion", false);
-            return new(new((int)info.Major, (int)info.Minor, (int)info.Build),
+            return new(new((int)info.dwMajorVersion, (int)info.dwMinorVersion, (int)info.dwBuildNumber),
                 key?.GetValue("ProductName") as string ?? "",
                 key?.GetValue("DisplayVersion") as string ?? "",
-                GetSystemDefaultUILanguage(), info.ProductType, info.SuiteMask,
+                PInvoke.GetSystemDefaultUILanguage(), info.wProductType, info.wSuiteMask,
                 key?.GetValue("UBR") is int revision ? unchecked((uint)revision) : null);
         }
         catch (UnauthorizedAccessException error)
@@ -69,15 +72,16 @@ public sealed partial class WindowsSystemInformationClient : IWindowsSystemInfor
     /// <inheritdoc/>
     public unsafe ImmutableArray<WindowsBiosInfo> GetBiosInformation()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
         NativeError.Windows();
         const uint provider = 0x52534d42; // 'RSMB', as defined by GetSystemFirmwareTable.
-        var length = GetSystemFirmwareTable(provider, 0, null, 0);
+        var length = PInvoke.GetSystemFirmwareTable((FIRMWARE_TABLE_PROVIDER)provider, 0, null, 0);
         if (length == 0) throw NativeError.Win32("Read SMBIOS size", Marshal.GetLastPInvokeError());
         if (length > 16 * 1024 * 1024) throw NativeError.Win32("Read SMBIOS size", 13);
         var bytes = new byte[length];
         fixed (byte* pointer = bytes)
         {
-            var actual = GetSystemFirmwareTable(provider, 0, pointer, length);
+            var actual = PInvoke.GetSystemFirmwareTable((FIRMWARE_TABLE_PROVIDER)provider, 0, pointer, length);
             if (actual == 0) throw NativeError.Win32("Read SMBIOS table", Marshal.GetLastPInvokeError());
             if (actual > length) throw NativeError.Win32("Read changing SMBIOS table", 183);
             return ParseBios(bytes.AsSpan(0, checked((int)actual)));
@@ -133,16 +137,4 @@ public sealed partial class WindowsSystemInformationClient : IWindowsSystemInfor
         throw NativeError.Win32("Read SMBIOS string index", 13);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private unsafe struct VersionInfo
-    {
-        internal uint Size, Major, Minor, Build, Platform;
-        internal fixed char ServicePack[128];
-        internal ushort ServicePackMajor, ServicePackMinor, SuiteMask;
-        internal byte ProductType, Reserved;
-    }
-    [LibraryImport("ntdll.dll")] private static unsafe partial int RtlGetVersion(VersionInfo* version);
-    [LibraryImport("ntdll.dll")] private static partial uint RtlNtStatusToDosError(int status);
-    [LibraryImport("kernel32.dll")] private static partial ushort GetSystemDefaultUILanguage();
-    [LibraryImport("kernel32.dll", SetLastError = true)] private static unsafe partial uint GetSystemFirmwareTable(uint provider, uint tableId, void* buffer, uint length);
 }
