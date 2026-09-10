@@ -429,8 +429,8 @@ if __name__ == "__main__":
         args.command.pop(0)
     if not args.command:
         parser.error("A fixture launch command is required")
-    if Path("/etc/hostname").read_text().strip() != "runic-portal":
-        parser.error("Run only inside the disposable runic-portal VM")
+    if Path("/etc/hostname").read_text().strip() not in {"runic-portal", "runic-headless-gnome"}:
+        parser.error("Run only inside a disposable Runic test VM or container")
     def expired(signum, frame):
         raise TimeoutError("Suite deadline reached or termination requested")
     signal.signal(signal.SIGALRM, expired)
