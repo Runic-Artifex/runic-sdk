@@ -13,11 +13,11 @@ internal static class DesktopServicesNativeSmoke
         var service = Environment.GetEnvironmentVariable("RUNIC_TEST_SERVICE") ?? "All";
         DesktopFileOperation? selectedOperation = service switch
         {
-            "All" => null,
+            "All" or "Notifications" => null,
             "Open" => DesktopFileOperation.Open,
             "ChooseApplication" => DesktopFileOperation.ChooseApplication,
             "Reveal" => DesktopFileOperation.Reveal,
-            _ => throw new ArgumentException("RUNIC_TEST_SERVICE must be All, Open, ChooseApplication or Reveal."),
+            _ => throw new ArgumentException("RUNIC_TEST_SERVICE must be All, Notifications, Open, ChooseApplication or Reveal."),
         };
         IDesktopFileLauncher launcher;
         IDesktopNotifications notifications;
@@ -38,7 +38,26 @@ internal static class DesktopServicesNativeSmoke
         }
         await using (notifications)
         {
-            notifications.Activated += (_, activation) => Console.WriteLine($"Notification action: {activation}");
+            var activated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            notifications.Activated += (_, activation) =>
+            {
+                Console.WriteLine($"Notification action: {activation}");
+                if (activation.NotificationId == "native-services" && activation.ActionId == "open") activated.TrySetResult();
+            };
+            if (service == "Notifications")
+            {
+                RequireSuccess(await notifications.RequestPermissionAsync(token), "notification eligibility");
+                try
+                {
+                    RequireSuccess(await notifications.ShowAsync(new("native-services", "Runic notification test", "Click Open result to verify live activation.")
+                    { Actions = [new("open", "Open result")] }, token), "notification submission");
+                    Console.WriteLine("Waiting for the actual Open result callback (120 seconds).");
+                    await activated.Task.WaitAsync(TimeSpan.FromSeconds(120), token);
+                    Console.WriteLine("PASS live notification activation.");
+                }
+                finally { RequireSuccess(await notifications.RemoveAsync("native-services", CancellationToken.None), "notification withdrawal"); }
+                return;
+            }
             if (selectedOperation is null)
             {
                 RequireSuccess(await notifications.RequestPermissionAsync(token), "notification eligibility");

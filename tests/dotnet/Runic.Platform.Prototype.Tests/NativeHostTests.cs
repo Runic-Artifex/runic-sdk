@@ -42,7 +42,12 @@ internal static class NativeHostTests
         }, ApplicationBridgeSessionFactory.Create);
         host = new DesktopApplicationHost(new()
         {
-            Host = new() { DiagnosticSink = diagnostic => Console.WriteLine($"Desktop: {diagnostic.Code}: {diagnostic.Message}") },
+            Host = new()
+            {
+                // This fixture uses the GTK3 native picker and parent-window adapter.
+                Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+                DiagnosticSink = diagnostic => Console.WriteLine($"Desktop: {diagnostic.Code}: {diagnostic.Message}"),
+            },
             Window = new()
             {
                 Browser = BrowserKind.Embedded, Width = 640, Height = 480,

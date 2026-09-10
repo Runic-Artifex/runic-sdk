@@ -255,6 +255,10 @@ showing consent prompts or opening external applications during ordinary CI.
 
 Use `RUNIC_TEST_SERVICE=Open`, `ChooseApplication` or `Reveal` with
 `--native-services` to exercise one file operation without notification setup.
+Set `RUNIC_TEST_SERVICE=Notifications` to test notification submission and require
+the actual Open result callback within 120 seconds. Portal acceptance alone does
+not prove that the desktop displayed a notification; this mode fails if no action
+arrives and withdraws the test notification on completion or failure.
 `All` is the default. Failed/unavailable operations now fail the run. A coordinator
 may set `RUNIC_TEST_CONFIRM_FILE` to a fresh absolute path and create it only after
 inspecting the UI; otherwise press Enter in the fixture console. This keeps the
