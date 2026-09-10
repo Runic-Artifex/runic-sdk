@@ -17,6 +17,7 @@
     <Project Path="packages/dotnet/Runic.Platform/Runic.Platform.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux/Runic.Platform.Linux.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Platform/Runic.Application.Platform.csproj" />
