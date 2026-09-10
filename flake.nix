@@ -125,6 +125,7 @@
             gtk4
             webkitgtk_4_1
             webkitgtk_6_0
+            glib
             glib-networking
             gsettings-desktop-schemas
             dbus

@@ -7,6 +7,8 @@ using System.Runtime.Versioning;
 
 #pragma warning disable CA1416 // The executable checks Linux before entering the annotated smoke path.
 
+if (args.Contains("--usability", StringComparer.Ordinal)) return UsabilitySmoke.Run();
+
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
     return NotificationActivationSmoke.Run(args);
 

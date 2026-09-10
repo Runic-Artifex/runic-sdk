@@ -8,6 +8,20 @@
 }:
 
 let
+  accessibilityInspector = pkgs.writeShellApplication {
+    name = "runic-atspi";
+    runtimeInputs = [ (pkgs.python3.withPackages (ps: [ ps.pyatspi ps.pygobject3 ])) ];
+    text = ''
+      export GI_TYPELIB_PATH="${lib.makeSearchPath "lib/girepository-1.0" [ pkgs.at-spi2-core pkgs.glib pkgs.gobject-introspection ]}''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+      exec python3 "$@"
+    '';
+  };
+  portalAutomation = pkgs.writeShellApplication {
+    name = "runic-portal-automate";
+    text = ''
+      exec ${accessibilityInspector}/bin/runic-atspi ${../../tests/native/Runic.Desktop.Gtk4.Smoke/automate-usability.py} "$@"
+    '';
+  };
   portalTest = pkgs.writeShellApplication {
     name = "runic-portal-test";
     runtimeInputs = [
@@ -18,7 +32,7 @@ let
     text = ''
       usage() {
         printf '%s\n' \
-          'Usage: runic-portal-test <settings|native|gtk4|activation-live|activation-submit|activation-receive|notifications|open|choose|reveal>' \
+          'Usage: runic-portal-test <settings|native|gtk4|gtk4-usability|activation-live|activation-submit|activation-receive|notifications|open|choose|reveal>' \
           "" \
           'Runs a source snapshot mounted by the Runic portal VM.' \
           'The desktop-service modes open real portal UI; notifications waits for the Open result action.'
@@ -34,11 +48,13 @@ let
           project="tests/dotnet/Runic.Platform.Prototype.Tests"
           arguments=(--native)
           ;;
-        gtk4|activation-live|activation-submit|activation-receive)
+        gtk4|gtk4-usability|activation-live|activation-submit|activation-receive)
           project="tests/native/Runic.Desktop.Gtk4.Smoke"
           arguments=()
           export RUNIC_TEST_APP_ID="com.runic.tests.Activation"
-          if test "$mode" != gtk4; then
+          if test "$mode" = gtk4-usability; then
+            arguments=(--usability)
+          elif test "$mode" != gtk4; then
             arguments=("--notification-''${mode#activation-}")
           fi
           ;;
@@ -121,6 +137,7 @@ let
   };
 in
 {
+  services.flatpak.enable = true;
   # The VM shares the exact Git-aware flake source snapshot. The helper keeps
   # one bounded on-disk workspace and refreshes it by immutable source identity.
   virtualisation.vmVariant = {
@@ -144,6 +161,8 @@ in
       };
     };
   };
+
+  system.build.runicAtspi = accessibilityInspector;
 
   boot.kernelParams = [ "console=ttyS0" ];
   system.name = "runic-portal-${portalDesktop}";
@@ -196,6 +215,11 @@ in
   };
 
   environment.systemPackages = with pkgs; [
+    accessibilityInspector
+    portalAutomation
+    bubblewrap
+    xdg-dbus-proxy
+    flatpak
     portalTest
     portalDesktopItem
     activationDesktopItem

@@ -16,8 +16,8 @@ Each image logs in as `runic` automatically. The password is `runic` if a
 desktop prompt needs it. The VM uses its own session bus and only installs the
 desktop's upstream portal configuration. Plasma uses its `kde-portals.conf`,
 including `plasmanotify` for notifications; GNOME uses its `gnome-portals.conf`
-and the GTK fallback for interfaces GNOME does not export, including the file
-chooser and notifications. This makes a successful picker or notification
+and the GTK fallback for interfaces GNOME does not export. The configured
+backend and its version determine which native chooser is used. This makes a successful picker or notification
 evidence for the selected desktop session rather than for the host session.
 
 The image contains GTK 3, GTK 4, WebKitGTK 4.1, WebKitGTK 6.0 and D-Bus. It
@@ -60,8 +60,11 @@ build outputs into the Nix source snapshot. The VM has outbound user-mode networ
 access for initial NuGet restore but does not expose host services or reuse the
 host desktop/session bus.
 
-These VMs exercise an unsandboxed desktop session. Flatpak/Snap portal policy,
-real application packaging and notification cold relaunch remain separate tests.
+The normal commands exercise an unsandboxed desktop application. The
+[Flatpak fixture](../../../tests/native/Runic.Desktop.Gtk4.Smoke/flatpak/README.md)
+adds actual application-sandbox checks. See [VM automation](vm-automation.md)
+for the unattended runner, current coverage and remaining desktop adapters.
+Snap policy and production application packaging remain separate checks.
 
 For command-driven testing, add `-serial stdio -monitor none` to the VM launcher
 and log in as `runic` on the serial console. The graphical window remains
@@ -106,3 +109,13 @@ The test user and unlock password are both `runic`. GNOME test guests disable
 idle locking by default so a wait for manual input does not hide notification
 controls. In GNOME, hover over a notification to reveal **Open result**; clicking
 the body invokes the separate default action and does not satisfy this test.
+
+## GTK4 usability
+
+`runic-portal-test gtk4-usability` opens the labelled input/IME, targeting, file
+picker and inhibition fixture. GNOME includes IBus Intelligent Pinyin; KDE
+includes Fcitx5 Pinyin with the Wayland frontend. Use actual compositor display
+scales for scaling checks. `runic-atspi` runs the maintained native accessibility
+inspector; `runic-portal-automate` drives the unattended checks described above.
+Spoken screen-reader output and visual candidate placement remain separate from
+accessible-control and button-action assertions.

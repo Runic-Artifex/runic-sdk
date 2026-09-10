@@ -20,7 +20,17 @@ public static partial class Gtk4Application
     /// Call this directly from <c>Main</c>, before top-level awaits. The GTK 4
     /// provider does not support re-entering or restarting its native runtime.
     /// </remarks>
-    public static int Run(Func<Task<int>> application)
+    public static int Run(Func<Task<int>> application) => RunCore(application, null);
+
+    /// <summary>Runs GTK with the application's installed reverse-DNS identity.</summary>
+    /// <remarks>Inside Flatpak this must match the package ID. The overload without an ID uses the Flatpak ID automatically.</remarks>
+    public static int Run(Func<Task<int>> application, string applicationId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
+        return RunCore(application, applicationId);
+    }
+
+    private static int RunCore(Func<Task<int>> application, string? applicationId)
     {
         ArgumentNullException.ThrowIfNull(application);
         if (!OperatingSystem.IsLinux())
@@ -35,6 +45,12 @@ public static partial class Gtk4Application
         {
             throw new PlatformNotSupportedException("GTK 4.12 and WebKitGTK 6 are required for the GTK 4 embedded presentation.");
         }
+        string? flatpakId = File.Exists("/.flatpak-info") ? Environment.GetEnvironmentVariable("FLATPAK_ID") : null;
+        if (!string.IsNullOrEmpty(flatpakId) && applicationId is not null && applicationId != flatpakId)
+            throw new ArgumentException("The GTK application ID must match the Flatpak package ID.", nameof(applicationId));
+        applicationId ??= string.IsNullOrEmpty(flatpakId) ? "dev.runic.desktop.gtk4" : flatpakId;
+        if (!Gio.Application.IdIsValid(applicationId))
+            throw new ArgumentException("A valid reverse-DNS GTK application ID is required.", nameof(applicationId));
         lock (Gate)
         {
             if (_state != 0)
@@ -45,7 +61,7 @@ public static partial class Gtk4Application
         }
 
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk4WebKit6);
-        var nativeApplication = Gtk.Application.New("dev.runic.desktop.gtk4", Gio.ApplicationFlags.NonUnique);
+        var nativeApplication = Gtk.Application.New(applicationId, Gio.ApplicationFlags.NonUnique);
         nativeApplication.Hold();
         Exception? failure = null;
         var exitCode = 1;
