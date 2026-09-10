@@ -66,8 +66,17 @@ internal static class DesktopPortalTests
             var rejected = await invalidIdentity.ShowAsync(new("rejected", "Title", "Body"));
             Check(denied ? rejected is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }
                 : rejected is PlatformResult<Unit>.Unavailable { Reason: UnavailableReason.BackendUnavailable }, "registration failure remains typed despite diagnostic observer failure");
-            Check(service.Calls is ["Register"] && diagnostics.Count == 1, "failed identity registration prevents notification submission and emits a diagnostic");
+            Check(service.Calls is ["Register"] && diagnostics.Count == 2 && diagnostics[0] == "portal-identity-registration-failed", "failed identity registration prevents notification submission and emits identity and operation diagnostics");
         }
+        service.Calls.Clear();
+        var sharedDiagnostics = new List<PortalDiagnostic>();
+        await using var invalidSettings = new PortalDesktopSettings(destination: connection.UniqueName!,
+            application: new PortalApplication("org.runic.MissingIdentity", diagnostic =>
+            { sharedDiagnostics.Add(diagnostic); throw new InvalidOperationException("observer failure"); }));
+        Check(await invalidSettings.ReadAsync() is PlatformResult<DesktopAppearance>.Unavailable { Reason: UnavailableReason.BackendUnavailable },
+            "shared registration failure remains typed despite diagnostic observer failure");
+        Check(service.Calls is ["Register"] && sharedDiagnostics is [{ Code: "portal-identity-registration-failed" }],
+            "shared registration failure prevents requests and emits one actionable diagnostic");
         service.RegistrationError = null;
         Console.WriteLine("PASS desktop portals: settings, notification permission/actions, installed activation and owned file descriptors.");
     }

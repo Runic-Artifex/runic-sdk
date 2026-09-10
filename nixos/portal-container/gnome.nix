@@ -1,6 +1,6 @@
 # Experimental systemd-nspawn desktop. This probes independent headless services;
 # it is not yet a replacement for the full native VM acceptance suite.
-{ lib, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 {
   virtualisation.vlans = [ ];
   networking.hostName = "runic-headless-gnome";
@@ -21,7 +21,15 @@
   # Generic Linux NativeAOT publishes use /lib64/ld-linux-x86-64.so.2.
   # Preserve /proc/self/exe and GTK's application identity when starting them.
   programs.nix-ld.enable = true;
-  environment.systemPackages = with pkgs; [ gnome-shell gtk4 (lib.getBin glib) dbus ];
+  environment.systemPackages = with pkgs; [ gnome-shell gtk4 (lib.getBin glib) dbus
+    (makeDesktopItem {
+      name = "com.runic.tests.Activation";
+      desktopName = "Runic GTK4 Test";
+      exec = "${config.system.build.runicContainerFixture}/bin/runic-container-fixture /home/runic/Runic.Desktop.Gtk4.Smoke --usability";
+      terminal = false;
+      categories = [ "Development" ];
+    })
+  ];
   systemd.user.services.runic-headless-desktop = {
     description = "Independent headless GNOME test session";
     wantedBy = [ "default.target" ];

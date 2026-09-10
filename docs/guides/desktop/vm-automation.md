@@ -149,8 +149,8 @@ usable in a future container desktop too.
 The [headless GNOME container experiment](../../../nixos/portal-container/README.md)
 has demonstrated a full headless GNOME session, independent Wayland display,
 Settings portal and PipeWire in both VM-contained and host-managed nspawn.
-Native Runic controls and WebView actions pass in the former; inhibition remains
-unavailable. On the managed host, WebKit's nested sandbox fails its private proc
+The full native usability suite passes in the former, including independently
+observed inhibition acquisition/release after installing the fixture desktop ID. On the managed host, WebKit's nested sandbox fails its private proc
 mount. Application parity is therefore still unverified.
 Keep the VM suite while completing that experiment. A shared-kernel container
 is promising for frequent native UI tests; VM coverage remains useful for a

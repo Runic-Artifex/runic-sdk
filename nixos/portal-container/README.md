@@ -3,8 +3,8 @@
 This is an opt-in feasibility probe, not a replacement for the desktop VM suite.
 The full GNOME session, Settings portal, PipeWire and virtual display now pass
 the session probe both in the disposable VM and in managed nspawn directly on
-the host. Native Runic controls and WebView
-actions also pass there; inhibition currently returns `BackendUnavailable`.
+the host. The full native usability suite also passes in the VM-contained
+configuration, including independently observed inhibition acquisition/release.
 Build using the SDK's locked Git-aware flake:
 
 ```sh
@@ -76,10 +76,15 @@ When using `systemd-run`, specify `--working-directory=/home/runic` and
 `PATH=/run/current-system/sw/bin`; launching from `/` makes .NET's configuration
 watcher traverse the filesystem, including the shared store.
 
-Native controls and WebView snapshot/action assertions passed on 2026-09-10.
-The same run reached a real limitation: inhibition returned `BackendUnavailable`.
-Do not count the full usability suite as passed. Investigate headless
-session/inhibition semantics, then test pickers, notifications, IME and audio.
+The full native usability suite passed on 2026-09-10: accessible control names,
+WebView snapshot/action, GNOME inhibitor registration/removal, portal inhibition
+acquisition/release, and pending-picker invalidation on owner closure. The first
+inhibition failure was a missing desktop entry, not a headless-session limitation:
+the portal rejected registration of `com.runic.tests.Activation`. The configuration
+now installs that identity with the fixture launcher. Keep the fixture executable
+at `/home/runic/Runic.Desktop.Gtk4.Smoke`. Shared portal registration also emits an
+actionable diagnostic when the desktop rejects an explicit application ID.
+Picker grant/save flows, notifications, IME and audio still need container runs.
 Add a separate Plasma configuration and repeat before claiming parity.
 Nested Flatpak grants and WebKit sandbox behavior require their own execution;
 a running compositor does not establish those results.

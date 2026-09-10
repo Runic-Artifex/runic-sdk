@@ -34,8 +34,17 @@ internal sealed class PortalConnection : IDisposable
             }
             if (application?.ApplicationId is { } id && !File.Exists("/.flatpak-info") && Environment.GetEnvironmentVariable("SNAP") is null)
             {
-                await new Protocol.Registry(session.Connection, session.Destination, "/org/freedesktop/portal/desktop")
-                    .RegisterAsync(id, new()).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await new Protocol.Registry(session.Connection, session.Destination, "/org/freedesktop/portal/desktop")
+                        .RegisterAsync(id, new()).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                }
+                catch (DBusErrorReplyException)
+                {
+                    application.Diagnose("portal-identity-registration-failed", "The portal rejected the application's desktop identity.",
+                        $"Install a matching {id}.desktop entry visible to the desktop session. For development, omit the explicit application ID to use desktop-inferred identity.");
+                    throw;
+                }
                 application.Diagnose("portal-identity-registered", "The portal connection registered its desktop identity.", "All services created by this application use the same desktop ID.");
             }
             return session;
