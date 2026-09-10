@@ -4,6 +4,12 @@ Runic's P1 desktop services have Linux, Windows and macOS providers. Select the
 provider explicitly; GTK3 versus GTK4 remains a separate window-host decision.
 There is no fallback from a failed portal to a different toolkit.
 
+Native verification: Windows x64 and KDE/GNOME Wayland have live P1 checks.
+The macOS preferences, notification consent/actions and file-handoff providers
+are **implemented but untested on a real macOS system**. Bundled `.app` and cold
+activation checks are pending Mac access; cross-platform compilation is not
+native macOS validation.
+
 The API baselines below are additional to the supported OS versions of the
 selected .NET runtime and Runic host.
 
@@ -353,3 +359,37 @@ test registration, requires a fresh identity, and refuses to replace an existing
 test protocol. Withdraw the notification first, then use `-Action Remove -AppId`
 with the same ID to remove the test shortcut/registration. OS-owned notification
 history may persist, so use another suffix for each first-use regression run.
+
+## Linux notification activation and focus
+
+For an installed application, configure one `PortalApplication` identity matching
+its `.desktop` file. Subscribe to `IDesktopNotifications.Activated` before calling
+`RequestPermissionAsync` (or submitting a notification): claiming the application
+bus name may immediately deliver a queued action after a cold launch.
+
+`DesktopNotificationActivation.PlatformContext` carries the optional Wayland
+activation token and X11 startup ID from `org.freedesktop.Application.ActivateAction`.
+After validating the notification/action and choosing the corresponding live
+window, call `Gtk3PortalWindowOwner.PresentAsync(activation.PlatformContext)` or
+`Gtk4PortalWindowOwner.PresentAsync(activation.PlatformContext)`. The verified
+owner dispatches both startup-ID application and presentation on the GTK thread.
+Await completion in application code and handle a closed owner normally.
+
+Keep this context on the native side and dispatch promptly. Do not persist it,
+send it over the frontend bridge, or log the token. `ToString` redacts the opaque
+context. Presentation requests focus; the compositor decides whether to grant it.
+An action callback by itself does not prove the window received focus.
+
+Cold launch additionally needs an installed session D-Bus service named for the
+application ID whose `Exec` starts the notification receiver. Registering a
+`.desktop` file alone does not install that service. Subscribe and initialize the
+receiver in the fresh process before acquiring its bus name. The notification
+service accepts valid action targets without an in-memory submission history;
+applications must still validate their own action IDs and URI routes. Runic's
+notification receiver implements `ActivateAction`, not a complete desktop
+`Activate`/`Open` application protocol: do not claim `DBusActivatable=true` unless
+your application implements that complete contract.
+
+See the [desktop activation specification](https://specifications.freedesktop.org/desktop-entry/latest/dbus.html)
+and [GTK startup ID API](https://docs.gtk.org/gtk4/method.Window.set_startup_id.html).
+The [VM guide](desktop/portal-vm.md) provides the installed test-service setup.

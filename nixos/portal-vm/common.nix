@@ -18,7 +18,7 @@ let
     text = ''
       usage() {
         printf '%s\n' \
-          'Usage: runic-portal-test <settings|native|notifications|open|choose|reveal>' \
+          'Usage: runic-portal-test <settings|native|gtk4|activation-live|activation-submit|activation-receive|notifications|open|choose|reveal>' \
           "" \
           'Runs a source snapshot mounted by the Runic portal VM.' \
           'The desktop-service modes open real portal UI; notifications waits for the Open result action.'
@@ -33,6 +33,14 @@ let
         native)
           project="tests/dotnet/Runic.Platform.Prototype.Tests"
           arguments=(--native)
+          ;;
+        gtk4|activation-live|activation-submit|activation-receive)
+          project="tests/native/Runic.Desktop.Gtk4.Smoke"
+          arguments=()
+          export RUNIC_TEST_APP_ID="com.runic.tests.Activation"
+          if test "$mode" != gtk4; then
+            arguments=("--notification-''${mode#activation-}")
+          fi
           ;;
         notifications|open|choose|reveal)
           project="tests/dotnet/Runic.Platform.Prototype.Tests"
@@ -84,6 +92,24 @@ let
       export NUGET_HTTP_CACHE_PATH="$PWD/.cache/nuget-http"
       nix develop "$source" --command dotnet run --project "$project" -c Release -- "''${arguments[@]}"
     '';
+  };
+  activationReceiver = pkgs.writeShellScript "runic-activation-receiver" ''
+    export RUNIC_TEST_ACTIVATION_RECEIPT=/home/runic/.cache/runic-activation-receipt
+    exec > /home/runic/.cache/runic-activation-receive.log 2>&1
+    exec ${portalTest}/bin/runic-portal-test activation-receive
+  '';
+  activationService = pkgs.writeTextDir "share/dbus-1/services/com.runic.tests.Activation.service" ''
+    [D-BUS Service]
+    Name=com.runic.tests.Activation
+    Exec=${activationReceiver}
+  '';
+  activationDesktopItem = pkgs.makeDesktopItem {
+    name = "com.runic.tests.Activation";
+    desktopName = "Runic Activation Test";
+    comment = "Notification activation and GTK4 focus fixture";
+    exec = "${portalTest}/bin/runic-portal-test activation-live";
+    terminal = false;
+    categories = [ "Development" ];
   };
   portalDesktopItem = pkgs.makeDesktopItem {
     name = "com.runic.tests.Portal";
@@ -150,6 +176,7 @@ in
     "flakes"
   ];
   services.dbus.enable = true;
+  services.dbus.packages = [ activationService ];
   services.pipewire = {
     enable = true;
     pulse.enable = true;
@@ -171,6 +198,8 @@ in
   environment.systemPackages = with pkgs; [
     portalTest
     portalDesktopItem
+    activationDesktopItem
+    activationService
     git
     curl
     rsync

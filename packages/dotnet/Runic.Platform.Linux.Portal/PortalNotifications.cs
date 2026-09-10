@@ -178,6 +178,10 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 var reader = context.Request.GetBodyReader();
                 var action = reader.ReadString();
                 var parameters = reader.ReadArrayOfVariantValue();
+                var platformData = reader.ReadDictionaryOfStringToVariantValue();
+                string? ContextString(string key) => platformData.TryGetValue(key, out var value) && value.Type == VariantValueType.String
+                    ? value.GetString() : null;
+                var activationContext = new DesktopActivationContext(ContextString("activation-token"), ContextString("desktop-startup-id"));
                 if (action != "runic-notification" || parameters.Length != 1 || parameters[0].Type != VariantValueType.String)
                     throw new ArgumentException("Unknown notification action.");
                 var target = parameters[0].GetString();
@@ -188,7 +192,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 Uri? uri = parts[2].Length == 0 ? null : new Uri(parts[2], UriKind.Absolute);
                 if (uri is { IsFile: true }) throw new ArgumentException("File activation targets are not accepted.");
                 // Installed activation can arrive after restart. Consumers validate the IDs against their durable state.
-                owner.Raise(new(parts[0], parts[1], uri));
+                owner.Raise(new(parts[0], parts[1], uri) { PlatformContext = activationContext });
                 using var reply = context.CreateReplyWriter(null); context.Reply(reply.CreateMessage());
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException or FormatException)

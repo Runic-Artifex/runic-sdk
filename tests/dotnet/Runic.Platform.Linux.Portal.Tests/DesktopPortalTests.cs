@@ -53,7 +53,9 @@ internal static class DesktopPortalTests
         Check(await installed.RequestPermissionAsync() is PlatformResult<Unit>.Success, "installed application name acquired");
         Check(service.RegisteredId == appId && service.Calls is ["Register", "Get"], "host identity registered before notification capability call");
         await connection.CallMethodAsync(Activation(connection, appId));
-        Check((await cold.Task.WaitAsync(TimeSpan.FromSeconds(3))) is { NotificationId: "previous-process", ActionId: "open" }, "activation without in-memory notification history");
+        var received = await cold.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Check(received is { NotificationId: "previous-process", ActionId: "open", PlatformContext: { ActivationToken: "test-wayland-token", StartupId: "test-x11-id" } }, "cold activation preserves platform context across worker dispatch");
+        Check(!received.ToString().Contains("test-wayland-token", StringComparison.Ordinal), "activation diagnostics do not expose focus tokens");
         foreach (var (error, denied) in new[] { ("org.freedesktop.portal.Error.Failed", false), ("org.freedesktop.portal.Error.NotAllowed", true) })
         {
             service.RegistrationError = error;
@@ -75,7 +77,10 @@ internal static class DesktopPortalTests
         writer.WriteMethodCallHeader(destination: destination, path: "/org/runic/PortalTests", @interface: "org.freedesktop.Application", member: "ActivateAction", signature: "sava{sv}");
         writer.WriteString("runic-notification");
         writer.WriteArray(new[] { VariantValue.String("previous-process\nopen\nrunic-test://result/1") });
-        var data = writer.WriteDictionaryStart(); writer.WriteDictionaryEnd(data);
+        var data = writer.WriteDictionaryStart();
+        writer.WriteDictionaryEntryStart(); writer.WriteString("activation-token"); writer.WriteVariant(VariantValue.String("test-wayland-token"));
+        writer.WriteDictionaryEntryStart(); writer.WriteString("desktop-startup-id"); writer.WriteVariant(VariantValue.String("test-x11-id"));
+        writer.WriteDictionaryEnd(data);
         return writer.CreateMessage();
     }
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }

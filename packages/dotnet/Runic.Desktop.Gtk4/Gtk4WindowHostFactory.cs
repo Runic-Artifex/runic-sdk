@@ -431,6 +431,12 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
                     options.MinimumHeight is { } minimumHeight ? checked((int)minimumHeight) : -1);
             }
             window.SetChild(webView);
+            // Hidden windows still need a native surface for portal ownership
+            // and orderly Wayland teardown. Realizing does not map/show them.
+            // Some GTK 4 Wayland session cleanup versions assume it exists.
+            // Cast explicitly: Gtk.Native.Realize only initializes a surface
+            // that already exists; Gtk.Widget.Realize creates it first.
+            ((Gtk.Widget)window).Realize();
             finalization = new NativeObjectFinalizationProbe();
             finalization.Track(window.Handle.DangerousGetHandle());
             finalization.Track(webView.Handle.DangerousGetHandle());

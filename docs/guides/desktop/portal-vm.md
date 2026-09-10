@@ -81,3 +81,28 @@ done < <(systemctl --user show-environment)
 Use `sudo poweroff` in the guest to stop it cleanly. Preserve its disk to reuse
 dependencies and build outputs, or remove a task-owned disposable disk after
 retaining the logs you need.
+
+## GTK4 and notification focus
+
+`runic-portal-test gtk4` runs the GTK4/WebKitGTK 6 fixture: window lifecycle,
+portal parent, clipboard, DesktopHost bridge, close veto/retry and reopen.
+It checks that Wayland has focused the window before testing the clipboard.
+
+The VM installs a second desktop identity, `com.runic.tests.Activation`, and a
+session D-Bus activation service. Run `runic-portal-test activation-live` and
+click **Open result** to test a running GTK4 receiver. The fixture logs whether
+an activation token arrived and whether GTK reports the window active.
+
+For cold activation, run `runic-portal-test activation-submit` and wait for its
+successful exit. Then click **Open result**. The bus starts a different process
+through the installed service; read `~/.cache/runic-activation-receive.log` and
+`~/.cache/runic-activation-receipt`. Compare the receiver PID with the submitted
+PID, and require `focused=True`, not just callback delivery. The service helper
+uses the workspace built by submission, so the click does not require the first
+restore/build. The test removes its notification after receiving the action.
+No notification tokens are written to logs or receipts.
+
+The test user and unlock password are both `runic`. GNOME test guests disable
+idle locking by default so a wait for manual input does not hide notification
+controls. In GNOME, hover over a notification to reveal **Open result**; clicking
+the body invokes the separate default action and does not satisfy this test.

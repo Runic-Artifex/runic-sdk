@@ -6,5 +6,6 @@
   <ItemGroup>
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
   </ItemGroup>
 </Project>

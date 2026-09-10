@@ -21,6 +21,22 @@ public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IP
     public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) =>
         owner.InvokeAsync(action, cancellationToken);
 
+    /// <summary>Requests presentation on this verified owner using the desktop's activation context.</summary>
+    /// <remarks>The compositor decides whether to grant focus. Never sets process-wide environment variables.</remarks>
+    public ValueTask PresentAsync(DesktopActivationContext? context = null, CancellationToken cancellationToken = default) =>
+        owner.InvokeAsync(window =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (window == 0 || !owner.IsAvailable) throw new OwnerClosedException();
+            if ((context?.ActivationToken ?? context?.StartupId) is { } startupId) SetStartupId(window, startupId);
+            Present(window);
+        }, cancellationToken);
+
+    [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_window_set_startup_id", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial void SetStartupId(nint window, string startupId);
+    [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_window_present")]
+    private static partial void Present(nint window);
+
     /// <inheritdoc />
     public async ValueTask<PortalParentLease> ExportParentAsync(CancellationToken cancellationToken = default)
     {

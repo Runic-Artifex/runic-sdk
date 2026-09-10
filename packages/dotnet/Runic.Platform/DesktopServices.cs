@@ -36,7 +36,33 @@ public sealed record DesktopNotification(string Id, string Title, string Body)
     public Uri? ActivationUri { get; init; }
 }
 /// <summary>A user action on a notification. Treat activation as untrusted input at the application boundary.</summary>
-public sealed record DesktopNotificationActivation(string NotificationId, string ActionId, Uri? ActivationUri = null);
+public sealed record DesktopNotificationActivation(string NotificationId, string ActionId, Uri? ActivationUri = null)
+{
+    /// <summary>Short-lived desktop activation data. Dispatch promptly; do not persist it.</summary>
+    public DesktopActivationContext? PlatformContext { get; init; }
+}
+
+/// <summary>Opaque, short-lived focus authorization supplied by the desktop.</summary>
+public sealed class DesktopActivationContext
+{
+    /// <summary>Wayland activation token, when supplied by the compositor.</summary>
+    public string? ActivationToken { get; }
+    /// <summary>X11 startup-notification identifier, when supplied by the desktop.</summary>
+    public string? StartupId { get; }
+    /// <summary>Creates context for immediate presentation dispatch.</summary>
+    public DesktopActivationContext(string? activationToken = null, string? startupId = null)
+    {
+        Validate(activationToken); Validate(startupId);
+        ActivationToken = activationToken; StartupId = startupId;
+    }
+    private static void Validate(string? value)
+    {
+        if (value is not null && (value.Length > 4096 || value.Contains('\0', StringComparison.Ordinal)))
+            throw new ArgumentException("Invalid desktop activation context.");
+    }
+    /// <inheritdoc />
+    public override string ToString() => "DesktopActivationContext { opaque }";
+}
 /// <summary>Application-scoped native notifications with explicit authorization.</summary>
 public interface IDesktopNotifications : IAsyncDisposable
 {

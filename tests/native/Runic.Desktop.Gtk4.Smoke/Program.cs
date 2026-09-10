@@ -7,6 +7,9 @@ using System.Runtime.Versioning;
 
 #pragma warning disable CA1416 // The executable checks Linux before entering the annotated smoke path.
 
+if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
+    return NotificationActivationSmoke.Run(args);
+
 using var watchdog = new Timer(static _ =>
 {
     Console.Error.WriteLine("GTK 4 smoke exceeded its 60-second deadline.");
@@ -29,6 +32,7 @@ catch (Exception error)
     Console.Error.WriteLine(error);
     Environment.ExitCode = 1;
 }
+return Environment.ExitCode;
 
 [SupportedOSPlatform("linux")]
 static void AssertRunnerContract()
@@ -114,6 +118,15 @@ static async Task RunAsync()
         return;
     }
     var clipboard = Gtk4PlatformProvider.CreateTextClipboard(owner);
+    // Wayland clipboard access requires the compositor to have focused the
+    // window. Present queues that request; it does not synchronously grant it.
+    bool focused = false;
+    for (int attempt = 0; attempt < 50 && !focused; attempt++)
+    {
+        await owner.InvokeAsync(window => focused = NotificationActivationSmoke.IsActive(window) != 0);
+        if (!focused) await Task.Delay(100);
+    }
+    if (!focused) throw new InvalidOperationException("The compositor did not focus the clipboard test window.");
     try
     {
         if (await clipboard.WriteTextAsync("") is not PlatformResult<Unit>.Success ||
@@ -121,10 +134,12 @@ static async Task RunAsync()
         {
             throw new InvalidOperationException("GTK 4 empty clipboard text was not preserved.");
         }
-        if (await clipboard.WriteTextAsync("Runic GTK4 clipboard") is not PlatformResult<Unit>.Success ||
-            await clipboard.ReadTextAsync(64) is not PlatformResult<string?>.Success { Value: "Runic GTK4 clipboard" })
+        var write = await clipboard.WriteTextAsync("Runic GTK4 clipboard");
+        var read = await clipboard.ReadTextAsync(64);
+        if (write is not PlatformResult<Unit>.Success ||
+            read is not PlatformResult<string?>.Success { Value: "Runic GTK4 clipboard" })
         {
-            throw new InvalidOperationException("GTK 4 clipboard round-trip failed.");
+            throw new InvalidOperationException($"GTK 4 clipboard round-trip failed: write={write}; read={read}.");
         }
         if (await clipboard.ReadTextAsync(3) is not PlatformResult<string?>.Failed { Code: FailureCode.TooLarge })
         {

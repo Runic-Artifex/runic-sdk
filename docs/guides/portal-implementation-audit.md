@@ -30,8 +30,8 @@ types and shared request infrastructure. XML only specifies many options as
 | Notification portal restart | The session bus can outlive the portal process. | Implemented owner-bound calls and re-registration on the next notification operation; an in-flight replacement test proves no automatic replay. |
 | Host identity outside notifications | Services need consistent identity without sharing unrelated resource lifetimes. | `PortalApplication` configures one ID for settings, notifications, chooser, URI and FD handoffs; each owned connection registers before portal calls. |
 | Settings observation | Runic polls and deduplicates; ashpd offers native SettingChanged streams. | Consider signal observation with reconnect/resync if polling becomes measurable friction. |
-| Activation focus | Notification ActivateAction platform data is not exposed; Wayland activation token is discarded. | Follow-up: preserve token through presentation dispatch before promising focus/foreground behavior. |
-| Live coverage | The generated pilot passed JIT and NativeAOT protocol tests, then a live JIT KDE action/withdrawal check. Earlier identified history checks also passed. | GNOME/macOS acceptance and real Linux cold relaunch remain separate follow-ups. |
+| Activation focus | Notification ActivateAction preserves bounded activation-token and desktop-startup-id context. GTK3/GTK4 owners apply it before presenting the selected window on its dispatcher. | KDE and GNOME live and cold GTK4 focus passed; focus remains compositor-controlled. |
+| Live coverage | JIT and NativeAOT protocol checks pass. KDE/GNOME Wayland notification actions and P1 file handoffs passed in reproducible guests; GTK4 live/cold focus also passed on both desktops. | macOS native providers remain implemented but untested pending Mac access. |
 
 ## Interactive checks
 
