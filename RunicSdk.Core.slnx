@@ -99,6 +99,7 @@
     <Project Path="tests/native/Runic.Desktop.Gtk4.Smoke/Runic.Desktop.Gtk4.Smoke.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/Runic.Administration.Verify/Runic.Administration.Verify.csproj" />
     <Project Path="tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" />
     <Project Path="tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
     <Project Path="tools/Runic.Translations.Compiler/Runic.Translations.Compiler.csproj" />

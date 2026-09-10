@@ -169,7 +169,8 @@
         "packages/dotnet/Runic.Platform.Administration.Windows",
         "tests/dotnet/Runic.Platform.Administration.Windows.Tests",
         "tests/dotnet/Runic.Platform.Administration.Windows.ApiTests",
-        "examples/dotnet/Runic.Administration.Console"
+        "examples/dotnet/Runic.Administration.Console",
+        "tools/Runic.Administration.Verify"
       ]
     },
     "command-line": {
