@@ -5,30 +5,35 @@ acceptance. Build exactly one desktop at a time:
 
 ```sh
 nix build .#nixosConfigurations.runic-portal-kde.config.system.build.vm
-./result/bin/run-runic-portal-vm
+./result/bin/run-runic-portal-kde-vm
 
 # Or, in a separate invocation:
 nix build .#nixosConfigurations.runic-portal-gnome.config.system.build.vm
-./result/bin/run-runic-portal-vm
+./result/bin/run-runic-portal-gnome-vm
 ```
 
 Each image logs in as `runic` automatically. The password is `runic` if a
 desktop prompt needs it. The VM uses its own session bus and only installs the
-portal backend for its selected desktop: KDE Plasma uses
-`xdg-desktop-portal-kde`; GNOME uses `xdg-desktop-portal-gnome`. This makes a
-successful picker or notification evidence for the selected backend rather than
-for the host session.
+desktop's upstream portal configuration. Plasma uses its `kde-portals.conf`,
+including `plasmanotify` for notifications; GNOME uses its `gnome-portals.conf`
+and the GTK fallback for interfaces GNOME does not export, including the file
+chooser and notifications. This makes a successful picker or notification
+evidence for the selected desktop session rather than for the host session.
 
-The image contains GTK 3, GTK 4, WebKitGTK 4.1, WebKitGTK 6.0, D-Bus and the
-same .NET SDK major version as the development flake. It mounts the Git-aware
-source snapshot supplied to `nix build` at `/home/runic/src` read-only. The test
-command copies that snapshot to the VM disk before restore/build, so build
-outputs never modify the mounted source.
+The image contains GTK 3, GTK 4, WebKitGTK 4.1, WebKitGTK 6.0 and D-Bus. It
+mounts the Git-aware source snapshot supplied to `nix build` at
+`/home/runic/src` read-only. The test command retains one bounded workspace on
+the VM disk, refreshing it only when the mounted snapshot changes. It enters
+the mounted flake's locked development shell for Bun, the .NET SDK and native
+library paths, then installs the frontend from the lockfile on the first use.
+Build outputs never modify the mounted source.
 
-Open Konsole inside the VM and run one check at a time:
+Open the desktop's terminal application inside the VM and run one check at a
+time:
 
 ```sh
 runic-portal-test settings
+runic-portal-test native
 runic-portal-test notifications
 runic-portal-test open
 runic-portal-test choose
@@ -40,6 +45,10 @@ and waits for the **Open result** action. Check notification history before its
 120-second wait ends; the fixture removes its own notification after activation
 or timeout. `open`, `choose` and `reveal` require manual confirmation after the
 desktop UI handles the temporary result file.
+
+The launchers use separate default disks, `runic-portal-kde.qcow2` and
+`runic-portal-gnome.qcow2`, in the directory where each command runs. Set
+`NIX_DISK_IMAGE` to an explicit path when a disposable test state is required.
 
 The helper tests the snapshot that Nix captured. Stage intended source changes
 before building a VM; do not use `path:.`, which would copy ignored caches and

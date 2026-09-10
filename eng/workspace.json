@@ -389,6 +389,7 @@
         "tests/native/platform-sandbox",
         "tests/native/windows-notifications",
         "eng/portals",
+        "nixos/portal-vm",
         "packages/dotnet/Runic.Platform.Linux.Portal",
         "packages/dotnet/Runic.Platform.Linux.Gtk4",
         "tests/dotnet/Runic.Platform.Linux.Portal.Tests"

@@ -22,11 +22,13 @@
         runic-portal-kde = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs.runicSource = self.outPath;
+          specialArgs.portalDesktop = "kde";
           modules = [ ./nixos/portal-vm/kde.nix ];
         };
         runic-portal-gnome = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs.runicSource = self.outPath;
+          specialArgs.portalDesktop = "gnome";
           modules = [ ./nixos/portal-vm/gnome.nix ];
         };
       };
