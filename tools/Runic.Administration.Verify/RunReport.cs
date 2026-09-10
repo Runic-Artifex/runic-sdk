@@ -7,7 +7,7 @@ using Runic.Platform.Administration.Windows;
 internal sealed record CheckResult(string Name, string Status, double Seconds, string Detail, string? ErrorType,
     string? Operation, string? Category, string? NativeDomain, int? NativeCode, string? StackTrace);
 internal sealed record ReportDocument(string RunId, string Machine, string Os, string LibraryVersion, string Suite,
-    bool ChangesEnabled, string? Server, string? Domain, string? BaseDn, DateTimeOffset Started, DateTimeOffset? Finished,
+    bool ChangesEnabled, string Backend, string? Server, string? Domain, string? BaseDn, DateTimeOffset Started, DateTimeOffset? Finished,
     List<CheckResult> Results, List<string> Resources);
 [JsonSerializable(typeof(ReportDocument))]
 [JsonSourceGenerationOptions(WriteIndented = true)]
@@ -27,7 +27,7 @@ internal sealed class RunReport
         Directory.CreateDirectory(Folder);
         _document = new(Id, Environment.MachineName, Environment.OSVersion.ToString(),
             typeof(WindowsAdministrationException).Assembly.GetName().Version?.ToString() ?? "unknown",
-            options.Suite, options.Changes, options.Server, options.Domain, options.BaseDn, DateTimeOffset.UtcNow, null, Results, []);
+            options.Suite, options.Changes, options.Backend, options.Server, options.Domain, options.BaseDn, DateTimeOffset.UtcNow, null, Results, []);
         Save();
     }
     internal async Task Check(string name, Func<Task> action, CancellationToken cancellationToken = default)
@@ -56,7 +56,7 @@ internal sealed class RunReport
         var json = Path.Combine(Folder, "report.json");
         File.WriteAllText(json + ".tmp", JsonSerializer.Serialize(data, ReportJson.Default.ReportDocument));
         File.Move(json + ".tmp", json, true);
-        var text = new StringBuilder($"Runic administration verification {Id}\nMachine: {data.Machine}; OS: {data.Os}\nSuite: {data.Suite}; changes: {data.ChangesEnabled}\n\n");
+        var text = new StringBuilder($"Runic administration verification {Id}\nMachine: {data.Machine}; OS: {data.Os}\nSuite: {data.Suite}; changes: {data.ChangesEnabled}; shares/firewall backend: {data.Backend}\n\n");
         foreach (var result in Results)
         {
             text.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"{result.Status,-8} {result.Name} ({result.Seconds:F2}s) {result.Detail}");

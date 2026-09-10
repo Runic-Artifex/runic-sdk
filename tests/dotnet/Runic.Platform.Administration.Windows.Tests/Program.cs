@@ -1,3 +1,4 @@
+using Runic.Platform.Administration.Windows.Internal.Backends;
 using System.Runtime.Versioning;
 using Runic.Platform.Administration.Windows.GroupPolicy;
 using System.Collections.Immutable;
@@ -28,11 +29,13 @@ internal static class NativeTests
 {
     internal static async Task RunAsync()
     {
+        CheckDuplicateShareError();
         await CheckShortcutsAsync();
         CheckProcesses();
         await CheckServicesAsync();
         await CheckTaskInspectionAsync();
         await CheckFirewallInspectionAsync();
+        await CheckPilotBackendsAsync();
         CheckLdapTransport();
         await CheckInventoryAsync();
         await CheckNativeWmiAsync();
@@ -45,6 +48,48 @@ internal static class NativeTests
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static async Task CheckPilotBackendsAsync()
+    {
+        // These reads exercise both native projections against the same Windows state, without mutation.
+        var handwritten = AdministrationBackends.Firewall("handwritten");
+        var generated = AdministrationBackends.Firewall("cswin32");
+        Check((await handwritten.GetProfilesAsync()).SequenceEqual(await generated.GetProfilesAsync()),
+            "Firewall backends disagree on effective profiles.");
+        var expectedRules = (await handwritten.EnumerateAsync()).GroupBy(rule =>
+            (rule.Configuration with { Interfaces = default }, string.Join('\0', rule.Configuration.Interfaces)))
+            .ToDictionary(group => group.Key, group => group.Count());
+        var actualRules = (await generated.EnumerateAsync()).GroupBy(rule =>
+            (rule.Configuration with { Interfaces = default }, string.Join('\0', rule.Configuration.Interfaces)))
+            .ToDictionary(group => group.Key, group => group.Count());
+        Check(expectedRules.Count == actualRules.Count && expectedRules.All(pair => actualRules.GetValueOrDefault(pair.Key) == pair.Value),
+            "Firewall backends disagree on rule data or duplicates.");
+        var missing = "RunicMissing-" + Guid.NewGuid().ToString("N");
+        foreach (var backend in new[] { "handwritten", "cswin32" })
+        {
+            Check(await AdministrationBackends.Firewall(backend).FindAsync(missing) is null, "Missing firewall rule must remain absent.");
+            Check(AdministrationBackends.Shares(backend).Find(missing) is null, "Missing share must remain absent.");
+            try
+            {
+                await AdministrationBackends.Firewall(backend).CreateAsync(new(missing, FirewallDirection.Inbound, FirewallAction.Block)
+                { Protocol = 1, LocalPorts = "80" });
+                throw new InvalidOperationException("Invalid firewall specification reached native creation.");
+            }
+            catch (ArgumentException) { }
+        }
+        var expectedShares = AdministrationBackends.Shares("handwritten").Enumerate().OrderBy(share => share.Name, StringComparer.Ordinal);
+        var actualShares = AdministrationBackends.Shares("cswin32").Enumerate().OrderBy(share => share.Name, StringComparer.Ordinal);
+        Check(expectedShares.SequenceEqual(actualShares), "Share backends disagree on native enumeration.");
+        Console.WriteLine("PASS Handwritten/CsWin32 parity: firewall profiles/rules, SMB enumeration, missing lookups and validation.");
+    }
+
+    private static void CheckDuplicateShareError()
+    {
+        var error = NativeError.Win32("Create SMB share", 2118); // NERR_DuplicateShare
+        Check(error.Category == AdministrationErrorCategory.Conflict, "Duplicate SMB share must be a conflict.");
+        Check(error.NativeErrorDomain == NativeErrorDomain.Win32 && error.NativeErrorCode == 2118 &&
+            error.Operation == "Create SMB share", "Conflict classification must retain the native error identity.");
     }
 
     private static async Task CheckShortcutsAsync()

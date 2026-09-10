@@ -10,6 +10,7 @@ Runic Windows Administration verification (Windows x64, NativeAOT)
   Runic.AdminVerify local [--allow-changes] [--only shortcuts,services,tasks,firewall,shares,system,processes,networks]
   Runic.AdminVerify domain --server DC --domain example.test [--base-dn "OU=Tests,DC=example,DC=test"]
       [--dns-server DNS] [--dns-zone example.test] [--allow-changes] [--only ldap,gpo,dns]
+  Local: --backend handwritten|cswin32 (shares and firewall only; default cswin32)
   Common: --out DIRECTORY (default ./runic-results)
 
 Without --allow-changes: inspection only, plus owned temporary shortcut files.
@@ -37,6 +38,7 @@ using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; cancellation.Cancel(); };
 var report = new RunReport(options);
 Console.WriteLine($"Run {report.Id}; reports: {report.Folder}");
+Console.WriteLine($"Shares/firewall backend: {options.Backend}; other capabilities: generated bindings (LDAP uses System.DirectoryServices.Protocols).");
 Console.WriteLine(options.Changes ? "Administrative fixture writes ENABLED." : "Administrative inspection only.");
 try
 {
@@ -50,7 +52,7 @@ Console.WriteLine($"Report: {Path.Combine(report.Folder, "report.txt")}");
 return report.Results.Any(r => r.Status is "FAIL" or "CANCELED") || cancellation.IsCancellationRequested ? 1 : 0;
 
 internal sealed record Options(string Suite, bool Changes, string Output, string? Server, string? Domain,
-    string? BaseDn, string? DnsServer, string? DnsZone, HashSet<string> Only)
+    string? BaseDn, string? DnsServer, string? DnsZone, HashSet<string> Only, string Backend)
 {
     internal bool Includes(string capability) => Only.Count == 0 || Only.Contains(capability);
     internal static Options Parse(string[] args)
@@ -58,7 +60,7 @@ internal sealed record Options(string Suite, bool Changes, string Output, string
         if (args[0] is not ("local" or "domain")) throw new ArgumentException("Choose local or domain.");
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         var changes = false;
-        var allowed = new[] { "--out", "--server", "--domain", "--base-dn", "--dns-server", "--dns-zone", "--only" };
+        var allowed = new[] { "--out", "--server", "--domain", "--base-dn", "--dns-server", "--dns-zone", "--only", "--backend" };
         for (var i = 1; i < args.Length; i++)
         {
             if (args[i] == "--allow-changes") { if (changes) throw new ArgumentException("Duplicate --allow-changes."); changes = true; continue; }
@@ -72,9 +74,12 @@ internal sealed record Options(string Suite, bool Changes, string Output, string
         var only = (Get("--only") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
         if (values.ContainsKey("--only") && only.Count == 0 || only.Any(value => !capabilities.Contains(value, StringComparer.Ordinal)))
             throw new ArgumentException("Invalid --only selection for this suite.");
-        if (args[0] == "local" && values.Keys.Any(key => key is not ("--out" or "--only"))) throw new ArgumentException("Domain target options cannot be used with local.");
+        if (args[0] == "local" && values.Keys.Any(key => key is not ("--out" or "--only" or "--backend"))) throw new ArgumentException("Domain target options cannot be used with local.");
         if (args[0] == "domain" && (Get("--server") is null || Get("--domain") is null)) throw new ArgumentException("Domain suite requires --server and --domain.");
         if (args[0] == "domain" && changes && Get("--base-dn") is null) throw new ArgumentException("Domain writes require an explicit existing --base-dn.");
-        return new(args[0], changes, Path.GetFullPath(Get("--out") ?? "runic-results"), Get("--server"), Get("--domain"), Get("--base-dn"), Get("--dns-server"), Get("--dns-zone"), only);
+        var backend = Get("--backend") ?? "cswin32";
+        if (backend is not ("handwritten" or "cswin32")) throw new ArgumentException("Backend must be handwritten or cswin32.");
+        if (args[0] == "domain" && values.ContainsKey("--backend")) throw new ArgumentException("Backend selection currently applies only to the local shares/firewall pilot.");
+        return new(args[0], changes, Path.GetFullPath(Get("--out") ?? "runic-results"), Get("--server"), Get("--domain"), Get("--base-dn"), Get("--dns-server"), Get("--dns-zone"), only, backend);
     }
 }

@@ -1,3 +1,4 @@
+using Runic.Platform.Administration.Windows.Internal.Backends;
 using Runic.Platform.Administration.Windows;
 using Runic.Platform.Administration.Windows.DirectoryServices;
 using Runic.Platform.Administration.Windows.Firewall;
@@ -63,7 +64,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         {
             await report.Check("firewall.inspect", async () =>
             {
-                var client = new WindowsFirewallClient();
+                var client = AdministrationBackends.Firewall(options.Backend);
                 Require((await client.GetProfilesAsync(token)).Length == 3, "Expected three firewall profiles.");
                 _ = await client.EnumerateAsync(token);
             }, token);
@@ -71,8 +72,13 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         }
         if (options.Includes("shares"))
         {
-            await report.Check("shares.inspect", () => { _ = new WindowsShareClient().Enumerate(); return Task.CompletedTask; }, token);
-            if (options.Changes) await report.Check("shares.roundtrip-security", Shares, token); else report.Skip("shares.roundtrip-security", "Requires --allow-changes.");
+            await report.Check("shares.inspect", () => { _ = AdministrationBackends.Shares(options.Backend).Enumerate(); return Task.CompletedTask; }, token);
+            foreach (var explicitSecurity in new[] { false, true })
+            {
+                var check = explicitSecurity ? "shares.explicit-security" : "shares.default-security";
+                if (options.Changes) await report.Check(check, () => Shares(explicitSecurity), token);
+                else report.Skip(check, "Requires --allow-changes.");
+            }
         }
     }
     private async Task Shortcuts()
@@ -180,18 +186,20 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
     }
     private async Task Firewall()
     {
-        var client = new WindowsFirewallClient();
+        var client = AdministrationBackends.Firewall(options.Backend);
         var spec = new FirewallRuleSpecification(report.Prefix, FirewallDirection.Inbound, FirewallAction.Block)
         {
             Enabled = false, ApplicationPath = Executable, Protocol = 6, LocalPorts = "49199", RemoteAddresses = "127.0.0.1",
             Grouping = report.Prefix, Description = "fixture"
         };
-        FirewallRuleIdentity? identity = null;
+        var identity = new FirewallRuleIdentity(spec.Name, spec.Grouping, spec.ApplicationPath, spec.ServiceName, spec.Direction);
+        Require(await client.FindAsync(spec.Name, token) is null, "Fixture firewall name already exists; refusing to touch it.");
+        var created = false;
         report.Resource("Disabled firewall rule: " + report.Prefix);
         try
         {
             await client.CreateAsync(spec, token);
-            identity = new(spec.Name, spec.Grouping, spec.ApplicationPath, spec.ServiceName, spec.Direction);
+            created = true;
             var before = await client.FindAsync(spec.Name, token) ?? throw new InvalidOperationException("New firewall rule missing.");
             await Conflict(() => client.CreateAsync(spec, token));
             await client.UpdateAsync(identity, new() { Description = "updated", LocalPorts = "49200" }, token);
@@ -201,45 +209,96 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         }
         finally
         {
-            if (identity is not null) await report.Check("cleanup.firewall", async () =>
+            await report.Check("cleanup.firewall", async () =>
             {
-                Require(await client.DeleteAsync(identity), "Created rule unexpectedly absent before cleanup.");
+                // Check even after Add throws, but delete only our exact identity.
+                var observed = await client.FindAsync(spec.Name);
+                if (observed is not null)
+                {
+                    Require(observed.Identity == identity, "Firewall identity changed; refusing cleanup.");
+                    Require(await client.DeleteAsync(identity), "Created rule unexpectedly absent before cleanup.");
+                }
+                else Require(!created, "Created rule unexpectedly absent before cleanup.");
                 Require(!await client.DeleteAsync(identity), "Second rule deletion did not report absence.");
             });
         }
     }
-    private async Task Shares()
+    private async Task Shares(bool explicitSecurity)
     {
-        var client = new WindowsShareClient();
-        var path = Path.Combine(report.Folder, "share");
+        var client = AdministrationBackends.Shares(options.Backend);
+        var suffix = explicitSecurity ? "acl" : "default";
+        var name = report.Prefix + "-" + suffix;
+        var path = Path.Combine(report.Folder, "share-" + suffix);
         var created = false;
         Directory.CreateDirectory(path);
-        report.Resource("SMB share: " + report.Prefix + "; directory: " + path);
+        report.Resource("SMB share: " + name + "; directory: " + path);
+        var initialSddl = "O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)";
+        var spec = new ShareSpecification(name, path)
+        {
+            SecurityDescriptor = explicitSecurity ? Descriptor(initialSddl) : null
+        };
         try
         {
-            client.Create(new(report.Prefix, path)); created = true;
-            var before = client.Find(report.Prefix) ?? throw new InvalidOperationException("Created share missing.");
-            Require(before.SecurityDescriptor.Length != 0, "Share security descriptor missing.");
-            await Conflict(() => { client.Create(new(report.Prefix, path)); return Task.CompletedTask; });
-            client.Update(report.Prefix, new() { Description = "updated", SecurityDescriptor = before.SecurityDescriptor });
-            var after = client.Find(report.Prefix) ?? throw new InvalidOperationException("Updated share missing.");
-            Require(after.Description == "updated" && after.SecurityDescriptor.AsSpan().SequenceEqual(before.SecurityDescriptor.AsSpan()), "Share update changed SID/ACE representation.");
+            client.Create(spec); created = true;
+            var before = client.Find(name) ?? throw new InvalidOperationException("Created share missing.");
+            report.Resource($"Share {name}: stored descriptor " +
+                (before.SecurityDescriptor is { } stored ? $"{stored.Length} bytes" : "absent"));
+            if (explicitSecurity) CheckDescriptor(before, initialSddl);
+            else if (before.SecurityDescriptor is { } defaults)
+                _ = new System.Security.AccessControl.RawSecurityDescriptor(defaults.ToArray(), 0);
+            await Conflict(() => { client.Create(spec); return Task.CompletedTask; });
+            // A metadata-only update must preserve both absent and present descriptors.
+            client.Update(name, new() { Description = "updated" });
+            var after = client.Find(name) ?? throw new InvalidOperationException("Updated share missing.");
+            Require(after.Description == "updated" && SameDescriptor(before.SecurityDescriptor, after.SecurityDescriptor),
+                "Metadata update changed stored security.");
+            // Exercise absent/default -> explicit and explicit -> changed ACL independently.
+            var changedSddl = "O:BAG:BAD:(A;;FA;;;BA)(A;;FW;;;BU)";
+            client.Update(name, new() { SecurityDescriptor = Descriptor(changedSddl) });
+            after = client.Find(name) ?? throw new InvalidOperationException("Share disappeared after security update.");
+            CheckDescriptor(after, changedSddl);
+            client.Update(name, new() { SecurityDescriptor = after.SecurityDescriptor });
+            var repeated = client.Find(name) ?? throw new InvalidOperationException("Share disappeared after repeated update.");
+            Require(SameDescriptor(after.SecurityDescriptor, repeated.SecurityDescriptor), "Repeated security update changed SID/ACE representation.");
         }
         finally
         {
-            if (created) await report.Check("cleanup.share", () =>
+            if (created) await report.Check("cleanup.share-" + suffix, () =>
             {
-                Require(client.Delete(report.Prefix), "Created share unexpectedly absent before cleanup.");
-                Require(!client.Delete(report.Prefix), "Second share deletion did not report absence.");
+                Require(client.Delete(name), "Created share unexpectedly absent before cleanup.");
+                Require(!client.Delete(name), "Second share deletion did not report absence.");
                 Directory.Delete(path); return Task.CompletedTask;
             });
             else if (Directory.Exists(path)) Directory.Delete(path);
         }
     }
+    private static System.Collections.Immutable.ImmutableArray<byte> Descriptor(string sddl)
+    {
+        var descriptor = new System.Security.AccessControl.RawSecurityDescriptor(sddl);
+        var bytes = new byte[descriptor.BinaryLength];
+        descriptor.GetBinaryForm(bytes, 0);
+        return [.. bytes];
+    }
+    private static void CheckDescriptor(ShareSnapshot share, string expected)
+    {
+        var bytes = share.SecurityDescriptor ?? throw new InvalidOperationException("Explicit share security descriptor missing.");
+        var actual = new System.Security.AccessControl.RawSecurityDescriptor(bytes.ToArray(), 0);
+        var desired = new System.Security.AccessControl.RawSecurityDescriptor(expected);
+        Require(actual.GetSddlForm(System.Security.AccessControl.AccessControlSections.All) ==
+            desired.GetSddlForm(System.Security.AccessControl.AccessControlSections.All), "Explicit share ACL did not roundtrip.");
+    }
+    private static bool SameDescriptor(System.Collections.Immutable.ImmutableArray<byte>? left,
+        System.Collections.Immutable.ImmutableArray<byte>? right) =>
+        left is { } a ? right is { } b && a.AsSpan().SequenceEqual(b.AsSpan()) : right is null;
     internal static async Task Conflict(Func<Task> action)
     {
         try { await action(); throw new InvalidOperationException("Duplicate creation unexpectedly succeeded."); }
-        catch (WindowsAdministrationException error) { Require(error.Category == AdministrationErrorCategory.Conflict, "Duplicate creation failed with " + error.Category + " instead of Conflict."); }
+        catch (WindowsAdministrationException error)
+        {
+            if (error.Category != AdministrationErrorCategory.Conflict)
+                throw new WindowsAdministrationException(error.Operation, error.Category, error.NativeErrorDomain,
+                    error.NativeErrorCode, $"Duplicate creation expected Conflict, received {error.Category}. {error.Message}", error);
+        }
     }
     internal static async Task Until(Func<Task<bool>> predicate, TimeSpan timeout, CancellationToken cancellationToken)
     {
