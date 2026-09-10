@@ -129,6 +129,88 @@ class Suite:
                         break
         (self.output / "accessibility.json").write_text(json.dumps(nodes, indent=2))
 
+    def check_gnome_keyboard(self):
+        if "GNOME" not in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
+            raise RuntimeError("The compositor keyboard adapter currently requires GNOME")
+        previous_engine = subprocess.check_output(["ibus", "engine"], text=True, timeout=5).strip()
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        destination = "org.gnome.Mutter.RemoteDesktop"
+        session = bus.call_sync(destination, "/org/gnome/Mutter/RemoteDesktop", destination,
+                                "CreateSession", None, None, 0, 5000, None).unpack()[0]
+        def call(method, signature=None, values=()):
+            return bus.call_sync(destination, session, destination + ".Session", method,
+                                 GLib.Variant(signature, values) if signature else None,
+                                 None, 0, 5000, None)
+        def key(code, pressed):
+            call("NotifyKeyboardKeycode", "(ub)", (code, pressed))
+        def tap(code):
+            key(code, True)
+            try:
+                time.sleep(0.04)
+            finally:
+                key(code, False)
+            time.sleep(0.04)
+        def field(label):
+            return unique(tree(self.fixture()), lambda n: n.name == label and n.getRoleName() == "entry")
+        def switch_engine(target):
+            for _ in range(8):
+                if subprocess.check_output(["ibus", "engine"], text=True, timeout=5).strip() == target:
+                    return
+                key(125, True)  # GNOME's real Super+Space input-source switch.
+                try:
+                    tap(57)
+                finally:
+                    key(125, False)
+                time.sleep(0.3)
+            raise RuntimeError("Could not select the configured input source: " + target)
+        try:
+            call("Start")
+            switch_engine("xkb:us::eng")
+            name = field("Your name")
+            if not name.queryComponent().grabFocus():
+                raise RuntimeError("Could not establish the initial keyboard focus")
+            self.wait(lambda: name.getState().contains(pyatspi.STATE_FOCUSED))
+            for code in (19, 22, 49, 23, 46):  # evdev: r u n i c
+                tap(code)
+            self.wait(lambda: name.queryText().getText(0, -1) == "runic")
+            composition = field("Composition text")
+            tap(15)  # Tab
+            self.wait(lambda: composition.getState().contains(pyatspi.STATE_FOCUSED))
+            key(42, True)  # Shift+Tab
+            try:
+                tap(15)
+            finally:
+                key(42, False)
+            self.wait(lambda: name.getState().contains(pyatspi.STATE_FOCUSED))
+            tap(15)
+            self.wait(lambda: composition.getState().contains(pyatspi.STATE_FOCUSED))
+            self.passed_check("compositor keyboard typing and Tab/Shift+Tab focus navigation")
+            switch_engine("libpinyin")
+            self.wait(lambda: subprocess.check_output(["ibus", "engine"], text=True, timeout=5).strip() == "libpinyin")
+            for code in (49, 23, 35, 30, 24):  # n i h a o
+                tap(code)
+            # Let the real input method publish preedit/candidates before commit.
+            time.sleep(0.5)
+            tap(57)  # Space commits the selected Pinyin candidate.
+            self.wait(lambda: composition.queryText().getText(0, -1) == "你好")
+            offset = len(self.log.read_text())
+            self.step("Record snapshot", "RESULT Snapshot recorded.")
+            states = [json.loads(line[len("USABILITY "):]) for line in self.log.read_text()[offset:].splitlines()
+                      if line.startswith("USABILITY {")]
+            if len(states) != 1 or states[0]["text"] != "你好":
+                raise RuntimeError("The committed IME text did not reach the application bridge")
+            events = states[0]["events"]
+            if not any(e["type"] == "compositionstart" for e in events) or not any(
+                    e["type"] == "compositionend" and e.get("data") == "你好" for e in events):
+                raise RuntimeError("Real IME composition events were not observed")
+            (self.output / "keyboard-ime.json").write_text(json.dumps(states[0], ensure_ascii=False, indent=2) + "\n")
+            self.passed_check("real IBus Pinyin composition and commit through compositor input")
+        finally:
+            try:
+                switch_engine(previous_engine)
+            finally:
+                call("Stop")
+
     def start_orca(self):
         if subprocess.run(["pgrep", "-x", "orca"], stdout=subprocess.DEVNULL).returncode == 0:
             raise RuntimeError("Close the existing Orca instance first; this runner only owns its own reader")
@@ -241,6 +323,8 @@ class Suite:
             self.passed_check("native accessible control names")
             if self.args.orca:
                 self.check_orca()
+            if self.args.gnome_keyboard:
+                self.check_gnome_keyboard()
             self.click("Target hits: 0")
             self.wait(lambda: self.button("Target hits: 1"))
             offset = len(self.log.read_text())
@@ -321,8 +405,10 @@ class Suite:
                     self.process.wait(timeout=5)
             report = {"passed": self.passed, "failure": failure,
                       "desktop": os.environ.get("XDG_CURRENT_DESKTOP"),
-                      "manual": ["spoken announcement quality", "real IME and candidate placement",
+                      "manual": ["spoken announcement quality", "visual IME candidate placement",
                                  "physical pointer targeting at desktop scales", "notification focus"]}
+            if not self.args.gnome_keyboard:
+                report["manual"].append("real keyboard navigation and IME composition")
             (self.output / "results.json").write_text(json.dumps(report, indent=2) + "\n")
         if failure:
             raise SystemExit("FAIL " + failure)
@@ -332,6 +418,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New directory for logs and results")
     parser.add_argument("--gnome-pickers", action="store_true", help="Also exercise Nautilus Flatpak grant/save/cancel dialogs")
+    parser.add_argument("--gnome-keyboard", action="store_true", help="Exercise compositor keyboard navigation and real IBus Pinyin")
     parser.add_argument("--orca", action="store_true", help="Verify native focus, Orca speech and captured VM sink audio")
     parser.add_argument("--audio-sink", help="Explicit PipeWire sink name; never captures the microphone")
     parser.add_argument("--startup-timeout", type=int, default=300)

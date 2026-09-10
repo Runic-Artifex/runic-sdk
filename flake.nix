@@ -19,6 +19,14 @@
       # or notification therefore cannot accidentally be served by the host
       # desktop's preferred backend.
       nixosConfigurations = {
+        runic-headless-gnome = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            "${nixpkgs}/nixos/modules/virtualisation/nspawn-container"
+            "${nixpkgs}/nixos/modules/virtualisation/guest-networking-options.nix"
+            ./nixos/portal-container/gnome.nix
+          ];
+        };
         runic-portal-kde = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs.runicSource = self.outPath;

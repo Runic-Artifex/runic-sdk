@@ -118,6 +118,42 @@ direnv exec . python3 -B -m unittest discover \
   -s tests/native/Runic.Desktop.Gtk4.Smoke -p test_speech_audio.py
 ```
 
+## Keyboard navigation and real IME
+
+Add `--gnome-keyboard` to exercise GNOME's compositor input path:
+
+```sh
+runic-portal-automate --output "$HOME/.cache/runic-automation/keyboard-1" \
+  --gnome-keyboard --gnome-pickers -- flatpak run --user com.runic.tests.Sandbox
+```
+
+The locked GNOME image supplies US English and Intelligent Pinyin input sources.
+The runner owns a Mutter RemoteDesktop session, establishes initial native focus,
+types `runic`, checks Tab/Shift+Tab focus movement, switches sources with
+Super+Space, types `nihao`, and commits `你好` with Space. It verifies native text,
+application bridge output, and real composition start/end events. It restores
+the original input source and stops its input session afterward. Run this only
+in the disposable test desktop: it generates keyboard input in that session.
+
+This sequence and all existing GNOME Flatpak picker/inhibition assertions passed
+on 2026-09-10, including a combined invocation with `--orca` (11 passing checks).
+`keyboard-ime.json` retains the observed composition events.
+Unlike setting an accessible text value, this exercises the input method. It
+uses compositor virtual input, not a physical keyboard or the guest's emulated
+USB device. Visual candidate placement and physical device behavior remain
+separate checks. The compositor API does not depend on QEMU, making this adapter
+usable in a future container desktop too.
+
+## Containers and VMs
+
+The [headless GNOME container experiment](../../../nixos/portal-container/README.md)
+has demonstrated an independent Wayland display and PipeWire inside nspawn.
+It has not yet demonstrated a complete GNOME session or working portals.
+Keep the VM suite while completing that experiment. A shared-kernel container
+is promising for frequent native UI tests; VM coverage remains useful for a
+clean boot, graphical login/seat, virtual hardware and kernel-dependent sandbox
+behavior. Container results should identify their runtime explicitly.
+
 ## Extending the suite
 
 Use the NixOS Python test driver for Linux boot, login, guest commands, QEMU
@@ -133,7 +169,7 @@ access to the host Nix store.
 | --- | --- |
 | VM lifecycle | Add a NixOS test-driver entry point around the guest runner; boot to Wayland, collect artifacts even on failure, shut down only its own guest. Run one desktop at a time initially. |
 | KDE pickers/inhibition | Add an adapter from the actual Qt accessibility tree and observe PowerDevil's native inhibition state. Require the same grant/save/cancel assertions as GNOME. |
-| Keyboard and IME | Send QEMU keyboard events through IBus/Fcitx5; assert real composition events and committed text in the fixture. Changing an accessible text value does not test an IME. |
+| Keyboard and IME | GNOME compositor typing, Tab/Shift+Tab and real IBus Pinyin now pass. Extend to KDE/Fcitx5 and device-level input where needed. Changing an accessible text value does not test an IME. |
 | Scaling and targeting | Set actual Mutter/KScreen display scales, read them back, use QEMU pointer input at measured control bounds, and verify hit counts. Retain screenshots for caret/candidate placement. CSS zoom and an AT-SPI button action do not establish physical targeting. |
 | Notifications | Activate the visible notification action through the shell UI. Assert the receiver PID and native focused-window result for both live and cold launch. Calling the application's D-Bus callback directly would bypass the activation-token behavior under test. |
 | Accessibility | Native roles/focus, Orca speech records, recorded audio and optional local ASR now work in GNOME. Extend to values, physical focus order/events and KDE. Listening remains useful for announcement quality. |
