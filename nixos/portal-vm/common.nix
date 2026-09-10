@@ -2,6 +2,7 @@
   lib,
   pkgs,
   portalDesktop,
+  runicDevShell,
   runicSource,
   ...
 }:
@@ -64,7 +65,7 @@ let
       trap cleanup_candidate EXIT
       if test ! -f "$marker" || test "$(cat "$marker")" != "$source_identity"; then
         candidate=$(mktemp -d "$cache/runic-portal-workspace.next.XXXXXX")
-        rsync -a --exclude=.git "$source/" "$candidate/"
+        rsync -a --chmod=u+rwX --exclude=.git "$source/" "$candidate/"
         printf '%s\n' "$source_identity" > "$candidate/.runic-source"
         rm -rf "$workspace"
         mv "$candidate" "$workspace"
@@ -101,6 +102,10 @@ in
       memorySize = 4096;
       cores = 4;
       diskSize = 12 * 1024;
+      # Register the locked toolchain closure already shared from the host.
+      # Extra store writes belong on disk, not the default half-RAM tmpfs.
+      additionalPaths = [ runicDevShell ];
+      writableStoreUseTmpfs = false;
       diskImage = "./runic-portal-${portalDesktop}.qcow2";
       graphics = true;
       resolution = {

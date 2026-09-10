@@ -25,7 +25,11 @@ mounts the Git-aware source snapshot supplied to `nix build` at
 `/home/runic/src` read-only. The test command retains one bounded workspace on
 the VM disk, refreshing it only when the mounted snapshot changes. It enters
 the mounted flake's locked development shell for Bun, the .NET SDK and native
-library paths, then installs the frontend from the lockfile on the first use.
+library and GSettings schema paths, then installs the frontend from the lockfile
+on the first use.
+The copied workspace is writable even though its source is immutable. The VM
+registers the development shell's closure from the shared host store, and keeps
+additional store writes on the guest disk instead of a small RAM-backed store.
 Build outputs never modify the mounted source.
 
 Open the desktop's terminal application inside the VM and run one check at a
@@ -58,3 +62,22 @@ host desktop/session bus.
 
 These VMs exercise an unsandboxed desktop session. Flatpak/Snap portal policy,
 real application packaging and notification cold relaunch remain separate tests.
+
+For command-driven testing, add `-serial stdio -monitor none` to the VM launcher
+and log in as `runic` on the serial console. The graphical window remains
+available for manual interaction. Import the guest desktop's display environment
+before running native checks from that console:
+
+```sh
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+while IFS='=' read -r name value; do
+  case "$name" in
+    DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_CURRENT_DESKTOP|XDG_SESSION_TYPE)
+      export "$name=$value" ;;
+  esac
+done < <(systemctl --user show-environment)
+```
+
+Use `sudo poweroff` in the guest to stop it cleanly. Preserve its disk to reuse
+dependencies and build outputs, or remove a task-owned disposable disk after
+retaining the logs you need.

@@ -22,12 +22,14 @@
         runic-portal-kde = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs.runicSource = self.outPath;
+          specialArgs.runicDevShell = self.devShells.x86_64-linux.default;
           specialArgs.portalDesktop = "kde";
           modules = [ ./nixos/portal-vm/kde.nix ];
         };
         runic-portal-gnome = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs.runicSource = self.outPath;
+          specialArgs.runicDevShell = self.devShells.x86_64-linux.default;
           specialArgs.portalDesktop = "gnome";
           modules = [ ./nixos/portal-vm/gnome.nix ];
         };
@@ -65,11 +67,19 @@
             url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-${bunArchive.platform}.zip";
             inherit (bunArchive) hash;
           };
-          bun_1_4_2 = pkgs.runCommand "bun-1.4.2" { } ''
-            mkdir -p "$out/bin"
-            cp "${bunSource}/bun" "$out/bin/bun"
-            chmod +x "$out/bin/bun"
-          '';
+          bun_1_4_2 = pkgs.stdenvNoCC.mkDerivation {
+            pname = "bun";
+            version = "1.4.2";
+            src = bunSource;
+            nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+            buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+            dontBuild = true;
+            installPhase = ''
+              mkdir -p "$out/bin"
+              cp bun "$out/bin/bun"
+              chmod +x "$out/bin/bun"
+            '';
+          };
           npmSource = pkgs.fetchzip {
             url = "https://registry.npmjs.org/npm/-/npm-12.0.2.tgz";
             hash = "sha256-GMlNf3g1qGZESoES60OH2OYHXJ7Kv1v15HhYEw20fmc=";
@@ -162,6 +172,7 @@
                 export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
                 export GST_PLUGIN_SYSTEM_PATH_1_0="${lib.makeSearchPath "lib/gstreamer-1.0" (with pkgs.gst_all_1; [ gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav ])}''${GST_PLUGIN_SYSTEM_PATH_1_0:+:$GST_PLUGIN_SYSTEM_PATH_1_0}"
                 export LD_LIBRARY_PATH="${lib.makeLibraryPath linuxRuntimePackages}:$LD_LIBRARY_PATH"
+                export XDG_DATA_DIRS="${lib.concatMapStringsSep ":" (package: "${package}/share/gsettings-schemas/${package.name}") [ pkgs.gtk3 pkgs.gtk4 pkgs.gsettings-desktop-schemas ]}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
                 export WEBUI_BROWSER_PATH="${pkgs.chromium}/bin/chromium"
                 export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="${pkgs.chromium}/bin/chromium"
               ''}
