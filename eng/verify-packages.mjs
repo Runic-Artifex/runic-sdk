@@ -14,6 +14,7 @@ import { root, workspace, run, configuration } from "./run.mjs";
 const nativeProviders = new Set([
   "runic.platform.windows",
   "runic.platform.linux",
+  "runic.platform.linux.gtk4",
   "runic.platform.macos",
 ]);
 
@@ -33,6 +34,7 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = 
   // Inspect the complete restored graph, including dependencies that are not loaded by the canary.
   const allowedPlatform = new Set(["runic.platform", label.toLowerCase()]);
   if (label !== "Runic.Platform") allowedPlatform.add("runic.platform.runtime");
+  if (label === "Runic.Platform.Linux") allowedPlatform.add("runic.platform.linux.portal");
   for (const library of libraries) {
     const name = library.split("/")[0].toLowerCase();
     assert.ok(!nativeProviders.has(name) || name === selectedProvider,

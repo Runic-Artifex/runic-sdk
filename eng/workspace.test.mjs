@@ -21,6 +21,10 @@ test("workspace defines the complete public SDK package inventory", () => {
     const manifest = json(`${p.path}/package.json`);
     assert.equal(manifest.name, p.name);
     assert.equal(manifest.version, workspace.version);
+    for (const [name, version] of Object.entries(manifest.peerDependencies ?? {})) {
+      if (workspace.npm.some(peer => peer.name === name))
+        assert.equal(version, workspace.version, `${p.name}: stale internal peer ${name}`);
+    }
   }
   for (const p of workspace.nuget)
     assert.ok(existsSync(resolve(root, p.project)));

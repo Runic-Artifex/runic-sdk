@@ -52,8 +52,8 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "@runic-artifex/svelte": "0.2.0-preview.1",
-    "@runic-artifex/vite-plugin-runic": "0.2.0-preview.1",
+    "@runic-artifex/svelte": "0.3.0-preview.1",
+    "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1",
     "@sveltejs/adapter-static": ">=3 <4",
     "@sveltejs/kit": ">=2.53.0 <3",
     "@sveltejs/vite-plugin-svelte": ">=7 <8",

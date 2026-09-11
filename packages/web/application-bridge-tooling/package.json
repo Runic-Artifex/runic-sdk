@@ -51,7 +51,7 @@
     "esbuild": "0.28.2"
   },
   "peerDependencies": {
-    "@runic-artifex/application-bridge": "0.2.0-preview.1",
+    "@runic-artifex/application-bridge": "0.3.0-preview.1",
     "effect": "4.0.0-rc.112"
   },
   "devDependencies": {

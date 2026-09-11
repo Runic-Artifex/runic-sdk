@@ -205,7 +205,9 @@ internal sealed class CommandRegistration<TOptions, THandler, TResult> : Command
             request.CorrelationId);
 
         int exitCode = exitCodePolicy.GetExitCode(outcome.ExitCategory);
-        CancellationToken presentationToken = outcome.ExitCategory == CommandExitCategory.Cancelled
+        // A handler may intentionally complete successfully after a graceful stop.
+        // Do not replace its settled outcome by cancelling the final response.
+        CancellationToken presentationToken = cancellationToken.IsCancellationRequested || outcome.ExitCategory == CommandExitCategory.Cancelled
             ? CancellationToken.None
             : cancellationToken;
         try

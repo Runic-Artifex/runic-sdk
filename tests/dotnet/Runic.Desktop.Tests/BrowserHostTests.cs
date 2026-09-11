@@ -159,7 +159,11 @@ public sealed class BrowserHostTests
 
             await window.ShowInBrowserAsync(Page("updated"), browser.Value, timeout.Token);
             string? title = null;
-            for (var attempt = 0; attempt < 100 && title != "updated"; attempt++)
+            // A navigation tears down the authenticated session before Chromium
+            // reconnects. Bound readiness by time, not 100 fast disconnected polls
+            // (only 2.5 seconds on a busy Windows runner).
+            var navigationDeadline = DateTime.UtcNow.AddSeconds(20);
+            while (title != "updated" && DateTime.UtcNow < navigationDeadline)
             {
                 try
                 {

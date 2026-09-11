@@ -33,7 +33,7 @@
     "pack:preview": "bun pm pack"
   },
   "peerDependencies": {
-    "@runic-artifex/application-bridge-tooling": "0.2.0-preview.1",
+    "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1",
     "@vitejs/devtools": "^0.5.2",
     "vite": "^8.0.0"
   },

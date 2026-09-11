@@ -12,6 +12,7 @@ internal static class DispatcherTests
         new("dispatcher/fault-disposes-async-scope-exactly-once", () => DisposalCase(Behavior.Fault)),
         new("dispatcher/exception-disposes-async-scope-exactly-once", () => DisposalCase(Behavior.Exception)),
         new("dispatcher/cancellation-disposes-async-scope-exactly-once", () => DisposalCase(Behavior.Cancellation)),
+        new("dispatcher/graceful-stop-preserves-success", GracefulStopPreservesSuccess),
         new("dispatcher/binding-fault-skips-handler-and-disposes-scope", BindingFault),
         new("dispatcher/merges-handler-and-binding-diagnostics-once", MergesDiagnosticsOnce),
         new("dispatcher/writes-failure-human-output-before-human-diagnostics", FailureHumanOutput),
@@ -100,6 +101,23 @@ internal static class DispatcherTests
         AssertEx.Equal(1, scopes.Scopes.Single().DisposeCount);
         AssertEx.Equal(1, sink.WriteCount);
         AssertEx.Equal<string?>(null, sink.HumanOutput);
+    }
+
+    private static async ValueTask GracefulStopPreservesSuccess()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var scopes = new TrackingScopeFactory();
+        var console = new MemoryCommandConsole();
+        var factory = new TestHandlerFactory(_ => new TestHandler((_, _, _) =>
+        {
+            cancellation.Cancel();
+            return ValueTask.FromResult(CommandOutcome.Success(new TestResult(1, "stopped")));
+        }));
+        (CommandExecutor executor, CommandExecutionRequest request) = CreateExecution(
+            new TestBinder(), factory, scopes, console, "graceful-stop");
+        CommandExecutionResult result = await executor.ExecuteAsync(request, new CommandOutputDispatcher(), cancellation.Token);
+        AssertEx.True(result.IsSuccess);
+        AssertEx.Equal(1, scopes.Scopes.Single().DisposeCount);
     }
 
     private static async ValueTask BindingFault()

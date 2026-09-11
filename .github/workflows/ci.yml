@@ -341,7 +341,9 @@ jobs:
           bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-application-bridge-$version.tgz" "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
       - uses: ./.github/actions/install-browser
       - name: Verify package-only document migration in both hosts
-        run: python3 examples/document-migration/eng/verify-candidate.py --version 0.2.0-preview.1 --nuget-feed artifacts/packages/nuget --npm-feed artifacts/packages/npm --report artifacts/document-package-acceptance/linux-x64
+        run: |
+          version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
+          python3 examples/document-migration/eng/verify-candidate.py --version "$version" --nuget-feed artifacts/packages/nuget --npm-feed artifacts/packages/npm --report artifacts/document-package-acceptance/linux-x64
       - name: Retain package-only document evidence
         if: always()
         uses: actions/upload-artifact@v7

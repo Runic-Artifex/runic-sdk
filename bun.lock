@@ -161,7 +161,7 @@
         "typescript": "7.0.2",
       },
       "peerDependencies": {
-        "@runic-artifex/application-bridge": "0.2.0-preview.1",
+        "@runic-artifex/application-bridge": "0.3.0-preview.1",
         "effect": "4.0.0-rc.112",
       },
     },
@@ -195,8 +195,8 @@
         "vitest": "5.0.0",
       },
       "peerDependencies": {
-        "@runic-artifex/application-bridge": "0.2.0-preview.1",
-        "@runic-artifex/vite-plugin-runic": "0.2.0-preview.1",
+        "@runic-artifex/application-bridge": "0.3.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1",
         "effect": "4.0.0-rc.112",
         "svelte": ">=5.46.4 <6",
       },
@@ -229,8 +229,8 @@
         "vitest": "5.0.0",
       },
       "peerDependencies": {
-        "@runic-artifex/svelte": "0.2.0-preview.1",
-        "@runic-artifex/vite-plugin-runic": "0.2.0-preview.1",
+        "@runic-artifex/svelte": "0.3.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1",
         "@sveltejs/adapter-static": ">=3 <4",
         "@sveltejs/kit": ">=2.53.0 <3",
         "@sveltejs/vite-plugin-svelte": ">=7 <8",
@@ -254,7 +254,7 @@
         "vite": "8.2.2",
       },
       "peerDependencies": {
-        "@runic-artifex/application-bridge-tooling": "0.2.0-preview.1",
+        "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1",
         "@vitejs/devtools": "^0.5.2",
         "vite": "^8.0.0",
       },

@@ -59,8 +59,8 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "@runic-artifex/application-bridge": "0.2.0-preview.1",
-    "@runic-artifex/vite-plugin-runic": "0.2.0-preview.1",
+    "@runic-artifex/application-bridge": "0.3.0-preview.1",
+    "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1",
     "effect": "4.0.0-rc.112",
     "svelte": ">=5.46.4 <6"
   },
