@@ -163,6 +163,10 @@
     {
       "name": "Runic.Platform.Linux.Gtk4",
       "project": "packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj"
+    },
+    {
+      "name": "Runic.Translations.Wpf",
+      "project": "packages/dotnet/Runic.Translations.Wpf/Runic.Translations.Wpf.csproj"
     }
   ],
   "components": {
@@ -266,7 +270,8 @@
         "packages/web/vite-plugin-runic-translations",
         "docs/guides/translations",
         "eng/branding/translations",
-        "specs/translations"
+        "specs/translations",
+        "packages/dotnet/Runic.Translations.Wpf"
       ]
     },
     "application": {

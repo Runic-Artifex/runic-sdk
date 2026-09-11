@@ -240,3 +240,23 @@ must be cancelled.
 - [SvelteKit reference application](https://github.com/Runic-Artifex/runic-sdk/tree/main/apps/translations-editor/Frontend)
 - [Issues and support](https://github.com/Runic-Artifex/runic-sdk/issues)
 - [MIT License](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE)
+
+## RMF2 inline content
+
+The optional `@runic-artifex/svelte/inline` entry point exports `inlineFactory`
+and `LocalizedInline`. Pass the factory to the catalog-generated
+`createInlineRenderer`, link custom contracts with `bindMarkup`, then supply its
+validated result to `<LocalizedInline nodes={nodes} custom={snippets} />`.
+Custom snippets are keyed by canonical names such as `shop:badge`. A custom
+binding can return its semantic node unchanged for the Svelte snippet to render.
+
+Use application-owned link/action/icon bindings from the generated runtime.
+Icons accept text or a Svelte snippet; meaningful icons need a localized
+accessible name. The adapter uses ordinary anchors and buttons, and leaves
+navigation and actions to those bindings. It never interprets localized text as
+HTML. Keep the linked renderer and slot bindings scoped to their application or
+request; SSR must not capture another request's callbacks.
+
+`bun run test:inline-browser` exercises SSR/hydration in the locked development
+shell's Chromium, including DOM identity, callback teardown, escaping and custom
+badge/icon semantics. The fixture is `test/InlineHydrationFixture.svelte`.
