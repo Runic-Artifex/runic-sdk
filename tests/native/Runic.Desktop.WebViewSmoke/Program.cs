@@ -22,7 +22,11 @@ try
         throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
     }
 
-    if (OperatingSystem.IsMacOS())
+    if (args.Contains("--ui-automation", StringComparer.Ordinal))
+    {
+        await RunWindowsUiAutomationSmokeAsync();
+    }
+    else if (OperatingSystem.IsMacOS())
     {
         RunMacOsSmoke();
     }
@@ -71,6 +75,62 @@ static async Task RunAsyncSmoke()
     await GtkWidgetLifetime.AssertReleasedAsync();
     SmokeSoak.Completed();
     }
+}
+
+static async Task RunWindowsUiAutomationSmokeAsync()
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        throw new PlatformNotSupportedException("The UI Automation smoke requires a Windows interactive desktop.");
+    }
+
+    // Keep this surface deliberately small and semantic. The accompanying Windows
+    // UI Automation driver reaches the WebView2 accessibility provider through the
+    // native top-level window; JavaScript calls cannot substitute for that path.
+    await using var host = await DesktopHost.StartAsync(CreateHostOptions());
+    await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+    {
+        Content =
+            """
+            <!doctype html><html><head><meta charset="utf-8"><script src="webui.js"></script>
+            <title>Runic Desktop UI Automation</title></head><body>
+            <main><label for="display-name">Display name</label>
+            <input id="display-name" aria-label="Display name" autocomplete="off">
+            <button id="record" type="button">Record snapshot</button>
+            <output id="snapshot" aria-live="polite">Waiting for automation</output></main>
+            <button id="finish" type="button">Finish</button>
+            <script>
+            document.getElementById('record').addEventListener('click', () => {
+              document.getElementById('snapshot').textContent =
+                'Recorded: ' + document.getElementById('display-name').value;
+            });
+            document.getElementById('finish').addEventListener('click', () => {
+              if (document.getElementById('snapshot').textContent === 'Recorded: UI Automation value') {
+                window.__runicAutomationFinished = true;
+              }
+            });
+            </script></body></html>
+            """,
+    });
+    await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+    {
+        Browser = BrowserKind.Embedded,
+        Width = 640,
+        Height = 360,
+        Centered = true,
+    });
+
+    Console.WriteLine("Windows UI Automation surface is ready.");
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    while (true)
+    {
+        string finished = await surface.ExecuteJavaScriptAsync(
+            "return window.__runicAutomationFinished === true ? 'finished' : 'waiting';", cancellationToken: deadline.Token);
+        if (finished == "finished") break;
+        await Task.Delay(50, deadline.Token);
+    }
+
+    Console.WriteLine("Windows UI Automation WebView2 semantic interaction passed.");
 }
 
 static void RunMacOsSmoke()
