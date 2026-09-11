@@ -151,14 +151,17 @@ def main():
                 invoke(target, next(name for name in ('Press', 'press', 'click') if name in names))
             value = wait(lambda: receipt.read_text() if receipt.exists() else None)
             match = re.fullmatch(r'pid=(\d+) notification=runic-cold-test action=open token=(True|False) focused=True', value)
-            if not match or match[2] != 'True':
+            # Xorg Plasma can focus the receiver without an XDG activation token.
+            # Keep the token requirement for both native Wayland and Xwayland.
+            if not match or (os.environ.get('XDG_SESSION_TYPE') != 'x11' and match[2] != 'True'):
                 raise RuntimeError('Receiver did not confirm notification action and native focus: ' + value)
             receiver_pid = int(match[1])
             if (receiver_pid == sender) == cold:
                 raise RuntimeError('Receiver process identity does not match live/cold mode')
             if not cold and process.wait(timeout=20) != 0:
                 raise RuntimeError('Live notification receiver failed')
-            results.append({'cold': cold, 'sender_pid': sender, 'receipt': value})
+            results.append({'cold': cold, 'sender_pid': sender, 'receipt': value,
+                            'session_type': os.environ.get('XDG_SESSION_TYPE')})
             print('PASS ' + ('cold' if cold else 'live') + ' notification action and window focus', flush=True)
             wait(lambda: not any(n.name == 'Open result' and n.getState().contains(pyatspi.STATE_SHOWING)
                                   for a in applications() if a.name in {'plasmashell', 'gnome-shell'} for n in tree(a)))
@@ -168,9 +171,12 @@ def main():
     except Exception as error:
         failure = f"{type(error).__name__}: {error}"
         (args.output / 'failure.txt').write_text(traceback.format_exc())
-        nodes = [{'app': a.name, 'role': n.getRoleName(), 'name': n.name, 'actions': action_names(n)}
-                 for a in applications() for n in tree(a)]
-        (args.output / 'accessibility.json').write_text(json.dumps(nodes, indent=2))
+        try:
+            nodes = [{'app': a.name, 'role': n.getRoleName(), 'name': n.name, 'actions': action_names(n)}
+                     for a in applications() for n in tree(a)]
+            (args.output / 'accessibility.json').write_text(json.dumps(nodes, indent=2))
+        except GLib.Error as diagnostic_error:
+            print('Accessibility diagnostic unavailable:', diagnostic_error, flush=True)
     finally:
         if process and process.poll() is None:
             os.killpg(process.pid, signal.SIGTERM)

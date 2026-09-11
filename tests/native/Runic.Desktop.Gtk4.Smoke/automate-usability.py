@@ -182,6 +182,13 @@ class Suite:
             bus.call_sync(interface, session, interface + ".Session", "Stop",
                           None, None, 0, 5000, None)
 
+    def kde_input(self):
+        if self.args.xorg:
+            from xorg_input import XorgInput
+            return XorgInput()
+        from kde_input import KdeInput
+        return KdeInput()
+
     def check_keyboard(self):
         kde = self.args.kde_keyboard
         query = ["fcitx5-remote", "-n"] if kde else ["ibus", "engine"]
@@ -193,8 +200,7 @@ class Suite:
         destination = "org.gnome.Mutter.RemoteDesktop"
         session = None
         if kde:
-            from kde_input import KdeInput
-            keyboard = KdeInput()
+            keyboard = self.kde_input()
         else:
             session = bus.call_sync(destination, "/org/gnome/Mutter/RemoteDesktop", destination,
                                     "CreateSession", None, None, 0, 5000, None).unpack()[0]
@@ -282,7 +288,7 @@ class Suite:
             self.wait(lambda: name.getState().contains(pyatspi.STATE_FOCUSED))
             tap(15)
             self.wait(lambda: composition.getState().contains(pyatspi.STATE_FOCUSED))
-            self.passed_check("compositor keyboard typing and Tab/Shift+Tab focus navigation")
+            self.passed_check(("XTEST" if self.args.xorg else "compositor") + " keyboard typing and Tab/Shift+Tab focus navigation")
             target_engine = "pinyin" if kde else "libpinyin"
             switch_engine(target_engine)
             self.wait(lambda: engine() == target_engine)
@@ -307,7 +313,7 @@ class Suite:
                     e["type"] == "compositionend" and e.get("data") == "你好" for e in events):
                 raise RuntimeError("Real IME composition events were not observed")
             (self.output / "keyboard-ime.json").write_text(json.dumps(states[0], ensure_ascii=False, indent=2) + "\n")
-            self.passed_check(f"real {'Fcitx5' if kde else 'IBus'} Pinyin composition and commit through compositor input")
+            self.passed_check(f"real {'Fcitx5' if kde else 'IBus'} Pinyin composition and commit through {'XTEST' if self.args.xorg else 'compositor'} input")
         finally:
             pyatspi.Registry.deregisterEventListener(on_event, *event_types)
             try:
@@ -404,6 +410,73 @@ class Suite:
                 key(108, False)
             finally:
                 key(125, False)
+
+    def check_xorg_scaling(self):
+        from kde_input import windows
+        # The dummy driver cannot apply RandR transforms. Exercise GTK's real
+        # desktop DPI setting instead, retaining the XSETTINGS readback.
+        settings = Path.home() / ".config/xsettingsd/xsettingsd.conf"
+        previous = settings.read_text()
+        daemon = int(subprocess.check_output(["pgrep", "-x", "xsettingsd"], text=True).strip())
+        def state():
+            return subprocess.check_output(["dump_xsettings"], text=True, timeout=5)
+        def apply(scale):
+            values = {"Gdk/UnscaledDPI": round(96 * 1024 * scale), "Gdk/WindowScalingFactor": 1}
+            text = previous
+            for name, value in values.items():
+                text = re.sub(r"^" + re.escape(name) + r" .*\n?", "", text, flags=re.M)
+                text += f"{name} {value}\n"
+            settings.write_text(text)
+            os.kill(daemon, signal.SIGHUP)
+            self.wait(lambda: all(f"{name} {value}" in state().splitlines() for name, value in values.items()))
+            time.sleep(0.5)
+        records = []
+        keyboard = self.kde_input()
+        def window_state():
+            return unique(windows(), lambda w: "runic" in w["resourceClass"].lower() and w["caption"] == "Runic Desktop")
+        def toggle_maximize():
+            frame = window_state()["frame"]
+            for _ in range(2):
+                keyboard.click(frame["x"] + frame["width"] / 2, frame["y"] + 10)
+            time.sleep(0.5)
+        try:
+            toggle_maximize()
+            for scale in (1, 1.5, 2):
+                apply(scale)
+                actual = state()
+                target = self.button("Target hits: " + str(1 + len(records)))
+                bounds = target.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+                document = unique(tree(self.fixture()), lambda n: n.getRoleName() == "document web")
+                document_bounds = document.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+                window = window_state()
+                if min(document_bounds.width, window["client"]["width"], bounds.width, bounds.height) <= 0:
+                    raise RuntimeError("Invalid Xorg target/client geometry")
+                # Unlike Wayland buffers, Xorg frames include server decorations.
+                ratio = document_bounds.width / window["client"]["width"]
+                x = window["client"]["x"] + (bounds.x + bounds.width / 2) / ratio
+                y = window["client"]["y"] + (bounds.y + bounds.height / 2) / ratio
+                print(f"XORG DPI {scale}: target={bounds} document={document_bounds} window={window} pointer={x},{y}; desktop={target.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)}", flush=True)
+                keyboard.click(x, y)
+                self.wait(lambda: self.button("Target hits: " + str(2 + len(records))))
+                offset = len(self.log.read_text())
+                self.step("Record snapshot", "RESULT Snapshot recorded.")
+                states = [json.loads(line[len("USABILITY "):]) for line in self.log.read_text()[offset:].splitlines()
+                          if line.startswith("USABILITY {")]
+                if len(states) != 1 or states[0]["hits"] != 2 + len(records):
+                    raise RuntimeError("XTEST pointer hit did not reach the application")
+                records.append({"desktop_dpi": 96 * scale, "xsettings": actual, "window": window,
+                                "pointer": [x, y], "page": states[0]})
+            (self.output / "scaling.json").write_text(json.dumps(records, indent=2) + "\n")
+            if any(abs(record["page"]["dpr"] - record["desktop_dpi"] / 96) > 0.01 for record in records):
+                raise RuntimeError("Desktop DPI changes did not reach the WebView")
+            self.passed_check("Xorg 96/144/192 desktop DPI with XTEST pointer targeting")
+        finally:
+            try:
+                settings.write_text(previous)
+                os.kill(daemon, signal.SIGHUP)
+                toggle_maximize()
+            finally:
+                keyboard.close()
 
     def check_kde_scaling(self):
         from kde_input import KdeInput, windows
@@ -598,10 +671,9 @@ class Suite:
             if "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
                 self.establish_gnome_input()
             if self.args.x11:
-                from kde_input import KdeInput
                 # Xwayland requires a live seat for application activation and
                 # Orca's initial focus. Keep it alive until the fixture exits.
-                self.x11_input = KdeInput()
+                self.x11_input = self.kde_input()
                 frame = unique(tree(self.fixture()), lambda n: n.getRoleName() == "frame")
                 self.wait(lambda: frame.getState().contains(pyatspi.STATE_ACTIVE))
             self.snapshot()
@@ -632,7 +704,10 @@ class Suite:
                 raise RuntimeError("Accessible target action did not reach the page")
             self.passed_check("native action reaches WebView and snapshot")
             if self.args.kde_scaling:
-                self.check_kde_scaling()
+                if self.args.xorg:
+                    self.check_xorg_scaling()
+                else:
+                    self.check_kde_scaling()
             if self.args.gnome_scaling:
                 self.check_gnome_scaling()
             is_gnome = "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
@@ -731,7 +806,7 @@ class Suite:
                     failure = failure or "Accessibility cleanup failed: " + str(error)
             report = {"passed": self.passed, "failure": failure,
                       "desktop": os.environ.get("XDG_CURRENT_DESKTOP"),
-                      "display_backend": "x11 (Xwayland)" if self.args.x11 else "wayland",
+                      "display_backend": "x11 (Xorg)" if self.args.xorg else "x11 (Xwayland)" if self.args.x11 else "wayland",
                       "manual": ["spoken announcement quality", "visual IME candidate placement",
                                  "physical pointer targeting at desktop scales", "notification focus"]}
             if not (self.args.gnome_keyboard or self.args.kde_keyboard):
@@ -753,6 +828,7 @@ if __name__ == "__main__":
     scales = parser.add_mutually_exclusive_group()
     scales.add_argument("--gnome-scaling", action="store_true", help="Check actual Mutter scales and pointer targeting")
     scales.add_argument("--kde-scaling", action="store_true", help="Check actual KWin scales and EIS pointer targeting")
+    parser.add_argument("--xorg", action="store_true", help="Use the private standalone Xorg server and XTEST input")
     parser.add_argument("--x11", action="store_true", help="Verify the fixture uses X11 under the guest Xwayland server")
     parser.add_argument("--orca", action="store_true", help="Verify native focus, Orca speech and captured desktop sink audio")
     parser.add_argument("--audio-sink", help="Explicit PipeWire sink name; never captures the microphone")
@@ -760,6 +836,10 @@ if __name__ == "__main__":
     parser.add_argument("--timeout", type=int, default=600, help="Overall deadline, including startup")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="Fixture command after --")
     args = parser.parse_args()
+    if args.xorg:
+        args.x11 = True
+        if os.environ.get("XDG_SESSION_TYPE") != "x11":
+            parser.error("--xorg requires the standalone Xorg session")
     if args.command[:1] == ["--"]:
         args.command.pop(0)
     if not args.command:

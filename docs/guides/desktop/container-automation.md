@@ -167,8 +167,28 @@ Pinyin through XIM, native focus/text events and Orca speech, compositor scaling
 and sandboxed file grants/cancellation/owner closure. The Flatpak receives only
 the selected display socket. X11 pointer coordinates are converted to compositor
 coordinates using the measured WebView/client-buffer ratio, accounting for
-both fractional Xwayland scale and integer GTK scale. This establishes X11 client behavior;
-standalone Xorg desktop/session integration remains separate coverage.
+both fractional Xwayland scale and integer GTK scale.
+
+For a standalone Plasma/Xorg session, build
+`nix build .#nixosConfigurations.runic-headless-kde-xorg.config.system.build.toplevel -o artifacts/container-kde-xorg`
+and pass `--system artifacts/container-kde-xorg --desktop kde --session xorg` to
+the same runner. The existing `--keyboard --scaling --orca --flatpak --notifications`
+options apply. The Xorg server uses a dummy software display inside the managed
+container, with no host display socket, physical input devices or network access.
+The session probe requires its private X socket and an actual Xorg process.
+
+Keyboard and pointer events use XTEST, including Fcitx5 Pinyin through XIM. The
+DPI check reloads the session's XSettings daemon at 96, 144 and 192 DPI, reads back
+the published settings, requires matching WebView pixel ratios and clicks the
+native target at each setting. A real title-bar double-click maximizes the form;
+KWin client geometry accounts for Xorg's server-side decorations. The previous
+settings and window size are restored afterward. Notification actions must still
+focus the actual receiver in live and cold modes. This Plasma/Xorg session does
+not provide an activation token; the runner records its absence and retains the
+token requirement for Wayland sessions, including Xwayland clients.
+These are desktop DPI checks:
+the dummy driver rejects RandR output transforms, so physical-output magnification
+and multi-monitor transitions remain separate coverage.
 
 ## Remaining coverage
 

@@ -4,6 +4,8 @@ let
     name = "runic-atspi";
     runtimeInputs = [ (pkgs.python3.withPackages (ps: [ ps.pyatspi ps.pygobject3 ])) ];
     text = ''
+      export RUNIC_LIBX11="${pkgs.libX11}/lib/libX11.so.6"
+      export RUNIC_LIBXTST="${pkgs.libXtst}/lib/libXtst.so.6"
       export RUNIC_LIBEI="${pkgs.libei}/lib/libei.so.1"
       export GI_TYPELIB_PATH="${lib.makeSearchPath "lib/girepository-1.0" [ pkgs.at-spi2-core pkgs.glib pkgs.gobject-introspection ]}''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
       exec python3 "$@"

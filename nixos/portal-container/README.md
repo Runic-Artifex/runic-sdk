@@ -79,3 +79,10 @@ used during exploration. They are not the supported host execution path: the
 former exposes parent proc/sys for its test infrastructure, while the latter
 failed SUID/PAM setup in the Nix build sandbox. The managed runner resolves these
 constraints without disabling authentication or application sandboxes.
+
+Standalone Plasma/Xorg is also available as
+`nixosConfigurations.runic-headless-kde-xorg`. Select it with the runner's
+`--desktop kde --session xorg` options. It uses a private dummy Xorg display and
+XTEST input; `--scaling` checks desktop DPI through XSettings. See the
+[container automation guide](../../docs/guides/desktop/container-automation.md#gtk-x11-backend)
+for coverage and limitations.

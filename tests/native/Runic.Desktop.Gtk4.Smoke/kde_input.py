@@ -145,7 +145,7 @@ def windows():
             script.write('callDBus(' + json.dumps(bus.get_unique_name()) + ',"/com/runic/tests/Geometry",'
                          + json.dumps(interface) + ',"Result",JSON.stringify(workspace.windowList().map(w => '
                          '({pid:w.pid,caption:w.caption,resourceClass:String(w.resourceClass),'
-                         'frame:w.frameGeometry,buffer:w.bufferGeometry,active:w.active}))));')
+                         'frame:w.frameGeometry,buffer:w.bufferGeometry,client:w.clientGeometry,active:w.active}))));')
             script.flush()
             identifier = call('loadScript', GLib.Variant('(ss)', (script.name, plugin)))
             if identifier < 0:

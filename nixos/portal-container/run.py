@@ -21,13 +21,17 @@ def main():
     parser.add_argument('--inputs', type=Path, required=True, help='Immutable Nix store directory containing fixtures')
     parser.add_argument('--runtime', type=Path, help='Immutable prepared Flatpak installation')
     parser.add_argument('--output', type=Path, required=True, help='New host results directory')
-    parser.add_argument('--backend', choices=['wayland', 'x11'], default='wayland', help='GTK display backend; X11 uses the guest Xwayland server')
+    parser.add_argument('--backend', choices=['wayland', 'x11'], help='GTK display backend; defaults to the selected session')
+    parser.add_argument('--session', choices=['wayland', 'xorg'], default='wayland', help='Container desktop session')
     parser.add_argument('--flatpak', action='store_true')
     parser.add_argument('--orca', action='store_true')
     parser.add_argument('--notifications', action='store_true', help='Check visible live/cold notification actions')
     parser.add_argument('--keyboard', action='store_true')
-    parser.add_argument('--scaling', action='store_true', help='Compositor scale and pointer checks')
+    parser.add_argument('--scaling', action='store_true', help='Desktop scaling and pointer checks')
     args = parser.parse_args()
+    args.backend = args.backend or ('x11' if args.session == 'xorg' else 'wayland')
+    if args.session == 'xorg' and (args.desktop != 'kde' or args.backend != 'x11'):
+        parser.error('Standalone Xorg requires KDE and the X11 backend')
     if args.backend == 'x11' and args.desktop != 'kde':
         parser.error('The X11 integration adapter currently requires KDE')
     args.root = args.root.resolve(strict=True)
@@ -68,6 +72,9 @@ def main():
                    DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus',
                    WAYLAND_DISPLAY=wayland, XDG_SESSION_TYPE='wayland',
                    XDG_CURRENT_DESKTOP='GNOME' if args.desktop == 'gnome' else 'KDE', PATH=GUEST[:-1])
+        if args.session == 'xorg':
+            env.pop('WAYLAND_DISPLAY')
+            env.update(DISPLAY=':0', XDG_SESSION_TYPE='x11')
         env.update(x11_env)
         return command(enter([GUEST + 'systemd-run', '--wait', '--collect', '--pipe', '--uid=runic',
                               '--working-directory=/home/runic',
@@ -97,7 +104,8 @@ def main():
                                     text=True, capture_output=True, timeout=5)
             if result.returncode == 0 and result.stdout.strip().isdigit():
                 leader = int(result.stdout.strip())
-                probe = subprocess.run(enter([GUEST + 'test', '-S', '/run/user/1000/' + wayland]),
+                display_socket = '/tmp/.X11-unix/X0' if args.session == 'xorg' else '/run/user/1000/' + wayland
+                probe = subprocess.run(enter([GUEST + 'test', '-S', display_socket]),
                                        capture_output=True, timeout=5)
                 if probe.returncode == 0:
                     break
@@ -134,7 +142,7 @@ def main():
                 fixture = [GUEST + 'runic-container-fixture', '/home/runic/Runic.Desktop.Gtk4.Smoke', '--usability']
             options = ['--orca'] if args.orca else []
             if args.backend == 'x11':
-                options.append('--x11')
+                options.append('--xorg' if args.session == 'xorg' else '--x11')
             if args.keyboard:
                 options.append('--gnome-keyboard' if args.desktop == 'gnome' else '--kde-keyboard')
             if args.scaling:

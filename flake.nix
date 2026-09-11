@@ -29,6 +29,16 @@
         };
         runic-headless-kde = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
+          specialArgs.runicXorg = false;
+          modules = [
+            "${nixpkgs}/nixos/modules/virtualisation/nspawn-container"
+            "${nixpkgs}/nixos/modules/virtualisation/guest-networking-options.nix"
+            ./nixos/portal-container/kde.nix
+          ];
+        };
+        runic-headless-kde-xorg = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs.runicXorg = true;
           modules = [
             "${nixpkgs}/nixos/modules/virtualisation/nspawn-container"
             "${nixpkgs}/nixos/modules/virtualisation/guest-networking-options.nix"

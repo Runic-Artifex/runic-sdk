@@ -9,8 +9,13 @@ from gi.repository import Gio, GLib
 
 if Path("/etc/hostname").read_text().strip() not in {"runic-headless-gnome", "runic-headless-kde"}:
     raise SystemExit("Run inside a disposable Runic desktop container")
-if not (Path("/run/user/1000") / os.environ["WAYLAND_DISPLAY"]).is_socket():
-    raise SystemExit("Independent Wayland socket is missing")
+if os.environ.get("XDG_SESSION_TYPE") == "x11":
+    if not Path("/tmp/.X11-unix/X0").is_socket():
+        raise SystemExit("Independent Xorg socket is missing")
+    subprocess.run(["pgrep", "-x", "Xorg"], check=True, stdout=subprocess.DEVNULL)
+else:
+    if not (Path("/run/user/1000") / os.environ["WAYLAND_DISPLAY"]).is_socket():
+        raise SystemExit("Independent Wayland socket is missing")
 
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
@@ -49,6 +54,6 @@ subprocess.run(["systemctl", "--user", "is-active", "pipewire.service"],
                check=True, stdout=subprocess.DEVNULL)
 bus_id = call("org.freedesktop.DBus", "/org/freedesktop/DBus",
               "org.freedesktop.DBus", "GetId")[0]
-print(json.dumps({"desktop": desktop, "session_running": running, "session_bus_id": bus_id,
+print(json.dumps({"desktop": desktop, "session_type": os.environ.get("XDG_SESSION_TYPE"), "session_running": running, "session_bus_id": bus_id,
                   "monitors": monitors, "color_scheme": setting,
                   "pipewire_active": True}, indent=2))
