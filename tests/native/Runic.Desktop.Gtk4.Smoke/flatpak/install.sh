@@ -2,6 +2,8 @@
 # Run only in a disposable graphical test guest with GNOME Platform 50 installed.
 set -euo pipefail
 binary=$(realpath "${1:?Pass the portable test executable}")
+backend=${2:-wayland}
+case "$backend" in wayland|x11) ;; *) echo "Unsupported test backend: $backend" >&2; exit 2 ;; esac
 root="$HOME/.cache/runic-gtk4-flatpak"
 mkdir -p "$root" "$HOME/runic-sandbox-inputs"
 app=$(mktemp -d "$root/build.XXXXXX")
@@ -14,7 +16,7 @@ printf '%s\n' 'Runic private sibling; must not be readable.' > "$HOME/runic-sand
 printf '%s\n' 'Preserve this existing save destination.' > "$HOME/runic-sandbox-inputs/save-target.txt"
 cat > "$app/files/bin/runic-usability" <<'EOF'
 #!/bin/sh
-export GDK_BACKEND=wayland
+export GDK_BACKEND="${GDK_BACKEND:-wayland}"
 export RUNIC_TEST_DENIED_FILE="$HOME/runic-sandbox-inputs/private.txt"
 exec /app/lib/runic/Runic.Desktop.Gtk4.Smoke --usability
 EOF
@@ -33,7 +35,7 @@ Name=Runic Sandbox Test
 Exec=runic-usability
 Categories=Development;
 EOF
-flatpak build-finish --socket=wayland --share=network --device=dri "$app"
+flatpak build-finish --socket="$backend" --env=GDK_BACKEND="$backend" --share=network --device=dri "$app"
 flatpak build-export "$root/repo" "$app" test
 flatpak install --user --assumeyes --reinstall --no-deps "$root/repo" com.runic.tests.Sandbox
 flatpak info --user --show-permissions com.runic.tests.Sandbox

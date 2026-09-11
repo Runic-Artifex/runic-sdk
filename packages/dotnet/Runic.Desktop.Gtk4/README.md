@@ -59,8 +59,10 @@ local transcription, real Pinyin composition, 100/150/200% scaling with pointer
 targeting, sandboxed file pickers and live/cold notification focus. The keyboard
 checks also traverse every fixture control forward and backward, require native
 AT-SPI focus events, and check text insertion events, values and caret positions.
-Announcement quality, visual candidate placement and broader distribution/X11
-usability coverage remain follow-ups. See the
+The managed KDE runner also verifies GTK X11 clients on Xwayland, including
+XIM Pinyin, Orca, 100/150/200% pointer targeting and sandboxed picker flows.
+Announcement quality, visual candidate placement, standalone Xorg sessions and
+broader distribution coverage remain follow-ups. See the
 [container automation guide](../../../docs/guides/desktop/container-automation.md)
 for reproducible commands and assertion limits. GTK3 remains supported.
 

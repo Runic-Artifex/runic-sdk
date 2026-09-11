@@ -25,5 +25,5 @@ in {
   system.build.runicAtspi = accessibilityInspector;
   system.build.runicAutomation = portalAutomation;
   system.build.runicNotificationAutomation = notificationAutomation;
-  environment.systemPackages = [ accessibilityInspector portalAutomation notificationAutomation pkgs.orca ];
+  environment.systemPackages = [ accessibilityInspector portalAutomation notificationAutomation pkgs.orca pkgs.xprop ];
 }

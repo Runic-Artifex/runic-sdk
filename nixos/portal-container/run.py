@@ -21,12 +21,15 @@ def main():
     parser.add_argument('--inputs', type=Path, required=True, help='Immutable Nix store directory containing fixtures')
     parser.add_argument('--runtime', type=Path, help='Immutable prepared Flatpak installation')
     parser.add_argument('--output', type=Path, required=True, help='New host results directory')
+    parser.add_argument('--backend', choices=['wayland', 'x11'], default='wayland', help='GTK display backend; X11 uses the guest Xwayland server')
     parser.add_argument('--flatpak', action='store_true')
     parser.add_argument('--orca', action='store_true')
     parser.add_argument('--notifications', action='store_true', help='Check visible live/cold notification actions')
     parser.add_argument('--keyboard', action='store_true')
     parser.add_argument('--scaling', action='store_true', help='Compositor scale and pointer checks')
     args = parser.parse_args()
+    if args.backend == 'x11' and args.desktop != 'kde':
+        parser.error('The X11 integration adapter currently requires KDE')
     args.root = args.root.resolve(strict=True)
     args.system = args.system.resolve(strict=True)
     args.inputs = args.inputs.resolve(strict=True)
@@ -52,6 +55,7 @@ def main():
     wayland = 'runic-wayland' if args.desktop == 'gnome' else 'wayland-0'
     process = None
     leader = None
+    x11_env = {}
 
     def command(argv, **kwargs):
         return subprocess.run(argv, check=True, timeout=kwargs.pop('timeout', 30), **kwargs)
@@ -64,6 +68,7 @@ def main():
                    DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus',
                    WAYLAND_DISPLAY=wayland, XDG_SESSION_TYPE='wayland',
                    XDG_CURRENT_DESKTOP='GNOME' if args.desktop == 'gnome' else 'KDE', PATH=GUEST[:-1])
+        env.update(x11_env)
         return command(enter([GUEST + 'systemd-run', '--wait', '--collect', '--pipe', '--uid=runic',
                               '--working-directory=/home/runic',
                               *['--setenv=' + key + '=' + value for key, value in env.items()], *argv]), timeout=timeout, **kwargs)
@@ -108,16 +113,28 @@ def main():
                     time.sleep(2)
             else:
                 raise TimeoutError('Desktop/portal session did not become ready')
+        if args.backend == 'x11':
+            environment = guest([GUEST + 'systemctl', '--user', 'show-environment'], capture_output=True, text=True)
+            session_env = dict(line.split('=', 1) for line in environment.stdout.splitlines() if '=' in line)
+            if not session_env.get('DISPLAY'):
+                raise RuntimeError('Guest session did not publish its Xwayland DISPLAY')
+            x11_env = {key: session_env[key] for key in ('DISPLAY', 'XAUTHORITY') if key in session_env}
+            x11_env.update(GDK_BACKEND='x11', GTK_IM_MODULE='xim', XMODIFIERS='@im=fcitx')
         with (args.output / 'suite.log').open('w') as log:
             if args.flatpak:
                 guest([GUEST + 'bash', '/run/runic-test-input/install-flatpak.sh',
-                       '/run/runic-test-input/Runic.Desktop.Gtk4.Smoke.flatpak'], stdout=log, stderr=subprocess.STDOUT)
-                fixture = [GUEST + 'flatpak', 'run', '--user', 'com.runic.tests.Sandbox']
+                       '/run/runic-test-input/Runic.Desktop.Gtk4.Smoke.flatpak', args.backend], stdout=log, stderr=subprocess.STDOUT)
+                fixture = [GUEST + 'flatpak', 'run', '--user']
+                if args.backend == 'x11':
+                    fixture += ['--env=GTK_IM_MODULE=xim', '--env=XMODIFIERS=@im=fcitx']
+                fixture.append('com.runic.tests.Sandbox')
             else:
                 guest([GUEST + 'cp', '/run/runic-test-input/Runic.Desktop.Gtk4.Smoke', '/home/runic/Runic.Desktop.Gtk4.Smoke'],
                       stdout=log, stderr=subprocess.STDOUT)
                 fixture = [GUEST + 'runic-container-fixture', '/home/runic/Runic.Desktop.Gtk4.Smoke', '--usability']
             options = ['--orca'] if args.orca else []
+            if args.backend == 'x11':
+                options.append('--x11')
             if args.keyboard:
                 options.append('--gnome-keyboard' if args.desktop == 'gnome' else '--kde-keyboard')
             if args.scaling:

@@ -153,6 +153,23 @@ runner waits for the preceding popup and bus owner to disappear, removes its
 temporary service, and cleans up owned receiver processes. GNOME keeps its
 pointer inside the banner between hover and click so the action row stays open.
 
+## GTK X11 backend
+
+For the X11 client path, add `--backend x11` to the KDE command with
+`--keyboard --scaling --orca --flatpak`. Refresh the immutable fixture inputs
+with the current `flatpak/install.sh` before running. The runner reads DISPLAY
+and XAUTHORITY from the guest's session manager; no host X server is used.
+It requires an actual Runic window in the guest X server's client list and retains
+its properties in `x11-window.json`.
+
+This runs GTK's X11 backend under KDE's Xwayland server. It covers real Fcitx5
+Pinyin through XIM, native focus/text events and Orca speech, compositor scaling,
+and sandboxed file grants/cancellation/owner closure. The Flatpak receives only
+the selected display socket. X11 pointer coordinates are converted to compositor
+coordinates using the measured WebView/client-buffer ratio, accounting for
+both fractional Xwayland scale and integer GTK scale. This establishes X11 client behavior;
+standalone Xorg desktop/session integration remains separate coverage.
+
 ## Remaining coverage
 
 Visual candidate placement, announcement quality, physical input devices and real

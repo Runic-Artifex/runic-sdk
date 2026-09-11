@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -28,6 +29,7 @@ class Suite:
         self.orca = None
         self.speech = []
         self.gnome_input = None
+        self.x11_input = None
         self.accessibility_enabled = None
 
     def wait(self, check, seconds=20):
@@ -428,8 +430,20 @@ class Suite:
                     window = unique(windows(), lambda w: "runic" in w["resourceClass"].lower() and w["caption"] == "Runic Desktop")
                     # GTK's Wayland accessibility coordinates are local to its
                     # surface. KWin's buffer origin supplies desktop placement.
-                    click_x = window["buffer"]["x"] + x + width / 2
-                    click_y = window["buffer"]["y"] + y + height / 2
+                    coordinate_scale = 1
+                    if self.args.x11:
+                        document = unique(tree(self.fixture()), lambda n: n.getRoleName() == "document web")
+                        document_bounds = document.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+                        if document_bounds.width <= 0 or window["buffer"]["width"] <= 0:
+                            raise RuntimeError("Invalid X11 document/window geometry")
+                        # GTK changes its integer scale at 200%; Xwayland also
+                        # has a fractional scale. Derive the mapping from the
+                        # full-width WebView and the compositor client buffer.
+                        coordinate_scale = document_bounds.width / window["buffer"]["width"]
+                        print(f"DOCUMENT {document_bounds}; coordinate scale {coordinate_scale}", flush=True)
+                    click_x = window["buffer"]["x"] + (x + width / 2) / coordinate_scale
+                    click_y = window["buffer"]["y"] + (y + height / 2) / coordinate_scale
+                    print(f"TARGET {bounds}; WINDOW {window}", flush=True)
                     print(f"SCALE {scale} pointer {click_x},{click_y}", flush=True)
                     keyboard.click(click_x, click_y)
                     self.wait(lambda: self.button("Target hits: " + str(2 + len(records))))
@@ -440,7 +454,7 @@ class Suite:
                     if len(states) != 1 or states[0]["hits"] != 2 + len(records):
                         raise RuntimeError("Compositor pointer hit did not reach the application")
                     records.append({"scale": scale, "output": output(), "bounds": [x, y, width, height],
-                                    "window": window, "pointer": [click_x, click_y], "page": states[0]})
+                                    "window": window, "coordinate_scale": coordinate_scale, "pointer": [click_x, click_y], "page": states[0]})
                 finally:
                     keyboard.close()
             (self.output / "scaling.json").write_text(json.dumps(records, indent=2) + "\n")
@@ -481,6 +495,13 @@ class Suite:
             raise RuntimeError("Could not establish initial screen-reader focus")
         self.wait(lambda: initial.getState().contains(pyatspi.STATE_FOCUSED))
         time.sleep(0.5)
+        if self.args.x11:
+            # Orca starts reading the new page on X11 and ignores focus changes
+            # during Say All. Interrupt it with the same real Ctrl key a user uses.
+            self.x11_input.key(29, True)
+            time.sleep(0.05)
+            self.x11_input.key(29, False)
+            time.sleep(0.3)
         for index, (label, role) in enumerate([("Your name", "entry"), ("Composition text", "entry"), ("Open file", "button")]):
             wav = self.output / f"speech-{index}.wav"
             capture_name = f"runic-orca-capture-{os.getpid()}-{index}"
@@ -576,7 +597,26 @@ class Suite:
             self.wait(lambda: required <= {n.name for n in tree(self.fixture())})
             if "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
                 self.establish_gnome_input()
+            if self.args.x11:
+                from kde_input import KdeInput
+                # Xwayland requires a live seat for application activation and
+                # Orca's initial focus. Keep it alive until the fixture exits.
+                self.x11_input = KdeInput()
+                frame = unique(tree(self.fixture()), lambda n: n.getRoleName() == "frame")
+                self.wait(lambda: frame.getState().contains(pyatspi.STATE_ACTIVE))
             self.snapshot()
+            if self.args.x11:
+                clients = subprocess.check_output(["xprop", "-root", "_NET_CLIENT_LIST"], text=True, timeout=5)
+                matches = []
+                for identifier in re.findall(r"0x[0-9a-fA-F]+", clients):
+                    properties = subprocess.check_output(["xprop", "-id", identifier,
+                        "WM_CLASS", "_NET_WM_NAME", "_NET_WM_PID"], text=True, timeout=5)
+                    if '"Runic Desktop"' in properties and "runic" in properties.lower():
+                        matches.append({"id": identifier, "properties": properties})
+                if len(matches) != 1:
+                    raise RuntimeError(f"Expected one Runic X11 window, found {matches}")
+                (self.output / "x11-window.json").write_text(json.dumps(matches[0], indent=2) + "\n")
+                self.passed_check("X server confirms the GTK fixture is an X11 client")
             self.passed_check("native accessible control names")
             if self.args.orca:
                 self.check_orca()
@@ -668,6 +708,11 @@ class Suite:
                 pass
         finally:
             self.stop_orca()
+            if self.x11_input is not None:
+                try:
+                    self.x11_input.close()
+                except Exception as error:
+                    failure = failure or "X11 input cleanup failed: " + str(error)
             try:
                 self.stop_gnome_input()
             except Exception as error:
@@ -686,6 +731,7 @@ class Suite:
                     failure = failure or "Accessibility cleanup failed: " + str(error)
             report = {"passed": self.passed, "failure": failure,
                       "desktop": os.environ.get("XDG_CURRENT_DESKTOP"),
+                      "display_backend": "x11 (Xwayland)" if self.args.x11 else "wayland",
                       "manual": ["spoken announcement quality", "visual IME candidate placement",
                                  "physical pointer targeting at desktop scales", "notification focus"]}
             if not (self.args.gnome_keyboard or self.args.kde_keyboard):
@@ -707,6 +753,7 @@ if __name__ == "__main__":
     scales = parser.add_mutually_exclusive_group()
     scales.add_argument("--gnome-scaling", action="store_true", help="Check actual Mutter scales and pointer targeting")
     scales.add_argument("--kde-scaling", action="store_true", help="Check actual KWin scales and EIS pointer targeting")
+    parser.add_argument("--x11", action="store_true", help="Verify the fixture uses X11 under the guest Xwayland server")
     parser.add_argument("--orca", action="store_true", help="Verify native focus, Orca speech and captured desktop sink audio")
     parser.add_argument("--audio-sink", help="Explicit PipeWire sink name; never captures the microphone")
     parser.add_argument("--startup-timeout", type=int, default=300)
@@ -720,7 +767,7 @@ if __name__ == "__main__":
     if Path("/etc/hostname").read_text().strip() not in {"runic-portal", "runic-headless-gnome", "runic-headless-kde"}:
         parser.error("Run only inside a disposable Runic test VM or container")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
-    if (args.kde_keyboard or args.kde_scaling or args.kde_pickers) and desktop != "KDE":
+    if (args.x11 or args.kde_keyboard or args.kde_scaling or args.kde_pickers) and desktop != "KDE":
         parser.error("KDE adapters require the KDE desktop")
     if (args.gnome_keyboard or args.gnome_pickers or args.gnome_scaling) and desktop != "GNOME":
         parser.error("GNOME adapters require the GNOME desktop")
