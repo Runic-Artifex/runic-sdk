@@ -46,10 +46,14 @@ public sealed class SpectreCommandConsole : ICommandConsole
     public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken) => _inner.WriteOutBytesAsync(value, cancellationToken);
     /// <inheritdoc />
     public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) =>
-        WriteAsync(new Text(value.ToString()), false, cancellationToken);
+        IsOutputRedirected
+            ? _inner.WriteOutAsync(value, cancellationToken)
+            : WriteAsync(new Text(value.ToString()), false, cancellationToken);
     /// <inheritdoc />
     public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) =>
-        WriteAsync(new Text(value.ToString(), new Style(foreground: Color.Red)), true, cancellationToken);
+        IsErrorRedirected
+            ? _inner.WriteErrorAsync(value, cancellationToken)
+            : WriteAsync(new Text(value.ToString(), new Style(foreground: Color.Red)), true, cancellationToken);
 
     /// <summary>Renders a table, tree, panel, or other Spectre component to an invocation-local stream.</summary>
     public ValueTask WriteAsync(IRenderable value, bool standardError = false, CancellationToken cancellationToken = default)

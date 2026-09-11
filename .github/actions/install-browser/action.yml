@@ -7,3 +7,17 @@ runs:
       run: |
         bunx --bun playwright-core install --with-deps chromium
         bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path); console.log("WEBUI_BROWSER_PATH=" + path)' >> "$GITHUB_ENV"
+    - name: Check the installed browser can start
+      shell: bash
+      run: |
+        bun --input-type=module -e '
+          import { chromium } from "playwright-core";
+          const started = Date.now();
+          const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH, headless: true, timeout: 120000 });
+          try {
+            const page = await browser.newPage();
+            await page.setContent("<title>Runic browser readiness</title>");
+            if (await page.title() !== "Runic browser readiness") throw new Error("Browser renderer did not respond");
+            console.log(`Chromium ready in ${Date.now() - started} ms`);
+          } finally { await browser.close(); }
+        '

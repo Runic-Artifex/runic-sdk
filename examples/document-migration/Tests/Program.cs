@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Bridge;
 using Runic.Application.Generated;
 using Runic.Platform;
+[assembly: Runic.Application.RunicApplicationManifest("document-tests")]
 [assembly: ApplicationBridgeContract("runic.examples.documents", 1, ContractName = "Documents")]
 
 int assertions = 0;

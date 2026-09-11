@@ -160,6 +160,11 @@ internal static partial class ApplicationTests
         var console = new SpectreCommandConsole(inner, width: 40);
         await console.WriteOutAsync("[red]literal[/]\n".AsMemory(), default);
         AssertEx.Equal("[red]literal[/]\n", inner.StandardOutput);
+        string longLine = new('x', 250);
+        await console.WriteOutAsync(longLine.AsMemory(), default);
+        await console.WriteErrorAsync(longLine.AsMemory(), default);
+        AssertEx.Equal("[red]literal[/]\n" + longLine, inner.StandardOutput);
+        AssertEx.Equal(longLine, inner.StandardError);
         await console.WriteAsync(new Table().AddColumn("Status").AddRow("Ready"));
         AssertEx.True(inner.StandardOutput.Contains("Ready", StringComparison.Ordinal));
         AssertEx.True(!inner.StandardOutput.Contains('\u001b'));
