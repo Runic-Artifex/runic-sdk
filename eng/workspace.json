@@ -271,7 +271,10 @@
         "docs/guides/translations",
         "eng/branding/translations",
         "specs/translations",
-        "packages/dotnet/Runic.Translations.Wpf"
+        "packages/dotnet/Runic.Translations.Wpf",
+        "tools/vscode-runic-translations",
+        "tools/visualstudio-runic-translations",
+        "tests/dotnet/Runic.Translations.Wpf.Tests"
       ]
     },
     "application": {

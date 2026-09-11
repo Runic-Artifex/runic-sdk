@@ -39,7 +39,11 @@ second repository root. Web packages declare their own build/test dependencies.
 
 The root Bun lockfile and NuGet configuration own development restores. Independent
 lockfiles in template and isolated consumer fixtures prove installation behavior;
-they are excluded from the active workspace.
+they are excluded from the active workspace. IDE extensions under
+`tools/vscode-runic-translations` and `tools/visualstudio-runic-translations` also
+have isolated lockfiles: their dependencies target the editor host rather than
+the SDK application runtime. Their README files own build and host-test commands;
+they are tracked by the translations component and packaged as VSIX artifacts.
 
 ## Verify a change
 
