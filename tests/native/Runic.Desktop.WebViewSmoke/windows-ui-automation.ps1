@@ -12,7 +12,9 @@ if (Test-Path -LiteralPath $ReceiptPath) { throw "Receipt path already exists: $
 $runningPath = "$ReceiptPath.running"
 if (Test-Path -LiteralPath $runningPath) { throw "Running marker already exists: $runningPath" }
 $pickerContents = 'Runic Windows native picker input.'
-$PickerPath = Join-Path ([IO.Path]::GetDirectoryName($ReceiptPath)) 'runic-uia-picker-input.txt'
+$PickerPath = "$ReceiptPath.input.txt"
+$savePath = "$ReceiptPath.saved.txt"
+if (Test-Path -LiteralPath $savePath) { throw "Save target already exists: $savePath" }
 if (Test-Path -LiteralPath $PickerPath) { throw "Picker input path already exists: $PickerPath" }
 Set-Content -LiteralPath $PickerPath -Value $pickerContents -NoNewline -Encoding utf8
 $PickerPath = (Resolve-Path -LiteralPath $PickerPath).Path
@@ -56,7 +58,7 @@ function Wait-Value([System.Windows.Automation.ValuePattern]$Pattern, [string]$E
         if ($Pattern.Current.Value -eq $Expected) { return }
         Start-Sleep -Milliseconds 50
     } while ([DateTime]::UtcNow -lt $deadline)
-    throw "Editable value did not become '$Expected'."
+    throw "Editable value did not become '$Expected'; actual: '$($Pattern.Current.Value)'."
 }
 
 function Wait-DomFocus([System.Windows.Automation.AutomationElement]$Window, [string]$Id) {
@@ -65,7 +67,7 @@ function Wait-DomFocus([System.Windows.Automation.AutomationElement]$Window, [st
 }
 
 function Send-LiteralKeys([object]$Keyboard, [string]$Text) {
-    foreach ($character in $Text.ToCharArray()) {
+    $sequence = foreach ($character in $Text.ToCharArray()) {
         $keys = switch ($character) {
             '+' { '{+}' }
             '^' { '{^}' }
@@ -79,16 +81,17 @@ function Send-LiteralKeys([object]$Keyboard, [string]$Text) {
             '}' { '{}}' }
             default { [string]$character }
         }
-        $Keyboard.SendKeys($keys)
+        $keys
     }
+    $Keyboard.SendKeys(($sequence -join ''))
 }
 
-function Find-ActiveDialog([System.Windows.Automation.AutomationElement]$MainWindow, [int]$TimeoutSeconds = 10) {
+function Find-ActiveDialog([System.Windows.Automation.AutomationElement]$MainWindow, [int]$TimeoutSeconds = 10, [switch]$Save) {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $windowCondition = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)
     $fileNameCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, '1148')
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $(if ($Save) { 'FileNameControlHost' } else { '1148' }))
     do {
         # Common Item Dialog is an owned child window on this host, rather than
         # a top-level desktop child. Its stable file-name control ID survives
@@ -101,6 +104,10 @@ function Find-ActiveDialog([System.Windows.Automation.AutomationElement]$MainWin
         }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
+    $nodes = @($MainWindow.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object {
+        [ordered]@{ name=$_.Current.Name; id=$_.Current.AutomationId; type=$_.Current.ControlType.ProgrammaticName; class=$_.Current.ClassName; handle=$_.Current.NativeWindowHandle }
+    })
+    $nodes | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath "$ReceiptPath.dialog.json" -Encoding utf8
     throw 'The native file picker did not expose its file-name control.'
 }
 
@@ -158,10 +165,25 @@ try {
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)))
     $button = Find-Element $window $buttonCondition
     $recordFocus = Wait-DomFocus $window 'record'
-    $keyboard.SendKeys('+{TAB}')
-    $editFocus = Wait-DomFocus $window 'display-name'
+    Wait-KeyboardFocus $button
+    $focusObservations = @()
+    # Exercise every form control in both directions. The DOM status supplements,
+    # rather than substitutes for, native UIA focus and focused-element identity.
+    $order = @('pointer-target', 'open-file', 'save-file', 'finish', 'save-file', 'open-file', 'pointer-target', 'record', 'display-name')
+    for ($index = 0; $index -lt $order.Count; $index++) {
+        $keyboard.SendKeys($(if ($index -lt 4) { '{TAB}' } else { '+{TAB}' }))
+        $id = $order[$index]
+        $null = Wait-DomFocus $window $id
+        $control = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id))
+        Wait-KeyboardFocus $control
+        $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+        if ($focused.Current.AutomationId -ne $id) { throw "Native focused element differs from expected $id." }
+        $focusObservations += [ordered]@{ id=$id; name=$focused.Current.Name; type=$focused.Current.ControlType.ProgrammaticName; hasKeyboardFocus=$control.Current.HasKeyboardFocus }
+    }
     $keyboard.SendKeys('{TAB}')
-    $recordFocusAgain = Wait-DomFocus $window 'record'
+    $null = Wait-DomFocus $window 'record'
+    Wait-KeyboardFocus $button
     $keyboard.SendKeys('{ENTER}')
 
     $snapshotCondition = New-Object System.Windows.Automation.PropertyCondition(
@@ -214,6 +236,36 @@ try {
     $keyboard.SendKeys('{ENTER}')
     $pickerResult = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, "Picked: $([IO.Path]::GetFileName($PickerPath)): $pickerContents"))
+    $openResultName = $pickerResult.Current.Name
+    # Cancellation must round-trip through Runic and return no selection.
+    ([System.Windows.Automation.InvokePattern]$pickerButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    $cancelDialog = Find-ActiveDialog $window
+    $keyboard.SendKeys('{ESC}')
+    $openCancelled = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, 'Open cancelled'))
+    $saveButton = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'save-file'))
+    ([System.Windows.Automation.InvokePattern]$saveButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    $cancelDialog = Find-ActiveDialog $window -Save
+    $keyboard.SendKeys('{ESC}')
+    $saveCancelled = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, 'Save cancelled'))
+    if (Test-Path -LiteralPath $savePath) { throw 'Cancelled picker unexpectedly created the destination.' }
+    ([System.Windows.Automation.InvokePattern]$saveButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    $saveDialog = Find-ActiveDialog $window -Save
+    $saveHost = Find-Element $saveDialog (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FileNameControlHost'))
+    $saveHost = Find-Element $saveHost (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'Edit'))
+    [RunicWindowsInput]::SetFocus([IntPtr]$saveHost.Current.NativeWindowHandle) | Out-Null
+    $keyboard.SendKeys('^a')
+    Send-LiteralKeys $keyboard $savePath
+    $keyboard.SendKeys('{ENTER}')
+    $saveResult = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, "Saved: $([IO.Path]::GetFileName($savePath))"))
+    if ([IO.File]::ReadAllText($savePath) -cne 'Runic Windows native picker output.') { throw 'Native save content mismatch.' }
+    if ([IO.File]::ReadAllText($PickerPath) -cne $pickerContents) { throw 'Native picker input was unexpectedly modified.' }
+    $saveResultName = $saveResult.Current.Name
     $finishCondition = New-Object System.Windows.Automation.AndCondition @(
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Finish')),
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)))
@@ -229,7 +281,7 @@ try {
     $pointerName = $pointerResult.Current.Name
     $pointerX = $point.X
     $pointerY = $point.Y
-    $pickerResultName = $pickerResult.Current.Name
+    $pickerResultName = $openResultName
     $finishName = $finish.Current.Name
     ([System.Windows.Automation.InvokePattern]$finish.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
     if (-not $process.WaitForExit(20000)) { throw 'UI Automation fixture did not exit after Finish.' }
@@ -255,6 +307,10 @@ try {
         pickerFileNameId = $pickerFileNameId
         pickerFileNameHandle = $pickerFileNameHandle
         pickerResultName = $pickerResultName
+        openCancelled = $true
+        saveCancelled = $true
+        saveResultName = $saveResultName
+        focusObservations = $focusObservations
         finishName = $finishName
         completedUtc = [DateTime]::UtcNow.ToString('o')
     }
@@ -272,5 +328,5 @@ catch {
 finally {
     if ($null -ne $process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
     Remove-Item -LiteralPath $runningPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $PickerPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $PickerPath, $savePath -Force -ErrorAction SilentlyContinue
 }

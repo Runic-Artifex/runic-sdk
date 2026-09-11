@@ -28,8 +28,12 @@ pretending that Session 0 itself has a desktop:
 ```
 
 The scripts do not install software or change accessibility settings. They create
-and remove one fixed-content input file beside the receipt, which lets the native
-open-file dialog return a real `IReadFileLease`. The pointer check uses a UIA
+and remove receipt-specific input/output files. The native open-file dialog
+returns a real `IReadFileLease`; open and save cancellation must return `Dismissed`.
+The save path acquires an `ISaveFileLease`, stages a `RequireAtomicReplace` write,
+and commits it. The driver independently verifies the saved bytes and unchanged
+input file. Both open/save selectors use native control IDs, including the save
+dialog's `FileNameControlHost` and child `Edit`, rather than localized labels. The pointer check uses a UIA
 clickable point for the named target rather than a hard-coded screen coordinate.
 Add `-RequireExecutableOnly` for NativeAOT. The task runner then requires the
 executable to be the only file in its directory. Copying only the NativeAOT
@@ -39,15 +43,18 @@ runs without that switch.
 
 This smoke covers semantic WebView2 accessibility, programmatic editable focus,
 value and invoke patterns, actual `SendKeys` text entry, Tab/Shift+Tab/Enter
-behavior observed through an accessible focus-status output, a UIA-point mouse
-click, native open-file selection, live output, and clean fixture lifecycle. It
-records the native host's current effective DPI, but has only passed at the VM's
-observed 96 DPI; that does not establish DPI awareness or pointer behavior after
-a scale/display change. WebView2 did not reliably report `HasKeyboardFocus` for
-the buttons in this fixture, so the focus-status output plus Enter result is the
-current keyboard assertion. Physical keyboard devices, IME composition,
-Narrator/speech output, multi-DPI and visual rendering, picker cancel/save flows
-remain outside this smoke. Native inhibition is covered separately: the
+behavior, a UIA-point mouse click, native open-file selection, open/save dismissal,
+atomic save, live output, and clean fixture lifecycle. Forward and reverse Tab
+navigation covers every form control and requires both `HasKeyboardFocus` and
+matching `AutomationElement.FocusedElement` identity. An accessible DOM focus
+output supplements these native checks. Escaped text is submitted as one keyboard
+sequence and consumed before navigation; the earlier button-focus limitation no
+longer reproduces with this sequencing.
+
+The driver records the native host's current effective DPI, but has only passed
+at the VM's observed 96 DPI. Physical keyboard devices, IME composition,
+Narrator/speech output, multi-DPI/display changes, overwrite-confirmation flows,
+and visual rendering remain outside this smoke. Native inhibition is covered separately: the
 maintained `--system-only` test runs from SSH, while full display and system
 acquisition requires an interactive desktop; `powercfg /requests` observation
 also requires elevation.

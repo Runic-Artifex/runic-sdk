@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$AutomationScript,
     [Parameter(Mandatory)][string]$ReceiptPath,
     [switch]$RequireExecutableOnly,
-    [ValidateRange(10, 120)][int]$TimeoutSeconds = 75
+    [ValidateRange(10, 120)][int]$TimeoutSeconds = 120
 )
 
 $ErrorActionPreference = 'Stop'

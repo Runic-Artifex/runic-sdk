@@ -100,6 +100,7 @@ static async Task RunWindowsUiAutomationSmokeAsync()
             <button id="record" type="button">Record snapshot</button>
             <button id="pointer-target" type="button">Pointer target: 0</button>
             <button id="open-file" type="button">Open native file</button>
+            <button id="save-file" type="button">Save native file</button>
             <output id="snapshot" aria-live="polite">Waiting for automation</output></main>
             <output id="keyboard-focus" aria-live="polite">Keyboard focus: none</output>
             <output id="picker-result" aria-live="polite">No file selected</output>
@@ -113,8 +114,9 @@ static async Task RunWindowsUiAutomationSmokeAsync()
               event.currentTarget.textContent = 'Pointer target: 1';
             });
             document.getElementById('open-file').addEventListener('click', () => {
-              window.__runicPickerRequest = true;
+              window.__runicPickerRequest = 'open';
             });
+            document.getElementById('save-file').addEventListener('click', () => { window.__runicPickerRequest = 'save'; });
             for (const control of document.querySelectorAll('input, button')) {
               control.addEventListener('focus', event => {
                 document.getElementById('keyboard-focus').textContent = 'Keyboard focus: ' + event.currentTarget.id;
@@ -123,7 +125,7 @@ static async Task RunWindowsUiAutomationSmokeAsync()
             document.getElementById('finish').addEventListener('click', () => {
               if (document.getElementById('snapshot').textContent === 'Recorded: Keyboard value' &&
                   document.getElementById('pointer-target').textContent === 'Pointer target: 1' &&
-                  document.getElementById('picker-result').textContent.startsWith('Picked: ')) {
+                  window.__runicOpenPassed && window.__runicSavePassed && window.__runicOpenCancelled && window.__runicSaveCancelled) {
                 window.__runicAutomationFinished = true;
               }
             });
@@ -140,14 +142,14 @@ static async Task RunWindowsUiAutomationSmokeAsync()
 
     var picker = WindowsPlatformProvider.CreateFileDialogs(new WindowPickerOwner(window));
     Console.WriteLine("Windows UI Automation surface is ready.");
-    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
     while (true)
     {
         string finished = await surface.ExecuteJavaScriptAsync(
-            "if (window.__runicPickerRequest === true) { window.__runicPickerRequest = false; return 'picker'; } return window.__runicAutomationFinished === true ? 'finished' : 'waiting';",
+            "if (window.__runicPickerRequest) { const request = window.__runicPickerRequest; window.__runicPickerRequest = ''; return request; } return window.__runicAutomationFinished === true ? 'finished' : 'waiting';",
             cancellationToken: deadline.Token);
         if (finished == "finished") break;
-        if (finished == "picker")
+        if (finished == "open")
         {
             var selected = await picker.OpenFileAsync(new OpenFileOptions(), deadline.Token);
             string outcome;
@@ -158,7 +160,36 @@ static async Task RunWindowsUiAutomationSmokeAsync()
                 using var reader = new StreamReader(stream);
                 outcome = "Picked: " + lease.DisplayName + ": " + await reader.ReadToEndAsync(deadline.Token);
             }
-            else outcome = selected.ToString()!;
+            else if (selected is PickerResult<IReadFileLease>.Dismissed) outcome = "Open cancelled";
+            else throw new InvalidOperationException("Unexpected open result: " + selected);
+            await surface.ExecuteJavaScriptAsync(selected is PickerResult<IReadFileLease>.Dismissed
+                ? "window.__runicOpenCancelled=true; return true;" : "window.__runicOpenPassed=true; return true;", cancellationToken: deadline.Token);
+            await surface.ExecuteJavaScriptAsync("document.getElementById('picker-result').textContent=" + JavaScriptString(outcome) + "; return true;", cancellationToken: deadline.Token);
+        }
+        if (finished == "save")
+        {
+            var selected = await picker.SaveFileAsync(new SaveFileOptions("runic-uia-saved.txt"), deadline.Token);
+            string outcome;
+            if (selected is PickerResult<ISaveFileLease>.Selected file)
+            {
+                await using var lease = file.Value;
+                var started = await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace, deadline.Token);
+                if (started is not PlatformResult<IFileWriteTransaction>.Success success)
+                    throw new InvalidOperationException("Could not stage native save: " + started);
+                await using var transaction = success.Value;
+                await transaction.Content.WriteAsync(System.Text.Encoding.UTF8.GetBytes("Runic Windows native picker output."), deadline.Token);
+                var committed = await transaction.CommitAsync(deadline.Token);
+                if (committed is not FileCommitResult.Committed)
+                    throw new InvalidOperationException("Native save failed: " + committed);
+                outcome = "Saved: " + lease.DisplayName;
+                await surface.ExecuteJavaScriptAsync("window.__runicSavePassed=true; return true;", cancellationToken: deadline.Token);
+            }
+            else if (selected is PickerResult<ISaveFileLease>.Dismissed)
+            {
+                outcome = "Save cancelled";
+                await surface.ExecuteJavaScriptAsync("window.__runicSaveCancelled=true; return true;", cancellationToken: deadline.Token);
+            }
+            else throw new InvalidOperationException("Unexpected save result: " + selected);
             await surface.ExecuteJavaScriptAsync("document.getElementById('picker-result').textContent=" + JavaScriptString(outcome) + "; return true;", cancellationToken: deadline.Token);
         }
         await Task.Delay(50, deadline.Token);
