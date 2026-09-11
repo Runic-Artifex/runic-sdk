@@ -104,7 +104,7 @@ export const products: Product[] = [
     summary:
       'Present web-powered Runic applications in native windows through explicit browser and embedded-WebView policies.',
     description:
-      'Runic Desktop owns native presentation hosting for Runic applications. Its C# backend and TypeScript+Effect frontend are native implementations of one shared presentation contract; neither package wraps the other language runtime.',
+      'Runic Desktop hosts browser and embedded-WebView presentations. Linux applications explicitly choose GTK3/WebKitGTK 4.1 or the optional GTK4/WebKitGTK 6 adapter. Windows NativeAOT embeds the WebView2 loader; the Edge WebView2 Runtime remains a prerequisite. Platform adapters add file dialogs, notifications, appearance settings, application handoff and inhibition.',
     ...releaseMetadata('desktop'),
     source:
       'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop',
@@ -238,17 +238,18 @@ export const products: Product[] = [
     summary:
       'Build reflection-free NativeAOT command applications with parser-neutral contracts and predictable human and machine output.',
     description:
-      'Runic Command Line separates portable command contracts from execution, hosting, and child-process support. It provides command catalogs and predictable output without requiring reflection or committing applications to one parser.',
+      'Runic Command Line generates NativeAOT-ready commands from ordinary typed C# methods. Help, validation, completion, environment fallbacks and shared options work in standalone tools and hosted Runic applications. Add Runic.CommandLine.Spectre for styled help, progress and prompts; machine output remains structured and predictable.',
     ...releaseMetadata('command-line'),
     source:
       'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.CommandLine',
     bestFor: [
       'NativeAOT command applications',
       'Deterministic machine and human output',
-      'Host-neutral command execution',
+      'The same command behavior in standalone tools and hosted applications',
+      'Optional Spectre.Console help, progress and prompts',
     ],
     boundaries: [
-      'No UI-framework dependency',
+      'The core has no Spectre.Console dependency; presentation is an optional package',
       'Parser-neutral abstractions are independently consumable',
     ],
   },

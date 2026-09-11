@@ -60,9 +60,16 @@ dotnet run`;
         <code>--packageManager</code>.
       </p>
       <p>
-        Run <code>dotnet runic doctor</code> in the generated project to see the native
-        dependencies for your operating system. On Linux, the embedded host uses GTK
-        3 and WebKitGTK 4.1; Windows uses WebView2 and macOS uses its system WebView.
+        Run <code>dotnet runic doctor</code> in the generated project to see the
+        native dependencies for your operating system. The Linux templates use
+        GTK 3 and WebKitGTK 4.1. For GTK 4 and WebKitGTK 6, add the optional
+        GTK4 adapter and follow the
+        <a
+          href="https://github.com/Runic-Artifex/runic-sdk/blob/main/eng/release/notes/gtk4-portals-follow-up.md"
+          >GTK4 and portal migration guide</a
+        >. Windows needs the Edge WebView2 Runtime; NativeAOT builds include the
+        loader without a separate WebView2Loader.dll. macOS uses its system
+        WebView; live testing of the new platform services is still pending.
       </p>
     </ContentCard>
     <ContentCard

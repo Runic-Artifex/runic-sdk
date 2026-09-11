@@ -1,7 +1,13 @@
 {
-  "version": "0.2.0-preview.1",
-  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.2.0-preview.1",
+  "version": "0.3.0-preview.1",
+  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.3.0-preview.1",
   "packages": [
+    {
+      "identity": "Runic.Platform.Administration.Windows",
+      "ecosystem": "nuget",
+      "product": "administration-windows",
+      "installKind": "nuget-package"
+    },
     {
       "identity": "Runic.Assets",
       "ecosystem": "nuget",
@@ -28,6 +34,12 @@
     },
     {
       "identity": "Runic.CommandLine.Processes",
+      "ecosystem": "nuget",
+      "product": "command-line",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.CommandLine.Spectre",
       "ecosystem": "nuget",
       "product": "command-line",
       "installKind": "nuget-package"
@@ -160,6 +172,24 @@
     },
     {
       "identity": "Runic.Application.Platform.Desktop",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Desktop.Gtk4",
+      "ecosystem": "nuget",
+      "product": "desktop",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Linux.Portal",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Linux.Gtk4",
       "ecosystem": "nuget",
       "product": "platform",
       "installKind": "nuget-package"

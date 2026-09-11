@@ -22,11 +22,11 @@ The Linux owner is the same verified GTK3/GTK4 portal owner used by file dialogs
 Cancellation applies to acquisition; the operation must observe its own token
 and leave its `await using` scope to release the lease.
 
-| Provider | Mechanism and limits | Native validation |
-| --- | --- | --- |
-| Linux | Inhibit portal Suspend/Idle flags, owned request closed on disposal. Portal/backend permissions may filter requested effects; acceptance cannot certify actual power policy. | GNOME Wayland: SessionManager reports the application ID, reason and flags 12 while held, then no request after release. KDE checks pending. |
-| Windows | Independent PowerCreateRequest handles with SystemRequired/DisplayRequired counts; released with the handle. Display-only requests do not independently prevent system sleep. | Windows 11 x64 JIT and NativeAOT: normal interactive-user acquisition/release; elevated read-only `powercfg /requests` inspection confirms independent registration and cleanup. |
-| macOS | IOKit PreventUserIdleSystemSleep/PreventUserIdleDisplaySleep assertions; display inhibition may also prevent idle system sleep. | Implemented but untested on a real Mac |
+| Provider | Mechanism and limits                                                                                                                                                          | Native validation                                                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux    | Inhibit portal Suspend/Idle flags, owned request closed on disposal. Portal/backend permissions may filter requested effects; acceptance cannot certify actual power policy.  | GNOME Wayland: SessionManager reports the application ID, reason and flags 12 while held, then no request after release. KDE checks pending.                                     |
+| Windows  | Independent PowerCreateRequest handles with SystemRequired/DisplayRequired counts; released with the handle. Display-only requests do not independently prevent system sleep. | Windows 11 x64 JIT and NativeAOT: normal interactive-user acquisition/release; elevated read-only `powercfg /requests` inspection confirms independent registration and cleanup. |
+| macOS    | IOKit PreventUserIdleSystemSleep/PreventUserIdleDisplaySleep assertions; display inhibition may also prevent idle system sleep.                                               | Implemented but untested on a real Mac                                                                                                                                           |
 
 The reason is localized by the application, user-visible, and limited to 128
 characters without NUL. `SupportedEffects` describes implemented request types,

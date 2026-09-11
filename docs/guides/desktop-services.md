@@ -62,11 +62,11 @@ borders/text, reduced motion disables transitions, and native accent is exposed 
 `--desktop-accent` without replacing a selected palette. This does not implement
 the separate GTK4 high-contrast **window** option.
 
-| Platform | Selected APIs and baseline | Permissions and adaptation |
-| --- | --- | --- |
-| Linux | Settings `ReadAll`, interface v1; optional standardized appearance keys | Read-only session portal. Missing/unknown keys do not make the entire service unavailable. No GTK dependency. |
-| Windows | Windows 10+ `UISettings.GetColorValue` for background/accent; `SystemParametersInfoW` for high contrast/client-area animation | No package identity or elevation for preference reads. Background luminance determines the effective light/dark scheme; animation disabled maps to reduced motion. |
-| macOS | macOS 11+ AppKit effective appearance, `NSColor.controlAccentColor`, NSWorkspace accessibility display preferences | Main-thread dispatch; no notification entitlement or consent for preference reads. |
+| Platform | Selected APIs and baseline                                                                                                    | Permissions and adaptation                                                                                                                                         |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux    | Settings `ReadAll`, interface v1; optional standardized appearance keys                                                       | Read-only session portal. Missing/unknown keys do not make the entire service unavailable. No GTK dependency.                                                      |
+| Windows  | Windows 10+ `UISettings.GetColorValue` for background/accent; `SystemParametersInfoW` for high contrast/client-area animation | No package identity or elevation for preference reads. Background luminance determines the effective light/dark scheme; animation disabled maps to reduced motion. |
+| macOS    | macOS 11+ AppKit effective appearance, `NSColor.controlAccentColor`, NSWorkspace accessibility display preferences            | Main-thread dispatch; no notification entitlement or consent for preference reads.                                                                                 |
 
 API references: [Settings portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Settings.html),
 [Windows UISettings](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.uisettings),
@@ -140,7 +140,6 @@ registers the same identity and reinstalls action handling. Calls cannot migrate
 to a new portal instance between identity registration and submission. This does
 not promise that the desktop preserves previously delivered notifications or
 requests across its own restart.
-
 
 Registry and Notification wire bindings are generated from pinned upstream XML
 using Tmds.DBus.Generator. See the [implementation audit](portal-implementation-audit.md)
@@ -231,7 +230,7 @@ without this process's notification history. `ActivationUri` is payload metadata
 UserNotifications handles relaunch and the consumer decides how to route it.
 
 References: [UNUserNotificationCenter](https://developer.apple.com/documentation/usernotifications/unusernotificationcenter),
-[Authorization](https://developer.apple.com/documentation/usernotifications/unusernotificationcenter/requestauthorization(options:completionhandler:)),
+[Authorization](<https://developer.apple.com/documentation/usernotifications/unusernotificationcenter/requestauthorization(options:completionhandler:)>),
 [Delegate responses](https://developer.apple.com/documentation/usernotifications/unusernotificationcenterdelegate).
 
 ## Open, choose application and reveal
@@ -243,11 +242,11 @@ lease disposal, exposing no path to application web code. A save lease can be
 retained after committing and released when the result is replaced or the window
 closes. Existing atomic-write and sandbox restrictions are unchanged.
 
-| Operation | Linux | Windows | macOS |
-| --- | --- | --- | --- |
-| Open | OpenURI `OpenFile` with an owned Unix FD, v2+ | `ShellExecuteW` default handler | NSWorkspace `openURL:` |
-| ChooseApplication | `OpenFile` with `ask=true`, v3+ | Owned `SHOpenWithDialog`, `OAIF_EXEC` | Owned application-selection sheet, then NSWorkspace opens the file with the chosen application |
-| Reveal | `OpenDirectory`, v3+ | `SHOpenFolderAndSelectItems` | `activateFileViewerSelectingURLs:` |
+| Operation         | Linux                                         | Windows                               | macOS                                                                                          |
+| ----------------- | --------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Open              | OpenURI `OpenFile` with an owned Unix FD, v2+ | `ShellExecuteW` default handler       | NSWorkspace `openURL:`                                                                         |
+| ChooseApplication | `OpenFile` with `ask=true`, v3+               | Owned `SHOpenWithDialog`, `OAIF_EXEC` | Owned application-selection sheet, then NSWorkspace opens the file with the chosen application |
+| Reveal            | `OpenDirectory`, v3+                          | `SHOpenFolderAndSelectItems`          | `activateFileViewerSelectingURLs:`                                                             |
 
 The portal version is checked before handoff: an old portal cannot silently
 ignore explicit application choice. Linux reveal opens the containing directory;

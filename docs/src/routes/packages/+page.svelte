@@ -47,6 +47,14 @@
           <section>
             <h2><a href={row.registryUrl} rel="external">{row.name}</a></h2>
             <p>{row.product} · {row.registry}</p>
+            {#if row.name === 'Runic.Platform.Administration.Windows'}
+              <p>
+                Experimental Windows administration APIs. Administrative writes
+                and domain services still need native validation. See the
+                <a href={currentRelease.url} rel="external">release notes</a> for
+                tested scenarios.
+              </p>
+            {/if}
             <pre><code>{packageInstallCommand(row)}</code></pre>
           </section>
         {/each}
