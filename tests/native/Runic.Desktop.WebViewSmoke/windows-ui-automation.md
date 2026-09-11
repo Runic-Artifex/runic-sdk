@@ -33,7 +33,7 @@ normal completion and failure restore the original language list/profile and cli
 and remove receipt-specific input/output files. The native open-file dialog
 returns a real `IReadFileLease`; open and save cancellation must return `Dismissed`.
 The save path acquires an `ISaveFileLease`, stages a `RequireAtomicReplace` write,
-and commits it. The driver independently verifies the saved bytes and unchanged
+and commits it. It tests a new destination, then declines and accepts native overwrite confirmation for an existing destination, checking that declining preserves its original bytes. The driver independently verifies the saved bytes and unchanged
 input file. Both open/save selectors use native control IDs, including the save
 dialog's `FileNameControlHost` and child `Edit`, rather than localized labels. The pointer check uses a UIA
 clickable point for the named target rather than a hard-coded screen coordinate.
@@ -53,10 +53,24 @@ output supplements these native checks. Escaped text is submitted as one keyboar
 sequence and consumed before navigation; the earlier button-focus limitation no
 longer reproduces with this sequencing.
 
-The driver records the native host's current effective DPI, but has only passed
-at the VM's observed 96 DPI. Physical keyboard devices, candidate-popup placement,
-independent speech recognition, multi-DPI/display changes, overwrite-confirmation flows,
-and visual rendering remain outside this smoke. Native inhibition is covered separately: the
+Use `-DisplayScale 125` (also 100, 150, 175 or 200, when offered by the display)
+to select a standard scale through Windows Settings, assert the host DPI, and
+restore the original scale in `finally`. Keep `windows-display-scaling.ps1` beside
+the driver. Close Settings first; use an unlocked dedicated desktop, and do not
+run these tests concurrently. The helper does not change resolution or custom
+scaling. A hard process kill cannot restore Settings; restore the original scale
+manually if interrupted. `-ExpectedDpi 144` only asserts the existing scale.
+
+Add `-TransitionScale 150` to `-DisplayScale 125` to change scale while the host is
+open. The test requires the window dimensions to follow the DPI ratio before
+checking pointer input and dialogs. Receipts record both DPI values and window
+sizes. The host uses per-monitor V2 awareness on its own UI thread, scales window
+sizes, and handles `WM_DPICHANGED` without changing the application's process DPI
+policy. UIA pointer input uses physical screen coordinates.
+
+Physical keyboard devices, candidate-popup placement, independent speech
+recognition, movement between separate monitors, and visual rendering judgments
+remain outside this smoke. Native inhibition is covered separately: the
 maintained `--system-only` test runs from SSH, while full display and system
 acquisition requires an interactive desktop; `powercfg /requests` observation
 also requires elevation.

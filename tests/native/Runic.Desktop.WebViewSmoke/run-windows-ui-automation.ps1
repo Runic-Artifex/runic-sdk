@@ -6,6 +6,9 @@ param(
     [switch]$RequireExecutableOnly,
     [switch]$Ime,
     [switch]$Narrator,
+    [ValidateSet(0, 100, 125, 150, 175, 200)][int]$DisplayScale = 0,
+    [ValidateSet(0, 100, 125, 150, 175, 200)][int]$TransitionScale = 0,
+    [ValidateRange(0, 768)][int]$ExpectedDpi = 0,
     [ValidateRange(10, 240)][int]$TimeoutSeconds = 240
 )
 
@@ -38,6 +41,9 @@ $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Ex
     $AutomationScript, $Executable, $ReceiptPath
 if ($Ime) { $arguments += ' -Ime' }
 if ($Narrator) { $arguments += ' -Narrator' }
+if ($TransitionScale) { $arguments += " -TransitionScale $TransitionScale" }
+if ($DisplayScale) { $arguments += " -DisplayScale $DisplayScale" }
+if ($ExpectedDpi) { $arguments += " -ExpectedDpi $ExpectedDpi" }
 $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument $arguments
 $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Limited
 

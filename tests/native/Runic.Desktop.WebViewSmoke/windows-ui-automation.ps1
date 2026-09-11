@@ -3,10 +3,20 @@ param(
     [Parameter(Mandatory)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$Executable,
     [Parameter(Mandatory)][string]$ReceiptPath,
     [switch]$Ime,
-    [switch]$Narrator
+    [switch]$Narrator,
+    [ValidateSet(0, 100, 125, 150, 175, 200)][int]$DisplayScale = 0,
+    [ValidateSet(0, 100, 125, 150, 175, 200)][int]$TransitionScale = 0,
+    [ValidateRange(0, 768)][int]$ExpectedDpi = 0
 )
 
 $ErrorActionPreference = 'Stop'
+$originalDisplayScale = 0
+if ($TransitionScale -and -not $DisplayScale) { throw 'TransitionScale requires DisplayScale so the original setting can be restored.' }
+if ($DisplayScale) {
+    if ($ExpectedDpi -and $ExpectedDpi -ne $DisplayScale * 96 / 100) { throw 'ExpectedDpi conflicts with DisplayScale.' }
+    $ExpectedDpi = $DisplayScale * 96 / 100
+    . "$PSScriptRoot/windows-display-scaling.ps1"
+}
 # Deferred while Windows WebView2 composition remains state-dependent.
 # Keep the parameter compatible with existing invocations, but never run the probe.
 if ($Ime) {
@@ -22,6 +32,8 @@ if (Test-Path -LiteralPath $runningPath) { throw "Running marker already exists:
 $pickerContents = 'Runic Windows native picker input.'
 $PickerPath = "$ReceiptPath.input.txt"
 $savePath = "$ReceiptPath.saved.txt"
+$newSavePath = "$ReceiptPath.new.txt"
+if (Test-Path -LiteralPath $newSavePath) { throw "New save target already exists: $newSavePath" }
 if (Test-Path -LiteralPath $savePath) { throw "Save target already exists: $savePath" }
 if (Test-Path -LiteralPath $PickerPath) { throw "Picker input path already exists: $PickerPath" }
 Set-Content -LiteralPath $PickerPath -Value $pickerContents -NoNewline -Encoding utf8
@@ -33,6 +45,10 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class RunicWindowsInput {
+    [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr window, uint command);
     [DllImport("user32.dll", SetLastError=true)] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll", SetLastError=true)] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
     [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hwnd);
@@ -119,6 +135,26 @@ function Find-ActiveDialog([System.Windows.Automation.AutomationElement]$MainWin
     throw 'The native file picker did not expose its file-name control.'
 }
 
+function Click-NativeControl($Control) {
+    $point = $Control.GetClickablePoint()
+    if (-not $Control.Current.BoundingRectangle.Contains($point)) { throw 'Native control clickable point is outside its bounds.' }
+    if (-not [RunicWindowsInput]::SetCursorPos([int][Math]::Round($point.X), [int][Math]::Round($point.Y))) { throw 'Could not position the pointer over the native control.' }
+    [RunicWindowsInput]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [RunicWindowsInput]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Find-OverwriteConfirmation($SaveDialog) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $handle = [RunicWindowsInput]::GetForegroundWindow()
+        $dialog = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+        $owner = [RunicWindowsInput]::GetWindow($handle, 4) # GW_OWNER
+        if ($dialog.Current.ClassName -eq '#32770' -and $handle -ne [IntPtr]$SaveDialog.Current.NativeWindowHandle -and $owner -eq [IntPtr]$SaveDialog.Current.NativeWindowHandle) { return $dialog }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw 'The save picker did not show its owned overwrite confirmation.'
+}
+
 $process = $null
 $testProfiles = $null
 $originalLanguages = $null
@@ -141,6 +177,11 @@ try {
         }
         $testProfiles.ResetKeyboard()
     }
+    if ($DisplayScale) { Set-RunicDisplayScale $DisplayScale ([ref]$originalDisplayScale) }
+    # UIA reports physical screen coordinates. Use the same coordinate space for
+    # native pointer input even when this PowerShell process is DPI-unaware.
+    $previousDpiContext = [RunicWindowsInput]::SetThreadDpiAwarenessContext([IntPtr](-4))
+    if ($previousDpiContext -eq [IntPtr]::Zero) { throw 'Could not enable DPI awareness for the automation thread.' }
     $process = Start-Process -FilePath $Executable -ArgumentList '--ui-automation' -PassThru -RedirectStandardOutput "$ReceiptPath.stdout" -RedirectStandardError "$ReceiptPath.stderr"
     # Process.Handle is no longer available from the PowerShell process wrapper
     # after the child exits. Keep the OS handle while it is live and use it only
@@ -221,6 +262,25 @@ try {
     # Enter activation reached the WebView before a UIA result is accepted.
     $snapshot = Find-Element $window $snapshotCondition
 
+    $dpiTransition = $null
+    if ($TransitionScale) {
+        $nativeWindow = [IntPtr]$window.Current.NativeWindowHandle
+        $beforeDpi = [RunicWindowsInput]::GetDpiForWindow($nativeWindow)
+        if ($beforeDpi -ne $ExpectedDpi) { throw "Expected initial DPI $ExpectedDpi; observed $beforeDpi." }
+        $beforeBounds = $window.Current.BoundingRectangle
+        $ignoredScale = 0
+        Set-RunicDisplayScale $TransitionScale ([ref]$ignoredScale)
+        $ExpectedDpi = $TransitionScale * 96 / 100
+        $afterBounds = $window.Current.BoundingRectangle
+        $ratio = $ExpectedDpi / $beforeDpi
+        if ([Math]::Abs($afterBounds.Width - $beforeBounds.Width * $ratio) -gt 2 -or
+            [Math]::Abs($afterBounds.Height - $beforeBounds.Height * $ratio) -gt 2) {
+            throw 'The live host did not resize with the display DPI change.'
+        }
+        if (-not [RunicWindowsInput]::SetForegroundWindow($nativeWindow)) { throw 'Could not restore the test window foreground after the display change.' }
+        $dpiTransition = [ordered]@{ fromDpi=$beforeDpi; toDpi=$ExpectedDpi; beforeWidth=$beforeBounds.Width; afterWidth=$afterBounds.Width; beforeHeight=$beforeBounds.Height; afterHeight=$afterBounds.Height }
+    }
+
     $pointerCondition = New-Object System.Windows.Automation.AndCondition @(
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'pointer-target')),
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)))
@@ -233,6 +293,7 @@ try {
     }
     $effectiveDpi = [RunicWindowsInput]::GetDpiForWindow([IntPtr]$window.Current.NativeWindowHandle)
     if ($effectiveDpi -le 0) { throw 'Windows did not report an effective DPI for the native host window.' }
+    if ($ExpectedDpi -and $effectiveDpi -ne $ExpectedDpi) { throw "Expected host DPI $ExpectedDpi; observed $effectiveDpi." }
     if (-not [RunicWindowsInput]::SetCursorPos([int][Math]::Round($point.X), [int][Math]::Round($point.Y))) { throw 'SetCursorPos failed for the UIA target point.' }
     [RunicWindowsInput]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
     [RunicWindowsInput]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
@@ -288,8 +349,45 @@ try {
         [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'Edit'))
     [RunicWindowsInput]::SetFocus([IntPtr]$saveHost.Current.NativeWindowHandle) | Out-Null
     $keyboard.SendKeys('^a')
+    Send-LiteralKeys $keyboard $newSavePath
+    $keyboard.SendKeys('{ENTER}')
+    $newSaveResult = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, "Saved: $([IO.Path]::GetFileName($newSavePath))"))
+    if ([IO.File]::ReadAllText($newSavePath) -cne 'Runic Windows native picker output.') { throw 'New file save content mismatch.' }
+    $originalSaveContents = 'Runic existing destination must survive declined overwrite.'
+    [IO.File]::WriteAllText($savePath, $originalSaveContents)
+    ([System.Windows.Automation.InvokePattern]$saveButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    $saveDialog = Find-ActiveDialog $window -Save
+    $saveHost = Find-Element $saveDialog (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FileNameControlHost'))
+    $saveHost = Find-Element $saveHost (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'Edit'))
+    [RunicWindowsInput]::SetFocus([IntPtr]$saveHost.Current.NativeWindowHandle) | Out-Null
+    $keyboard.SendKeys('^a')
     Send-LiteralKeys $keyboard $savePath
     $keyboard.SendKeys('{ENTER}')
+    # The native confirmation uses standard IDYES/IDNO control IDs, independent
+    # of the Windows display language. Declining must retain the original bytes.
+    $noCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'CommandButton_7')
+    $confirmation = Find-OverwriteConfirmation $saveDialog
+    $no = Find-Element $confirmation $noCondition
+    if ([IO.File]::ReadAllText($savePath) -cne $originalSaveContents) { throw 'Destination changed before overwrite confirmation.' }
+    Click-NativeControl $no
+    $saveDialog = Find-ActiveDialog $window -Save
+    if ([IO.File]::ReadAllText($savePath) -cne $originalSaveContents) { throw 'Declining overwrite modified the destination.' }
+    # Re-submit the same destination and explicitly accept the second prompt.
+    $saveHost = Find-Element $saveDialog (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FileNameControlHost'))
+    $saveHost = Find-Element $saveHost (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'Edit'))
+    [RunicWindowsInput]::SetFocus([IntPtr]$saveHost.Current.NativeWindowHandle) | Out-Null
+    $keyboard.SendKeys('{ENTER}')
+    $yesCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'CommandButton_6')
+    $confirmation = Find-OverwriteConfirmation $saveDialog
+    $yes = Find-Element $confirmation $yesCondition
+    Click-NativeControl $yes
     $saveResult = Find-Element $window (New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, "Saved: $([IO.Path]::GetFileName($savePath))"))
     if ([IO.File]::ReadAllText($savePath) -cne 'Runic Windows native picker output.') { throw 'Native save content mismatch.' }
@@ -330,6 +428,7 @@ try {
         snapshotName = $snapshotName
         pointerName = $pointerName
         effectiveDpi = $effectiveDpi
+        dpiTransition = $dpiTransition
         pointerX = $pointerX
         pointerY = $pointerY
         pickerWindowName = $pickerWindowName
@@ -339,6 +438,9 @@ try {
         pickerResultName = $pickerResultName
         openCancelled = $true
         saveCancelled = $true
+        newFileSaved = $true
+        overwriteDeclinedPreserved = $true
+        overwriteAccepted = $true
         saveResultName = $saveResultName
         focusObservations = $focusObservations
         finishName = $finishName
@@ -368,7 +470,13 @@ finally {
         }
         finally {
             Remove-Item -LiteralPath $runningPath -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $PickerPath, $savePath -Force -ErrorAction SilentlyContinue
+            try {
+                if ($originalDisplayScale) { $ignoredScale = 0; Set-RunicDisplayScale $originalDisplayScale ([ref]$ignoredScale) }
+            }
+            finally {
+                if ($previousDpiContext -and $previousDpiContext -ne [IntPtr]::Zero) { [RunicWindowsInput]::SetThreadDpiAwarenessContext($previousDpiContext) | Out-Null }
+                Remove-Item -LiteralPath $PickerPath, $savePath, $newSavePath -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 }

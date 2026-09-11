@@ -12,6 +12,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private const uint WmClose = 0x0010;
     private const uint WmDestroy = 0x0002;
     private const uint WmSize = 0x0005;
+    private const uint WmDpiChanged = 0x02E0;
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcCreate = 0x0081;
     private const int GwlpUserData = -21;
@@ -160,7 +161,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
         => InvokeAsync(() => Native.SetWindowPos(
-            _window, 0, 0, 0, checked((int)width), checked((int)height), SwpNoZOrder | SwpNoActivate | SwpNoMove), cancellationToken);
+            _window, 0, 0, 0, ScaleForWindow(width, _window), ScaleForWindow(height, _window), SwpNoZOrder | SwpNoActivate | SwpNoMove), cancellationToken);
 
     public ValueTask SetPositionAsync(uint x, uint y, CancellationToken cancellationToken = default)
         => InvokeAsync(() => Native.SetWindowPos(
@@ -218,11 +219,22 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         return new ValueTask(work.WaitAsync());
     }
 
+    private static int ScaleForWindow(uint value, nint window)
+        => checked((int)Math.Round(value * (Native.GetDpiForWindow(window) / 96d)));
+
     private void Run(Uri url)
     {
         var comInitialized = false;
+        nint previousDpiContext = 0;
         try
         {
+            // Scope DPI awareness to our owned UI thread, preserving the caller's
+            // process policy and any other UI framework hosted in the application.
+            previousDpiContext = Native.SetThreadDpiAwarenessContext(-4); // PER_MONITOR_AWARE_V2
+            if (previousDpiContext == 0)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "The WebView2 UI thread could not enable per-monitor DPI awareness.");
+            }
             // NativeAOT does not supply the managed WebView2 wrapper's COM setup.
             Marshal.ThrowExceptionForHR(Native.CoInitializeEx(0, 2)); // COINIT_APARTMENTTHREADED
             comInitialized = true;
@@ -259,6 +271,15 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "The WebView2 host window could not be created.");
             }
 
+            width = ScaleForWindow(options.Width, _window);
+            height = ScaleForWindow(options.Height, _window);
+            if (options.Centered)
+            {
+                x = Math.Max(0, (Native.GetSystemMetrics(SmCxScreen) - width) / 2);
+                y = Math.Max(0, (Native.GetSystemMetrics(SmCyScreen) - height) / 2);
+            }
+            Native.SetWindowPos(_window, 0, x, y, width, height, SwpNoZOrder | SwpNoActivate);
+
             SynchronizationContext.SetSynchronizationContext(new WindowSynchronizationContext(this));
             _ = InitializeAsync(url);
             while (Native.GetMessage(out var message, 0, 0, 0) > 0)
@@ -291,6 +312,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             finally
             {
                 if (comInitialized) Native.CoUninitialize();
+                if (previousDpiContext != 0) Native.SetThreadDpiAwarenessContext(previousDpiContext);
             }
         }
     }
@@ -424,12 +446,18 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     host._controller.Bounds = host.ClientBounds();
                 }
                 return 0;
+            case WmDpiChanged:
+                var suggested = (Rect*)lParam;
+                Native.SetWindowPos(window, 0, suggested->Left, suggested->Top,
+                    suggested->Right - suggested->Left, suggested->Bottom - suggested->Top,
+                    SwpNoZOrder | SwpNoActivate);
+                return 0;
             case WmGetMinMaxInfo:
                 if (host?._options is { MinimumWidth: { } minimumWidth, MinimumHeight: { } minimumHeight })
                 {
                     var info = (MinMaxInfo*)lParam;
-                    info->MinimumTrackSize.X = checked((int)minimumWidth);
-                    info->MinimumTrackSize.Y = checked((int)minimumHeight);
+                    info->MinimumTrackSize.X = ScaleForWindow(minimumWidth, window);
+                    info->MinimumTrackSize.Y = ScaleForWindow(minimumHeight, window);
                 }
                 return 0;
             case WmClose:
@@ -547,6 +575,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
         [LibraryImport("user32.dll", EntryPoint = "RegisterClassExW", SetLastError = true)]
         internal static partial ushort RegisterClassEx(in WindowClass windowClass);
+
+        [LibraryImport("user32.dll", SetLastError = true)]
+        internal static partial nint SetThreadDpiAwarenessContext(nint context);
+
+        [LibraryImport("user32.dll")]
+        internal static partial uint GetDpiForWindow(nint window);
 
         [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
         internal static partial nint CreateWindowEx(uint extendedStyle, string className, string windowName, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint parameter);
