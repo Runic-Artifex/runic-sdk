@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Runic.Desktop;
 using Runic.Platform;
 using Runic.Platform.Runtime;
+using Runic.Platform.Windows;
 
 SmokeSoak.Enabled = args.Contains("--soak", StringComparer.Ordinal);
 
@@ -97,15 +98,32 @@ static async Task RunWindowsUiAutomationSmokeAsync()
             <main><label for="display-name">Display name</label>
             <input id="display-name" aria-label="Display name" autocomplete="off">
             <button id="record" type="button">Record snapshot</button>
+            <button id="pointer-target" type="button">Pointer target: 0</button>
+            <button id="open-file" type="button">Open native file</button>
             <output id="snapshot" aria-live="polite">Waiting for automation</output></main>
+            <output id="keyboard-focus" aria-live="polite">Keyboard focus: none</output>
+            <output id="picker-result" aria-live="polite">No file selected</output>
             <button id="finish" type="button">Finish</button>
             <script>
             document.getElementById('record').addEventListener('click', () => {
               document.getElementById('snapshot').textContent =
                 'Recorded: ' + document.getElementById('display-name').value;
             });
+            document.getElementById('pointer-target').addEventListener('click', event => {
+              event.currentTarget.textContent = 'Pointer target: 1';
+            });
+            document.getElementById('open-file').addEventListener('click', () => {
+              window.__runicPickerRequest = true;
+            });
+            for (const control of document.querySelectorAll('input, button')) {
+              control.addEventListener('focus', event => {
+                document.getElementById('keyboard-focus').textContent = 'Keyboard focus: ' + event.currentTarget.id;
+              });
+            }
             document.getElementById('finish').addEventListener('click', () => {
-              if (document.getElementById('snapshot').textContent === 'Recorded: UI Automation value') {
+              if (document.getElementById('snapshot').textContent === 'Recorded: Keyboard value' &&
+                  document.getElementById('pointer-target').textContent === 'Pointer target: 1' &&
+                  document.getElementById('picker-result').textContent.startsWith('Picked: ')) {
                 window.__runicAutomationFinished = true;
               }
             });
@@ -120,18 +138,42 @@ static async Task RunWindowsUiAutomationSmokeAsync()
         Centered = true,
     });
 
+    var picker = WindowsPlatformProvider.CreateFileDialogs(new WindowPickerOwner(window));
     Console.WriteLine("Windows UI Automation surface is ready.");
     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
     while (true)
     {
         string finished = await surface.ExecuteJavaScriptAsync(
-            "return window.__runicAutomationFinished === true ? 'finished' : 'waiting';", cancellationToken: deadline.Token);
+            "if (window.__runicPickerRequest === true) { window.__runicPickerRequest = false; return 'picker'; } return window.__runicAutomationFinished === true ? 'finished' : 'waiting';",
+            cancellationToken: deadline.Token);
         if (finished == "finished") break;
+        if (finished == "picker")
+        {
+            var selected = await picker.OpenFileAsync(new OpenFileOptions(), deadline.Token);
+            string outcome;
+            if (selected is PickerResult<IReadFileLease>.Selected file)
+            {
+                await using var lease = file.Value;
+                await using var stream = await lease.OpenReadAsync(deadline.Token);
+                using var reader = new StreamReader(stream);
+                outcome = "Picked: " + lease.DisplayName + ": " + await reader.ReadToEndAsync(deadline.Token);
+            }
+            else outcome = selected.ToString()!;
+            await surface.ExecuteJavaScriptAsync("document.getElementById('picker-result').textContent=" + JavaScriptString(outcome) + "; return true;", cancellationToken: deadline.Token);
+        }
         await Task.Delay(50, deadline.Token);
     }
 
     Console.WriteLine("Windows UI Automation WebView2 semantic interaction passed.");
 }
+
+static string JavaScriptString(string value) => "'" + value
+    .Replace("\\", "\\\\", StringComparison.Ordinal)
+    .Replace("'", "\\'", StringComparison.Ordinal)
+    .Replace("\r", "\\r", StringComparison.Ordinal)
+    .Replace("\n", "\\n", StringComparison.Ordinal)
+    .Replace("<", "\\u003c", StringComparison.Ordinal)
+    + "'";
 
 static void RunMacOsSmoke()
 {
@@ -293,6 +335,18 @@ static string RestartedPage() =>
     <!doctype html><html><head><script src="webui.js"></script>
     <title>restarted</title></head><body></body></html>
     """;
+
+internal sealed class WindowPickerOwner(DesktopWindow window) : INativePickerOwner
+{
+    public Guid Generation { get; } = Guid.NewGuid();
+    public bool IsAvailable => window.IsOpen && window.NativeHandle != 0 && window.SupportsNativeDispatch;
+    public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) =>
+        window.DispatchNativeAsync(handle =>
+        {
+            if (!IsAvailable) throw new OwnerClosedException();
+            action(handle);
+        }, cancellationToken);
+}
 
 internal sealed class SmokeCloseGuard
 {

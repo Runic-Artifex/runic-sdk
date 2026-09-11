@@ -7,5 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
   </ItemGroup>
 </Project>
