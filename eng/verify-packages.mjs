@@ -133,6 +133,8 @@ export async function verifyPackages() {
         "Runic.Application.Desktop",
         "Runic.Application.CsWebUi",
         "Runic.Application.Testing",
+        "Runic.Application.Platform",
+        "Runic.Application.Platform.Desktop",
       ].includes(p.name)
     ) {
       const program = join(consumer, "Program.cs");
