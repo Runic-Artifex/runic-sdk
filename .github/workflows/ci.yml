@@ -484,6 +484,18 @@ jobs:
         timeout-minutes: 3
         shell: bash
         run: ./artifacts/platform-aot/Runic.Platform.Prototype.Tests${{ matrix.extension }} --native
+      - name: Verify Windows administration native inspection
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        run: dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicToolkitBuildMode=Verification
+      - name: Publish Windows administration inspection with NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        run: dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:RunicToolkitBuildMode=Verification -p:IlcTreatWarningsAsErrors=true -o artifacts/administration-aot
+      - name: Verify NativeAOT Windows administration inspection
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        run: ./artifacts/administration-aot/Runic.Platform.Administration.Windows.Tests.exe
       - name: Build native clipboard conformance
         run: dotnet build tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -p:TreatWarningsAsErrors=true
       - name: Verify native GTK clipboard

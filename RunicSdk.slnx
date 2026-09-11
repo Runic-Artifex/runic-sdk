@@ -21,6 +21,7 @@
     <Project Path="packages/dotnet/Runic.Platform/Runic.Platform.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux/Runic.Platform.Linux.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Platform/Runic.Application.Platform.csproj" />
@@ -55,6 +56,8 @@
     <Project Path="tests/fixtures/desktop/samples/Runic.Desktop.Sample/Runic.Desktop.Sample.csproj" />
   </Folder>
   <Folder Name="/tests/dotnet/">
+    <Project Path="tests/dotnet/Runic.Platform.Administration.Windows.Tests/Runic.Platform.Administration.Windows.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.Administration.Windows.ApiTests/Runic.Platform.Administration.Windows.ApiTests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Windows.Tests/Runic.Platform.Windows.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Portal.Tests/Runic.Platform.Linux.Portal.Tests.csproj" />
@@ -100,6 +103,7 @@
     <Project Path="tests/native/Runic.Desktop.Gtk4.Smoke/Runic.Desktop.Gtk4.Smoke.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/Runic.Administration.Verify/Runic.Administration.Verify.csproj" />
     <Project Path="tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj" />
     <Project Path="tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
     <Project Path="tools/Runic.Translations.Compiler/Runic.Translations.Compiler.csproj" />

@@ -1,6 +1,7 @@
 <Project>
   <!-- Generated from eng/workspace.json by eng/generate-shipping-projects.mjs. -->
   <ItemGroup>
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" PackageId="Runic.Platform.Administration.Windows" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" PackageId="Runic.Assets" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj" PackageId="Runic.Assets.AspNetCore" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" PackageId="Runic.Assets.Desktop" />

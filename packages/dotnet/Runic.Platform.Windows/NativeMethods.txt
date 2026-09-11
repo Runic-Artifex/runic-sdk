@@ -1,0 +1,4 @@
+CoCreateInstance
+IFileDialog
+IShellItem
+IUnknown

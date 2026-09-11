@@ -1,6 +1,12 @@
 # Test-only Windows Settings automation for an unlocked, dedicated desktop.
 function Set-RunicDisplayScale([int]$Percent, [ref]$PreviousPercent) {
-    if (Get-Process SystemSettings -ErrorAction SilentlyContinue) {
+    # Windows may preload a suspended Settings process without a window.
+    # Reject an existing visible Settings UI, not the background process.
+    $settingsLabel = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+        [System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'SettingsLabel')))
+    if ($null -ne $settingsLabel) {
         throw 'Close Windows Settings before running display-scale tests.'
     }
     $settingsProcess = $null

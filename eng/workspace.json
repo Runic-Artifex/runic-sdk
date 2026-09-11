@@ -36,6 +36,7 @@
     }
   ],
   "nuget": [
+    { "name": "Runic.Platform.Administration.Windows", "project": "packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" },
     {
       "name": "Runic.Assets",
       "project": "packages/dotnet/Runic.Assets/Runic.Assets.csproj"
@@ -162,6 +163,16 @@
     }
   ],
   "components": {
+    "administration-windows": {
+      "dependsOn": [],
+      "paths": [
+        "packages/dotnet/Runic.Platform.Administration.Windows",
+        "tests/dotnet/Runic.Platform.Administration.Windows.Tests",
+        "tests/dotnet/Runic.Platform.Administration.Windows.ApiTests",
+        "examples/dotnet/Runic.Administration.Console",
+        "tools/Runic.Administration.Verify"
+      ]
+    },
     "command-line": {
       "dependsOn": [],
       "paths": [

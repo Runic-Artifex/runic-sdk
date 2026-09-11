@@ -1,0 +1,1366 @@
+# Public signatures, constants, parameter defaults and init accessors. Review intentional changes.
+type Runic.Platform.Administration.Windows.AdministrationErrorCategory : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.AdministrationErrorCategory AccessDenied = 0
+  field Runic.Platform.Administration.Windows.AdministrationErrorCategory Conflict = 2
+  field Runic.Platform.Administration.Windows.AdministrationErrorCategory InvalidData = 3
+  field Runic.Platform.Administration.Windows.AdministrationErrorCategory NativeFailure = 4
+  field Runic.Platform.Administration.Windows.AdministrationErrorCategory Unavailable = 1
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient : System.Object abstract=False sealed=True
+  ctor (Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient directory)
+  method System.Threading.Tasks.Task AddMemberAsync(System.String groupDistinguishedName, System.String memberDistinguishedName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task AddServicePrincipalNamesAsync(System.String distinguishedName, System.Collections.Immutable.ImmutableArray`1[System.String] names, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task ChangePasswordAsync(System.String distinguishedName, System.String oldPassword, System.String newPassword, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task CreateComputerAsync(System.String parentDistinguishedName, System.String commonName, System.String accountName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task CreateGroupAsync(System.String parentDistinguishedName, System.String commonName, System.String accountName, Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryGroupScope scope, System.Boolean securityEnabled, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task CreateOrganizationalUnitAsync(System.String parentDistinguishedName, System.String name, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task CreateUserAsync(System.String parentDistinguishedName, System.String commonName, System.String accountName, System.String userPrincipalName = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task RemoveMemberAsync(System.String groupDistinguishedName, System.String memberDistinguishedName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task RemoveServicePrincipalNamesAsync(System.String distinguishedName, System.Collections.Immutable.ImmutableArray`1[System.String] names, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task ResetPasswordAsync(System.String distinguishedName, System.String newPassword, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task SetAccountEnabledAsync(System.String distinguishedName, System.Boolean enabled, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]] GetMembersAsync(System.String groupDistinguishedName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]] GetServicePrincipalNamesAsync(System.String distinguishedName, System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryGroupScope : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryGroupScope DomainLocal = 4
+  field Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryGroupScope Global = 2
+  field Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryGroupScope Universal = 8
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole BackupDomainController = 4
+  field Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole MemberServer = 3
+  field Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole MemberWorkstation = 1
+  field Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole PrimaryDomainController = 5
+  field Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole StandaloneServer = 2
+  field Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole StandaloneWorkstation = 0
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryAuthentication : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryAuthentication Basic = 1
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryAuthentication Negotiate = 0
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions]
+  ctor (System.String Server)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Server)
+  property Runic.Platform.Administration.Windows.DirectoryServices.DirectoryAuthentication Authentication { get; init; }
+  property Runic.Platform.Administration.Windows.DirectoryServices.DirectoryTransport Transport { get; init; }
+  property System.Int32 Port { get; init; }
+  property System.String Server { get; init; }
+  property System.TimeSpan Timeout { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModification : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModification]
+  ctor (System.String AttributeName, Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModificationKind Kind, System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue] Values)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModification <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModification other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& AttributeName, out Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModificationKind& Kind, out System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]& Values)
+  property Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModificationKind Kind { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue] Values { get; init; }
+  property System.String AttributeName { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModificationKind : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModificationKind Add = 0
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModificationKind Delete = 1
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModificationKind Replace = 2
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryNames : System.Object abstract=True sealed=True
+  method static System.String EscapeFilterValue(System.String value)
+  method static System.String EscapeRdnValue(System.String value)
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject]
+  ctor (System.String DistinguishedName, System.Collections.Immutable.ImmutableDictionary`2[System.String,System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]] Attributes)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& DistinguishedName, out System.Collections.Immutable.ImmutableDictionary`2[System.String,System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]]& Attributes)
+  property System.Collections.Immutable.ImmutableDictionary`2[System.String,System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]] Attributes { get; init; }
+  property System.String DistinguishedName { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearch : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearch]
+  ctor (System.String BaseDistinguishedName, System.String Filter, Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearchScope Scope, System.Collections.Immutable.ImmutableArray`1[System.String] Attributes)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearch <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearch other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& BaseDistinguishedName, out System.String& Filter, out Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearchScope& Scope, out System.Collections.Immutable.ImmutableArray`1[System.String]& Attributes)
+  property Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearchScope Scope { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.String] Attributes { get; init; }
+  property System.Int32 PageSize { get; init; }
+  property System.String BaseDistinguishedName { get; init; }
+  property System.String Filter { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearchScope : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearchScope Base = 0
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearchScope OneLevel = 1
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearchScope Subtree = 2
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryTransport : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryTransport SignedAndSealed = 0
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryTransport StartTls = 2
+  field Runic.Platform.Administration.Windows.DirectoryServices.DirectoryTransport Tls = 1
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue : System.Object abstract=True sealed=False
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]
+  method Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Binary : Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Binary]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]
+  ctor (System.Collections.Immutable.ImmutableArray`1[System.Byte] Value)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Binary <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Binary other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Collections.Immutable.ImmutableArray`1[System.Byte]& Value)
+  property System.Collections.Immutable.ImmutableArray`1[System.Byte] Value { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Text : Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Text]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]
+  ctor (System.String Value)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Text <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue+Text other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Value)
+  property System.String Value { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo]
+  ctor (System.String Name, System.String Address, System.UInt32 AddressType, System.Guid DomainId, System.String DomainName, System.String ForestName, System.UInt32 NativeFlags, System.String ControllerSite, System.String ClientSite)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& Address, out System.UInt32& AddressType, out System.Guid& DomainId, out System.String& DomainName, out System.String& ForestName, out System.UInt32& NativeFlags, out System.String& ControllerSite, out System.String& ClientSite)
+  property System.Guid DomainId { get; init; }
+  property System.String Address { get; init; }
+  property System.String ClientSite { get; init; }
+  property System.String ControllerSite { get; init; }
+  property System.String DomainName { get; init; }
+  property System.String ForestName { get; init; }
+  property System.String Name { get; init; }
+  property System.UInt32 AddressType { get; init; }
+  property System.UInt32 NativeFlags { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState Domain = 3
+  field Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState Unjoined = 1
+  field Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState Unknown = 0
+  field Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState Workgroup = 2
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership]
+  ctor (Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState State, System.String Name, Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole Role)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState& State, out System.String& Name, out Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole& Role)
+  property Runic.Platform.Administration.Windows.DirectoryServices.ComputerDomainRole Role { get; init; }
+  property Runic.Platform.Administration.Windows.DirectoryServices.DomainJoinState State { get; init; }
+  property System.String Name { get; init; }
+type Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient : System.Object abstract=False sealed=True
+  ctor (Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions options, System.Net.NetworkCredential credential = null)
+  method System.Threading.Tasks.Task CreateAsync(System.String distinguishedName, System.Collections.Immutable.ImmutableDictionary`2[System.String,System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]] attributes, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task ModifyAsync(System.String distinguishedName, System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryModification] modifications, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task MoveAsync(System.String distinguishedName, System.String newParentDistinguishedName, System.String newRdn, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject] FindAsync(System.String distinguishedName, System.Collections.Immutable.ImmutableArray`1[System.String] attributes, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject] ReadRootDseAsync(System.Collections.Immutable.ImmutableArray`1[System.String] attributes, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteAsync(System.String distinguishedName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject]] SearchAsync(Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearch search, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue]] ReadAllAttributeValuesAsync(System.String distinguishedName, System.String attributeName, System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient : System.Object abstract=False sealed=True
+  ctor (System.String computerName = null)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo DiscoverController(System.String domainName = null, System.Boolean requirePrimary = False, System.Boolean requireWritable = True)
+  method Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership GetMembership()
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData : System.Object abstract=True sealed=False
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+A : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+A]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.String Address)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+A <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+A other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Address)
+  property System.String Address { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+Aaaa : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+Aaaa]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.String Address)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+Aaaa <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+Aaaa other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Address)
+  property System.String Address { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+CName : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+CName]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.String Target)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+CName <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+CName other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Target)
+  property System.String Target { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+Mx : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+Mx]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.UInt16 Preference, System.String Exchange)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+Mx <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+Mx other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.UInt16& Preference, out System.String& Exchange)
+  property System.String Exchange { get; init; }
+  property System.UInt16 Preference { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+Ns : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+Ns]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.String Host)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+Ns <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+Ns other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Host)
+  property System.String Host { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+ReverseLookup : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+ReverseLookup]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.String Target)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+ReverseLookup <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+ReverseLookup other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Target)
+  property System.String Target { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+Srv : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+Srv]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.UInt16 Priority, System.UInt16 Weight, System.UInt16 Port, System.String Target)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+Srv <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+Srv other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.UInt16& Priority, out System.UInt16& Weight, out System.UInt16& Port, out System.String& Target)
+  property System.String Target { get; init; }
+  property System.UInt16 Port { get; init; }
+  property System.UInt16 Priority { get; init; }
+  property System.UInt16 Weight { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+Txt : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+Txt]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.String DescriptiveText)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+Txt <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+Txt other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& DescriptiveText)
+  property System.String DescriptiveText { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordData+Unsupported : Runic.Platform.Administration.Windows.Dns.DnsRecordData abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData+Unsupported]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordData]
+  ctor (System.String NativeClass, System.String TextRepresentation)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordData+Unsupported <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData+Unsupported other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& NativeClass, out System.String& TextRepresentation)
+  property System.String NativeClass { get; init; }
+  property System.String TextRepresentation { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordKey : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordKey]
+  ctor (System.String Zone, System.String OwnerName, Runic.Platform.Administration.Windows.Dns.DnsRecordData Data)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordKey <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordKey other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Zone, out System.String& OwnerName, out Runic.Platform.Administration.Windows.Dns.DnsRecordData& Data)
+  property Runic.Platform.Administration.Windows.Dns.DnsRecordData Data { get; init; }
+  property System.String OwnerName { get; init; }
+  property System.String Zone { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot]
+  ctor (Runic.Platform.Administration.Windows.Dns.DnsRecordKey Key, System.UInt32 TimeToLiveSeconds, System.UInt32 RecordClass)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsRecordKey& Key, out System.UInt32& TimeToLiveSeconds, out System.UInt32& RecordClass)
+  property Runic.Platform.Administration.Windows.Dns.DnsRecordKey Key { get; init; }
+  property System.UInt32 RecordClass { get; init; }
+  property System.UInt32 TimeToLiveSeconds { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification]
+  ctor (Runic.Platform.Administration.Windows.Dns.DnsRecordKey Key, System.UInt32 TimeToLiveSeconds = 3600)
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsRecordKey& Key, out System.UInt32& TimeToLiveSeconds)
+  property Runic.Platform.Administration.Windows.Dns.DnsRecordKey Key { get; init; }
+  property System.Boolean UseServerDefaultTimeToLive { get; init; }
+  property System.UInt32 TimeToLiveSeconds { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property Runic.Platform.Administration.Windows.Dns.DnsRecordData Data { get; init; }
+  property System.Nullable`1[System.UInt32] TimeToLiveSeconds { get; init; }
+type Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot]
+  ctor (System.String Name, System.Boolean ActiveDirectoryIntegrated)
+  method Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.Boolean& ActiveDirectoryIntegrated)
+  property System.Boolean ActiveDirectoryIntegrated { get; init; }
+  property System.String Name { get; init; }
+type Runic.Platform.Administration.Windows.Dns.WindowsDnsClient : System.Object abstract=False sealed=True
+  ctor (System.String server, System.Net.NetworkCredential credential = null, System.Nullable`1[System.TimeSpan] queryTimeout = null)
+  method System.Threading.Tasks.Task CreateAsync(Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification specification, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task UpdateAsync(Runic.Platform.Administration.Windows.Dns.DnsRecordKey key, Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate update, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot] FindAsync(Runic.Platform.Administration.Windows.Dns.DnsRecordKey key, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot] FindZoneAsync(System.String name, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteAsync(Runic.Platform.Administration.Windows.Dns.DnsRecordKey key, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot]] EnumerateRecordsAsync(System.String zone, System.String ownerName = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot]] EnumerateZonesAsync(System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.Firewall.FirewallAction : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Firewall.FirewallAction Allow = 1
+  field Runic.Platform.Administration.Windows.Firewall.FirewallAction Block = 0
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Firewall.FirewallDirection : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Firewall.FirewallDirection Inbound = 1
+  field Runic.Platform.Administration.Windows.Firewall.FirewallDirection Outbound = 2
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Firewall.FirewallProfileSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Firewall.FirewallProfileSnapshot]
+  ctor (Runic.Platform.Administration.Windows.Firewall.FirewallProfiles Profile, System.Boolean Active, System.Boolean Enabled, System.Boolean BlockAllInboundTraffic, Runic.Platform.Administration.Windows.Firewall.FirewallAction DefaultInboundAction, Runic.Platform.Administration.Windows.Firewall.FirewallAction DefaultOutboundAction, System.Int32 NativeLocalPolicyModifyState)
+  method Runic.Platform.Administration.Windows.Firewall.FirewallProfileSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Firewall.FirewallProfileSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Firewall.FirewallProfiles& Profile, out System.Boolean& Active, out System.Boolean& Enabled, out System.Boolean& BlockAllInboundTraffic, out Runic.Platform.Administration.Windows.Firewall.FirewallAction& DefaultInboundAction, out Runic.Platform.Administration.Windows.Firewall.FirewallAction& DefaultOutboundAction, out System.Int32& NativeLocalPolicyModifyState)
+  property Runic.Platform.Administration.Windows.Firewall.FirewallAction DefaultInboundAction { get; init; }
+  property Runic.Platform.Administration.Windows.Firewall.FirewallAction DefaultOutboundAction { get; init; }
+  property Runic.Platform.Administration.Windows.Firewall.FirewallProfiles Profile { get; init; }
+  property System.Boolean Active { get; init; }
+  property System.Boolean BlockAllInboundTraffic { get; init; }
+  property System.Boolean Enabled { get; init; }
+  property System.Int32 NativeLocalPolicyModifyState { get; init; }
+type Runic.Platform.Administration.Windows.Firewall.FirewallProfiles : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Firewall.FirewallProfiles All = 2147483647
+  field Runic.Platform.Administration.Windows.Firewall.FirewallProfiles Domain = 1
+  field Runic.Platform.Administration.Windows.Firewall.FirewallProfiles Private = 2
+  field Runic.Platform.Administration.Windows.Firewall.FirewallProfiles Public = 4
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity]
+  ctor (System.String Name, System.String Grouping, System.String ApplicationPath, System.String ServiceName, Runic.Platform.Administration.Windows.Firewall.FirewallDirection Direction)
+  method Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& Grouping, out System.String& ApplicationPath, out System.String& ServiceName, out Runic.Platform.Administration.Windows.Firewall.FirewallDirection& Direction)
+  property Runic.Platform.Administration.Windows.Firewall.FirewallDirection Direction { get; init; }
+  property System.String ApplicationPath { get; init; }
+  property System.String Grouping { get; init; }
+  property System.String Name { get; init; }
+  property System.String ServiceName { get; init; }
+type Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot]
+  ctor (Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity Identity, Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification Configuration)
+  method Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity& Identity, out Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification& Configuration)
+  property Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity Identity { get; init; }
+  property Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification Configuration { get; init; }
+type Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification]
+  ctor (System.String Name, Runic.Platform.Administration.Windows.Firewall.FirewallDirection Direction, Runic.Platform.Administration.Windows.Firewall.FirewallAction Action)
+  method Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out Runic.Platform.Administration.Windows.Firewall.FirewallDirection& Direction, out Runic.Platform.Administration.Windows.Firewall.FirewallAction& Action)
+  property Runic.Platform.Administration.Windows.Firewall.FirewallAction Action { get; init; }
+  property Runic.Platform.Administration.Windows.Firewall.FirewallDirection Direction { get; init; }
+  property Runic.Platform.Administration.Windows.Firewall.FirewallProfiles Profiles { get; init; }
+  property System.Boolean EdgeTraversal { get; init; }
+  property System.Boolean Enabled { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.String] Interfaces { get; init; }
+  property System.Int32 Protocol { get; init; }
+  property System.String ApplicationPath { get; init; }
+  property System.String Description { get; init; }
+  property System.String Grouping { get; init; }
+  property System.String IcmpTypesAndCodes { get; init; }
+  property System.String InterfaceTypes { get; init; }
+  property System.String LocalAddresses { get; init; }
+  property System.String LocalPorts { get; init; }
+  property System.String Name { get; init; }
+  property System.String RemoteAddresses { get; init; }
+  property System.String RemotePorts { get; init; }
+  property System.String ServiceName { get; init; }
+type Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property System.Nullable`1[Runic.Platform.Administration.Windows.Firewall.FirewallAction] Action { get; init; }
+  property System.Nullable`1[Runic.Platform.Administration.Windows.Firewall.FirewallDirection] Direction { get; init; }
+  property System.Nullable`1[Runic.Platform.Administration.Windows.Firewall.FirewallProfiles] Profiles { get; init; }
+  property System.Nullable`1[System.Boolean] EdgeTraversal { get; init; }
+  property System.Nullable`1[System.Boolean] Enabled { get; init; }
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.String]] Interfaces { get; init; }
+  property System.Nullable`1[System.Int32] Protocol { get; init; }
+  property System.String ApplicationPath { get; init; }
+  property System.String Description { get; init; }
+  property System.String Grouping { get; init; }
+  property System.String IcmpTypesAndCodes { get; init; }
+  property System.String InterfaceTypes { get; init; }
+  property System.String LocalAddresses { get; init; }
+  property System.String LocalPorts { get; init; }
+  property System.String RemoteAddresses { get; init; }
+  property System.String RemotePorts { get; init; }
+  property System.String ServiceName { get; init; }
+type Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient :  abstract=True sealed=False
+  method System.Threading.Tasks.Task CreateAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification specification, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task UpdateAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity identity, Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate update, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot] FindAsync(System.String name, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity identity, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Firewall.FirewallProfileSnapshot]] GetProfilesAsync(System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot]] EnumerateAsync(System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.Firewall.WindowsFirewallClient : System.Object abstract=False sealed=True
+  interface Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient
+  ctor ()
+  method System.Threading.Tasks.Task CreateAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification specification, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task UpdateAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity identity, Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate update, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot] FindAsync(System.String name, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity identity, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Firewall.FirewallProfileSnapshot]] GetProfilesAsync(System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot]] EnumerateAsync(System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup]
+  ctor (System.Guid BackupId, System.Guid GroupPolicyId, System.String DomainName, System.String DisplayName, System.DateTime Timestamp, System.String Comment, System.String Directory)
+  method Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Guid& BackupId, out System.Guid& GroupPolicyId, out System.String& DomainName, out System.String& DisplayName, out System.DateTime& Timestamp, out System.String& Comment, out System.String& Directory)
+  property System.DateTime Timestamp { get; init; }
+  property System.Guid BackupId { get; init; }
+  property System.Guid GroupPolicyId { get; init; }
+  property System.String Comment { get; init; }
+  property System.String Directory { get; init; }
+  property System.String DisplayName { get; init; }
+  property System.String DomainName { get; init; }
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions]
+  ctor (System.String MigrationTablePath = null, System.Boolean RequireMigrationTableMappings = False)
+  method Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& MigrationTablePath, out System.Boolean& RequireMigrationTableMappings)
+  property System.Boolean RequireMigrationTableMappings { get; init; }
+  property System.String MigrationTablePath { get; init; }
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink]
+  ctor (System.Guid GroupPolicyId, System.String DomainName, System.Int32 Order, System.Boolean Enabled, System.Boolean Enforced)
+  method Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Guid& GroupPolicyId, out System.String& DomainName, out System.Int32& Order, out System.Boolean& Enabled, out System.Boolean& Enforced)
+  property System.Boolean Enabled { get; init; }
+  property System.Boolean Enforced { get; init; }
+  property System.Guid GroupPolicyId { get; init; }
+  property System.Int32 Order { get; init; }
+  property System.String DomainName { get; init; }
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationException : Runic.Platform.Administration.Windows.WindowsAdministrationException abstract=False sealed=True
+  interface System.Runtime.Serialization.ISerializable
+  ctor (System.String operation, System.Int32 hresult, System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage] messages)
+  property System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage] Messages { get;  }
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1 : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1[T]]
+  ctor (T Value, System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage] Messages)
+  method Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1[T] <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1[T] other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out T& Value, out System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage]& Messages)
+  property System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage] Messages { get; init; }
+  property T Value { get; init; }
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry]
+  ctor (System.String TrusteeSid, System.String TrusteeName, System.String TrusteeDomain, System.Int32 NativePermission, System.Boolean Inherited, System.Boolean Inheritable, System.Boolean Denied)
+  method Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& TrusteeSid, out System.String& TrusteeName, out System.String& TrusteeDomain, out System.Int32& NativePermission, out System.Boolean& Inherited, out System.Boolean& Inheritable, out System.Boolean& Denied)
+  property System.Boolean Denied { get; init; }
+  property System.Boolean Inheritable { get; init; }
+  property System.Boolean Inherited { get; init; }
+  property System.Int32 NativePermission { get; init; }
+  property System.String TrusteeDomain { get; init; }
+  property System.String TrusteeName { get; init; }
+  property System.String TrusteeSid { get; init; }
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionLevel : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionLevel Apply = 65536
+  field Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionLevel Edit = 65793
+  field Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionLevel EditSecurityAndDelete = 65794
+  field Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionLevel Read = 65792
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyReportFormat : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyReportFormat Html = 1
+  field Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyReportFormat Xml = 0
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot]
+  ctor (System.Guid Id, System.String DisplayName, System.String DomainName, System.String DirectoryPath, System.DateTime CreationTime, System.DateTime ModificationTime, System.Boolean UserEnabled, System.Boolean ComputerEnabled, System.String WmiFilterPath)
+  method Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Guid& Id, out System.String& DisplayName, out System.String& DomainName, out System.String& DirectoryPath, out System.DateTime& CreationTime, out System.DateTime& ModificationTime, out System.Boolean& UserEnabled, out System.Boolean& ComputerEnabled, out System.String& WmiFilterPath)
+  property System.Boolean ComputerEnabled { get; init; }
+  property System.Boolean UserEnabled { get; init; }
+  property System.DateTime CreationTime { get; init; }
+  property System.DateTime ModificationTime { get; init; }
+  property System.Guid Id { get; init; }
+  property System.String DirectoryPath { get; init; }
+  property System.String DisplayName { get; init; }
+  property System.String DomainName { get; init; }
+  property System.String WmiFilterPath { get; init; }
+type Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage]
+  ctor (System.Int32 ErrorCode, System.Int32 OperationCode, System.String Message, System.String ExtensionName, System.String SettingsName, System.String ObjectPath)
+  method Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32& ErrorCode, out System.Int32& OperationCode, out System.String& Message, out System.String& ExtensionName, out System.String& SettingsName, out System.String& ObjectPath)
+  property System.Int32 ErrorCode { get; init; }
+  property System.Int32 OperationCode { get; init; }
+  property System.String ExtensionName { get; init; }
+  property System.String Message { get; init; }
+  property System.String ObjectPath { get; init; }
+  property System.String SettingsName { get; init; }
+type Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient : System.Object abstract=False sealed=True
+  ctor (System.String domainName, System.String domainController)
+  method System.Threading.Tasks.Task CreateLinkAsync(System.Guid id, System.String targetDistinguishedName, System.Int32 order = -1, System.Boolean enabled = True, System.Boolean enforced = False, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task GrantPermissionAsync(System.Guid id, System.String trustee, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionLevel level, System.Boolean inheritable = False, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task RemoveTrusteePermissionsAsync(System.Guid id, System.String trustee, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task RenameAsync(System.Guid id, System.String displayName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task SetEnabledAsync(System.Guid id, System.Nullable`1[System.Boolean] userEnabled = null, System.Nullable`1[System.Boolean] computerEnabled = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task SetInheritanceBlockedAsync(System.String targetDistinguishedName, System.Boolean blocked, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task SetLinkOrderAsync(System.String targetDistinguishedName, System.Collections.Immutable.ImmutableArray`1[System.Guid] highestPrecedenceFirst, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task SetWmiFilterAsync(System.Guid id, System.String filterPath, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task UpdateLinkAsync(System.Guid id, System.String targetDistinguishedName, System.Nullable`1[System.Boolean] enabled = null, System.Nullable`1[System.Boolean] enforced = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup]] BackupAsync(System.Guid id, System.String directory, System.String comment = "", System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot]] ImportAsync(System.Guid destinationId, System.String backupDirectory, System.Guid backupId, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions options = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot]] RestoreAsync(System.String backupDirectory, System.Guid backupId, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult`1[System.String]] GenerateReportAsync(System.Guid id, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyReportFormat format, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot] CreateAsync(System.String displayName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot] FindAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteLinkAsync(System.Guid id, System.String targetDistinguishedName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] GetInheritanceBlockedAsync(System.String targetDistinguishedName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink]] GetLinksAsync(System.String targetDistinguishedName, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry]] GetPermissionsAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot]] EnumerateAsync(System.Threading.CancellationToken cancellationToken = null)
+  method static System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup]] EnumerateBackupsAsync(System.String directory, System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.NativeErrorDomain : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.NativeErrorDomain HResult = 1
+  field Runic.Platform.Administration.Windows.NativeErrorDomain Ldap = 2
+  field Runic.Platform.Administration.Windows.NativeErrorDomain Win32 = 0
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Networks.IWindowsNetworkClient :  abstract=True sealed=False
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot]] EnumerateAsync(System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory DomainAuthenticated = 2
+  field Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory Private = 1
+  field Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory Public = 0
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Networks.WindowsNetworkClient : System.Object abstract=False sealed=True
+  interface Runic.Platform.Administration.Windows.Networks.IWindowsNetworkClient
+  ctor ()
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot]] EnumerateAsync(System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot]
+  ctor (System.Guid Id, System.String Name, System.String Description, Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory Category, System.Int32 NativeDomainType, System.Int32 NativeConnectivity, System.Boolean Connected, System.Boolean InternetConnected)
+  method Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Guid& Id, out System.String& Name, out System.String& Description, out Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory& Category, out System.Int32& NativeDomainType, out System.Int32& NativeConnectivity, out System.Boolean& Connected, out System.Boolean& InternetConnected)
+  property Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory Category { get; init; }
+  property System.Boolean Connected { get; init; }
+  property System.Boolean InternetConnected { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.Guid] AdapterIds { get; init; }
+  property System.Guid Id { get; init; }
+  property System.Int32 NativeConnectivity { get; init; }
+  property System.Int32 NativeDomainType { get; init; }
+  property System.String Description { get; init; }
+  property System.String Name { get; init; }
+type Runic.Platform.Administration.Windows.Processes.IWindowsProcessClient :  abstract=True sealed=False
+  method Runic.Platform.Administration.Windows.Processes.ProcessSnapshot Find(System.UInt32 processId)
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Processes.ProcessSnapshot] Enumerate()
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Processes.ProcessSnapshot] GetChildren(System.UInt32 parentProcessId)
+type Runic.Platform.Administration.Windows.Processes.ProcessSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Processes.ProcessSnapshot]
+  ctor (System.UInt32 ProcessId, System.UInt32 ParentProcessId, System.String ExecutableName)
+  method Runic.Platform.Administration.Windows.Processes.ProcessSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Processes.ProcessSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.UInt32& ProcessId, out System.UInt32& ParentProcessId, out System.String& ExecutableName)
+  property System.String ExecutableName { get; init; }
+  property System.UInt32 ParentProcessId { get; init; }
+  property System.UInt32 ProcessId { get; init; }
+type Runic.Platform.Administration.Windows.Processes.WindowsProcessClient : System.Object abstract=False sealed=True
+  interface Runic.Platform.Administration.Windows.Processes.IWindowsProcessClient
+  ctor ()
+  method Runic.Platform.Administration.Windows.Processes.ProcessSnapshot Find(System.UInt32 processId)
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Processes.ProcessSnapshot] Enumerate()
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Processes.ProcessSnapshot] GetChildren(System.UInt32 parentProcessId)
+type Runic.Platform.Administration.Windows.Services.ServiceFailureAction : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Services.ServiceFailureAction]
+  ctor (Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind Kind, System.TimeSpan Delay)
+  method Runic.Platform.Administration.Windows.Services.ServiceFailureAction <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Services.ServiceFailureAction other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind& Kind, out System.TimeSpan& Delay)
+  property Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind Kind { get; init; }
+  property System.TimeSpan Delay { get; init; }
+type Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind None = 0
+  field Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind Reboot = 2
+  field Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind Restart = 1
+  field Runic.Platform.Administration.Windows.Services.ServiceFailureActionKind RunCommand = 3
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy]
+  ctor (System.Nullable`1[System.TimeSpan] ResetPeriod, System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Services.ServiceFailureAction] Actions, System.String RebootMessage = "", System.String Command = "", System.Boolean OnNonCrashFailures = False)
+  method Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Nullable`1[System.TimeSpan]& ResetPeriod, out System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Services.ServiceFailureAction]& Actions, out System.String& RebootMessage, out System.String& Command, out System.Boolean& OnNonCrashFailures)
+  property System.Boolean OnNonCrashFailures { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Services.ServiceFailureAction] Actions { get; init; }
+  property System.Nullable`1[System.TimeSpan] ResetPeriod { get; init; }
+  property System.String Command { get; init; }
+  property System.String RebootMessage { get; init; }
+type Runic.Platform.Administration.Windows.Services.ServiceSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Services.ServiceSnapshot]
+  ctor (System.String Name, System.String DisplayName, System.String BinaryCommandLine, System.String AccountName, System.Collections.Immutable.ImmutableArray`1[System.String] Dependencies, Runic.Platform.Administration.Windows.Services.ServiceStartMode StartMode, System.UInt32 NativeServiceType, System.UInt32 NativeErrorControl, System.String LoadOrderGroup, System.String Description, System.Boolean DelayedAutomaticStart, Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy FailurePolicy, Runic.Platform.Administration.Windows.Services.ServiceStatus Status)
+  method Runic.Platform.Administration.Windows.Services.ServiceSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Services.ServiceSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& DisplayName, out System.String& BinaryCommandLine, out System.String& AccountName, out System.Collections.Immutable.ImmutableArray`1[System.String]& Dependencies, out Runic.Platform.Administration.Windows.Services.ServiceStartMode& StartMode, out System.UInt32& NativeServiceType, out System.UInt32& NativeErrorControl, out System.String& LoadOrderGroup, out System.String& Description, out System.Boolean& DelayedAutomaticStart, out Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy& FailurePolicy, out Runic.Platform.Administration.Windows.Services.ServiceStatus& Status)
+  property Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy FailurePolicy { get; init; }
+  property Runic.Platform.Administration.Windows.Services.ServiceStartMode StartMode { get; init; }
+  property Runic.Platform.Administration.Windows.Services.ServiceStatus Status { get; init; }
+  property System.Boolean DelayedAutomaticStart { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.String] Dependencies { get; init; }
+  property System.String AccountName { get; init; }
+  property System.String BinaryCommandLine { get; init; }
+  property System.String Description { get; init; }
+  property System.String DisplayName { get; init; }
+  property System.String LoadOrderGroup { get; init; }
+  property System.String Name { get; init; }
+  property System.UInt32 NativeErrorControl { get; init; }
+  property System.UInt32 NativeServiceType { get; init; }
+type Runic.Platform.Administration.Windows.Services.ServiceSpecification : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Services.ServiceSpecification]
+  ctor (System.String Name, System.String BinaryCommandLine)
+  method Runic.Platform.Administration.Windows.Services.ServiceSpecification <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Services.ServiceSpecification other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& BinaryCommandLine)
+  property Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy FailurePolicy { get; init; }
+  property Runic.Platform.Administration.Windows.Services.ServiceStartMode StartMode { get; init; }
+  property System.Boolean DelayedAutomaticStart { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.String] Dependencies { get; init; }
+  property System.String AccountName { get; init; }
+  property System.String BinaryCommandLine { get; init; }
+  property System.String Description { get; init; }
+  property System.String DisplayName { get; init; }
+  property System.String Name { get; init; }
+type Runic.Platform.Administration.Windows.Services.ServiceStartMode : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Services.ServiceStartMode Automatic = 2
+  field Runic.Platform.Administration.Windows.Services.ServiceStartMode Boot = 0
+  field Runic.Platform.Administration.Windows.Services.ServiceStartMode Disabled = 4
+  field Runic.Platform.Administration.Windows.Services.ServiceStartMode Manual = 3
+  field Runic.Platform.Administration.Windows.Services.ServiceStartMode System = 1
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Services.ServiceState : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Services.ServiceState ContinuePending = 5
+  field Runic.Platform.Administration.Windows.Services.ServiceState PausePending = 6
+  field Runic.Platform.Administration.Windows.Services.ServiceState Paused = 7
+  field Runic.Platform.Administration.Windows.Services.ServiceState Running = 4
+  field Runic.Platform.Administration.Windows.Services.ServiceState StartPending = 2
+  field Runic.Platform.Administration.Windows.Services.ServiceState StopPending = 3
+  field Runic.Platform.Administration.Windows.Services.ServiceState Stopped = 1
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Services.ServiceStatus : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Services.ServiceStatus]
+  ctor (Runic.Platform.Administration.Windows.Services.ServiceState State, System.UInt32 ProcessId, System.UInt32 AcceptedControls, System.UInt32 Win32ExitCode, System.UInt32 ServiceSpecificExitCode, System.UInt32 CheckPoint, System.TimeSpan WaitHint)
+  method Runic.Platform.Administration.Windows.Services.ServiceStatus <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Services.ServiceStatus other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Services.ServiceState& State, out System.UInt32& ProcessId, out System.UInt32& AcceptedControls, out System.UInt32& Win32ExitCode, out System.UInt32& ServiceSpecificExitCode, out System.UInt32& CheckPoint, out System.TimeSpan& WaitHint)
+  property Runic.Platform.Administration.Windows.Services.ServiceState State { get; init; }
+  property System.TimeSpan WaitHint { get; init; }
+  property System.UInt32 AcceptedControls { get; init; }
+  property System.UInt32 CheckPoint { get; init; }
+  property System.UInt32 ProcessId { get; init; }
+  property System.UInt32 ServiceSpecificExitCode { get; init; }
+  property System.UInt32 Win32ExitCode { get; init; }
+type Runic.Platform.Administration.Windows.Services.ServiceSummary : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Services.ServiceSummary]
+  ctor (System.String Name, System.String DisplayName, Runic.Platform.Administration.Windows.Services.ServiceStatus Status)
+  method Runic.Platform.Administration.Windows.Services.ServiceSummary <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Services.ServiceSummary other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& DisplayName, out Runic.Platform.Administration.Windows.Services.ServiceStatus& Status)
+  property Runic.Platform.Administration.Windows.Services.ServiceStatus Status { get; init; }
+  property System.String DisplayName { get; init; }
+  property System.String Name { get; init; }
+type Runic.Platform.Administration.Windows.Services.ServiceUpdate : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Services.ServiceUpdate]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Services.ServiceUpdate <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Services.ServiceUpdate other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property Runic.Platform.Administration.Windows.Services.ServiceFailurePolicy FailurePolicy { get; init; }
+  property System.Nullable`1[Runic.Platform.Administration.Windows.Services.ServiceStartMode] StartMode { get; init; }
+  property System.Nullable`1[System.Boolean] DelayedAutomaticStart { get; init; }
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.String]] Dependencies { get; init; }
+  property System.String AccountName { get; init; }
+  property System.String BinaryCommandLine { get; init; }
+  property System.String Description { get; init; }
+  property System.String DisplayName { get; init; }
+type Runic.Platform.Administration.Windows.Services.WindowsServiceClient : System.Object abstract=False sealed=True
+  ctor (System.String machineName = null)
+  method Runic.Platform.Administration.Windows.Services.ServiceSnapshot Find(System.String name)
+  method Runic.Platform.Administration.Windows.Services.ServiceStatus FindStatus(System.String name)
+  method System.Boolean Delete(System.String name)
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Services.ServiceSummary] Enumerate()
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Services.ServiceStatus] WaitForStateAsync(System.String name, Runic.Platform.Administration.Windows.Services.ServiceState state, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = null)
+  method System.Void Continue(System.String name)
+  method System.Void Create(Runic.Platform.Administration.Windows.Services.ServiceSpecification specification, System.String password = null)
+  method System.Void Pause(System.String name)
+  method System.Void Start(System.String name)
+  method System.Void Stop(System.String name)
+  method System.Void Update(System.String name, Runic.Platform.Administration.Windows.Services.ServiceUpdate update, System.String password = null)
+type Runic.Platform.Administration.Windows.Shares.ShareSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shares.ShareSnapshot]
+  ctor (System.String Name, System.String Path, System.String Description, System.UInt32 NativeType, System.UInt32 MaximumUses, System.UInt32 CurrentUses, System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]] SecurityDescriptor)
+  method Runic.Platform.Administration.Windows.Shares.ShareSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shares.ShareSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& Path, out System.String& Description, out System.UInt32& NativeType, out System.UInt32& MaximumUses, out System.UInt32& CurrentUses, out System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]]& SecurityDescriptor)
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]] SecurityDescriptor { get; init; }
+  property System.String Description { get; init; }
+  property System.String Name { get; init; }
+  property System.String Path { get; init; }
+  property System.UInt32 CurrentUses { get; init; }
+  property System.UInt32 MaximumUses { get; init; }
+  property System.UInt32 NativeType { get; init; }
+type Runic.Platform.Administration.Windows.Shares.ShareSpecification : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shares.ShareSpecification]
+  ctor (System.String Name, System.String Path)
+  method Runic.Platform.Administration.Windows.Shares.ShareSpecification <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shares.ShareSpecification other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& Path)
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]] SecurityDescriptor { get; init; }
+  property System.String Description { get; init; }
+  property System.String Name { get; init; }
+  property System.String Path { get; init; }
+  property System.UInt32 MaximumUses { get; init; }
+type Runic.Platform.Administration.Windows.Shares.ShareSummary : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shares.ShareSummary]
+  ctor (System.String Name, System.String Description, System.UInt32 NativeType)
+  method Runic.Platform.Administration.Windows.Shares.ShareSummary <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shares.ShareSummary other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& Description, out System.UInt32& NativeType)
+  property System.String Description { get; init; }
+  property System.String Name { get; init; }
+  property System.UInt32 NativeType { get; init; }
+type Runic.Platform.Administration.Windows.Shares.ShareUpdate : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shares.ShareUpdate]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Shares.ShareUpdate <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shares.ShareUpdate other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]] SecurityDescriptor { get; init; }
+  property System.Nullable`1[System.UInt32] MaximumUses { get; init; }
+  property System.String Description { get; init; }
+type Runic.Platform.Administration.Windows.Shares.WindowsShareClient : System.Object abstract=False sealed=True
+  ctor (System.String server = null)
+  method Runic.Platform.Administration.Windows.Shares.ShareSnapshot Find(System.String name)
+  method System.Boolean Delete(System.String name)
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Shares.ShareSummary] Enumerate()
+  method System.Void Create(Runic.Platform.Administration.Windows.Shares.ShareSpecification specification)
+  method System.Void Update(System.String name, Runic.Platform.Administration.Windows.Shares.ShareUpdate update)
+type Runic.Platform.Administration.Windows.Shortcuts.IWindowsShellLinkClient :  abstract=True sealed=False
+  method System.Threading.Tasks.Task CreateAsync(System.String path, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSpecification specification, System.Boolean replaceExisting = False, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task UpdateAsync(System.String path, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate update, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot] FindAsync(System.String path, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot] ResolveAsync(System.String path, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon]
+  ctor (System.String Path, System.Int32 Index = 0)
+  method Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Path, out System.Int32& Index)
+  property System.Int32 Index { get; init; }
+  property System.String Path { get; init; }
+type Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState Maximized = 3
+  field Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState Minimized = 7
+  field Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState Normal = 1
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot]
+  ctor (System.String TargetPath, System.String Arguments, System.String WorkingDirectory, System.String Description, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon Icon, System.Int32 ShowState, System.UInt16 Hotkey)
+  method Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& TargetPath, out System.String& Arguments, out System.String& WorkingDirectory, out System.String& Description, out Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon& Icon, out System.Int32& ShowState, out System.UInt16& Hotkey)
+  property Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon Icon { get; init; }
+  property System.Int32 ShowState { get; init; }
+  property System.String Arguments { get; init; }
+  property System.String Description { get; init; }
+  property System.String TargetPath { get; init; }
+  property System.String WorkingDirectory { get; init; }
+  property System.UInt16 Hotkey { get; init; }
+type Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSpecification : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSpecification]
+  ctor (System.String TargetPath)
+  method Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSpecification <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSpecification other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& TargetPath)
+  property Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon Icon { get; init; }
+  property Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState ShowState { get; init; }
+  property System.String Arguments { get; init; }
+  property System.String Description { get; init; }
+  property System.String TargetPath { get; init; }
+  property System.String WorkingDirectory { get; init; }
+  property System.UInt16 Hotkey { get; init; }
+type Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon Icon { get; init; }
+  property System.Nullable`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState] ShowState { get; init; }
+  property System.Nullable`1[System.UInt16] Hotkey { get; init; }
+  property System.String Arguments { get; init; }
+  property System.String Description { get; init; }
+  property System.String TargetPath { get; init; }
+  property System.String WorkingDirectory { get; init; }
+type Runic.Platform.Administration.Windows.Shortcuts.WindowsShellLinkClient : System.Object abstract=False sealed=True
+  interface Runic.Platform.Administration.Windows.Shortcuts.IWindowsShellLinkClient
+  ctor ()
+  method System.Threading.Tasks.Task CreateAsync(System.String path, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSpecification specification, System.Boolean replaceExisting = False, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task UpdateAsync(System.String path, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate update, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot] FindAsync(System.String path, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot] ResolveAsync(System.String path, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.SystemInformation.IWindowsSystemInformationClient :  abstract=True sealed=False
+  method Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership GetDomainMembership()
+  method Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo GetOperatingSystem()
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo] GetBiosInformation()
+  method System.Threading.Tasks.Task`1[System.String] GetOperatingSystemNameAsync(System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo]
+  ctor (System.String Vendor, System.String Version, System.String ReleaseDateText, System.Nullable`1[System.DateOnly] ReleaseDate)
+  method Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Vendor, out System.String& Version, out System.String& ReleaseDateText, out System.Nullable`1[System.DateOnly]& ReleaseDate)
+  property System.Nullable`1[System.DateOnly] ReleaseDate { get; init; }
+  property System.String ReleaseDateText { get; init; }
+  property System.String Vendor { get; init; }
+  property System.String Version { get; init; }
+type Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo]
+  ctor (System.Version Version, System.String RegistryProductName, System.String DisplayVersion, System.UInt16 OperatingSystemLanguage, System.Byte NativeProductType, System.UInt16 NativeSuiteMask, System.Nullable`1[System.UInt32] UpdateBuildRevision)
+  method Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Version& Version, out System.String& RegistryProductName, out System.String& DisplayVersion, out System.UInt16& OperatingSystemLanguage, out System.Byte& NativeProductType, out System.UInt16& NativeSuiteMask, out System.Nullable`1[System.UInt32]& UpdateBuildRevision)
+  property System.Byte NativeProductType { get; init; }
+  property System.Nullable`1[System.UInt32] UpdateBuildRevision { get; init; }
+  property System.String DisplayVersion { get; init; }
+  property System.String RegistryProductName { get; init; }
+  property System.UInt16 NativeSuiteMask { get; init; }
+  property System.UInt16 OperatingSystemLanguage { get; init; }
+  property System.Version Version { get; init; }
+type Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient : System.Object abstract=False sealed=True
+  interface Runic.Platform.Administration.Windows.SystemInformation.IWindowsSystemInformationClient
+  ctor ()
+  method Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership GetDomainMembership()
+  method Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo GetOperatingSystem()
+  method System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo] GetBiosInformation()
+  method System.Threading.Tasks.Task`1[System.String] GetOperatingSystemNameAsync(System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.Tasks.BootTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.BootTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor (System.TimeSpan Delay = null)
+  method Runic.Platform.Administration.Windows.Tasks.BootTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.BootTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.TimeSpan& Delay)
+  property System.TimeSpan Delay { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.DailyTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.DailyTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor (System.Int32 DaysInterval = 1)
+  method Runic.Platform.Administration.Windows.Tasks.DailyTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.DailyTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32& DaysInterval)
+  property System.Int32 DaysInterval { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.EventTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.EventTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor (System.String Subscription, System.TimeSpan Delay = null)
+  method Runic.Platform.Administration.Windows.Tasks.EventTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.EventTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Subscription, out System.TimeSpan& Delay)
+  property System.String Subscription { get; init; }
+  property System.TimeSpan Delay { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.IdleTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.IdleTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Tasks.IdleTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.IdleTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+type Runic.Platform.Administration.Windows.Tasks.LogonTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.LogonTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor (System.String UserId = null, System.TimeSpan Delay = null)
+  method Runic.Platform.Administration.Windows.Tasks.LogonTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.LogonTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& UserId, out System.TimeSpan& Delay)
+  property System.String UserId { get; init; }
+  property System.TimeSpan Delay { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.MonthlyTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.MonthlyTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor (System.Collections.Immutable.ImmutableArray`1[System.Int32] Months, System.Collections.Immutable.ImmutableArray`1[System.Int32] Days, System.Boolean LastDay = False)
+  method Runic.Platform.Administration.Windows.Tasks.MonthlyTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.MonthlyTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Collections.Immutable.ImmutableArray`1[System.Int32]& Months, out System.Collections.Immutable.ImmutableArray`1[System.Int32]& Days, out System.Boolean& LastDay)
+  property System.Boolean LastDay { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.Int32] Days { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.Int32] Months { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.RegistrationTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.RegistrationTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor (System.TimeSpan Delay = null)
+  method Runic.Platform.Administration.Windows.Tasks.RegistrationTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.RegistrationTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.TimeSpan& Delay)
+  property System.TimeSpan Delay { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.RunningTaskSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.RunningTaskSnapshot]
+  ctor (System.String InstanceId, System.String Path, Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState State)
+  method Runic.Platform.Administration.Windows.Tasks.RunningTaskSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.RunningTaskSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& InstanceId, out System.String& Path, out Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState& State)
+  property Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState State { get; init; }
+  property System.String InstanceId { get; init; }
+  property System.String Path { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot]
+  ctor (System.String Name, System.String Path, Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState State, System.Boolean Enabled, System.Nullable`1[System.DateTime] LastRunTime, System.Int32 LastTaskResult, System.Nullable`1[System.DateTime] NextRunTime, System.String Xml)
+  method Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Name, out System.String& Path, out Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState& State, out System.Boolean& Enabled, out System.Nullable`1[System.DateTime]& LastRunTime, out System.Int32& LastTaskResult, out System.Nullable`1[System.DateTime]& NextRunTime, out System.String& Xml)
+  property Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState State { get; init; }
+  property System.Boolean Enabled { get; init; }
+  property System.Int32 LastTaskResult { get; init; }
+  property System.Nullable`1[System.DateTime] LastRunTime { get; init; }
+  property System.Nullable`1[System.DateTime] NextRunTime { get; init; }
+  property System.String Name { get; init; }
+  property System.String Path { get; init; }
+  property System.String Xml { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSpecification : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSpecification]
+  ctor (Runic.Platform.Administration.Windows.Tasks.TaskPrincipal Principal, System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction] Actions, System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger] Triggers)
+  method Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSpecification <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSpecification other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Tasks.TaskPrincipal& Principal, out System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction]& Actions, out System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]& Triggers)
+  property Runic.Platform.Administration.Windows.Tasks.TaskPrincipal Principal { get; init; }
+  property System.Boolean Enabled { get; init; }
+  property System.Boolean Hidden { get; init; }
+  property System.Boolean StartWhenAvailable { get; init; }
+  property System.Boolean WakeToRun { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction] Actions { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger] Triggers { get; init; }
+  property System.String Description { get; init; }
+  property System.TimeSpan ExecutionTimeLimit { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState Disabled = 1
+  field Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState Queued = 2
+  field Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState Ready = 3
+  field Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState Running = 4
+  field Runic.Platform.Administration.Windows.Tasks.ScheduledTaskState Unknown = 0
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Tasks.ScheduledTaskUpdate : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskUpdate]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Tasks.ScheduledTaskUpdate <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.ScheduledTaskUpdate other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property System.Nullable`1[System.Boolean] Enabled { get; init; }
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction]] Actions { get; init; }
+  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]] Triggers { get; init; }
+  property System.Nullable`1[System.TimeSpan] ExecutionTimeLimit { get; init; }
+  property System.String Description { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.SessionStateTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.SessionStateTaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  ctor (Runic.Platform.Administration.Windows.Tasks.TaskSessionChange Change, System.String UserId = null, System.TimeSpan Delay = null)
+  method Runic.Platform.Administration.Windows.Tasks.SessionStateTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.SessionStateTaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Tasks.TaskSessionChange& Change, out System.String& UserId, out System.TimeSpan& Delay)
+  property Runic.Platform.Administration.Windows.Tasks.TaskSessionChange Change { get; init; }
+  property System.String UserId { get; init; }
+  property System.TimeSpan Delay { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction]
+  ctor (System.String Path, System.String Arguments = "", System.String WorkingDirectory = "")
+  method Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskExecutableAction other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Path, out System.String& Arguments, out System.String& WorkingDirectory)
+  property System.String Arguments { get; init; }
+  property System.String Path { get; init; }
+  property System.String WorkingDirectory { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.TaskLogonType : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Tasks.TaskLogonType Group = 4
+  field Runic.Platform.Administration.Windows.Tasks.TaskLogonType InteractiveToken = 3
+  field Runic.Platform.Administration.Windows.Tasks.TaskLogonType InteractiveTokenOrPassword = 6
+  field Runic.Platform.Administration.Windows.Tasks.TaskLogonType None = 0
+  field Runic.Platform.Administration.Windows.Tasks.TaskLogonType Password = 1
+  field Runic.Platform.Administration.Windows.Tasks.TaskLogonType ServiceAccount = 5
+  field Runic.Platform.Administration.Windows.Tasks.TaskLogonType ServiceForUser = 2
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Tasks.TaskPrincipal : System.Object abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskPrincipal]
+  ctor (System.String Identity, Runic.Platform.Administration.Windows.Tasks.TaskLogonType LogonType, System.Boolean HighestPrivileges = False)
+  method Runic.Platform.Administration.Windows.Tasks.TaskPrincipal <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskPrincipal other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String& Identity, out Runic.Platform.Administration.Windows.Tasks.TaskLogonType& LogonType, out System.Boolean& HighestPrivileges)
+  property Runic.Platform.Administration.Windows.Tasks.TaskLogonType LogonType { get; init; }
+  property System.Boolean HighestPrivileges { get; init; }
+  property System.String Identity { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.TaskSessionChange : System.Enum abstract=False sealed=True
+  interface System.IComparable
+  interface System.IConvertible
+  interface System.IFormattable
+  interface System.ISpanFormattable
+  field Runic.Platform.Administration.Windows.Tasks.TaskSessionChange ConsoleConnect = 0
+  field Runic.Platform.Administration.Windows.Tasks.TaskSessionChange ConsoleDisconnect = 1
+  field Runic.Platform.Administration.Windows.Tasks.TaskSessionChange RemoteConnect = 2
+  field Runic.Platform.Administration.Windows.Tasks.TaskSessionChange RemoteDisconnect = 3
+  field Runic.Platform.Administration.Windows.Tasks.TaskSessionChange SessionLock = 4
+  field Runic.Platform.Administration.Windows.Tasks.TaskSessionChange SessionUnlock = 5
+  field System.Int32 value__
+type Runic.Platform.Administration.Windows.Tasks.TaskTrigger : System.Object abstract=True sealed=False
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  method Runic.Platform.Administration.Windows.Tasks.TaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property System.Boolean Enabled { get; init; }
+  property System.String EndBoundary { get; init; }
+  property System.String StartBoundary { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger]
+  ctor ()
+  method Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+type Runic.Platform.Administration.Windows.Tasks.WeeklyTaskTrigger : Runic.Platform.Administration.Windows.Tasks.TaskTrigger abstract=False sealed=True
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.TaskTrigger]
+  interface System.IEquatable`1[Runic.Platform.Administration.Windows.Tasks.WeeklyTaskTrigger]
+  ctor (System.Collections.Immutable.ImmutableArray`1[System.DayOfWeek] Days, System.Int32 WeeksInterval = 1)
+  method Runic.Platform.Administration.Windows.Tasks.WeeklyTaskTrigger <Clone>$()
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger other)
+  method System.Boolean Equals(Runic.Platform.Administration.Windows.Tasks.WeeklyTaskTrigger other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Collections.Immutable.ImmutableArray`1[System.DayOfWeek]& Days, out System.Int32& WeeksInterval)
+  property System.Collections.Immutable.ImmutableArray`1[System.DayOfWeek] Days { get; init; }
+  property System.Int32 WeeksInterval { get; init; }
+type Runic.Platform.Administration.Windows.Tasks.WindowsTaskSchedulerClient : System.Object abstract=False sealed=True
+  ctor (System.String machineName = null)
+  method System.Threading.Tasks.Task CreateFolderAsync(System.String folderPath, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task SetEnabledAsync(System.String path, System.Boolean enabled, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task StopAsync(System.String path, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task ValidateAsync(Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSpecification specification, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task ValidateXmlAsync(System.String xml, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Tasks.RunningTaskSnapshot] RunAsync(System.String path, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot] CreateAsync(System.String path, Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSpecification specification, System.String password = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot] FindAsync(System.String path, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot] RegisterXmlAsync(System.String path, System.String xml, System.Boolean replaceExisting = False, System.String password = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot] UpdateAsync(System.String path, Runic.Platform.Administration.Windows.Tasks.ScheduledTaskUpdate update, System.String password = null, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteAsync(System.String path, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Boolean] DeleteFolderAsync(System.String folderPath, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.Tasks.ScheduledTaskSnapshot]] EnumerateAsync(System.String folderPath = "\\", System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[System.String]] EnumerateFoldersAsync(System.String folderPath = "\\", System.Threading.CancellationToken cancellationToken = null)
+type Runic.Platform.Administration.Windows.WindowsAdministrationException : System.Exception abstract=False sealed=False
+  interface System.Runtime.Serialization.ISerializable
+  ctor (System.String operation, Runic.Platform.Administration.Windows.AdministrationErrorCategory category, Runic.Platform.Administration.Windows.NativeErrorDomain nativeErrorDomain, System.Int32 nativeErrorCode, System.String message, System.Exception innerException = null)
+  property Runic.Platform.Administration.Windows.AdministrationErrorCategory Category { get;  }
+  property Runic.Platform.Administration.Windows.NativeErrorDomain NativeErrorDomain { get;  }
+  property System.Int32 NativeErrorCode { get;  }
+  property System.String Operation { get;  }

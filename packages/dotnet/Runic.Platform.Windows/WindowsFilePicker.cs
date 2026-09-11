@@ -1,10 +1,14 @@
 using System.Runtime.InteropServices;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.System.Com;
+using Windows.Win32.UI.Shell;
 
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-// Common Item Dialog ABI, without reflection-based COM marshalling (NativeAOT).
+// Generated unmanaged Common Item Dialog bindings preserve NativeAOT support.
 internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INativeFilePicker
 {
     private const int Cancelled = unchecked((int)0x800704C7);
@@ -58,46 +62,66 @@ internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INat
         return selection;
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatformGuard("windows6.1")]
+    private static bool IsNativeWindows() => OperatingSystem.IsWindowsVersionAtLeast(6, 1);
+
     private static unsafe nint Create(bool save)
     {
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
         Guid clsid = new(save ? "C0B4E2F3-BA21-4773-8DBA-335EC946EB8B" : "DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7");
-        Guid iid = new("42F85136-DB7E-439C-85F1-E4075D135FC8");
-        nint dialog;
-        Marshal.ThrowExceptionForHR(CoCreateInstance(&clsid, 0, 1, &iid, &dialog));
-        return dialog;
+        Guid iid = typeof(IFileDialog).GUID;
+        void* dialog = null;
+        var result = PInvoke.CoCreateInstance(&clsid, null, CLSCTX.CLSCTX_INPROC_SERVER, &iid, &dialog);
+        if (result.Value < 0)
+        {
+            Release((nint)dialog);
+            Marshal.ThrowExceptionForHR(result.Value);
+        }
+        return (nint)dialog;
     }
     private static unsafe void Configure(nint dialog, bool save, string? suggestedName)
     {
-        var table = *(nint**)dialog;
-        uint options;
-        Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, uint*, int>)table[10])(dialog, &options));
-        // Force filesystem items, preserve the process working directory, require
-        // existing parent; open also requires an existing file. Save prompts overwrite.
-        options |= 0x40 | 0x8 | 0x800 | (save ? 0x2u : 0x1000u);
-        Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, uint, int>)table[9])(dialog, options));
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        var native = (IFileDialog*)dialog;
+        FILEOPENDIALOGOPTIONS options;
+        Marshal.ThrowExceptionForHR(native->GetOptions(&options).Value);
+        options |= FILEOPENDIALOGOPTIONS.FOS_FORCEFILESYSTEM | FILEOPENDIALOGOPTIONS.FOS_NOCHANGEDIR |
+            FILEOPENDIALOGOPTIONS.FOS_PATHMUSTEXIST | (save ? FILEOPENDIALOGOPTIONS.FOS_OVERWRITEPROMPT : FILEOPENDIALOGOPTIONS.FOS_FILEMUSTEXIST);
+        Marshal.ThrowExceptionForHR(native->SetOptions(options).Value);
         if (suggestedName is not null)
             fixed (char* name = suggestedName)
-                Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, int>)table[15])(dialog, name));
+                Marshal.ThrowExceptionForHR(native->SetFileName(name).Value);
     }
-    private static unsafe int Show(nint dialog, nint hwnd) => ((delegate* unmanaged[Stdcall]<nint, nint, int>)(*(nint**)dialog)[3])(dialog, hwnd);
+    private static unsafe int Show(nint dialog, nint hwnd)
+    {
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        return ((IFileDialog*)dialog)->Show(new HWND(hwnd)).Value;
+    }
     private static unsafe void Close(nint dialog)
     {
-        if (dialog != 0) Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, int, int>)(*(nint**)dialog)[23])(dialog, Cancelled));
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        if (dialog != 0) Marshal.ThrowExceptionForHR(((IFileDialog*)dialog)->Close(new HRESULT(Cancelled)).Value);
     }
     private static unsafe string GetPath(nint dialog)
     {
-        nint item;
-        Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, nint*, int>)(*(nint**)dialog)[20])(dialog, &item));
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        IShellItem* item = null;
         try
         {
-            nint path;
-            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, uint, nint*, int>)(*(nint**)item)[5])(item, 0x80058000, &path));
-            try { return Marshal.PtrToStringUni(path) ?? throw new IOException("The picker returned no filesystem path."); }
-            finally { Marshal.FreeCoTaskMem(path); }
+            Marshal.ThrowExceptionForHR(((IFileDialog*)dialog)->GetResult(&item).Value);
+            PWSTR path = default;
+            try
+            {
+                Marshal.ThrowExceptionForHR(item->GetDisplayName(SIGDN.SIGDN_FILESYSPATH, &path).Value);
+                return Marshal.PtrToStringUni((nint)path.Value) ?? throw new IOException("The picker returned no filesystem path.");
+            }
+            finally { Marshal.FreeCoTaskMem((nint)path.Value); }
         }
-        finally { Release(item); }
+        finally { Release((nint)item); }
     }
-    private static unsafe void Release(nint item) { if (item != 0) ((delegate* unmanaged[Stdcall]<nint, uint>)(*(nint**)item)[2])(item); }
-    [LibraryImport("ole32.dll")]
-    private static unsafe partial int CoCreateInstance(Guid* clsid, nint outer, uint context, Guid* iid, nint* instance);
+    private static unsafe void Release(nint item)
+    {
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        if (item != 0) ((IUnknown*)item)->Release();
+    }
 }
