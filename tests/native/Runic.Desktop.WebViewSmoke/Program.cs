@@ -13,7 +13,7 @@ using var watchdog = new Timer(static _ =>
 {
     Console.Error.WriteLine("Native window smoke exceeded its 90-second deadline; see the last logged phase.");
     Environment.Exit(1);
-}, null, TimeSpan.FromSeconds(90), Timeout.InfiniteTimeSpan);
+}, null, TimeSpan.FromSeconds(180), Timeout.InfiniteTimeSpan);
 
 try
 {
@@ -102,10 +102,23 @@ static async Task RunWindowsUiAutomationSmokeAsync()
             <button id="open-file" type="button">Open native file</button>
             <button id="save-file" type="button">Save native file</button>
             <output id="snapshot" aria-live="polite">Waiting for automation</output></main>
+            <output id="ime-result" aria-live="off" style="display:block;max-height:2em;overflow:hidden;overflow-wrap:anywhere">IME: []</output>
             <output id="keyboard-focus" aria-live="polite">Keyboard focus: none</output>
             <output id="picker-result" aria-live="polite">No file selected</output>
             <button id="finish" type="button">Finish</button>
             <script>
+            const imeEvents = [];
+            for (const type of ['compositionstart', 'compositionupdate', 'compositionend', 'input']) {
+              document.getElementById('display-name').addEventListener(type, event => {
+                imeEvents.push({ type, data: event.data, value: event.target.value, trusted: event.isTrusted, composing: event.isComposing });
+                if (type === 'compositionend') {
+                  document.getElementById('ime-result').textContent = 'IME: ' + JSON.stringify(imeEvents);
+                }
+              });
+            }
+            document.getElementById('display-name').addEventListener('blur', () => {
+              document.getElementById('ime-result').textContent = 'IME: ' + JSON.stringify(imeEvents);
+            });
             document.getElementById('record').addEventListener('click', () => {
               document.getElementById('snapshot').textContent =
                 'Recorded: ' + document.getElementById('display-name').value;
@@ -142,7 +155,7 @@ static async Task RunWindowsUiAutomationSmokeAsync()
 
     var picker = WindowsPlatformProvider.CreateFileDialogs(new WindowPickerOwner(window));
     Console.WriteLine("Windows UI Automation surface is ready.");
-    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(180));
     while (true)
     {
         string finished = await surface.ExecuteJavaScriptAsync(
@@ -414,7 +427,7 @@ internal static class SmokeSoak
         var command = Console.ReadLine();
         if (command == "stop") return false;
         if (command != "cycle") throw new InvalidOperationException("Expected cycle or stop.");
-        Watchdog?.Change(TimeSpan.FromSeconds(90), Timeout.InfiniteTimeSpan);
+        Watchdog?.Change(TimeSpan.FromSeconds(180), Timeout.InfiniteTimeSpan);
         return true;
     }
 

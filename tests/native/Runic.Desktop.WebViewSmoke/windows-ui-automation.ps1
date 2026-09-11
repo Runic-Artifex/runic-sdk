@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$Executable,
-    [Parameter(Mandatory)][string]$ReceiptPath
+    [Parameter(Mandatory)][string]$ReceiptPath,
+    [switch]$Ime,
+    [switch]$Narrator
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,14 +109,32 @@ function Find-ActiveDialog([System.Windows.Automation.AutomationElement]$MainWin
     $nodes = @($MainWindow.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object {
         [ordered]@{ name=$_.Current.Name; id=$_.Current.AutomationId; type=$_.Current.ControlType.ProgrammaticName; class=$_.Current.ClassName; handle=$_.Current.NativeWindowHandle }
     })
-    $nodes | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath "$ReceiptPath.dialog.json" -Encoding utf8
+    $nodes | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$ReceiptPath.dialog.json" -Encoding utf8
     throw 'The native file picker did not expose its file-name control.'
 }
 
 $process = $null
+$testProfiles = $null
+$originalLanguages = $null
 try {
     $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
     if ($sessionId -eq 0) { throw 'Windows UI Automation requires an interactive session, not Session 0.' }
+    if ($Ime -or $Narrator) {
+        . "$PSScriptRoot/windows-accessibility.ps1"
+        if (Get-Process Narrator -ErrorAction SilentlyContinue) { throw 'Stop existing Narrator before running desktop input automation.' }
+        $testProfiles = New-Object RunicProfiles
+        $originalProfile = $testProfiles.Current()
+        if ($Ime) {
+            $languages = Get-WinUserLanguageList
+            if (-not @($languages | Where-Object { $_.InputMethodTips -match 'FA550B04-5AD7-411F-A5AC-CA038EC515D7' }).Count) {
+                $originalLanguages = $languages
+                $temporary = Get-WinUserLanguageList
+                $temporary.Add((New-WinUserLanguageList 'zh-CN')[0])
+                Set-WinUserLanguageList $temporary -Force
+            }
+        }
+        $testProfiles.ResetKeyboard()
+    }
     $process = Start-Process -FilePath $Executable -ArgumentList '--ui-automation' -PassThru -RedirectStandardOutput "$ReceiptPath.stdout" -RedirectStandardError "$ReceiptPath.stderr"
     # Process.Handle is no longer available from the PowerShell process wrapper
     # after the child exits. Keep the OS handle while it is live and use it only
@@ -143,8 +163,11 @@ try {
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Display name')),
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
     $edit = Find-Element $window $editCondition
+    $accessibilityResults = [ordered]@{}
+    if ($Ime) { $accessibilityResults.ime = Test-RunicIme $window $edit $ReceiptPath }
     $edit.SetFocus()
     Wait-KeyboardFocus $edit
+    if ($testProfiles) { $testProfiles.ResetKeyboard(); Start-Sleep -Milliseconds 500 }
     $value = [System.Windows.Automation.ValuePattern]$edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     if ($value.Current.IsReadOnly) { throw 'Display name is unexpectedly read-only.' }
     $value.SetValue('UI Automation value')
@@ -266,6 +289,7 @@ try {
     if ([IO.File]::ReadAllText($savePath) -cne 'Runic Windows native picker output.') { throw 'Native save content mismatch.' }
     if ([IO.File]::ReadAllText($PickerPath) -cne $pickerContents) { throw 'Native picker input was unexpectedly modified.' }
     $saveResultName = $saveResult.Current.Name
+    if ($Narrator) { $accessibilityResults.narrator = Test-RunicNarrator $window $ReceiptPath }
     $finishCondition = New-Object System.Windows.Automation.AndCondition @(
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Finish')),
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)))
@@ -312,21 +336,33 @@ try {
         saveResultName = $saveResultName
         focusObservations = $focusObservations
         finishName = $finishName
+        accessibility = $accessibilityResults
         completedUtc = [DateTime]::UtcNow.ToString('o')
     }
     # Windows PowerShell 5.1 is present on a clean Windows install and accepts
     # UTF8 (with a BOM), while utf8NoBOM is a PowerShell 6+ encoding name.
-    $receipt | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $ReceiptPath -Encoding utf8
+    $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ReceiptPath -Encoding utf8
     Write-Output "PASS Windows UI Automation: WebView2 exposes semantic edit/button/output controls and accepts Value/Invoke patterns."
 }
 catch {
     # Scheduled tasks do not return child stderr to their Session 0 caller. Keep
     # a sibling diagnostic so an interactive failure stays actionable.
+    [System.Windows.Automation.AutomationElement]::FocusedElement.Current | Select-Object Name,AutomationId,ClassName,ProcessId | ConvertTo-Json | Set-Content "$ReceiptPath.focus-failure.json"
     $_ | Format-List * -Force | Out-String | Set-Content -LiteralPath "$ReceiptPath.log" -Encoding utf8
     throw
 }
 finally {
-    if ($null -ne $process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
-    Remove-Item -LiteralPath $runningPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $PickerPath, $savePath -Force -ErrorAction SilentlyContinue
+    try {
+        if ($null -ne $process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    }
+    finally {
+        try {
+            try { if ($originalLanguages) { Set-WinUserLanguageList $originalLanguages -Force } }
+            finally { if ($testProfiles) { try { $testProfiles.Activate($originalProfile) } finally { $testProfiles.Dispose() } } }
+        }
+        finally {
+            Remove-Item -LiteralPath $runningPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $PickerPath, $savePath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }

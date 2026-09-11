@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$AutomationScript,
     [Parameter(Mandatory)][string]$ReceiptPath,
     [switch]$RequireExecutableOnly,
-    [ValidateRange(10, 120)][int]$TimeoutSeconds = 120
+    [switch]$Ime,
+    [switch]$Narrator,
+    [ValidateRange(10, 240)][int]$TimeoutSeconds = 240
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,6 +30,8 @@ $taskName = "Runic.Desktop.UIA.$([Guid]::NewGuid().ToString('N'))"
 $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Executable "{1}" -ReceiptPath "{2}"' -f `
     $AutomationScript, $Executable, $ReceiptPath
+if ($Ime) { $arguments += ' -Ime' }
+if ($Narrator) { $arguments += ' -Narrator' }
 $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument $arguments
 $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Limited
 
@@ -59,6 +63,16 @@ try {
 finally {
     try {
         Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath "$ReceiptPath.narrator-running") {
+            $owned = Get-Content -LiteralPath "$ReceiptPath.narrator-running" -Raw | ConvertFrom-Json
+            $narratorProcess = Get-Process -Id $owned.processId -ErrorAction SilentlyContinue
+            if ($narratorProcess -and $narratorProcess.ProcessName -eq 'Narrator' -and
+                $narratorProcess.SessionId -eq $owned.sessionId -and
+                $narratorProcess.StartTime.ToUniversalTime().Ticks -eq $owned.startTicks) {
+                Stop-Process -Id $narratorProcess.Id -Force
+            }
+            Remove-Item -LiteralPath "$ReceiptPath.narrator-running"
+        }
         if (Test-Path -LiteralPath $runningPath) {
             try {
                 $running = Get-Content -LiteralPath $runningPath -Raw | ConvertFrom-Json
