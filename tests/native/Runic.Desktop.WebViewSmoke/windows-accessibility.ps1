@@ -133,6 +133,8 @@ function Test-RunicIme($Window,$Edit,[string]$Output) {
    if(@($events|Where-Object {$_.type -eq 'compositionend'}).Count){break}
    Start-Sleep -Milliseconds 100
   } while([DateTime]::UtcNow -lt $deadline)
+  # Retain the observed sequence even when composition assertions fail.
+  $events|ConvertTo-Json -Depth 4|Set-Content "$Output.ime.json" -Encoding utf8
   foreach($type in @('compositionstart','compositionupdate')) {
    if(-not @($events|Where-Object {$_.type -eq $type -and $_.trusted}).Count){throw "Missing trusted $type event"}
   }
@@ -143,7 +145,6 @@ function Test-RunicIme($Window,$Edit,[string]$Output) {
   if($commits.Count -ne 1){throw 'Expected exactly one composition commit'}
   $commit=$commits[0]
   if($commit.data -cne $expected){throw 'Pinyin composition did not commit the expected Chinese text'}
-  $events|ConvertTo-Json -Depth 4|Set-Content "$Output.ime.json" -Encoding utf8
   return [ordered]@{value=$value.Current.Value;language=$profiles.Current().Language;events=@($events).Count}
  } catch {
   $nodes=@(foreach($app in [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)) {
