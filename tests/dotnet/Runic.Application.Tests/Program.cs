@@ -27,7 +27,7 @@ var stopOrder = new System.Collections.Generic.List<string>();
 var stopBuilder = RunicApplication.CreateBuilder([]).UseHost(new StopOrderHost(stopOrder));
 stopBuilder.Services.AddSingleton<IApplicationStoppingParticipant>(new StopParticipant(stopOrder));
 await using (var stopApplication = stopBuilder.Build()) { await stopApplication.RunAsync(); }
-if (!stopOrder.SequenceEqual(new[] { "participant", "host", "dispose" })) return 30;
+if (stopOrder is not ["participant", "host", "dispose"]) return 30;
 stopOrder.Clear();
 var failedStopBuilder = RunicApplication.CreateBuilder([]).UseHost(new StopOrderHost(stopOrder));
 failedStopBuilder.Services.AddSingleton<IApplicationStoppingParticipant>(_ => throw new InvalidOperationException("provider creation failed"));
@@ -36,7 +36,7 @@ await using (var failedStopApplication = failedStopBuilder.Build())
     try { await failedStopApplication.RunAsync(); return 31; }
     catch (AggregateException) { }
 }
-if (!stopOrder.SequenceEqual(new[] { "host", "dispose" })) return 32;
+if (stopOrder is not ["host", "dispose"]) return 32;
 
 DeterministicApplicationTestHost host = new(
     DateTimeOffset.UnixEpoch,

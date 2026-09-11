@@ -432,7 +432,22 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11
+          sudo apt-get install --yes libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
+      - name: Permit the WebKit sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: |
+          # Ubuntu restricts capabilities inside unprivileged user namespaces.
+          # Permit the distribution's bwrap helper without disabling AppArmor or WebKit's sandbox.
+          test "$(command -v bwrap)" = /usr/bin/bwrap
+          sudo tee /etc/apparmor.d/runic-ci-bwrap > /dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile runic-ci-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+          sudo apparmor_parser -r /etc/apparmor.d/runic-ci-bwrap
+          bwrap --unshare-user --unshare-net --ro-bind / / --proc /proc --dev /dev true
       - name: Build native window smoke
         run: dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
       - name: Exercise native window close interception on Linux
@@ -443,12 +458,12 @@ jobs:
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --dbus
       - name: Exercise GTK4 native window and platform services
         if: runner.os == 'Linux'
-        run: GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
+        run: GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
       - name: Verify GTK4 and portal NativeAOT consumers
         if: runner.os == 'Linux'
         run: |
           dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --dbus
       - name: Exercise native window close interception on Windows and macOS
