@@ -54,8 +54,27 @@ keyboard navigation and real Pinyin at 100%, 200% and 150% desktop scaling.
 The standard-runtime NativeAOT Flatpak additionally passed unattended grant,
 cancellation, atomic-save rejection and picker-owner closure checks.
 
-GNOME also passes automated Orca label/role speech, PipeWire audio capture and
-local transcription checks. Announcement quality, corresponding KDE usability/
-sandbox checks and broader distribution coverage remain follow-ups. See the
-[VM automation guide](../../../docs/guides/desktop/vm-automation.md) for reproducible
-commands and the limits of each assertion. GTK3 remains supported.
+Both GNOME and KDE pass automated Orca label/role speech, PipeWire audio capture,
+local transcription, real Pinyin composition, 100/150/200% scaling with pointer
+targeting, sandboxed file pickers and live/cold notification focus. The keyboard
+checks also traverse every fixture control forward and backward, require native
+AT-SPI focus events, and check text insertion events, values and caret positions.
+Announcement quality, visual candidate placement and broader distribution/X11
+usability coverage remain follow-ups. See the
+[container automation guide](../../../docs/guides/desktop/container-automation.md)
+for reproducible commands and assertion limits. GTK3 remains supported.
+
+The isolated package consumer checks base Desktop dependency isolation, a packaged
+GTK4 window lifecycle under Xvfb, and (on NixOS) the missing-native-runtime error.
+After packing the current `Runic.Desktop` and `Runic.Desktop.Gtk4` candidates into
+`artifacts/packages/nuget`, run from the SDK root:
+
+```sh
+direnv exec . python3 tests/fixtures/desktop/Runic.Desktop.PackageConsumer/verify-gtk4.py --missing-runtime
+```
+
+The script creates and removes its own consumer outside the checkout. Omit
+`--missing-runtime` on systems with globally installed GTK4: clearing
+`LD_LIBRARY_PATH` there does not hide the native libraries. This lifecycle check
+is not an X11 accessibility certification. Tested native versions above describe
+the locked NixOS environment; they do not establish support for every distribution.

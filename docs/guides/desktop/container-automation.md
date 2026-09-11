@@ -157,7 +157,10 @@ pointer inside the banner between hover and click so the action row stays open.
 
 Visual candidate placement, announcement quality, physical input devices and real
 hardware/power transitions remain distinct from these headless integration
-checks. Further accessibility values/events and CI host provisioning can extend
-the runner. Windows VM and future real-macOS testing are unchanged. Linux VM
+checks. The keyboard checks cover all fixture controls in both directions and require
+native focus events, text insertion events, text values and caret positions;
+`accessibility-events.json` retains the observed events. Numeric/range controls,
+selection-change events and broader assistive-technology interaction remain
+future coverage. CI host provisioning can extend the runner. Windows VM and future real-macOS testing are unchanged. Linux VM
 helpers are deprecated compatibility tools; new Linux test work belongs in the
 managed container runner. These coverage limitations do not add release gates.

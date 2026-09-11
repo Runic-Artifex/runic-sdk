@@ -35,6 +35,8 @@ class Suite:
         error = None
         while time.monotonic() < deadline:
             try:
+                while GLib.MainContext.default().pending():
+                    GLib.MainContext.default().iteration(False)
                 result = check()
                 if result:
                     return result
@@ -224,6 +226,16 @@ class Suite:
                     key(modifier, False)
                 time.sleep(0.3)
             raise RuntimeError("Could not select the configured input source: " + target)
+        native_events = []
+        def on_event(event):
+            if event.source.getApplication() == self.fixture():
+                native_events.append({"type": event.type, "name": event.source.name,
+                                      "detail1": event.detail1, "detail2": event.detail2})
+        event_types = ("object:state-changed:focused", "object:text-changed", "object:text-caret-moved")
+        pyatspi.Registry.registerEventListener(on_event, *event_types)
+        def observed(kind, label, offset, detail=None):
+            return any(e["type"].startswith(kind) and e["name"] == label
+                       and (detail is None or e["detail1"] == detail) for e in native_events[offset:])
         try:
             if not kde:
                 call("Start")
@@ -233,9 +245,30 @@ class Suite:
             self.wait(lambda: name.getState().contains(pyatspi.STATE_FOCUSED))
             previous_engine = self.wait(engine)
             switch_engine("keyboard-us" if kde else "xkb:us::eng")
+            text_offset = len(native_events)
             for code in (19, 22, 49, 23, 46):  # evdev: r u n i c
                 tap(code)
             self.wait(lambda: name.queryText().getText(0, -1) == "runic")
+            self.wait(lambda: observed("object:text-changed:insert", "Your name", text_offset))
+            self.wait(lambda: observed("object:text-caret-moved", "Your name", text_offset, 5))
+            # Walk every form control in both directions through the compositor.
+            # AT-SPI focus state and the independently delivered event must agree.
+            order = [name, field("Composition text")] + [self.button(label) for label in (
+                "Target hits: 0", "Record snapshot", "Open file", "Choose save destination",
+                "Hold inhibition", "Release inhibition", "Close owner during picker", "Finish session")]
+            for reverse, targets in ((False, order[1:]), (True, list(reversed(order[:-1])))):
+                for target in targets:
+                    event_offset = len(native_events)
+                    if reverse:
+                        key(42, True)
+                    try:
+                        tap(15)
+                    finally:
+                        if reverse:
+                            key(42, False)
+                    self.wait(lambda: target.getState().contains(pyatspi.STATE_FOCUSED))
+                    self.wait(lambda: observed("object:state-changed:focused", target.name, event_offset, 1))
+            self.passed_check("complete forward/reverse form focus order and native focus events")
             composition = field("Composition text")
             tap(15)  # Tab
             self.wait(lambda: composition.getState().contains(pyatspi.STATE_FOCUSED))
@@ -257,6 +290,10 @@ class Suite:
             time.sleep(0.5)
             tap(57)  # Space commits the selected Pinyin candidate.
             self.wait(lambda: composition.queryText().getText(0, -1) == "你好")
+            self.wait(lambda: observed("object:text-changed:insert", "Composition text", 0))
+            self.wait(lambda: composition.queryText().caretOffset == 2)
+            (self.output / "accessibility-events.json").write_text(json.dumps(native_events, indent=2) + "\n")
+            self.passed_check("native text values, insertion events and caret positions")
             offset = len(self.log.read_text())
             self.step("Record snapshot", "RESULT Snapshot recorded.")
             states = [json.loads(line[len("USABILITY "):]) for line in self.log.read_text()[offset:].splitlines()
@@ -270,6 +307,7 @@ class Suite:
             (self.output / "keyboard-ime.json").write_text(json.dumps(states[0], ensure_ascii=False, indent=2) + "\n")
             self.passed_check(f"real {'Fcitx5' if kde else 'IBus'} Pinyin composition and commit through compositor input")
         finally:
+            pyatspi.Registry.deregisterEventListener(on_event, *event_types)
             try:
                 if kde:
                     field("Composition text").queryComponent().grabFocus()
