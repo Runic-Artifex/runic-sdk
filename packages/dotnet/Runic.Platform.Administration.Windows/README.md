@@ -174,3 +174,20 @@ projection and parameterized event callback need separate evaluation. Microsoft'
 [CsWinRT](https://github.com/microsoft/CsWinRT) is the corresponding WinRT projection
 project; adopting it would require separate NativeAOT, activation and callback
 lifetime checks. Do not bundle that change into a Win32 binding substitution.
+
+### Application adoption additions
+
+`WindowsGroupPolicyClient.EnumerateBackupsAsync(directory)` enumerates all GPMC backups,
+including older backups, with IDs, display names, timestamps and comments. It needs
+local GPMC but no domain connection. The application selects a backup and passes its
+ID to `ImportAsync`; application naming and recency rules remain outside Runic.
+
+DNS creation retains its explicit 3600-second default. Set
+`DnsRecordSpecification.UseServerDefaultTimeToLive = true` to omit TTL and let the
+Windows DNS provider select it, matching callers that previously omitted the optional
+[native TTL argument](https://learn.microsoft.com/en-us/windows/win32/dns/microsoftdns-cnametype-createinstancefrompropertydata).
+This option affects creation only; updates preserve the existing TTL unless changed.
+
+NativeAOT checks cover backup cancellation and missing GPMC. Enumeration of populated
+backup directories and server-default DNS TTL require the disposable domain/DNS fixture;
+the verification CLI includes those checks. They have not been accepted on a domain VM yet.

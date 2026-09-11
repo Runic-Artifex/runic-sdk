@@ -32,7 +32,11 @@ public sealed record DnsRecordKey(string Zone, string OwnerName, DnsRecordData D
 /// <summary>A DNS record with its native class and TTL.</summary>
 public sealed record DnsRecordSnapshot(DnsRecordKey Key, uint TimeToLiveSeconds, uint RecordClass);
 /// <summary>Creates a single record without replacing its record set.</summary>
-public sealed record DnsRecordSpecification(DnsRecordKey Key, uint TimeToLiveSeconds = 3600);
+public sealed record DnsRecordSpecification(DnsRecordKey Key, uint TimeToLiveSeconds = 3600)
+{
+    /// <summary>Omit TTL on creation so the DNS provider chooses it. When true, TimeToLiveSeconds is ignored.</summary>
+    public bool UseServerDefaultTimeToLive { get; init; }
+}
 /// <summary>Selected record edits. Data must retain the existing record type; null preserves a value.</summary>
 public sealed record DnsRecordUpdate
 {

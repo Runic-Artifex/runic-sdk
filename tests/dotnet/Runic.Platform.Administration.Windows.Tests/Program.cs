@@ -42,6 +42,7 @@ internal static class NativeTests
         await CheckTaskDefinitionsAsync();
         CheckLinkOrder();
         await CheckGpmcPrerequisiteAsync();
+        await CheckBackupEnumerationAsync();
         Console.WriteLine("PASS Windows administration: native shortcuts, process snapshots and read-only service queries.");
     }
 
@@ -248,6 +249,33 @@ internal static class NativeTests
         }, default);
     }
 
+
+    private static async Task CheckBackupEnumerationAsync()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RunicBackupEnumeration-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            try { await WindowsGroupPolicyClient.EnumerateBackupsAsync("relative"); throw new InvalidOperationException("Relative backup path accepted."); }
+            catch (ArgumentException) { }
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            try { await WindowsGroupPolicyClient.EnumerateBackupsAsync(directory, cancellation.Token); throw new InvalidOperationException("Canceled enumeration succeeded."); }
+            catch (OperationCanceledException) { }
+            try
+            {
+                for (var i = 0; i < 3; i++)
+                    Check((await WindowsGroupPolicyClient.EnumerateBackupsAsync(directory)).IsEmpty, "Empty backup directory returned data.");
+                Console.WriteLine("PASS GPMC empty backup enumeration without domain connection.");
+            }
+            catch (WindowsAdministrationException error) when (error.NativeErrorCode == unchecked((int)0x80040154))
+            {
+                Check(error.Category == AdministrationErrorCategory.Unavailable, "Missing GPMC must remain a prerequisite failure.");
+                Console.WriteLine("PASS Backup enumeration prerequisite and cancellation; native backup fixture unavailable.");
+            }
+        }
+        finally { Directory.Delete(directory); }
+    }
 
     private static void CheckLinkOrder()
     {

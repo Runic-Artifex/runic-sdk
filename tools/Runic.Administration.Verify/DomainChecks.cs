@@ -132,6 +132,16 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             await client.SetEnabledAsync(second.Id, false, false, token);
             var backup = await client.BackupAsync(first.Id, backupDirectory, "Runic disposable fixture", token);
             report.Resource("GPO backup: " + backup.Value.BackupId + " at " + backupDirectory);
+            var anotherBackup = await client.BackupAsync(first.Id, backupDirectory, "Second backup", token);
+            var backups = await WindowsGroupPolicyClient.EnumerateBackupsAsync(backupDirectory, token);
+            Require(backups.Length == 2, "Backup enumeration must include older backups, not only the latest.");
+            foreach (var expected in new[] { backup.Value, anotherBackup.Value })
+            {
+                var actual = backups.Single(value => value.BackupId == expected.BackupId);
+                Require(actual.GroupPolicyId == expected.GroupPolicyId && actual.DisplayName == expected.DisplayName
+                    && actual.Comment == expected.Comment && actual.Timestamp == expected.Timestamp,
+                    "Backup enumeration lost metadata.");
+            }
             var imported = await client.ImportAsync(second.Id, backupDirectory, backup.Value.BackupId, cancellationToken: token);
             Require(imported.Value.Id == second.Id, "Import changed destination identity.");
             var restored = await client.RestoreAsync(backupDirectory, backup.Value.BackupId, token);
@@ -174,8 +184,12 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
                 {
                     Require(await client.FindZoneAsync(zone, token) is not null, "Requested fixture zone absent.");
                     Require((await client.EnumerateRecordsAsync(zone, key.OwnerName, token)).Length == 0, "Random fixture owner already exists.");
-                    await client.CreateAsync(new(key, 300), token); created = true;
-                    Require((await client.FindAsync(key, token))?.TimeToLiveSeconds == 300, "DNS create/read mismatch.");
+                    var serverDefaultTtl = key.Data is DnsRecordData.CName;
+                    await client.CreateAsync(new(key, 300) { UseServerDefaultTimeToLive = serverDefaultTtl }, token); created = true;
+                    var createdRecord = await client.FindAsync(key, token);
+                    Require(createdRecord is not null, "DNS create/read mismatch.");
+                    if (serverDefaultTtl) report.Resource("Server-selected DNS TTL: " + createdRecord!.TimeToLiveSeconds);
+                    else Require(createdRecord!.TimeToLiveSeconds == 300, "Explicit DNS TTL mismatch.");
                     await LocalChecks.Conflict(() => client.CreateAsync(new(key, 300), token));
                     await client.UpdateAsync(key, new() { TimeToLiveSeconds = 600 }, token);
                     Require((await client.FindAsync(key, token))?.TimeToLiveSeconds == 600, "DNS TTL update missing.");

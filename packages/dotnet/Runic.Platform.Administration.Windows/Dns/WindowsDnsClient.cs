@@ -70,7 +70,7 @@ public sealed class WindowsDnsClient
             values.Add("ContainerName", specification.Key.Zone);
             values.Add("OwnerName", specification.Key.OwnerName);
             values.Add("RecordClass", 1u);
-            values.Add("TTL", specification.TimeToLiveSeconds);
+            if (!specification.UseServerDefaultTimeToLive) values.Add("TTL", specification.TimeToLiveSeconds);
             cancellationToken.ThrowIfCancellationRequested();
             connection.Invoke(ClassName(specification.Key.Data), "CreateInstanceFromPropertyData", values);
             return true;

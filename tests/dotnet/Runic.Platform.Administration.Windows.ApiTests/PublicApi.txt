@@ -374,6 +374,7 @@ type Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification : System.O
   method System.String ToString()
   method System.Void Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsRecordKey& Key, out System.UInt32& TimeToLiveSeconds)
   property Runic.Platform.Administration.Windows.Dns.DnsRecordKey Key { get; init; }
+  property System.Boolean UseServerDefaultTimeToLive { get; init; }
   property System.UInt32 TimeToLiveSeconds { get; init; }
 type Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate : System.Object abstract=False sealed=True
   interface System.IEquatable`1[Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate]
@@ -686,6 +687,7 @@ type Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient 
   method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink]] GetLinksAsync(System.String targetDistinguishedName, System.Threading.CancellationToken cancellationToken = null)
   method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry]] GetPermissionsAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = null)
   method System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot]] EnumerateAsync(System.Threading.CancellationToken cancellationToken = null)
+  method static System.Threading.Tasks.Task`1[System.Collections.Immutable.ImmutableArray`1[Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup]] EnumerateBackupsAsync(System.String directory, System.Threading.CancellationToken cancellationToken = null)
 type Runic.Platform.Administration.Windows.NativeErrorDomain : System.Enum abstract=False sealed=True
   interface System.IComparable
   interface System.IConvertible

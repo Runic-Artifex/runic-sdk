@@ -309,10 +309,7 @@ public sealed partial class WindowsGroupPolicyClient
             using var result = ComObject.FromResult(((IGPMGPO*)gpo.Pointer)->Backup(target.Native, annotation.Native, null, null, (IGPMResult**)&resultPointer).Value, resultPointer, "Back up GPO");
             var messages = CheckResult(result, "Back up GPO");
             using var backup = ResultObject(result, IGPMBackup.IID_Guid);
-            return new(new(NativeError.ParseGuid(GpmRead.GetString(backup, GpmGetString.BackupID, "Read backup ID")),
-                NativeError.ParseGuid(GpmRead.GetString(backup, GpmGetString.BackupGPOID, "Read backed-up GPO ID")), GpmRead.GetString(backup, GpmGetString.BackupGPODomain, "Read backup domain"),
-                GpmRead.GetString(backup, GpmGetString.BackupGPODisplayName, "Read backup name"), Date(backup, GpmDate.Backup), GpmRead.GetString(backup, GpmGetString.BackupComment, "Read backup comment"),
-                GpmRead.GetString(backup, GpmGetString.BackupBackupDir, "Read backup directory")), messages);
+            return new(BackupSnapshot(backup), messages);
         }
     }
 
