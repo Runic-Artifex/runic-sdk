@@ -10,8 +10,7 @@ releases and their evidence remain historical records.
    must agree with `eng/workspace.json`; published versions cannot be overwritten.
 2. Run **Publish preview** (`publish-preview.yml`) on `main`, entering that version.
 3. The workflow runs the existing full CI, publishes its exact package artifacts,
-   checks registry contents and a small public consumer, then creates the GitHub
-   prerelease with generated change notes, a package bundle and one checksum file.
+   then creates the GitHub prerelease with generated change notes, a package bundle and one checksum file.
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. It is
 reused directly by the release workflow. There is no separate acceptance workflow,
@@ -34,13 +33,19 @@ The filename is retained so installed trusted-publisher registrations keep worki
 New package identities may still need registry ownership/bootstrap configuration.
 That is account setup, not a recurring release acceptance checklist.
 
-If publication or registry indexing fails, rerun the failed job in the same run.
+If publication fails, rerun the failed job in the same run. If NuGet is still
+indexing a previous push, wait for it to become available before retrying.
 It reuses the tested artifacts, checks already published versions for matching
 contents, and publishes only missing packages. Do not rerun successful producers
-unnecessarily. Changed package contents require a new version. The GitHub release
-is created only after the public smoke succeeds. Assets upload to a draft before
+unnecessarily. Changed package contents require a new version. Registry indexing and public installation do not block GitHub release creation;
+NuGet can take up to an hour to expose newly accepted packages. Assets upload to a draft before
 it becomes public, so interrupted uploads can be resumed. An existing published
 release for the same source is preserved on retry. If artifacts expire, prepare a new version/run.
+
+After indexing, optional diagnostics can be run with `bun eng/release/cli.mjs
+registry <manifest>` and `bun eng/release/smoke.mjs`. Download the manifest from
+the run’s release diagnostics and use the released source checkout. These checks
+do not republish packages.
 
 The smoke installs a .NET library and the CLI tool, runs them, and installs/imports
 the npm application bridge outside the checkout. The wider template/framework

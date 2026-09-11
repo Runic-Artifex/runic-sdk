@@ -62,10 +62,6 @@ jobs:
         env:
           NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
         run: bun eng/release/cli.mjs publish artifacts/packages artifacts/release/packages.json
-      - name: Check registry availability and contents
-        run: bun eng/release/cli.mjs registry artifacts/release/packages.json
-      - name: Smoke test public installation
-        run: bun eng/release/smoke.mjs
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,3 +73,4 @@ jobs:
           name: release-diagnostics-${{ github.run_id }}
           path: artifacts/release
           retention-days: 30
+          overwrite: true

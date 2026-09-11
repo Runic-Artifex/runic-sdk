@@ -15,10 +15,12 @@ test('publication depends on full reusable CI and consumes its artifacts from th
   expect(release.concurrency['cancel-in-progress']).toBe(false);
   expect(ci.concurrency.group).not.toBe(release.concurrency.group);
 });
-test('registry smoke precedes release creation and release has no evidence input', () => {
+test('publication does not wait for registry indexing and release has no evidence input', () => {
   const release = workflow('publish-preview.yml');
   const steps = release.jobs.publish.steps;
-  expect(steps.findIndex(s => s.run?.includes('smoke.mjs'))).toBeLessThan(steps.findIndex(s => s.run?.includes('github.mjs')));
+  expect(steps.some(s => s.run?.includes('smoke.mjs') || s.run?.includes('cli.mjs registry'))).toBe(false);
+  expect(steps.findIndex(s => s.run?.includes('cli.mjs publish'))).toBeLessThan(steps.findIndex(s => s.run?.includes('github.mjs')));
+  expect(steps.find(s => s.uses?.startsWith('actions/upload-artifact@')).with.overwrite).toBe(true);
   expect(Object.keys(release.on.workflow_dispatch.inputs)).toEqual(['version']);
   expect(existsSync(new URL('../../.github/workflows/preview-evidence.yml', import.meta.url))).toBe(false);
   expect(release.jobs.publish.permissions['id-token']).toBe('write');
