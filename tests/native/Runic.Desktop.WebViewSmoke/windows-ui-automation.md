@@ -27,8 +27,8 @@ pretending that Session 0 itself has a desktop:
   -ReceiptPath C:\path\to\uia-receipt.json
 ```
 
-The scripts do not install software. Optional IME/Narrator checks temporarily select
-input profiles, register Pinyin for the test user when needed, and start Narrator;
+The scripts do not install software. Optional Narrator checks temporarily select
+input profiles and start Narrator;
 normal completion and failure restore the original language list/profile and clipboard. They create
 and remove receipt-specific input/output files. The native open-file dialog
 returns a real `IReadFileLease`; open and save cancellation must return `Dismissed`.
@@ -63,37 +63,24 @@ also requires elevation.
 
 ## Microsoft Pinyin and Narrator
 
-Add `-Narrator` to either command above. `-Ime` enables the strict Pinyin probe.
-**IME remains experimental:** a full JIT composition/commit/Tab case passed, but
-subsequent runs (including NativeAOT) committed the Chinese text without the
-required composition events. Those runs fail; they are not accepted as IME
-coverage. Keep this probe opt-in while investigating the input-service/browser
-interaction; an SDK host defect has not yet been isolated. Narrator can run independently. Run in an unlocked, dedicated test
+**Windows IME support is best effort. The strict Pinyin probe is disabled.**
+Passing `-Ime` emits a warning and continues the other checks without IME coverage.
+WebView2 can commit Chinese text while showing detached composition and omitting
+DOM composition events; the behavior also occurs in a standard WebView2 host,
+while Edge passed the same page. Successful runs also occur, and no reliable
+Runic-specific fix has been identified. Revisit in December 2026 or later with
+updated Windows/WebView2 versions; this is not a release blocker.
+
+Add `-Narrator` to either command above. Narrator can run independently. Run in an unlocked, dedicated test
 session with an English (US/UK) or German keyboard, no existing Narrator process,
 and a working default audio output. Keep the helper files `windows-accessibility.ps1`
 and `windows-loopback.cs` alongside the driver. Narrator role assertions currently
 recognize English and German speech; another locale needs equivalent role words.
 
-For IME, provision the Windows **Chinese (Simplified) basic typing** capability
-once from an elevated PowerShell session:
+The disabled diagnostic implementation is retained in `windows-accessibility.ps1`
+for future investigation. It does not run through either supported entry point.
 
-```powershell
-Add-WindowsCapability -Online -Name Language.Basic~~~zh-CN~0.0.1.0
-```
-
-The test temporarily registers Microsoft Pinyin if it is absent from the user's
-language list, then restores that list. It selects profiles through Windows TSF,
-pumps the STA message queue during activation, clicks the actual input, and types
-`nihao` plus Space and Tab using native key events. The committed value must
-survive leaving the field. It requires `你好` through UIA,
-trusted composition start/update and composing input events, and one matching
-composition-end event. It never injects Chinese text or synthetic DOM events.
-The event log updates after composition ends and on native blur to avoid changing layout while
-the user is composing. The tested WebView2 runtime reports `isTrusted=false` for
-composition-end; that flag is retained in the log but is not a commit assertion.
-[Chromium dispatches that event through its scoped event queue](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/core/editing/ime/input_method_controller.cc).
-
-Narrator runs after keyboard, picker and IME checks. The driver focuses the edit
+Narrator runs after keyboard and picker checks. The driver focuses the edit
 and button, requests Narrator's read-current-item command, and checks the labels
 and roles in Narrator's own copied speech text. A test-only WASAPI helper records
 the default render endpoint into PCM WAV files and rejects silence or less than
@@ -103,7 +90,7 @@ or judge pronunciation. Narrator's exit shortcut is followed by a process-exit
 check. The task runner can also terminate the exact owned Narrator PID/start time
 if the driver is interrupted. Existing Narrator sessions are rejected untouched.
 
-Receipts have an `accessibility` section; sibling `.ime.json`, `.narrator.json`,
+Receipts have an `accessibility` section; sibling `.narrator.json`,
 `.narrator-*.txt` and `.narrator-*.wav` files retain diagnostics. A hard process kill
 cannot execute the driver's language/clipboard restoration; use the dedicated
 test account and restore its original input settings after such an interruption.

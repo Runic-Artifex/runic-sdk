@@ -10,6 +10,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Deferred while Windows WebView2 composition remains state-dependent.
+# Keep the parameter compatible with existing invocations, but never run the probe.
+if ($Ime) {
+    Write-Warning 'Windows IME testing is disabled; support is best effort. Continuing without IME coverage.'
+    $Ime = $false
+}
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $AutomationScript = (Resolve-Path -LiteralPath $AutomationScript).Path
 $ReceiptPath = [IO.Path]::GetFullPath($ReceiptPath)
