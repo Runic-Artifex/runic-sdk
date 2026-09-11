@@ -1,7 +1,7 @@
-# CLI follow-up — unreleased
+# CLI follow-up — 0.3.0-preview.1 (unreleased)
 
 This draft describes the changes intended for the next coordinated SDK preview.
-A version has not been assigned and these additions are not yet available from
+The target is 0.3.0-preview.1; these additions are not yet available from
 the published 0.2.0-preview.1 packages.
 
 - Define small CLIs with `CommandApp` and ordinary typed methods. String and

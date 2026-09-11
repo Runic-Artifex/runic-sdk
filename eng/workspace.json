@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "version": "0.2.0-preview.1",
+  "version": "0.3.0-preview.1",
   "npm": [
     {
       "name": "@runic-artifex/application-bridge",
@@ -36,7 +36,10 @@
     }
   ],
   "nuget": [
-    { "name": "Runic.Platform.Administration.Windows", "project": "packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" },
+    {
+      "name": "Runic.Platform.Administration.Windows",
+      "project": "packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj"
+    },
     {
       "name": "Runic.Assets",
       "project": "packages/dotnet/Runic.Assets/Runic.Assets.csproj"

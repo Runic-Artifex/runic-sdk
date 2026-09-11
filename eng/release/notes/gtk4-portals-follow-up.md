@@ -29,5 +29,4 @@ user's desktop portal services.
 
 GTK3 remains supported. GTK4 native desktop coverage and any unsupported window
 operations are described in the provider README; this follow-up does not claim
-comprehensive accessibility, IME or distribution certification. No new SDK version
-has been assigned or published by this change.
+comprehensive accessibility, IME or distribution certification. The target is SDK 0.3.0-preview.1; it has not yet been published.

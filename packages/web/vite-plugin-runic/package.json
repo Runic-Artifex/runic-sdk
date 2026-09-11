@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/vite-plugin-runic",
-  "version": "0.2.0-preview.1",
+  "version": "0.3.0-preview.1",
   "description": "Vite 8 development and DevTools integration for Runic applications",
   "license": "MIT",
   "type": "module",

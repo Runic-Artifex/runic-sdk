@@ -120,7 +120,7 @@
     },
     "packages/web/angular": {
       "name": "@runic-artifex/angular",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "dependencies": {
         "@runic-artifex/application-bridge": "workspace:*",
       },
@@ -136,7 +136,7 @@
     },
     "packages/web/application-bridge": {
       "name": "@runic-artifex/application-bridge",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "dependencies": {
         "effect": "4.0.0-rc.112",
       },
@@ -146,7 +146,7 @@
     },
     "packages/web/application-bridge-tooling": {
       "name": "@runic-artifex/application-bridge-tooling",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "bin": {
         "runic-bridge": "./dist/esm/cli.js",
       },
@@ -167,7 +167,7 @@
     },
     "packages/web/desktop": {
       "name": "@runic-artifex/desktop",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "dependencies": {
         "effect": "4.0.0-rc.112",
       },
@@ -177,7 +177,7 @@
     },
     "packages/web/svelte": {
       "name": "@runic-artifex/svelte",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "devDependencies": {
         "@runic-artifex/application-bridge": "workspace:*",
         "@runic-artifex/vite-plugin-runic": "workspace:*",
@@ -207,7 +207,7 @@
     },
     "packages/web/sveltekit": {
       "name": "@runic-artifex/sveltekit",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "dependencies": {
         "@types/cookie": "0.6.0",
       },
@@ -244,7 +244,7 @@
     },
     "packages/web/vite-plugin-runic": {
       "name": "@runic-artifex/vite-plugin-runic",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "devDependencies": {
         "@runic-artifex/application-bridge-tooling": "workspace:*",
         "@types/node": "24.13.3",
@@ -265,7 +265,7 @@
     },
     "packages/web/vite-plugin-runic-translations": {
       "name": "@runic-artifex/vite-plugin-runic-translations",
-      "version": "0.2.0-preview.1",
+      "version": "0.3.0-preview.1",
       "devDependencies": {
         "typescript": "^6.0.3",
         "vite": "^8.2.2",

@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/application-bridge",
-  "version": "0.2.0-preview.1",
+  "version": "0.3.0-preview.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",

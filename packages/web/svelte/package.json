@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/svelte",
-  "version": "0.2.0-preview.1",
+  "version": "0.3.0-preview.1",
   "description": "Svelte 5 integration for the Runic Toolkit Application Bridge",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#readme",
   "bugs": {
