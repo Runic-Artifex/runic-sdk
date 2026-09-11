@@ -18,7 +18,11 @@ public enum WindowsNetworkCategory
 }
 /// <summary>Network List Manager identity and connectivity; native flags retain IPv4/IPv6 distinctions.</summary>
 public sealed record WindowsNetworkSnapshot(Guid Id, string Name, string Description, WindowsNetworkCategory Category,
-    int NativeDomainType, int NativeConnectivity, bool Connected, bool InternetConnected);
+    int NativeDomainType, int NativeConnectivity, bool Connected, bool InternetConnected)
+{
+    /// <summary>Adapter identities belonging to this network, suitable for matching .NET NetworkInterface.Id.</summary>
+    public ImmutableArray<Guid> AdapterIds { get; init; } = [];
+}
 
 /// <summary>Read-only local Network List Manager access.</summary>
 public interface IWindowsNetworkClient
@@ -65,9 +69,32 @@ public sealed class WindowsNetworkClient : IWindowsNetworkClient
             NativeError.Check(native->get_IsConnected(&connected).Value, "Read network connection state");
             NativeError.Check(native->get_IsConnectedToInternet(&internet).Value, "Read network Internet state");
             result.Add(new(id, ReadText(native, false), ReadText(native, true),
-                (WindowsNetworkCategory)category, (int)domain, (int)connectivity, connected.Value != 0, internet.Value != 0));
+                (WindowsNetworkCategory)category, (int)domain, (int)connectivity, connected.Value != 0, internet.Value != 0)
+                { AdapterIds = ReadAdapterIds(native) });
         }
         return result.ToImmutable();
+    }
+
+    private static unsafe ImmutableArray<Guid> ReadAdapterIds(INetwork* network)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        nint pointer = 0;
+        using var iterator = ComObject.FromResult(network->GetNetworkConnections((IEnumNetworkConnections**)&pointer).Value,
+            pointer, "Enumerate network connections");
+        var adapters = ImmutableArray.CreateBuilder<Guid>();
+        while (true)
+        {
+            nint connectionPointer = 0;
+            uint fetched = 0;
+            NativeError.Check(((IEnumNetworkConnections*)iterator.Pointer)->Next(1, (INetworkConnection**)&connectionPointer, &fetched).Value,
+                "Read network connection");
+            if (fetched == 0) break;
+            using var connection = ComObject.Own(connectionPointer);
+            Guid adapterId;
+            NativeError.Check(((INetworkConnection*)connection.Pointer)->GetAdapterId(&adapterId).Value, "Read network adapter ID");
+            adapters.Add(adapterId);
+        }
+        return adapters.ToImmutable();
     }
 
     private static unsafe string ReadText(INetwork* network, bool description)

@@ -1,5 +1,7 @@
 # Runic.Platform.Administration.Windows
 
+Network snapshots include `AdapterIds` from Network List Manager connections. Consumers can match these IDs to `System.Net.NetworkInformation.NetworkInterface.Id` to determine which adapters belong to a domain-authenticated network; network category alone does not establish adapter membership.
+
 Host-independent Windows administration for .NET 10. Construct a capability client
 directly; no Runic Desktop, Application host, UI framework, dependency injection,
 automatic elevation or helper process is required.

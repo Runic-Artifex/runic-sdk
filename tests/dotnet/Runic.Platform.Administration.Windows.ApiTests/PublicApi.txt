@@ -724,6 +724,7 @@ type Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot : Sys
   property Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory Category { get; init; }
   property System.Boolean Connected { get; init; }
   property System.Boolean InternetConnected { get; init; }
+  property System.Collections.Immutable.ImmutableArray`1[System.Guid] AdapterIds { get; init; }
   property System.Guid Id { get; init; }
   property System.Int32 NativeConnectivity { get; init; }
   property System.Int32 NativeDomainType { get; init; }
