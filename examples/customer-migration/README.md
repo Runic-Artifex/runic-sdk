@@ -122,7 +122,7 @@ execution ignores it. This makes cancellation acceptance independent of the
 machine's speed and the demonstration's progress delay. The directory and gate
 belong to the test and are removed afterward.
 
-## Deliberate limits and next work
+## Deliberate limits
 
 - HTML file selection demonstrates an OS picker through the WebView. It is not a
   Runic native file-dialog API, retained file permission, or arbitrary path access.
@@ -139,16 +139,16 @@ belong to the test and are removed afterward.
   virtualization, and a measured update strategy.
 - Session operation state survives transport reconnect while the host lives;
   operation resumption after a process crash is not implemented.
-- Menus, notifications, navigation/back integration, and mobile services remain
-  roadmap work. They are not emulated by an MVVM adapter.
+- Menus, notifications, navigation/back integration, and mobile services are not
+  demonstrated by this reference. They are not emulated by an MVVM adapter.
 
 See the [migration RFC](../../docs/guides/application/architecture/mvvm-migration-rfc.md)
 and [step-by-step guide](../../docs/guides/application/guides/migrate-mvvm-to-runic.md).
 
 Native import/export and clipboard commands use the shared platform services
 described below. See the [API design](../../docs/guides/application/architecture/os-integration-rfc.md)
-and [acceptance scenarios](../../eng/os-integration-acceptance.md) for the broader
-roadmap and required platform evidence.
+and [acceptance scenarios](../../eng/os-integration-acceptance.md) for broader
+platform constraints and scenarios.
 
 ## Native contact migration in 0.2.0-preview.1
 

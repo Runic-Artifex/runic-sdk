@@ -161,10 +161,9 @@ layers such as Application Bridge may resynchronize their own state after the
 new session is authenticated.
 
 The concrete wire profile is negotiated or selected by configuration. The
-current 8-byte WebUI packet is the `webui-compat/52f9e75` profile. Whether M7
-retains that profile or introduces a Runic-owned profile is a separate,
-versioned decision; the lifecycle and error requirements above apply to both
-where the profile can express them.
+8-byte WebUI packet is the `webui-compat/52f9e75` profile. Lifecycle and error
+requirements apply to that profile and to any configured profile where they can
+be expressed.
 
 ## Payloads and serialization
 

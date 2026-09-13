@@ -3,7 +3,7 @@ namespace Runic.Desktop.Internal;
 internal static class WebUiBridge
 {
     // Implements the wire and public browser contract of webui-dev/webui's
-    // MIT-licensed TypeScript bridge at the revision pinned by the roadmap.
+    // MIT-licensed TypeScript bridge at the pinned upstream revision.
     internal const string Script = """
         (() => {
           "use strict";

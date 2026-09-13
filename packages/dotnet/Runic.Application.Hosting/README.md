@@ -72,8 +72,7 @@ untrusted-proxy requests fail closed before application handlers run.
 
 `HostedServiceAdmissionPolicy.CreateInitial` records the fixed flow, cookie,
 routes, and trusted-proxy boundary. It does not map authentication middleware
-or connect a production identity provider; those are W30 service implementation
-work. `AddRunicHostedServiceAdmission`,
+or connect a production identity provider. `AddRunicHostedServiceAdmission`,
 `UseRunicHostedServiceForwardedHeaders`, and `MapRunicHostedService` implement
 the bounded cookie/antiforgery admission surface. Configure the application's
 OIDC authorization-code handler to issue this C# cookie, call authentication
@@ -92,7 +91,7 @@ handlers. This makes NativeAOT incompatibilities a compile-time application
 error instead of a trimming warning hidden inside the hosting package. The
 service exposes only a bounded sanitized session
 projection and antiforgery request token; it never exposes the session cookie,
-OIDC tokens, or unbounded claims. The W20 WebSocket endpoint remains local-only
+OIDC tokens, or unbounded claims. The application WebSocket endpoint remains local-only
 and is never this public service surface.
 
 ## Ejectable hosted deployment
@@ -107,5 +106,5 @@ OIDC secret must be injected by the deployment environment under
 Use `CreateAdmissionPolicy` to bind the deployment origin and proxy snapshot to
 the existing admission surface, and `MapRunicHostedDeploymentHealth` to map the
 service-only `/runic/health` and `/runic/ready` responses. The full topology,
-ejection boundary, and deferred rollout concerns are documented in
+ejection boundary, and deployment configuration are documented in
 [`hosted-deployment.md`](../../../docs/guides/application/guides/hosted-deployment.md).

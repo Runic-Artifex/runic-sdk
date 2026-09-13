@@ -1,4 +1,4 @@
-# M7 wire-profile decision
+# Wire-profile decision
 
 Runic Desktop v1 retains `webui-compat/52f9e75` as its internal browser wire
 codec. The decision is deliberately about framing, not product identity or API
@@ -23,7 +23,7 @@ The retained behavior is isolated as follows:
 - `/webui.js` and the `webui` global remain an optional compatibility surface.
   New Runic consumers do not load or reference them.
 
-A future profile requires a concrete contract need that cannot be added safely
+An additional profile requires a concrete contract need that cannot be added safely
 to this boundary—for example protocol-level multiplexing, negotiated wire
 versions, or cancellation that must be observed before Application Bridge
 decoding. Such a change must introduce a new versioned profile and retain

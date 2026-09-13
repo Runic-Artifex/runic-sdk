@@ -69,10 +69,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership, development and verificati
 
 The [customer migration reference](examples/customer-migration/README.md)
 includes an original WPF/CommunityToolkit implementation, shared business rules,
-and an idiomatic Runic replacement. Its [migration RFC](docs/guides/application/architecture/mvvm-migration-rfc.md)
-records the accepted direction and the remaining DX and OS-integration work.
+and an idiomatic Runic replacement. Its [migration guide](docs/guides/application/architecture/mvvm-migration-rfc.md)
+records the boundaries used by the maintained examples. Select Desktop or CS-WebUI
+at composition time; see [host selection](docs/guides/desktop/host-selection.md).
 The [host-choice and footprint assessment](docs/guides/desktop/host-choice-and-footprint.md)
-defines the proposed CS-WebUI/Desktop parity work and size-tuning experiments.
+retains the historical Linux measurement and links to current size guidance.
 
 ## Verify packages and releases
 

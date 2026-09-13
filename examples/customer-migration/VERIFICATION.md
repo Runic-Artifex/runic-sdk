@@ -53,8 +53,6 @@ MAUI/mobile support remain outside these checks.
   The current asynchronous Application host still needs a macOS main-thread runner;
   the lower-level Desktop smoke test supplies its own runner.
 
-The next structural task is the [repository reorganisation](../../eng/repository-reorganisation.md).
-
 ## Native contact candidate checks
 
 The managed migration harness exercises the real generated bridge for unavailable
@@ -65,17 +63,18 @@ concurrent-save export revision capture, and reconnect without replay. Its clipb
 acceptance evidence. Existing persistence, cancellation and domain equivalence
 checks remain in that harness.
 
-For each final native binary, record its source commit, SHA-256, OS/backend,
-scenario and outcome. Required manual checks: real selected-file import and
-atomic export; actual clipboard copy/paste; cancel and retry; edit while import
-is pending and review the late candidate; save a new revision while an export
-picker is open and verify captured bytes; reconnect without repeated side effects;
-restart and confirm saved data; keyboard focus recovery and dirty-close protection.
-For this demo preview, manual release gates are the current local Linux environment
-and the available Windows VM. Run the automated JIT and NativeAOT matrix on all
-three supported OS targets. Actual macOS selected-file/signed-sandbox checks,
-Wayland/portal if it is not the current local environment, broader accessibility
-(NVDA, Orca, VoiceOver, IME, high contrast and scaling) and independent pilots are
-explicit follow-ups before v1. Record each deferred scenario as deferred, never
-as a passing receipt. Deterministic tests do not replace the required local Linux
-and Windows VM native checks. Historical verification above remains historical.
+When recording a native evaluation, include the source commit, SHA-256,
+OS/backend, scenario, and outcome. Useful manual scenarios include real
+selected-file import and atomic export; actual clipboard copy/paste; cancel and
+retry; editing while import is pending and reviewing the late candidate; saving a
+new revision while an export picker is open and verifying captured bytes;
+reconnecting without repeated side effects; restarting and confirming saved data;
+and keyboard focus recovery with dirty-close protection.
+
+The historical checks above do not cover macOS selected-file or signed-sandbox
+behavior, a Wayland/portal environment different from the recorded Linux setup,
+or broader accessibility (NVDA, Orca, VoiceOver, IME, high contrast, and scaling).
+Record an untested scenario as untested rather than treating this evidence as
+coverage for it. Deterministic checks complement targeted native evaluation; they
+do not establish native-platform parity. Historical verification above remains
+historical.

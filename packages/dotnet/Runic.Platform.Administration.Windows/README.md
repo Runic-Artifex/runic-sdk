@@ -158,23 +158,16 @@ unaccepted until executed on a disposable domain.
 
 The sibling package now uses the same centrally pinned generator and private
 unmanaged bindings for `WindowsFilePicker`, preserving owner STA dispatch,
-cancellation and modal lifetime behavior. Further suitable migrations are:
-
-- `WindowsFileLauncher`: shell functions, `OPENASINFO` and PIDL ownership.
-- `Win32Clipboard`: clipboard/global-memory APIs; retain bounded text decoding and
-  the explicit ownership transfer after successful `SetClipboardData`.
-- `WindowsDesktopSettings`: `SystemParametersInfoW` and native flags.
+cancellation and modal lifetime behavior.
 
 Keep generation local to each package instead of adding an administration
 reference or exporting a shared low-level binding assembly. Share the dependency
 version and conventions, not unrelated capability implementations.
 
 `WindowsDesktopNotifications` and its activation callback implement Windows Runtime
-interfaces. CsWin32 may cover their Win32 support functions, but the WinRT object
-projection and parameterized event callback need separate evaluation. Microsoft's
+interfaces. Microsoft's
 [CsWinRT](https://github.com/microsoft/CsWinRT) is the corresponding WinRT projection
-project; adopting it would require separate NativeAOT, activation and callback
-lifetime checks. Do not bundle that change into a Win32 binding substitution.
+project; CsWin32 does not replace that projection.
 
 ### Application adoption additions
 

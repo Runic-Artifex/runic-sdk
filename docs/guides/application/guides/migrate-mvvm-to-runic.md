@@ -83,5 +83,5 @@ protection. It does not run a compiled MAUI host. A MAUI migration’s Shell nav
 permissions, storage, activation and mobile lifecycle need their own platform work.
 Do not infer mobile support from successful compilation of shared business code.
 
-See the [migration RFC](../architecture/mvvm-migration-rfc.md) for current gaps and
-criteria for future SDK helpers and migration tooling.
+See the [migration architecture](../architecture/mvvm-migration-rfc.md) for
+responsibility boundaries and the supported migration approach.

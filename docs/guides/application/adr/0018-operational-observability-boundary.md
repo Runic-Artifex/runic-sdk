@@ -5,18 +5,15 @@
 
 ## Context
 
-The v0.2 operational-foundation wave needs one owner for the eventual
-OpenTelemetry and support-bundle surfaces without turning an early release
-foundation into an unversioned telemetry API or a second diagnostics system.
-`dotnet runic doctor` already owns local prerequisite checks, while Toolkit and
-the independent products own their respective runtime boundaries. There is no
-safe support-bundle format, redaction policy, or telemetry convention to ship
-yet.
+This decision assigns diagnostic responsibilities to existing product boundaries.
+`dotnet runic doctor` owns local prerequisite checks. A support-bundle format and
+shared telemetry conventions are not supported public contracts.
 
 ## Decision
 
-`dotnet runic` owns the future, opt-in support-bundle collection command and
-its local preview/removal workflow. It may coordinate collection from product
+`dotnet runic` is the designated owner for opt-in support-bundle collection and
+local preview/removal. This is an ownership decision, not an available command.
+It may coordinate collection from product
 boundaries, but it must not become a telemetry backend, exporter, or remote
 upload client.
 
@@ -35,23 +32,14 @@ Each product owns instrumentation at the boundary it implements:
 | Release/compatibility facts                                                        | Release Automation                 | Authoritative manifest facts that a bundle may reference.          |
 
 OpenTelemetry exporters, telemetry storage, dashboards, and transport-specific
-diagnostic backends remain application or operator choices. Runic will use
-standard OpenTelemetry integration points when the semantic conventions are
-ready; it will not introduce a Runic exporter or hosted observability service.
+diagnostic backends remain application or operator choices. Instrumentation uses
+standard OpenTelemetry integration points; a Runic exporter or hosted observability
+service is outside this boundary.
 
 No `doctor --bundle` option, bundle schema, automatic capture, upload path,
 or new OpenTelemetry package dependency is introduced by this decision. Existing
 stable diagnostic IDs and sanitized public faults remain the only supported
 diagnostic contract in v0.2.
-
-The W50 operations wave owns the implementation and review of:
-
-- versioned trace and metric names, attributes, units, and cardinality limits;
-- propagation through desktop, hosted-web, in-memory, and service transports;
-- redaction rules and source-linked diagnostic projections;
-- deterministic, unsigned support-bundle format, preview, removal, and
-  omission record; and
-- privacy/security review and fault-injection evidence.
 
 ## Consequences
 

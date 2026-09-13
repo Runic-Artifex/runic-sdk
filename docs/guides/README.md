@@ -5,7 +5,7 @@ and the [SDK contributor guide](../../CONTRIBUTING.md) for workspace commands.
 
 - [Application architecture](application/architecture/README.md), [Application Bridge](application/architecture/application-bridge.md).
 - [MVVM migration design](application/architecture/mvvm-migration-rfc.md) and [customer migration reference](../../examples/customer-migration/README.md).
-- [OS integration API proposal](application/architecture/os-integration-rfc.md) and [acceptance scenarios](../../eng/os-integration-acceptance.md).
+- [OS services](application/architecture/os-integration-rfc.md) and [acceptance scenarios](../../eng/os-integration-acceptance.md).
 - [Desktop native close handling](desktop/window-close-lifecycle.md).
 - [Translation guides](translations).
 - [Asset guides](assets).
@@ -13,5 +13,5 @@ and the [SDK contributor guide](../../CONTRIBUTING.md) for workspace commands.
 Shared build commands and ownership come from the root contributor guide; versioned
 schemas and protocol inputs live under `specs`.
 
-- [SDK preview](releases/0.2.0-preview.1.md) and [migration checklist](releases/preview-migration.md).
+- [Historical 0.2 preview notes](releases/0.2.0-preview.1.md) and [migration guide](releases/preview-migration.md).
 - [Document migration reference](../../examples/document-migration/README.md).

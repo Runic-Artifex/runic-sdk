@@ -8,8 +8,8 @@ maps into its own language and runtime idioms. Public .NET types, Effect types,
 ASP.NET Core, browser APIs, and the WebUI compatibility packet are mappings or
 profiles; none of them defines the product contract.
 
-The contract is normative for M5 and later. M0-M4 behavior remains retained
-compatibility evidence and is classified against this contract as retained,
+The contract is the authority for current Runic Desktop behavior. Retained
+compatibility behavior is classified against this contract as retained,
 intentionally divergent, or not applicable.
 
 ## Normative artifacts
@@ -20,9 +20,9 @@ intentionally divergent, or not applicable.
   Runic product.
 - [Language mappings](language-mappings.md) maps the semantics to .NET and
   TypeScript+Effect without making either API normative.
-- [Milestone gates](milestones.md) binds M5-M8 completion to the shared
-  contract.
-- [M7 wire-profile decision](wire-profile.md) selects and isolates the v1
+- [Conformance requirements](milestones.md) states the implementation and
+  integration requirements for the shared contract.
+- [Wire-profile decision](wire-profile.md) selects and isolates the v1
   browser framing profile.
 - [Conformance](conformance/README.md) selects portable scenario and codec
   vector formats.
@@ -46,5 +46,5 @@ ordering, cancellation, security, serialization, or error behavior requires a
 new contract version and explicit migration guidance.
 
 Wire profiles version independently. In particular,
-`webui-compat/52f9e75` describes the retained WebUI framing implemented through
-M4; it does not constrain the Runic-owned transport selected for M7.
+`webui-compat/52f9e75` describes retained WebUI framing; it does not define the
+Runic Desktop product contract.

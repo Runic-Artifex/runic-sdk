@@ -26,12 +26,12 @@ for their own contract. Native CI and recorded human interaction remain separate
 evidence: fake hosts and headless X11 do not certify every compositor or native
 permission scenario.
 
-## Remaining API-design follow-ups
+## Public API boundary
 
 The public frame channel negotiates the Application Bridge capability. It is not
-a replacement for the complete legacy `webui` JavaScript global. Before promising
-generic compatibility, design and test public APIs for arbitrary named raw
-receivers, generic capability calls/results, and DOM click/navigation/drag hooks.
-Clarify which low-level .NET presentation event kinds are available through the
-public registration API. Do not count a legacy-client test as completion of these
-follow-ups.
+a replacement for the complete legacy `webui` JavaScript global, and generic
+legacy compatibility is not a public API claim. Any public API for arbitrary
+named raw receivers, generic capability calls/results, or DOM
+click/navigation/drag hooks requires its own design and public-path tests. The
+public registration API must document its available low-level .NET presentation
+event kinds; a legacy-client test does not establish that coverage.

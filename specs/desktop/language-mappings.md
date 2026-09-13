@@ -1,8 +1,8 @@
 # Language mappings
 
 This document is informative about public API shape and normative about the
-semantic correspondence. Names may change during M6 and M7; the mapped
-behavior must not.
+semantic correspondence. Public API names may vary; the mapped behavior must
+not.
 
 | Contract behavior | .NET mapping | TypeScript+Effect mapping |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ behavior must not.
   respectively. Contract scopes remain host, surface, window, session, and
   request—not framework container types.
 
-Future Rust and modern C++ implementations may use ownership, RAII, futures,
+Rust and modern C++ implementations can use ownership, RAII, futures,
 coroutines, expected/result types, and native stream abstractions. They are not
-v1 supported profiles and receive no package or evidence claims until their own
-implementation programs begin.
+v1 supported profiles, and this mapping makes no package or evidence claims for
+them.

@@ -102,7 +102,7 @@ transport exposes its own typed, redacted, correlation-bearing errors.
 
 Runic Desktop began as a behavioral port of WebUI. WebUI remains a compatibility
 oracle for its established window, bridge, binding, content, and lifecycle
-behavior, while Runic Desktop owns its implementation and future API direction.
+behavior, while Runic Desktop owns its implementation and public API.
 
 [CS-WebUI](https://github.com/Runic-Artifex/cs-webui) remains the independently
 maintained .NET binding for unmodified upstream WebUI. Runic Desktop has no
@@ -110,13 +110,13 @@ production dependency on CS-WebUI or the WebUI native library.
 
 The internal WebUI-profile engine remains differential evidence; it is not part
 of the public API. Existing source-preview consumers can use the
-[M6 migration guide](../../../../docs/guides/desktop/migrations/webui-compat-to-desktop.md). Compatibility
-work and intentional differences are recorded in the
-[roadmap](../../../../docs/guides/desktop/design/runic-desktop-roadmap.md).
+[migration guide](../../../../docs/guides/desktop/migrations/webui-compat-to-desktop.md).
+The [wire profile](../../../../specs/desktop/wire-profile.md) documents the
+compatibility boundary.
 
 ## Product contract
 
-M5 and later implement the language-neutral
+Runic Desktop implements the language-neutral
 [Runic Desktop presentation contract](../../../../specs/desktop/README.md). The contract defines
 host, surface, window, session, request, streaming, cancellation, security, and
 error semantics independently of .NET and TypeScript APIs. Its

@@ -27,7 +27,7 @@ internal enum WebUiBrowser : uint
     Yandex,
     ChromiumBased,
 
-    /// <summary>Reserved for the M4 embedded WebView hosts.</summary>
+    /// <summary>Reserved for embedded WebView hosts.</summary>
     WebView,
 }
 

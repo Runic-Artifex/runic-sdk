@@ -1,20 +1,11 @@
 # OS integration acceptance scenarios
 
-> Historical first-preview scope. Its acceptance gates are retired for future
-> SDK releases; see the [current release policy](release/README.md).
-
 These scenarios exercise the shared platform contracts, runtime, three OS providers
 and presentation-scoped application integration. They support the
-[API RFC](../docs/guides/application/architecture/os-integration-rfc.md) and define
-both current preview acceptance and broader validation before v1. Source implementation
-alone does not establish native certification or registry publication.
-
-For `0.2.0-preview.1`, the [demo-preview policy](preview-human-acceptance.md) requires
-manual checks on this Linux system and the available Windows VM, plus automated
-native JIT/NativeAOT CI on all three OS targets. Real macOS/sandbox checks,
-unavailable Wayland, broader accessibility and independent pilots are deferred before
-v1 and do not block this demo preview. Retain their pending status without synthetic
-passes. Every receipt must identify the tested source and artifact hashes.
+[OS services guide](../docs/guides/application/architecture/os-integration-rfc.md).
+Select scenarios relevant to the changed behavior. Record the platform and result
+when using the [native manual checks](preview-human-acceptance.md).
+The [release policy](release/README.md) describes publication.
 
 The macOS clipboard implementation uses ApplicationServices C Pasteboard APIs and
 CoreFoundation, not `NSPasteboard`. Linux uses GTK `UTF8_STRING`; managed reads are
@@ -125,7 +116,7 @@ Do not silently skip and label the target passed. Nix provides build/runtime
 libraries; a portal daemon, session bus, compositor and interactive permissions are
 runtime conditions to probe, not implied by entering `nix develop`.
 
-## Package and footprint gates
+## Package and footprint checks
 
 - Packed consumers build outside the checkout with isolated caches. Both host
   selections use identical domain/application/frontend source and generated contracts.
@@ -138,17 +129,3 @@ runtime conditions to probe, not implied by entering `nix develop`.
   source/package hashes; do not merge these numbers into the earlier baseline.
 - Keep default and minimal Desktop conformance intact. OS services must not require
   features omitted by the minimal ASP.NET Core builder.
-
-## Remaining validation before v1
-
-Complete real macOS sheets/clipboard and signed sandbox selected-file access,
-Wayland/portal checks on an actual supported session, broader NVDA/VoiceOver/Orca,
-IME/high-contrast/scaling profiles, and two independent developer pilots. Repeat
-affected flows against the final artifacts after fixes. Track unresolved defects in
-[v1 priorities](../docs/guides/application/architecture/v1-follow-up-priorities.md).
-
-Keep public API and native interop review, optional-provider dependency isolation,
-conflict/uncertain-commit feedback, owner replacement and concurrent shutdown under
-regression coverage. No count of passing simulated tests replaces real interaction.
-Publication follows the current [release tooling](release/README.md) and
-[candidate acceptance policy](preview-human-acceptance.md).

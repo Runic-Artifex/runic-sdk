@@ -34,8 +34,8 @@ canonical value or one contract error with category, code, safe message, and
 retryability.
 
 Wire-profile vectors may describe `webui-compat/52f9e75` without making that
-profile the Runic Desktop product contract. A future Runic-owned profile adds
-its own vectors and version.
+profile the Runic Desktop product contract. Any additional Runic-owned profile
+requires its own vectors and version.
 
 ## Evidence separation
 
@@ -48,7 +48,7 @@ outside this directory as implementation evidence:
 - CS-WebUI differential classifications; and
 - performance and accessibility measurements.
 
-The .NET M6 receipt is retained at
+The .NET conformance receipt is retained at
 [`evidence/conformance/dotnet-m6.json`](../../../tests/fixtures/desktop/evidence/conformance/dotnet-m6.json).
 CS-WebUI comparisons are classified in
 [`cs-webui-classification.md`](cs-webui-classification.md), and the native
@@ -64,4 +64,4 @@ missing, duplicate, unknown, or dangling mappings.
 
 An unsupported scenario is acceptable only when its capability is explicitly
 optional or the implementation profile is excluded. A required v1 capability
-reported as unsupported fails its milestone gate.
+reported as unsupported fails conformance.

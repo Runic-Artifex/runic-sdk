@@ -1,6 +1,6 @@
 # Command Line kernel acceptance fixture
 
-This package-free `net10.0` fixture composes the Wave B kernel directly through
+This package-free `net10.0` fixture composes the command-line kernel directly through
 project references. It demonstrates the intended separation of concerns:
 
 1. `CreateCatalog` explicitly registers a neutral command, its grammar, a
@@ -33,5 +33,5 @@ library-owned parser control while an external package pin remains unapproved.
 The project references are for repository verification; package consumers use
 the same public surface from the built packages.
 
-Hosting integration and UI-launch classification are intentionally deferred to
-Wave C. This fixture does not reference or emulate the Hosting adapter.
+Hosting integration and UI-launch classification are outside this fixture's
+scope. This fixture does not reference or emulate the Hosting adapter.
