@@ -348,6 +348,12 @@ console.log('Packed npm consumers passed.');
 async function verifyRmf2Consumer(directory, nuget, env) {
   const consumer = join(directory, "rmf2-consumer");
   mkdirSync(join(consumer, "translations"), { recursive: true });
+  mkdirSync(join(consumer, ".config"), { recursive: true });
+  writeFileSync(join(consumer, ".config", "dotnet-tools.json"), JSON.stringify({
+    version: 1,
+    isRoot: true,
+    tools: { "dotnet-runic-translations": { version: workspace.version, commands: ["runic-translations"] } },
+  }, null, 2));
   writeFileSync(join(consumer, "Consumer.csproj"),
     `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><TranslationsGenerateOnBuild>true</TranslationsGenerateOnBuild><TranslationsEmitEsm>true</TranslationsEmitEsm></PropertyGroup><ItemGroup><PackageReference Include="Runic.Translations" Version="${workspace.version}"/><PackageReference Include="Runic.Translations.Build" Version="${workspace.version}" PrivateAssets="all"/></ItemGroup></Project>`);
   writeFileSync(join(consumer, "translations", "runic.json"), JSON.stringify({
@@ -369,10 +375,25 @@ async function verifyRmf2Consumer(directory, nuget, env) {
     'await manager.SetLocaleAsync("de");\n' +
     'if (text.application_title != "RMF2 Kasse") throw new Exception("RMF2 locale switch failed");\n' +
     'Console.WriteLine("RMF2 package consumer passed.");\n');
+  run("dotnet", ["tool", "restore", "--configfile", join(directory, "NuGet.config")], consumer, env);
   run("dotnet", ["build", "Consumer.csproj", "--configuration", configuration], consumer, env);
   run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration, "--no-build"], consumer, env);
   verifyConsumerGraph(consumer, "Runic.Translations RMF2");
-  assert.ok(readdirSync(join(consumer, "obj", configuration, "net10.0", "translations"), { withFileTypes: true }).some(entry => entry.name === "checkout.esm"), "RMF2 consumer did not emit ESM artifacts");
+  const esmRoot = join(consumer, "obj", configuration, "net10.0", "translations", "checkout.esm");
+  assert.ok(readdirSync(esmRoot, { withFileTypes: true }).some(entry => entry.name === "messages.js"), "RMF2 consumer did not emit ESM messages");
+  writeFileSync(join(consumer, "verify-esm.mjs"), `
+import assert from "node:assert/strict";
+import { m } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/checkout.esm/messages.js`)};
+import { configureLocaleResolver, createLocaleSource } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/checkout.esm/runtime.js`)};
+const source = createLocaleSource({ initialLocale: "en" });
+const restore = configureLocaleResolver(() => source.getLocale());
+assert.equal(m.application_title(), "RMF2 checkout");
+source.setLocale("de");
+assert.equal(m.application_title(), "RMF2 Kasse");
+restore();
+console.log("RMF2 generated ESM import, execution, and locale switch passed.");
+`);
+  run("node", ["verify-esm.mjs"], consumer, env);
 }
 
 async function verifyRmf2SvelteConsumer(frontend, directory) {
@@ -385,14 +406,50 @@ async function verifyRmf2SvelteConsumer(frontend, directory) {
     catalog: "checkout",
     code: { namespace: "PackageRmf2", className: "CheckoutText" },
     baseLocale: "en",
+    locales: ["en", "de"],
   }, null, 2));
   writeFileSync(join(project, "translations", "en.rmf2"), "application_title = RMF2 browser checkout\n");
-  writeFileSync(join(project, "src", "App.svelte"), '<script>import { m } from "virtual:runic-translations/checkout";</script><h1>{m.application_title()}</h1>\n');
+  writeFileSync(join(project, "translations", "de.rmf2"), "application_title = RMF2 browser Kasse\n");
+  writeFileSync(join(project, "src", "App.svelte"), `<script>
+import { m } from "virtual:runic-translations/checkout";
+import { createLocaleContext } from "@runic-artifex/svelte/translations";
+import { createLocaleSource } from "virtual:runic-translations/checkout/runtime";
+let { initialLocale = "en" } = $props();
+const localeContext = createLocaleContext();
+// svelte-ignore state_referenced_locally
+const locale = localeContext.provide(createLocaleSource({ initialLocale }));
+</script>
+<h1 data-title>{m.application_title(locale.messageOptions)}</h1>\n`);
   writeFileSync(join(project, "index.html"), '<div id="app"></div><script type="module" src="/src/main.js"></script>\n');
   writeFileSync(join(project, "src", "main.js"), 'import App from "./App.svelte"; import { mount } from "svelte"; mount(App, { target: document.getElementById("app") });\n');
   writeFileSync(join(project, "vite.config.js"), `import { defineConfig } from "vite";\nimport { svelte } from "@sveltejs/vite-plugin-svelte";\nimport { runicTranslations } from "@runic-artifex/vite-plugin-runic-translations";\nexport default defineConfig({ plugins: [runicTranslations({ project: "./translations", output: "./.runic", command: ${JSON.stringify(join(directory, "tools", "runic-translations"))}, commandArguments: [] }), svelte()] });\n`);
   run("node", [join(frontend, "node_modules/vite/bin/vite.js"), "build"], project);
   assert.ok(readFileSync(join(project, "dist", "index.html"), "utf8").length > 0, "RMF2 Svelte consumer did not produce a browser entrypoint");
+  const browserAssets = [];
+  const collectBrowserAssets = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) collectBrowserAssets(path);
+      else if (entry.name.endsWith(".js")) browserAssets.push(readFileSync(path, "utf8"));
+    }
+  };
+  collectBrowserAssets(join(project, "dist"));
+  assert.ok(browserAssets.some(asset => asset.includes("RMF2 browser checkout")), "RMF2 Svelte bundle did not execute the generated message module");
+  writeFileSync(join(project, "verify-ssr.mjs"), `
+import assert from "node:assert/strict";
+import { createServer } from "vite";
+const vite = await createServer({ root: ${JSON.stringify(project)}, configFile: ${JSON.stringify(join(project, "vite.config.js"))}, appType: "custom", server: { middlewareMode: true } });
+const app = await vite.ssrLoadModule("/src/App.svelte");
+const { render } = await vite.ssrLoadModule("svelte/server");
+const en = render(app.default, { props: { initialLocale: "en" } });
+const de = render(app.default, { props: { initialLocale: "de" } });
+assert.match(en.body, /RMF2 browser checkout/);
+assert.match(de.body, /RMF2 browser Kasse/);
+assert.match(en.body, /data-title/);
+await vite.close();
+console.log("RMF2 Svelte locale adapter SSR passed.");
+`);
+  run("node", ["verify-ssr.mjs"], project);
 }
 
 export async function verifyToolAndTemplatePackages(directory, nuget, env) {
@@ -462,4 +519,61 @@ export async function verifyToolAndTemplatePackages(directory, nuget, env) {
     translations,
     env,
   );
+
+  // Exercise both RMF2 templates from the installed package. The item template
+  // is validated through the public tool; the project template is restored and
+  // built against the candidate packages, so neither path can hide a stale
+  // source-tree reference.
+  const rmf2Item = join(directory, "rmf2-item-template");
+  run(
+    "dotnet",
+    [
+      "new",
+      "runic-translations-rmf2",
+      "--output",
+      rmf2Item,
+      "--catalog",
+      "checkout",
+      "--defaultLocale",
+      "en",
+      "--namespace",
+      "PackageRmf2",
+      "--className",
+      "CheckoutText",
+    ],
+    directory,
+    env,
+  );
+  assert.equal(readFileSync(join(rmf2Item, "translations", "runic.json"), "utf8").includes('"sourceLayout": "rmf2-v1"'), true,
+    "RMF2 item template did not retain its explicit source layout");
+  const translationTool = join(toolPath, "runic-translations" + (process.platform === "win32" ? ".exe" : ""));
+  run(translationTool, ["validate", "--project", join(rmf2Item, "translations")], directory, env);
+
+  const rmf2Project = join(directory, "rmf2-project-template");
+  run(
+    "dotnet",
+    [
+      "new",
+      "runic-translations-project-rmf2",
+      "--name",
+      "Rmf2TranslationConsumer",
+      "--output",
+      rmf2Project,
+      "--packageVersion",
+      workspace.version,
+      "--catalog",
+      "checkout",
+      "--defaultLocale",
+      "en",
+      "--namespace",
+      "PackageRmf2",
+      "--className",
+      "CheckoutText",
+    ],
+    directory,
+    env,
+  );
+  run(translationTool, ["validate", "--project", join(rmf2Project, "translations")], directory, env);
+  run("dotnet", ["tool", "restore", "--configfile", config], rmf2Project, env);
+  run("dotnet", ["build", "Rmf2TranslationConsumer.csproj", "--nologo"], rmf2Project, env);
 }
