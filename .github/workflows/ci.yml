@@ -81,6 +81,9 @@ jobs:
         run: |
           dotnet publish tests/dotnet/Runic.Translations.Rmf2AotTests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/rmf2-aot
           ./artifacts/rmf2-aot/Runic.Translations.Rmf2AotTests
+      - name: Run bounded RMF2 LSP performance guard
+        if: matrix.suite == 'translations'
+        run: dotnet run --project tests/dotnet/Runic.Translations.Build.Tests/Runic.Translations.Build.Tests.csproj -c Release --no-build -- --rmf2-lsp-benchmark
       - name: Exercise the counter application
         if: matrix.suite == 'application'
         run: dotnet run --project examples/counter/Counter.csproj -c Release --no-build
@@ -214,6 +217,58 @@ jobs:
           if-no-files-found: ignore
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
+  ide-packaging:
+    name: IDE / package and verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - name: Build and test the VS Code extension
+        working-directory: tools/vscode-runic-translations
+        run: |
+          bun install --frozen-lockfile
+          bun run check
+          bun run test
+          bun run package
+      - name: Verify the Visual Studio source packaging contract
+        run: python3 tools/visualstudio-runic-translations/package.py --check-source
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rmf2-ide-packages
+          path: tools/vscode-runic-translations/artifacts/runic-translations.vsix
+          if-no-files-found: error
+          retention-days: 14
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
+  ide-windows-package:
+    name: IDE / Windows VSIX package
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build the language server
+        run: dotnet build tools/dotnet-runic-translations/dotnet-runic-translations.csproj -c Release
+      - name: Build the native VSIX with full-framework MSBuild
+        run: msbuild tools/visualstudio-runic-translations/Runic.Translations.VisualStudio.csproj /restore /m:1 /p:Configuration=Release
+      - name: Verify the generated VSIX against the source manifest
+        run: python tools/visualstudio-runic-translations/package.py --configuration Release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rmf2-visualstudio-vsix
+          path: tools/visualstudio-runic-translations/artifacts/runic-translations-visualstudio.vsix
+          if-no-files-found: error
+          retention-days: 14
   docs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -674,7 +729,7 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [build, managed, web, engineering, framework-consumers, bridge, editor, docs, customers, packages, package-consumers, wpf-package-consumer, templates, native, footprint]
+    needs: [build, managed, web, engineering, framework-consumers, bridge, editor, docs, customers, packages, package-consumers, wpf-package-consumer, templates, native, footprint, ide-packaging, ide-windows-package]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every verification job to pass
