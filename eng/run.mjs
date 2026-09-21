@@ -195,7 +195,7 @@ async function main() {
       pack();
       break;
     case "verify-packages":
-      await (await import("./verify-packages.mjs")).verifyPackages();
+      await (await import("./verify-packages.mjs")).verifyPackages(process.argv[3]);
       break;
     case "affected":
       affected();

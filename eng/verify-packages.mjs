@@ -18,6 +18,44 @@ const nativeProviders = new Set([
   "runic.platform.macos",
 ]);
 
+const platformPackageConsumers = new Map([
+  ["Runic.Translations.Wpf", {
+    targetFramework: "net10.0-windows",
+    runtimePlatform: "win32",
+    useWpf: true,
+    canaryType: "Runic.Translations.Wpf.WpfInlineRenderer",
+  }],
+]);
+
+export function packageConsumerStrategy(packageEntry, platform = process.platform) {
+  const project = readFileSync(resolve(root, packageEntry.project), "utf8");
+  const frameworks = [
+    ...[...project.matchAll(/<TargetFramework>([^<]+)<\/TargetFramework>/g)].flatMap(([, value]) => value.split(";")),
+    ...[...project.matchAll(/<TargetFrameworks>([^<]+)<\/TargetFrameworks>/g)].flatMap(([, value]) => value.split(";")),
+  ].map(value => value.trim()).filter(Boolean);
+  const windowsOnly = frameworks.length > 0
+    && frameworks.every(framework => /-windows(?:[0-9.]+)?$/i.test(framework));
+  const declared = platformPackageConsumers.get(packageEntry.name);
+  assert.equal(Boolean(declared), windowsOnly,
+    windowsOnly
+      ? `${packageEntry.name} targets only Windows and needs an explicit package consumer strategy`
+      : `${packageEntry.name} declares a Windows package consumer strategy but is not Windows-only`);
+  if (!declared) return {
+    targetFramework: "net10.0",
+    execute: true,
+    enableWindowsTargeting: false,
+    useWpf: false,
+    canaryType: undefined,
+  };
+  assert.ok(frameworks.includes(declared.targetFramework),
+    `${packageEntry.name} package consumer target ${declared.targetFramework} does not match ${frameworks.join(", ")}`);
+  return {
+    ...declared,
+    execute: platform === declared.runtimePlatform,
+    enableWindowsTargeting: true,
+  };
+}
+
 function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = false, selectedProvider } = {}) {
   const assets = JSON.parse(readFileSync(join(consumer, "obj/project.assets.json"), "utf8"));
   const libraries = Object.keys(assets.libraries);
@@ -64,18 +102,27 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = 
   }
 }
 
-export async function verifyPackages() {
+export async function verifyPackages(packageName) {
   const directory = mkdtempSync(join(tmpdir(), "runic-sdk-consumers-"));
   console.log(`Package-only consumers: ${directory}`);
   const nuget = resolve(root, "artifacts/packages/nuget");
   const npm = resolve(root, "artifacts/packages/npm");
-  for (const p of workspace.nuget) {
+  // Separate minimal consumers prevent Application dependencies from concealing missing dependencies
+  // in standalone CommandLine, Assets, Desktop, or Translations packages.
+  const allLibraries = workspace.nuget.filter(
+    (p) => !p.name.startsWith("dotnet-") && !p.name.endsWith(".Templates"),
+  );
+  const libraries = packageName
+    ? allLibraries.filter(packageEntry => packageEntry.name === packageName)
+    : allLibraries;
+  assert.ok(!packageName || libraries.length === 1, `Unknown NuGet library consumer ${packageName}`);
+  for (const p of packageName ? libraries : workspace.nuget) {
     assert.ok(
       readdirSync(nuget).includes(`${p.name}.${workspace.version}.nupkg`),
       `Pack ${p.name} first`,
     );
   }
-  const archives = workspace.npm.map((p) => {
+  const archives = (packageName ? [] : workspace.npm).map((p) => {
     const file = `${p.name.replace("@", "").replace("/", "-")}-${workspace.version}.tgz`;
     assert.ok(readdirSync(npm).includes(file), `Pack ${p.name} first`);
     return [p.name, resolve(npm, file)];
@@ -92,22 +139,22 @@ export async function verifyPackages() {
     NUGET_PACKAGES: join(directory, "nuget-cache"),
     DOTNET_CLI_HOME: join(directory, "dotnet-home"),
   };
-  // Separate minimal consumers prevent Application dependencies from concealing missing dependencies
-  // in standalone CommandLine, Assets, Desktop, or Translations packages.
-  const libraries = workspace.nuget.filter(
-    (p) => !p.name.startsWith("dotnet-") && !p.name.endsWith(".Templates"),
-  );
   for (const p of libraries) {
+    const strategy = packageConsumerStrategy(p);
     const consumer = join(directory, p.name);
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),
       p.name.endsWith(".Build")
         ? 'Console.WriteLine("Translation build targets restored.");'
+        : strategy.useWpf
+        ? `_ = new ${strategy.canaryType}("""{"version":1,"contracts":{},"messages":{}}""", _ => { });\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
+        : strategy.canaryType
+        ? `Console.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
         : `Console.WriteLine(System.Reflection.Assembly.Load("${p.name}").GetName().Name);`,
     );
     if (p.name === "Runic.Translations.Build") {
@@ -144,12 +191,18 @@ export async function verifyPackages() {
           readFileSync(program, "utf8"),
       );
     }
-    run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], consumer, env);
+    run("dotnet", strategy.execute
+      ? ["run", "--project", "Consumer.csproj", "--configuration", configuration]
+      : ["build", "Consumer.csproj", "--configuration", configuration], consumer, env);
     verifyConsumerGraph(consumer, p.name, {
       platformOnly: p.name === "Runic.Platform" || p.name.startsWith("Runic.Platform."),
       desktop: p.name === "Runic.Application.Platform.Desktop",
       selectedProvider: nativeProviders.has(p.name.toLowerCase()) ? p.name.toLowerCase() : undefined,
     });
+  }
+  if (packageName) {
+    console.log(`Packed ${packageName} consumer passed.`);
+    return;
   }
   // Composition must retain isolation too: resolve the shared services through the public API
   // alongside CS-WebUI without creating a native window or using workspace project references.

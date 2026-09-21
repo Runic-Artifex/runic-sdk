@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { root, workspace, affectedComponents } from "./run.mjs";
+import { packageConsumerStrategy } from "./verify-packages.mjs";
 
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
@@ -28,6 +29,20 @@ test("workspace defines the complete public SDK package inventory", () => {
   }
   for (const p of workspace.nuget)
     assert.ok(existsSync(resolve(root, p.project)));
+});
+test("package consumers declare platform-specific target and execution strategies", () => {
+  for (const packageEntry of workspace.nuget) packageConsumerStrategy(packageEntry);
+  const wpf = workspace.nuget.find(packageEntry => packageEntry.name === "Runic.Translations.Wpf");
+  assert.ok(wpf);
+  assert.deepEqual(packageConsumerStrategy(wpf, "linux"), {
+    targetFramework: "net10.0-windows",
+    runtimePlatform: "win32",
+    useWpf: true,
+    canaryType: "Runic.Translations.Wpf.WpfInlineRenderer",
+    execute: false,
+    enableWindowsTargeting: true,
+  });
+  assert.equal(packageConsumerStrategy(wpf, "win32").execute, true);
 });
 test("active npm consumers resolve internal dependencies from the workspace", () => {
   const paths = json("package.json").workspaces;

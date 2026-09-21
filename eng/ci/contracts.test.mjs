@@ -106,7 +106,10 @@ test('verification gate includes all jobs and candidates are independent of test
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), Object.keys(workflow.jobs).filter(key => key !== 'verify').sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
   assert.equal(workflow.jobs.packages.needs, 'build');
-  for (const id of ['templates', 'package-consumers', 'footprint']) assert.equal(workflow.jobs[id].needs, 'packages');
+  for (const id of ['templates', 'package-consumers', 'wpf-package-consumer', 'footprint']) assert.equal(workflow.jobs[id].needs, 'packages');
+  assert.equal(workflow.jobs['wpf-package-consumer']['runs-on'], 'windows-latest');
+  assert.ok(workflow.jobs['wpf-package-consumer'].steps.some(step =>
+    step.run?.includes('verify-packages Runic.Translations.Wpf')));
   for (const job of Object.values(workflow.jobs))
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });
