@@ -118,6 +118,10 @@ test('verification gate includes all jobs and candidates are independent of test
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), Object.keys(workflow.jobs).filter(key => key !== 'verify').sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
   assert.equal(workflow.jobs.packages.needs, 'build');
+  const capabilities = workflow.jobs.engineering.steps.find(step => step.name === 'Check generated translation capability artifacts');
+  assert.ok(capabilities);
+  assert.match(capabilities.run, /bun eng\/generate-cldr\.mjs --check/);
+  assert.match(capabilities.run, /bun eng\/render-capabilities\.mjs --check/);
   for (const id of ['templates', 'package-consumers', 'wpf-package-consumer', 'footprint']) assert.equal(workflow.jobs[id].needs, 'packages');
   assert.equal(workflow.jobs['wpf-package-consumer']['runs-on'], 'windows-latest');
   assert.ok(workflow.jobs['wpf-package-consumer'].steps.some(step =>
