@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { root, workspace, affectedComponents } from "./run.mjs";
-import { packageConsumerStrategy } from "./verify-packages.mjs";
+import { dotnetBuildArguments, packageConsumerStrategy, resolveMsbuildPathValue } from "./verify-packages.mjs";
 
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
@@ -43,6 +43,15 @@ test("package consumers declare platform-specific target and execution strategie
     enableWindowsTargeting: true,
   });
   assert.equal(packageConsumerStrategy(wpf, "win32").execute, true);
+});
+test("package verification honors non-Debug build output paths", () => {
+  assert.deepEqual(dotnetBuildArguments("Consumer.csproj", "Release", ["--nologo"]),
+    ["build", "Consumer.csproj", "--configuration", "Release", "--nologo"]);
+  const projectDirectory = resolve("temporary-runic-package-consumer");
+  assert.equal(resolveMsbuildPathValue(projectDirectory, "obj\\Release/net10.0/"),
+    resolve(projectDirectory, "obj/Release/net10.0"));
+  const verifier = readFileSync(resolve(root, "eng/verify-packages.mjs"), "utf8");
+  assert.doesNotMatch(verifier, /["']Debug["']/, "package verification must not hardcode the local default configuration");
 });
 test("active npm consumers resolve internal dependencies from the workspace", () => {
   const paths = json("package.json").workspaces;
