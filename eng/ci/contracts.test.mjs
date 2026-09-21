@@ -83,11 +83,15 @@ test('archive paths include managed and web outputs and reject escaping paths', 
 
 test('all managed executable suites are assigned exactly once to workflow groups', () => {
   assert.deepEqual(workflow.jobs.managed.strategy.matrix.suite, managedGroups);
-  const suites = managedTests();
+  const suites = managedTests(root, 'win32');
   assert.equal(new Set(suites.map(item => item.path)).size, suites.length);
   for (const group of managedGroups) assert.ok(suites.some(item => item.group === group), group);
   for (const path of ['tests/dotnet/Runic.Platform.Prototype.Tests/Runic.Platform.Prototype.Tests.csproj', 'tests/dotnet/Runic.Application.Bridge.Tests/Runic.Application.Bridge.Tests.csproj'])
     assert.ok(suites.some(item => item.path === path), path);
+  const wpf = 'tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj';
+  assert.ok(suites.some(item => item.path === wpf), wpf);
+  assert.ok(!managedTests(root, 'linux').some(item => item.path === wpf));
+  assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes(wpf)));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
 });
 

@@ -171,6 +171,11 @@
       "version": "0.3.0-preview.1"
     },
     {
+      "ecosystem": "nuget",
+      "identity": "Runic.Translations.Wpf",
+      "version": "0.3.0-preview.1"
+    },
+    {
       "ecosystem": "npm",
       "identity": "@runic-artifex/application-bridge",
       "version": "0.3.0-preview.1"

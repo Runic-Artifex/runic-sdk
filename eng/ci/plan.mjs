@@ -4,10 +4,15 @@ import { fileURLToPath } from "node:url";
 import { root, workspace } from "../run.mjs";
 
 export const managedGroups = ["application", "assets", "command-line", "translations"];
-export function managedTests(base = root) {
+export function managedTests(base = root, platform = process.platform) {
   return [...readFileSync(resolve(base, "RunicSdk.Core.slnx"), "utf8").matchAll(/<Project Path="([^"]+)"/g)]
     .map(([, path]) => path)
-    .filter(path => /Tests\.csproj$/.test(path) && /<OutputType>Exe<\/OutputType>/.test(readFileSync(resolve(base, path), "utf8")))
+    .filter(path => {
+      if (!/Tests\.csproj$/.test(path)) return false;
+      const project = readFileSync(resolve(base, path), "utf8");
+      return /<OutputType>Exe<\/OutputType>/.test(project)
+        && (platform === "win32" || !/<TargetFramework>[^<]*-windows<\/TargetFramework>/.test(project));
+    })
     .map(path => ({ path, group: path.includes("Runic.Translations") ? "translations"
       : path.includes("Runic.Assets") ? "assets" : path.includes("Runic.CommandLine") ? "command-line" : "application" }));
 }

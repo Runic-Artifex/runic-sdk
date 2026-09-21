@@ -198,6 +198,7 @@
               npmForCompatibility
               pnpmForCompatibility
               nodejs_24
+              python3
               powershell
               actForCi
               actionlint
