@@ -256,6 +256,7 @@
         "packages/dotnet/Runic.Translations.Tooling",
         "tools/Runic.Translations.Templates",
         "tests/dotnet/Runic.Translations.AotTests",
+        "tests/dotnet/Runic.Translations.Rmf2AotTests",
         "tests/dotnet/Runic.Translations.ApiTests",
         "tests/dotnet/Runic.Translations.Authoring.Tests",
         "tests/dotnet/Runic.Translations.Build.Tests",

@@ -76,6 +76,11 @@ jobs:
         run: bun eng/ci/test-managed.mjs "$SUITE"
         env:
           SUITE: ${{ matrix.suite }}
+      - name: Publish and execute RMF2 artifact-v4 NativeAOT smoke
+        if: matrix.suite == 'translations'
+        run: |
+          dotnet publish tests/dotnet/Runic.Translations.Rmf2AotTests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/rmf2-aot
+          ./artifacts/rmf2-aot/Runic.Translations.Rmf2AotTests
       - name: Exercise the counter application
         if: matrix.suite == 'application'
         run: dotnet run --project examples/counter/Counter.csproj -c Release --no-build
@@ -100,10 +105,14 @@ jobs:
           node: ${{ matrix.node && 'true' || 'false' }}
       - uses: ./.github/actions/restore-build
       - uses: ./.github/actions/install-browser
-        if: matrix.package == 'vite-plugin-runic'
+        if: matrix.package == 'vite-plugin-runic' || matrix.package == 'svelte'
       - name: Run package tests
         working-directory: packages/web/${{ matrix.package }}
         run: bun run --bun test
+      - name: Verify Svelte inline SSR and hydration
+        if: matrix.package == 'svelte'
+        working-directory: packages/web/${{ matrix.package }}
+        run: bun run --bun test:inline-browser
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   engineering:

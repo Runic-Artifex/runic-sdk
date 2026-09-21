@@ -60,9 +60,9 @@
   "scripts": {
     "build": "svelte-package -i src -o dist",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun run --bun build && vitest run",
+    "test": "bun run --bun build && vitest run && node test/verify-inline-ssr.mjs",
     "pack:check": "bun pm pack --dry-run",
-    "test:inline-browser": "node test/verify-inline-hydration.mjs"
+    "test:inline-browser": "node test/verify-inline-ssr.mjs && node test/verify-inline-hydration.mjs"
   },
   "peerDependencies": {
     "@runic-artifex/application-bridge": "0.3.0-preview.1",

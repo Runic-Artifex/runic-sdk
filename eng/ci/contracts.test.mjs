@@ -93,6 +93,12 @@ test('all managed executable suites are assigned exactly once to workflow groups
   assert.ok(!managedTests(root, 'linux').some(item => item.path === wpf));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes(wpf)));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
+  const rmf2Aot = workflow.jobs.managed.steps.find(step => step.name === 'Publish and execute RMF2 artifact-v4 NativeAOT smoke');
+  assert.ok(rmf2Aot);
+  assert.equal(rmf2Aot.if, "matrix.suite == 'translations'");
+  assert.match(rmf2Aot.run, /dotnet publish tests\/dotnet\/Runic\.Translations\.Rmf2AotTests/);
+  assert.match(rmf2Aot.run, /PublishAot=true/);
+  assert.match(rmf2Aot.run, /artifacts\/rmf2-aot\/Runic\.Translations\.Rmf2AotTests/);
 });
 
 test('every web package with a test script is included in the dynamic matrix', () => {
@@ -100,6 +106,12 @@ test('every web package with a test script is included in the dynamic matrix', (
   assert.deepEqual(webTests().map(item => item.package), expected);
   assert.equal(workflow.jobs.web.strategy.matrix, '${{ fromJSON(needs.build.outputs.web) }}');
   assert.equal(webTests().filter(item => item.node).length, 1);
+  const browser = workflow.jobs.web.steps.find(step => step.uses === './.github/actions/install-browser');
+  assert.equal(browser?.if, "matrix.package == 'vite-plugin-runic' || matrix.package == 'svelte'");
+  const inline = workflow.jobs.web.steps.find(step => step.name === 'Verify Svelte inline SSR and hydration');
+  assert.equal(inline?.if, "matrix.package == 'svelte'");
+  assert.equal(inline?.['working-directory'], 'packages/web/${{ matrix.package }}');
+  assert.equal(inline?.run, 'bun run --bun test:inline-browser');
 });
 
 test('verification gate includes all jobs and candidates are independent of test failures', () => {
@@ -112,6 +124,18 @@ test('verification gate includes all jobs and candidates are independent of test
     step.run?.includes('verify-packages Runic.Translations.Wpf')));
   for (const job of Object.values(workflow.jobs))
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
+});
+
+test('package consumers retain the installed RMF2 v5 NativeAOT journey', () => {
+  const step = workflow.jobs['package-consumers'].steps.find(item =>
+    item.name === 'Verify isolated NuGet and npm consumers');
+  assert.equal(step?.run, 'bun run verify-packages');
+  const verifier = readFileSync(resolve(root, 'eng/verify-packages.mjs'), 'utf8');
+  assert.match(verifier, /executionProfile: "rmf2-execution-v2"/);
+  assert.match(verifier, /CheckoutTextCatalog\.CreateExternalManagerAsync/);
+  assert.match(verifier, /"-p:PublishAot=true"/);
+  assert.match(verifier, /"-p:IlcTreatWarningsAsErrors=true"/);
+  assert.match(verifier, /run\(join\(nativeOutput, "Consumer"/);
 });
 
 test('local checks are focused and Linux workflow selection leaves native OS coverage to GitHub', () => {
