@@ -237,6 +237,7 @@ Console.WriteLine("CS-WebUI and shared Platform public API composition passed.")
   verifyConsumerGraph(sharedConsumer, "CS-WebUI with Platform");
   await verifyToolAndTemplatePackages(directory, nuget, env);
   await verifyRmf2Consumer(directory, nuget, env);
+  await verifyRmf2V4CompatibilityConsumer(directory, env);
   const frontend = join(directory, "frontend");
   mkdirSync(frontend);
   writeFileSync(
@@ -359,6 +360,7 @@ async function verifyRmf2Consumer(directory, nuget, env) {
   writeFileSync(join(consumer, "translations", "runic.json"), JSON.stringify({
     schemaVersion: 1,
     sourceLayout: "rmf2-v1",
+    executionProfile: "rmf2-execution-v2",
     catalog: "checkout",
     code: { namespace: "PackageRmf2", className: "CheckoutText" },
     baseLocale: "en",
@@ -371,27 +373,77 @@ async function verifyRmf2Consumer(directory, nuget, env) {
     'using Runic.Translations;\n' +
     'var manager = await CheckoutTextCatalog.CreateManagerAsync();\n' +
     'var text = new CheckoutText(manager);\n' +
-    'if (text.application_title != "RMF2 checkout") throw new Exception("RMF2 C# accessor failed");\n' +
+    'if (text.r_6170706c69636174696f6e5f7469746c65 != "RMF2 checkout") throw new Exception("RMF2 v5 C# accessor failed");\n' +
     'await manager.SetLocaleAsync("de");\n' +
-    'if (text.application_title != "RMF2 Kasse") throw new Exception("RMF2 locale switch failed");\n' +
-    'Console.WriteLine("RMF2 package consumer passed.");\n');
+    'if (text.r_6170706c69636174696f6e5f7469746c65 != "RMF2 Kasse") throw new Exception("RMF2 v5 locale switch failed");\n' +
+    'if (CheckoutTextCatalog.Rmf2Profile != "rmf2-execution-v2" || CheckoutTextCatalog.Rmf2RuntimeAbiVersion != 2 || CheckoutTextCatalog.MessageGrammarVersion != 5) throw new Exception("RMF2 v5 generated contract failed");\n' +
+    'Console.WriteLine("RMF2 v5 package consumer passed.");\n');
   run("dotnet", ["tool", "restore", "--configfile", join(directory, "NuGet.config")], consumer, env);
   run("dotnet", ["build", "Consumer.csproj", "--configuration", configuration], consumer, env);
   run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration, "--no-build"], consumer, env);
   verifyConsumerGraph(consumer, "Runic.Translations RMF2");
-  const esmRoot = join(consumer, "obj", configuration, "net10.0", "translations", "checkout.esm");
-  assert.ok(readdirSync(esmRoot, { withFileTypes: true }).some(entry => entry.name === "messages.js"), "RMF2 consumer did not emit ESM messages");
+  const esmRoot = join(consumer, "obj", configuration, "net10.0", "translations", "checkout.esm-v5");
+  assert.ok(readdirSync(esmRoot, { withFileTypes: true }).some(entry => entry.name === "messages.js"), "RMF2 v5 consumer did not emit ESM messages");
+  const webManifest = JSON.parse(readFileSync(join(esmRoot, "web-module-manifest-v3.json"), "utf8"));
+  assert.equal(webManifest.profile, "rmf2-execution-v2", "RMF2 package consumer emitted the wrong execution profile");
+  assert.equal(webManifest.esmAbiVersion, 4, "RMF2 package consumer emitted the wrong ESM ABI");
   writeFileSync(join(consumer, "verify-esm.mjs"), `
 import assert from "node:assert/strict";
-import { m } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/checkout.esm/messages.js`)};
-import { configureLocaleResolver, createLocaleSource } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/checkout.esm/runtime.js`)};
+import { m } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/checkout.esm-v5/messages.js`)};
+import { configureLocaleResolver, createLocaleSource, esmAbiVersion, messageGrammarVersion, profile, rmf2RuntimeAbiVersion } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/checkout.esm-v5/runtime.js`)};
+assert.deepEqual({ esmAbiVersion, messageGrammarVersion, profile, rmf2RuntimeAbiVersion }, { esmAbiVersion: 4, messageGrammarVersion: 5, profile: "rmf2-execution-v2", rmf2RuntimeAbiVersion: 2 });
 const source = createLocaleSource({ initialLocale: "en" });
 const restore = configureLocaleResolver(() => source.getLocale());
 assert.equal(m.application_title(), "RMF2 checkout");
 source.setLocale("de");
 assert.equal(m.application_title(), "RMF2 Kasse");
 restore();
-console.log("RMF2 generated ESM import, execution, and locale switch passed.");
+console.log("RMF2 v5 generated ESM import, execution, and locale switch passed.");
+`);
+  run("node", ["verify-esm.mjs"], consumer, env);
+}
+
+async function verifyRmf2V4CompatibilityConsumer(directory, env) {
+  const consumer = join(directory, "rmf2-v4-compatibility-consumer");
+  mkdirSync(join(consumer, "translations"), { recursive: true });
+  mkdirSync(join(consumer, ".config"), { recursive: true });
+  writeFileSync(join(consumer, ".config", "dotnet-tools.json"), JSON.stringify({
+    version: 1,
+    isRoot: true,
+    tools: { "dotnet-runic-translations": { version: workspace.version, commands: ["runic-translations"] } },
+  }, null, 2));
+  writeFileSync(join(consumer, "Consumer.csproj"),
+    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><TranslationsGenerateOnBuild>true</TranslationsGenerateOnBuild><TranslationsEmitEsm>true</TranslationsEmitEsm></PropertyGroup><ItemGroup><PackageReference Include="Runic.Translations" Version="${workspace.version}"/><PackageReference Include="Runic.Translations.Build" Version="${workspace.version}" PrivateAssets="all"/></ItemGroup></Project>`);
+  writeFileSync(join(consumer, "translations", "runic.json"), JSON.stringify({
+    schemaVersion: 1,
+    sourceLayout: "rmf2-v1",
+    catalog: "compatibility",
+    code: { namespace: "PackageRmf2V4", className: "CompatibilityText" },
+    baseLocale: "en",
+    locales: ["en"],
+  }, null, 2));
+  writeFileSync(join(consumer, "translations", "en.rmf2"), "application_title = RMF2 v4 compatibility\n");
+  writeFileSync(join(consumer, "Program.cs"),
+    'using PackageRmf2V4;\n' +
+    'var manager = await CompatibilityTextCatalog.CreateManagerAsync();\n' +
+    'var text = new CompatibilityText(manager);\n' +
+    'if (text.application_title != "RMF2 v4 compatibility") throw new Exception("RMF2 v4 C# compatibility failed");\n' +
+    'if (CompatibilityTextCatalog.Rmf2RuntimeAbiVersion != 1) throw new Exception("RMF2 v4 generated contract changed");\n' +
+    'Console.WriteLine("RMF2 v4 package compatibility passed.");\n');
+  run("dotnet", ["tool", "restore", "--configfile", join(directory, "NuGet.config")], consumer, env);
+  run("dotnet", ["build", "Consumer.csproj", "--configuration", configuration], consumer, env);
+  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration, "--no-build"], consumer, env);
+  verifyConsumerGraph(consumer, "Runic.Translations RMF2 v4 compatibility");
+  const esmRoot = join(consumer, "obj", configuration, "net10.0", "translations", "compatibility.esm");
+  const webManifest = JSON.parse(readFileSync(join(esmRoot, "web-module-manifest-v2.json"), "utf8"));
+  assert.equal(webManifest.esmAbiVersion, 3, "RMF2 v4 package consumer emitted the wrong ESM ABI");
+  writeFileSync(join(consumer, "verify-esm.mjs"), `
+import assert from "node:assert/strict";
+import { m } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/compatibility.esm/messages.js`)};
+import { esmAbiVersion, rmf2RuntimeAbiVersion } from ${JSON.stringify(`./obj/${configuration}/net10.0/translations/compatibility.esm/runtime.js`)};
+assert.deepEqual({ esmAbiVersion, rmf2RuntimeAbiVersion }, { esmAbiVersion: 3, rmf2RuntimeAbiVersion: 1 });
+assert.equal(m.application_title(), "RMF2 v4 compatibility");
+console.log("RMF2 v4 generated ESM compatibility passed.");
 `);
   run("node", ["verify-esm.mjs"], consumer, env);
 }
@@ -403,6 +455,7 @@ async function verifyRmf2SvelteConsumer(frontend, directory) {
   writeFileSync(join(project, "translations", "runic.json"), JSON.stringify({
     schemaVersion: 1,
     sourceLayout: "rmf2-v1",
+    executionProfile: "rmf2-execution-v2",
     catalog: "checkout",
     code: { namespace: "PackageRmf2", className: "CheckoutText" },
     baseLocale: "en",
@@ -544,10 +597,17 @@ export async function verifyToolAndTemplatePackages(directory, nuget, env) {
     directory,
     env,
   );
-  assert.equal(readFileSync(join(rmf2Item, "translations", "runic.json"), "utf8").includes('"sourceLayout": "rmf2-v1"'), true,
+  const rmf2ItemConfig = readFileSync(join(rmf2Item, "translations", "runic.json"), "utf8");
+  assert.equal(rmf2ItemConfig.includes('"sourceLayout": "rmf2-v1"'), true,
     "RMF2 item template did not retain its explicit source layout");
+  assert.equal(rmf2ItemConfig.includes('"executionProfile": "rmf2-execution-v2"'), true,
+    "RMF2 item template did not select the v5 execution profile");
   const translationTool = join(toolPath, "runic-translations" + (process.platform === "win32" ? ".exe" : ""));
   run(translationTool, ["validate", "--project", join(rmf2Item, "translations")], directory, env);
+  const installedSchemas = join(directory, "installed-translation-schemas");
+  run(translationTool, ["schema", "--output", installedSchemas], directory, env);
+  for (const schema of ["project-v1.schema.json", "message-ast-v5.schema.json", "locale-artifact-v5.schema.json", "web-module-manifest-v3.schema.json"])
+    assert.ok(readFileSync(join(installedSchemas, schema), "utf8").length > 0, `Installed translation tool omitted ${schema}`);
 
   const rmf2Project = join(directory, "rmf2-project-template");
   run(
@@ -576,4 +636,7 @@ export async function verifyToolAndTemplatePackages(directory, nuget, env) {
   run(translationTool, ["validate", "--project", join(rmf2Project, "translations")], directory, env);
   run("dotnet", ["tool", "restore", "--configfile", config], rmf2Project, env);
   run("dotnet", ["build", "Rmf2TranslationConsumer.csproj", "--nologo"], rmf2Project, env);
+  verifyConsumerGraph(rmf2Project, "Runic.Translations RMF2 v5 template");
+  const templateManifest = JSON.parse(readFileSync(join(rmf2Project, "obj", "Debug", "net10.0", "translations", "checkout.esm-v5", "web-module-manifest-v3.json"), "utf8"));
+  assert.equal(templateManifest.profile, "rmf2-execution-v2", "RMF2 project template did not execute the v5 profile");
 }
