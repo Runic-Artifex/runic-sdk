@@ -105,10 +105,14 @@ jobs:
           node: ${{ matrix.node && 'true' || 'false' }}
       - uses: ./.github/actions/restore-build
       - uses: ./.github/actions/install-browser
-        if: matrix.package == 'vite-plugin-runic'
+        if: matrix.package == 'vite-plugin-runic' || matrix.package == 'svelte'
       - name: Run package tests
         working-directory: packages/web/${{ matrix.package }}
         run: bun run --bun test
+      - name: Verify Svelte inline SSR and hydration
+        if: matrix.package == 'svelte'
+        working-directory: packages/web/${{ matrix.package }}
+        run: bun run --bun test:inline-browser
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   engineering:
