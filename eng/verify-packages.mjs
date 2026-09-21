@@ -236,6 +236,7 @@ Console.WriteLine("CS-WebUI and shared Platform public API composition passed.")
   run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], sharedConsumer, env);
   verifyConsumerGraph(sharedConsumer, "CS-WebUI with Platform");
   await verifyToolAndTemplatePackages(directory, nuget, env);
+  await verifyRmf2Consumer(directory, nuget, env);
   const frontend = join(directory, "frontend");
   mkdirSync(frontend);
   writeFileSync(
@@ -312,6 +313,7 @@ console.log('Packed npm consumers passed.');
 `,
   );
   run("node", ["consumer.mjs"], frontend);
+  await verifyRmf2SvelteConsumer(frontend, directory);
   writeFileSync(
     join(frontend, "consumer.ts"),
     archives
@@ -341,6 +343,56 @@ console.log('Packed npm consumers passed.');
   console.log(
     `All ${libraries.length} NuGet library consumers, CS-WebUI/Platform composition, 2 tools, 2 template packages, and 8 npm artifacts passed.`,
   );
+}
+
+async function verifyRmf2Consumer(directory, nuget, env) {
+  const consumer = join(directory, "rmf2-consumer");
+  mkdirSync(join(consumer, "translations"), { recursive: true });
+  writeFileSync(join(consumer, "Consumer.csproj"),
+    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><TranslationsGenerateOnBuild>true</TranslationsGenerateOnBuild><TranslationsEmitEsm>true</TranslationsEmitEsm></PropertyGroup><ItemGroup><PackageReference Include="Runic.Translations" Version="${workspace.version}"/><PackageReference Include="Runic.Translations.Build" Version="${workspace.version}" PrivateAssets="all"/></ItemGroup></Project>`);
+  writeFileSync(join(consumer, "translations", "runic.json"), JSON.stringify({
+    schemaVersion: 1,
+    sourceLayout: "rmf2-v1",
+    catalog: "checkout",
+    code: { namespace: "PackageRmf2", className: "CheckoutText" },
+    baseLocale: "en",
+    locales: ["en", "de"],
+  }, null, 2));
+  writeFileSync(join(consumer, "translations", "en.rmf2"), "application_title = RMF2 checkout\n");
+  writeFileSync(join(consumer, "translations", "de.rmf2"), "application_title = RMF2 Kasse\n");
+  writeFileSync(join(consumer, "Program.cs"),
+    'using PackageRmf2;\n' +
+    'using Runic.Translations;\n' +
+    'var manager = await CheckoutTextCatalog.CreateManagerAsync();\n' +
+    'var text = new CheckoutText(manager);\n' +
+    'if (text.application_title != "RMF2 checkout") throw new Exception("RMF2 C# accessor failed");\n' +
+    'await manager.SetLocaleAsync("de");\n' +
+    'if (text.application_title != "RMF2 Kasse") throw new Exception("RMF2 locale switch failed");\n' +
+    'Console.WriteLine("RMF2 package consumer passed.");\n');
+  run("dotnet", ["build", "Consumer.csproj", "--configuration", configuration], consumer, env);
+  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration, "--no-build"], consumer, env);
+  verifyConsumerGraph(consumer, "Runic.Translations RMF2");
+  assert.ok(readdirSync(join(consumer, "obj", configuration, "net10.0", "translations"), { withFileTypes: true }).some(entry => entry.name === "checkout.esm"), "RMF2 consumer did not emit ESM artifacts");
+}
+
+async function verifyRmf2SvelteConsumer(frontend, directory) {
+  const project = join(frontend, "rmf2-svelte");
+  mkdirSync(join(project, "translations"), { recursive: true });
+  mkdirSync(join(project, "src"), { recursive: true });
+  writeFileSync(join(project, "translations", "runic.json"), JSON.stringify({
+    schemaVersion: 1,
+    sourceLayout: "rmf2-v1",
+    catalog: "checkout",
+    code: { namespace: "PackageRmf2", className: "CheckoutText" },
+    baseLocale: "en",
+  }, null, 2));
+  writeFileSync(join(project, "translations", "en.rmf2"), "application_title = RMF2 browser checkout\n");
+  writeFileSync(join(project, "src", "App.svelte"), '<script>import { m } from "virtual:runic-translations/checkout";</script><h1>{m.application_title()}</h1>\n');
+  writeFileSync(join(project, "index.html"), '<div id="app"></div><script type="module" src="/src/main.js"></script>\n');
+  writeFileSync(join(project, "src", "main.js"), 'import App from "./App.svelte"; import { mount } from "svelte"; mount(App, { target: document.getElementById("app") });\n');
+  writeFileSync(join(project, "vite.config.js"), `import { defineConfig } from "vite";\nimport { svelte } from "@sveltejs/vite-plugin-svelte";\nimport { runicTranslations } from "@runic-artifex/vite-plugin-runic-translations";\nexport default defineConfig({ plugins: [runicTranslations({ project: "./translations", output: "./.runic", command: ${JSON.stringify(join(directory, "tools", "runic-translations"))}, commandArguments: [] }), svelte()] });\n`);
+  run("node", [join(frontend, "node_modules/vite/bin/vite.js"), "build"], project);
+  assert.ok(readFileSync(join(project, "dist", "index.html"), "utf8").length > 0, "RMF2 Svelte consumer did not produce a browser entrypoint");
 }
 
 export async function verifyToolAndTemplatePackages(directory, nuget, env) {
