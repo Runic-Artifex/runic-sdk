@@ -83,11 +83,15 @@ test('archive paths include managed and web outputs and reject escaping paths', 
 
 test('all managed executable suites are assigned exactly once to workflow groups', () => {
   assert.deepEqual(workflow.jobs.managed.strategy.matrix.suite, managedGroups);
-  const suites = managedTests();
+  const suites = managedTests(root, 'win32');
   assert.equal(new Set(suites.map(item => item.path)).size, suites.length);
   for (const group of managedGroups) assert.ok(suites.some(item => item.group === group), group);
   for (const path of ['tests/dotnet/Runic.Platform.Prototype.Tests/Runic.Platform.Prototype.Tests.csproj', 'tests/dotnet/Runic.Application.Bridge.Tests/Runic.Application.Bridge.Tests.csproj'])
     assert.ok(suites.some(item => item.path === path), path);
+  const wpf = 'tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj';
+  assert.ok(suites.some(item => item.path === wpf), wpf);
+  assert.ok(!managedTests(root, 'linux').some(item => item.path === wpf));
+  assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes(wpf)));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
 });
 
@@ -102,7 +106,10 @@ test('verification gate includes all jobs and candidates are independent of test
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), Object.keys(workflow.jobs).filter(key => key !== 'verify').sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
   assert.equal(workflow.jobs.packages.needs, 'build');
-  for (const id of ['templates', 'package-consumers', 'footprint']) assert.equal(workflow.jobs[id].needs, 'packages');
+  for (const id of ['templates', 'package-consumers', 'wpf-package-consumer', 'footprint']) assert.equal(workflow.jobs[id].needs, 'packages');
+  assert.equal(workflow.jobs['wpf-package-consumer']['runs-on'], 'windows-latest');
+  assert.ok(workflow.jobs['wpf-package-consumer'].steps.some(step =>
+    step.run?.includes('verify-packages Runic.Translations.Wpf')));
   for (const job of Object.values(workflow.jobs))
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });

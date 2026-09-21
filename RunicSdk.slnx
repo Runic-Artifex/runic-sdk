@@ -50,6 +50,7 @@
     <Project Path="packages/dotnet/Runic.Translations.Build/Runic.Translations.Build.csproj" />
     <Project Path="packages/dotnet/Runic.Translations.Generator/Runic.Translations.Generator.csproj" />
     <Project Path="packages/dotnet/Runic.Translations.Tooling/Runic.Translations.Tooling.csproj" />
+    <Project Path="packages/dotnet/Runic.Translations.Wpf/Runic.Translations.Wpf.csproj" />
     <Project Path="packages/dotnet/Runic.Translations/Runic.Translations.csproj" />
   </Folder>
   <Folder Name="/tests/fixtures/desktop/">
@@ -86,6 +87,7 @@
     <Project Path="tests/dotnet/Runic.Translations.Generator.Tests/Runic.Translations.Generator.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Runtime.Tests/Runic.Translations.Runtime.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Tooling.Tests/Runic.Translations.Tooling.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj" />
     <Project Path="tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/fixtures/">

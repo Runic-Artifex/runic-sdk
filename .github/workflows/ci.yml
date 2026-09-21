@@ -354,6 +354,24 @@ jobs:
           overwrite: true
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
+  wpf-package-consumer:
+    needs: packages
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: actions/download-artifact@v8
+        with:
+          name: runic-sdk-${{ github.run_id }}
+          path: artifacts/packages
+      - name: Verify packaged WPF translation consumer
+        run: bun eng/run.mjs verify-packages Runic.Translations.Wpf
+      - name: Check generated files and lockfile
+        run: bun eng/ci/source-state.mjs check
   templates:
     needs: packages
     runs-on: ubuntu-24.04
@@ -562,6 +580,9 @@ jobs:
       - name: Compile the original WPF migration example
         if: runner.os == 'Windows'
         run: dotnet build examples/customer-migration/Wpf/CustomerWpf.csproj -c Release
+      - name: Verify WPF translation rendering
+        if: runner.os == 'Windows'
+        run: dotnet run --project tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj -c Release
       - name: Publish and exercise WebView2 with NativeAOT
         if: runner.os == 'Windows'
         shell: bash
@@ -644,7 +665,7 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [build, managed, web, engineering, framework-consumers, bridge, editor, docs, customers, packages, package-consumers, templates, native, footprint]
+    needs: [build, managed, web, engineering, framework-consumers, bridge, editor, docs, customers, packages, package-consumers, wpf-package-consumer, templates, native, footprint]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every verification job to pass

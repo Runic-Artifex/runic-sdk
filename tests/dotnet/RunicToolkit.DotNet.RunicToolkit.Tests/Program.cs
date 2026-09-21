@@ -804,7 +804,7 @@ internal static class Program
     {
         CompatibilitySetAuthority authority = CompatibilitySetAuthority.Current;
         Equal($"runic-sdk-{authority.ReleaseTrainVersion}", authority.Id);
-        Equal(32, authority.NuGetPackages.Count);
+        Equal(33, authority.NuGetPackages.Count);
         Equal(8, authority.NpmPackages.Count);
         foreach (CompatibilityPackage package in authority.NuGetPackages.Values.Concat(authority.NpmPackages.Values))
         {
