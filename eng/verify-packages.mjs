@@ -36,15 +36,22 @@ export function resolveMsbuildPathValue(projectDirectory, value) {
   return resolve(projectDirectory, value.replaceAll("\\", "/"));
 }
 
-function msbuildProjectPath(projectDirectory, projectFile, property) {
+function msbuildProjectPath(
+  projectDirectory,
+  projectFile,
+  property,
+  selectedConfiguration = configuration,
+  additional = [],
+) {
   const value = execFileSync("dotnet", [
     "msbuild",
     projectFile,
     "--nologo",
-    `-property:Configuration=${configuration}`,
+    `-property:Configuration=${selectedConfiguration}`,
+    ...additional,
     `-getProperty:${property}`,
   ], { cwd: projectDirectory, encoding: "utf8" }).trim();
-  assert.ok(value, `${projectFile} did not report ${property} for ${configuration}`);
+  assert.ok(value, `${projectFile} did not report ${property} for ${selectedConfiguration}`);
   return resolveMsbuildPathValue(projectDirectory, value);
 }
 
@@ -229,6 +236,8 @@ export async function verifyPackages(packageName) {
     });
   }
   if (packageName) {
+    if (packageName === "Runic.Translations.Build")
+      await verifyRmf2Consumer(directory, nuget, env);
     console.log(`Packed ${packageName} consumer passed.`);
     return;
   }
@@ -375,6 +384,8 @@ console.log('Packed npm consumers passed.');
 }
 
 async function verifyRmf2Consumer(directory, nuget, env) {
+  for (const name of ["Runic.Translations", "Runic.Translations.Build", "dotnet-runic-translations"])
+    assert.ok(readdirSync(nuget).includes(`${name}.${workspace.version}.nupkg`), `Pack ${name} first`);
   const consumer = join(directory, "rmf2-consumer");
   mkdirSync(join(consumer, "translations"), { recursive: true });
   mkdirSync(join(consumer, ".config"), { recursive: true });
@@ -384,7 +395,7 @@ async function verifyRmf2Consumer(directory, nuget, env) {
     tools: { "dotnet-runic-translations": { version: workspace.version, commands: ["runic-translations"] } },
   }, null, 2));
   writeFileSync(join(consumer, "Consumer.csproj"),
-    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><TranslationsGenerateOnBuild>true</TranslationsGenerateOnBuild><TranslationsEmitEsm>true</TranslationsEmitEsm></PropertyGroup><ItemGroup><PackageReference Include="Runic.Translations" Version="${workspace.version}"/><PackageReference Include="Runic.Translations.Build" Version="${workspace.version}" PrivateAssets="all"/></ItemGroup></Project>`);
+    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><IsAotCompatible>true</IsAotCompatible><JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault><TranslationsGenerateOnBuild>true</TranslationsGenerateOnBuild><TranslationsEmitJson>true</TranslationsEmitJson><TranslationsEmitEsm>true</TranslationsEmitEsm></PropertyGroup><ItemGroup><PackageReference Include="Runic.Translations" Version="${workspace.version}"/><PackageReference Include="Runic.Translations.Build" Version="${workspace.version}" PrivateAssets="all"/></ItemGroup></Project>`);
   writeFileSync(join(consumer, "translations", "runic.json"), JSON.stringify({
     schemaVersion: 1,
     sourceLayout: "rmf2-v1",
@@ -399,18 +410,39 @@ async function verifyRmf2Consumer(directory, nuget, env) {
   writeFileSync(join(consumer, "Program.cs"),
     'using PackageRmf2;\n' +
     'using Runic.Translations;\n' +
+    'using System.Text;\n' +
+    'if (args.Length != 1) throw new ArgumentException("Expected the generated v5 locale artifact path.");\n' +
     'var manager = await CheckoutTextCatalog.CreateManagerAsync();\n' +
     'var text = new CheckoutText(manager);\n' +
     'if (text.r_6170706c69636174696f6e5f7469746c65 != "RMF2 checkout") throw new Exception("RMF2 v5 C# accessor failed");\n' +
     'await manager.SetLocaleAsync("de");\n' +
     'if (text.r_6170706c69636174696f6e5f7469746c65 != "RMF2 Kasse") throw new Exception("RMF2 v5 locale switch failed");\n' +
     'if (CheckoutTextCatalog.Rmf2Profile != "rmf2-execution-v2" || CheckoutTextCatalog.Rmf2RuntimeAbiVersion != 2 || CheckoutTextCatalog.MessageGrammarVersion != 5) throw new Exception("RMF2 v5 generated contract failed");\n' +
-    'Console.WriteLine("RMF2 v5 package consumer passed.");\n');
+    'var source = new FilePackSource(args[0]);\n' +
+    'var verified = await CheckoutTextCatalog.LoadExternalPackAsync(source, "de");\n' +
+    'if (verified is null || verified.Messages.Count != 1) throw new Exception("RMF2 v5 external pack verification failed");\n' +
+    'var externalManager = await CheckoutTextCatalog.CreateExternalManagerAsync(source, "de");\n' +
+    'if (new CheckoutText(externalManager).r_6170706c69636174696f6e5f7469746c65 != "External RMF2 Kasse") throw new Exception("RMF2 v5 external pack composition failed");\n' +
+    'Console.WriteLine("RMF2 v5 package consumer and external pack passed.");\n' +
+    'sealed class FilePackSource(string path) : IExternalTranslationSource\n' +
+    '{\n' +
+    '  public async ValueTask<ExternalTranslationPack?> LoadAsync(string catalog, string locale, CancellationToken cancellationToken)\n' +
+    '  {\n' +
+    '    if (catalog != "checkout" || locale != "de") return null;\n' +
+    '    var generated = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path, cancellationToken));\n' +
+    '    var external = generated.Replace("\\\"value\\\":\\\"RMF2 Kasse\\\"", "\\\"value\\\":\\\"External RMF2 Kasse\\\"", StringComparison.Ordinal);\n' +
+    '    if (external == generated) throw new InvalidOperationException("Generated v5 pack did not contain the expected value.");\n' +
+    '    return new ExternalTranslationPack(Encoding.UTF8.GetBytes(external));\n' +
+    '  }\n' +
+    '}\n');
   run("dotnet", ["tool", "restore", "--configfile", join(directory, "NuGet.config")], consumer, env);
   run("dotnet", dotnetBuildArguments("Consumer.csproj"), consumer, env);
-  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration, "--no-build"], consumer, env);
-  verifyConsumerGraph(consumer, "Runic.Translations RMF2");
   const intermediate = msbuildProjectPath(consumer, "Consumer.csproj", "IntermediateOutputPath");
+  const pack = join(intermediate, "translations", "checkout.de.locale-v5.json");
+  assert.equal(JSON.parse(readFileSync(pack, "utf8")).profile, "rmf2-execution-v2",
+    "RMF2 package consumer did not generate the selected v5 external pack");
+  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration, "--no-build", "--", pack], consumer, env);
+  verifyConsumerGraph(consumer, "Runic.Translations RMF2");
   const esmRoot = join(intermediate, "translations", "checkout.esm-v5");
   assert.ok(readdirSync(esmRoot, { withFileTypes: true }).some(entry => entry.name === "messages.js"), "RMF2 v5 consumer did not emit ESM messages");
   const webManifest = JSON.parse(readFileSync(join(esmRoot, "web-module-manifest-v3.json"), "utf8"));
@@ -428,8 +460,33 @@ source.setLocale("de");
 assert.equal(m.application_title(), "RMF2 Kasse");
 restore();
 console.log("RMF2 v5 generated ESM import, execution, and locale switch passed.");
-`);
+  `);
   run("node", ["verify-esm.mjs"], consumer, env);
+
+  // Publish the same package-only, profile-selected generated consumer. Its
+  // external artifact is generated by the packed build package and loaded by
+  // the packed runtime; no checkout project reference or reflection fallback
+  // participates in this NativeAOT path.
+  const nativeOutput = join(consumer, "native");
+  const nativeOs = { linux: "linux", darwin: "osx", win32: "win" }[process.platform];
+  const nativeArch = { x64: "x64", arm64: "arm64" }[process.arch];
+  assert.ok(nativeOs && nativeArch, `Unsupported NativeAOT package-consumer host ${process.platform}/${process.arch}`);
+  const nativeRid = `${nativeOs}-${nativeArch}`;
+  run("dotnet", ["publish", "Consumer.csproj", "--configuration", "Release", "--runtime", nativeRid,
+    "--self-contained", "true", "-p:PublishAot=true", "-p:PublishTrimmed=true", "-p:TrimMode=full", "-p:IlcTreatWarningsAsErrors=true",
+    "-p:JsonSerializerIsReflectionEnabledByDefault=false", "--output", nativeOutput], consumer, env);
+  const nativeIntermediate = msbuildProjectPath(
+    consumer,
+    "Consumer.csproj",
+    "IntermediateOutputPath",
+    "Release",
+    [`-property:RuntimeIdentifier=${nativeRid}`],
+  );
+  const nativePack = join(nativeIntermediate, "translations", "checkout.de.locale-v5.json");
+  assert.equal(JSON.parse(readFileSync(nativePack, "utf8")).messageGrammarVersion, 5,
+    "RMF2 NativeAOT publish did not generate a grammar-v5 external pack");
+  run(join(nativeOutput, "Consumer" + (process.platform === "win32" ? ".exe" : "")), [nativePack], consumer, env);
+  verifyConsumerGraph(consumer, "Runic.Translations RMF2 NativeAOT");
 }
 
 async function verifyRmf2V4CompatibilityConsumer(directory, env) {

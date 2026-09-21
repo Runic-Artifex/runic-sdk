@@ -120,6 +120,18 @@ test('verification gate includes all jobs and candidates are independent of test
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });
 
+test('package consumers retain the installed RMF2 v5 NativeAOT journey', () => {
+  const step = workflow.jobs['package-consumers'].steps.find(item =>
+    item.name === 'Verify isolated NuGet and npm consumers');
+  assert.equal(step?.run, 'bun run verify-packages');
+  const verifier = readFileSync(resolve(root, 'eng/verify-packages.mjs'), 'utf8');
+  assert.match(verifier, /executionProfile: "rmf2-execution-v2"/);
+  assert.match(verifier, /CheckoutTextCatalog\.CreateExternalManagerAsync/);
+  assert.match(verifier, /"-p:PublishAot=true"/);
+  assert.match(verifier, /"-p:IlcTreatWarningsAsErrors=true"/);
+  assert.match(verifier, /run\(join\(nativeOutput, "Consumer"/);
+});
+
 test('local checks are focused and Linux workflow selection leaves native OS coverage to GitHub', () => {
   const scripts = JSON.parse(readFileSync(resolve(root, 'package.json'))).scripts;
   assert.equal(scripts.test, 'bun eng/test.mjs');
