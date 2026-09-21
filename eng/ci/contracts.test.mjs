@@ -93,6 +93,12 @@ test('all managed executable suites are assigned exactly once to workflow groups
   assert.ok(!managedTests(root, 'linux').some(item => item.path === wpf));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes(wpf)));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
+  const rmf2Aot = workflow.jobs.managed.steps.find(step => step.name === 'Publish and execute RMF2 artifact-v4 NativeAOT smoke');
+  assert.ok(rmf2Aot);
+  assert.equal(rmf2Aot.if, "matrix.suite == 'translations'");
+  assert.match(rmf2Aot.run, /dotnet publish tests\/dotnet\/Runic\.Translations\.Rmf2AotTests/);
+  assert.match(rmf2Aot.run, /PublishAot=true/);
+  assert.match(rmf2Aot.run, /artifacts\/rmf2-aot\/Runic\.Translations\.Rmf2AotTests/);
 });
 
 test('every web package with a test script is included in the dynamic matrix', () => {

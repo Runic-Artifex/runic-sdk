@@ -82,6 +82,7 @@
     <Project Path="tests/dotnet/Runic.Translations.Compiler.Tests/Runic.Translations.Compiler.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Generator.Tests/Runic.Translations.Generator.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Runtime.Tests/Runic.Translations.Runtime.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Translations.Rmf2AotTests/Runic.Translations.Rmf2AotTests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Tooling.Tests/Runic.Translations.Tooling.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj" />
     <Project Path="tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
