@@ -17,7 +17,6 @@ Vite+ remains an optional facade over that declared manager and the standard pro
 dotnet runic dev --project path/to/App.csproj
 dotnet runic dev --project path/to/App.csproj -- --safe-mode profile-a
 dotnet runic inspect --project path/to/App.csproj
-dotnet runic migrate --check
 ```
 
 ## Local support envelope

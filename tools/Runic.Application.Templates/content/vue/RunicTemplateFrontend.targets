@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <RunicApplicationBridgeGenerate>false</RunicApplicationBridgeGenerate>
-    <RunicTemplateFrontendBuild Condition="'$(RunicTemplateFrontendBuild)' == '' and '$(RunicToolkitFrontendBuild)' != 'false'">true</RunicTemplateFrontendBuild>
+    <RunicTemplateFrontendBuild Condition="'$(RunicTemplateFrontendBuild)' == '' and '$(RunicApplicationFrontendBuild)' != 'false'">true</RunicTemplateFrontendBuild>
     <_RunicTemplateFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</_RunicTemplateFrontendDirectory>
     <_RunicTemplateFrontendBuildStamp>$(IntermediateOutputPath)runic-frontend.build.stamp</_RunicTemplateFrontendBuildStamp>
     <_RunicTemplateBridgeIr>$(MSBuildProjectDirectory)/Contract/bridge.ir.json</_RunicTemplateBridgeIr>

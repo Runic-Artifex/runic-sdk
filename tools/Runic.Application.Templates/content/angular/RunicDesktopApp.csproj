@@ -3,8 +3,8 @@
     <OutputType>Exe</OutputType>
     <RunicHost Condition="'$(RunicHost)' == ''">__RUNIC_HOST__</RunicHost>
     <RunicApplicationBridgeAuthority>csharp</RunicApplicationBridgeAuthority>
-    <RunicToolkitFrontendDevServerKind>angular</RunicToolkitFrontendDevServerKind>
-    <RunicToolkitFrontendViteDevServerEntry>/src/main.ts</RunicToolkitFrontendViteDevServerEntry>
+    <RunicApplicationFrontendDevServerKind>angular</RunicApplicationFrontendDevServerKind>
+    <RunicApplicationFrontendViteDevServerEntry>/src/main.ts</RunicApplicationFrontendViteDevServerEntry>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>RunicDesktopApp</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -16,10 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Condition="'$(RunicHost)' == 'cswebui'" Include="Runic.Application.CsWebUi" Version="__RUNIC_TOOLKIT_VERSION__" />
-    <PackageReference Include="Runic.Application.Bridge" Version="__RUNIC_TOOLKIT_VERSION__" />
-    <PackageReference Include="Runic.Application" Version="__RUNIC_TOOLKIT_VERSION__" />
-    <PackageReference Condition="'$(RunicHost)' == 'desktop'" Include="Runic.Application.Desktop" Version="__RUNIC_TOOLKIT_VERSION__" />
+    <PackageReference Condition="'$(RunicHost)' == 'cswebui'" Include="Runic.Application.CsWebUi" Version="__RUNIC_APPLICATION_VERSION__" />
+    <PackageReference Include="Runic.Application.Bridge" Version="__RUNIC_APPLICATION_VERSION__" />
+    <PackageReference Include="Runic.Application" Version="__RUNIC_APPLICATION_VERSION__" />
+    <PackageReference Condition="'$(RunicHost)' == 'desktop'" Include="Runic.Application.Desktop" Version="__RUNIC_APPLICATION_VERSION__" />
     <PackageReference Condition="'$(RunicHost)' == 'desktop'" Include="Runic.Desktop" Version="__RUNIC_DESKTOP_VERSION__" />
     <PackageReference Include="Runic.Assets" Version="__RUNIC_ASSETS_VERSION__" />
     <PackageReference Condition="'$(RunicHost)' == 'desktop'" Include="Runic.Assets.Desktop" Version="__RUNIC_ASSETS_VERSION__" />

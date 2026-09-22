@@ -113,17 +113,6 @@ internal static class Program
             cancellationToken).ConfigureAwait(false));
     }
 
-    [Command("migrate")]
-    [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
-    internal static Task<CommandOutcome<ToolCommandResult>> Migrate(
-        [Option("--check")] bool check,
-        [Option("--apply")] bool apply,
-        [Option("--dry-run")] bool dryRun,
-        [Option("--project", "-p")] string project = "")
-    {
-        return Task.FromResult(MigrateCore(check, apply, dryRun, project));
-    }
-
     [Command("support")]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static async Task<CommandOutcome<ToolCommandResult>> Support(
@@ -146,41 +135,6 @@ internal static class Program
         catch (IOException)
         {
             return Failure(CommandExitCategory.CommandFailure, "RAPPSUP025", "The local support envelope could not access a required file.");
-        }
-    }
-
-    private static CommandOutcome<ToolCommandResult> MigrateCore(
-        bool check,
-        bool apply,
-        bool dryRun,
-        string project)
-    {
-        try
-        {
-            MigrationResult result = MigrationApplication.Execute(
-                string.IsNullOrWhiteSpace(project) ? null : project,
-                apply,
-                dryRun,
-                check);
-            if (check && result.HasChanges)
-            {
-                return CommandOutcome.Failure<ToolCommandResult>(
-                    CommandExitCategory.CommandFailure,
-                    new CommandFault("RAPPMIG001", "Legacy application migration is required."),
-                    [new CommandDiagnostic(
-                        "RCLI9001",
-                        "migration",
-                        "Legacy application migration is required.",
-                        CommandDiagnosticPhase.Execution,
-                        CommandDiagnosticSeverity.Error)],
-                    result.Output);
-            }
-
-            return CommandOutcome.Success(new ToolCommandResult("migrate", Success, result.Output));
-        }
-        catch (DevUsageException exception)
-        {
-            return Failure(CommandExitCategory.Usage, exception.Code, exception.Message);
         }
     }
 

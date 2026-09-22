@@ -54,7 +54,7 @@ internal static partial class FrontendDevelopmentDocument
             document = HeadElement().Replace(document,
                 "<head><script src=\"runic-desktop.js\"></script>", 1);
         string inspectorBootstrap =
-            "<script>globalThis.__runicToolkitApplicationBridgeDevelopment=Object.freeze({" +
+            "<script>globalThis.__runicApplicationApplicationBridgeDevelopment=Object.freeze({" +
             "endpoint:" + JsonString(inspectorEndpoint.AbsoluteUri) + "," +
             "projectDirectory:" + JsonString(configuration.ProjectDirectory) +
             "});</script>";
@@ -71,7 +71,7 @@ internal static partial class FrontendDevelopmentDocument
             relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "The frontend development document escapes the runtime web root.");
         }
 

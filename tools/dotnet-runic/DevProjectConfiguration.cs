@@ -50,28 +50,28 @@ internal sealed record DevProjectConfiguration(
         "RunicAssetsEntryPoint",
         "RunicAssetsEmbeddedResourceName",
         "RunicAssetsFrontendDirectory",
-        "RunicToolkitFrontendEnabled",
-        "RunicToolkitFrontendNodeEnabled",
-        "RunicToolkitFrontendCompilerEnabled",
-        "RunicToolkitFrontendWorkspaceRoot",
-        "RunicToolkitFrontendWorkspace",
-        "RunicToolkitFrontendPackageDirectory",
-        "RunicToolkitFrontendOutputDirectory",
-        "RunicToolkitFrontendWebRoot",
+        "RunicApplicationFrontendEnabled",
+        "RunicApplicationFrontendNodeEnabled",
+        "RunicApplicationFrontendCompilerEnabled",
+        "RunicApplicationFrontendWorkspaceRoot",
+        "RunicApplicationFrontendWorkspace",
+        "RunicApplicationFrontendPackageDirectory",
+        "RunicApplicationFrontendOutputDirectory",
+        "RunicApplicationFrontendWebRoot",
         "RunicApplicationBridgeAuthority",
         "RunicApplicationBridgeSource",
         "RunicApplicationBridgeIr",
         "RunicApplicationBridgeFacade",
-        "RunicToolkitFrontendDevWatchTarget",
-        "RunicToolkitFrontendViteDevServerEnabled",
-        "RunicToolkitFrontendViteDevServerEntry",
-        "RunicToolkitFrontendViteConfiguration",
-        "RunicToolkitFrontendDevServerKind",
-        "RunicToolkitFrontendDevServerDocument",
-        "RunicToolkitFrontendCompilerDiagnosticsPath",
-        "RunicToolkitFrontendCompilerHotReloadPath",
-        "RunicToolkitFrontendCompilerWatchPattern",
-        "RunicToolkitFrontendCompilerHotReloadTarget",
+        "RunicApplicationFrontendDevWatchTarget",
+        "RunicApplicationFrontendViteDevServerEnabled",
+        "RunicApplicationFrontendViteDevServerEntry",
+        "RunicApplicationFrontendViteConfiguration",
+        "RunicApplicationFrontendDevServerKind",
+        "RunicApplicationFrontendDevServerDocument",
+        "RunicApplicationFrontendCompilerDiagnosticsPath",
+        "RunicApplicationFrontendCompilerHotReloadPath",
+        "RunicApplicationFrontendCompilerWatchPattern",
+        "RunicApplicationFrontendCompilerHotReloadTarget",
         "TargetDir",
     ];
 
@@ -100,7 +100,7 @@ internal sealed record DevProjectConfiguration(
         CancellationToken cancellationToken)
     {
         string projectDirectory = Path.GetDirectoryName(project)
-            ?? throw new DevUsageException("RTKDEV1002", "The project has no parent directory.");
+            ?? throw new DevUsageException("RAPPDEV1002", "The project has no parent directory.");
         var arguments = new List<string>
         {
             "msbuild",
@@ -115,7 +115,7 @@ internal sealed record DevProjectConfiguration(
         if (result.ExitCode != 0)
         {
             throw new DevUsageException(
-                "RTKDEV1003",
+                "RAPPDEV1003",
                 $"Could not evaluate '{project}'.{Environment.NewLine}{Compact(result.CombinedOutput)}");
         }
 
@@ -126,13 +126,13 @@ internal sealed record DevProjectConfiguration(
                 ? value.GetString() ?? string.Empty
                 : string.Empty;
 
-        bool legacyEnabled = bool.TryParse(Value("RunicToolkitFrontendEnabled"), out bool enabled) && enabled;
+        bool frontendEnabled = bool.TryParse(Value("RunicApplicationFrontendEnabled"), out bool enabled) && enabled;
         bool generatedAssets = !string.IsNullOrWhiteSpace(Value("RunicAssetsDist")) &&
             !string.IsNullOrWhiteSpace(Value("RunicAssetsEntryPoint"));
-        if (!legacyEnabled && !generatedAssets)
+        if (!frontendEnabled && !generatedAssets)
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "The selected project must declare a generated Runic application with Runic Assets.");
         }
 
@@ -152,18 +152,18 @@ internal sealed record DevProjectConfiguration(
         bool canonicalFrontend = generatedAssets && canonicalFrontendDirectory.Length != 0;
         string workspaceRoot = canonicalFrontend
             ? canonicalFrontendDirectory
-            : Normalize(Value("RunicToolkitFrontendWorkspaceRoot"), evaluatedProjectDirectory);
+            : Normalize(Value("RunicApplicationFrontendWorkspaceRoot"), evaluatedProjectDirectory);
         string packageDirectory = NormalizeOptional(
-            Value("RunicToolkitFrontendPackageDirectory"),
+            Value("RunicApplicationFrontendPackageDirectory"),
             workspaceRoot);
         string outputDirectory = NormalizeOptional(
-            Value("RunicToolkitFrontendOutputDirectory"),
+            Value("RunicApplicationFrontendOutputDirectory"),
             packageDirectory.Length == 0 ? workspaceRoot : packageDirectory);
         string targetDirectory = NormalizeOptional(Value("TargetDir"), evaluatedProjectDirectory);
         if (targetDirectory.Length == 0)
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "MSBuild did not evaluate TargetDir for the selected project.");
         }
         string conventionalBridgeSource = Path.Combine(canonicalFrontendDirectory, "src", "application.bridge.ts");
@@ -188,42 +188,42 @@ internal sealed record DevProjectConfiguration(
         var configurationResult = new DevProjectConfiguration(
             evaluatedProject,
             evaluatedProjectDirectory,
-            canonicalFrontend || (legacyEnabled && bool.TryParse(Value("RunicToolkitFrontendNodeEnabled"), out bool nodeEnabled)
+            canonicalFrontend || (frontendEnabled && bool.TryParse(Value("RunicApplicationFrontendNodeEnabled"), out bool nodeEnabled)
                 && nodeEnabled),
-            (legacyEnabled && bool.TryParse(Value("RunicToolkitFrontendCompilerEnabled"), out bool compilerEnabled)
+            (frontendEnabled && bool.TryParse(Value("RunicApplicationFrontendCompilerEnabled"), out bool compilerEnabled)
                 && compilerEnabled),
             workspaceRoot,
-            canonicalFrontend ? "." : Value("RunicToolkitFrontendWorkspace"),
+            canonicalFrontend ? "." : Value("RunicApplicationFrontendWorkspace"),
             canonicalFrontend ? canonicalFrontendDirectory : generatedAssets ? NormalizeOptional(Value("RunicAssetsDist"), evaluatedProjectDirectory) : packageDirectory,
             generatedAssets ? NormalizeOptional(Value("RunicAssetsDist"), evaluatedProjectDirectory) : outputDirectory,
-            string.IsNullOrWhiteSpace(Value("RunicToolkitFrontendWebRoot"))
+            string.IsNullOrWhiteSpace(Value("RunicApplicationFrontendWebRoot"))
                 ? "www"
-                : Value("RunicToolkitFrontendWebRoot"),
+                : Value("RunicApplicationFrontendWebRoot"),
             bridgeSource,
             bridgeIr,
             bridgeFacade,
-            Value("RunicToolkitFrontendDevWatchTarget"),
+            Value("RunicApplicationFrontendDevWatchTarget"),
             bool.TryParse(
-                Value("RunicToolkitFrontendViteDevServerEnabled"),
+                Value("RunicApplicationFrontendViteDevServerEnabled"),
                 out bool viteDevServerEnabled) && viteDevServerEnabled,
-            Value("RunicToolkitFrontendViteDevServerEntry"),
+            Value("RunicApplicationFrontendViteDevServerEntry"),
             NormalizeOptional(
-                Value("RunicToolkitFrontendViteConfiguration"),
+                Value("RunicApplicationFrontendViteConfiguration"),
                 packageDirectory.Length == 0 ? workspaceRoot : packageDirectory),
-            NormalizeOptional(Value("RunicToolkitFrontendCompilerDiagnosticsPath"), evaluatedProjectDirectory),
-            NormalizeOptional(Value("RunicToolkitFrontendCompilerHotReloadPath"), evaluatedProjectDirectory),
+            NormalizeOptional(Value("RunicApplicationFrontendCompilerDiagnosticsPath"), evaluatedProjectDirectory),
+            NormalizeOptional(Value("RunicApplicationFrontendCompilerHotReloadPath"), evaluatedProjectDirectory),
             targetDirectory)
         {
             ProjectAssetsFile = Normalize(Value("ProjectAssetsFile"), evaluatedProjectDirectory),
             Host = string.IsNullOrEmpty(Value("RunicHost")) ? "desktop" : Value("RunicHost"),
-            FrontendCompilerWatchPattern = Value("RunicToolkitFrontendCompilerWatchPattern"),
-            FrontendCompilerHotReloadTarget = Value("RunicToolkitFrontendCompilerHotReloadTarget"),
+            FrontendCompilerWatchPattern = Value("RunicApplicationFrontendCompilerWatchPattern"),
+            FrontendCompilerHotReloadTarget = Value("RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind =
-                Value("RunicToolkitFrontendDevServerKind").Trim().ToLowerInvariant(),
+                Value("RunicApplicationFrontendDevServerKind").Trim().ToLowerInvariant(),
             DevelopmentServerDocument =
-                string.IsNullOrWhiteSpace(Value("RunicToolkitFrontendDevServerDocument"))
+                string.IsNullOrWhiteSpace(Value("RunicApplicationFrontendDevServerDocument"))
                     ? "index.html"
-                    : Value("RunicToolkitFrontendDevServerDocument"),
+                    : Value("RunicApplicationFrontendDevServerDocument"),
         };
         configurationResult.Validate();
         return configurationResult;
@@ -234,7 +234,7 @@ internal sealed record DevProjectConfiguration(
         if (!NodeEnabled && !HasFrontendCompiler)
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "Enable at least one frontend pipeline: Node/Vite or an external compiler integration.");
         }
 
@@ -242,14 +242,14 @@ internal sealed record DevProjectConfiguration(
             DevelopmentServerKind is not ("vite" or "angular"))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
-                "RunicToolkitFrontendDevServerKind must be 'vite', 'angular', or empty.");
+                "RAPPDEV1005",
+                "RunicApplicationFrontendDevServerKind must be 'vite', 'angular', or empty.");
         }
 
         if (HasDevelopmentServer && (!NodeEnabled || !HasNodeWorkspace))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "Frontend development-server mode requires a configured Node workspace.");
         }
 
@@ -266,16 +266,16 @@ internal sealed record DevProjectConfiguration(
                          static segment => segment is "." or ".."))))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
-                "RunicToolkitFrontendDevServerDocument must contain safe relative file paths " +
+                "RAPPDEV1005",
+                "RunicApplicationFrontendDevServerDocument must contain safe relative file paths " +
                 "separated by semicolons.");
         }
 
         if (NodeEnabled && !HasNodeWorkspace && !HasFrontendWatchTarget)
         {
             throw new DevUsageException(
-                "RTKDEV1005",
-                "Configure RunicToolkitFrontendWorkspace or RunicToolkitFrontendDevWatchTarget.");
+                "RAPPDEV1005",
+                "Configure RunicApplicationFrontendWorkspace or RunicApplicationFrontendDevWatchTarget.");
         }
 
         if (ViteDevServerEnabled
@@ -284,9 +284,9 @@ internal sealed record DevProjectConfiguration(
                 || string.IsNullOrWhiteSpace(ViteDevServerEntry)))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "Vite development-server mode requires a frontend workspace and " +
-                "RunicToolkitFrontendViteDevServerEntry.");
+                "RunicApplicationFrontendViteDevServerEntry.");
         }
 
         if (ViteDevServerEnabled
@@ -294,7 +294,7 @@ internal sealed record DevProjectConfiguration(
             && !File.Exists(ViteConfigurationPath))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 $"The configured Vite file '{ViteConfigurationPath}' does not exist.");
         }
 
@@ -305,15 +305,15 @@ internal sealed record DevProjectConfiguration(
                 || ViteDevServerEntry.Contains('#')))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
-                "RunicToolkitFrontendViteDevServerEntry must be a root-relative Vite module path.");
+                "RAPPDEV1005",
+                "RunicApplicationFrontendViteDevServerEntry must be a root-relative Vite module path.");
         }
 
         if (NodeEnabled && string.IsNullOrWhiteSpace(FrontendOutputDirectory))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
-                "RunicToolkitFrontendOutputDirectory is required for coordinated reload.");
+                "RAPPDEV1005",
+                "RunicApplicationFrontendOutputDirectory is required for coordinated reload.");
         }
 
         if (NodeEnabled
@@ -323,7 +323,7 @@ internal sealed record DevProjectConfiguration(
                 || string.IsNullOrWhiteSpace(FrontendOutputDirectory)))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "The frontend workspace root, package directory, and output directory are required.");
         }
 
@@ -332,7 +332,7 @@ internal sealed record DevProjectConfiguration(
                 || string.IsNullOrWhiteSpace(BridgeFacade)))
         {
             throw new DevUsageException(
-                "RTKDEV1005",
+                "RAPPDEV1005",
                 "Application Bridge source, IR, and generated facade must be configured together.");
         }
     }

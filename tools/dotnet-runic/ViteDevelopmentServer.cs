@@ -11,16 +11,16 @@ namespace Runic.Application.Tool;
 
 internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 {
-    internal const string ServerEnvironmentVariable = "RUNIC_TOOLKIT_VITE_DEV_SERVER";
-    internal const string EntryEnvironmentVariable = "RUNIC_TOOLKIT_VITE_ENTRY";
+    internal const string ServerEnvironmentVariable = "RUNIC_APPLICATION_VITE_DEV_SERVER";
+    internal const string EntryEnvironmentVariable = "RUNIC_APPLICATION_VITE_ENTRY";
     internal const string PackageDirectoryEnvironmentVariable =
-        "RUNIC_TOOLKIT_VITE_PACKAGE_DIRECTORY";
+        "RUNIC_APPLICATION_VITE_PACKAGE_DIRECTORY";
     internal const string DiagnosticsEnvironmentVariable =
-        "RUNIC_TOOLKIT_FRONTEND_COMPILER_DIAGNOSTICS";
+        "RUNIC_APPLICATION_FRONTEND_COMPILER_DIAGNOSTICS";
     internal const string HotReloadEnvironmentVariable =
-        "RUNIC_TOOLKIT_FRONTEND_COMPILER_HOT_RELOAD";
+        "RUNIC_APPLICATION_FRONTEND_COMPILER_HOT_RELOAD";
     internal const string ProjectEnvironmentVariable =
-        "RUNIC_TOOLKIT_DEV_PROJECT";
+        "RUNIC_APPLICATION_DEV_PROJECT";
     internal const string BridgeHostReadyEnvironmentVariable =
         "RUNIC_APPLICATION_BRIDGE_HOST_READY";
 
@@ -89,10 +89,10 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                     // Scope Vite diagnostics to the dev server. Passing DEBUG
                     // through MSBuild can make its Exec task parse config dumps
                     // (for example "error: [Function: error]") as build errors.
-                    ["DEBUG"] = Environment.GetEnvironmentVariable("RUNIC_TOOLKIT_VITE_DEBUG")
+                    ["DEBUG"] = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_VITE_DEBUG")
                         ?? Environment.GetEnvironmentVariable("DEBUG"),
-                    ["RUNIC_TOOLKIT_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
-                    ["RUNIC_TOOLKIT_DEV_PROJECT"] = configuration.ProjectPath,
+                    ["RUNIC_APPLICATION_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
+                    ["RUNIC_APPLICATION_DEV_PROJECT"] = configuration.ProjectPath,
                     [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
                 });
         }
@@ -196,7 +196,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 {
                     int exitCode = await completion.ConfigureAwait(false);
                     throw new DevDevelopmentException(
-                        "RTKDEV1007",
+                        "RAPPDEV1007",
                         $"The Vite development server exited before readiness with code {exitCode}.");
                 }
 
@@ -238,7 +238,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new DevDevelopmentException(
-                "RTKDEV1007",
+                "RAPPDEV1007",
                 $"Timed out waiting for the Vite development server ({probe}: {lastResponse}). " +
                 "Run 'dotnet runic doctor' and verify the configured dev script " +
                 "and Vite entry module.");

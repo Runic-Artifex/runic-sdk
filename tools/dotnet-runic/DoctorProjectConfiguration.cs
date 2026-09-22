@@ -34,19 +34,19 @@ internal sealed record DoctorProjectConfiguration(
         "RunicAssetsDist",
         "RunicAssetsEntryPoint",
         "RunicAssetsFrontendDirectory",
-        "RunicToolkitFrontendEnabled",
-        "RunicToolkitFrontendNodeEnabled",
-        "RunicToolkitFrontendCompilerEnabled",
-        "RunicToolkitFrontendWorkspaceRoot",
-        "RunicToolkitFrontendWorkspace",
-        "RunicToolkitFrontendPackageDirectory",
+        "RunicApplicationFrontendEnabled",
+        "RunicApplicationFrontendNodeEnabled",
+        "RunicApplicationFrontendCompilerEnabled",
+        "RunicApplicationFrontendWorkspaceRoot",
+        "RunicApplicationFrontendWorkspace",
+        "RunicApplicationFrontendPackageDirectory",
         "RunicApplicationBridgeAuthority",
         "RunicApplicationBridgeSource",
         "RunicApplicationBridgeIr",
         "RunicApplicationBridgeFacade",
-        "RunicToolkitFrontendViteDevServerEnabled",
-        "RunicToolkitFrontendViteDevServerEntry",
-        "RunicToolkitFrontendViteConfiguration",
+        "RunicApplicationFrontendViteDevServerEnabled",
+        "RunicApplicationFrontendViteDevServerEntry",
+        "RunicApplicationFrontendViteConfiguration",
         "ProjectAssetsFile",
         "NETCoreSdkRuntimeIdentifier",
         "RuntimeIdentifier",
@@ -61,7 +61,7 @@ internal sealed record DoctorProjectConfiguration(
         CancellationToken cancellationToken)
     {
         string projectDirectory = Path.GetDirectoryName(project)
-            ?? throw new DevUsageException("RTKDEV1002", "The project has no parent directory.");
+            ?? throw new DevUsageException("RAPPDEV1002", "The project has no parent directory.");
         CommandResult result = await CommandRunner
             .RunAsync(
                 dotnetHost,
@@ -78,7 +78,7 @@ internal sealed record DoctorProjectConfiguration(
         if (result.ExitCode != 0)
         {
             throw new DevUsageException(
-                "RTKDEV1003",
+                "RAPPDEV1003",
                 $"Could not evaluate '{project}'.{Environment.NewLine}{Compact(result.CombinedOutput)}");
         }
 
@@ -107,10 +107,10 @@ internal sealed record DoctorProjectConfiguration(
         }
         bool canonicalFrontend = generatedAssets && canonicalFrontendDirectory.Length != 0;
         string workspaceRoot = Normalize(
-            canonicalFrontend ? canonicalFrontendDirectory : Value("RunicToolkitFrontendWorkspaceRoot"),
+            canonicalFrontend ? canonicalFrontendDirectory : Value("RunicApplicationFrontendWorkspaceRoot"),
             evaluatedProjectDirectory);
         string packageDirectory = NormalizeOptional(
-            Value("RunicToolkitFrontendPackageDirectory"),
+            Value("RunicApplicationFrontendPackageDirectory"),
             workspaceRoot);
         string targetFramework = Value("TargetFramework");
         if (string.IsNullOrWhiteSpace(targetFramework))
@@ -144,19 +144,19 @@ internal sealed record DoctorProjectConfiguration(
             evaluatedProject,
             evaluatedProjectDirectory,
             targetFramework,
-            canonicalFrontend || Flag("RunicToolkitFrontendEnabled"),
-            canonicalFrontend || Flag("RunicToolkitFrontendNodeEnabled"),
-            generatedAssets || Flag("RunicToolkitFrontendCompilerEnabled"),
+            canonicalFrontend || Flag("RunicApplicationFrontendEnabled"),
+            canonicalFrontend || Flag("RunicApplicationFrontendNodeEnabled"),
+            generatedAssets || Flag("RunicApplicationFrontendCompilerEnabled"),
             workspaceRoot,
-            canonicalFrontend ? "." : Value("RunicToolkitFrontendWorkspace"),
+            canonicalFrontend ? "." : Value("RunicApplicationFrontendWorkspace"),
             canonicalFrontend ? canonicalFrontendDirectory : packageDirectory,
             bridgeSource,
             bridgeIr,
             bridgeFacade,
-            Flag("RunicToolkitFrontendViteDevServerEnabled"),
-            Value("RunicToolkitFrontendViteDevServerEntry"),
+            Flag("RunicApplicationFrontendViteDevServerEnabled"),
+            Value("RunicApplicationFrontendViteDevServerEntry"),
             NormalizeOptional(
-                Value("RunicToolkitFrontendViteConfiguration"),
+                Value("RunicApplicationFrontendViteConfiguration"),
                 packageDirectory.Length == 0 ? workspaceRoot : packageDirectory),
             NormalizeOptional(Value("ProjectAssetsFile"), evaluatedProjectDirectory),
             string.IsNullOrWhiteSpace(Value("RuntimeIdentifier"))

@@ -17,11 +17,11 @@ internal static class InspectApplication
     {
         if (!StringComparer.Ordinal.Equals(artifact, "manifest"))
         {
-            throw new DevUsageException("RTKDEV1001", "Runic.Application inspect currently exposes only the manifest artifact.");
+            throw new DevUsageException("RAPPDEV1001", "Runic.Application inspect currently exposes only the manifest artifact.");
         }
         if (string.IsNullOrWhiteSpace(configuration))
         {
-            throw new DevUsageException("RTKDEV1001", "Configuration cannot be empty.");
+            throw new DevUsageException("RAPPDEV1001", "Configuration cannot be empty.");
         }
 
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, requestedProject);
@@ -48,15 +48,15 @@ internal static class InspectApplication
                 ], cancellationToken).ConfigureAwait(false);
             if (build.ExitCode != 0)
             {
-                throw new DevUsageException("RTKDEV1010", $"Could not generate the Runic.Application manifest for '{project}'.");
+                throw new DevUsageException("RAPPDEV1010", $"Could not generate the Runic.Application manifest for '{project}'.");
             }
             string[] sources = Directory.Exists(generatedRoot)
                 ? Directory.EnumerateFiles(generatedRoot, "Runic.Application.GeneratedManifest.g.cs", SearchOption.AllDirectories)
                     .Order(StringComparer.Ordinal).ToArray()
                 : [];
-            if (sources.Length != 1) throw new DevDevelopmentException("RTKDEV1011", "The generated runic.application manifest was not produced deterministically. Declare RunicApplicationManifest on the application assembly.");
+            if (sources.Length != 1) throw new DevDevelopmentException("RAPPDEV1011", "The generated runic.application manifest was not produced deterministically. Declare RunicApplicationManifest on the application assembly.");
             string marker = File.ReadLines(sources[0]).FirstOrDefault(static line => line.StartsWith("// runic.application/1: ", StringComparison.Ordinal)) ?? string.Empty;
-            if (marker.Length == 0) throw new DevDevelopmentException("RTKDEV1011", "The generated runic.application manifest is malformed.");
+            if (marker.Length == 0) throw new DevDevelopmentException("RAPPDEV1011", "The generated runic.application manifest is malformed.");
             using JsonDocument manifest = JsonDocument.Parse(marker["// runic.application/1: ".Length..]);
             Console.WriteLine(manifest.RootElement.GetRawText());
             return Program.Success;

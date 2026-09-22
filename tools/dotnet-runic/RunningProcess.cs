@@ -88,7 +88,7 @@ internal sealed class RunningProcess : IAsyncDisposable
         {
             process.Dispose();
             throw new DevUsageException(
-                "RTKDEV1004",
+                "RAPPDEV1004",
                 $"Could not start '{executable}'. Ensure it is installed and available on PATH.");
         }
     }

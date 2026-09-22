@@ -75,12 +75,12 @@ internal sealed class HostProcessController : IAsyncDisposable
         {
             CommandResult build = await CommandRunner.RunAsync(_dotnetHost, _configuration.ProjectDirectory,
                 ["build", _configuration.ProjectPath, "--configuration", _options.Configuration, "--no-restore",
-                 "-p:RunicToolkitFrontendBuild=false", "-p:RunicToolkitFrontendInstall=false"], cancellationToken).ConfigureAwait(false);
+                 "-p:RunicApplicationFrontendBuild=false", "-p:RunicApplicationFrontendInstall=false"], cancellationToken).ConfigureAwait(false);
             if (build.ExitCode != 0)
             {
                 Console.Error.Write(build.StandardError);
                 Console.Error.Write(build.StandardOutput);
-                throw new DevUsageException("RTKDEV1006", "Host rebuild failed; the running host has been retained.");
+                throw new DevUsageException("RAPPDEV1006", "Host rebuild failed; the running host has been retained.");
             }
             if (_host is not null)
             {
@@ -113,7 +113,7 @@ internal sealed class HostProcessController : IAsyncDisposable
                 "--property:DebugType=portable",
                 "--property:DebugSymbols=true",
                 "--property:Optimize=false",
-                "--property:RunicToolkitFrontendCompilerDevelopmentHotReload=true",
+                "--property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
                 "--no-restore",
                 "--non-interactive",
                 "run",
@@ -140,8 +140,8 @@ internal sealed class HostProcessController : IAsyncDisposable
         {
             ["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"] = _developmentEnvironment.Count == 0 ? null :
                 System.IO.Path.GetFullPath(_configuration.DevelopmentServerDocuments[0], _configuration.RuntimeWebRoot),
-            ["RunicToolkitFrontendEnabled"] = "false",
-            ["RunicToolkitFrontendInstall"] = "false",
+            ["RunicApplicationFrontendEnabled"] = "false",
+            ["RunicApplicationFrontendInstall"] = "false",
             ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "1",
             [ViteDevelopmentServer.ServerEnvironmentVariable] = null,
             [ViteDevelopmentServer.EntryEnvironmentVariable] = null,

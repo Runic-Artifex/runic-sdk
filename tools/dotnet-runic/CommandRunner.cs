@@ -37,7 +37,7 @@ internal static class CommandRunner
                 or InvalidOperationException)
         {
             throw new DevUsageException(
-                "RTKDEV1004",
+                "RAPPDEV1004",
                 $"Could not start '{executable}'. Ensure it is installed and available on PATH.");
         }
 

@@ -15,11 +15,6 @@ names. A host must report each status explicitly; hosts without a capability
 projection, and unconfigured headless capabilities, are unavailable with a
 stable reason.
 
-The former `RunicToolkit.Hosting`, `RunicToolkit.Desktop`,
-`RunicToolkit.Hosting.Abstractions`, and `RunicToolkit.Hosting.Generators`
-packages are preview identities. Move to `Runic.Application`; builds that still
-reference a preview identity receive `RAPP0001` with this migration destination.
-
 For macOS embedded Desktop applications, enter through synchronous
 `ApplicationHost.Run()` on the process main thread. The selected Desktop host
 implements `IApplicationMainThreadHost` and services AppKit while the asynchronous

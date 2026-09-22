@@ -5,7 +5,7 @@ import { counterBridge } from "./counter-bridge";
 import type { CounterCommand, CounterEvent, CounterReceipt, CounterSnapshot } from "./application.bridge.generated";
 
 @Component({
-  selector: "runic-toolkit-root",
+  selector: "runic-application-root",
   standalone: true,
   templateUrl: "./app.html",
 })

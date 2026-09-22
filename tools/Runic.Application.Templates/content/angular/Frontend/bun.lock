@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@runic-artifex/runic-toolkitstarter-angular",
+      "name": "@runic-artifex/runic-application-starter-angular",
       "dependencies": {
         "@angular/common": "22.1.5",
         "@angular/core": "22.1.5",

@@ -13,8 +13,8 @@
     <IsPackable>false</IsPackable>
     <RunicApplicationBridgeGenerate>false</RunicApplicationBridgeGenerate>
     <RunicApplicationBridgeAuthority>csharp</RunicApplicationBridgeAuthority>
-    <RunicToolkitFrontendDevServerKind>vite</RunicToolkitFrontendDevServerKind>
-    <RunicToolkitFrontendViteDevServerEntry>/src/main.tsx</RunicToolkitFrontendViteDevServerEntry>
+    <RunicApplicationFrontendDevServerKind>vite</RunicApplicationFrontendDevServerKind>
+    <RunicApplicationFrontendViteDevServerEntry>/src/main.tsx</RunicApplicationFrontendViteDevServerEntry>
     <RunicAssetsDist Condition="'$(RunicBridgeInspect)' != 'true'">$(MSBuildProjectDirectory)/Frontend/dist</RunicAssetsDist>
   </PropertyGroup>
   <ItemGroup>

@@ -12,9 +12,9 @@ namespace Runic.Application.Tool;
 internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
 {
     internal const string ServerEnvironmentVariable =
-        "RUNIC_TOOLKIT_FRONTEND_DEV_SERVER";
+        "RUNIC_APPLICATION_FRONTEND_DEV_SERVER";
     internal const string KindEnvironmentVariable =
-        "RUNIC_TOOLKIT_FRONTEND_DEV_SERVER_KIND";
+        "RUNIC_APPLICATION_FRONTEND_DEV_SERVER_KIND";
 
     private readonly RunningProcess _process;
 
@@ -127,7 +127,7 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                 {
                     int exitCode = await Completion.ConfigureAwait(false);
                     throw new DevDevelopmentException(
-                        "RTKDEV1007",
+                        "RAPPDEV1007",
                         $"The Angular development server exited before readiness with code {exitCode}.");
                 }
 
@@ -155,7 +155,7 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new DevDevelopmentException(
-                "RTKDEV1007",
+                "RAPPDEV1007",
                 $"Timed out waiting for the Angular development server at {Origin}. " +
                 "Run 'dotnet runic doctor' and verify the Angular serve target.");
         }

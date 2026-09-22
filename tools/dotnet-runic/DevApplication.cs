@@ -51,7 +51,7 @@ internal static class DevApplication
                 using var phase = PhaseTimer.Start("Restoring selected host dependencies");
                 await RequireSuccessAsync(dotnetHost, configuration.ProjectDirectory,
                     ["restore", configuration.ProjectPath, $"-p:Configuration={options.Configuration}"],
-                    "RTKDEV1006", "Selected host restore failed.", stop.Token).ConfigureAwait(false);
+                    "RAPPDEV1006", "Selected host restore failed.", stop.Token).ConfigureAwait(false);
                 phase.Complete();
             }
             if (configuration.NodeEnabled)
@@ -94,7 +94,7 @@ internal static class DevApplication
                 foreach (var library in libraries.EnumerateObject())
                     if (library.Name.StartsWith(package, StringComparison.Ordinal)) return;
         }
-        throw new DevUsageException("RTKDEV1008", $"The {configuration.Host} host has not been restored. Omit --no-restore when changing hosts.");
+        throw new DevUsageException("RAPPDEV1008", $"The {configuration.Host} host has not been restored. Omit --no-restore when changing hosts.");
     }
 
     private static async Task<int> RunDevelopmentLoopAsync(
@@ -238,7 +238,7 @@ internal static class DevApplication
         }
 
         throw new DevDevelopmentException(
-            "RTKDEV1007",
+            "RAPPDEV1007",
             completed == host.Completion
                 ? $"The Runic Desktop host watcher exited unexpectedly with code {exitCode}."
                 : completed == developmentServer?.Completion
@@ -262,7 +262,7 @@ internal static class DevApplication
                 packageManager.Executable,
                 configuration.FrontendPackageDirectory,
                 packageManager.InstallArguments(),
-                "RTKDEV1006",
+                "RAPPDEV1006",
                 $"The Runic Assets frontend dependency restore with {packageManager.Name} failed. Run 'dotnet runic doctor' to verify the committed lock file and package train.",
                 cancellationToken).ConfigureAwait(false);
         }
@@ -270,7 +270,7 @@ internal static class DevApplication
             packageManager.Executable,
             configuration.FrontendPackageDirectory,
             packageManager.RunScriptArguments("build", "."),
-            "RTKDEV1006",
+            "RAPPDEV1006",
             "The Runic Assets frontend build failed.",
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
@@ -311,11 +311,11 @@ internal static class DevApplication
                 "-nologo",
                 $"-target:{configuration.FrontendCompilerHotReloadTarget}",
                 $"-property:Configuration={buildConfiguration}",
-                "-property:RunicToolkitFrontendCompilerDevelopmentHotReload=true",
-                "-property:RunicToolkitFrontendEnabled=false",
-                "-property:RunicToolkitFrontendInstall=false",
+                "-property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
+                "-property:RunicApplicationFrontendEnabled=false",
+                "-property:RunicApplicationFrontendInstall=false",
             ],
-            "RTKDEV1006",
+            "RAPPDEV1006",
             "Frontend compiler integration failed.",
             cancellationToken).ConfigureAwait(false);
     }
@@ -337,7 +337,7 @@ internal static class DevApplication
                     "-nologo",
                     $"-target:{configuration.FrontendWatchTarget}",
                     $"-property:Configuration={buildConfiguration}",
-                    "-property:RunicToolkitFrontendInstall=false",
+                    "-property:RunicApplicationFrontendInstall=false",
                 ]);
         }
 
@@ -372,7 +372,7 @@ internal static class DevApplication
             dotnetHost,
             configuration.ProjectDirectory,
             arguments,
-            "RTKDEV1006",
+            "RAPPDEV1006",
             $"Initial build failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect prerequisites.",
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
@@ -395,9 +395,9 @@ internal static class DevApplication
             "-property:DebugType=portable",
             "-property:DebugSymbols=true",
             "-property:Optimize=false",
-            "-property:RunicToolkitFrontendCompilerDevelopmentHotReload=true",
-            "-property:RunicToolkitFrontendInstall=" + (options.Restore ? "true" : "false"),
-            "-property:RunicToolkitFrontendBuild="
+            "-property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
+            "-property:RunicApplicationFrontendInstall=" + (options.Restore ? "true" : "false"),
+            "-property:RunicApplicationFrontendBuild="
                 + (options.WatchFrontend && configuration.HasDevelopmentServer
                     ? "false"
                     : "true"),
@@ -445,7 +445,7 @@ internal static class DevApplication
             packageManager.Executable,
             configuration.FrontendPackageDirectory,
             packageManager.RunScriptArguments("contract:generate", "."),
-            "RTKDEV1006",
+            "RAPPDEV1006",
             $"Bridge IR generation failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect the configured toolchain.",
             cancellationToken).ConfigureAwait(false);
 
@@ -453,7 +453,7 @@ internal static class DevApplication
             packageManager.Executable,
             configuration.FrontendPackageDirectory,
             packageManager.RunScriptArguments("contract:check", "."),
-            "RTKDEV1006",
+            "RAPPDEV1006",
             $"Bridge IR verification failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect stale outputs.",
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
@@ -551,7 +551,7 @@ internal static class DevApplication
               -h, --help              Show this help.
 
             The selected project supplies frontend paths through
-            optional RunicToolkit frontend-development MSBuild properties. The command generates and
+            optional Runic Application frontend-development MSBuild properties. The command generates and
             verifies contracts, performs the initial build, starts the native Runic Desktop
             host and frontend tooling. Projects that opt into Vite development-server
             mode receive native-window CSS/JavaScript HMR without restarting .NET;
