@@ -115,17 +115,20 @@ The hosted-service profile is documented separately in
 [Hosted service admission](hosted-service.md). It does not promote this local
 WebSocket endpoint into a public route.
 
-## Optional Runic Flow orchestration
+## Historical Runic Flow integration
 
-Applications with non-trivial process policy can use the headless `RunicFlow`
-runtime behind generated handlers. `RunicFlow.ApplicationBridge` reuses the
-bridge operation identifier while adding concurrency slots, timeout, monitoring,
-and typed outcomes. Flow process versions remain process-local; this bridge still
-owns wire sessions, revisions, sequences, reconnect, and cancellation.
+Older design records described an optional headless `RunicFlow` runtime behind
+generated handlers, including a `RunicFlow.ApplicationBridge` integration. That
+runtime and package identity are retired; no current SDK release exposes them.
+Applications with non-trivial process policy now keep that policy in
+application-owned services and generated handlers while Application Bridge
+continues to own wire sessions, revisions, sequences, reconnect, and
+cancellation.
 
-Keep contracts application-specific. Expose `StartInstallation`,
-`DestinationSelected`, and `OperationProgress`, for example—not generic Flow
-commands or internal process snapshots.
+The historical contract examples remain useful as naming guidance: expose
+application-specific commands and events such as `StartInstallation`,
+`DestinationSelected`, and `OperationProgress`, not generic process snapshots.
+They are not a promise of a Runic Flow package or orchestration API.
 
 The committed Setup contract under `protocol/application-bridge/setup` is the
 reference contract. The package-only runnable Setup application lives in
