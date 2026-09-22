@@ -662,7 +662,7 @@ export async function verifyToolAndTemplatePackages(directory, nuget, env) {
   run(translationTool, ["validate", "--project", join(item, "translations")], directory, env);
   const installedSchemas = join(directory, "installed-translation-schemas");
   run(translationTool, ["schema", "--output", installedSchemas], directory, env);
-  for (const schema of ["project-v1.schema.json", "message-ast-v5.schema.json", "locale-artifact-v5.schema.json", "web-module-manifest-v3.schema.json"])
+  for (const schema of ["project-v1.schema.json", "message-ast-v5.schema.json", "locale-artifact-v5.schema.json", "external-pack-v5.schema.json", "web-module-manifest-v3.schema.json"])
     assert.ok(readFileSync(join(installedSchemas, schema), "utf8").length > 0, `Installed translation tool omitted ${schema}`);
 
   run(translationTool, ["validate", "--project", join(translations, "translations")], directory, env);
