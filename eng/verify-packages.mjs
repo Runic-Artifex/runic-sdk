@@ -201,11 +201,11 @@ export async function verifyPackages(packageName) {
         code: { namespace: "PackageCanary", className: "CanaryText" },
         baseLocale: "en", locales: ["en"],
       }));
-      writeFileSync(join(resources, "en.rmf2"), "Greeting =\n  .input {$name :string}\n  Hello {$name}\n");
+      writeFileSync(join(resources, "en.rmf2"), "Greeting =\n  .input {$name :string}\n  {{Hello {$name}}}\n");
       writeFileSync(join(consumer, "Program.cs"),
         'var manager = await PackageCanary.CanaryTextCatalog.CreateManagerAsync();\n' +
         'var text = new PackageCanary.CanaryText(manager);\n' +
-        'if (text.Greeting("Ada") != "Hello Ada") throw new Exception("Packaged RMF2 accessor failed");\n' +
+        'if (text.r_4772656574696e67("Ada") != "Hello Ada") throw new Exception("Packaged RMF2 accessor failed");\n' +
         'Console.WriteLine("Packaged RMF2 analyzer and runtime passed.");\n');
     }
     if (
