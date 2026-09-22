@@ -1,4 +1,3 @@
-using Runic.Platform.Administration.Windows.Internal.Backends;
 using Runic.Platform.Administration.Windows;
 using Runic.Platform.Administration.Windows.DirectoryServices;
 using Runic.Platform.Administration.Windows.Firewall;
@@ -64,7 +63,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         {
             await report.Check("firewall.inspect", async () =>
             {
-                var client = AdministrationBackends.Firewall(options.Backend);
+                var client = new WindowsFirewallClient();
                 Require((await client.GetProfilesAsync(token)).Length == 3, "Expected three firewall profiles.");
                 _ = await client.EnumerateAsync(token);
             }, token);
@@ -72,7 +71,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         }
         if (options.Includes("shares"))
         {
-            await report.Check("shares.inspect", () => { _ = AdministrationBackends.Shares(options.Backend).Enumerate(); return Task.CompletedTask; }, token);
+            await report.Check("shares.inspect", () => { _ = new WindowsShareClient().Enumerate(); return Task.CompletedTask; }, token);
             foreach (var explicitSecurity in new[] { false, true })
             {
                 var check = explicitSecurity ? "shares.explicit-security" : "shares.default-security";
@@ -186,7 +185,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
     }
     private async Task Firewall()
     {
-        var client = AdministrationBackends.Firewall(options.Backend);
+        var client = new WindowsFirewallClient();
         var spec = new FirewallRuleSpecification(report.Prefix, FirewallDirection.Inbound, FirewallAction.Block)
         {
             Enabled = false, ApplicationPath = Executable, Protocol = 6, LocalPorts = "49199", RemoteAddresses = "127.0.0.1",
@@ -225,7 +224,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
     }
     private async Task Shares(bool explicitSecurity)
     {
-        var client = AdministrationBackends.Shares(options.Backend);
+        var client = new WindowsShareClient();
         var suffix = explicitSecurity ? "acl" : "default";
         var name = report.Prefix + "-" + suffix;
         var path = Path.Combine(report.Folder, "share-" + suffix);

@@ -1,4 +1,3 @@
-using Runic.Platform.Administration.Windows.Internal.Backends;
 using System.Runtime.Versioning;
 using Runic.Platform.Administration.Windows.GroupPolicy;
 using System.Collections.Immutable;
@@ -35,7 +34,7 @@ internal static class NativeTests
         await CheckServicesAsync();
         await CheckTaskInspectionAsync();
         await CheckFirewallInspectionAsync();
-        await CheckPilotBackendsAsync();
+        await CheckGeneratedClientsAsync();
         CheckLdapTransport();
         await CheckInventoryAsync();
         await CheckNativeWmiAsync();
@@ -51,38 +50,24 @@ internal static class NativeTests
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private static async Task CheckPilotBackendsAsync()
+    private static async Task CheckGeneratedClientsAsync()
     {
-        // These reads exercise both native projections against the same Windows state, without mutation.
-        var handwritten = AdministrationBackends.Firewall("handwritten");
-        var generated = AdministrationBackends.Firewall("cswin32");
-        Check((await handwritten.GetProfilesAsync()).SequenceEqual(await generated.GetProfilesAsync()),
-            "Firewall backends disagree on effective profiles.");
-        var expectedRules = (await handwritten.EnumerateAsync()).GroupBy(rule =>
-            (rule.Configuration with { Interfaces = default }, string.Join('\0', rule.Configuration.Interfaces)))
-            .ToDictionary(group => group.Key, group => group.Count());
-        var actualRules = (await generated.EnumerateAsync()).GroupBy(rule =>
-            (rule.Configuration with { Interfaces = default }, string.Join('\0', rule.Configuration.Interfaces)))
-            .ToDictionary(group => group.Key, group => group.Count());
-        Check(expectedRules.Count == actualRules.Count && expectedRules.All(pair => actualRules.GetValueOrDefault(pair.Key) == pair.Value),
-            "Firewall backends disagree on rule data or duplicates.");
+        var firewall = new WindowsFirewallClient();
+        Check((await firewall.GetProfilesAsync()).Length == 3, "Expected all firewall profiles.");
+        _ = await firewall.EnumerateAsync();
         var missing = "RunicMissing-" + Guid.NewGuid().ToString("N");
-        foreach (var backend in new[] { "handwritten", "cswin32" })
+        Check(await firewall.FindAsync(missing) is null, "Missing firewall rule must remain absent.");
+        try
         {
-            Check(await AdministrationBackends.Firewall(backend).FindAsync(missing) is null, "Missing firewall rule must remain absent.");
-            Check(AdministrationBackends.Shares(backend).Find(missing) is null, "Missing share must remain absent.");
-            try
-            {
-                await AdministrationBackends.Firewall(backend).CreateAsync(new(missing, FirewallDirection.Inbound, FirewallAction.Block)
-                { Protocol = 1, LocalPorts = "80" });
-                throw new InvalidOperationException("Invalid firewall specification reached native creation.");
-            }
-            catch (ArgumentException) { }
+            await firewall.CreateAsync(new(missing, FirewallDirection.Inbound, FirewallAction.Block)
+            { Protocol = 1, LocalPorts = "80" });
+            throw new InvalidOperationException("Invalid firewall specification reached native creation.");
         }
-        var expectedShares = AdministrationBackends.Shares("handwritten").Enumerate().OrderBy(share => share.Name, StringComparer.Ordinal);
-        var actualShares = AdministrationBackends.Shares("cswin32").Enumerate().OrderBy(share => share.Name, StringComparer.Ordinal);
-        Check(expectedShares.SequenceEqual(actualShares), "Share backends disagree on native enumeration.");
-        Console.WriteLine("PASS Handwritten/CsWin32 parity: firewall profiles/rules, SMB enumeration, missing lookups and validation.");
+        catch (ArgumentException) { }
+        var shares = new WindowsShareClient();
+        _ = shares.Enumerate();
+        Check(shares.Find(missing) is null, "Missing share must remain absent.");
+        Console.WriteLine("PASS Generated firewall and SMB inspection, missing lookups and validation.");
     }
 
     private static void CheckDuplicateShareError()

@@ -27,9 +27,8 @@ pretending that Session 0 itself has a desktop:
   -ReceiptPath C:\path\to\uia-receipt.json
 ```
 
-The scripts do not install software. Optional Narrator checks temporarily select
-input profiles and start Narrator;
-normal completion and failure restore the original language list/profile and clipboard. They create
+The scripts do not install software. Optional Narrator checks start Narrator and
+normal completion and failure restore the clipboard. They create
 and remove receipt-specific input/output files. The native open-file dialog
 returns a real `IReadFileLease`; open and save cancellation must return `Dismissed`.
 The save path acquires an `ISaveFileLease`, stages a `RequireAtomicReplace` write,
@@ -75,24 +74,13 @@ maintained `--system-only` test runs from SSH, while full display and system
 acquisition requires an interactive desktop; `powercfg /requests` observation
 also requires elevation.
 
-## Microsoft Pinyin and Narrator
-
-**Windows IME support is best effort. The strict Pinyin probe is disabled.**
-Passing `-Ime` emits a warning and continues the other checks without IME coverage.
-WebView2 can commit Chinese text while showing detached composition and omitting
-DOM composition events; the behavior also occurs in a standard WebView2 host,
-while Edge passed the same page. Successful runs also occur, and no reliable
-Runic-specific fix has been identified. Revisit in December 2026 or later with
-updated Windows/WebView2 versions; this is not a release blocker.
+## Narrator
 
 Add `-Narrator` to either command above. Narrator can run independently. Run in an unlocked, dedicated test
 session with an English (US/UK) or German keyboard, no existing Narrator process,
 and a working default audio output. Keep the helper files `windows-accessibility.ps1`
 and `windows-loopback.cs` alongside the driver. Narrator role assertions currently
 recognize English and German speech; another locale needs equivalent role words.
-
-The disabled diagnostic implementation is retained in `windows-accessibility.ps1`
-for future investigation. It does not run through either supported entry point.
 
 Narrator runs after keyboard and picker checks. The driver focuses the edit
 and button, requests Narrator's read-current-item command, and checks the labels
