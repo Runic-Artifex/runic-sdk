@@ -25,12 +25,12 @@ maintained independently; Flow is archived.
 
 The maintained CS-WebUI surface is intentionally small and explicit:
 
-| Surface | Current evidence |
-| --- | --- |
-| SDK adapter | `Runic.Application.CsWebUi`, covered by `tests/dotnet/Runic.Application.CsWebUi.Tests` for startup readiness and presentation shutdown. |
+| Surface               | Current evidence                                                                                                                                                                                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SDK adapter           | `Runic.Application.CsWebUi`, covered by `tests/dotnet/Runic.Application.CsWebUi.Tests` for startup readiness and presentation shutdown.                                                                                                                               |
 | Application templates | The React, Vue, Svelte, and Angular templates under `tools/Runic.Application.Templates/content` all retain the `RunicHost=cswebui` option and reference the same adapter package. They are host variants of the application template, not separate CS-WebUI products. |
-| Maintained example | `examples/document-migration` builds the CS-WebUI host, exercises the bridge and dirty-close behavior, and checks that the host does not pull Desktop or ASP.NET Core dependencies. It is evidence and a migration reference, not a separately released application. |
-| Upstream runtime | The independently maintained `CsWebUi` package remains the native runtime boundary. The SDK adapter composes it and does not claim ownership of its release. |
+| Maintained example    | `examples/document-migration` builds the CS-WebUI host, exercises the bridge and dirty-close behavior, and checks that the host does not pull Desktop or ASP.NET Core dependencies. It is evidence and a migration reference, not a separately released application.  |
+| Upstream runtime      | The independently maintained `CsWebUi` package remains the native runtime boundary. The SDK adapter composes it and does not claim ownership of its release.                                                                                                          |
 
 `Tmds.DBus.Protocol` is a runtime dependency of
 `Runic.Platform.Linux.Portal`; `Tmds.DBus.Generator` is a private build-time
