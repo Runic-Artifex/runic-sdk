@@ -1,5 +1,9 @@
 # ADR 0006: Target-framework policy
 
+> Historical policy record. The `RunicToolkit*` MSBuild property names below
+> belong to the pre-shipped topology; consult the current build files and
+> package READMEs for active property and package identities.
+
 - Status: Accepted
 - Date: 2026-07-22
 

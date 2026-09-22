@@ -1,5 +1,9 @@
 # ADR 0007: Hosting lifecycle and failure precedence
 
+> Historical naming note: the `RunicToolkit.*` adapter names in this decision
+> predate the shipped `Runic.Application.*` package graph. The lifecycle rules
+> remain architectural context, not a package inventory.
+
 - Status: Accepted
 - Date: 2026-07-22
 

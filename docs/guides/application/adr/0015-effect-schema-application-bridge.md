@@ -1,6 +1,10 @@
 # ADR 0015: Effect Schema-first Application Bridge
 
-- Status: Implemented
+> Historical implementation record: the `RunicToolkit.*` package names and
+> prerelease evidence below are superseded by ADR 0019 and the shipped
+> `Runic.Application.*` packages. This record is retained for decision history.
+
+- Status: Historical — superseded by ADR 0019 and the shipped bridge toolchain
 - Updated: 2026-08-07
 - Tracks: [issue #5](https://github.com/Runic-Artifex/runic-toolkit/issues/5)
 

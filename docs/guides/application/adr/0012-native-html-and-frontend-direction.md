@@ -1,5 +1,9 @@
 # ADR 0012: Frontend direction
 
+> Historical implementation direction. The `Toolkit` package ownership names
+> below predate the shipped Application Bridge package graph and are retained
+> for decision history; current identities live in the maintained package docs.
+
 - Status: Accepted
 - Updated: 2026-08-05
 

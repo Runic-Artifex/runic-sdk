@@ -1,5 +1,9 @@
 # ADR 0011: cs-webui is the desktop host boundary
 
+> Historical naming note: the `RunicToolkit.*` package names in this decision
+> predate the shipped `Runic.Application.*` topology. The boundary remains
+> useful; consult the maintained package README for current identities.
+
 - Status: Accepted
 - Date: 2026-07-26
 
