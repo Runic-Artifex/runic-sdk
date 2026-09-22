@@ -193,20 +193,20 @@ export async function verifyPackages(packageName) {
         : `Console.WriteLine(System.Reflection.Assembly.Load("${p.name}").GetName().Name);`,
     );
     if (p.name === "Runic.Translations.Build") {
-      // Exercise the packaged analyzer and its parser without a CLI or source reference.
+      // Exercise the packaged analyzer without a CLI or source reference.
       const resources = join(consumer, "translations");
       mkdirSync(resources);
       writeFileSync(join(resources, "runic.json"), JSON.stringify({
-        schemaVersion: 1, sourceLayout: "locale-toml", catalog: "canary",
+        schemaVersion: 1, sourceLayout: "rmf2-v1", executionProfile: "rmf2-execution-v2", catalog: "canary",
         code: { namespace: "PackageCanary", className: "CanaryText" },
         baseLocale: "en", locales: ["en"],
       }));
-      writeFileSync(join(resources, "en.toml"), "Greeting = '''\n.input {$name :string}\nHello {$name}\n'''\n");
+      writeFileSync(join(resources, "en.rmf2"), "Greeting =\n  .input {$name :string}\n  {{Hello {$name}}}\n");
       writeFileSync(join(consumer, "Program.cs"),
         'var manager = await PackageCanary.CanaryTextCatalog.CreateManagerAsync();\n' +
         'var text = new PackageCanary.CanaryText(manager);\n' +
-        'if (text.Greeting("Ada") != "Hello Ada") throw new Exception("Packaged TOML accessor failed");\n' +
-        'Console.WriteLine("Packaged TOML analyzer and runtime passed.");\n');
+        'if (text.r_4772656574696e67("Ada") != "Hello Ada") throw new Exception("Packaged RMF2 accessor failed");\n' +
+        'Console.WriteLine("Packaged RMF2 analyzer and runtime passed.");\n');
     }
     if (
       [

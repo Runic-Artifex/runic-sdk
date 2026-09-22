@@ -65,7 +65,7 @@ export const products: Product[] = [
     versionState: 'unassigned',
     availability: 'archived',
     source:
-      'https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/releases/preview-migration.md',
+      'https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/architecture/application-bridge.md',
     bestFor: ['Understanding an older Runic integration before migrating'],
     boundaries: [
       'No current SDK package or forwarding package is published under the Runic Flow name',

@@ -202,22 +202,22 @@ jobs:
         working-directory: apps/translations-editor/Frontend
         run: bun run --bun verify:built
         env:
-          RUNIC_TRANSLATIONS_MANIFEST: ${{ github.workspace }}/apps/translations-editor/obj/Release/net10.0/translations/editor.esm/web-module-manifest-v2.json
+          RUNIC_TRANSLATIONS_MANIFEST: ${{ github.workspace }}/apps/translations-editor/obj/Release/net10.0/translations/editor.esm-v5/web-module-manifest-v3.json
       - name: Run editor smoke scenarios
         run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll --smoke-test
       - name: Validate the example translation workspace
         run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll validate apps/translations-editor/ExampleWorkspace
       - uses: ./.github/actions/install-browser
-      - name: Verify real hosted editor TOML editing and recovery
-        run: bun apps/translations-editor/tests/HostedBrowserE2E/run-hosted-toml-ui.mjs apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll
+      - name: Verify real hosted editor RMF2 editing and recovery
+        run: bun apps/translations-editor/tests/HostedBrowserE2E/run-hosted-rmf2-ui.mjs apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll
         env:
-          RUNIC_EDITOR_HOSTED_E2E_REPORT_DIR: ${{ github.workspace }}/artifacts/editor-hosted-toml-ui
+          RUNIC_EDITOR_HOSTED_E2E_REPORT_DIR: ${{ github.workspace }}/artifacts/editor-hosted-rmf2-ui
       - name: Retain hosted editor browser evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: editor-hosted-toml-ui
-          path: artifacts/editor-hosted-toml-ui
+          name: editor-hosted-rmf2-ui
+          path: artifacts/editor-hosted-rmf2-ui
           if-no-files-found: ignore
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
