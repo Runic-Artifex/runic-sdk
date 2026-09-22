@@ -258,70 +258,6 @@ public static class AssetArchive
         return new AssetArchiveInspection(archive.Manifest, SerializeManifest(archive.Manifest));
     }
 
-    /// <summary>Returns the schema compatibility and migration decision for a validated archive.</summary>
-    public static AssetArchiveCompatibilityReport GetCompatibilityReport(
-        Stream source,
-        AssetArchiveReadOptions? options = null) =>
-        new(Inspect(source, options));
-
-    /// <summary>
-    /// Validates and copies an archive through the current migration boundary. Schema 1 is retained,
-    /// so a compatible archive is copied byte-for-byte without rewriting its manifest or content.
-    /// </summary>
-    public static async ValueTask<AssetArchiveCompatibilityReport> MigrateAsync(
-        Stream source,
-        Stream destination,
-        AssetArchiveReadOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(destination);
-        if (!source.CanRead)
-        {
-            throw new ArgumentException("The migration source must be readable.", nameof(source));
-        }
-        if (!destination.CanWrite)
-        {
-            throw new ArgumentException("The migration destination must be writable.", nameof(destination));
-        }
-
-        if (ReferenceEquals(source, destination))
-        {
-            throw new ArgumentException("Migration source and destination must be different streams.", nameof(destination));
-        }
-
-        options ??= new AssetArchiveReadOptions();
-        ValidateReadOptions(options);
-        long? sourcePosition = source.CanSeek ? source.Position : null;
-        long? destinationPosition = destination.CanSeek ? destination.Position : null;
-        try
-        {
-            using var buffered = new MemoryStream();
-            await CopyBoundedAsync(source, buffered, options.MaxArchiveBytes, cancellationToken)
-                .ConfigureAwait(false);
-            byte[] bytes = buffered.ToArray();
-            using var validation = new MemoryStream(bytes, writable: false);
-            AssetArchiveSource archive = ReadCore(validation, options, cancellationToken);
-            var inspection = new AssetArchiveInspection(archive.Manifest, SerializeManifest(archive.Manifest));
-            var report = new AssetArchiveCompatibilityReport(inspection);
-            cancellationToken.ThrowIfCancellationRequested();
-            await destination.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
-            return report;
-        }
-        finally
-        {
-            if (sourcePosition is long sourceOffset)
-            {
-                source.Position = sourceOffset;
-            }
-
-            if (destinationPosition is long destinationOffset)
-            {
-                destination.Position = destinationOffset;
-            }
-        }
-    }
-
     private static async ValueTask WriteManifestAsync(
         ZipArchive archive,
         AssetManifest manifest,
@@ -443,28 +379,6 @@ public static class AssetArchive
             }
 
             destination.Write(buffer, 0, read);
-            total += read;
-        }
-    }
-
-    private static async ValueTask CopyBoundedAsync(
-        Stream source,
-        Stream destination,
-        long maximumBytes,
-        CancellationToken cancellationToken)
-    {
-        byte[] buffer = new byte[81_920];
-        long total = 0;
-        int read;
-        while ((read = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
-        {
-            if (read > maximumBytes - total)
-            {
-                throw new InvalidDataException(
-                    $"The asset archive exceeds the {maximumBytes} byte archive-size limit.");
-            }
-
-            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             total += read;
         }
     }
@@ -759,41 +673,6 @@ public sealed class AssetArchiveInspection
 
         return report.ToString();
     }
-}
-
-/// <summary>Reports whether an archive needs a schema migration for this reader.</summary>
-public sealed class AssetArchiveCompatibilityReport
-{
-    private readonly bool _isCompatible;
-    private readonly string _migrationAction;
-
-    internal AssetArchiveCompatibilityReport(AssetArchiveInspection inspection)
-    {
-        Inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
-        _isCompatible = StringComparer.Ordinal.Equals(
-            Inspection.ArchiveVersion,
-            AssetArchive.CurrentVersion);
-        _migrationAction = "No migration required; runic.assets.archive/1 is retained byte-for-byte.";
-    }
-
-    /// <summary>Gets the validated archive inspection.</summary>
-    public AssetArchiveInspection Inspection { get; }
-
-    /// <summary>Gets whether this reader accepts the inspected archive schema.</summary>
-    public bool IsCompatible => _isCompatible;
-
-    /// <summary>Gets whether migration is required. Retained schema 1 always returns false.</summary>
-    public bool RequiresMigration => !_isCompatible;
-
-    /// <summary>Gets the explicit schema-1 migration decision.</summary>
-    public string MigrationAction => _migrationAction;
-
-    /// <summary>Writes a deterministic compatibility report suitable for logs and CI artifacts.</summary>
-    public string ToDeterministicReport() =>
-        Inspection.ToDeterministicReport() +
-        "compatible=" + IsCompatible.ToString().ToLowerInvariant() + '\n' +
-        "requiresMigration=" + RequiresMigration.ToString().ToLowerInvariant() + '\n' +
-        "migrationAction=" + MigrationAction + '\n';
 }
 
 /// <summary>Bounds memory and file counts while reading an untrusted asset archive.</summary>

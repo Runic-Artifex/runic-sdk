@@ -23,15 +23,6 @@ export interface RunicDiagnosticEntry {
   readonly detail?: RunicDiagnosticDetail;
 }
 
-export interface RunicTraceEntry {
-  readonly id?: string;
-  readonly timestamp?: string;
-  readonly kind: RunicTraceKind;
-  readonly label: string;
-  /** Legacy bridge input; it is reduced to DiagnosticDetail before transport. */
-  readonly detail?: Readonly<Record<string, unknown>>;
-}
-
 export interface RunicDiagnosticSummary {
   readonly source: RunicDiagnosticSource;
   readonly kind: RunicTraceKind;

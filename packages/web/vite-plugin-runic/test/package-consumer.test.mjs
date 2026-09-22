@@ -73,19 +73,17 @@ test("packed package is source-free and works from an isolated consumer", { time
       join(root, "consumer.ts"),
       [
         'import {',
-        '  createRunicDevtoolsObserver, createRunicDiagnosticReporter, disposeRunicHmrResource, preserveRunicHmrResource, reportRunicDiagnostic, reportRunicState, traceRunicEvent,',
-        '  type RunicDevtoolsObserver, type RunicDiagnosticDetail, type RunicDiagnosticDetailValue, type RunicDiagnosticEntry, type RunicDiagnosticReporter, type RunicDiagnosticSource, type RunicRuntimeState, type RunicTraceEntry, type RunicTraceKind,',
+        '  createRunicDiagnosticReporter, disposeRunicHmrResource, preserveRunicHmrResource, reportRunicDiagnostic, reportRunicState,',
+        '  type RunicDiagnosticDetail, type RunicDiagnosticDetailValue, type RunicDiagnosticEntry, type RunicDiagnosticReporter, type RunicDiagnosticSource, type RunicRuntimeState, type RunicTraceKind,',
         '} from "virtual:runic/client";',
         'const value: RunicDiagnosticDetailValue = true;',
         'const detail: RunicDiagnosticDetail = { value };',
         'const source: RunicDiagnosticSource = "assets";',
         'const kind: RunicTraceKind = "event";',
         'const state: RunicRuntimeState = { connection: { state: "connected", transport: "consumer", revision: 1 } };',
-        'const trace: RunicTraceEntry = { kind, label: "ready", detail };',
         'const diagnostic: RunicDiagnosticEntry = { source, kind, label: "ready", detail };',
-        'const observer: RunicDevtoolsObserver = createRunicDevtoolsObserver();',
         'const reporter: RunicDiagnosticReporter = createRunicDiagnosticReporter(source);',
-        'reportRunicState(state); traceRunicEvent(trace); reportRunicDiagnostic(diagnostic); reporter.report({ kind, label: "ready", detail }); observer.state(state); observer.trace(trace);',
+        'reportRunicState(state); reportRunicDiagnostic(diagnostic); reporter.report({ kind, label: "ready", detail });',
         'const resource = preserveRunicHmrResource("type-consumer", () => ({ dispose() {} }));',
         'void disposeRunicHmrResource("type-consumer", (value) => { (value as typeof resource).dispose(); });',
       ].join("\n"),
@@ -110,11 +108,6 @@ test("packed package is source-free and works from an isolated consumer", { time
     const manifest = JSON.parse(await readFile(join(root, "node_modules", "@runic-artifex", "vite-plugin-runic", "package.json"), "utf8"));
     assert.equal(manifest.name, "@runic-artifex/vite-plugin-runic");
 
-    await writeFile(join(root, "entry.js"), 'import "virtual:runic-toolkit/client";', "utf8");
-    await assert.rejects(
-      execFile(process.execPath, ["build.mjs"], { cwd: root }),
-      /RUNICP001: "virtual:runic-toolkit\/client" was removed in v0\.2\. Import "virtual:runic\/client" instead\./,
-    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

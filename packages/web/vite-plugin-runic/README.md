@@ -58,19 +58,23 @@ Then import the virtual client once from your browser entry (for example,
 HTML, because it connects the browser-side helpers to the Vite integration.
 
 ```ts
-import { createRunicDevtoolsObserver } from "virtual:runic/client";
+import {
+  createRunicDiagnosticReporter,
+  reportRunicState,
+} from "virtual:runic/client";
 
-const observer = createRunicDevtoolsObserver();
+const diagnostics = createRunicDiagnosticReporter("application-bridge");
 
-observer.state({
+reportRunicState({
   connection: { state: "connecting", transport: "cs-webui" },
 });
 
-observer.trace({ kind: "connection", label: "Application Bridge connecting" });
+diagnostics.report({ kind: "connection", label: "Application Bridge connecting" });
 ```
 
-Pass `observer` to the code that owns bridge state and events. A resource
-retained with `preserveRunicHmrResource` is reused across HMR updates; call
+Use `@runic-artifex/svelte/vite` to connect a Svelte Application Bridge
+projection to these bounded reporters. A resource retained with
+`preserveRunicHmrResource` is reused across HMR updates; call
 `disposeRunicHmrResource` when it should be released explicitly.
 
 If TypeScript cannot resolve the virtual module, include its declaration in a
@@ -97,10 +101,9 @@ these browser helpers:
 
 | Export | Use |
 | --- | --- |
-| `createRunicDevtoolsObserver()` | Creates `state` and `trace` functions for Application Bridge diagnostics. |
 | `createRunicDiagnosticReporter(source)` | Creates a browser reporter for `"application-bridge"`, `"assets"`, or `"translations"`. |
 | `reportRunicDiagnostic(entry)` | Sends one source-tagged diagnostic summary directly. |
-| `reportRunicState(state)` / `traceRunicEvent(entry)` | Sends state or a timeline entry directly. |
+| `reportRunicState(state)` | Sends connection and operation state directly. |
 | `preserveRunicHmrResource(key, create)` | Keeps a resource alive across HMR updates. |
 | `disposeRunicHmrResource(key, dispose?)` | Releases a retained resource; by default, calls its `dispose()` method when present. |
 
@@ -160,15 +163,6 @@ policy. The plugin injects only the bootstrap script; Vite retains development
 server, module graph, build, proxy, and HMR ownership. For production content
 served by the Desktop surface itself, `desktop: true` injects the relative
 bootstrap URL.
-
-## v0.2 migration
-
-`@runic-artifex/vite-plugin-runic-toolkit` was replaced by
-`@runic-artifex/vite-plugin-runic`; it is not a forwarding package. Replace the
-package install, `runicToolkit()` import and call with `runic()`, and every
-`virtual:runic-toolkit/client` import with `virtual:runic/client`. The new
-plugin deliberately rejects the former virtual module with
-`RUNICP001` and this exact remediation.
 
 For a working SvelteKit integration, see the [reference application](https://github.com/Runic-Artifex/runic-sdk/tree/main/apps/translations-editor/Frontend).
 

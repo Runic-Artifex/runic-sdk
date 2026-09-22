@@ -28,11 +28,6 @@ public npm previews; the `preview` tag selects the current preview release.
 Use a Node.js version supported by your SvelteKit and Vite versions. Svelte 4
 is not supported.
 
-For the v0.2 Vite rename, replace the removed
-`@runic-artifex/vite-plugin-runic-toolkit` package and `runicToolkit()` call
-with `@runic-artifex/vite-plugin-runic` and `runic()`. Browser client imports
-move from `virtual:runic-toolkit/client` to `virtual:runic/client`.
-
 ## Adapter and Vite setup
 
 Complete this checklist before adding routes or localization:

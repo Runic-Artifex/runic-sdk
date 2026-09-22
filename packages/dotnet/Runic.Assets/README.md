@@ -103,9 +103,8 @@ single byte ranges directly from this metadata. Archive reads validate declared 
 `AssetArchiveReadOptions` when input is not trusted.
 
 `AssetArchive.Inspect` produces a deterministic report from the authoritative
-manifest. `GetCompatibilityReport` and `MigrateAsync` make the schema policy
-explicit: `runic.assets.archive/1` is retained, so compatible archives need no
-migration and `MigrateAsync` validates then copies their bytes unchanged.
+manifest. Readers accept only the current `runic.assets.archive/1` schema and
+reject incompatible archive versions.
 
 For application integration, consume `IAssetManifestProvider.Manifest` directly
 for asset identity, SHA-256, entity tags, and cache metadata. Do not recreate a

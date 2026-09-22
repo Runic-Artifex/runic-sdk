@@ -7,8 +7,8 @@ import {
 } from "@runic-artifex/application-bridge";
 import { createDesktopFrameChannel } from "@runic-artifex/desktop";
 import { createSvelteApplicationBridge } from "@runic-artifex/svelte";
+import { createViteApplicationBridgeObserver } from "@runic-artifex/svelte/vite";
 import {
-  createRunicDevtoolsObserver,
   preserveRunicHmrResource,
 } from "virtual:runic/client";
 import CounterContract from "./application.bridge.generated";
@@ -51,7 +51,7 @@ export const counterBridge = preserveRunicHmrResource("counter-bridge", () =>
     ),
     {
       reduce: (_snapshot, event) => event.snapshot,
-      observer: createRunicDevtoolsObserver(),
+      observer: createViteApplicationBridgeObserver(),
       inspectSnapshot: (snapshot) => ({ revision: snapshot.revision }),
     },
   ));

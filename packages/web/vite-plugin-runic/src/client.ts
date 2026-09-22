@@ -2,7 +2,6 @@ import {
   sanitizeDiagnosticSummary,
   type RunicDiagnosticEntry,
   type RunicDiagnosticSource,
-  type RunicTraceEntry,
 } from "./diagnostics.js";
 
 export type {
@@ -10,7 +9,6 @@ export type {
   RunicDiagnosticDetailValue,
   RunicDiagnosticEntry,
   RunicDiagnosticSource,
-  RunicTraceEntry,
   RunicTraceKind,
 } from "./diagnostics.js";
 
@@ -33,12 +31,6 @@ export interface RunicRuntimeState {
     completed?: number;
     total?: number;
   }>[];
-}
-
-export interface RunicDevtoolsObserver {
-  readonly state: (state: RunicRuntimeState) => void;
-  readonly trace: (entry: RunicTraceEntry) => void;
-  readonly diagnostic?: (entry: Omit<RunicDiagnosticEntry, "source">) => void;
 }
 
 export interface RunicDiagnosticReporter {
@@ -66,10 +58,6 @@ export function reportRunicState(state: RunicRuntimeState): void {
   hot?.send("runic:state", state);
 }
 
-export function traceRunicEvent(entry: RunicTraceEntry): void {
-  sendDiagnostic({ ...entry, source: "application-bridge" });
-}
-
 /**
  * Reports a display-safe summary from an authoritative Runic subsystem.
  * This intentionally accepts no subsystem state or artifact model.
@@ -88,14 +76,6 @@ export function createRunicDiagnosticReporter(
 ): RunicDiagnosticReporter {
   return {
     report: (entry) => reportRunicDiagnostic({ ...entry, source }),
-  };
-}
-
-export function createRunicDevtoolsObserver(): RunicDevtoolsObserver {
-  return {
-    state: reportRunicState,
-    trace: traceRunicEvent,
-    diagnostic: createRunicDiagnosticReporter("application-bridge").report,
   };
 }
 

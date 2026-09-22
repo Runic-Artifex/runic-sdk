@@ -1,5 +1,10 @@
 import { Cause, Effect, Exit, Option, type Fiber } from "effect";
-import type { ApplicationBridgeService, EffectActionStatus, EffectRunner } from "./types.js";
+import type { ApplicationBridgeController, ApplicationBridgeService, EffectActionStatus } from "./types.js";
+
+type EffectRunner = Pick<
+  ApplicationBridgeController<unknown, unknown, unknown, unknown>,
+  "fork" | "await" | "interrupt"
+>;
 
 /**
  * Projects one latest-wins Effect workflow into Svelte-native reactive state.

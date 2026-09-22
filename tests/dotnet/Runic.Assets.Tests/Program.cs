@@ -26,7 +26,8 @@ internal static class Program
         new("portable archives round-trip deterministic metadata", ArchiveRoundTrip),
         new("archive writes reject content mutation after validation", ArchiveWriteMutation),
         new("directory compiler uses the canonical archive authority", DirectoryArchiveAuthority),
-        new("archive inspection and schema-1 migration reports are deterministic", ArchiveInspectionAndMigration),
+        new("archive inspection is deterministic", ArchiveInspection),
+        new("archive inspection rejects incompatible schema versions", ArchiveUnsupportedVersion),
         new("archive manifest parsing is decompression bounded", ArchiveManifestBound),
         new("ASP.NET Core integration preserves response metadata", AspNetCoreIntegration),
         new("ASP.NET Core delivery binds metadata and bytes from one source snapshot", AspNetCoreSnapshotIntegration),
@@ -211,46 +212,30 @@ internal static class Program
             .ConfigureAwait(false);
     }
 
-    private static async Task ArchiveInspectionAndMigration()
+    private static async Task ArchiveInspection()
     {
         using var archive = new MemoryStream();
         await AssetArchive.WriteAsync(NewEmbeddedSource(), archive).ConfigureAwait(false);
-        byte[] original = archive.ToArray();
 
         archive.Position = 0;
         AssetArchiveInspection first = AssetArchive.Inspect(archive);
-        archive.Position = 0;
-        AssetArchiveCompatibilityReport report = AssetArchive.GetCompatibilityReport(archive);
         Equal(AssetArchive.CurrentVersion, first.ArchiveVersion);
-        Equal(first.Manifest.EntryPoint.Sha256, report.Inspection.Manifest.EntryPoint.Sha256);
-        True(report.IsCompatible);
-        True(!report.RequiresMigration);
-        Contains("migrationAction=No migration required", report.ToDeterministicReport());
         Contains("asset=assets/app.css|text/css|", first.ToDeterministicReport());
+    }
+
+    private static async Task ArchiveUnsupportedVersion()
+    {
+        using var archive = new MemoryStream();
+        using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            ZipArchiveEntry manifest = zip.CreateEntry("runic-assets.json", CompressionLevel.SmallestSize);
+            await using Stream content = manifest.Open();
+            await content.WriteAsync(Encoding.UTF8.GetBytes("{\"version\":\"runic.assets.archive/2\",\"assets\":[]}"))
+                .ConfigureAwait(false);
+        }
 
         archive.Position = 0;
-        using var migrated = new MemoryStream();
-        AssetArchiveCompatibilityReport migration = await AssetArchive
-            .MigrateAsync(archive, migrated)
-            .ConfigureAwait(false);
-        SequenceEqual(original, migrated.ToArray());
-        Equal(report.MigrationAction, migration.MigrationAction);
-        Equal(0L, archive.Position);
-        Equal(0L, migrated.Position);
-
-        using var cancelled = new CancellationTokenSource();
-        cancelled.Cancel();
-        archive.Position = 0;
-        await ThrowsAsync<OperationCanceledException>(
-            async () => await AssetArchive.MigrateAsync(
-                archive,
-                migrated,
-                cancellationToken: cancelled.Token).ConfigureAwait(false)).ConfigureAwait(false);
-        Equal(0L, archive.Position);
-        Equal(0L, migrated.Position);
-        await ThrowsAsync<ArgumentException>(
-            async () => await AssetArchive.MigrateAsync(archive, archive).ConfigureAwait(false))
-            .ConfigureAwait(false);
+        Throws<InvalidDataException>(() => AssetArchive.Inspect(archive));
     }
 
     private static async Task ArchiveManifestBound()
@@ -267,13 +252,6 @@ internal static class Program
         var options = new AssetArchiveReadOptions { MaxManifestBytes = 32 };
         archive.Position = 0;
         Throws<InvalidDataException>(() => AssetArchive.Inspect(archive, options));
-        archive.Position = 0;
-        Throws<InvalidDataException>(() => AssetArchive.GetCompatibilityReport(archive, options));
-        archive.Position = 0;
-        using var migrated = new MemoryStream();
-        await ThrowsAsync<InvalidDataException>(
-            async () => await AssetArchive.MigrateAsync(archive, migrated, options).ConfigureAwait(false))
-            .ConfigureAwait(false);
     }
 
     private static async Task AspNetCoreIntegration()

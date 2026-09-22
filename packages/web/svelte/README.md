@@ -45,7 +45,7 @@ peer is absent, they report the exact `npm install
 @runic-artifex/application-bridge@preview` remediation.
 
 Use `@runic-artifex/svelte/vite` only when registering Runic Vite
-DevTools. It supplies the typed observer and HMR resource helpers without
+DevTools. It supplies the bounded diagnostic observer and HMR resource helpers without
 making the root bridge entry depend on Vite.
 
 Create the controller with `@runic-artifex/application-bridge`, then create one
