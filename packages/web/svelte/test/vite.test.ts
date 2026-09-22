@@ -6,7 +6,7 @@ import {
 } from "../src/vite.js";
 
 describe("Vite bridge integration", () => {
-  test("adapts the public DevTools observer and preserves HMR resources until disposed", async () => {
+  test("adapts bounded Vite diagnostics and preserves HMR resources until disposed", async () => {
     const observer = createViteApplicationBridgeObserver();
     observer.state({ connection: { state: "connected", transport: "fixture" } });
     observer.trace({ kind: "connection", label: "fixture" });

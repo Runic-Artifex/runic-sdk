@@ -1,7 +1,9 @@
 const resources = new Map();
 
-export function createRunicDevtoolsObserver() {
-  return { state() {}, trace() {} };
+export function reportRunicState() {}
+
+export function createRunicDiagnosticReporter() {
+  return { report() {} };
 }
 
 export function preserveRunicHmrResource(key, create) {

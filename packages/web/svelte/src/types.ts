@@ -13,16 +13,6 @@ export type {
   BridgeError,
 };
 
-/** @deprecated Application Bridge controllers already expose the Effect surface. */
-export type EffectApplicationBridgeController<Command, Receipt, HostEvent, Snapshot> =
-  ApplicationBridgeController<Command, Receipt, HostEvent, Snapshot>;
-
-/** @deprecated Use ApplicationBridgeController directly. */
-export type EffectRunner = Pick<
-  ApplicationBridgeController<unknown, unknown, unknown, unknown>,
-  "run" | "runExit" | "fork" | "await" | "interrupt"
->;
-
 export type ApplicationBridgeStatus =
   | "idle"
   | "connecting"

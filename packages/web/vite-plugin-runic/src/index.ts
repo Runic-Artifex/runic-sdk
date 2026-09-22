@@ -13,28 +13,23 @@ import type {
   RunicDiagnosticDetail,
   RunicDiagnosticSource,
   RunicRuntimeState,
-  RunicTraceEntry,
 } from "./client.js";
 import { sanitizeDiagnosticSummary } from "./diagnostics.js";
 
 export type {
-  RunicDevtoolsObserver,
   RunicDiagnosticDetail,
   RunicDiagnosticDetailValue,
   RunicDiagnosticEntry,
   RunicDiagnosticReporter,
   RunicDiagnosticSource,
   RunicRuntimeState,
-  RunicTraceEntry,
   RunicTraceKind,
 } from "./client.js";
 
 const virtualClientId = "virtual:runic/client";
 const resolvedVirtualClientId = `\0${virtualClientId}`;
-const legacyVirtualClientId = "virtual:runic-toolkit/client";
 const stateEvent = "runic:state";
 const diagnosticEvent = "runic:diagnostic";
-const traceEvent = "runic:trace";
 const stateKey = "runic:state";
 const defaultTimelineLimit = 200;
 const maximumTimelineLimit = 500;
@@ -90,7 +85,7 @@ export interface RunicDevelopmentState {
     completed: number;
     total: number;
   }>[];
-  readonly timeline: readonly Readonly<Required<Pick<RunicTraceEntry, "id" | "timestamp" | "kind" | "label">> & {
+  readonly timeline: readonly Readonly<Required<Pick<RunicDiagnosticEntry, "id" | "timestamp" | "kind" | "label">> & {
     source?: RunicDiagnosticSource;
     detail: RunicDiagnosticDetail;
   }>[];
@@ -322,8 +317,6 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       server = viteServer;
       viteServer.ws.on(stateEvent, (payload) => applyRuntimeState(payload));
       viteServer.ws.on(diagnosticEvent, (payload) => appendDiagnostic(payload));
-      // Compatibility for the bridge-only event emitted by preview clients.
-      viteServer.ws.on(traceEvent, (payload) => appendDiagnostic(payload, "application-bridge"));
       viteServer.middlewares.use("/__runic/state", (_request, response) => {
         response.statusCode = 200;
         response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -348,11 +341,6 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       return [];
     },
     resolveId(id) {
-      if (id === legacyVirtualClientId) {
-        throw new Error(
-          'RUNICP001: "virtual:runic-toolkit/client" was removed in v0.2. Import "virtual:runic/client" instead.',
-        );
-      }
       return id === virtualClientId ? resolvedVirtualClientId : undefined;
     },
     load(id) {

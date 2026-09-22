@@ -28,6 +28,5 @@ private optimized VFS format. Host adapters consume the same manifest and source
 contracts without becoming part of the archive.
 
 Schema 1 remains the current schema. `AssetArchive.Inspect` provides a
-deterministic validated manifest report, while `GetCompatibilityReport` reports
-that schema-1 migration is not required. `MigrateAsync` validates a compatible
-schema-1 archive and copies it byte-for-byte rather than rewriting it.
+deterministic validated manifest report. Readers accept schema 1 and reject
+incompatible versions.

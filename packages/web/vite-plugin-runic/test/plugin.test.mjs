@@ -30,16 +30,7 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
   });
   assert.equal(handlers.has("runic:state"), true);
   assert.equal(handlers.has("runic:diagnostic"), true);
-  assert.equal(handlers.has("runic:trace"), true);
   assert.equal(middleware[0][0], "/__runic/state");
-});
-
-test("rejects the removed virtual module with exact migration guidance", () => {
-  const plugin = runic({ devtools: false });
-  assert.throws(
-    () => plugin.resolveId("virtual:runic-toolkit/client"),
-    /RUNICP001: "virtual:runic-toolkit\/client" was removed in v0\.2\. Import "virtual:runic\/client" instead\./,
-  );
 });
 
 test("injects the Desktop bootstrap while leaving Vite and HMR ownership intact", async () => {
@@ -386,30 +377,6 @@ test("excludes the official DevTools client from production output", async () =>
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
-
-test("sanitizes trace details before exposing them", () => {
-  const plugin = runic({ devtools: false, maxTimelineEntries: 1 });
-  const handlers = new Map();
-  let latest;
-  plugin.configureServer({
-    ws: {
-      on: (event, handler) => handlers.set(event, handler),
-      send: (message) => { latest = message.data; },
-    },
-    middlewares: { use: () => undefined },
-    httpServer: undefined,
-  });
-  handlers.get("runic:trace")({
-    source: "assets",
-    kind: "command",
-    label: "Navigate",
-    detail: { target: "review", token: "must-not-escape", stack: "hidden" },
-  });
-  assert.deepEqual(latest.timeline[0].detail, { target: "review" });
-  assert.equal(latest.timeline[0].source, "application-bridge");
-  assert.equal(latest.timeline[0].id, "diagnostic-1");
-  assert.match(latest.timeline[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test("fails closed on hostile summaries and bounds a million-key detail object", () => {

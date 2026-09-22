@@ -2,17 +2,16 @@ export interface RunicRuntimeState {
   readonly connection?: Readonly<{ state?: string; transport?: string }>;
 }
 
-export interface RunicTraceEntry {
-  readonly kind: string;
-  readonly label: string;
-}
-
-export interface RunicDevtoolsObserver {
-  readonly state: (state: RunicRuntimeState) => void;
-  readonly trace: (entry: RunicTraceEntry) => void;
-}
-
-export declare function createRunicDevtoolsObserver(): RunicDevtoolsObserver;
+export type RunicDiagnosticDetailValue = string | number | boolean | null;
+export type RunicDiagnosticDetail = Readonly<Record<string, RunicDiagnosticDetailValue>>;
+export declare function reportRunicState(state: RunicRuntimeState): void;
+export declare function createRunicDiagnosticReporter(source: string): {
+  readonly report: (entry: Readonly<{
+    kind: string;
+    label: string;
+    detail?: RunicDiagnosticDetail;
+  }>) => void;
+};
 export declare function preserveRunicHmrResource<T>(key: string, create: () => T): T;
 export declare function disposeRunicHmrResource(
   key: string,

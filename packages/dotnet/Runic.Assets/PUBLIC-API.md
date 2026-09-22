@@ -19,7 +19,6 @@ Namespace: `Runic.Assets`
 - `AssetArchiveReadOptions`
 - `AssetArchiveSource`
 - `AssetArchiveInspection`
-- `AssetArchiveCompatibilityReport`
 - `EmbeddedAssetRegistration`
 - `EmbeddedAssetSource`
 - `DevelopmentDirectoryAssetSource` (Linux only)
