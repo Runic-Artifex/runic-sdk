@@ -1,13 +1,20 @@
 # Archive schema 2 decision
 
-Schema 1 remains the writer and reader contract for v0.2.  It already provides
-the durable archive obligations that are representable without a second asset
-model: ordinal entry order, fixed ZIP timestamps, content SHA-256 identities,
-strong entity tags, cache mode, byte-for-byte reproducible writes, bounded
-reads, deterministic inspection, an explicit compatibility report, and a
-validated byte-preserving migration command.
+> Historical and superseded decision. The schema-2 candidates and the
+> compatibility-report/migration APIs described here are not part of the current
+> AssetArchive surface; those APIs were removed when the asset contract was
+> reconciled. Keep this file as design history, not as a current roadmap or
+> release requirement. The active contract is [archive schema 1](archive-v1.md).
 
-The schema-2 candidates do not yet justify a serialized break:
+At the time of this decision, schema 1 was the v0.2 writer and reader contract.
+It provided the durable archive obligations that were representable without a
+second asset model: ordinal entry order, fixed ZIP timestamps, content SHA-256
+identities, strong entity tags, cache mode, byte-for-byte reproducible writes,
+bounded reads, deterministic inspection, an explicit compatibility report, and
+a validated byte-preserving migration command. The report and migration APIs
+are historical facts; they are not shipped by the current AssetArchive surface.
+
+At that time, the schema-2 candidates did not justify a serialized break:
 
 - Content-addressed identity already exists in each descriptor's SHA-256 and
   `SubresourceIntegrity` is derived from that authority.
@@ -21,7 +28,6 @@ The schema-2 candidates do not yet justify a serialized break:
   archive, while the current CS-WebUI callback has no request-header or finite
   response-stream primitive to implement them faithfully.
 
-Schema 2 may be proposed only with a real canonical producer and consumer for a
-new asset fact. Before it becomes the default writer, retain the current
-inspector, compatibility report, and executable migration path, and add an
-older-reader compatibility decision to this specification.
+A future schema-2 proposal would require a real canonical producer and consumer
+for a new asset fact, an explicit older-reader compatibility decision, and a
+newly verified migration plan. That is design history, not current release work.

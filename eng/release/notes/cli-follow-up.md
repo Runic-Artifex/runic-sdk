@@ -1,8 +1,13 @@
-# CLI follow-up — 0.3.0-preview.1 (unreleased)
+# CLI follow-up — 0.3.0-preview.1 historical record
 
-This draft describes the changes intended for the next coordinated SDK preview.
-The target is 0.3.0-preview.1; these additions are not yet available from
-the published 0.2.0-preview.1 packages.
+> Historical follow-up. The changes described here were incorporated into the
+> 0.3.0-preview.1 release train; this draft is retained for migration context and
+> is not an outstanding release work list. Use [the current release policy](../README.md)
+> for release procedure.
+
+This draft describes the changes that were intended for the 0.3.0-preview.1
+coordinated SDK preview. It is retained as historical context for the migration
+from 0.2.0-preview.1.
 
 - Define small CLIs with `CommandApp` and ordinary typed methods. String and
   no-result commands need no application JSON context or handwritten binder.

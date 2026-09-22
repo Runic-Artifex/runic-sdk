@@ -1,6 +1,6 @@
 # ADR 0001: Runic Toolkit identity
 
-- Status: Accepted
+- Status: Historical — superseded by the shipped Runic Application topology
 - Updated: 2026-08-05
 
 ## Decision

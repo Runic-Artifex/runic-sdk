@@ -1,5 +1,11 @@
 # Architecture decision records
 
+Some decisions below predate the shipped SDK package topology. Any
+`RunicToolkit.*`, `RunicFlow.*`, or other superseded package identity appearing
+inside those records is historical context, not a current package name or
+release target. The current package and release authorities are the maintained
+package READMEs and `eng/workspace.json`.
+
 - [0001 — Runic Toolkit identity](0001-runic-toolkit-identity.md)
 - [0002 — Dependency direction](0002-dependency-direction.md)
 - [0005 — Diagnostic identities](0005-diagnostic-identities.md)

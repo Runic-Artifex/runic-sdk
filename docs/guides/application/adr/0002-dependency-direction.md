@@ -1,19 +1,19 @@
 # ADR 0002: Dependency direction and integration ownership
 
-- Status: Accepted
+- Status: Historical — superseded by the shipped package graph
 - Updated: 2026-08-05
 
 ## Decision
 
 Dependencies point from adapters and composition toward neutral contracts.
-Toolkit core does not reference an independent RunicArtifex product.
+The current Application, Assets, and CS-WebUI package READMEs are authoritative
+for the shipped graph; this ADR preserves the earlier ownership decision.
 
-The product owns its official Application integration. Therefore packages such
-as the headless `RunicFlow.ApplicationBridge` operation integration live and
-release with their product, depend on the public Application package boundary,
-and may evolve without adding product history or implementation details to this
-repository. Runic Assets integrates through the neutral `Runic.Assets` contract
-and its host-specific adapters rather than a Toolkit-named package.
+The retired headless `RunicFlow.ApplicationBridge` integration described in the
+original decision was never a current SDK release product. It must not be
+treated as an active package or release target. Runic Assets integrates through
+the neutral `Runic.Assets` contract and its host-specific adapters rather than a
+Toolkit-named package.
 
 The frontend portion of this ADR is superseded by ADR 0015. Framework renderers
 consume Application Bridge without Toolkit-owned protocol adapters; hosting adapters depend

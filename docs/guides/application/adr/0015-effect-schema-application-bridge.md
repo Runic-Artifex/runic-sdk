@@ -1,6 +1,10 @@
 # ADR 0015: Effect Schema-first Application Bridge
 
-- Status: Implemented
+> Historical implementation record: the `RunicToolkit.*` package names and
+> prerelease evidence below are superseded by ADR 0019 and the shipped
+> `Runic.Application.*` packages. This record is retained for decision history.
+
+- Status: Historical — superseded by ADR 0019 and the shipped bridge toolchain
 - Updated: 2026-08-07
 - Tracks: [issue #5](https://github.com/Runic-Artifex/runic-toolkit/issues/5)
 
@@ -88,8 +92,9 @@ prerelease. One may be added only for a concrete published consumer.
 Application concepts become visible in schemas, traces, mocks, generated
 handlers, and tests. Generator scope becomes smaller and more explicit because
 business policy, navigation, authorization, retries, and process transitions
-remain application-authored decisions. Applications may implement those
-decisions directly or use the optional headless `RunicFlow` process runtime;
-neither choice changes Application Bridge protocol ownership. The obsolete generic MVVM protocol,
+remain application-authored decisions. Applications implement those decisions
+in application-owned services and handlers; the optional headless `RunicFlow`
+process runtime mentioned in this historical record is retired and is not a
+current SDK product. Neither choice changes Application Bridge protocol ownership. The obsolete generic MVVM protocol,
 packages, renderer lifecycle adapters, and documentation have been removed;
 Application Bridge is the architecture to extend.
