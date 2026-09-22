@@ -7,16 +7,16 @@
       "dependencies": {
         "@fortawesome/fontawesome-free": "7.3.1",
         "@popperjs/core": "2.11.8",
-        "@runic-artifex/application-bridge": "0.3.0-preview.1",
-        "@runic-artifex/desktop": "0.3.0-preview.1",
-        "@runic-artifex/svelte": "0.3.0-preview.1",
+        "@runic-artifex/application-bridge": "0.4.0-preview.1",
+        "@runic-artifex/desktop": "0.4.0-preview.1",
+        "@runic-artifex/svelte": "0.4.0-preview.1",
         "bootstrap": "5.3.8",
         "effect": "4.0.0-rc.112",
         "svelte": "5.57.0",
       },
       "devDependencies": {
-        "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1",
-        "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1",
+        "@runic-artifex/application-bridge-tooling": "0.4.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "0.4.0-preview.1",
         "@sveltejs/vite-plugin-svelte": "7.3.0",
         "@vitejs/devtools": "0.5.2",
         "svelte-check": "4.7.6",
@@ -176,15 +176,15 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@0.3.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-XvXxIQr8qXiq9hJER/YtDFJ/TO2D70Zdldc7fUDaTPK7IlO155pkh8zg3SssGq+PfQ30Ti77RaAJP4JytTc8hg=="],
+    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@0.4.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-5XFu7TncCfBqzNGgqx9Fm8Y9/MxgAZTw3el4FzLzht24xnEvxStIWM7VvHH3uE7KxAdQP+rKskS4vRbGvW9IzQ=="],
 
-    "@runic-artifex/application-bridge-tooling": ["@runic-artifex/application-bridge-tooling@0.3.0-preview.1", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.112", "@effect/platform-node-shared": "4.0.0-rc.112", "esbuild": "0.28.2" }, "peerDependencies": { "@runic-artifex/application-bridge": "0.3.0-preview.1", "effect": "4.0.0-rc.112" }, "bin": { "runic-bridge": "./dist/esm/cli.js" } }, "sha512-kBXl6s0r7o8lN+a6YQiVb2CNKsDO9RdsChXzyXlLXfulgVR26B6wRcjYt9m1iWWxIBAhtQsdLDX3TJwVAo0HBw=="],
+    "@runic-artifex/application-bridge-tooling": ["@runic-artifex/application-bridge-tooling@0.4.0-preview.1", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.112", "@effect/platform-node-shared": "4.0.0-rc.112", "esbuild": "0.28.2" }, "peerDependencies": { "@runic-artifex/application-bridge": "0.4.0-preview.1", "effect": "4.0.0-rc.112" }, "bin": { "runic-bridge": "./dist/esm/cli.js" } }, "sha512-Eqcwbj0On18w9RUEmSaHs7vLL4iZFW/Ke48oHBRomeelMv20XIEWePm491iCEEJWeZolQuUqMvSFHO9N8l54sg=="],
 
-    "@runic-artifex/desktop": ["@runic-artifex/desktop@0.3.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-rFvc9UoCGKjFTqiwXh0vStuhq2HhdR4wQ4ok9p3dxk3iHWAgaWn28RjrmUXJbjXoudlj3DD+EcSspOG7VEtUpA=="],
+    "@runic-artifex/desktop": ["@runic-artifex/desktop@0.4.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-gggy18lmLDfH4xn9xUZRQDvXoQa4ra/4gW793Q4xEnEv+/GbNlAIaQKis6XN37lZsxQJOeea1LJPUE9A8CpW8Q=="],
 
-    "@runic-artifex/svelte": ["@runic-artifex/svelte@0.3.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge": "0.3.0-preview.1", "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1", "effect": "4.0.0-rc.112", "svelte": ">=5.46.4 <6" }, "optionalPeers": ["@runic-artifex/application-bridge", "@runic-artifex/vite-plugin-runic"] }, "sha512-LRZsAfCrLHKWcbdovrCUKSxF8aBIn9h0h7IV7r5gjnq3UXKPMg0xw4QjTc8Cskhjfg1dE6gx+5QMkwlRJ/vTrQ=="],
+    "@runic-artifex/svelte": ["@runic-artifex/svelte@0.4.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge": "0.4.0-preview.1", "@runic-artifex/vite-plugin-runic": "0.4.0-preview.1", "effect": "4.0.0-rc.112", "svelte": ">=5.46.4 <6" }, "optionalPeers": ["@runic-artifex/application-bridge", "@runic-artifex/vite-plugin-runic"] }, "sha512-AZtDt/zQf8B82ukJ1Qr25VSIapQCCsQiBM1dWQvfehzkortDq4o8PMgZvADyAydW0RNesSliYDvIkZv4F+Poyw=="],
 
-    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.3.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1", "@vitejs/devtools": "^0.5.2", "vite": "^8.0.0" }, "optionalPeers": ["@runic-artifex/application-bridge-tooling", "@vitejs/devtools"] }, "sha512-NCI5q0s6qdzZDuKkHzQ1FMAxb800WzK2/RWbie/Jvk6CvEc6STT46sPOZCsOsZHY+Wy0FmgmG6zh1O6KYS7G9w=="],
+    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.4.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge-tooling": "0.4.0-preview.1", "@vitejs/devtools": "^0.5.2", "vite": "^8.0.0" }, "optionalPeers": ["@runic-artifex/application-bridge-tooling", "@vitejs/devtools"] }, "sha512-FKROmJ5k2KbMF2G8qLdxIl6iIOdVT5J/Tvzlh1apiReeGOlD1kKJ7kIci5PzLoey640pfWKfxlRshy5W60eI6A=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

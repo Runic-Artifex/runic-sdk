@@ -7,16 +7,16 @@
       "dependencies": {
         "@fortawesome/fontawesome-free": "7.3.1",
         "@popperjs/core": "2.11.8",
-        "@runic-artifex/application-bridge": "0.3.0-preview.1",
-        "@runic-artifex/desktop": "0.3.0-preview.1",
+        "@runic-artifex/application-bridge": "0.4.0-preview.1",
+        "@runic-artifex/desktop": "0.4.0-preview.1",
         "bootstrap": "5.3.8",
         "effect": "4.0.0-rc.112",
         "react": "19.2.8",
         "react-dom": "19.2.8",
       },
       "devDependencies": {
-        "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1",
-        "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1",
+        "@runic-artifex/application-bridge-tooling": "0.4.0-preview.1",
+        "@runic-artifex/vite-plugin-runic": "0.4.0-preview.1",
         "@types/react": "19.2.18",
         "@types/react-dom": "19.2.7",
         "@vitejs/plugin-react": "6.1.1",
@@ -142,13 +142,13 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@0.3.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-XvXxIQr8qXiq9hJER/YtDFJ/TO2D70Zdldc7fUDaTPK7IlO155pkh8zg3SssGq+PfQ30Ti77RaAJP4JytTc8hg=="],
+    "@runic-artifex/application-bridge": ["@runic-artifex/application-bridge@0.4.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-5XFu7TncCfBqzNGgqx9Fm8Y9/MxgAZTw3el4FzLzht24xnEvxStIWM7VvHH3uE7KxAdQP+rKskS4vRbGvW9IzQ=="],
 
-    "@runic-artifex/application-bridge-tooling": ["@runic-artifex/application-bridge-tooling@0.3.0-preview.1", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.112", "@effect/platform-node-shared": "4.0.0-rc.112", "esbuild": "0.28.2" }, "peerDependencies": { "@runic-artifex/application-bridge": "0.3.0-preview.1", "effect": "4.0.0-rc.112" }, "bin": { "runic-bridge": "./dist/esm/cli.js" } }, "sha512-kBXl6s0r7o8lN+a6YQiVb2CNKsDO9RdsChXzyXlLXfulgVR26B6wRcjYt9m1iWWxIBAhtQsdLDX3TJwVAo0HBw=="],
+    "@runic-artifex/application-bridge-tooling": ["@runic-artifex/application-bridge-tooling@0.4.0-preview.1", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.112", "@effect/platform-node-shared": "4.0.0-rc.112", "esbuild": "0.28.2" }, "peerDependencies": { "@runic-artifex/application-bridge": "0.4.0-preview.1", "effect": "4.0.0-rc.112" }, "bin": { "runic-bridge": "./dist/esm/cli.js" } }, "sha512-Eqcwbj0On18w9RUEmSaHs7vLL4iZFW/Ke48oHBRomeelMv20XIEWePm491iCEEJWeZolQuUqMvSFHO9N8l54sg=="],
 
-    "@runic-artifex/desktop": ["@runic-artifex/desktop@0.3.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-rFvc9UoCGKjFTqiwXh0vStuhq2HhdR4wQ4ok9p3dxk3iHWAgaWn28RjrmUXJbjXoudlj3DD+EcSspOG7VEtUpA=="],
+    "@runic-artifex/desktop": ["@runic-artifex/desktop@0.4.0-preview.1", "", { "dependencies": { "effect": "4.0.0-rc.112" } }, "sha512-gggy18lmLDfH4xn9xUZRQDvXoQa4ra/4gW793Q4xEnEv+/GbNlAIaQKis6XN37lZsxQJOeea1LJPUE9A8CpW8Q=="],
 
-    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.3.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1", "@vitejs/devtools": "^0.5.2", "vite": "^8.0.0" }, "optionalPeers": ["@runic-artifex/application-bridge-tooling", "@vitejs/devtools"] }, "sha512-NCI5q0s6qdzZDuKkHzQ1FMAxb800WzK2/RWbie/Jvk6CvEc6STT46sPOZCsOsZHY+Wy0FmgmG6zh1O6KYS7G9w=="],
+    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.4.0-preview.1", "", { "peerDependencies": { "@runic-artifex/application-bridge-tooling": "0.4.0-preview.1", "@vitejs/devtools": "^0.5.2", "vite": "^8.0.0" }, "optionalPeers": ["@runic-artifex/application-bridge-tooling", "@vitejs/devtools"] }, "sha512-FKROmJ5k2KbMF2G8qLdxIl6iIOdVT5J/Tvzlh1apiReeGOlD1kKJ7kIci5PzLoey640pfWKfxlRshy5W60eI6A=="],
 
     "@types/node": ["@types/node@22.20.2", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-xlvWf4Vs9n1PEVYwP1n4vvG07M6y8WgvJ2t0vbrWTmijsIHp1cS+uJ2kMIRdY3nHZK0nCYKrPeD171+SzF4/zw=="],
 

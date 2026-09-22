@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/svelte",
-  "version": "0.3.0-preview.1",
+  "version": "0.4.0-preview.1",
   "description": "Svelte 5 integration for the Runic Toolkit Application Bridge",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#readme",
   "bugs": {
@@ -65,8 +65,8 @@
     "test:inline-browser": "node test/verify-inline-ssr.mjs && node test/verify-inline-hydration.mjs"
   },
   "peerDependencies": {
-    "@runic-artifex/application-bridge": "0.3.0-preview.1",
-    "@runic-artifex/vite-plugin-runic": "0.3.0-preview.1",
+    "@runic-artifex/application-bridge": "0.4.0-preview.1",
+    "@runic-artifex/vite-plugin-runic": "0.4.0-preview.1",
     "effect": "4.0.0-rc.112",
     "svelte": ">=5.46.4 <6"
   },
