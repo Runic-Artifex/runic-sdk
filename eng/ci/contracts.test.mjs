@@ -93,7 +93,7 @@ test('all managed executable suites are assigned exactly once to workflow groups
   assert.ok(!managedTests(root, 'linux').some(item => item.path === wpf));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes(wpf)));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
-  const rmf2Aot = workflow.jobs.managed.steps.find(step => step.name === 'Publish and execute RMF2 artifact-v4 NativeAOT smoke');
+  const rmf2Aot = workflow.jobs.managed.steps.find(step => step.name === 'Publish and execute RMF2 artifact-v5 NativeAOT smoke');
   assert.ok(rmf2Aot);
   assert.equal(rmf2Aot.if, "matrix.suite == 'translations'");
   assert.match(rmf2Aot.run, /dotnet publish tests\/dotnet\/Runic\.Translations\.Rmf2AotTests/);
@@ -135,7 +135,7 @@ test('package consumers retain the installed RMF2 v5 NativeAOT journey', () => {
     item.name === 'Verify isolated NuGet and npm consumers');
   assert.equal(step?.run, 'bun run verify-packages');
   const verifier = readFileSync(resolve(root, 'eng/verify-packages.mjs'), 'utf8');
-  assert.match(verifier, /executionProfile: "rmf2-execution-v2"/);
+  assert.doesNotMatch(verifier, /executionProfile/);
   assert.match(verifier, /CheckoutTextCatalog\.CreateExternalManagerAsync/);
   assert.match(verifier, /"-p:PublishAot=true"/);
   assert.match(verifier, /"-p:IlcTreatWarningsAsErrors=true"/);
