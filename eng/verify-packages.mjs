@@ -184,7 +184,32 @@ export async function verifyPackages(packageName) {
     );
     writeFileSync(
       join(consumer, "Program.cs"),
-      p.name.endsWith(".Build")
+      p.name === "Runic.Translations.Tooling"
+        ? `using Runic.Translations.Compiler;
+using Runic.Translations.Tooling;
+using System.Text;
+var project = new TranslationSource("translations/runic.json", Encoding.UTF8.GetBytes("""{"schemaVersion":1,"catalog":"canary","code":{"namespace":"Canary","className":"Text"},"baseLocale":"en","locales":["en",{"tag":"de","fallback":"en"}]}"""));
+TranslationSource[] messages = [
+  new("translations/en/greeting.mf2", Encoding.UTF8.GetBytes("Hello")),
+  new("translations/de/greeting.mf2", Encoding.UTF8.GetBytes("Hallo")),
+];
+Rmf2ProjectCompilationV5 compiled = TranslationCompiler.CompileMf2Project(project, messages);
+if (!compiled.Success || compiled.CatalogId != "canary" || compiled.Locales.Count != 2 || compiled.CallerFingerprint is null || compiled.SourceHash is null) throw new Exception("Packaged public v5 compiler contract failed.");
+TranslationXliffExportResult exported = TranslationInterchange.ExportXliff21(compiled);
+if (exported.Documents.Count != 1 || !exported.Report.IsLossless) throw new Exception("Packaged public v5 XLIFF export failed.");
+TranslationXliffImportResult imported = TranslationInterchange.ImportXliff21(exported.Documents[0].Bytes);
+if (imported.Messages.Count != 1 || imported.CatalogId != "canary" || imported.TargetLocale != "de") throw new Exception("Packaged public v5 XLIFF import failed.");
+Rmf2ProjectCompilationV5 grouped = TranslationCompiler.CompileProject(project, [
+  new("translations/en.rmf2", Encoding.UTF8.GetBytes("greeting = Hello")),
+  new("translations/de.rmf2", Encoding.UTF8.GetBytes("greeting = Hallo")),
+], null, CancellationToken.None);
+if (!grouped.Success || TranslationInterchange.ExportXliff21(grouped).Documents.Count != 1) throw new Exception("Packaged grouped RMF2 compiler and XLIFF export failed.");
+using var canceled = new CancellationTokenSource();
+canceled.Cancel();
+try { _ = TranslationCompiler.CompileMf2Project(project, messages, null, canceled.Token); throw new Exception("Packaged compiler ignored cancellation."); }
+catch (OperationCanceledException) { }
+Console.WriteLine("Packaged public v5 compiler and XLIFF export passed.");`
+        : p.name.endsWith(".Build")
         ? 'Console.WriteLine("Translation build targets restored.");'
         : strategy.useWpf
         ? `_ = new ${strategy.canaryType}("""{"version":1,"contracts":{},"messages":{}}""", _ => { });\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
