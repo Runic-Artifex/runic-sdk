@@ -73,7 +73,7 @@ if "$tool" doctor --project "$probe_root/missing.csproj" > "$human_failure" 2>&1
   echo "doctor unexpectedly accepted a missing project." >&2
   exit 1
 fi
-if [[ "$(grep -o 'RTKDEV1002' "$human_failure" | wc -l)" -ne 1 ]]; then
+if [[ "$(grep -o 'RAPPDEV1002' "$human_failure" | wc -l)" -ne 1 ]]; then
   echo "doctor did not present its actionable failure exactly once." >&2
   cat "$human_failure" >&2
   exit 1

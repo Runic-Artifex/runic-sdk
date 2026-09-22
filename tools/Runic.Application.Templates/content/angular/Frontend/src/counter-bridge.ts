@@ -37,7 +37,7 @@ const mock = MockApplicationBridge<CounterCommand, CounterReceipt, CounterEvent,
 });
 
 const counterBridgeLayer =
-  (globalThis as { __runicToolkitMock?: boolean }).__runicToolkitMock === true
+  (globalThis as { __runicApplicationMock?: boolean }).__runicApplicationMock === true
     ? mock
     : ApplicationBridgeLive(CounterContract, ("runicCsWebUi" in globalThis ? createCsWebUiFrameChannel() : createDesktopFrameChannel()));
 

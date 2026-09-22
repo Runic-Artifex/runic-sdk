@@ -8,13 +8,13 @@ fi
 
 package_version="$1"
 package_directory="$(cd "$2" && pwd)"
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-project="$repository_root/tests/RunicToolkit.PackageCanary/RunicToolkit.PackageCanary.csproj"
-canary_tmp="$(mktemp -d /tmp/runic-toolkit-package-canary.XXXXXXXXXX)"
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+project="$repository_root/tests/dotnet/Runic.Application.PackageCanary/Runic.Application.PackageCanary.csproj"
+canary_tmp="$(mktemp -d /tmp/runic-application-package-canary.XXXXXXXXXX)"
 
 cleanup() {
   case "$canary_tmp" in
-    /tmp/runic-toolkit-package-canary.*) rm -rf -- "$canary_tmp" ;;
+    /tmp/runic-application-package-canary.*) rm -rf -- "$canary_tmp" ;;
     *) echo "Refusing to remove unexpected path: $canary_tmp" >&2 ;;
   esac
 }
@@ -72,5 +72,4 @@ dotnet tool install dotnet-runic \
   "${tool_options[@]}"
 
 "$canary_tmp/tools/dotnet-runic" --help
-bash "$repository_root/tests/RunicToolkit.PackageCanary/Test-ToolParsePresentation.sh" "$canary_tmp/tools/dotnet-runic"
-bash "$repository_root/tests/RunicToolkit.PackageCanary/Test-ToolMigration.sh" "$canary_tmp/tools/dotnet-runic"
+bash "$repository_root/tests/dotnet/Runic.Application.PackageCanary/Test-ToolParsePresentation.sh" "$canary_tmp/tools/dotnet-runic"

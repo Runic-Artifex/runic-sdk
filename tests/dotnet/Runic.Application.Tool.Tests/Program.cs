@@ -44,7 +44,6 @@ internal static class Program
             ("doctor rejects a skewed compatibility set", DoctorRejectsCompatibilitySkew),
             ("doctor rejects npm locks without exact portable integrity", DoctorRejectsNonPortableNpmLock),
             ("support envelope is explicit, deterministic, private, and removable", SupportEnvelopeIsPrivateAndDeterministic),
-            ("migration edits exact XML identities and preserves prefixes", MigrationEditsExactXmlIdentities),
         ];
 
         int failures = 0;
@@ -85,7 +84,7 @@ internal static class Program
             }
             catch (DevDevelopmentException error)
             {
-                Equal("RTKDEV1007", error.Code);
+                Equal("RAPPDEV1007", error.Code);
                 Contains(error.Message, clientReady ? "application entry: no response" : "Vite client: no response");
                 // URLs trigger the public command fault sanitizer's drive-path check.
                 DoesNotContain(error.Message, origin.AbsoluteUri);
@@ -187,7 +186,7 @@ internal static class Program
         }
         Equal(original, ReadHost());
         try { using var invalid = new HostSelectionScope("unknown"); throw new InvalidOperationException("Invalid host was accepted."); }
-        catch (DevUsageException error) { Equal("RTKDEV1008", error.Code); }
+        catch (DevUsageException error) { Equal("RAPPDEV1008", error.Code); }
     }
 
     private static void DoctorOptionsSelectProject()
@@ -262,41 +261,6 @@ internal static class Program
             bun.RunScriptArguments("dev", "@example/app", ["--host", "127.0.0.1"]));
     }
 
-    private static void MigrationEditsExactXmlIdentities()
-    {
-        using var workspace = new TestWorkspace();
-        string project = workspace.Write("App.csproj", """
-            <Project><ItemGroup>
-              <PackageReference Include="RunicToolkit.Hosting.CsWebUi" Version="0.1.0" />
-              <PackageReference Include="RunicToolkit.Hosting.CsWebUi.App"><Version>0.1.0</Version></PackageReference>
-              <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge" />
-              <PackageReference Include="RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Client" />
-              <PackageReference Include="Runic.Application.Bridge.Client" />
-            </ItemGroup><PropertyGroup><RunicToolkitFrontendEnabled>true</RunicToolkitFrontendEnabled></PropertyGroup></Project>
-            """);
-        global::Runic.Application.Tool.MigrationResult dryRun = global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: false, dryRun: true, check: false);
-        if (!dryRun.HasChanges) throw new InvalidOperationException("Migration did not identify legacy XML.");
-        string unchanged = File.ReadAllText(project);
-        Contains(unchanged, "RunicToolkit.Hosting.CsWebUi\" Version=\"0.1.0");
-        Contains(unchanged, "RunicToolkit.Hosting.CsWebUi.ApplicationBridge");
-        Contains(unchanged, "Runic.Application.Bridge.Client");
-
-        global::Runic.Application.Tool.MigrationResult applied = global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: true, dryRun: false, check: false);
-        if (!applied.HasChanges) throw new InvalidOperationException("Migration apply did not report changes.");
-        string migrated = File.ReadAllText(project);
-        Contains(migrated, "Runic.Application.Desktop");
-        Contains(migrated, "Runic.Application.Desktop\" Version=\"0.2.0");
-        Contains(migrated, "<Version>0.2.0</Version>");
-        Contains(migrated, "RunicToolkit.Hosting.CsWebUi.ApplicationBridge.Client");
-        Contains(migrated, "Runic.Application.Bridge.Client");
-        DoesNotContain(migrated, "RunicToolkitFrontendEnabled");
-        if (global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: false, dryRun: false, check: true).HasChanges)
-        {
-            throw new InvalidOperationException("A migrated project still reported pending migration work.");
-        }
-        Throws<DevUsageException>(() => global::Runic.Application.Tool.MigrationApplication.Execute(project, apply: false, dryRun: false, check: false));
-    }
-
     private static void ViteArgumentsAreExplicit()
     {
         var configuration = new DevProjectConfiguration(
@@ -312,7 +276,7 @@ internal static class Program
             BridgeSource: "",
             BridgeIr: "",
             BridgeFacade: "",
-            FrontendWatchTarget: "RunicToolkitFrontendWatchAssets",
+            FrontendWatchTarget: "RunicApplicationFrontendWatchAssets",
             ViteDevServerEnabled: true,
             ViteDevServerEntry: "/src/main.js",
             ViteConfigurationPath: "/repo/frontend/vite.config.mjs",
@@ -353,7 +317,7 @@ internal static class Program
             BridgeSource: "",
             BridgeIr: "",
             BridgeFacade: "",
-            FrontendWatchTarget: "RunicToolkitFrontendWatchAssets",
+            FrontendWatchTarget: "RunicApplicationFrontendWatchAssets",
             ViteDevServerEnabled: true,
             ViteDevServerEntry: "/src/main.js",
             ViteConfigurationPath: "/repo/frontend/vite.config.mjs",
@@ -366,7 +330,7 @@ internal static class Program
             DevApplication.CreateBuildArguments(configuration, options);
 
         if (!arguments.Contains(
-                "-property:RunicToolkitFrontendBuild=false",
+                "-property:RunicApplicationFrontendBuild=false",
                 StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
@@ -399,7 +363,7 @@ internal static class Program
         IReadOnlyList<string> build =
             DevApplication.CreateBuildArguments(configuration, options);
         if (!build.Contains(
-                "-property:RunicToolkitFrontendBuild=false",
+                "-property:RunicApplicationFrontendBuild=false",
                 StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
@@ -444,7 +408,7 @@ internal static class Program
         Contains(simple, "http://127.0.0.1:43125/src/main.ts");
         Contains(simple, "<base href=\"./\">");
         Contains(simple, "from \"http://127.0.0.1:43125/@react-refresh\"");
-        Contains(simple, "__runicToolkitApplicationBridgeDevelopment");
+        Contains(simple, "__runicApplicationApplicationBridgeDevelopment");
         Contains(simple, "http://127.0.0.1:43126/token/events");
         Contains(simple, configuration.ProjectDirectory);
         Equal(simple, advanced);
@@ -505,7 +469,7 @@ internal static class Program
             if (!server.TryWriteRenderedFragments(
                     """
                     {
-                      "contract": "runic-toolkit.frontend-compiler.rendered-fragments/1.0",
+                      "contract": "runic.application.frontend-compiler.rendered-fragments/1.0",
                       "fragments": [
                         {
                           "handle": "todo_fragment",
@@ -529,7 +493,7 @@ internal static class Program
                 server.TryWriteRenderedFragments(
                     """
                     {
-                      "contract": "runic-toolkit.frontend-compiler.rendered-fragments/1.0",
+                      "contract": "runic.application.frontend-compiler.rendered-fragments/1.0",
                       "fragments": [{ "handle": "../escape", "html": "bad" }]
                     }
                     """),
@@ -562,7 +526,7 @@ internal static class Program
             BridgeSource: "",
             BridgeIr: "",
             BridgeFacade: "",
-            FrontendWatchTarget: "RunicToolkitFrontendWatchAssets",
+            FrontendWatchTarget: "RunicApplicationFrontendWatchAssets",
             ViteDevServerEnabled: kind == "vite",
             ViteDevServerEntry: "/src/main.ts",
             ViteConfigurationPath: "",
@@ -602,7 +566,7 @@ internal static class Program
         bool canRefresh) =>
         System.Text.Encoding.UTF8.GetBytes(
             $$"""
-            {"contract":"runic-toolkit.frontend-compiler.hot-reload/1.0","templates":[{"logicalPath":"Views/TodoApp.frontend","rendererFingerprint":"{{renderer}}","compatibilityFingerprint":"{{shape}}","canRefreshFragments":{{canRefresh.ToString().ToLowerInvariant()}},"affectedFragments":["todo_fragment"]}]}
+            {"contract":"runic.application.frontend-compiler.hot-reload/1.0","templates":[{"logicalPath":"Views/TodoApp.frontend","rendererFingerprint":"{{renderer}}","compatibilityFingerprint":"{{shape}}","canRefreshFragments":{{canRefresh.ToString().ToLowerInvariant()}},"affectedFragments":["todo_fragment"]}]}
             """);
 
     private static void PhaseTimingsAreConcise()
@@ -969,7 +933,7 @@ internal static class Program
         {
             Root = Path.Combine(
                 Path.GetTempPath(),
-                "runic-toolkit-dev-tests",
+                "runic-application-dev-tests",
                 Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
         }

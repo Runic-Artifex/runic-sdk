@@ -10,7 +10,7 @@ namespace Runic.Application.Tool;
 
 internal sealed class FrontendCompilerHotReloadCoordinator
 {
-    internal const string Contract = "runic-toolkit.frontend-compiler.hot-reload/1.0";
+    internal const string Contract = "runic.application.frontend-compiler.hot-reload/1.0";
 
     private readonly string _sourcePath;
     private readonly string _readyPath;

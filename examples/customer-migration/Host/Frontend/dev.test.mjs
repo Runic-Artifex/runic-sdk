@@ -30,7 +30,7 @@ try {
       env: { ...process.env, RUNIC_CUSTOMERS_FILE: resolve(temporary, "customers.json"),
         // Preserve config/dependency startup phases in the CI artifact when
         // Vite stalls before it can print its ready message.
-        RUNIC_TOOLKIT_VITE_DEBUG: "vite:config,vite:deps",
+        RUNIC_APPLICATION_VITE_DEBUG: "vite:config,vite:deps",
         XDG_CACHE_HOME: temporary, GSETTINGS_BACKEND: "memory" },
     });
     let output = "";

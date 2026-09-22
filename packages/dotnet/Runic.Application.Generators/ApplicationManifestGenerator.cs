@@ -26,13 +26,6 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
         "Runic.Application",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
-    private static readonly DiagnosticDescriptor PreviewIdentity = new(
-        "RAPP0001",
-        "Preview package identity must migrate",
-        "Reference '{0}' is a preview identity. {1}",
-        "Runic.Application.Migration",
-        DiagnosticSeverity.Warning,
-        isEnabledByDefault: true);
     private static readonly DiagnosticDescriptor InvalidDeclaration = new(
         "RAPP0002",
         "Application manifest declaration is invalid",
@@ -49,7 +42,6 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
             .Collect();
         context.RegisterSourceOutput(context.CompilationProvider.Combine(bridgeManifests), static (productionContext, input) =>
         {
-            ReportPreviewReferences(productionContext, input.Left);
             EmitManifest(productionContext, input.Left, BridgeContracts(input.Right, productionContext.CancellationToken));
         });
     }
@@ -151,24 +143,6 @@ public sealed class ApplicationManifestGenerator : IIncrementalGenerator
 
         source.Append(" }));\n}\n");
         context.AddSource("Runic.Application.GeneratedManifest.g.cs", SourceText.From(source.ToString(), Encoding.UTF8));
-    }
-
-    private static void ReportPreviewReferences(SourceProductionContext context, Compilation compilation)
-    {
-        foreach (IAssemblySymbol reference in compilation.References.Select(compilation.GetAssemblyOrModuleSymbol).OfType<IAssemblySymbol>().OrderBy(static item => item.Name, StringComparer.Ordinal))
-        {
-            string? destination = reference.Name switch
-            {
-                "RunicToolkit.Hosting" or "RunicToolkit.Desktop" or "RunicToolkit.Hosting.Abstractions" or "RunicToolkit.Hosting.Generators" or "RunicToolkit.Hosting.WebUi" => "Move the application reference to Runic.Application.",
-                "RunicToolkit.Hosting.GenericHost" => "Move the Generic Host integration reference to Runic.Application.Hosting.",
-                "RunicToolkit.Hosting.CsWebUi" or "RunicToolkit.Hosting.CsWebUi.App" or "RunicToolkit.Hosting.CsWebUi.ApplicationBridge" => "Remove the retired CS-WEBUI integration and compose Runic.Application.Desktop, or use standalone CsWebUi directly.",
-                _ => null,
-            };
-            if (destination is not null)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(PreviewIdentity, Microsoft.CodeAnalysis.Location.None, reference.Name, destination));
-            }
-        }
     }
 
     private static string? Argument(AttributeData attribute, int index) =>

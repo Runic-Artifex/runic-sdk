@@ -243,8 +243,8 @@ internal static class DoctorChecks
         {
             checks.Add(Fail(
                 "frontend-sdk",
-                "RunicToolkit frontend development is not enabled for the selected project.",
-                "Set RunicToolkitFrontendEnabled=true only when using the optional development host."));
+                "Runic Application frontend development is not enabled for the selected project.",
+                "Set RunicApplicationFrontendEnabled=true only when using the optional development host."));
             return;
         }
 
@@ -253,7 +253,7 @@ internal static class DoctorChecks
             checks.Add(Fail(
                 "frontend-sdk",
                 "Neither the JavaScript/Vite nor external compiler frontend pipeline is enabled.",
-                "Enable RunicToolkitFrontendNodeEnabled or RunicToolkitFrontendCompilerEnabled."));
+                "Enable RunicApplicationFrontendNodeEnabled or RunicApplicationFrontendCompilerEnabled."));
             return;
         }
 
@@ -845,7 +845,7 @@ internal static class DoctorChecks
             checks.Add(Fail(
                 "vite-config",
                 $"Configured Vite file '{project.ViteConfigurationPath}' does not exist.",
-                "Create the file or correct RunicToolkitFrontendViteConfiguration."));
+                "Create the file or correct RunicApplicationFrontendViteConfiguration."));
         }
         else
         {
@@ -864,7 +864,7 @@ internal static class DoctorChecks
             checks.Add(Fail(
                 "vite-entry",
                 $"Vite entry '{entry}' is not a valid root-relative module path.",
-                "Set RunicToolkitFrontendViteDevServerEntry to a path such as /src/main.ts."));
+                "Set RunicApplicationFrontendViteDevServerEntry to a path such as /src/main.ts."));
             return;
         }
 
@@ -876,7 +876,7 @@ internal static class DoctorChecks
             checks.Add(Fail(
                 "vite-entry",
                 $"Vite entry '{entry}' resolves to missing file '{entryPath}'.",
-                "Create the entry module or correct RunicToolkitFrontendViteDevServerEntry."));
+                "Create the entry module or correct RunicApplicationFrontendViteDevServerEntry."));
             return;
         }
 

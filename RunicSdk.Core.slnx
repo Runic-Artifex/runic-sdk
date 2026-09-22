@@ -85,7 +85,7 @@
     <Project Path="tests/dotnet/Runic.Translations.Rmf2AotTests/Runic.Translations.Rmf2AotTests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Tooling.Tests/Runic.Translations.Tooling.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj" />
-    <Project Path="tests/dotnet/RunicToolkit.DotNet.RunicToolkit.Tests/RunicToolkit.DotNet.RunicToolkit.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Tool.Tests/Runic.Application.Tool.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/fixtures/">
     <Project Path="tests/fixtures/application/BridgeModule/BridgeModule.csproj" />

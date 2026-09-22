@@ -13,7 +13,7 @@ internal sealed class HostSelectionScope : IDisposable
     internal HostSelectionScope(string? host)
     {
         if (!string.IsNullOrEmpty(host) && host is not ("desktop" or "cswebui"))
-            throw new DevUsageException("RTKDEV1008", "Host must be 'desktop' or 'cswebui'.");
+            throw new DevUsageException("RAPPDEV1008", "Host must be 'desktop' or 'cswebui'.");
         if (!string.IsNullOrEmpty(host)) Current.Value = host;
     }
 

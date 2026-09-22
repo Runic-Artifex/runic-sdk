@@ -23,7 +23,7 @@ internal sealed partial class DevelopmentInspectorServer : IAsyncDisposable
     private const int MaximumRenderedFragmentCharacters = 262_144;
     private const int MaximumRenderedFragments = 64;
     private const string RenderedFragmentsContract =
-        "runic-toolkit.frontend-compiler.rendered-fragments/1.0";
+        "runic.application.frontend-compiler.rendered-fragments/1.0";
     private readonly HttpListener _listener;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _loop;
@@ -42,7 +42,7 @@ internal sealed partial class DevelopmentInspectorServer : IAsyncDisposable
         RenderedFragmentsSnapshotPath = Path.Combine(
             _projectDirectory,
             "obj",
-            "RunicToolkit",
+            "RunicApplication",
             "frontend-compiler-rendered-fragments.json");
         DeleteRenderedFragmentsSnapshot();
         _loop = ListenAsync(_shutdown.Token);
