@@ -76,7 +76,7 @@ jobs:
         run: bun eng/ci/test-managed.mjs "$SUITE"
         env:
           SUITE: ${{ matrix.suite }}
-      - name: Publish and execute RMF2 artifact-v4 NativeAOT smoke
+      - name: Publish and execute RMF2 artifact-v5 NativeAOT smoke
         if: matrix.suite == 'translations'
         run: |
           dotnet publish tests/dotnet/Runic.Translations.Rmf2AotTests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/rmf2-aot
