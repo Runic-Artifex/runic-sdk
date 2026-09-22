@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/vite-plugin-runic",
-  "version": "0.3.0-preview.1",
+  "version": "0.4.0-preview.1",
   "description": "Vite 8 development and DevTools integration for Runic applications",
   "license": "MIT",
   "type": "module",
@@ -33,7 +33,7 @@
     "pack:preview": "bun pm pack"
   },
   "peerDependencies": {
-    "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1",
+    "@runic-artifex/application-bridge-tooling": "0.4.0-preview.1",
     "@vitejs/devtools": "^0.5.2",
     "vite": "^8.0.0"
   },

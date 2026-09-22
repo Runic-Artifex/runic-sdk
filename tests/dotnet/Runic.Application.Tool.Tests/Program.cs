@@ -742,7 +742,7 @@ internal static class Program
         string assetsFile = workspace.Write(
             "obj/project.assets.json",
             """
-            {"libraries":{"Runic.Application/0.3.0-preview.1":{"type":"package"},"Runic.Desktop/0.3.0-preview.1":{"type":"package"}}}
+            {"libraries":{"Runic.Application/0.4.0-preview.1":{"type":"package"},"Runic.Desktop/0.4.0-preview.1":{"type":"package"}}}
             """);
         return new(
             ProjectPath: workspace.Write("App.csproj", "<Project />"),
