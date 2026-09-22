@@ -13,5 +13,4 @@ and the [SDK contributor guide](../../CONTRIBUTING.md) for workspace commands.
 Shared build commands and ownership come from the root contributor guide; versioned
 schemas and protocol inputs live under `specs`.
 
-- [Historical 0.2 preview notes](releases/0.2.0-preview.1.md) and [migration guide](releases/preview-migration.md).
 - [Document migration reference](../../examples/document-migration/README.md).
