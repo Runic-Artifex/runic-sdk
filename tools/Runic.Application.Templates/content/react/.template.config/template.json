@@ -89,7 +89,7 @@
       "type": "parameter",
       "datatype": "text",
       "defaultValue": "__RUNIC_APPLICATION_PACKAGE_VERSION__",
-      "replaces": "__RUNIC_TOOLKIT_VERSION__"
+      "replaces": "__RUNIC_APPLICATION_VERSION__"
     },
     "runicAssetsVersion": {
       "type": "parameter",
