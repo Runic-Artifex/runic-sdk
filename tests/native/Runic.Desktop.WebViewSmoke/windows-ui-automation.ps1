@@ -2,7 +2,6 @@
 param(
     [Parameter(Mandatory)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$Executable,
     [Parameter(Mandatory)][string]$ReceiptPath,
-    [switch]$Ime,
     [switch]$Narrator,
     [ValidateSet(0, 100, 125, 150, 175, 200)][int]$DisplayScale = 0,
     [ValidateSet(0, 100, 125, 150, 175, 200)][int]$TransitionScale = 0,
@@ -16,12 +15,6 @@ if ($DisplayScale) {
     if ($ExpectedDpi -and $ExpectedDpi -ne $DisplayScale * 96 / 100) { throw 'ExpectedDpi conflicts with DisplayScale.' }
     $ExpectedDpi = $DisplayScale * 96 / 100
     . "$PSScriptRoot/windows-display-scaling.ps1"
-}
-# Deferred while Windows WebView2 composition remains state-dependent.
-# Keep the parameter compatible with existing invocations, but never run the probe.
-if ($Ime) {
-    Write-Warning 'Windows IME testing is disabled; support is best effort. Continuing without IME coverage.'
-    $Ime = $false
 }
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $ReceiptPath = [IO.Path]::GetFullPath($ReceiptPath)
@@ -156,26 +149,12 @@ function Find-OverwriteConfirmation($SaveDialog) {
 }
 
 $process = $null
-$testProfiles = $null
-$originalLanguages = $null
 try {
     $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
     if ($sessionId -eq 0) { throw 'Windows UI Automation requires an interactive session, not Session 0.' }
-    if ($Ime -or $Narrator) {
+    if ($Narrator) {
         . "$PSScriptRoot/windows-accessibility.ps1"
         if (Get-Process Narrator -ErrorAction SilentlyContinue) { throw 'Stop existing Narrator before running desktop input automation.' }
-        $testProfiles = New-Object RunicProfiles
-        $originalProfile = $testProfiles.Current()
-        if ($Ime) {
-            $languages = Get-WinUserLanguageList
-            if (-not @($languages | Where-Object { $_.InputMethodTips -match 'FA550B04-5AD7-411F-A5AC-CA038EC515D7' }).Count) {
-                $originalLanguages = $languages
-                $temporary = Get-WinUserLanguageList
-                $temporary.Add((New-WinUserLanguageList 'zh-CN')[0])
-                Set-WinUserLanguageList $temporary -Force
-            }
-        }
-        $testProfiles.ResetKeyboard()
     }
     if ($DisplayScale) { Set-RunicDisplayScale $DisplayScale ([ref]$originalDisplayScale) }
     # UIA reports physical screen coordinates. Use the same coordinate space for
@@ -211,10 +190,8 @@ try {
         (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
     $edit = Find-Element $window $editCondition
     $accessibilityResults = [ordered]@{}
-    if ($Ime) { $accessibilityResults.ime = Test-RunicIme $window $edit $ReceiptPath }
     $edit.SetFocus()
     Wait-KeyboardFocus $edit
-    if ($testProfiles) { $testProfiles.ResetKeyboard(); Start-Sleep -Milliseconds 500 }
     $value = [System.Windows.Automation.ValuePattern]$edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     if ($value.Current.IsReadOnly) { throw 'Display name is unexpectedly read-only.' }
     $value.SetValue('UI Automation value')
@@ -464,19 +441,13 @@ finally {
         if ($null -ne $process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
     }
     finally {
+        Remove-Item -LiteralPath $runningPath -Force -ErrorAction SilentlyContinue
         try {
-            try { if ($originalLanguages) { Set-WinUserLanguageList $originalLanguages -Force } }
-            finally { if ($testProfiles) { try { $testProfiles.Activate($originalProfile) } finally { $testProfiles.Dispose() } } }
+            if ($originalDisplayScale) { $ignoredScale = 0; Set-RunicDisplayScale $originalDisplayScale ([ref]$ignoredScale) }
         }
         finally {
-            Remove-Item -LiteralPath $runningPath -Force -ErrorAction SilentlyContinue
-            try {
-                if ($originalDisplayScale) { $ignoredScale = 0; Set-RunicDisplayScale $originalDisplayScale ([ref]$ignoredScale) }
-            }
-            finally {
-                if ($previousDpiContext -and $previousDpiContext -ne [IntPtr]::Zero) { [RunicWindowsInput]::SetThreadDpiAwarenessContext($previousDpiContext) | Out-Null }
-                Remove-Item -LiteralPath $PickerPath, $savePath, $newSavePath -Force -ErrorAction SilentlyContinue
-            }
+            if ($previousDpiContext -and $previousDpiContext -ne [IntPtr]::Zero) { [RunicWindowsInput]::SetThreadDpiAwarenessContext($previousDpiContext) | Out-Null }
+            Remove-Item -LiteralPath $PickerPath, $savePath, $newSavePath -Force -ErrorAction SilentlyContinue
         }
     }
 }

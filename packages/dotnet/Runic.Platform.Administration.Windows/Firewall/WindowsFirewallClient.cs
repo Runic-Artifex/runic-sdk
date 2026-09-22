@@ -7,7 +7,7 @@ public sealed class WindowsFirewallClient : IWindowsFirewallClient
 {
     private readonly IWindowsFirewallClient _client;
     /// <summary>Creates a local firewall client.</summary>
-    public WindowsFirewallClient() => _client = AdministrationBackends.Firewall("cswin32");
+    public WindowsFirewallClient() => _client = GeneratedAdministrationClients.Firewall();
     /// <summary>Enumerates rules without treating duplicate native names as distinct persistent IDs.</summary>
     public Task<ImmutableArray<FirewallRuleSnapshot>> EnumerateAsync(CancellationToken cancellationToken = default) => _client.EnumerateAsync(cancellationToken);
     /// <summary>Finds a unique rule by native name. Ambiguous names fail.</summary>

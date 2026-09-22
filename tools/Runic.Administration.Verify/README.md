@@ -39,29 +39,10 @@ Use --only to isolate a failing capability:
 Available local selections: shortcuts, services, tasks, firewall, shares, system,
 processes, networks. No --only means every capability in the selected suite.
 
-## Comparing handwritten and CsWin32 backends
+## Generated bindings
 
-The default is `--backend cswin32`. All capabilities now use generated Win32/COM
-bindings; LDAP retains System.DirectoryServices.Protocols. The handwritten
-comparison backend applies only to **shares and firewall**. Domain runs reject
-`--backend` because they have no alternate implementation.
-
-On the disposable VM, use the same executable and identity for both runs:
-
-~~~powershell
-.\Runic.AdminVerify.exe local --allow-changes --only firewall,shares --backend handwritten
-.\Runic.AdminVerify.exe local --allow-changes --only firewall,shares --backend cswin32
-~~~
-
-Run them sequentially and check cleanup results. Each uses unique fixture names.
-Both execute exactly the same verification code and assertions; there is no
-fallback to the other backend. Keep both reports: JSON records `Backend`, and the
-text report explicitly labels the shares/firewall backend. Omitting
-`--allow-changes` performs inspection only and skips mutation checks.
-
-The generated implementation uses pinned CsWin32 0.3.333 with unmanaged bindings
-and preserved HRESULTs. Public constructors always use generated bindings; only
-the verifier can select the handwritten comparison implementations. No runtime/SDK
+All Windows interop uses pinned CsWin32 0.3.333 generated bindings with preserved
+HRESULTs; LDAP retains System.DirectoryServices.Protocols. No runtime/SDK
 installation is needed on the VM, and no generated native type is public.
 
 ## Domain, DNS and Group Policy

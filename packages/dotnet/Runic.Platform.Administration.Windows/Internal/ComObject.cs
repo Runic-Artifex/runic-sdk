@@ -33,7 +33,6 @@ internal sealed unsafe partial class ComObject : IDisposable
         }
         return Own(pointer);
     }
-    // Only the retained handwritten firewall comparison backend uses numbered slots.
     internal nint Slot(int index)
     {
         ObjectDisposedException.ThrowIf(Pointer == 0, this);

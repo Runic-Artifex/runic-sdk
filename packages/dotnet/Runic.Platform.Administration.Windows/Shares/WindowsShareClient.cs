@@ -7,7 +7,7 @@ public sealed class WindowsShareClient
 {
     private readonly IShareClient _client;
     /// <summary>Creates a share client; null targets the local computer.</summary>
-    public WindowsShareClient(string? server = null) => _client = AdministrationBackends.Shares("cswin32", server);
+    public WindowsShareClient(string? server = null) => _client = GeneratedAdministrationClients.Shares(server);
     /// <summary>Enumerates share summaries. Native enumeration failures remain errors.</summary>
     public ImmutableArray<ShareSummary> Enumerate() => _client.Enumerate();
     /// <summary>Reads share metadata and its nullable stored security descriptor. Null means the share is absent.</summary>

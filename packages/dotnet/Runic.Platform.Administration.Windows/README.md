@@ -135,12 +135,8 @@ dependency. Generated source stays in build output and does not expose Windows
 SDK types in the public API. Calls use named methods, native structures and safe
 handle ownership; no runtime COM wrappers or warning suppressions were added.
 
-The previous shares/firewall implementations remain internal comparison backends.
-The verifier defaults to `--backend cswin32`; `--backend handwritten` selects only
-those two comparison implementations. Other capabilities always use generated
-bindings (or the LDAP transport). There is no automatic fallback. Shared validation,
-security-descriptor interpretation and COM initialization mean parity alone is not
-independent proof of Windows semantics.
+There is no handwritten interop fallback. Shared validation, security-descriptor
+interpretation and COM initialization remain part of the generated-client paths.
 
 The GPMC migration also corrects collection `get_Item` outputs to native VARIANTs,
 queries returned objects for their expected interface, and passes trustee strings
@@ -150,9 +146,8 @@ Verification after migration: managed native checks and the 115-type public API
 baseline pass. The Windows x64 NativeAOT verifier publishes without warnings and
 its local run passed 9 checks, with 5 administrative checks explicitly skipped.
 This includes temporary shortcut roundtrips but no machine administration writes.
-Earlier VM shares/firewall runs passed for both backends; rerun the full local
-mutation suite for this migrated build. GPO/LDAP/DNS fixture operations remain
-unaccepted until executed on a disposable domain.
+GPO/LDAP/DNS fixture operations remain unaccepted until executed on a disposable
+domain.
 
 ## Applicability to Runic.Platform.Windows
 

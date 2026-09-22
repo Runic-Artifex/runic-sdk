@@ -4,7 +4,6 @@ param(
     [Parameter(Mandatory)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$AutomationScript,
     [Parameter(Mandatory)][string]$ReceiptPath,
     [switch]$RequireExecutableOnly,
-    [switch]$Ime,
     [switch]$Narrator,
     [ValidateSet(0, 100, 125, 150, 175, 200)][int]$DisplayScale = 0,
     [ValidateSet(0, 100, 125, 150, 175, 200)][int]$TransitionScale = 0,
@@ -13,12 +12,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# Deferred while Windows WebView2 composition remains state-dependent.
-# Keep the parameter compatible with existing invocations, but never run the probe.
-if ($Ime) {
-    Write-Warning 'Windows IME testing is disabled; support is best effort. Continuing without IME coverage.'
-    $Ime = $false
-}
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $AutomationScript = (Resolve-Path -LiteralPath $AutomationScript).Path
 $ReceiptPath = [IO.Path]::GetFullPath($ReceiptPath)
@@ -39,7 +32,6 @@ $taskName = "Runic.Desktop.UIA.$([Guid]::NewGuid().ToString('N'))"
 $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Executable "{1}" -ReceiptPath "{2}"' -f `
     $AutomationScript, $Executable, $ReceiptPath
-if ($Ime) { $arguments += ' -Ime' }
 if ($Narrator) { $arguments += ' -Narrator' }
 if ($TransitionScale) { $arguments += " -TransitionScale $TransitionScale" }
 if ($DisplayScale) { $arguments += " -DisplayScale $DisplayScale" }

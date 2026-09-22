@@ -102,23 +102,10 @@ static async Task RunWindowsUiAutomationSmokeAsync()
             <button id="open-file" type="button">Open native file</button>
             <button id="save-file" type="button">Save native file</button>
             <output id="snapshot" aria-live="polite">Waiting for automation</output></main>
-            <output id="ime-result" aria-live="off" style="display:block;max-height:2em;overflow:hidden;overflow-wrap:anywhere">IME: []</output>
             <output id="keyboard-focus" aria-live="polite">Keyboard focus: none</output>
             <output id="picker-result" aria-live="polite">No file selected</output>
             <button id="finish" type="button">Finish</button>
             <script>
-            const imeEvents = [];
-            for (const type of ['compositionstart', 'compositionupdate', 'compositionend', 'input']) {
-              document.getElementById('display-name').addEventListener(type, event => {
-                imeEvents.push({ type, data: event.data, value: event.target.value, trusted: event.isTrusted, composing: event.isComposing });
-                if (type === 'compositionend') {
-                  document.getElementById('ime-result').textContent = 'IME: ' + JSON.stringify(imeEvents);
-                }
-              });
-            }
-            document.getElementById('display-name').addEventListener('blur', () => {
-              document.getElementById('ime-result').textContent = 'IME: ' + JSON.stringify(imeEvents);
-            });
             document.getElementById('record').addEventListener('click', () => {
               document.getElementById('snapshot').textContent =
                 'Recorded: ' + document.getElementById('display-name').value;

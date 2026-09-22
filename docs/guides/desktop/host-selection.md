@@ -63,12 +63,6 @@ On NixOS, use the repository's [development shell](nixos-development.md).
 Use the [size and tuning guide](size-and-tuning.md) for measurements and the
 minimal Desktop profile.
 
-## Windows IME support
-
-IME input in Runic Desktop's embedded WebView2 host is currently **best effort**.
-In Windows testing, Chinese text can commit successfully while the composition
-popup is misplaced and DOM composition events are missing. The behavior is
-state-dependent and also reproduces in a standard WebView2 host. The strict
-Windows IME automation probe is disabled pending further investigation; ordinary
-keyboard navigation and Narrator checks remain enabled. Applications that rely
-on composition events should account for this limitation.
+Windows IME composition remains application-specific and is not covered by the
+Windows UI Automation smoke. Applications that depend on composition events
+should validate their target Windows and WebView2 versions.
