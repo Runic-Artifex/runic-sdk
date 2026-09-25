@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.Views.CsWebUi.DependencyInjection</PackageId>
+    <Authors>RunicArtifex</Authors>
+    <Description>Experimental Microsoft DI window ownership for the CS-WebUI Bridge.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <ProjectReference Include="../Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="build/Runic.Application.Views.CsWebUi.DependencyInjection.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.DependencyInjection.props" />
+  </ItemGroup>
+</Project>

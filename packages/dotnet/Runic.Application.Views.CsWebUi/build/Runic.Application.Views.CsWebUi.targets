@@ -1,0 +1,14 @@
+<Project>
+  <Target Name="RunicViewsCopyCsWebUiClient" AfterTargets="Build"
+          Condition="'$(RunicBridgeBootstrap)' != 'true'">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-cswebui.js"
+          DestinationFiles="$(TargetDir)www/runic-cswebui.js"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="RunicViewsCopyCsWebUiClientForPublish" AfterTargets="Publish"
+          Condition="'$(RunicBridgeBootstrap)' != 'true'">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-cswebui.js"
+          DestinationFiles="$(PublishDir)www/runic-cswebui.js"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

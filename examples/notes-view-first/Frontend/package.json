@@ -1,0 +1,14 @@
+{
+  "name": "@runic-artifex/notes-view-first",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -p tsconfig.json && node copy-static.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "8.2.2"
+  }
+}

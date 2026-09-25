@@ -1,0 +1,11 @@
+{
+  "name": "@runic-artifex/views-svelte-probe",
+  "version": "0.3.0-preview.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./ViewOutlet.svelte": "./src/ViewOutlet.svelte",
+    "./view-registry": "./src/view-registry.ts"
+  },
+  "peerDependencies": { "svelte": "^5.57.1" }
+}

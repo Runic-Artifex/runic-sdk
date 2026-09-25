@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/packages/dotnet/">
+    <Project Path="packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj" />
+    <Project Path="packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection/Runic.Application.Views.CsWebUi.DependencyInjection.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj" />
+    <Project Path="tools/Runic.Application.Views.Codegen.Toolkit/Runic.Application.Views.Codegen.Toolkit.csproj" />
+    <Project Path="tools/Runic.Application.Views.Codegen.ReactiveUI/Runic.Application.Views.Codegen.ReactiveUI.csproj" />
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/first-window/FirstWindow.csproj" />
+    <Project Path="examples/notes-view-first/NotesViewFirst.csproj" />
+    <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
+  </Folder>
+</Solution>

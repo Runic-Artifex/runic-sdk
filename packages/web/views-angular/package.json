@@ -1,0 +1,8 @@
+{
+  "name": "@runic-artifex/views-angular-probe",
+  "version": "0.3.0-preview.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/view-outlet.ts" },
+  "peerDependencies": { "@angular/core": "^22.2.0" }
+}

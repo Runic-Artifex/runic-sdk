@@ -1,0 +1,98 @@
+<Project>
+  <!-- This file is imported from source during development and from
+       buildTransitive when consumed as a package. -->
+  <PropertyGroup>
+    <RunicBridgeGeneratedDir>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge/</RunicBridgeGeneratedDir>
+    <RunicBridgeTypescriptDir Condition="'$(RunicBridgeTypescriptDir)' == ''">$(MSBuildProjectDirectory)/Frontend/src/generated</RunicBridgeTypescriptDir>
+    <RunicBridgeFrontendDir Condition="'$(RunicBridgeFrontendDir)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir>
+    <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == ''">npm run build</RunicBridgeFrontendBuildCommand>
+    <RunicBridgeCodegenProject>$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj</RunicBridgeCodegenProject>
+    <RunicBridgeCodegenDll Condition="Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
+    <RunicBridgeCodegenDll Condition="!Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../tools/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
+    <RunicBridgeAotArgument Condition="'$(PublishAot)' == 'true'">--aot</RunicBridgeAotArgument>
+    <RunicBridgeRegistrationArgument Condition="'$(RunicBridgeRegisterGlobally)' == 'false'">--no-registry</RunicBridgeRegistrationArgument>
+    <RunicBridgeCompositionArgument Condition="'$(RunicBridgeCompositionType)' != ''">--di-composition &quot;$(RunicBridgeCompositionType)&quot;</RunicBridgeCompositionArgument>
+  </PropertyGroup>
+
+  <!-- Include the source tool in the restore graph so a first IDE build can
+       compile it without a separate manual restore. It is not an app reference. -->
+  <ItemGroup Condition="Exists('$(RunicBridgeCodegenProject)') and '$(RunicBridgeBootstrap)' != 'true'">
+    <ProjectReference Include="$(RunicBridgeCodegenProject)" ReferenceOutputAssembly="false"
+                      GlobalPropertiesToRemove="PublishAot;RuntimeIdentifier;SelfContained" />
+  </ItemGroup>
+
+  <Target Name="RunicViewsDetectBridgeUse" BeforeTargets="PrepareForBuild">
+    <ItemGroup>
+      <_RunicBridgeDirectPackage Include="@(PackageReference)"
+        Condition="'%(PackageReference.Identity)' == 'Runic.Application.Views' or '%(PackageReference.Identity)' == 'Runic.Application.Views.CsWebUi' or '%(PackageReference.Identity)' == 'Runic.Application.Views.CsWebUi.DependencyInjection'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and Exists('$(RunicBridgeCodegenProject)')">true</RunicBridgeBuildEnabled>
+      <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and '@(_RunicBridgeDirectPackage)' != ''">true</RunicBridgeBuildEnabled>
+      <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == ''">false</RunicBridgeBuildEnabled>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="RunicViewsDesignTimeComposition" BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicViewsDetectBridgeUse"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' == 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+    <MSBuild Projects="$(RunicBridgeCodegenProject)" Targets="Build"
+             Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
+             Condition="Exists('$(RunicBridgeCodegenProject)') and '$(RunicBridgeCompositionType)' != ''" />
+    <MakeDir Directories="$(RunicBridgeGeneratedDir)" />
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicBridgeCompositionType)&quot; &quot;$(RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs&quot;"
+          Condition="'$(RunicBridgeCompositionType)' != ''" />
+    <ItemGroup>
+      <Compile Include="$(RunicBridgeGeneratedDir)*Bridge.g.cs" />
+      <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs"
+               Condition="'$(RunicBridgeCompositionType)' != ''" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RunicViewsGenerateBridge" BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicViewsDetectBridgeUse;ResolveProjectReferences"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+    <MSBuild Projects="$(RunicBridgeCodegenProject)" Targets="Build"
+             Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
+             Condition="Exists('$(RunicBridgeCodegenProject)')" />
+    <!-- In a one-project starter, first compile the ordinary C# source so MVVM
+         source generators have finished before Bridge inspection. -->
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build"
+             Properties="RunicBridgeBootstrap=true;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
+             Condition="'$(RunicBridgeModelAssembly)' == ''" />
+    <PropertyGroup>
+      <RunicBridgeInputAssembly Condition="'$(RunicBridgeModelAssembly)' == ''">$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(AssemblyName).dll</RunicBridgeInputAssembly>
+      <RunicBridgeInputAssembly Condition="'$(RunicBridgeModelAssembly)' != ''">$(RunicBridgeModelAssembly)</RunicBridgeInputAssembly>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(RunicBridgeCodegenDll)')"
+           Text="Runic Bridge code generator was not found at $(RunicBridgeCodegenDll)." />
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeRegistrationArgument) $(RunicBridgeCompositionArgument)" />
+    <ItemGroup>
+      <Compile Include="$(RunicBridgeGeneratedDir)*Bridge.g.cs" />
+      <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />
+    </ItemGroup>
+    <Exec Command="$(RunicBridgeFrontendBuildCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
+  </Target>
+
+  <Target Name="RunicViewsCopyFrontend" AfterTargets="Build"
+          DependsOnTargets="RunicViewsDetectBridgeUse"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+    <ItemGroup>
+      <RunicBridgeFrontendFile Include="$(RunicBridgeFrontendDir)/dist/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RunicBridgeFrontendFile)"
+          DestinationFiles="@(RunicBridgeFrontendFile->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="RunicViewsCopyFrontendForPublish" AfterTargets="Publish"
+          DependsOnTargets="RunicViewsDetectBridgeUse"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+    <ItemGroup>
+      <RunicBridgePublishedFrontendFile Include="$(RunicBridgeFrontendDir)/dist/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RunicBridgePublishedFrontendFile)"
+          DestinationFiles="@(RunicBridgePublishedFrontendFile->'$(PublishDir)www/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

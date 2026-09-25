@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <RunicBridgeRegisterGlobally Condition="'$(RunicBridgeRegisterGlobally)' == ''">false</RunicBridgeRegisterGlobally>
+    <RunicBridgeCompositionType Condition="'$(RunicBridgeCompositionType)' == ''">$(MSBuildProjectName).RunicBridgeComposition</RunicBridgeCompositionType>
+  </PropertyGroup>
+</Project>

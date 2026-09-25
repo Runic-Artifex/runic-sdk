@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My first Runic app</title>
+    <script src="webui.js"></script>
+    <script src="runic-cswebui.js"></script>
+    <script type="module" src="app.js"></script>
+    <style>
+      :root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+      body { max-width: 30rem; margin: 3rem auto; padding: 0 1.5rem; }
+      .count { font-size: 4rem; font-variant-numeric: tabular-nums; }
+      .row { display: flex; align-items: center; gap: 1rem; }
+      input { width: 4rem; padding: .4rem; font: inherit; }
+      button { padding: .5rem 1rem; font: inherit; }
+      .error { color: #c03; min-height: 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>My first Runic app</h1>
+    <p id="count" class="count">…</p>
+    <div class="row">
+      <label for="step">Step</label>
+      <input id="step" type="number" value="1">
+      <button id="increment" disabled>Increment</button>
+    </div>
+    <p id="errors" class="error" role="alert"></p>
+    <p id="status" role="status">Connecting…</p>
+  </body>
+</html>
