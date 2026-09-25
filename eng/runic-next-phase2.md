@@ -16,6 +16,7 @@ misdescribe its contents.
 | `Runic.Application.Views` | `Runic.Application` | The old generic application package was removed; Views is now the application model. |
 | `Runic.Application.Views.CsWebUi` and `.DependencyInjection` | `Runic.Application.CsWebUi` | The old generic host ID fits; its small DI owner should ship with the host instead of requiring another package. |
 | `Runic.Application.Views.ReactiveUI` | `Runic.Application.ReactiveUI` | An optional ReactiveUI dependency must stay outside the core. This is the one justified new .NET ID. |
+| Headless Window/View testing | `Runic.Application.Testing` | Reuse the retired generic testing ID for generated routes, snapshots, and View lifetimes. |
 | Desktop Views adapter | `Runic.Application.Desktop` | Reuse the old generic application host ID; keep `Runic.Desktop` independently useful. |
 | `@runic-artifex/views-svelte` | `@runic-artifex/svelte/views` | Add an export to the existing Svelte integration. |
 | `@runic-artifex/views-angular` | `@runic-artifex/angular` | The old generic Angular integration ID fits its replacement. |

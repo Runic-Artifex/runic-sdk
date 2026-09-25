@@ -11,6 +11,7 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" PackageId="Runic.CommandLine.Testing" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" PackageId="Runic.Desktop" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" PackageId="Runic.Application" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" PackageId="Runic.Application.Testing" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" PackageId="Runic.Application.ReactiveUI" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj" PackageId="Runic.Application.CsWebUi" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" PackageId="Runic.Application.Desktop" />

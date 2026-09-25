@@ -62,6 +62,11 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Application.Testing",
+      "version": "0.5.0-preview.2"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Application.ReactiveUI",
       "version": "0.5.0-preview.2"
     },
