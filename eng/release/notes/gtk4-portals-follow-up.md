@@ -1,4 +1,8 @@
-# Linux GTK4 and portal integration — unreleased
+# Linux GTK4 and portal integration — historical release note
+
+> Historical follow-up for the 0.3.0-preview.1 release train. This note is
+> retained as evidence and context; it is not an outstanding release checklist.
+> Use [the current release policy](../README.md) for current release facts.
 
 Linux embedded applications now select `Gtk3WebKit41` or `Gtk4WebKit6` explicitly
 in `DesktopHostOptions.Linux`. GTK4 uses the optional `Runic.Desktop.Gtk4` factory
@@ -28,5 +32,5 @@ GStreamer codecs and GTK/KDE portal binaries. It does not start or reconfigure t
 user's desktop portal services.
 
 GTK3 remains supported. GTK4 native desktop coverage and any unsupported window
-operations are described in the provider README; this follow-up does not claim
-comprehensive accessibility, IME or distribution certification. The target is SDK 0.3.0-preview.1; it has not yet been published.
+operations are described in the provider README; this historical follow-up did
+not claim comprehensive accessibility, IME or distribution certification.

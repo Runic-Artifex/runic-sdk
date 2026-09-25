@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/svelte",
-  "version": "0.3.0-preview.1",
+  "version": "0.4.0-preview.1",
   "description": "Svelte 5 localization and inline content helpers for Runic",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#readme",
   "bugs": {
