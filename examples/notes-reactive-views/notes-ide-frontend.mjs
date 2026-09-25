@@ -128,7 +128,8 @@ if (framework === "angular") {
   closeAngularProxy = await startAngularSourceMapProxy(port, angularPort);
   console.log(`RUNIC_IDE_ANGULAR_MAP_PROXY|visible=${port}|angular=${angularPort}`);
   argumentsToRun = [join(frontend, "node_modules/@angular/cli/bin/ng.js"), "serve",
-    "--configuration", "development", "--host", "127.0.0.1", "--port", String(angularPort)];
+    "--configuration", "development", "--host", "127.0.0.1", "--port", String(angularPort),
+    ...(process.platform === "win32" ? ["--poll", "500"] : [])];
 } else if (framework === "svelte" || framework === "typescript") {
   argumentsToRun = [join(frontend, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1",
     "--port", String(port), "--strictPort"];
@@ -136,5 +137,8 @@ if (framework === "angular") {
   throw new Error(`Unknown frontend framework: ${framework}`);
 }
 launch(argumentsToRun);
-process.exitCode = await completed(child);
+const frontendExit = await completed(child);
+if (frontendExit !== 0)
+  console.error(`RUNIC_IDE_FRONTEND_EXIT|framework=${framework}|code=${frontendExit}`);
+process.exitCode = frontendExit;
 closeAngularProxy?.();
