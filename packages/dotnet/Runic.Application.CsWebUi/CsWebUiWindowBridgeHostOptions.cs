@@ -9,6 +9,8 @@ internal sealed record CsWebUiWindowBridgeHostOptions
 {
     internal required IAssetSource Assets { get; init; }
     internal required Func<IWindowBridgeTransport, WindowBridgeSession> CreateWindowSession { get; init; }
+    /// <summary>Optional fixture composition hook for adapter-owned refresh hints.</summary>
+    internal Action<WindowBridgeSession, CsWebUiWindowBridgeInvalidationPublisher>? ConfigureInvalidations { get; init; }
     internal WebUiBrowser Browser { get; init; } = WebUiBrowser.Any;
     internal bool OpenWindow { get; init; } = true;
     internal string Title { get; init; } = "Runic Application";

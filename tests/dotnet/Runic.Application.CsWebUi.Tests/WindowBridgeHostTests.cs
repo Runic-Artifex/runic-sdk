@@ -218,7 +218,6 @@ internal static class WindowBridgeHostTests
         }
         public WindowBridgeEndpointLease BindAsync(string route, Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
             throw new NotSupportedException();
-        public void Publish(string route, string payload) => throw new NotSupportedException();
         internal string Call(string route, string payload, string clientId) => _routes[route](new Arguments(payload, clientId));
 
         private sealed class Arguments(string payload, string clientId) : WindowBridgeArguments

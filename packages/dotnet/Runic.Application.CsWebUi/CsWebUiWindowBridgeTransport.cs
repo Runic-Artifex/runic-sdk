@@ -128,6 +128,39 @@ internal sealed class CsWebUiWindowBridgeTransport : IWindowBridgeTransport, IWi
         return local.Entry.Endpoint;
     }
 
+    /// <summary>
+    /// Sends one adapter-owned, data-free refresh hint through an active
+    /// logical endpoint. The synchronous native call is intentionally made
+    /// under the endpoint gate: retirement cannot win after validation and
+    /// before this native critical section enters.
+    /// </summary>
+    internal void PublishRefreshHint(CsWebUiWindowBridgeEndpoint endpoint, long revision)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(revision);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_endpoints.TryGetValue(endpoint.Id, out EndpointEntry? current)
+                || current.Retired || current.Endpoint.Generation != endpoint.Generation) return;
+            string envelope = WindowBridgeJson.Write(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("v", 1);
+                writer.WriteString("endpoint", endpoint.Id);
+                writer.WriteNumber("generation", endpoint.Generation);
+                writer.WritePropertyName("payload");
+                writer.WriteStartObject();
+                writer.WriteString("protocol", "runic.window-bridge.refresh");
+                writer.WriteNumber("version", 1);
+                writer.WriteNumber("revision", revision);
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            });
+            _native.RunJavaScript($"window.__runicBridgePublish?.({envelope});");
+        }
+    }
+
     private Lease Add(string route,
         Func<WindowBridgeArguments, string>? sync,
         Func<WindowBridgeArguments, CancellationToken, ValueTask<string>>? async)

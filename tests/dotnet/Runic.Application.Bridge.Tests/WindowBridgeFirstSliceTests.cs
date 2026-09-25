@@ -42,6 +42,31 @@ internal static class WindowBridgeFirstSliceTests
         await DocumentTombstonesRemainDocumentOwned().ConfigureAwait(false);
         await DocumentEpochRetiresReloadedPresentationAndPreservesSameReferenceIndependence().ConfigureAwait(false);
         await LateRetiredPresentationHandleCannotReleaseReplacement().ConfigureAwait(false);
+        await InvalidationAdmissionRequiresCurrentPresentationAndGeneration().ConfigureAwait(false);
+    }
+
+    private static async Task InvalidationAdmissionRequiresCurrentPresentationAndGeneration()
+    {
+        var transport = new RecordingTransport();
+        await using var session = new WindowBridgeSession(transport);
+        var model = new Child();
+        WindowBridgeReference reference = session.Expose("editor", model, Attach);
+        True(!session.TryAdmitInvalidation(model, "editor", out _),
+            "An unpresented reference admitted an invalidation.");
+        WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "invalidation");
+        WindowBridgeDocumentEpoch first = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+        True(session.BeginDocument(connection, first).Accepted, "The invalidation test document was not admitted.");
+        using WindowBridgePresentationLease presentation = session.Mount(reference, connection, first, "editor");
+        True(session.TryAdmitInvalidation(model, "editor", out WindowBridgeInvalidation admitted)
+            && admitted.Reference == reference && admitted.Revision == 1 && session.CanDispatch(admitted),
+            "A current presentation did not admit a dispatchable opaque invalidation.");
+        session.Suspend(model);
+        True(!session.CanDispatch(admitted), "A retired attachment generation remained dispatchable.");
+        Equal(reference, session.Expose("editor", model, Attach), "The invalidation test did not reattach the same reference.");
+        using WindowBridgePresentationLease replacement = session.Mount(reference, connection, first, "editor");
+        True(session.TryAdmitInvalidation(model, "editor", out WindowBridgeInvalidation reattached)
+            && reattached.AttachmentGeneration != admitted.AttachmentGeneration && reattached.Revision == 2,
+            "Reattachment did not issue a distinct opaque generation and monotonic revision.");
     }
 
     private static async Task NestedReferencesAndPresentationLeases()

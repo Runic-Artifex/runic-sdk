@@ -15,8 +15,193 @@ internal static class StableWindowBridgeDispatchTests
         await BatchesAttachmentEndpointManifestsAsync();
         await KeepsBootstrapSnapshotAtomicAcrossAnOpenBatchAsync();
         await KeepsAuthoritativeRoutesWhenManifestBroadcastFailsAsync();
+        await PublishesDataFreeRefreshHintAsync();
+        await RegistrationLifecycleStaysBoundedAsync();
+        await ReconcilesDeferredLatestHintAtCapacityAsync();
+        await CancelsQueuedRefreshAfterUnmountAndDocumentReplacementAsync();
+        await JoinsHeldNativeSendAfterAnEarlierDrainAsync();
         RejectsUnauthenticatedAndMalformedEnvelopes();
         Console.WriteLine("CS-WebUI stable dispatch: fixed native registration, endpoint retirement, dynamic handoff, in-flight drain, and guards passed.");
+    }
+
+    private static async Task PublishesDataFreeRefreshHintAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var model = new object();
+        WindowBridgeReference reference = session.Expose("editor", model,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        using WindowBridgeEndpointLease outbound = transport.BindEndpoint("editor.refresh", _ => "{\"ok\":true}");
+        var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport);
+        using IDisposable registration = publisher.Register(reference, outbound);
+        WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "refresh");
+        WindowBridgeDocumentEpoch document = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+        Check(session.BeginDocument(connection, document).Accepted, "The refresh-hint document was not admitted.");
+        using WindowBridgePresentationLease presentation = session.Mount(reference, connection, document, "editor");
+
+        Check(publisher.TryPublish(model, "editor"), "A current presented model did not admit its refresh hint.");
+        await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        using JsonDocument envelope = ReadPublishedEnvelope(native.LastScript!);
+        JsonElement payload = envelope.RootElement.GetProperty("payload");
+        Check(payload.GetProperty("protocol").GetString() == "runic.window-bridge.refresh"
+            && payload.GetProperty("version").GetInt32() == 1
+            && payload.GetProperty("revision").GetInt64() == 1
+            && payload.EnumerateObject().Count() == 3,
+            "The refresh hint was not the fixed data-free adapter record.");
+        Check(!payload.TryGetProperty("route", out _) && !payload.TryGetProperty("reference", out _)
+            && !payload.TryGetProperty("document", out _) && !payload.TryGetProperty("state", out _),
+            "The refresh hint exposed route, identity, document, or state data.");
+        await publisher.StopAndDrainAsync().ConfigureAwait(false);
+    }
+
+    private static async Task CancelsQueuedRefreshAfterUnmountAndDocumentReplacementAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var model = new object();
+        WindowBridgeReference reference = session.Expose("editor", model,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        using WindowBridgeEndpointLease outbound = transport.BindEndpoint("editor.refresh", _ => "{\"ok\":true}");
+        var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport);
+        using IDisposable registration = publisher.Register(reference, outbound);
+        WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "refresh-cancel");
+        WindowBridgeDocumentEpoch first = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+        WindowBridgeDocumentEpoch replacement = WindowBridgeDocumentEpoch.Create("0000000000000002BBBBBBBBBBBBBBBB");
+        Check(session.BeginDocument(connection, first).Accepted, "The queued-refresh document was not admitted.");
+        using WindowBridgePresentationLease presentation = session.Mount(reference, connection, first, "editor");
+        native.HoldNextScript();
+        int scriptsBefore = native.ScriptCount;
+        Check(publisher.TryPublish(model, "editor"), "The first queued refresh was not admitted.");
+        await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(publisher.TryPublish(model, "editor"), "A refresh during an active send was not coalesced.");
+        Check(session.BeginDocument(connection, replacement).Accepted, "Document replacement did not retire the queued presentation.");
+        native.ReleaseHeldScript();
+        await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(native.ScriptCount == scriptsBefore + 1,
+            "A queued refresh crossed the host boundary after document replacement.");
+        Check(!publisher.TryPublish(model, "editor"), "An unmounted replacement document admitted a refresh hint.");
+        using WindowBridgePresentationLease replacementPresentation = session.Mount(reference, connection, replacement, "editor");
+        native.HoldNextScript();
+        int unmountScriptsBefore = native.ScriptCount;
+        Check(publisher.TryPublish(model, "editor"), "The queued unmount refresh was not admitted.");
+        await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(publisher.TryPublish(model, "editor"), "A queued unmount follow-up was not coalesced.");
+        Check(session.Unmount(reference, connection, replacement, "editor"), "The queued-refresh presentation did not unmount.");
+        native.ReleaseHeldScript();
+        await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(native.ScriptCount == unmountScriptsBefore + 1,
+            "A queued refresh crossed the host boundary after unmount.");
+        await publisher.StopAndDrainAsync().ConfigureAwait(false);
+    }
+
+    private static async Task RegistrationLifecycleStaysBoundedAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var model = new object();
+        WindowBridgeReference reference = session.Expose("editor", model,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport);
+        for (int index = 0; index < 128; index++)
+        {
+            using WindowBridgeEndpointLease endpoint = transport.BindEndpoint("editor.refresh." + index, _ => "{\"ok\":true}");
+            using IDisposable registration = publisher.Register(reference, endpoint);
+            Check(publisher.RegisteredReferenceCount == 1, "A registered reference did not replace its previous adapter descriptor.");
+        }
+        Check(publisher.RegisteredReferenceCount == 0, "Disposed endpoint registrations accumulated after dynamic replacement.");
+
+        WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "registration");
+        WindowBridgeDocumentEpoch document = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+        Check(session.BeginDocument(connection, document).Accepted, "The registration test document was not admitted.");
+        using WindowBridgePresentationLease presentation = session.Mount(reference, connection, document, "editor");
+        using WindowBridgeEndpointLease first = transport.BindEndpoint("editor.refresh.first", _ => "{\"ok\":true}");
+        using WindowBridgeEndpointLease replacement = transport.BindEndpoint("editor.refresh.replacement", _ => "{\"ok\":true}");
+        using IDisposable firstRegistration = publisher.Register(reference, first);
+        native.HoldNextScript();
+        int scriptsBefore = native.ScriptCount;
+        Check(publisher.TryPublish(model, "editor"), "The replacement-lifecycle first hint was not admitted.");
+        await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        using IDisposable replacementRegistration = publisher.Register(reference, replacement);
+        firstRegistration.Dispose();
+        Check(publisher.RegisteredReferenceCount == 1,
+            "Disposing an old registration removed the replacement descriptor.");
+        Check(publisher.TryPublish(model, "editor"),
+            "Late old-registration disposal erased the replacement's pending refresh hint.");
+        native.ReleaseHeldScript();
+        await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(native.ScriptCount == scriptsBefore + 2,
+            "The replacement descriptor did not retain its follow-up refresh after late old disposal.");
+        replacementRegistration.Dispose();
+        Check(publisher.RegisteredReferenceCount == 0, "The replacement registration was not released.");
+        await publisher.StopAndDrainAsync().ConfigureAwait(false);
+    }
+
+    private static async Task ReconcilesDeferredLatestHintAtCapacityAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var firstModel = new object();
+        var secondModel = new object();
+        WindowBridgeReference firstReference = session.Expose("first", firstModel,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        WindowBridgeReference secondReference = session.Expose("second", secondModel,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        using WindowBridgeEndpointLease firstEndpoint = transport.BindEndpoint("first.refresh", _ => "{\"ok\":true}");
+        using WindowBridgeEndpointLease secondEndpoint = transport.BindEndpoint("second.refresh", _ => "{\"ok\":true}");
+        var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport,
+            maximumReferences: 1, maximumDeferredReferences: 1);
+        using IDisposable firstRegistration = publisher.Register(firstReference, firstEndpoint);
+        using IDisposable secondRegistration = publisher.Register(secondReference, secondEndpoint);
+        WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "deferred");
+        WindowBridgeDocumentEpoch document = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+        Check(session.BeginDocument(connection, document).Accepted, "The deferred-capacity document was not admitted.");
+        using WindowBridgePresentationLease firstPresentation = session.Mount(firstReference, connection, document, "first");
+        using WindowBridgePresentationLease secondPresentation = session.Mount(secondReference, connection, document, "second");
+        native.HoldNextScript();
+        int scriptsBefore = native.ScriptCount;
+        Check(publisher.TryPublish(firstModel, "first"), "The capacity holder was not admitted.");
+        await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(!publisher.TryPublish(secondModel, "second"), "A full publisher claimed immediate second-reference admission.");
+        Check(!publisher.TryPublish(secondModel, "second"), "A deferred reference claimed immediate second admission.");
+        native.ReleaseHeldScript();
+        await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(native.ScriptCount == scriptsBefore + 2,
+            "The latest deferred reference did not reconcile after the capacity holder drained.");
+        using JsonDocument envelope = ReadPublishedEnvelope(native.LastScript!);
+        Check(envelope.RootElement.GetProperty("payload").GetProperty("revision").GetInt64() == 2,
+            "A deferred reference did not retain its latest revision under capacity pressure.");
+        await publisher.StopAndDrainAsync().ConfigureAwait(false);
+    }
+
+    private static async Task JoinsHeldNativeSendAfterAnEarlierDrainAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var model = new object();
+        WindowBridgeReference reference = session.Expose("editor", model,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        using WindowBridgeEndpointLease outbound = transport.BindEndpoint("editor.refresh", _ => "{\"ok\":true}");
+        var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport);
+        using IDisposable registration = publisher.Register(reference, outbound);
+        WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "refresh-drain");
+        WindowBridgeDocumentEpoch document = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+        Check(session.BeginDocument(connection, document).Accepted, "The drain test document was not admitted.");
+        using WindowBridgePresentationLease presentation = session.Mount(reference, connection, document, "editor");
+        Check(publisher.TryPublish(model, "editor"), "The first drain-epoch refresh was not admitted.");
+        await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+
+        native.HoldNextScript();
+        Check(publisher.TryPublish(model, "editor"), "The second drain-epoch refresh was not admitted.");
+        await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Task stop = publisher.StopAndDrainAsync();
+        Check(!stop.IsCompleted, "Publisher drain completed while a later native send was still held.");
+        native.ReleaseHeldScript();
+        await stop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
     }
 
     private static async Task RetiresEndpointsWithoutGrowingNativeRegistrationsAsync()
@@ -286,6 +471,15 @@ internal static class StableWindowBridgeDispatchTests
 
     private static bool IsDisconnected(string reply) => reply.Contains("\"disconnected\"", StringComparison.Ordinal);
 
+    private static JsonDocument ReadPublishedEnvelope(string script)
+    {
+        const string prefix = "?.(";
+        int start = script.IndexOf(prefix, StringComparison.Ordinal);
+        int end = script.LastIndexOf(");", StringComparison.Ordinal);
+        if (start < 0 || end <= start + prefix.Length) throw new InvalidOperationException("The refresh script had no envelope.");
+        return JsonDocument.Parse(script[(start + prefix.Length)..end]);
+    }
+
     private static EndpointHandoff ReadHandoff(string script)
     {
         const string prefix = "?.(";
@@ -321,6 +515,18 @@ internal static class StableWindowBridgeDispatchTests
         internal string? LastScript { get; private set; }
         internal int ScriptCount { get; private set; }
         internal bool ThrowNextScript { get; set; }
+        internal TaskCompletionSource? HeldScriptEntered { get; private set; }
+        private TaskCompletionSource? _nextScriptEntered;
+        private TaskCompletionSource? _releaseScript;
+
+        internal void HoldNextScript()
+        {
+            HeldScriptEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _nextScriptEntered = HeldScriptEntered;
+            _releaseScript = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        internal void ReleaseHeldScript() => _releaseScript?.TrySetResult();
 
         public IDisposable BindAsync(string name, Func<IWindowBridgeNativeCallback, CancellationToken, ValueTask<string>> handler)
         {
@@ -340,6 +546,13 @@ internal static class StableWindowBridgeDispatchTests
             }
             LastScript = script;
             ScriptCount++;
+            if (_nextScriptEntered is { } entered && _releaseScript is { } release)
+            {
+                _nextScriptEntered = null;
+                entered.TrySetResult();
+                release.Task.GetAwaiter().GetResult();
+                _releaseScript = null;
+            }
         }
 
         internal async Task<string> DispatchAsync(string credential, string envelope, CancellationToken cancellationToken = default)

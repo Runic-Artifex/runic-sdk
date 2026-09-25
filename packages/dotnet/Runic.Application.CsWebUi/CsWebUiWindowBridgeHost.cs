@@ -23,6 +23,7 @@ internal sealed class CsWebUiWindowBridgeHost : IAsyncDisposable
     private CsWebUiWindowBridgeAssetResponder? _assets;
     private CsWebUiWindowBridgeTransport? _transport;
     private WindowBridgeSession? _session;
+    private CsWebUiWindowBridgeInvalidationPublisher? _invalidations;
     private WindowBridgeEndpointLease? _documentBeginLease;
 
     internal CsWebUiWindowBridgeHost(CsWebUiWindowBridgeHostOptions options)
@@ -69,6 +70,8 @@ internal sealed class CsWebUiWindowBridgeHost : IAsyncDisposable
             _transport = new CsWebUiWindowBridgeTransport(Window, _credential, _options.Limits);
             var session = _options.CreateWindowSession(_transport);
             _session = session;
+            _invalidations = new CsWebUiWindowBridgeInvalidationPublisher(session, _transport);
+            _options.ConfigureInvalidations?.Invoke(session, _invalidations);
             _assets.DispatchEndpointBootstrap = () => _transport.EndpointManifestBootstrapJson;
             _documentBeginLease = _transport.Bind(DocumentBeginRoute, BeginDocument);
             _hostBindings.Add(Window.Bind("", eventData =>
@@ -153,6 +156,7 @@ internal sealed class CsWebUiWindowBridgeHost : IAsyncDisposable
             catch (Exception error) { failures.Add(error); }
         }
         if (_assets is not null) _assets.ReadinessPath = null;
+        _invalidations?.StopAdmission();
         if (_session is not null)
         {
             WindowBridgeCloseAdmission close = _session.BeginClose();
@@ -162,6 +166,8 @@ internal sealed class CsWebUiWindowBridgeHost : IAsyncDisposable
             else
                 ObserveDeferredDrain(close.Completion);
         }
+        if (_invalidations is not null)
+            await Clean(_invalidations.DrainAsync).ConfigureAwait(false);
         if (_documentBeginLease is not null)
             await Clean(() => { _documentBeginLease.Dispose(); return Task.CompletedTask; }).ConfigureAwait(false);
         if (_transport is not null) await Clean(() => { _transport.Dispose(); return Task.CompletedTask; }).ConfigureAwait(false);

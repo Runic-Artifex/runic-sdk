@@ -4,6 +4,15 @@ using System.Runtime.CompilerServices;
 namespace Runic.Application.Bridge;
 
 /// <summary>
+/// Opaque host-neutral admission token for one best-effort view refresh. It
+/// deliberately carries no route, presentation, document, or recipient.
+/// </summary>
+internal readonly record struct WindowBridgeInvalidation(
+    WindowBridgeReference Reference,
+    long AttachmentGeneration,
+    long Revision);
+
+/// <summary>
 /// Internal, host-neutral ownership core for one logical window. It deliberately
 /// has no application-envelope, generator, or frontend authoring surface.
 /// </summary>
@@ -414,6 +423,41 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(epoch);
         lock (_gate)
             return !_disposed && IsCurrentDocumentCore(connection, epoch);
+    }
+
+    /// <summary>
+    /// Admits a host-owned refresh hint only while the exact exposed model is
+    /// attached and has a presentation in a current document. The caller owns
+    /// delivery policy and must recheck with <see cref="CanDispatch"/> just
+    /// before crossing its host boundary.
+    /// </summary>
+    internal bool TryAdmitInvalidation(object model, string kind, out WindowBridgeInvalidation invalidation)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        lock (_gate)
+        {
+            invalidation = default;
+            if (_disposed || !_models.TryGetValue(model, out Dictionary<string, Entry>? variants)
+                || !variants.TryGetValue(kind, out Entry? entry) || entry.Attachment is null || entry.Detaching
+                || !HasCurrentDocumentPresentation(entry)) return false;
+            invalidation = new WindowBridgeInvalidation(entry.Reference, entry.Generation, checked(++entry.InvalidationRevision));
+            return true;
+        }
+    }
+
+    /// <summary>Repeats the attachment and current-document guard immediately before host delivery.</summary>
+    internal bool CanDispatch(WindowBridgeInvalidation invalidation)
+    {
+        ArgumentNullException.ThrowIfNull(invalidation.Reference);
+        lock (_gate)
+        {
+            return !_disposed && _references.TryGetValue(invalidation.Reference.Id, out Entry? entry)
+                && entry.Reference.Kind == invalidation.Reference.Kind
+                && entry.Generation == invalidation.AttachmentGeneration
+                && entry.Attachment is not null && !entry.Detaching
+                && HasCurrentDocumentPresentation(entry);
+        }
     }
 
     internal WindowBridgePresentationLease Mount(WindowBridgeReference reference, WindowBridgeConnection connection,
@@ -1010,6 +1054,12 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         !_disconnectedConnections.Contains(connection)
         && _documents.TryGetValue(connection, out DocumentEntry? document) && document.Current == epoch;
 
+    private bool HasCurrentDocumentPresentation(Entry entry) =>
+        _presentations.Keys.Any(key => key.ReferenceId == entry.Reference.Id && key.DocumentEpoch is not null
+            && !_disconnectedConnections.Contains(new WindowBridgeConnection(key.ClientId, key.ConnectionId))
+            && _documents.TryGetValue(new WindowBridgeConnection(key.ClientId, key.ConnectionId), out DocumentEntry? document)
+            && document.Current.Value == key.DocumentEpoch);
+
     private bool HasPresentationCore(WindowBridgeReference reference, WindowBridgeConnection connection,
         WindowBridgeDocumentEpoch? epoch, string? presentationId = null)
     {
@@ -1151,6 +1201,7 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         internal bool PendingPresentation { get; set; }
         internal bool RootOwned { get; set; }
         internal long Generation { get; set; }
+        internal long InvalidationRevision { get; set; }
         internal long OwnershipGeneration { get; set; }
         internal int Publishing { get; set; }
     }
