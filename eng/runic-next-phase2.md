@@ -3,6 +3,7 @@
 Phase 1 is the Window/View SDK cutover in PR #28. Phase 2 makes that model the
 useful default across the SDK's own desktop applications, while retaining the
 host-neutral core and the lower-level Desktop API for applications that need it.
+PRs #28 and #29 are merged into `main`; the preview release remains deferred.
 
 ## Package identity
 
@@ -40,6 +41,23 @@ packages and may break before 1.0.
   field to verify this behavior.
 - The Translations Editor's root Window and ViewModel now use ReactiveUI. Its
   operation facade and per-document workflow state still need migration.
+
+## Pre-release editor and selection gate
+
+The next migration slice adds routed `IReadOnlyList<T>` ViewModel collections,
+including derived-model dispatch, stable item identities through reorder,
+route suspension on removal, and reconnection on restore. Default, Svelte,
+Angular, and concurrent-client Reactive Notes journeys exercise those rules.
+
+The editor publishes document ViewModels from its root and uses each document's
+generated route to open, validate, and save. Its browser-scoped draft remains
+local to the editor UI; the compiler-backed session retains revision checking,
+atomic save, and conflict handling. The hosted browser journey runs once against
+source references and once against locally packed `Runic.Application`,
+`Runic.Application.CsWebUi`, and `Runic.Application.ReactiveUI` packages. The
+package-consumer CI job repeats the packed journey and checks package origin.
+Do not publish the preview until this migration PR passes the full SDK CI and
+is merge ready.
 
 ## Design limitations and implementation order
 

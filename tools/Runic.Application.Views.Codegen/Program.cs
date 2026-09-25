@@ -190,8 +190,11 @@ static void GenerateCompositionRegistration(string path, string compositionType,
         var hasContent = model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
             .Any(property => !property.CustomAttributes.Any(attribute =>
                     attribute.AttributeType.FullName == "Runic.Application.Views.RunicIgnoreAttribute")
-                && property.PropertyType != typeof(object) && models.Any(entry =>
-                entry.Model != model && property.PropertyType.IsAssignableFrom(entry.Model)));
+                && (property.PropertyType.IsGenericType
+                    && property.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)
+                        ? property.PropertyType.GenericTypeArguments[0] : property.PropertyType) is { } candidate
+                && candidate != typeof(object) && models.Any(entry =>
+                    entry.Model != model && candidate.IsAssignableFrom(entry.Model)));
         if (!hasContent)
         {
             cs.AppendLine($"        services.AddScoped<global::System.Func<IBridgeTransport, {modelType}, global::System.IDisposable>>(");
@@ -248,10 +251,13 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         .ToArray();
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)).ToArray();
     var properties = declared.Except(commands).ToArray();
+    if (properties.Any(property => LowerFirst(property.Name) == "revision"))
+        throw new NotSupportedException($"{model.Name}.Revision conflicts with the generated Bridge revision field.");
     var nullability = new NullabilityInfoContext();
     if (properties.Length == 0 && commands.Length == 0)
         throw new InvalidOperationException("A ViewModel needs at least one state property or command.");
     var contentProperties = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
+    var contentCollections = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
     foreach (var property in properties)
     {
         if (property.GetMethod is null) throw new NotSupportedException($"{property.Name}: a public getter is required.");
@@ -270,6 +276,25 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             contentProperties.Add(property, contentModels);
             continue;
         }
+        if (property.PropertyType.IsGenericType
+            && property.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
+        {
+            var itemType = property.PropertyType.GenericTypeArguments[0];
+            var itemModels = knownModels.Where(entry => entry.Model != model
+                && itemType != typeof(object) && itemType.IsAssignableFrom(entry.Model))
+                .OrderByDescending(entry => InheritanceDepth(entry.Model))
+                .ThenBy(entry => entry.Model.FullName, StringComparer.Ordinal)
+                .ToArray();
+            if (itemModels.Length > 0)
+            {
+                if (property.SetMethod?.IsPublic == true)
+                    throw new NotSupportedException($"{property.Name}: ViewModel collections must be set by .NET, not the web view.");
+                contentCollections.Add(property, itemModels);
+                continue;
+            }
+            if (itemType == typeof(object) || typeof(INotifyPropertyChanged).IsAssignableFrom(itemType))
+                throw new NotSupportedException($"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.");
+        }
         if (property.PropertyType != typeof(int) && property.PropertyType != typeof(string)
             && property.PropertyType != typeof(bool)
             && !TryListItem(property.PropertyType, out _))
@@ -278,7 +303,9 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             && property.PropertyType != typeof(string) && property.PropertyType != typeof(bool))
             throw new NotSupportedException($"{property.Name}: writable collections are not supported yet.");
     }
-    if (contentProperties.Count > 0 && registerGlobally)
+    var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
+    var contentBindings = contentProperties.Concat(contentCollections).ToArray();
+    if (hasContent && registerGlobally)
         throw new InvalidOperationException($"{model.Name} contains ViewModel content. Generate it with --no-registry and attach it through a window content session.");
     var fullType = $"global::{model.FullName}";
     var commandPlans = new Dictionary<PropertyInfo, (bool HasStringArgument, bool IsAsync, string Descriptor)>();
@@ -316,7 +343,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine($"namespace {model.Namespace};");
     cs.AppendLine($"internal sealed class {shortName}Bridge : ViewModelBridge<{fullType}>");
     cs.AppendLine("{");
-    if (contentProperties.Count > 0)
+    if (hasContent)
     {
         cs.AppendLine("    private readonly WindowContentSession _content;");
         cs.AppendLine($"    private readonly {fullType} _owner;");
@@ -325,7 +352,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine($"        transport, vm, routePrefix ?? \"{prefix}\",");
     cs.AppendLine(needsCheckedWriter
         ? "        CreateWriter(content),"
-        : contentProperties.Count > 0
+        : hasContent
         ? "        CreateWriter(content),"
         : "        WriteSnapshot,");
     cs.AppendLine("        [");
@@ -362,26 +389,26 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("        [");
     foreach (var command in commands)
         cs.AppendLine($"            {commandPlans[command].Descriptor},");
-    if (contentProperties.Count > 0)
+    if (hasContent)
         cs.AppendLine($"        ], \"{contractFingerprint}\", content) {{ _content = content!; _owner = vm; }}");
     else cs.AppendLine($"        ], \"{contractFingerprint}\", content) {{ }}");
     cs.AppendLine();
-    if (contentProperties.Count > 0 || needsCheckedWriter)
+    if (hasContent || needsCheckedWriter)
     {
         cs.AppendLine(needsCheckedWriter
             ? $"    private static global::Runic.Application.Views.BridgeSnapshotWriter<{fullType}> CreateWriter(WindowContentSession? content)"
             : $"    private static global::System.Action<global::System.Text.Json.Utf8JsonWriter, {fullType}, long> CreateWriter(WindowContentSession? content)");
         cs.AppendLine("    {");
-        if (contentProperties.Count > 0) cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
+        if (hasContent) cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
         cs.AppendLine(needsCheckedWriter
-            ? (contentProperties.Count > 0
+            ? (hasContent
                 ? "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, content, writeFieldMetadata);"
                 : "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);")
             : "        return (writer, current, revision) => WriteSnapshot(writer, current, revision, content);");
         cs.AppendLine("    }");
         cs.AppendLine();
     }
-    cs.AppendLine($"    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, {fullType} vm, long revision{(contentProperties.Count > 0 ? ", WindowContentSession content" : "")}{(needsCheckedWriter ? ", global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata" : "")})");
+    cs.AppendLine($"    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, {fullType} vm, long revision{(hasContent ? ", WindowContentSession content" : "")}{(needsCheckedWriter ? ", global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata" : "")})");
     cs.AppendLine("    {");
     cs.AppendLine("        writer.WriteStartObject();");
     cs.AppendLine("        writer.WriteNumber(\"revision\", revision);");
@@ -429,6 +456,57 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             cs.AppendLine("            }");
             cs.AppendLine("        }");
         }
+        else if (contentCollections.TryGetValue(property, out var collectionModels))
+        {
+            var activeName = $"active{property.Name}Ids";
+            cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
+            cs.AppendLine($"        var {activeName} = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);");
+            cs.AppendLine($"        if (vm.{property.Name} is null) {{ content.PruneCollection(vm, \"{property.Name}\", {activeName}); writer.WriteNullValue(); }}");
+            cs.AppendLine("        else");
+            cs.AppendLine("        {");
+            cs.AppendLine("            writer.WriteStartArray();");
+            cs.AppendLine($"            foreach (var item in vm.{property.Name})");
+            cs.AppendLine("            {");
+            cs.AppendLine("                if (item is null) { writer.WriteNullValue(); continue; }");
+            cs.AppendLine("                switch (item)");
+            cs.AppendLine("                {");
+            foreach (var (pageModel, pageName) in collectionModels)
+            {
+                var pageType = $"global::{pageModel.FullName}";
+                var bridgeType = $"global::{pageModel.Namespace}.{pageName}Bridge";
+                var contract = ContractFor(property);
+                Type? selectedView = null;
+                if (viewTypes is not null && viewTypes.TryGetValue(pageModel, out var variants))
+                {
+                    selectedView = variants.SingleOrDefault(view => ContractFor(view) == contract);
+                    if (selectedView is null)
+                        throw new InvalidOperationException($"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract ?? "default"}'.");
+                }
+                else if (contract is not null)
+                    throw new InvalidOperationException($"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.");
+                var pageKind = PageKind(pageName, contract);
+                var contractArgument = contract is null ? "" : $", contract: \"{contract}\"";
+                cs.AppendLine($"                    case {pageType} page:");
+                cs.AppendLine("                    {");
+                if (selectedView is not null)
+                    cs.AppendLine($"                        var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
+                else
+                    cs.AppendLine($"                        var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
+                cs.AppendLine($"                        {activeName}.Add(reference.Id);");
+                cs.AppendLine("                        writer.WriteStartObject();");
+                cs.AppendLine("                        writer.WriteString(\"kind\", reference.Kind);");
+                cs.AppendLine("                        writer.WriteString(\"id\", reference.Id);");
+                cs.AppendLine("                        writer.WriteEndObject();");
+                cs.AppendLine("                        break;");
+                cs.AppendLine("                    }");
+            }
+            cs.AppendLine($"                    default: throw new global::System.NotSupportedException(\"{property.Name} contains an unregistered ViewModel type.\");");
+            cs.AppendLine("                }");
+            cs.AppendLine("            }");
+            cs.AppendLine($"            content.PruneCollection(vm, \"{property.Name}\", {activeName});");
+            cs.AppendLine("            writer.WriteEndArray();");
+            cs.AppendLine("        }");
+        }
         else if (TryListItem(property.PropertyType, out var item))
         {
             cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
@@ -457,7 +535,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (needsCheckedWriter) cs.AppendLine("        writeFieldMetadata(writer);");
     cs.AppendLine("        writer.WriteEndObject();");
     cs.AppendLine("    }");
-    if (contentProperties.Count > 0)
+    if (hasContent)
     {
         cs.AppendLine("    public override void Dispose()");
         cs.AppendLine("    {");
@@ -477,7 +555,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
 
     var ts = new StringBuilder();
     ts.AppendLine("// <auto-generated />");
-    foreach (var (pageName, contracts) in contentProperties.SelectMany(entry => entry.Value.Select(page => (page.Name, Contract: ContractFor(entry.Key))))
+    foreach (var (pageName, contracts) in contentBindings.SelectMany(entry => entry.Value.Select(page => (page.Name, Contract: ContractFor(entry.Key))))
         .GroupBy(entry => entry.Name).Select(group => (group.Key, Contracts: group.Select(entry => entry.Contract).Distinct())))
     {
         var members = string.Join(", ", contracts.SelectMany(contract =>
@@ -487,8 +565,9 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }));
         ts.AppendLine($"import {{ {members} }} from \"./{LowerFirst(pageName)}.js\";");
     }
-    if (contentProperties.Count > 0) ts.AppendLine();
-    foreach (var list in properties.Select(p => p.PropertyType).Where(t => TryListItem(t, out _)))
+    if (hasContent) ts.AppendLine();
+    foreach (var list in properties.Where(property => !contentCollections.ContainsKey(property))
+        .Select(property => property.PropertyType).Where(type => TryListItem(type, out _)))
     {
         TryListItem(list, out var item);
         ts.AppendLine($"export interface {item!.Name} {{");
@@ -507,6 +586,10 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ? string.Join(" | ", pages.Select(page =>
                 $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))
                 + (nullability.Create(property).ReadState == NullabilityState.Nullable ? " | null" : "")
+            : contentCollections.TryGetValue(property, out var collectionPages)
+                ? "readonly (" + string.Join(" | ", collectionPages.Select(page =>
+                    $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))
+                    + ")[]" + (nullability.Create(property).ReadState == NullabilityState.Nullable ? " | null" : "")
             : TsPropertyType(property);
         ts.AppendLine($"  readonly {LowerFirst(property.Name)}: {propertyType};");
         if (hasErrors) ts.AppendLine($"  readonly {LowerFirst(property.Name)}Errors: readonly string[];");
@@ -602,14 +685,21 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine("  cancel(): Promise<BridgeOperationCancelResult>;");
         ts.AppendLine("}");
     }
-    if (contentProperties.Count > 0 || needsCheckedWriter)
+    if (hasContent || needsCheckedWriter)
     {
-        var names = contentProperties.Keys.Select(property => $"\"{LowerFirst(property.Name)}\"").ToList();
+        var names = contentBindings.Select(entry => $"\"{LowerFirst(entry.Key.Name)}\"").ToList();
         if (names.Count == 0) names.Add("never");
         ts.AppendLine($"type WireState = Omit<{shortName}State, {string.Join(" | ", names)}> & {{");
         foreach (var (property, pages) in contentProperties)
         {
             var rawType = string.Join(" | ", pages.Select(page => $"{{ readonly kind: \"{PageKind(page.Name, ContractFor(property))}\"; readonly id: string }}"));
+            if (nullability.Create(property).ReadState == NullabilityState.Nullable) rawType += " | null";
+            ts.AppendLine($"  readonly {LowerFirst(property.Name)}: {rawType};");
+        }
+        foreach (var (property, pages) in contentCollections)
+        {
+            var rawType = "readonly (" + string.Join(" | ", pages.Select(page =>
+                $"{{ readonly kind: \"{PageKind(page.Name, ContractFor(property))}\"; readonly id: string }}")) + ")[]";
             if (nullability.Create(property).ReadState == NullabilityState.Nullable) rawType += " | null";
             ts.AppendLine($"  readonly {LowerFirst(property.Name)}: {rawType};");
         }
@@ -634,6 +724,17 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             if (nullability.Create(property).ReadState == NullabilityState.Nullable)
                 expression = $"wire.{field} === null ? null : {expression}";
             ts.AppendLine($"    {field}: {expression},");
+        }
+        foreach (var (property, pages) in contentCollections)
+        {
+            var field = LowerFirst(property.Name);
+            var expression = string.Join(" : ", pages.Select(page =>
+                $"item.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}(item.id)"));
+            expression += $" : (() => {{ throw new BridgeError(\"failed\", \"Unknown {field} kind.\"); }})()";
+            var hydrated = $"wire.{field}.map(item => {expression})";
+            if (nullability.Create(property).ReadState == NullabilityState.Nullable)
+                hydrated = $"wire.{field} === null ? null : {hydrated}";
+            ts.AppendLine($"    {field}: {hydrated},");
         }
         ts.AppendLine("  };");
         ts.AppendLine("}");

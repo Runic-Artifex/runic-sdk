@@ -22,7 +22,9 @@ public sealed class NotesApplication : IDisposable
             .Map<DocumentViewModel, DocumentView>(() => new DocumentView())
             .Map<EditorViewModel, EditorView>(() => new EditorView())
             .Map<EditorViewModel, CompactEditorView>(() => new CompactEditorView(), "compact")
-            .Map<PreviewViewModel, PreviewView>(() => new PreviewView());
+            .Map<PreviewViewModel, PreviewView>(() => new PreviewView())
+            .Map<PinnedNoteViewModel, PinnedNoteView>(() => new PinnedNoteView())
+            .Map<PinnedTaskViewModel, PinnedTaskView>(() => new PinnedTaskView());
         var services = new ServiceCollection();
         services.AddScoped<ShellViewModel>();
         services.AddScoped<IRunicViewLocator>(_ => new ReactiveRunicViewLocator(locator));

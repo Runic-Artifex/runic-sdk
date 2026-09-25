@@ -61,7 +61,10 @@ public static class BridgeContractShape
             if (contentModels.Count > 0)
             {
                 var contract = ContractFor(property) ?? "default";
+                var collection = property.PropertyType.IsGenericType
+                    && property.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>);
                 parts.Add($"content:{TypeIdentity(model)}:{property.Name}:nullable:{IsReadNullable(property, nullability)}:contract:{contract}");
+                if (collection) parts.Add($"content-collection:{TypeIdentity(model)}:{property.Name}");
                 foreach (var contentModel in contentModels.OrderBy(TypeIdentity, StringComparer.Ordinal))
                     parts.Add($"content-target:{TypeIdentity(model)}:{property.Name}:{TypeIdentity(contentModel)}:{PublicName(contentModel)}");
                 continue;
@@ -129,10 +132,15 @@ public static class BridgeContractShape
         return null;
     }
 
-    private static IReadOnlyList<Type> ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) =>
-        property.PropertyType == typeof(object)
+    private static IReadOnlyList<Type> ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models)
+    {
+        var candidate = property.PropertyType.IsGenericType
+            && property.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)
+            ? property.PropertyType.GenericTypeArguments[0] : property.PropertyType;
+        return candidate == typeof(object)
             ? []
-            : models.Where(model => model != owner && property.PropertyType.IsAssignableFrom(model)).ToArray();
+            : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray();
+    }
 
     // Contract inspection runs in the build tool and Debug hot reload guard.
     // Release/AOT bridges use the generated fingerprint and never inspect a

@@ -205,6 +205,51 @@ public sealed class WindowContentSession : IDisposable
         return reference;
     }
 
+    /// <summary>Retains a collection item by ViewModel identity, so reordering does not detach its route.</summary>
+    public PageReference PresentItem<T>(object owner, string property, string kind, T viewModel,
+        Func<IBridgeTransport, T, string, IDisposable> attach) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(property);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var reference = Expose(kind, viewModel, attach);
+            var entry = _entries.GetValue(viewModel, _ => throw new InvalidOperationException())[kind];
+            if (!_slots.TryGetValue(owner, out var properties))
+                _slots.Add(owner, properties = new Dictionary<string, Entry>(StringComparer.Ordinal));
+            properties[CollectionSlot(property, reference.Id)] = entry;
+            return reference;
+        }
+    }
+
+    /// <summary>Releases collection items omitted by the latest published snapshot.</summary>
+    public void PruneCollection(object owner, string property, IReadOnlySet<string> activeIds)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(property);
+        ArgumentNullException.ThrowIfNull(activeIds);
+        List<IDisposable> attachments = [];
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_slots.TryGetValue(owner, out var properties)) return;
+            var prefix = property + "\0";
+            foreach (var (slot, entry) in properties.ToArray())
+            {
+                if (!slot.StartsWith(prefix, StringComparison.Ordinal) || activeIds.Contains(slot[prefix.Length..]))
+                    continue;
+                properties.Remove(slot);
+                if (!IsPresented(entry) && SuspendCore(entry) is { } attachment)
+                    attachments.Add(attachment);
+            }
+            if (properties.Count == 0) _slots.Remove(owner);
+        }
+        foreach (var attachment in attachments) attachment.Dispose();
+    }
+
+    private static string CollectionSlot(string property, string id) => property + "\0" + id;
+
     public void Clear(object owner, string property)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -517,9 +562,10 @@ public sealed class WindowContentSession : IDisposable
                 {
                     NotifyMounted(token, wasMounted);
                 }
-                catch
+                catch (Exception exception)
                 {
                     _mounts.Remove(token);
+                    Console.Error.WriteLine($"Runic View mount failed: {exception}");
                     throw;
                 }
                 return "ok";

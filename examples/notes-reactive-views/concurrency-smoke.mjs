@@ -113,6 +113,15 @@ try {
   await retry(async () => await first.evaluate('document.querySelector("#main h1")?.textContent') === "Reactive Notes");
   second = await openClient(url);
   await retry(async () => await second.evaluate('document.querySelector("#main h1")?.textContent') === "Reactive Notes");
+  const pinnedBefore = (await first.snapshot("shell")).state.pinned;
+  if (pinnedBefore.length !== 2 || (await second.snapshot("shell")).state.pinned[0]?.id !== pinnedBefore[0].id)
+    throw new Error("The clients did not share the same routed View collection.");
+  await first.call("shellSwapPinned");
+  await retry(async () => (await second.snapshot("shell")).state.pinned[0]?.id === pinnedBefore[1].id);
+  await first.call("shellRemovePinned");
+  await retry(async () => (await second.snapshot(`content${pinnedBefore[0].id}`)).error?.kind === "disconnected");
+  await first.call("shellRestorePinned");
+  await retry(async () => (await second.snapshot("shell")).state.pinned[0]?.id === pinnedBefore[0].id);
 
   await first.evaluate('document.querySelector("[data-go=document]").click()');
   for (const client of [first, second]) {
@@ -156,7 +165,7 @@ try {
   await retry(() => host.exitCode !== null);
   if (host.exitCode !== 0)
     throw new Error(`The final browser exit did not release the View: ${output}\n${errors}`);
-  console.log("REACTIVE_NOTES_CONCURRENCY_OK|two-clients|overlapping-routes|survivor|final-disconnect");
+  console.log("REACTIVE_NOTES_CONCURRENCY_OK|two-clients|collection-reorder-prune-restore|overlapping-routes|survivor|final-disconnect");
 } finally {
   await first?.dispose();
   await second?.dispose();
