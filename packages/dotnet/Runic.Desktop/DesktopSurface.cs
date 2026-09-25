@@ -60,6 +60,18 @@ public sealed class DesktopSurface : IAsyncDisposable
         return new PresentationCapabilityRegistration(binding);
     }
 
+    /// <summary>Observes authenticated connection and disconnection events for this surface.</summary>
+    public IDisposable SubscribeConnectionEvents(Action<PresentationInvocation> handler)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentNullException.ThrowIfNull(handler);
+        return _engine.Bind("", webUiEvent =>
+        {
+            if (webUiEvent.EventType is WebUiEventType.Connected or WebUiEventType.Disconnected)
+                handler(new PresentationInvocation(this, webUiEvent));
+        });
+    }
+
     /// <summary>Opens this surface in one installed browser or embedded WebView.</summary>
     public async ValueTask<DesktopWindow> OpenWindowAsync(
         DesktopWindowOptions? options = null,

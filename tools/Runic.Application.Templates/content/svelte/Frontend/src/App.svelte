@@ -2,8 +2,7 @@
 
 <script lang="ts">
   import { onMount } from "svelte";
-  import ViewOutlet from "@runic-artifex/views-svelte/ViewOutlet.svelte";
-  import type { ViewRegistry } from "@runic-artifex/views-svelte/view-registry";
+  import { ViewOutlet, type ViewRegistry } from "@runic-artifex/svelte/views";
   import { connectWorkspace, type WorkspaceState, type WorkspaceView } from "./generated/workspace.js";
   import CounterPage from "./pages/CounterPage.svelte";
   import WelcomePage from "./pages/WelcomePage.svelte";

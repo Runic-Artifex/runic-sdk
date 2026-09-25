@@ -2,12 +2,12 @@ import {test, expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
 import {verifyTemplateLock} from './template-locks.mjs';
 
-const name = '@runic-artifex/views-svelte';
+const name = '@runic-artifex/svelte';
 const version = '0.2.0-preview.1';
 const integrity = 'sha512-final-artifact-bytes';
 const candidates = new Map([[name, {version, integrity}]]);
 const fixtures = {
-  'package-lock.json': JSON.stringify({packages: {'': {dependencies: {[name]: version}}, [`node_modules/${name}`]: {version, integrity, resolved: `https://registry.npmjs.org/${name}/-/views-svelte-${version}.tgz`}}}),
+  'package-lock.json': JSON.stringify({packages: {'': {dependencies: {[name]: version}}, [`node_modules/${name}`]: {version, integrity, resolved: `https://registry.npmjs.org/${name}/-/svelte-${version}.tgz`}}}),
   'pnpm-lock.yaml': `importers:\n  .:\n    dependencies:\n      '${name}':\n        specifier: ${version}\n        version: ${version}\npackages:\n  '${name}@${version}':\n    resolution: {integrity: ${integrity}}\nsnapshots:\n  '${name}@${version}': {}\n`,
   'bun.lock': `{\n  "workspaces": {\n    "": {\n      "dependencies": {\n        "${name}": "${version}",\n      },\n    },\n  },\n  "packages": {\n    "${name}": ["${name}@${version}", "", {}, "${integrity}"],\n  },\n}\n`,
 };
@@ -37,8 +37,8 @@ for (const framework of ['react', 'vue', 'svelte', 'angular']) {
     const base = new URL(`../../tools/Runic.Application.Templates/content/${framework}/Frontend/`, import.meta.url);
     const npm = JSON.parse(readFileSync(new URL('package-lock.json', base), 'utf8'));
     const real = new Map(Object.entries(npm.packages).filter(([p]) => p.startsWith('node_modules/@runic-artifex/')).map(([p, v]) => [p.slice('node_modules/'.length), {version: v.version, integrity: v.integrity}]));
-    const expectedPackage = framework === 'svelte' ? '@runic-artifex/views-svelte'
-      : framework === 'angular' ? '@runic-artifex/views-angular' : undefined;
+    const expectedPackage = framework === 'svelte' ? '@runic-artifex/svelte'
+      : framework === 'angular' ? '@runic-artifex/angular' : undefined;
     for (const filename of ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock']) {
       const text = readFileSync(new URL(filename, base), 'utf8');
       expect(verifyTemplateLock(text, filename, real, {requireRunic: Boolean(expectedPackage), expectedPackage})).toBe(real.size);

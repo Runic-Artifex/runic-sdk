@@ -1,7 +1,7 @@
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
-using Runic.Application.Views.CsWebUi.DependencyInjection;
+using Runic.Application.Views.CsWebUi;
 using RunicWindowApp;
 
 var services = new ServiceCollection();

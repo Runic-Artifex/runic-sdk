@@ -36,7 +36,7 @@ These source locations are evidence for the ownership assignment, not
 normative contract sources:
 
 - `packages/dotnet/Runic.Application.Views` owns explicit Window and View contracts;
-  `Runic.Application.Views.CsWebUi.DependencyInjection` owns the current host
+  `Runic.Application.CsWebUi` owns the current host
   composition and scoped Window lifetime.
 - `packages/dotnet/Runic.Desktop/DesktopSurface.cs` and `DesktopHost.cs` own
   standalone Desktop presentation and native dispatch.
@@ -45,7 +45,7 @@ normative contract sources:
 - `packages/dotnet/Runic.Translations/Runtime/Management/TranslationManager.cs`
   owns runtime locale state.
 - `packages/web/vite-plugin-runic` owns the Views development integration.
-- `packages/web/views-svelte` and `packages/web/views-angular` own frontend
+- `packages/web/svelte` and `packages/web/angular` own frontend
   content outlets and View lifecycle projection.
 - The external `CsWebUi` dependency supplies the browser/native window boundary
   for the Views CS-WebUI adapter.

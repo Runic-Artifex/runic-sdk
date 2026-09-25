@@ -250,8 +250,8 @@ internal static class Program
         string frontend = workspace.Write("Frontend/package.json", "{}");
         string frontendDirectory = Path.GetDirectoryName(frontend)!;
         CompatibilitySetAuthority authority = CompatibilitySetAuthority.Current;
-        CompatibilityPackage nuget = authority.NuGetPackages["Runic.Application.Views.CsWebUi.DependencyInjection"];
-        CompatibilityPackage npm = authority.NpmPackages["@runic-artifex/views-svelte"];
+        CompatibilityPackage nuget = authority.NuGetPackages["Runic.Application.CsWebUi"];
+        CompatibilityPackage npm = authority.NpmPackages["@runic-artifex/svelte"];
         Write(Path.Combine(frontendDirectory, "package.json"), JsonSerializer.Serialize(new
         {
             packageManager = $"npm@{authority.Toolchain.Npm}",
@@ -308,11 +308,11 @@ internal static class Program
     private static void CompatibilityAuthorityIncludesViews()
     {
         CompatibilitySetAuthority authority = CompatibilitySetAuthority.Current;
-        True(authority.NuGetPackages.ContainsKey("Runic.Application.Views.CsWebUi.DependencyInjection"),
+        True(authority.NuGetPackages.ContainsKey("Runic.Application.CsWebUi"),
             "The certified NuGet set must include the Views Window host package.");
-        True(authority.NpmPackages.ContainsKey("@runic-artifex/views-svelte"),
+        True(authority.NpmPackages.ContainsKey("@runic-artifex/svelte"),
             "The certified npm set must include the Svelte Views outlet.");
-        True(authority.NpmPackages.ContainsKey("@runic-artifex/views-angular"),
+        True(authority.NpmPackages.ContainsKey("@runic-artifex/angular"),
             "The certified npm set must include the Angular Views outlet.");
     }
 

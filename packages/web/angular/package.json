@@ -1,6 +1,6 @@
 {
-  "name": "@runic-artifex/views-angular",
-  "version": "0.5.0-preview.1",
+  "name": "@runic-artifex/angular",
+  "version": "0.5.0-preview.2",
   "type": "module",
   "exports": {
     ".": {
@@ -17,9 +17,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
-    "directory": "packages/web/views-angular"
+    "directory": "packages/web/angular"
   },
-  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views-angular#readme",
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/angular#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },

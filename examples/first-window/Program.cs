@@ -1,7 +1,7 @@
 using CsWebUi;
 using FirstWindow;
 using Microsoft.Extensions.DependencyInjection;
-using Runic.Application.Views.CsWebUi.DependencyInjection;
+using Runic.Application.Views.CsWebUi;
 
 var services = new ServiceCollection();
 var probeFactoryFailure = args.Contains("--probe-factory-failure", StringComparer.Ordinal);

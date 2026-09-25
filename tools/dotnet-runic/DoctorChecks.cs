@@ -237,7 +237,7 @@ internal static class DoctorChecks
                 string identity = library.Name[..separator];
                 string version = library.Name[(separator + 1)..];
                 string type = library.Value.TryGetProperty("type", out JsonElement typeNode) ? typeNode.GetString() ?? string.Empty : string.Empty;
-                if (identity is "Runic.Application.Views.CsWebUi.DependencyInjection" or "Runic.Application.Views.CsWebUi") hasViewsHost = true;
+                if (identity == "Runic.Application.CsWebUi") hasViewsHost = true;
                 if (Authority.NuGetPackages.TryGetValue(identity, out CompatibilityPackage? expected))
                 {
                     selected++;

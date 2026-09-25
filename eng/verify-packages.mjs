@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { extname, relative, resolve, join } from "node:path";
+import { basename, extname, relative, resolve, join } from "node:path";
 import { root, workspace, run, configuration } from "./run.mjs";
 
 const nativeProviders = new Set([
@@ -170,11 +170,14 @@ export async function verifyPackages(packageName) {
   };
   for (const p of libraries) {
     const strategy = packageConsumerStrategy(p);
+    const projectText = readFileSync(resolve(root, p.project), "utf8");
+    const assemblyName = projectText.match(/<AssemblyName>([^<]+)<\/AssemblyName>/)?.[1]
+      ?? basename(p.project, ".csproj");
     const consumer = join(directory, p.name);
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${p.name.startsWith("Runic.Application.Views") ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : ""}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${["Runic.Application", "Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.Desktop"].includes(p.name) ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : ""}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),
@@ -209,7 +212,7 @@ Console.WriteLine("Packaged public v5 compiler and XLIFF export passed.");`
         ? `_ = new ${strategy.canaryType}("""{"version":1,"contracts":{},"messages":{}}""", _ => { });\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
         : strategy.canaryType
         ? `Console.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
-        : `Console.WriteLine(System.Reflection.Assembly.Load("${p.name}").GetName().Name);`,
+        : `Console.WriteLine(System.Reflection.Assembly.Load("${assemblyName}").GetName().Name);`,
     );
     if (p.name === "Runic.Translations.Build") {
       // Exercise the packaged analyzer without a CLI or source reference.
@@ -341,7 +344,7 @@ console.log('Packed npm consumers passed.');
     frontend,
   );
   console.log(
-    `All ${libraries.length} NuGet library consumers, CS-WebUI/Platform composition, 2 tools, 2 template packages, and 8 npm artifacts passed.`,
+    `All ${libraries.length} NuGet library consumers, CS-WebUI/Platform composition, 2 tools, 2 template packages, and ${archives.length} npm artifacts passed.`,
   );
 }
 

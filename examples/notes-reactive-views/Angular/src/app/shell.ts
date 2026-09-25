@@ -3,7 +3,7 @@ import type { ShellView, ShellState } from "../../../Frontend/src/generated/shel
 import { bridgeSignal } from "./bridge-signal";
 import { HomeComponent } from "./home";
 import { DocumentComponent } from "./document";
-import { RunicViewOutlet, type ViewRegistry } from "../../../../../packages/web/views-angular/src/view-outlet";
+import { RunicViewOutlet, type ViewRegistry } from "../../../../../packages/web/angular/src/view-outlet";
 
 const mainViews = { home: HomeComponent, document: DocumentComponent } satisfies ViewRegistry<ShellState["main"]>;
 

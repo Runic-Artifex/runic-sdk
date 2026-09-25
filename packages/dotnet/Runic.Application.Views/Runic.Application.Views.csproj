@@ -3,14 +3,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Runic.Application.Views</PackageId>
+    <PackageId>Runic.Application</PackageId>
     <Authors>RunicArtifex</Authors>
     <Description>Host-neutral Window and View runtime with generated typed TypeScript clients.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />
-    <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.targets" />
+    <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.targets" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/*.dll"
           Pack="true" PackagePath="tools/net10.0/" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.deps.json"

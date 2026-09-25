@@ -3,7 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Runic.Application.Views.ReactiveUI</PackageId>
+    <PackageId>Runic.Application.ReactiveUI</PackageId>
     <Authors>RunicArtifex</Authors>
     <Description>ReactiveUI routing, view location, and activation for Runic Views.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

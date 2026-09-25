@@ -18,5 +18,5 @@ operation lifetime. The template guide describes native prerequisites and
 package-manager choices.
 
 For the smallest source example, see [First Window](../../../../examples/first-window/README.md).
-For existing projects, add the `Runic.Application.Views` packages described in
-[`Runic.Application.Views`](../../../../packages/dotnet/Runic.Application.Views/README.md).
+For existing projects, add `Runic.Application` and a host adapter described in
+[`Runic.Application`](../../../../packages/dotnet/Runic.Application.Views/README.md).

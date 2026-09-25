@@ -39,7 +39,7 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
     public void Dispose() { _main.PropertyChanged -= OnMainChanged; _main.Dispose(); }
 }
 
-public sealed class HomeViewModel(IScreen host) : ReactiveObject, IMainPage
+public sealed partial class HomeViewModel(IScreen host) : ReactiveObject, IMainPage
 {
     public string UrlPathSegment => "home";
     [RunicIgnore] public IScreen HostScreen => host;

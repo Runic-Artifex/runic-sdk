@@ -2,7 +2,7 @@ using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI;
 using Runic.Application.Views;
-using Runic.Application.Views.CsWebUi.DependencyInjection;
+using Runic.Application.Views.CsWebUi;
 using Runic.Application.Views.ReactiveUI;
 using Splat;
 

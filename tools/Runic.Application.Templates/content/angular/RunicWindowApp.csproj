@@ -26,7 +26,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Runic.Application.Views.CsWebUi.DependencyInjection" Version="__RUNIC_VIEWS_NUGET_VERSION__" />
+    <PackageReference Include="Runic.Application.CsWebUi" Version="__RUNIC_VIEWS_NUGET_VERSION__" />
   </ItemGroup>
   <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
     <Compile Remove="Program.cs" />

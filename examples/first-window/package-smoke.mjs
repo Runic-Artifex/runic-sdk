@@ -9,10 +9,9 @@ const example = join(root, "examples/first-window");
 const temporary = await mkdtemp(join(tmpdir(), "runic-views-package-"));
 const feed = join(temporary, "feed");
 const consumer = join(temporary, "consumer");
-const packageIds = [
-  "Runic.Application.Views",
-  "Runic.Application.Views.CsWebUi",
-  "Runic.Application.Views.CsWebUi.DependencyInjection"
+const packageProjects = [
+  ["Runic.Application", "Runic.Application.Views"],
+  ["Runic.Application.CsWebUi", "Runic.Application.Views.CsWebUi"]
 ];
 let testVersion;
 
@@ -39,7 +38,7 @@ try {
 
   await run("dotnet", ["build", "examples/first-window/FirstWindow.csproj", "-c", "Release"]);
   await mkdir(feed);
-  for (const project of packageIds) {
+  for (const [, project] of packageProjects) {
     await run("dotnet", ["pack", `packages/dotnet/${project}/${project}.csproj`,
       "-c", "Release", "--no-build", "-o", feed,
       `-p:Version=${testVersion}`, `-p:PackageVersion=${testVersion}`]);
@@ -65,7 +64,7 @@ try {
   <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="${toolkit}" />
-    <PackageReference Include="Runic.Application.Views.CsWebUi.DependencyInjection" Version="${testVersion}" />
+    <PackageReference Include="Runic.Application.CsWebUi" Version="${testVersion}" />
   </ItemGroup>
   <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><Compile Remove="Program.cs" /></ItemGroup>
 </Project>
@@ -94,7 +93,7 @@ try {
   await rm(temporary, { recursive: true, force: true });
   if (testVersion) {
     const cache = process.env.NUGET_PACKAGES ?? join(homedir(), ".nuget/packages");
-    for (const packageId of packageIds)
+    for (const [packageId] of packageProjects)
       await rm(join(cache, packageId.toLowerCase(), testVersion.toLowerCase()), { recursive: true, force: true });
   }
 }

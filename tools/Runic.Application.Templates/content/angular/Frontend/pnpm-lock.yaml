@@ -118,9 +118,9 @@ importers:
       '@angular/platform-browser':
         specifier: 22.1.5
         version: 22.1.5(@angular/common@22.1.5(@angular/core@22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2))
-      '@runic-artifex/views-angular':
-        specifier: 0.5.0-preview.1
-        version: 0.5.0-preview.1(@angular/core@22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2))
+      '@runic-artifex/angular':
+        specifier: 0.5.0-preview.2
+        version: 0.5.0-preview.2(@angular/core@22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2))
       rxjs:
         specifier: 7.8.2
         version: 7.8.2
@@ -1306,7 +1306,7 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@runic-artifex/views-angular@0.5.0-preview.1':
+  '@runic-artifex/angular@0.5.0-preview.2':
     resolution: {integrity: sha512-ZaYNX8oO+7hk1Q3SpZO+Lqnt1huyB4A+Vs5wGgt1lfRX8Li8Nr5cqZ8qMhUGoUG62NwQBNph+31ekztUTI1hvA==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
@@ -3161,7 +3161,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@runic-artifex/views-angular@0.5.0-preview.1(@angular/core@22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2))':
+  '@runic-artifex/angular@0.5.0-preview.2(@angular/core@22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2))':
     dependencies:
       '@angular/core': 22.1.5(@angular/compiler@22.1.5)(rxjs@7.8.2)
 

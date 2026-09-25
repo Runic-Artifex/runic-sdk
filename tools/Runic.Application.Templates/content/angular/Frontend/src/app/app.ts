@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, signal } from "@angular/core";
-import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/views-angular";
+import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
 import { connectWorkspace, type WorkspaceState, type WorkspaceView } from "../generated/workspace.js";
 import { CounterComponent } from "./counter";
 import { WelcomeComponent } from "./welcome";

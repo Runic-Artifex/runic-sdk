@@ -1,6 +1,6 @@
 using CsWebUi;
 using Runic.Application.Views;
-using Runic.Application.Views.CsWebUi.DependencyInjection;
+using Runic.Application.Views.CsWebUi;
 
 namespace NotesWindowViews;
 

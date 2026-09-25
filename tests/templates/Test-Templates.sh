@@ -160,8 +160,8 @@ verify_template() {
   done
   grep -Fq "\"packageManager\": \"$manager@$expected_manager_version\"" "$output/Frontend/package.json"
   grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
-  grep -Fq 'Runic.Application.Views.CsWebUi.DependencyInjection' "$output/$project_name.csproj"
-  if rg -ni 'Runic\.Application\.Bridge|Runic\.Desktop|application-bridge|@runic-artifex/(angular|svelte|desktop|vite-plugin-runic)' "$output"; then
+  grep -Fq 'Runic.Application.CsWebUi' "$output/$project_name.csproj"
+  if rg -ni 'Runic\.Application\.Bridge|Runic\.Desktop|application-bridge|@runic-artifex/(views-angular|views-svelte|desktop)' "$output"; then
     echo "The generated $framework template contains a removed Bridge or Desktop package." >&2
     exit 1
   fi

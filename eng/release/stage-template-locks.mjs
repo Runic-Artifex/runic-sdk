@@ -19,8 +19,8 @@ for (const framework of ["react", "vue", "svelte", "angular"]) {
     const staged = join(output, framework, "Frontend", name);
     mkdirSync(dirname(staged), { recursive: true });
     copyFileSync(join(content, framework, "Frontend", name), staged);
-    const expectedPackage = framework === "svelte" ? "@runic-artifex/views-svelte"
-      : framework === "angular" ? "@runic-artifex/views-angular" : undefined;
+    const expectedPackage = framework === "svelte" ? "@runic-artifex/svelte"
+      : framework === "angular" ? "@runic-artifex/angular" : undefined;
     if (expectedPackage)
       execFileSync(process.execPath, [join(repository, "eng/release/stamp-template-lock.mjs"), staged, ...archives],
         { stdio: "inherit" });

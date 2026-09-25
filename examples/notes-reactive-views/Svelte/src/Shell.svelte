@@ -3,8 +3,8 @@
   import { bridgeState } from "./bridge-state.js";
   import Home from "./Home.svelte";
   import Document from "./Document.svelte";
-  import ViewOutlet from "../../../../packages/web/views-svelte/src/ViewOutlet.svelte";
-  import type { ViewRegistry } from "../../../../packages/web/views-svelte/src/view-registry.js";
+  import ViewOutlet from "../../../../packages/web/svelte/src/views/ViewOutlet.svelte";
+  import type { ViewRegistry } from "../../../../packages/web/svelte/src/views/view-registry.js";
 
   const mainViews = { home: Home, document: Document } satisfies ViewRegistry<ShellState["main"]>;
   let { shell }: { shell: ShellView } = $props();

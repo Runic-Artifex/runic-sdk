@@ -141,6 +141,13 @@ static string? ContractFor(MemberInfo member)
 static string PageKind(string name, string? contract) =>
     LowerFirst(name) + (contract is null ? "" : char.ToUpperInvariant(contract[0]) + contract[1..]);
 
+static int InheritanceDepth(Type type)
+{
+    var depth = 0;
+    for (var current = type.BaseType; current is not null; current = current.BaseType) depth++;
+    return depth;
+}
+
 static void GenerateViewPartial(string path, Type view, Type model, string shortName)
 {
     if (view.ContainsGenericParameters || view.Namespace is null || model.Namespace is null)
@@ -248,8 +255,14 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var property in properties)
     {
         if (property.GetMethod is null) throw new NotSupportedException($"{property.Name}: a public getter is required.");
+        // A routed interface or base property may admit several registered
+        // ViewModels. Emit the most specific class first: a base pattern ahead
+        // of its derived class would hide the derived View (or fail to compile).
         var contentModels = knownModels.Where(entry => entry.Model != model
-            && property.PropertyType.IsAssignableFrom(entry.Model)).ToArray();
+            && property.PropertyType.IsAssignableFrom(entry.Model))
+            .OrderByDescending(entry => InheritanceDepth(entry.Model))
+            .ThenBy(entry => entry.Model.FullName, StringComparer.Ordinal)
+            .ToArray();
         if (contentModels.Length > 0 && property.PropertyType != typeof(object))
         {
             if (property.SetMethod?.IsPublic == true)

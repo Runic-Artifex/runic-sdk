@@ -179,6 +179,10 @@ jobs:
       - uses: ./.github/actions/install-browser
       - name: Exercise first Window generated client
         run: node examples/first-window/browser-smoke.mjs
+      - name: Exercise Runic Desktop Views host and ReactiveUI client
+        run: |
+          node examples/first-window-desktop/browser-smoke.mjs
+          xvfb-run -a dotnet run --project examples/first-window-desktop/FirstWindowDesktop.csproj -c Release --no-build -- --probe-owner
       - name: Check composed View lifetime and window scopes
         run: |
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
@@ -367,10 +371,12 @@ jobs:
       - name: Verify packaged Angular View outlet
         run: |
           version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
-          bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-views-angular-$version.tgz"
+          bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
       - uses: ./.github/actions/install-browser
       - name: Verify packaged Window factory, generated client, and browser
-        run: node examples/first-window/package-smoke.mjs
+        run: |
+          node examples/first-window/package-smoke.mjs
+          node examples/first-window-desktop/package-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   wpf-package-consumer:

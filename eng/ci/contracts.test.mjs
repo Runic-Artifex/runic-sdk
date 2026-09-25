@@ -153,11 +153,14 @@ test('Views replace the Bridge application gates', () => {
   assert.equal(workflow.jobs.customers, undefined);
   const steps = workflow.jobs.views.steps.map(step => step.run ?? '').join('\n');
   for (const path of ['examples/first-window/browser-smoke.mjs', 'examples/notes-view-first/window-smoke.mjs',
+    'examples/first-window-desktop/browser-smoke.mjs',
     'examples/notes-view-first/browser-smoke.mjs', 'examples/notes-reactive-views/browser-smoke.mjs',
     'examples/notes-reactive-views/hmr-smoke.mjs', 'examples/notes-reactive-views/ide-host-smoke.mjs'])
     assert.ok(steps.includes(path), path);
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run?.includes('examples/first-window/package-smoke.mjs')));
+  assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
+    step.run?.includes('examples/first-window-desktop/package-smoke.mjs')));
   assert.ok(workflow.jobs.native.steps.some(step =>
     step.run?.includes('dotnet publish examples/first-window/FirstWindow.csproj') && step.run.includes('PublishAot=true')));
 });
