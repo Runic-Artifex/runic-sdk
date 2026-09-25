@@ -65,6 +65,10 @@
       "project": "packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj"
     },
     {
+      "name": "Runic.Application.Testing",
+      "project": "packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj"
+    },
+    {
       "name": "Runic.Application.ReactiveUI",
       "project": "packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj"
     },
@@ -255,6 +259,7 @@
       ],
       "paths": [
         "packages/dotnet/Runic.Application.Views",
+        "packages/dotnet/Runic.Application.Testing",
         "packages/dotnet/Runic.Application.Views.ReactiveUI",
         "packages/dotnet/Runic.Application.Views.CsWebUi",
         "packages/dotnet/Runic.Application.Desktop",
@@ -265,6 +270,7 @@
         "tools/Runic.Application.Templates",
         "tools/dotnet-runic",
         "tests/dotnet/Runic.Application.Tool.Tests",
+        "tests/dotnet/Runic.Application.Testing.Tests",
         "eng/build/application.props",
         "eng/build/application.targets",
         "docs/guides/application",

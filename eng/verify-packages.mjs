@@ -174,14 +174,36 @@ export async function verifyPackages(packageName) {
     const assemblyName = projectText.match(/<AssemblyName>([^<]+)<\/AssemblyName>/)?.[1]
       ?? basename(p.project, ".csproj");
     const consumer = join(directory, p.name);
+    const viewTestConsumer = p.name === "Runic.Application.Testing";
+    const bridgeProperties = viewTestConsumer
+      ? `<RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled><RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally><RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand><RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir><RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir><OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>`
+      : ["Runic.Application", "Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.Desktop"].includes(p.name)
+        ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : "";
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${["Runic.Application", "Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.Desktop"].includes(p.name) ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : ""}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${bridgeProperties}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${viewTestConsumer ? `<PackageReference Include="Runic.Application" Version="${workspace.version}"/>` : ""}${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup>${viewTestConsumer ? `<ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><Compile Remove="Program.cs"/></ItemGroup>` : ""}</Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),
-      p.name === "Runic.Translations.Tooling"
+      p.name === "Runic.Application.Testing"
+        ? `using Runic.Application.Testing;
+using Runic.Application.Views;
+using PackageConsumer;
+var model = new ConsumerViewModel();
+var window = new ConsumerWindow(model);
+if (!ReferenceEquals(window.DataContext, model)) throw new Exception("Window DataContext was lost.");
+using var host = new RunicWindowTestHost<ConsumerViewModel>(model, "consumer",
+    (transport, content, vm) => new ConsumerBridge(transport, vm, content: content));
+using var snapshot = host.Snapshot();
+if (snapshot.RootElement.GetProperty("state").GetProperty("value").GetInt32() != 7)
+    throw new Exception("The packaged headless Window snapshot failed.");
+_ = host.Transport.Call("consumerSetValue", new(Int64Value: 8));
+if (model.Value != 8) throw new Exception("The packaged generated setter failed.");
+if (host.Transport.DrainPublications().Count != 1)
+    throw new Exception("The packaged generated publication failed.");
+Console.WriteLine("Packaged Window/View test host passed.");`
+      : p.name === "Runic.Translations.Tooling"
         ? `using Runic.Translations.Compiler;
 using Runic.Translations.Tooling;
 using System.Text;
@@ -214,6 +236,18 @@ Console.WriteLine("Packaged public v5 compiler and XLIFF export passed.");`
         ? `Console.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
         : `Console.WriteLine(System.Reflection.Assembly.Load("${assemblyName}").GetName().Name);`,
     );
+    if (viewTestConsumer)
+      writeFileSync(join(consumer, "TestModel.cs"), `#nullable enable
+using System.ComponentModel;
+using Runic.Application.Views;
+namespace PackageConsumer;
+public sealed partial class ConsumerWindow(ConsumerViewModel model) : RunicWindow<ConsumerViewModel>(model);
+public sealed class ConsumerViewModel : INotifyPropertyChanged
+{
+    private int _value = 7;
+    public int Value { get => _value; set { _value = value; PropertyChanged?.Invoke(this, new(nameof(Value))); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+}`);
     if (p.name === "Runic.Translations.Build") {
       // Exercise the packaged analyzer without a CLI or source reference.
       const resources = join(consumer, "translations");

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.Testing</PackageId>
+    <Authors>RunicArtifex</Authors>
+    <Description>Headless Window and View test host for Runic applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>
