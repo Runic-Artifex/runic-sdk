@@ -8,9 +8,6 @@ namespace Runic.Desktop.Tests;
 
 public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper output)
 {
-    private const string ApplicationBridgeCapability = "runic.desktop.application-bridge/1";
-    private const string ApplicationBridgeReceiver = "__runicDesktopReceiveApplicationBridgeFrame";
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -112,77 +109,6 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
         }
     }
 
-    [Fact]
-    public async Task TypeScriptEffectPackageRoundTripsThroughPublicDesktopApiInChromium()
-    {
-        var chrome = FindChrome();
-        var bundlePath = Path.Combine(AppContext.BaseDirectory, "runic-desktop-browser-test.js");
-        if (Environment.GetEnvironmentVariable("CI") is "true")
-            Assert.True(File.Exists(bundlePath), "Build the TypeScript browser fixture before running Desktop conformance in CI.");
-        if (chrome is null || !File.Exists(bundlePath))
-        {
-            return;
-        }
-
-        var bundle = await File.ReadAllBytesAsync(bundlePath);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await using var host = await DesktopHost.StartAsync();
-        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
-        {
-            Content = """
-                <!doctype html>
-                <html><head><script src="runic-desktop.js"></script><title>WAIT</title></head>
-                <body data-result="waiting"><script type="module" src="transport-test.js"></script></body></html>
-                """,
-            ContentHandler = (request, _) => ValueTask.FromResult<ContentResponse?>(
-                request.Path == "/transport-test.js"
-                    ? new ContentResponse(bundle, "text/javascript; charset=utf-8")
-                    : null),
-        });
-        using var registration = surface.RegisterCapability(
-            ApplicationBridgeCapability,
-            static async (invocation, cancellationToken) =>
-            {
-                if (invocation.Kind == PresentationEventKind.Invocation && invocation.ArgumentCount == 1)
-                {
-                    await invocation.Session.SendAsync(
-                        ApplicationBridgeReceiver,
-                        invocation.GetBytes(),
-                        cancellationToken);
-                }
-                return PresentationResult.None;
-            });
-
-        var profile = Directory.CreateTempSubdirectory("runic-desktop-effect-chrome-");
-        using var process = StartChrome(chrome, profile.FullName, surface.Url);
-        using var browserOutputLifetime = new CancellationTokenSource();
-        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError, browserOutputLifetime.Token);
-        try
-        {
-            output.WriteLine($"Chromium process {process.Id}: waiting for DevTools.");
-            var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
-            var debuggerUrl = await FindPageDebuggerUrlAsync(debuggerPort, surface.Url, timeout.Token);
-            output.WriteLine("Chromium page discovered; connecting and exercising the bridge.");
-            using var devTools = new ClientWebSocket();
-            await devTools.ConnectAsync(debuggerUrl, timeout.Token);
-
-            await WaitForBridgeResultAsync(devTools, "1,0,2", timeout.Token);
-        }
-        finally
-        {
-            output.WriteLine("Stopping Chromium.");
-            try { await StopChromeAsync(process, profile.FullName); }
-            finally
-            {
-                await browserOutputLifetime.CancelAsync();
-                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
-            }
-            output.WriteLine("Chromium stopped; removing its profile.");
-            await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
-            output.WriteLine("Browser cleanup complete; disposing the application host.");
-        }
-    }
-
     private static async Task WaitForBridgeResultAsync(
         ClientWebSocket socket,
         string expected,
@@ -196,7 +122,6 @@ public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper outp
               error: globalThis.testError,
               webui: typeof globalThis.webui, exercise: typeof globalThis.exercise,
               connected: globalThis.webui?.isConnected?.(),
-              runicDesktop: globalThis.runicDesktop?.product,
               rawResult: globalThis.rawResult, clickResult: globalThis.clickResult
             })
             """;

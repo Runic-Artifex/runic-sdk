@@ -34,8 +34,8 @@ async function main() {
     console.log(`Usage: bun run ci [act options]
   --list                         List jobs from the real SDK workflow
   --job docs                     Run documentation verification
-  --job managed --matrix suite:application
-  --job customers --matrix journey:dev
+  --job managed --matrix suite:platform
+  --job views                    Run Window and View journeys
   --job templates                Run template checks and their prerequisites
   --dryrun                       Validate workflow expansion
   --action-offline-mode          Reuse cached actions and runner image

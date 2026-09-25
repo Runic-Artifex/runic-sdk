@@ -1,15 +1,11 @@
 # Reference
 
-## Application
+- [`Runic.Application.Views`](../../../../packages/dotnet/Runic.Application.Views/README.md)
+- [`Runic.Application.Views.CsWebUi`](../../../../packages/dotnet/Runic.Application.Views.CsWebUi/README.md)
+- [`Runic.Application.Views.CsWebUi.DependencyInjection`](../../../../packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection/README.md)
+- [`Runic.Application.Views.ReactiveUI`](../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md)
+- [Views build targets](../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets)
+- [Svelte package](../../../../packages/web/views-svelte/README.md) and [Angular package](../../../../packages/web/views-angular/README.md)
 
-- [`Runic.Application`](../../../../packages/dotnet/Runic.Application/README.md)
-- [`Runic.Application.Hosting`](../../../../packages/dotnet/Runic.Application.Hosting/README.md)
-- [`Runic.Application.Testing`](../../../../packages/dotnet/Runic.Application.Testing/README.md)
-- [`Runic.Application.Templates`](../../../../tools/Runic.Application.Templates/README.md)
-- [`Runic.Application.Bridge`](../../../../packages/dotnet/Runic.Application.Bridge/README.md)
-- [Bridge generator implementation](../../../../packages/dotnet/Runic.Application.Bridge.Generators/README.md) (bundled in `Runic.Application.Bridge`, not a separate package)
-
-## Tools and web packages
-
-- [`dotnet-runic`](../../../../tools/dotnet-runic/README.md)
-- [`@runic-artifex/application-bridge`](../../../../packages/web/application-bridge/README.md)
+The examples show complete Window composition, generated client use, browser
+mount lifecycle, and frontend integration.

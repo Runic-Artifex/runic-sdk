@@ -10,6 +10,7 @@ export type ViewRegistry<R extends ViewReference> = {
 /** Headless host for a selected logical .NET View. A changed reference remounts its component. */
 @Component({
   selector: "runic-view-outlet",
+  standalone: true,
   template: `
     <ng-container #mount />
     @if (error(); as issue) { <p role="alert">{{ issue }}</p> }

@@ -79,7 +79,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             {
                 Console.Error.Write(build.StandardError);
                 Console.Error.Write(build.StandardOutput);
-                throw new DevUsageException("RAPPDEV1006", "Host rebuild failed; the running host has been retained.");
+                throw new DevUsageException("RAPPDEV1006", "Window rebuild failed; the running application has been retained.");
             }
             if (_host is not null)
             {
@@ -89,7 +89,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine($"[dev] Reloading the {_configuration.Host} application host.");
+            Console.WriteLine("[dev] Reloading the Runic Views Window application.");
             _host = Start();
             ObserveExit(_host);
         }
@@ -129,13 +129,9 @@ internal sealed class HostProcessController : IAsyncDisposable
         DevOptions options)
     {
         var arguments = new List<string> { "watch" };
-        // View Bridge discovery runs after source generators in a full MSBuild
-        // compilation. A .NET Hot Reload patch can change a model's shape
-        // without regenerating its IR, TypeScript contract, or ready marker.
-        // Keep dotnet watch as the sole managed restart owner for this opt-in
-        // mode; ordinary projects retain their existing Hot Reload behavior.
-        if (configuration.HasViewBridge) arguments.Add("--no-hot-reload");
-        configuration.AddDiscoveryBuildOwner(arguments, "--property:");
+        // The Views MSBuild owner regenerates typed clients before compilation.
+        // Restart the Window process so it cannot keep running a stale View shape.
+        if (configuration.IsViewsWindowProject) arguments.Add("--no-hot-reload");
         arguments.AddRange([
             "--project",
             configuration.ProjectPath,
@@ -144,7 +140,6 @@ internal sealed class HostProcessController : IAsyncDisposable
             "--property:DebugType=portable",
             "--property:DebugSymbols=true",
             "--property:Optimize=false",
-            "--property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
             "--no-restore",
             "--non-interactive",
             "run",
@@ -170,7 +165,6 @@ internal sealed class HostProcessController : IAsyncDisposable
             "--no-build",
             "--no-launch-profile",
         };
-        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
         return arguments;
     }
 
@@ -187,10 +181,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             "--configuration",
             options.Configuration,
             "--no-restore",
-            "-p:RunicApplicationFrontendBuild=false",
-            "-p:RunicApplicationFrontendInstall=false",
         };
-        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
         return arguments;
     }
 
@@ -202,8 +193,6 @@ internal sealed class HostProcessController : IAsyncDisposable
         {
             ["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"] = developmentEnvironment.Count == 0 ? null :
                 System.IO.Path.GetFullPath(configuration.DevelopmentServerDocuments[0], configuration.RuntimeWebRoot),
-            ["RunicApplicationFrontendEnabled"] = "false",
-            ["RunicApplicationFrontendInstall"] = "false",
             ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "1",
             [ViteDevelopmentServer.ServerEnvironmentVariable] = null,
             [ViteDevelopmentServer.EntryEnvironmentVariable] = null,
@@ -211,9 +200,6 @@ internal sealed class HostProcessController : IAsyncDisposable
             [ViteDevelopmentServer.DiagnosticsEnvironmentVariable] = null,
             [ViteDevelopmentServer.HotReloadEnvironmentVariable] = null,
             [ViteDevelopmentServer.ProjectEnvironmentVariable] = null,
-            [ViteDevelopmentServer.BridgeHostReadyEnvironmentVariable] = null,
-            [ViteDevelopmentServer.ViewBridgeReadyManifestEnvironmentVariable] = null,
-            [ViteDevelopmentServer.ViewBridgeHostReadyEnvironmentVariable] = null,
             [AngularDevelopmentServer.ServerEnvironmentVariable] = null,
             [AngularDevelopmentServer.KindEnvironmentVariable] = null,
         };

@@ -1,0 +1,14 @@
+{
+  "extends": "../../../eng/typescript/svelte.json",
+  "compilerOptions": {
+    "rootDirs": [
+      "src",
+      "dist"
+    ],
+    "types": []
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.svelte"
+  ]
+}

@@ -86,14 +86,19 @@ test('all managed executable suites are assigned exactly once to workflow groups
   const suites = managedTests(root, 'win32');
   assert.equal(new Set(suites.map(item => item.path)).size, suites.length);
   for (const group of managedGroups) assert.ok(suites.some(item => item.group === group), group);
-  for (const path of ['tests/dotnet/Runic.Platform.Prototype.Tests/Runic.Platform.Prototype.Tests.csproj', 'tests/dotnet/Runic.Application.Bridge.Tests/Runic.Application.Bridge.Tests.csproj'])
+  for (const path of ['tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj',
+    'tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj',
+    'tests/dotnet/Runic.Application.Tool.Tests/Runic.Application.Tool.Tests.csproj',
+    'tests/dotnet/Runic.CommandLine.Tests/Runic.CommandLine.Tests.csproj'])
     assert.ok(suites.some(item => item.path === path), path);
   const wpf = 'tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj';
   assert.ok(suites.some(item => item.path === wpf), wpf);
   assert.ok(!managedTests(root, 'linux').some(item => item.path === wpf));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes(wpf)));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
-  const rmf2Aot = workflow.jobs.managed.steps.find(step => step.name === 'Publish and execute RMF2 artifact-v4 NativeAOT smoke');
+  assert.ok(workflow.jobs.native.steps.some(step =>
+    step.run?.includes('dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/') && step.run.includes('PublishAot=true')));
+  const rmf2Aot = workflow.jobs.managed.steps.find(step => step.name === 'Publish and execute RMF2 artifact-v5 NativeAOT smoke');
   assert.ok(rmf2Aot);
   assert.equal(rmf2Aot.if, "matrix.suite == 'translations'");
   assert.match(rmf2Aot.run, /dotnet publish tests\/dotnet\/Runic\.Translations\.Rmf2AotTests/);
@@ -122,7 +127,7 @@ test('verification gate includes all jobs and candidates are independent of test
   assert.ok(capabilities);
   assert.match(capabilities.run, /bun eng\/generate-cldr\.mjs --check/);
   assert.match(capabilities.run, /bun eng\/render-capabilities\.mjs --check/);
-  for (const id of ['templates', 'package-consumers', 'wpf-package-consumer', 'footprint']) assert.equal(workflow.jobs[id].needs, 'packages');
+  for (const id of ['templates', 'package-consumers', 'wpf-package-consumer']) assert.equal(workflow.jobs[id].needs, 'packages');
   assert.equal(workflow.jobs['wpf-package-consumer']['runs-on'], 'windows-latest');
   assert.ok(workflow.jobs['wpf-package-consumer'].steps.some(step =>
     step.run?.includes('verify-packages Runic.Translations.Wpf')));
@@ -135,11 +140,26 @@ test('package consumers retain the installed RMF2 v5 NativeAOT journey', () => {
     item.name === 'Verify isolated NuGet and npm consumers');
   assert.equal(step?.run, 'bun run verify-packages');
   const verifier = readFileSync(resolve(root, 'eng/verify-packages.mjs'), 'utf8');
-  assert.match(verifier, /executionProfile: "rmf2-execution-v2"/);
+  assert.doesNotMatch(verifier, /executionProfile/);
   assert.match(verifier, /CheckoutTextCatalog\.CreateExternalManagerAsync/);
   assert.match(verifier, /"-p:PublishAot=true"/);
   assert.match(verifier, /"-p:IlcTreatWarningsAsErrors=true"/);
   assert.match(verifier, /run\(join\(nativeOutput, "Consumer"/);
+});
+
+test('Views replace the Bridge application gates', () => {
+  assert.ok(workflow.jobs.views);
+  assert.equal(workflow.jobs.bridge, undefined);
+  assert.equal(workflow.jobs.customers, undefined);
+  const steps = workflow.jobs.views.steps.map(step => step.run ?? '').join('\n');
+  for (const path of ['examples/first-window/browser-smoke.mjs', 'examples/notes-view-first/window-smoke.mjs',
+    'examples/notes-view-first/browser-smoke.mjs', 'examples/notes-reactive-views/browser-smoke.mjs',
+    'examples/notes-reactive-views/hmr-smoke.mjs', 'examples/notes-reactive-views/ide-host-smoke.mjs'])
+    assert.ok(steps.includes(path), path);
+  assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
+    step.run?.includes('examples/first-window/package-smoke.mjs')));
+  assert.ok(workflow.jobs.native.steps.some(step =>
+    step.run?.includes('dotnet publish examples/first-window/FirstWindow.csproj') && step.run.includes('PublishAot=true')));
 });
 
 test('local checks are focused and Linux workflow selection leaves native OS coverage to GitHub', () => {
@@ -151,6 +171,6 @@ test('local checks are focused and Linux workflow selection leaves native OS cov
   assert.equal(args[args.indexOf('--directory') + 1], '/snapshot');
   assert.equal(args[args.indexOf('--matrix') + 1], 'os:ubuntu-24.04');
   assert.deepEqual(args.slice(-2), ['--job', 'templates']);
-  for (const id of ['native', 'footprint'])
+  for (const id of ['native'])
     assert.deepEqual(workflow.jobs[id].strategy.matrix.include.map(item => item.rid), ['linux-x64', 'win-x64', 'osx-arm64']);
 });

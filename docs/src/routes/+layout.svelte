@@ -28,7 +28,7 @@
   const navigation = [
     { href: '/getting-started', label: 'Start' },
     { href: '/products', label: 'Products' },
-    { href: '/application-bridge', label: 'Application Bridge' },
+    { href: '/views', label: 'Window and View' },
     { href: '/architecture', label: 'Architecture' },
     { href: '/packages', label: 'Packages' },
     { href: '/releases', label: 'Releases' },

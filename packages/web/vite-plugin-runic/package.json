@@ -33,14 +33,10 @@
     "pack:preview": "bun pm pack"
   },
   "peerDependencies": {
-    "@runic-artifex/application-bridge-tooling": "0.3.0-preview.1",
     "@vitejs/devtools": "^0.5.2",
     "vite": "^8.0.0"
   },
   "peerDependenciesMeta": {
-    "@runic-artifex/application-bridge-tooling": {
-      "optional": true
-    },
     "@vitejs/devtools": {
       "optional": true
     }
@@ -50,8 +46,7 @@
     "@vitejs/devtools": "0.5.2",
     "@vitejs/devtools-kit": "0.5.2",
     "typescript": "6.0.3",
-    "vite": "8.2.2",
-    "@runic-artifex/application-bridge-tooling": "workspace:*"
+    "vite": "8.2.2"
   },
   "engines": {
     "node": ">=24.18.0 <25"

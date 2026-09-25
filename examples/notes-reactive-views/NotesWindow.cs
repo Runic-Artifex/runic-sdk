@@ -4,7 +4,7 @@ using Runic.Application.Views.ReactiveUI;
 
 namespace NotesReactiveViews;
 
-public sealed partial class NotesWindow : ReactiveRunicWindow<ShellViewModel>, IDisposable
+public sealed partial class NotesWindow : ReactiveRunicWindow<ShellViewModel>, IDisposable, IAsyncDisposable
 {
     private readonly CsWebUiBridgeWindow<ShellViewModel> _host;
     internal NotesWindow(CsWebUiBridgeWindow<ShellViewModel> host) : base(host.ViewModel) => _host = host;
@@ -15,5 +15,7 @@ public sealed partial class NotesWindow : ReactiveRunicWindow<ShellViewModel>, I
     public void SetSize(uint width, uint height) => _host.SetSize(width, height);
     public void Show(string entry) => _host.Show(entry);
     public string StartServer(string entry) => _host.StartServer(entry);
+    public ValueTask<CsWebUiBridgeCloseResult> CloseAsync(TimeSpan timeout) => _host.CloseAsync(timeout);
     public void Dispose() => _host.Dispose();
+    public ValueTask DisposeAsync() => _host.DisposeAsync();
 }

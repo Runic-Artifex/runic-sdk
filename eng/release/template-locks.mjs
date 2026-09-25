@@ -13,7 +13,7 @@ export function readNpmCandidates(archives) {
 // Validate the immutable customer lock before acceptance redirects a download URL.
 // These deliberately narrow parsers match our committed npm/pnpm/Bun lock formats;
 // an unsupported layout fails closed instead of silently skipping Runic entries.
-export function verifyTemplateLock(text, filename, candidates) {
+export function verifyTemplateLock(text, filename, candidates, { requireRunic = true, expectedPackage } = {}) {
   let count = 0;
   const seen = new Set();
   function entry(name, version, integrity) {
@@ -60,7 +60,8 @@ export function verifyTemplateLock(text, filename, candidates) {
     assert.equal(count, [...text.matchAll(/^    "@runic-artifex\//gm)].length, `${filename}: unparsed Runic Bun resolution`);
     for (const match of text.matchAll(/^        "(@runic-artifex\/[^"/]+)": "([^"]+)"/gm)) declarations({[match[1]]: match[2]});
   } else throw new Error(`Unsupported template lock: ${filename}`);
-  assert.ok(count > 0, `${filename}: no Runic resolutions verified`);
+  if (requireRunic) assert.ok(count > 0, `${filename}: no Runic resolutions verified`);
+  if (expectedPackage) assert.ok(seen.has(expectedPackage), `${filename}: missing ${expectedPackage} resolution`);
   return count;
 }
 
@@ -69,6 +70,12 @@ export function verifyPackagedTemplateLocks(nupkg, archives) {
   const files = JSON.parse(execFileSync('python3', ['-c', 'import zipfile,json,sys\nwith zipfile.ZipFile(sys.argv[1]) as z: print(json.dumps({n:z.read(n).decode() for n in z.namelist() if n.endswith(("package-lock.json","pnpm-lock.yaml","bun.lock"))}))', nupkg], {encoding: 'utf8', maxBuffer: 32 * 1024 * 1024}));
   const expected = ['react', 'vue', 'svelte', 'angular'].flatMap(framework => ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock'].map(lock => `content/content/${framework}/Frontend/${lock}`));
   assert.deepEqual(Object.keys(files).sort(), expected.sort(), 'Packaged template lock inventory differs');
-  const entries = Object.entries(files).reduce((total, [filename, text]) => total + verifyTemplateLock(text, filename, candidates), 0);
+  const entries = Object.entries(files).reduce((total, [filename, text]) => {
+    const framework = filename.match(/content\/content\/(react|vue|svelte|angular)\/Frontend\//)?.[1];
+    const expectedPackage = framework === 'svelte' ? '@runic-artifex/views-svelte'
+      : framework === 'angular' ? '@runic-artifex/views-angular' : undefined;
+    return total + verifyTemplateLock(text, filename, candidates,
+      { requireRunic: Boolean(expectedPackage), expectedPackage });
+  }, 0);
   return {locks: expected.length, entries};
 }

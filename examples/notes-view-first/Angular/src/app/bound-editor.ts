@@ -31,10 +31,9 @@ export class BoundEditorComponent {
   readonly error = signal<string | undefined>(undefined);
 
   save(): void {
-    const call = this.operations.dispatchProbe
+    void this.binding.flush().then(() => this.operations.dispatchProbe
       ? this.operations.runDispatched(this.editor.view(), view => view.save())
-      : this.operations.run(this.editor.view(), view => view.save());
-    void call
+      : this.operations.run(this.editor.view(), view => view.save()))
       .then(() => this.error.set(undefined))
       .catch(cause => this.error.set(String(cause)));
   }

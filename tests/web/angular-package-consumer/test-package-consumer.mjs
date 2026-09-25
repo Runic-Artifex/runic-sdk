@@ -1,186 +1,72 @@
 #!/usr/bin/env node
 
-import { access, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { execFileSync, spawn } from "node:child_process";
+import { promisify } from "node:util";
 
-const [bridgeArchive, angularArchive] = process.argv.slice(2);
-if (bridgeArchive === undefined || angularArchive === undefined || process.argv.length !== 4) {
-  throw new Error("Usage: node test-package-consumer.mjs <application-bridge.tgz> <angular.tgz>");
-}
-await Promise.all([access(bridgeArchive), access(angularArchive)]);
-const candidates = await Promise.all([
-  candidate(bridgeArchive, "@runic-artifex/application-bridge"),
-  candidate(angularArchive, "@runic-artifex/angular"),
-]);
-if (candidates[0].version !== candidates[1].version) {
-  throw new Error("Local Angular and Application Bridge candidates must select the same release train.");
-}
-if (candidates[1].dependencies?.["@runic-artifex/application-bridge"] !== candidates[0].version) {
-  throw new Error("The local Angular candidate must declare its exact candidate Application Bridge dependency.");
-}
-console.log("Preparing clean Angular package consumer canary.");
-
-const root = await mkdtemp(join(tmpdir(), "runic-angular-package-consumer."));
+const execute = promisify(execFileCallback);
+const root = await mkdtemp(join(tmpdir(), "runic-angular-views-consumer-"));
 try {
-  await write(root, "package.json", {
-    name: "customer-shaped-angular-bridge-canary",
-    private: true,
-    scripts: { build: "ng build customer-app" },
-    dependencies: {
-      "@angular/common": "22.1.5",
-      "@angular/core": "22.1.5",
-      "@angular/platform-browser": "22.1.5",
-      "@runic-artifex/application-bridge": `file:${resolve(bridgeArchive)}`,
-      "@runic-artifex/angular": `file:${resolve(angularArchive)}`,
-      "effect": "4.0.0-rc.112",
-      rxjs: "7.8.2",
-    },
-    overrides: {
-      "@runic-artifex/application-bridge": `file:${resolve(bridgeArchive)}`,
-    },
-    devDependencies: {
-      "@angular/build": "22.1.7",
-      "@angular/cli": "22.1.7",
-      "@angular/compiler": "22.1.5",
-      "@angular/compiler-cli": "22.1.5",
-      "ng-packagr": "22.1.1",
-      typescript: "6.0.3",
-    },
-  });
-  await write(root, "angular.json", angularJson());
-  await write(root, "tsconfig.json", {
-    compilerOptions: {
-      target: "ES2022", module: "preserve", moduleResolution: "bundler", strict: true,
-      skipLibCheck: true, experimentalDecorators: true,
-    },
-  });
-  await write(root, "projects/contracts/tsconfig.lib.json", {
-    extends: "../../tsconfig.json", compilerOptions: { outDir: "../../out-tsc/contracts" },
-    include: ["src/**/*.ts"],
-  });
-  await write(root, "projects/contracts/package.json", {
-    name: "@customer/contracts", version: "1.0.0", sideEffects: false,
-    peerDependencies: { "@angular/core": "22.1.5" },
-  });
-  await write(root, "projects/contracts/ng-package.json", {
-    $schema: "../../node_modules/ng-packagr/ng-package.schema.json",
-    dest: "../../dist/contracts",
-    lib: { entryFile: "src/public-api.ts" },
-    allowedNonPeerDependencies: ["@runic-artifex/application-bridge", "effect"],
-  });
-  await write(root, "projects/contracts/src/public-api.ts", "export * from './lib/counter-contract.js';\nexport * from './lib/generated-translations.js';\n");
-  await write(root, "projects/contracts/src/lib/generated-translations.ts", "// Generated catalog output; application code imports it as a normal ESM dependency.\nexport const m = Object.freeze({ counterTitle: () => 'Customer counter' });\n");
-  await write(root, "projects/contracts/src/lib/counter-contract.ts", contractSource());
-  await write(root, "projects/customer-app/tsconfig.app.json", {
-    extends: "../../tsconfig.json", compilerOptions: { outDir: "../../out-tsc/customer-app" },
-    files: ["src/main.ts"],
-  });
-  await write(root, "projects/customer-app/src/index.html", "<customer-root></customer-root>\n");
-  await write(root, "projects/customer-app/src/main.ts", appSource());
-
-  const environment = {
-    ...process.env,
-    NG_CLI_ANALYTICS: "false",
-    npm_config_cache: join(root, ".npm-cache"),
-    npm_config_update_notifier: "false",
-  };
-  await run("npm", ["install", "--ignore-scripts"], root, environment);
-  await run("npm", ["exec", "ng", "build", "contracts"], root, environment);
-  await run("npm", ["install", "--ignore-scripts", "./dist/contracts"], root, environment);
-  await run("npm", ["run", "build"], root, environment);
-  for (const [index, archive] of [bridgeArchive, angularArchive].entries()) {
-    if (sha256(await readFile(archive)) !== candidates[index].archive.sha256) {
-      throw new Error("Candidate archive changed during acceptance.");
-    }
+  let archive = process.argv[2];
+  if (process.argv.length > 3) throw new Error("Usage: node test-package-consumer.mjs [views-angular.tgz]");
+  if (!archive) {
+    await execute("npm", ["run", "build", "--workspace", "@runic-artifex/views-angular"]);
+    const packed = await execute("npm", ["pack", "--json", "--workspace", "@runic-artifex/views-angular", "--pack-destination", root]);
+    const result = JSON.parse(packed.stdout);
+    archive = join(root, (Array.isArray(result) ? result[0] : Object.values(result)[0]).filename);
   }
-  for (const selected of candidates) console.log(`${selected.identity}@${selected.version} sha256=${selected.archive.sha256}`);
-  console.log("Angular package consumer canary passed.");
-} finally {
-  await rm(root, { recursive: true, force: true, maxRetries: 3 });
-}
-
-async function candidate(archive, identity) {
-  const absolute = resolve(archive);
-  const metadata = execFileSync("tar", ["-xOf", absolute, "package/package.json"], { encoding: "utf8" });
-  const manifest = JSON.parse(metadata);
-  if (manifest.name !== identity || !/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u.test(manifest.version) || manifest.license !== "MIT" || manifest.repository?.url !== "git+https://github.com/Runic-Artifex/runic-sdk.git" || manifest.exports === undefined) {
-    throw new Error(`Invalid local candidate metadata for ${identity}.`);
-  }
-  const archiveStat = await stat(absolute);
-  return {
-    identity,
-    version: manifest.version,
-    archive: { name: absolute.split("/").at(-1), sha256: sha256(await readFile(absolute)), size: archiveStat.size },
-    dependencies: manifest.dependencies,
-  };
-}
-
-function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
-
-function angularJson() {
-  return {
+  archive = resolve(archive);
+  const manifest = JSON.parse((await execute("tar", ["-xOf", archive, "package/package.json"])).stdout);
+  assert.equal(manifest.name, "@runic-artifex/views-angular");
+  assert.equal(manifest.private, undefined);
+  assert.equal(manifest.license, "MIT");
+  const archiveJs = (await execute("tar", ["-xOf", archive, "package/dist/esm/view-outlet.js"])).stdout;
+  const archiveTypes = (await execute("tar", ["-xOf", archive, "package/dist/esm/view-outlet.d.ts"])).stdout;
+  assert.match(archiveJs, /ɵɵngDeclareComponent/);
+  assert.match(archiveJs, /isStandalone: true/);
+  assert.match(archiveTypes, /static ɵcmp:/);
+  await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module", scripts: { build: "ng build" }, dependencies: {
+    "@runic-artifex/views-angular": `file:${archive}`,
+    "@angular/common": "22.1.5", "@angular/core": "22.1.5", "@angular/platform-browser": "22.1.5", "rxjs": "7.8.2"
+  }, devDependencies: {
+    "@angular/build": "22.1.7", "@angular/cli": "22.1.7", "@angular/compiler": "22.1.5",
+    "@angular/compiler-cli": "22.1.5", "typescript": "6.0.3"
+  } }), "utf8");
+  await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], { cwd: root });
+  await writeFile(join(root, "angular.json"), JSON.stringify({
     $schema: "./node_modules/@angular/cli/lib/config/schema.json", version: 1,
-    projects: {
-      "customer-app": {
-        projectType: "application", root: "projects/customer-app", sourceRoot: "projects/customer-app/src",
-        architect: { build: { builder: "@angular/build:application", options: {
-          outputPath: { base: "dist/customer-app", browser: "" }, browser: "projects/customer-app/src/main.ts",
-          index: "projects/customer-app/src/index.html", tsConfig: "projects/customer-app/tsconfig.app.json",
-        } } },
-      },
-      contracts: {
-        projectType: "library", root: "projects/contracts", sourceRoot: "projects/contracts/src",
-        architect: { build: { builder: "@angular/build:ng-packagr", options: {
-          project: "projects/contracts/ng-package.json", tsConfig: "projects/contracts/tsconfig.lib.json",
-        } } },
-      },
-    },
-  };
-}
-
-function contractSource() {
-  return `import { Schema } from "effect";
-import { bridge, defineApplicationBridgeContract, materializeApplicationBridgeContract } from "@runic-artifex/application-bridge";
-export const CounterSnapshot = Schema.Struct({ count: Schema.Int, revision: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))) });
-export const CounterCommand = Schema.TaggedStruct("ReadCounter", {});
-export const CounterReceipt = Schema.TaggedStruct("CounterRead", { snapshot: CounterSnapshot });
-export const CounterEvent = Schema.TaggedStruct("CounterChanged", { snapshot: CounterSnapshot });
-const definition = defineApplicationBridgeContract({ protocol: { identity: "customer.counter", version: 1 }, csharp: { namespace: "Customer.Counter", contractName: "Counter" }, snapshot: CounterSnapshot, commands: [bridge.command(CounterCommand, { receipt: CounterReceipt })], events: [CounterEvent], errors: [] });
-export const CounterContract = materializeApplicationBridgeContract(definition, "c".repeat(64));
-export type CounterCommand = typeof CounterCommand.Type;
-export type CounterReceipt = typeof CounterReceipt.Type;
-export type CounterEvent = typeof CounterEvent.Type;
-export type CounterSnapshot = typeof CounterSnapshot.Type;
-`;
-}
-
-function appSource() {
-  return `import { Component, provideZonelessChangeDetection } from "@angular/core";
+    projects: { consumer: { projectType: "application", root: "", sourceRoot: "src", architect: {
+      build: { builder: "@angular/build:application", options: {
+        outputPath: "dist", browser: "src/main.ts", index: "src/index.html", tsConfig: "tsconfig.json"
+      } }
+    } } }, defaultProject: "consumer"
+  }), "utf8");
+  await writeFile(join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: {
+    target: "ES2022", module: "preserve", moduleResolution: "bundler", strict: true, skipLibCheck: true,
+    experimentalDecorators: true
+  }, angularCompilerOptions: { strictTemplates: true }, include: ["src/**/*.ts"] }), "utf8");
+  await mkdir(join(root, "src"));
+  await writeFile(join(root, "src/index.html"), "<!doctype html><html><head><meta charset=\"utf-8\"><base href=\"/\"></head><body><consumer-root></consumer-root></body></html>", "utf8");
+  await writeFile(join(root, "src/main.ts"), `import { Component, input, provideZonelessChangeDetection, type InputSignal } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
-import { MockApplicationBridge, createApplicationBridgeController } from "@runic-artifex/application-bridge";
-import { injectApplicationBridge, provideApplicationBridge } from "@runic-artifex/angular";
-import { Effect } from "effect";
-import { CounterCommand, CounterContract, m, type CounterEvent, type CounterReceipt, type CounterSnapshot } from "@customer/contracts";
-const bridge = createApplicationBridgeController(CounterContract, MockApplicationBridge({ initialize: () => Effect.succeed({ count: 0, revision: 0 }), dispatch: () => Effect.succeed({ _tag: "CounterRead", snapshot: { count: 0, revision: 0 } }) }));
-@Component({ selector: "customer-root", standalone: true, template: "{{ title }} {{ client.snapshot()?.count }}" })
-class CustomerApp { readonly title = m.counterTitle(); readonly client = injectApplicationBridge<CounterCommand, CounterReceipt, CounterEvent, CounterSnapshot>(); constructor() { void this.client.initialize(); } }
-void bootstrapApplication(CustomerApp, { providers: [provideZonelessChangeDetection(), provideApplicationBridge({ controller: bridge, snapshotFromEvent: event => event._tag === "CounterChanged" ? event.snapshot : undefined })] });
-`;
+import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/views-angular";
+type Page = { readonly kind: "counter"; connect(): Promise<unknown> };
+@Component({ selector: "counter-page", standalone: true, template: "{{ page().kind }}" })
+class CounterPage { readonly page: InputSignal<Page> = input.required<Page>(); }
+@Component({ selector: "consumer-root", standalone: true, imports: [RunicViewOutlet],
+  template: '<runic-view-outlet [content]="current" [registry]="registry" />' })
+class ConsumerRoot {
+  readonly current: Page = { kind: "counter", connect: async () => undefined };
+  readonly registry = { counter: CounterPage } satisfies ViewRegistry<Page>;
 }
-
-async function write(root, path, value) {
-  const file = join(root, path);
-  await (await import("node:fs/promises")).mkdir(join(file, ".."), { recursive: true });
-  await writeFile(file, typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function run(command, arguments_, cwd, env) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, arguments_, { cwd, env, stdio: "inherit" });
-    child.once("error", reject);
-    child.once("exit", code => code === 0 ? resolve() : reject(new Error(`${command} exited with ${code}.`)));
-  });
+void bootstrapApplication(ConsumerRoot, { providers: [provideZonelessChangeDetection()] });
+`, "utf8");
+  await execute("npm", ["run", "build"], { cwd: root });
+  assert.match(await readFile(join(root, "dist", "browser", "index.html"), "utf8"), /consumer-root/);
+  console.log("Angular Views package consumer passed.");
+} finally {
+  await rm(root, { recursive: true, force: true });
 }

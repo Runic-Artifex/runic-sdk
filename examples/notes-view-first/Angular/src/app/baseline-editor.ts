@@ -1,5 +1,6 @@
 import { Component, inject, input, signal } from "@angular/core";
 import type { EditorPageReference, EditorView } from "../../../Frontend/src/generated/editor.js";
+import { EditorWrites } from "../../../Frontend/src/editor-writes.js";
 import { pageSignal } from "./bridge-signal";
 import { WindowOperations } from "./window-operations";
 
@@ -22,16 +23,22 @@ export class BaselineEditorComponent {
   readonly editor = pageSignal(this.page);
   readonly error = signal<string | undefined>(undefined);
   private readonly operations = inject(WindowOperations);
+  private readonly writes = new EditorWrites(cause => this.error.set(cause === undefined ? undefined : String(cause)));
 
   changeTitle(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
-    this.run(view => view.setTitle(value));
+    this.write(view => view.setTitle(value));
   }
   changeBody(event: Event): void {
     const value = (event.target as HTMLTextAreaElement).value;
-    this.run(view => view.setBody(value));
+    this.write(view => view.setBody(value));
   }
-  save(): void { this.run(view => view.save()); }
+  save(): void { this.run(view => this.writes.run(() => view.save())); }
+
+  private write(action: (view: EditorView) => Promise<unknown>): void {
+    const view = this.editor.view();
+    if (view) this.writes.enqueue(() => this.operations.run(view, action));
+  }
 
   private run(action: (view: EditorView) => Promise<unknown>): void {
     void this.operations.run(this.editor.view(), action)

@@ -21,13 +21,6 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         "RUNIC_APPLICATION_FRONTEND_COMPILER_HOT_RELOAD";
     internal const string ProjectEnvironmentVariable =
         "RUNIC_APPLICATION_DEV_PROJECT";
-    internal const string BridgeHostReadyEnvironmentVariable =
-        "RUNIC_APPLICATION_BRIDGE_HOST_READY";
-    internal const string ViewBridgeReadyManifestEnvironmentVariable =
-        "RUNIC_VIEW_BRIDGE_READY_MANIFEST";
-    internal const string ViewBridgeHostReadyEnvironmentVariable =
-        "RUNIC_VIEW_BRIDGE_HOST_READY";
-
     private readonly RunningProcess _process;
 
     private ViteDevelopmentServer(
@@ -37,10 +30,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         string packageDirectory,
         string diagnosticsPath,
         string hotReloadPath,
-        string projectPath,
-        string? bridgeHostReadyPath,
-        string? viewBridgeReadyManifest,
-        string? viewBridgeHostReadyPath)
+        string projectPath)
     {
         _process = process;
         Origin = origin;
@@ -52,9 +42,6 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             [DiagnosticsEnvironmentVariable] = diagnosticsPath,
             [HotReloadEnvironmentVariable] = hotReloadPath,
             [ProjectEnvironmentVariable] = projectPath,
-            [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
-            [ViewBridgeReadyManifestEnvironmentVariable] = viewBridgeReadyManifest,
-            [ViewBridgeHostReadyEnvironmentVariable] = viewBridgeHostReadyPath,
         };
     }
 
@@ -66,18 +53,13 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
 
     internal static async Task<ViteDevelopmentServer> StartAsync(
         DevProjectConfiguration configuration,
-        Uri inspectorEndpoint,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentNullException.ThrowIfNull(inspectorEndpoint);
         using PhaseTimer phase = PhaseTimer.Start("Starting Vite development server");
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
         RunningProcess process;
-        string? bridgeHostReadyPath = configuration.HasContracts
-            ? Path.Combine(configuration.ProjectDirectory, "obj", "runic", "application-bridge-host.fingerprint")
-            : null;
         try
         {
             IReadOnlyList<string> arguments = CreateArguments(
@@ -91,7 +73,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 packageManager.Executable,
                 configuration.WorkspaceRoot,
                 arguments,
-                CreateEnvironment(configuration, inspectorEndpoint, bridgeHostReadyPath));
+                CreateEnvironment(configuration));
         }
         catch
         {
@@ -104,10 +86,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             configuration.FrontendPackageDirectory,
             configuration.FrontendCompilerDiagnosticsPath,
             configuration.FrontendCompilerHotReloadPath + ".ready",
-            configuration.ProjectPath,
-            bridgeHostReadyPath,
-            configuration.HasViewBridge ? configuration.ViewBridgeReadyManifest : null,
-            configuration.HasViewBridge ? configuration.ViewBridgeHostReadyPath : null);
+            configuration.ProjectPath);
         try
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
@@ -121,7 +100,6 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                     FrontendDevelopmentDocument.Write(
                         configuration,
                         origin,
-                        inspectorEndpoint,
                         destination,
                         document);
                 }
@@ -138,9 +116,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     }
 
     internal static IReadOnlyDictionary<string, string?> CreateEnvironment(
-        DevProjectConfiguration configuration,
-        Uri inspectorEndpoint,
-        string? bridgeHostReadyPath) =>
+        DevProjectConfiguration configuration) =>
         new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             ["BROWSER"] = "none",
@@ -148,13 +124,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             // MSBuild can make its Exec task parse config dumps as build errors.
             ["DEBUG"] = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_VITE_DEBUG")
                 ?? Environment.GetEnvironmentVariable("DEBUG"),
-            ["RUNIC_APPLICATION_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
             ["RUNIC_APPLICATION_DEV_PROJECT"] = configuration.ProjectPath,
-            [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
-            [ViewBridgeReadyManifestEnvironmentVariable] =
-                configuration.HasViewBridge ? configuration.ViewBridgeReadyManifest : null,
-            [ViewBridgeHostReadyEnvironmentVariable] =
-                configuration.HasViewBridge ? configuration.ViewBridgeHostReadyPath : null,
         };
 
     private async Task<string> ReadDevelopmentDocumentAsync(

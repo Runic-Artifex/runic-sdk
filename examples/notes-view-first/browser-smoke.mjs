@@ -95,9 +95,11 @@ try {
 
   await click("[data-pane=editor]");
   await retry(async () => await query('document.querySelector("#document-pane input")?.value') === "Draft");
+  await change("#document-pane textarea", "Line two");
   await click("[data-save]");
   await retry(async () => (await snapshot(`content${editorId}`)).state?.canSave === false);
   await click("[data-pane=preview]");
+  await retry(async () => await query('document.querySelector("#document-pane p")?.textContent') === "Line two");
   await pause(350);
   await click("[data-pane=editor]");
   await retry(async () => (await snapshot(`content${editorId}`)).state?.savedMessage === "Saved Draft");

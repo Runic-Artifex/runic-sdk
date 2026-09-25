@@ -1,4 +1,5 @@
 import type { EditorView } from "./generated/editor.js";
+import { EditorWrites } from "./editor-writes.js";
 
 export function mountEditor(host: HTMLElement, editor: EditorView): () => void {
   host.innerHTML = `<h2>Editor</h2><label>Title <input></label><label>Body <textarea></textarea></label><button data-save>Save</button><p data-message role="status"></p><p data-error role="alert" hidden></p>`;
@@ -16,15 +17,20 @@ export function mountEditor(host: HTMLElement, editor: EditorView): () => void {
       if (active) { error.textContent = String(cause); error.hidden = false; }
     }
   };
+  const writes = new EditorWrites(cause => {
+    if (!active) return;
+    error.textContent = cause === undefined ? "" : String(cause);
+    error.hidden = cause === undefined;
+  });
   const unsubscribe = editor.subscribe(state => {
     if (document.activeElement !== title) title.value = state.title;
     if (document.activeElement !== body) body.value = state.body;
     save.disabled = !state.canSave;
     message.textContent = `${state.isDirty ? "Unsaved changes. " : ""}${state.savedMessage}`;
   });
-  const titleChanged = () => { void run(() => editor.setTitle(title.value)); };
-  const bodyChanged = () => { void run(() => editor.setBody(body.value)); };
-  const saveClicked = () => { void run(() => editor.save()); };
+  const titleChanged = () => { const value = title.value; writes.enqueue(() => editor.setTitle(value)); };
+  const bodyChanged = () => { const value = body.value; writes.enqueue(() => editor.setBody(value)); };
+  const saveClicked = () => { void run(() => writes.run(() => editor.save())); };
   title.addEventListener("change", titleChanged);
   body.addEventListener("change", bodyChanged);
   save.addEventListener("click", saveClicked);

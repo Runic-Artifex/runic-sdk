@@ -19,6 +19,7 @@ export function bridgeTextForm<V extends ConnectedView<any>, K extends StringKey
 ) {
   const form = signal<FormGroup<TextControls<K>> | undefined>(undefined);
   const error = signal<unknown>(undefined);
+  let flushWrites: () => Promise<void> = async () => {};
 
   effect(onCleanup => {
     const view = source();
@@ -29,12 +30,19 @@ export function bridgeTextForm<V extends ConnectedView<any>, K extends StringKey
     ])) as TextControls<K>;
     const group = new FormGroup(controls);
     const pending = new Map<K, number>();
+    let tail: Promise<void> = Promise.resolve();
+    let failed: unknown;
+    flushWrites = async () => {
+      await tail;
+      if (failed !== undefined) throw failed;
+    };
     let active = true;
 
     const changes = names.map(key => controls[key].valueChanges.subscribe(value => {
       pending.set(key, (pending.get(key) ?? 0) + 1);
       let succeeded = false;
-      void operations.run(view, target => fields[key](target, value))
+      const write = operations.run(view, target => fields[key](target, value));
+      void write
         .then(() => { succeeded = true; if (active) error.set(undefined); })
         .catch(cause => { if (active) error.set(cause); })
         .finally(() => {
@@ -44,6 +52,7 @@ export function bridgeTextForm<V extends ConnectedView<any>, K extends StringKey
           const remote = view.snapshot[key] as string;
           if (controls[key].value !== remote) controls[key].setValue(remote, { emitEvent: false });
         });
+      tail = tail.then(() => write.then(() => { failed = undefined; }, cause => { failed = cause; }));
     }));
     const unsubscribe = view.subscribe(snapshot => {
       for (const key of names) {
@@ -58,8 +67,9 @@ export function bridgeTextForm<V extends ConnectedView<any>, K extends StringKey
       for (const subscription of changes) subscription.unsubscribe();
       unsubscribe();
       form.set(undefined);
+      flushWrites = async () => {};
     });
   });
 
-  return { form: form.asReadonly(), error: error.asReadonly() };
+  return { form: form.asReadonly(), error: error.asReadonly(), flush: () => flushWrites() };
 }

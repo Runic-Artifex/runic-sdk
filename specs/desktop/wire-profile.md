@@ -1,30 +1,18 @@
-# Wire-profile decision
+# Desktop wire compatibility boundary
 
-Runic Desktop v1 retains `webui-compat/52f9e75` as its internal browser wire
-codec. The decision is deliberately about framing, not product identity or API
-ownership.
+Runic Desktop retains its internal `webui-compat/52f9e75` implementation as
+protocol and differential evidence for installed-browser and embedded-WebView
+hosting. The implementation is private to `Runic.Desktop`; it is not a public
+application protocol or a frontend SDK contract.
 
-No v1 requirement justifies a second packet format. The retained profile
-already provides an authenticated binary WebSocket, correlation identifiers,
-large-frame reassembly, capability discovery, opaque byte arguments, and
-session-scoped host-to-browser delivery. Replacing it for naming alone would
-add two codecs and a migration problem without improving security,
-cancellation, error classification, or capability semantics.
+The compatibility code keeps the optional `/webui.js` and `webui` surface for
+existing WebUI behavior. Runic Desktop does not publish the old TypeScript
+Desktop transport package, and current Runic Application Views clients do not
+use this compatibility layer as their application contract. Views select
+explicit .NET Window and View types and generate ordinary TypeScript clients;
+the current first-party host adapter connects them to CS-WebUI.
 
-The retained behavior is isolated as follows:
-
-- `/runic-desktop.js` installs only the immutable `runicDesktop` bootstrap.
-  The public TypeScript package and its errors use Runic Desktop identity.
-- `@runic-artifex/desktop` owns the internal codec, authenticates the physical
-  session, negotiates `runic.desktop.application-bridge/1`, and publishes
-  opaque frames through a structural `FrameChannel`.
-- Application Bridge owns its envelopes, commands, events, revisions, and
-  resynchronization. Runic Desktop neither parses nor duplicates them.
-- `/webui.js` and the `webui` global remain an optional compatibility surface.
-  New Runic consumers do not load or reference them.
-
-An additional profile requires a concrete contract need that cannot be added safely
-to this boundary—for example protocol-level multiplexing, negotiated wire
-versions, or cancellation that must be observed before Application Bridge
-decoding. Such a change must introduce a new versioned profile and retain
-explicit negotiation; it must not silently reinterpret this one.
+Changes to this private compatibility code must remain isolated from the public
+Desktop API and must not add a dependency from the Desktop core to Runic
+Application Views. A future Views-to-Desktop adapter would need its own explicit
+integration package and compatibility contract.

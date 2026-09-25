@@ -14,7 +14,7 @@
     <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <InternalsVisibleTo Include="Runic.Platform.Windows.Tests" />
-    <InternalsVisibleTo Include="Runic.Platform.Prototype.Tests" />
+    <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

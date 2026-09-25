@@ -3,14 +3,11 @@
 Start with the [public documentation site](../README.md) for user-facing navigation
 and the [SDK contributor guide](../../CONTRIBUTING.md) for workspace commands.
 
-- [Application architecture](application/architecture/README.md), [Application Bridge](application/architecture/application-bridge.md).
-- [MVVM migration design](application/architecture/mvvm-migration-rfc.md) and [customer migration reference](../../examples/customer-migration/README.md).
-- [OS services](application/architecture/os-integration-rfc.md) and [acceptance scenarios](../../eng/os-integration-acceptance.md).
-- [Desktop native close handling](desktop/window-close-lifecycle.md).
+- [Runic Application Views](application/README.md) and [application architecture](application/architecture/README.md).
+- [First Window](../../examples/first-window/README.md), [Toolkit Notes](../../examples/notes-view-first/README.md), and [Reactive Notes](../../examples/notes-reactive-views/README.md).
+- [Desktop native services](desktop-services.md), [host selection](desktop/host-selection.md), and [window close lifecycle](desktop/window-close-lifecycle.md).
 - [Translation guides](translations).
 - [Asset guides](assets).
 
 Shared build commands and ownership come from the root contributor guide; versioned
-schemas and protocol inputs live under `specs`.
-
-- [Document migration reference](../../examples/document-migration/README.md).
+translation schemas and protocol inputs live under `specs/translations`.

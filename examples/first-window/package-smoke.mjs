@@ -74,12 +74,22 @@ try {
   const build = await run("dotnet", ["build", "ConsumerFirstWindow.csproj", "-c", "Release"], consumer);
   if (!build.includes("Generated Counter bridge") || !build.includes("0 Error(s)"))
     throw new Error(`The package consumer did not generate its contract cleanly:\n${build}`);
+  const failedConstruction = await run("dotnet", [
+    join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll"), "--probe-factory-failure"
+  ], consumer);
+  if (!failedConstruction.includes("FIRST_WINDOW_FACTORY_FAILURE_OK"))
+    throw new Error(`The packaged Window factory did not release its failed construction scope:\n${failedConstruction}`);
+  const closedWindow = await run("dotnet", [
+    join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll"), "--probe-window-close"
+  ], consumer);
+  if (!closedWindow.includes("FIRST_WINDOW_CLOSE_OK"))
+    throw new Error(`The packaged Window did not close its host cleanly:\n${closedWindow}`);
   const browser = await run("node", [join(example, "browser-smoke.mjs")], root, {
     ...process.env,
     RUNIC_FIRST_WINDOW_DLL: join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll")
   });
   if (!browser.includes("FIRST_WINDOW_OK")) throw new Error(`Browser journey failed:\n${browser}`);
-  console.log("FIRST_WINDOW_PACKAGE_OK|pack|restore|generate|browser");
+  console.log("FIRST_WINDOW_PACKAGE_OK|pack|restore|generate|failed-construction|close|browser");
 } finally {
   await rm(temporary, { recursive: true, force: true });
   if (testVersion) {

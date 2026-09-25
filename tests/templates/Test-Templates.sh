@@ -1,25 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 8 ]]; then
-  echo "Usage: $0 <package-version> <package-directory> <application-bridge-tgz> <application-bridge-tooling-tgz> <runic-angular-tgz> <runic-svelte-tgz> <runic-vite-tgz> <runic-desktop-tgz>" >&2
+if [[ $# -ne 4 ]]; then
+  echo "Usage: $0 <package-version> <package-directory> <views-angular.tgz> <views-svelte.tgz>" >&2
   exit 2
 fi
 
 package_version="$1"
 package_directory="$(cd "$2" && pwd)"
-npm_archive="$(realpath "$3")"
-tooling_archive="$(realpath "$4")"
-angular_archive="$(realpath "$5")"
-svelte_archive="$(realpath "$6")"
-vite_archive="$(realpath "$7")"
-desktop_archive="$(realpath "$8")"
-runic_assets_version="${RunicAssetsPackageVersion:-$package_version}"
-runic_desktop_version="${RunicDesktopPackageVersion:-$package_version}"
+angular_archive="$(realpath "$3")"
+svelte_archive="$(realpath "$4")"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "$script_directory/../.." && pwd)"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
-template_tmp="$(mktemp -d /tmp/runic-toolkit-templates.XXXXXXXXXX)"
+template_tmp="$(mktemp -d /tmp/runic-views-templates.XXXXXXXXXX)"
 registry_pid=""
 
 cleanup() {
@@ -28,23 +22,23 @@ cleanup() {
     wait "$registry_pid" 2>/dev/null || true
   fi
   case "$template_tmp" in
-    /tmp/runic-toolkit-templates.*) rm -rf -- "$template_tmp" ;;
+    /tmp/runic-views-templates.*) rm -rf -- "$template_tmp" ;;
     *) echo "Refusing to remove unexpected path: $template_tmp" >&2 ;;
   esac
 }
 trap cleanup EXIT
 
-if [[ ! -f "$template_package" || ! -f "$npm_archive" || ! -f "$tooling_archive" || ! -f "$angular_archive" || ! -f "$svelte_archive" || ! -f "$vite_archive" || ! -f "$desktop_archive" ]]; then
-  echo "One or more template npm archives are missing." >&2
-  exit 1
-fi
+for required in "$template_package" "$angular_archive" "$svelte_archive"; do
+  if [[ ! -f "$required" ]]; then
+    echo "Required template acceptance input is missing: $required" >&2
+    exit 1
+  fi
+done
 
 export DOTNET_CLI_HOME="$template_tmp/dotnet-home"
 export NUGET_PACKAGES="$template_tmp/nuget"
 export BUN_INSTALL_CACHE_DIR="$template_tmp/bun-cache"
 export PNPM_CONFIG_STORE_DIR="$template_tmp/pnpm-store"
-# Package acceptance must exercise the inspector shipped with dotnet-runic.
-unset RUNIC_BRIDGE_INSPECTOR
 restore_sources=(--source "$package_directory" --source https://api.nuget.org/v3/index.json)
 tool_restore_options=()
 tool_source_options=(--add-source "$package_directory")
@@ -55,6 +49,7 @@ if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
 elif [[ -n "${RUNIC_VERIFICATION_FEED:-}" ]]; then
   restore_sources=(--source "$RUNIC_VERIFICATION_FEED" "${restore_sources[@]}")
 fi
+
 dotnet new install "$template_package" --force
 tool_directory="$template_tmp/tools"
 dotnet tool install dotnet-runic \
@@ -80,25 +75,11 @@ npm_archive_version() {
   ' "$1"
 }
 
-bridge_npm_version="$(npm_archive_version "$npm_archive")"
-svelte_npm_version="$(npm_archive_version "$svelte_archive")"
-vite_npm_version="$(npm_archive_version "$vite_archive")"
-
-bind_candidate_integrities() {
-  RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" "$1" \
-    "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive"
-}
-
-configure_candidate_registry() {
-  (
-    cd "$1"
-    npm config set --location=project @runic-artifex:registry "$registry_url"
-  )
-}
-
+views_angular_version="$(npm_archive_version "$angular_archive")"
+views_svelte_version="$(npm_archive_version "$svelte_archive")"
 registry_ready="$template_tmp/template-npm-registry.url"
 bun "$script_directory/template-npm-registry.mjs" \
-  "$registry_ready" "$npm_archive" "$tooling_archive" "$angular_archive" "$svelte_archive" "$vite_archive" "$desktop_archive" &
+  "$registry_ready" "$angular_archive" "$svelte_archive" &
 registry_pid=$!
 for _ in $(seq 1 100); do
   [[ -s "$registry_ready" ]] && break
@@ -107,222 +88,137 @@ done
 [[ -s "$registry_ready" ]]
 registry_url="$(<"$registry_ready")"
 
-default_output="$template_tmp/default-react"
-dotnet new runic-app-react --name PackagedDefaults --output "$default_output"
-bind_candidate_integrities "$default_output/Frontend/package-lock.json"
-grep -Fq "\"version\": \"$package_version\"" "$default_output/.config/dotnet-tools.json"
-dotnet tool restore \
-  --tool-manifest "$default_output/.config/dotnet-tools.json" \
-  "${tool_source_options[@]}" \
-  "${tool_restore_options[@]}"
-grep -Fq "Version=\"$package_version\"" "$default_output/PackagedDefaults.csproj"
-grep -Fq "Version=\"$runic_assets_version\"" "$default_output/PackagedDefaults.csproj"
-grep -Fq "Version=\"$runic_desktop_version\"" "$default_output/PackagedDefaults.csproj"
-configure_candidate_registry "$default_output/Frontend"
-dotnet restore "$default_output/PackagedDefaults.csproj" "${restore_sources[@]}"
-dotnet build "$default_output/PackagedDefaults.csproj" --configuration Release --no-restore
-test -f "$default_output/Frontend/dist/index.html"
-test -f "$default_output/Frontend/node_modules/.package-lock.json"
-
-default_svelte_output="$template_tmp/default-svelte"
-dotnet new runic-app-svelte --name PackagedSvelteDefaults --output "$default_svelte_output"
-bind_candidate_integrities "$default_svelte_output/Frontend/package-lock.json"
-bun -e '
-  const fs = require("node:fs");
-  const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  const expected = new Map([
-    ["@runic-artifex/application-bridge", process.argv[2]],
-    ["@runic-artifex/application-bridge-tooling", process.argv[2]],
-    ["@runic-artifex/svelte", process.argv[3]],
-    ["@runic-artifex/vite-plugin-runic", process.argv[4]],
-  ]);
-  for (const [name, version] of expected) {
-    const actual = manifest.dependencies[name] ?? manifest.devDependencies[name];
-    if (actual !== version) throw new Error(`${name} default was ${actual}, expected ${version}.`);
-  }
-' "$default_svelte_output/Frontend/package.json" "$bridge_npm_version" "$svelte_npm_version" "$vite_npm_version"
-configure_candidate_registry "$default_svelte_output/Frontend"
-dotnet restore "$default_svelte_output/PackagedSvelteDefaults.csproj" "${restore_sources[@]}"
-dotnet build "$default_svelte_output/PackagedSvelteDefaults.csproj" --configuration Release --no-restore
-dotnet run --project "$default_svelte_output/PackagedSvelteDefaults.csproj" \
-  --configuration Release --no-build -- --smoke-test
-
-verify_framework() {
+configure_candidate_registry() {
   local framework="$1"
-  local selected_host="${2:-desktop}"
-  local project_name="Acceptance${framework^}${selected_host^}"
-  local output="$template_tmp/$framework-$selected_host"
-  local first_manifest
-  local second_manifest
-  local -a template_arguments=(
+  local manager="$2"
+  local output="$3"
+  if [[ "$framework" == svelte ]]; then
+    (cd "$output/Frontend" && npm config set --location=project @runic-artifex:registry "$registry_url")
+    if [[ "$manager" == npm ]]; then
+      RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
+        "$output/Frontend/package-lock.json" "$svelte_archive"
+    fi
+  elif [[ "$framework" == angular ]]; then
+    (cd "$output/Frontend" && npm config set --location=project @runic-artifex:registry "$registry_url")
+    if [[ "$manager" == npm ]]; then
+      RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
+        "$output/Frontend/package-lock.json" "$angular_archive"
+    fi
+  fi
+}
+
+frontend_install() {
+  local manager="$1"
+  local frontend="$2"
+  case "$manager" in
+    npm) (cd "$frontend" && npm ci --no-audit --no-fund) ;;
+    pnpm) (cd "$frontend" && pnpm install --frozen-lockfile --ignore-scripts) ;;
+    bun) (cd "$frontend" && bun install --frozen-lockfile) ;;
+  esac
+}
+
+frontend_script() {
+  local manager="$1"
+  local frontend="$2"
+  local script="$3"
+  case "$manager" in
+    npm) (cd "$frontend" && npm run "$script") ;;
+    pnpm) (cd "$frontend" && pnpm run "$script") ;;
+    bun) (cd "$frontend" && bun run --bun "$script") ;;
+  esac
+}
+
+verify_template() {
+  local framework="$1"
+  local manager="$2"
+  local project_name="Acceptance${framework^}${manager^}"
+  local output="$template_tmp/$framework-$manager"
+  local expected_manager_version
+  local selected_lock
+  case "$manager" in
+    npm) expected_manager_version="$(npm --version)"; selected_lock=package-lock.json ;;
+    pnpm) expected_manager_version="$pnpm_version"; selected_lock=pnpm-lock.yaml ;;
+    bun) expected_manager_version="$bun_version"; selected_lock=bun.lock ;;
+  esac
+
+  template_options=(
     --name "$project_name"
     --output "$output"
-    --runicApplicationVersion "$package_version"
-    --runicAssetsVersion "$runic_assets_version"
-    --host "$selected_host"
+    --packageManager "$manager"
+    --runicViewsVersion "$package_version"
+    --dotnetRunicVersion "$package_version"
   )
-  dotnet new "runic-app-$framework" \
-    "${template_arguments[@]}"
-  bind_candidate_integrities "$output/Frontend/package-lock.json"
-  "$tool_directory/dotnet-runic" dev --project "$output/$project_name.csproj" --dry-run -- --template-option -1 > "$output/dotnet-runic-dev-plan.txt"
-  grep -Fq 'Frontend' "$output/dotnet-runic-dev-plan.txt"
-  grep -Fq "Host: $selected_host" "$output/dotnet-runic-dev-plan.txt"
-  configure_candidate_registry "$output/Frontend"
-  dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
-  dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
-  if [[ "$selected_host" == "cswebui" ]]; then
-    bun -e '
-      const fs = require("node:fs");
-      const assets = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-      if (Object.keys(assets.libraries).some(name => name.startsWith("Runic.Desktop/")))
-        throw new Error("CS-WebUI template references Desktop");
-      if (JSON.stringify(assets.project.frameworks).includes("Microsoft.AspNetCore.App"))
-        throw new Error("CS-WebUI template requires ASP.NET Core");
-    ' "$output/obj/project.assets.json"
-  fi
-  test -f "$output/Frontend/dist/index.html"
-  test -f "$output/Frontend/node_modules/.package-lock.json"
-  (cd "$output/Frontend" && npm run typecheck)
-  dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/incremental.log"
-  if grep -Fq '[runic] Building managed frontend assets.' "$output/incremental.log"; then
-    echo "The unchanged $framework frontend was rebuilt by the managed project." >&2
+  case "$framework" in
+    angular) template_options+=(--viewsAngularVersion "$views_angular_version") ;;
+    svelte) template_options+=(--viewsSvelteVersion "$views_svelte_version") ;;
+  esac
+  dotnet new "runic-app-$framework" "${template_options[@]}"
+
+  test -f "$output/Frontend/$selected_lock"
+  for other_lock in package-lock.json pnpm-lock.yaml bun.lock; do
+    [[ "$other_lock" == "$selected_lock" ]] || test ! -f "$output/Frontend/$other_lock"
+  done
+  grep -Fq "\"packageManager\": \"$manager@$expected_manager_version\"" "$output/Frontend/package.json"
+  grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
+  grep -Fq 'Runic.Application.Views.CsWebUi.DependencyInjection' "$output/$project_name.csproj"
+  if rg -ni 'Runic\.Application\.Bridge|Runic\.Desktop|application-bridge|@runic-artifex/(angular|svelte|desktop|vite-plugin-runic)' "$output"; then
+    echo "The generated $framework template contains a removed Bridge or Desktop package." >&2
     exit 1
   fi
-  touch "$output/Frontend/src/main.ts" "$output/Frontend/src/main.tsx" 2>/dev/null || true
-  dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/rebuild.log"
-  grep -Fq '[runic] Building managed frontend assets.' "$output/rebuild.log"
-  first_manifest="$("$tool_directory/dotnet-runic" inspect --project "$output/$project_name.csproj" --configuration Release)"
-  second_manifest="$("$tool_directory/dotnet-runic" inspect --project "$output/$project_name.csproj" --configuration Release)"
-  [[ "$first_manifest" == "$second_manifest" ]]
-  grep -Fq '"schema":"runic.application/1"' <<< "$first_manifest"
-  grep -Fq '"provenance":"template"' <<< "$first_manifest"
-  dotnet run --project "$output/$project_name.csproj" \
-    --configuration Release --no-build -- --smoke-test
-}
 
-verify_package_manager_framework() {
-  local framework="$1"
-  local package_manager="$2"
-  local project_name="Acceptance${framework^}${package_manager^}"
-  local output="$template_tmp/$framework-$package_manager"
-  local lock_file
-  local other_lock_file
-  local expected_version
-  local bun_only_path
-  dotnet new "runic-app-$framework" \
-    --name "$project_name" \
-    --output "$output" \
-    --packageManager "$package_manager" \
-    --runicApplicationVersion "$package_version" \
-    --runicAssetsVersion "$runic_assets_version"
-
-  case "$package_manager" in
-    pnpm)
-      lock_file="$output/Frontend/pnpm-lock.yaml"
-      other_lock_file="$output/Frontend/bun.lock"
-      expected_version="$pnpm_version"
-      ;;
-    bun)
-      lock_file="$output/Frontend/bun.lock"
-      other_lock_file="$output/Frontend/pnpm-lock.yaml"
-      expected_version="$bun_version"
-      ;;
-  esac
-  test -f "$lock_file"
-  test ! -f "$output/Frontend/package-lock.json"
-  test ! -f "$other_lock_file"
-  grep -Fq "\"packageManager\": \"$package_manager@$expected_version\"" "$output/Frontend/package.json"
-  bind_candidate_integrities "$lock_file"
-  configure_candidate_registry "$output/Frontend"
-
+  dotnet tool restore \
+    --tool-manifest "$output/.config/dotnet-tools.json" \
+    "${tool_source_options[@]}" \
+    "${tool_restore_options[@]}"
+  configure_candidate_registry "$framework" "$manager" "$output"
+  frontend_install "$manager" "$output/Frontend"
   dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
+
+  "$tool_directory/dotnet-runic" dev \
+    --project "$output/$project_name.csproj" \
+    --dry-run > "$output/dotnet-runic-dev-plan.txt"
+  grep -Fq 'Runic Views Window project' "$output/dotnet-runic-dev-plan.txt"
+
+  if ! (cd "$output" && dotnet runic doctor --project "$output/$project_name.csproj") > "$output/doctor.txt"; then
+    cat "$output/doctor.txt" >&2
+    exit 1
+  fi
+  grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
+
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   test -f "$output/Frontend/dist/index.html"
-  (
-    cd "$output"
-    dotnet runic doctor --project "$project_name.csproj" > doctor.txt
-  ) || true
-  grep -Fq "PASS package-manager: $package_manager $expected_version matches certified baseline" "$output/doctor.txt"
-  if [[ "$package_manager" == "bun" ]]; then
-    bun_only_path="$output/bun-only-path"
-    mkdir -p "$bun_only_path"
-    ln -sf "$(command -v bun)" "$bun_only_path/bun"
-    ln -sf "$(command -v dotnet)" "$bun_only_path/dotnet"
-    (
-      cd "$output/Frontend"
-      # vue-tsc currently requires Node (vuejs/language-tools#6090).
-      # Keep that check in the npm compatibility lane; require a Bun-only build below.
-      if [[ "$framework" == "vue" ]]; then
-        npm run typecheck
-      else
-        env PATH="$bun_only_path" "$bun_only_path/bun" --bun run typecheck
-      fi
-      env PATH="$bun_only_path" "$bun_only_path/bun" --bun run build
-    )
-  else
-    (
-      cd "$output/Frontend"
-      "$package_manager" run typecheck
-    )
+  frontend_script "$manager" "$output/Frontend" typecheck
+  if [[ "$manager" == npm ]]; then
+    dotnet run --project "$output/$project_name.csproj" \
+      --configuration Release --no-build -- --smoke-test | grep -Fq 'RUNIC_VIEWS_TEMPLATE_OK|window|view|command'
   fi
-  dotnet run --project "$output/$project_name.csproj" \
-    --configuration Release --no-build -- --smoke-test
+  printf 'TEMPLATE_OK|%s|%s\n' "$framework" "$manager"
 }
 
-run_parallel_acceptance_group() {
-  local group="$1"
-  shift
-  local log_directory="$template_tmp/logs/$group"
-  local -a pids=()
-  local -a labels=()
-  local failure=0
-  mkdir -p "$log_directory"
+frameworks=(react vue svelte angular)
+managers=(npm pnpm bun)
+# Keep CI's default matrix complete while allowing focused local debugging.
+if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
+  read -r -a frameworks <<< "$RUNIC_TEMPLATE_FRAMEWORKS"
+fi
+if [[ -n "${RUNIC_TEMPLATE_MANAGERS:-}" ]]; then
+  read -r -a managers <<< "$RUNIC_TEMPLATE_MANAGERS"
+fi
+for framework in "${frameworks[@]}"; do
+  case "$framework" in
+    react|vue|svelte|angular) ;;
+    *) echo "Unknown template framework: $framework" >&2; exit 2 ;;
+  esac
+done
+for manager in "${managers[@]}"; do
+  case "$manager" in
+    npm|pnpm|bun) ;;
+    *) echo "Unknown template package manager: $manager" >&2; exit 2 ;;
+  esac
+done
 
-  while [[ $# -gt 0 ]]; do
-    local label="$1"
-    local function="$2"
-    shift 2
-    local argument_count="$1"
-    shift
-    local -a arguments=("${@:1:argument_count}")
-    shift "$argument_count"
-    "$function" "${arguments[@]}" > "$log_directory/$label.log" 2>&1 &
-    pids+=("$!")
-    labels+=("$label")
+for manager in "${managers[@]}"; do
+  for framework in "${frameworks[@]}"; do
+    verify_template "$framework" "$manager"
   done
-
-  for index in "${!pids[@]}"; do
-    if wait "${pids[$index]}"; then
-      cat "$log_directory/${labels[$index]}.log"
-    else
-      cat "$log_directory/${labels[$index]}.log" >&2
-      echo "Template acceptance failed for ${labels[$index]}." >&2
-      failure=1
-    fi
-  done
-  return "$failure"
-}
-
-run_parallel_acceptance_group frameworks \
-  react verify_framework 1 react \
-  vue verify_framework 1 vue \
-  svelte verify_framework 1 svelte \
-  angular verify_framework 1 angular
-
-run_parallel_acceptance_group cswebui \
-  react-cswebui verify_framework 2 react cswebui \
-  vue-cswebui verify_framework 2 vue cswebui \
-  svelte-cswebui verify_framework 2 svelte cswebui \
-  angular-cswebui verify_framework 2 angular cswebui
-
-run_parallel_acceptance_group pnpm \
-  react-pnpm verify_package_manager_framework 2 react pnpm \
-  vue-pnpm verify_package_manager_framework 2 vue pnpm \
-  svelte-pnpm verify_package_manager_framework 2 svelte pnpm \
-  angular-pnpm verify_package_manager_framework 2 angular pnpm
-
-run_parallel_acceptance_group bun \
-  react-bun verify_package_manager_framework 2 react bun \
-  vue-bun verify_package_manager_framework 2 vue bun \
-  svelte-bun verify_package_manager_framework 2 svelte bun \
-  angular-bun verify_package_manager_framework 2 angular bun
+done

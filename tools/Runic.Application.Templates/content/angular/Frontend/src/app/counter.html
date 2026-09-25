@@ -1,0 +1,6 @@
+<section>
+  <h2>Counter View</h2>
+  <p class="count">{{ state()?.count ?? "…" }}</p>
+  <button [disabled]="!state()" (click)="increment()">Increment</button>
+  @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
+</section>

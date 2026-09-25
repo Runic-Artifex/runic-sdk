@@ -1,7 +1,6 @@
 {
-  "name": "@runic-artifex/runic-application-starter-react",
+  "name": "@runic-artifex/runic-views-starter-react",
   "private": true,
-  "version": "1.0.0",
   "license": "MIT",
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": {
@@ -9,29 +8,18 @@
   },
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "contract:generate": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj",
-    "contract:check": "runic-bridge check --authority csharp --project ../RunicDesktopApp.csproj",
+    "build": "tsc --noEmit && vite build",
     "dev": "vite",
-    "dev:mock": "vite --mode mock",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-free": "7.3.1",
-    "@popperjs/core": "2.11.8",
-    "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
-    "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
-    "bootstrap": "5.3.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "effect": "4.0.0-rc.112"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "6.1.1",
-    "@runic-artifex/vite-plugin-runic": "__RUNIC_VITE_NPM__",
     "typescript": "6.0.3",
     "vite": "8.2.2"
   }

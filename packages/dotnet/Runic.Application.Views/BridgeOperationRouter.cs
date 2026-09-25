@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 
 [assembly: InternalsVisibleTo("BridgeOperationRouterProbe")]
@@ -124,48 +125,72 @@ internal sealed class BridgeOperationRouter : IDisposable
         }
     }
 
-    internal static string EncodeAdmission(BridgeOperationAdmissionReply reply) => JsonSerializer.Serialize(new
+    internal static string EncodeAdmission(BridgeOperationAdmissionReply reply) => WriteJson(writer =>
     {
-        contract = reply.Identity.Contract,
-        requestId = reply.Identity.RequestId,
-        kind = Wire(reply.Kind),
-        status = Wire(reply.Status),
-        reason = reply.Reason,
-        terminal = reply.Terminal is null ? null : StatusPayload(reply.Identity, reply.Terminal),
+        writer.WriteStartObject();
+        WriteIdentity(writer, reply.Identity);
+        writer.WriteString("kind", Wire(reply.Kind));
+        writer.WriteString("status", Wire(reply.Status));
+        if (reply.Reason is null) writer.WriteNull("reason");
+        else writer.WriteString("reason", reply.Reason);
+        writer.WritePropertyName("terminal");
+        if (reply.Terminal is null) writer.WriteNullValue();
+        else WriteStatusPayload(writer, reply.Identity, reply.Terminal);
+        writer.WriteEndObject();
     });
 
     private static string EncodeStatus(BridgeOperationStatusReply reply) =>
-        JsonSerializer.Serialize(StatusPayload(reply.Identity, reply.Status));
+        WriteJson(writer => WriteStatusPayload(writer, reply.Identity, reply.Status));
 
-    private static string EncodeCancel(BridgeOperationCancelReply reply) => JsonSerializer.Serialize(new
+    private static string EncodeCancel(BridgeOperationCancelReply reply) => WriteJson(writer =>
     {
-        contract = reply.Identity.Contract,
-        requestId = reply.Identity.RequestId,
-        kind = reply.Requested ? "cancellation-requested" : reply.Status switch
+        writer.WriteStartObject();
+        WriteIdentity(writer, reply.Identity);
+        writer.WriteString("kind", reply.Requested ? "cancellation-requested" : reply.Status switch
         {
             BridgeOperationStatusKind.Unknown => "unknown",
             BridgeOperationStatusKind.Expired => "expired",
             _ => "not-running",
-        },
+        });
+        writer.WriteEndObject();
     });
 
-    private static object StatusPayload(BridgeOperationIdentity identity, BridgeOperationStatus status) =>
-        status.Kind is BridgeOperationStatusKind.Failed
-            ? new
-            {
-                contract = identity.Contract,
-                requestId = identity.RequestId,
-                kind = Wire(status.Kind),
-                error = new { kind = "failed", message = status.Failure ?? "The operation failed." },
-            }
-            : new
-            {
-                contract = identity.Contract,
-                requestId = identity.RequestId,
-                kind = Wire(status.Kind),
-            };
+    private static void WriteStatusPayload(Utf8JsonWriter writer, BridgeOperationIdentity identity,
+        BridgeOperationStatus status)
+    {
+        writer.WriteStartObject();
+        WriteIdentity(writer, identity);
+        writer.WriteString("kind", Wire(status.Kind));
+        if (status.Kind is BridgeOperationStatusKind.Failed)
+        {
+            writer.WritePropertyName("error");
+            writer.WriteStartObject();
+            writer.WriteString("kind", "failed");
+            writer.WriteString("message", status.Failure ?? "The operation failed.");
+            writer.WriteEndObject();
+        }
+        writer.WriteEndObject();
+    }
 
-    private static string InvalidRequest() => JsonSerializer.Serialize(new { kind = "invalid-request" });
+    private static void WriteIdentity(Utf8JsonWriter writer, BridgeOperationIdentity identity)
+    {
+        writer.WriteString("contract", identity.Contract);
+        writer.WriteString("requestId", identity.RequestId);
+    }
+
+    private static string InvalidRequest() => WriteJson(writer =>
+    {
+        writer.WriteStartObject();
+        writer.WriteString("kind", "invalid-request");
+        writer.WriteEndObject();
+    });
+
+    private static string WriteJson(Action<Utf8JsonWriter> write)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer)) write(writer);
+        return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
+    }
     private static string Wire(BridgeOperationAdmissionKind kind) => kind.ToString().ToLowerInvariant();
     private static string Wire(BridgeOperationStatusKind kind) => kind.ToString().ToLowerInvariant();
 

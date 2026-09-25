@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Runic.Application.Tool;
@@ -11,13 +10,11 @@ internal static partial class FrontendDevelopmentDocument
     internal static void Write(
         DevProjectConfiguration configuration,
         Uri origin,
-        Uri inspectorEndpoint,
         string destinationDocument,
         string developmentDocument)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(origin);
-        ArgumentNullException.ThrowIfNull(inspectorEndpoint);
         ArgumentNullException.ThrowIfNull(developmentDocument);
         string document = BaseElement().IsMatch(developmentDocument)
             ? BaseElement().Replace(
@@ -34,7 +31,7 @@ internal static partial class FrontendDevelopmentDocument
             string normalized = path.StartsWith("./", StringComparison.Ordinal)
                 ? path[1..]
                 : path;
-            if (normalized is "/webui.js" or "/runic-desktop.js")
+            if (normalized == "/webui.js")
             {
                 return match.Value;
             }
@@ -49,20 +46,6 @@ internal static partial class FrontendDevelopmentDocument
                 match.Groups["prefix"].Value +
                 new Uri(origin, match.Groups["path"].Value).AbsoluteUri +
                 match.Groups["suffix"].Value);
-        document = HostScript().Replace(document, "");
-        if (configuration.Host == "desktop")
-            document = HeadElement().Replace(document,
-                "<head><script src=\"runic-desktop.js\"></script>", 1);
-        string inspectorBootstrap =
-            "<script>globalThis.__runicApplicationApplicationBridgeDevelopment=Object.freeze({" +
-            "endpoint:" + JsonString(inspectorEndpoint.AbsoluteUri) + "," +
-            "projectDirectory:" + JsonString(configuration.ProjectDirectory) +
-            "});</script>";
-        document = HeadElement().Replace(
-            document,
-            match => match.Value + inspectorBootstrap,
-            1);
-
         string destination = Path.GetFullPath(
             destinationDocument,
             configuration.RuntimeWebRoot);
@@ -86,17 +69,11 @@ internal static partial class FrontendDevelopmentDocument
             $"[dev] Wrote native frontend bootstrap '{destination}'.");
     }
 
-    private static string JsonString(string value) =>
-        "\"" + JsonEncodedText.Encode(value).ToString() + "\"";
-
     [GeneratedRegex("<base\\s+[^>]*href\\s*=\\s*[\"'][^\"']*[\"'][^>]*>", RegexOptions.IgnoreCase)]
     private static partial Regex BaseElement();
 
     [GeneratedRegex("<head(?:\\s[^>]*)?>", RegexOptions.IgnoreCase)]
     private static partial Regex HeadElement();
-
-    [GeneratedRegex("<script\\s+[^>]*src\\s*=\\s*[\"'](?:\\.?/)?(?:webui|runic-desktop)\\.js[\"'][^>]*>\\s*</script>", RegexOptions.IgnoreCase)]
-    private static partial Regex HostScript();
 
     [GeneratedRegex("(?<prefix><(?:script|link)\\b[^>]*?\\b(?:src|href)\\s*=\\s*[\"'])(?<path>(?![A-Za-z][A-Za-z0-9+.-]*:|//|#|data:)[^\"']+)(?<suffix>[\"'])", RegexOptions.IgnoreCase)]
     private static partial Regex DevelopmentAssetAttribute();

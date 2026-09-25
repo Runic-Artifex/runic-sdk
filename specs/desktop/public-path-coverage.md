@@ -1,37 +1,30 @@
-# Public Desktop transport coverage
+# Public Desktop API coverage
 
-The public `@runic-artifex/desktop` transport and the compatibility `webui.js`
-client are different implementations. A passing compatibility test does not
-establish that a public application can use the corresponding host operation.
+The public `Runic.Desktop` .NET API and the retained internal WebUI compatibility
+implementation are separate surfaces. A passing compatibility test does not
+establish that an application can use a corresponding public host operation.
 
-The September 8 preview audit found this gap when the customer example's native
-close callback waited for a JavaScript command that the public transport ignored.
-Keep these regressions on the public path:
+Keep public-path regression coverage for the managed Desktop API:
 
 | Contract | Regression coverage |
 | --- | --- |
-| Host JavaScript results, errors, quick scripts and asynchronous confirmation | Desktop transport tests and `NativeHostTests` using the bundled public transport |
-| Traffic during pending confirmation; veto and approved retry | Public native fixture, including native picker cancellation and scoped cleanup |
-| Host navigation | Public native fixture verifies a new document, DOM marker, URL and authenticated connection |
-| Terminal session closure | Public transport tests and server `SessionRevocationTests`, including an uncooperative peer and a self-closing callback |
-| Reconnection | Late script replies cannot reach a replacement socket |
-| Native window replacement | `WindowGenerationTests` reject stale mutations, serialize admitted work, and reset presentation options |
-| Surface disposal | Admitted mutations drain; queued operations and opens are rejected after disposal |
-| Bounded Effect frame delivery | Overflow must fail the stream and close the channel, never silently drop while remaining connected |
-| WebSocket teardown | Unicode close reasons remain within the protocol's UTF-8 byte limit |
+| Host, surface, window, listener and request lifetimes | `Runic.Desktop.Tests` managed API suite |
+| Streaming responses, backpressure and disconnect cancellation | `Runic.Desktop.Tests` request and surface scenarios |
+| Origin and credential admission, content roots and typed failures | `Runic.Desktop.Tests` security and policy scenarios |
+| Embedded-window policy, navigation and close confirmation | `Runic.Desktop.Tests` plus `Runic.Desktop.WebViewSmoke` on supported native runners |
+| Native dispatch and host thread ownership | Desktop native smoke and independent Platform runtime conformance |
+| NativeAOT behavior | `Runic.Desktop.WebViewSmoke` NativeAOT lane and release artifact checks |
 
-The native fixture is built from the public TypeScript sources and embedded in
-the test executable for both JIT and NativeAOT. Compatibility tests remain useful
-for their own contract. Native CI and recorded human interaction remain separate
-evidence: fake hosts and headless X11 do not certify every compositor or native
-permission scenario.
+The internal `webui-compat/52f9e75` implementation remains protocol and
+differential evidence; it is not a public application transport contract. Native
+CI and recorded human interaction are separate evidence: fake hosts and headless
+X11 do not certify every compositor, WebView runtime, or native permission scenario.
 
 ## Public API boundary
 
-The public frame channel negotiates the Application Bridge capability. It is not
-a replacement for the complete legacy `webui` JavaScript global, and generic
-legacy compatibility is not a public API claim. Any public API for arbitrary
-named raw receivers, generic capability calls/results, or DOM
-click/navigation/drag hooks requires its own design and public-path tests. The
-public registration API must document its available low-level .NET presentation
-event kinds; a legacy-client test does not establish that coverage.
+The public .NET API models windows, surfaces, requests, and native capabilities.
+It does not publish a separate TypeScript Desktop transport package in this
+preview. Runic Application Views selects explicit Window and View contracts and
+generates TypeScript application clients; its current host adapter targets
+CS-WebUI. A future Views-to-Desktop adapter requires its own explicit design and
+public-path tests.

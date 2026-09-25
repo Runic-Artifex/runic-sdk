@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.CsWebUi.DependencyInjection</PackageId>
     <Authors>RunicArtifex</Authors>
-    <Description>Experimental Microsoft DI window ownership for the CS-WebUI Bridge.</Description>
+    <Description>Microsoft DI window ownership for Runic Views on CS-WebUI.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

@@ -1,10 +1,7 @@
-# Guides
+# Application guides
 
-- [Frontend contract generation](frontend-contracts.md)
-- [Frontend frameworks, Svelte 5, and Vite DevTools](frontend-frameworks.md)
-- [Ejectable hosted deployment](hosted-deployment.md)
-- [Migrate from CS-WebUI to Runic Desktop](migrate-cs-webui-to-runic-desktop.md)
-
-Language-specific authoring belongs outside the application core. Framework-owned
-integrations may provide native lifecycle and development ergonomics while the
-frontend SDK and host contracts remain renderer- and language-neutral.
+- [Runic Application Views](../README.md)
+- [Window and View architecture](../architecture/README.md)
+- [Getting started with templates](../getting-started/README.md)
+- [Package and build reference](../reference/README.md)
+- [SDK contribution guide](../contributing/README.md)

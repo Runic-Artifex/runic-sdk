@@ -10,5 +10,5 @@ CS-WebUI cannot remove a native route registration before its window closes.
 Retained page references reuse routes; new page identities still add routes.
 The optional [Microsoft DI adapter](../Runic.Application.Views.CsWebUi.DependencyInjection/README.md)
 owns the content session, bridge attachment, and scoped ViewModel together.
-This host is an experimental implementation boundary; the View bridge does
-not depend on CS-WebUI.
+The View core remains independent of CS-WebUI. This is the selected native
+host for the current preview package graph.

@@ -4,9 +4,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.ReactiveUI</PackageId>
+    <Authors>RunicArtifex</Authors>
+    <Description>ReactiveUI routing, view location, and activation for Runic Views.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ReactiveUI" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 </Project>

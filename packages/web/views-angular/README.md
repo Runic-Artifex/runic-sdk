@@ -1,11 +1,20 @@
-# Angular outlet source package
+# `@runic-artifex/views-angular`
 
-The headless `RunicViewOutlet` renders a generated View reference through a
-statically typed `ViewRegistry`. A changed reference remounts the selected
-component, so its existing `pageSignal` connection and cleanup run at the
-correct View lifetime. Missing kinds render an error. Reactive Notes imports
-this source package directly and tests main and nested outlets.
+Angular outlet for generated Runic View references. Register a component for
+each generated View kind and pass the current reference to the outlet.
 
-This is source-package evidence, not a published Angular library. It does not
-yet own `pageSignal`, loading/retry UI, operation acceptance, lazy components,
-or a native dialog policy.
+```ts
+import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/views-angular";
+import { DocumentPage } from "./document-page";
+import type { DocumentReference } from "./generated/document";
+
+const registry = { document: DocumentPage } satisfies ViewRegistry<DocumentReference>;
+
+// Add RunicViewOutlet to the parent's imports and bind:
+// <runic-view-outlet [content]="current()" [registry]="registry" />
+```
+
+The outlet remounts the component when the logical View reference changes. A
+component's `page` input receives that reference and owns its page connection
+and cleanup. Missing kinds render an alert. The generated TypeScript client can
+also be used directly without Angular.

@@ -147,18 +147,17 @@ Correlation identifiers are opaque. Every accepted invocation ends exactly
 once as `succeeded`, `failed`, `cancelled`, `timedOut`, or `unavailable`. A late
 terminal frame is ignored and recorded diagnostically.
 
-An Application Bridge frame may be the opaque payload of a Desktop frame.
-Desktop must not inspect or regenerate its command, event, schema, revision, or
-controller semantics.
+An application-owned payload may be opaque content carried by a Desktop
+presentation operation. Desktop must not inspect or regenerate application
+commands, events, schemas, revisions, or controller semantics.
 
 Transport loss ends the presentation session and completes every pending
 invocation exactly once as `transportClosed`. Reconnection creates a new
 session identifier and repeats origin, credential, and capability admission.
 There is no implicit invocation resumption or ordering guarantee across
 sessions. A stable client identity may correlate diagnostics, but it grants no
-authority and does not turn the new connection into the old session. Higher
-layers such as Application Bridge may resynchronize their own state after the
-new session is authenticated.
+authority and does not turn the new connection into the old session. Higher-level application layers may resynchronize their own state after
+the new session is authenticated.
 
 The concrete wire profile is negotiated or selected by configuration. The
 8-byte WebUI packet is the `webui-compat/52f9e75` profile. Lifecycle and error
@@ -172,8 +171,8 @@ structured envelope also carries a profile-owned schema identity and is encoded
 as UTF-8 JSON unless its profile declares another versioned encoding.
 
 Desktop validates only its own transport envelope and presentation-capability
-schemas. Application Bridge and other owner-defined payloads remain opaque;
-their schema identities and contents are validated only by the owning product.
+schemas. Application-owned payloads remain opaque; their schema identities and
+contents are validated only by the owning product.
 Desktop-owned structured decoders must reject invalid UTF-8, duplicate object
 keys, unknown required envelope schema identities, and configured depth,
 string, collection, or frame limits. They must not infer structured data from
@@ -194,8 +193,8 @@ peer received a cancellation message. The observable causes are:
 
 The nearest cause already observed wins. An implementation must propagate the
 cause to the owned handler or producer and release the resource exactly once.
-Application-level cancellation carried inside an opaque Application Bridge
-payload remains Application-owned.
+Cancellation encoded inside an opaque application payload remains the
+application layer's responsibility.
 
 ## Security policy
 

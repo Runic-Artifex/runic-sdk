@@ -9,8 +9,8 @@ import { dotnetBuildArguments, packageConsumerStrategy, resolveMsbuildPathValue 
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 33);
-  assert.equal(workspace.npm.length, 8);
+  assert.equal(workspace.nuget.length, 29);
+  assert.equal(workspace.npm.length, 6);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
   for (const p of workspace.nuget) {
@@ -104,16 +104,7 @@ test("affected detection follows component code and its dependents", () => {
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
     ]).sort(),
-    [
-      "desktop",
-      "assets",
-      "application",
-      "vite",
-      "svelte",
-      "editor",
-      "examples",
-      "platform",
-    ].sort(),
+    ["desktop", "assets", "editor", "examples", "platform"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["eng/build/desktop.props"]).sort(),
@@ -130,7 +121,7 @@ test("affected detection follows component code and its dependents", () => {
 test("development workspaces and workflows use the SDK layout", () => {
   for (const path of json("package.json").workspaces) {
     assert.ok(
-      /^(packages\/web\/|apps\/|docs$|examples\/(counter|customer-migration|document-migration)\/)/.test(
+      /^(packages\/web\/|apps\/|docs$)/.test(
         path,
       ),
       `unexpected development workspace: ${path}`,

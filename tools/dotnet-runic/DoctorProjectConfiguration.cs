@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,170 +9,62 @@ internal sealed record DoctorProjectConfiguration(
     string ProjectPath,
     string ProjectDirectory,
     string TargetFramework,
-    bool FrontendEnabled,
-    bool NodeEnabled,
-    bool FrontendCompilerEnabled,
-    string WorkspaceRoot,
-    string Workspace,
+    bool IsViewsWindowProject,
     string FrontendPackageDirectory,
-    string BridgeSource,
-    string BridgeIr,
-    string BridgeFacade,
-    bool ViteDevServerEnabled,
+    string ProjectAssetsFile,
+    string RuntimeIdentifier,
     string ViteDevServerEntry,
     string ViteConfigurationPath,
-    string ProjectAssetsFile,
-    string RuntimeIdentifier)
+    bool ViteDevServerEnabled)
 {
-    private static readonly string[] PropertyNames =
-    [
-        "MSBuildProjectFullPath",
-        "TargetFramework",
-        "TargetFrameworks",
-        "RunicAssetsDist",
-        "RunicAssetsEntryPoint",
-        "RunicAssetsFrontendDirectory",
-        "RunicApplicationFrontendEnabled",
-        "RunicApplicationFrontendNodeEnabled",
-        "RunicApplicationFrontendCompilerEnabled",
-        "RunicApplicationFrontendWorkspaceRoot",
-        "RunicApplicationFrontendWorkspace",
-        "RunicApplicationFrontendPackageDirectory",
-        "RunicApplicationBridgeAuthority",
-        "RunicApplicationBridgeSource",
-        "RunicApplicationBridgeIr",
-        "RunicApplicationBridgeFacade",
-        "RunicApplicationFrontendViteDevServerEnabled",
-        "RunicApplicationFrontendViteDevServerEntry",
-        "RunicApplicationFrontendViteConfiguration",
-        "ProjectAssetsFile",
-        "NETCoreSdkRuntimeIdentifier",
-        "RuntimeIdentifier",
-    ];
-
-    internal bool HasContracts => !string.IsNullOrWhiteSpace(BridgeSource);
-
     internal static async Task<DoctorProjectConfiguration> EvaluateAsync(
         string dotnetHost,
         string project,
         string configuration,
         CancellationToken cancellationToken)
     {
-        string projectDirectory = Path.GetDirectoryName(project)
-            ?? throw new DevUsageException("RAPPDEV1002", "The project has no parent directory.");
-        CommandResult result = await CommandRunner
-            .RunAsync(
-                dotnetHost,
-                projectDirectory,
-                [
-                    "msbuild",
-                    project,
-                    "-nologo",
-                    $"-property:Configuration={configuration}",
-                    $"-getProperty:{string.Join(',', PropertyNames)}",
-                ],
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (result.ExitCode != 0)
-        {
-            throw new DevUsageException(
-                "RAPPDEV1003",
-                $"Could not evaluate '{project}'.{Environment.NewLine}{Compact(result.CombinedOutput)}");
-        }
-
-        using JsonDocument document = JsonDocument.Parse(result.StandardOutput);
-        JsonElement properties = document.RootElement.GetProperty("Properties");
-        string Value(string name) =>
-            properties.TryGetProperty(name, out JsonElement value)
-                ? value.GetString() ?? string.Empty
-                : string.Empty;
-        bool Flag(string name) =>
-            bool.TryParse(Value(name), out bool enabled) && enabled;
-
-        string evaluatedProject = Normalize(Value("MSBuildProjectFullPath"), projectDirectory);
-        string evaluatedProjectDirectory = Path.GetDirectoryName(evaluatedProject)
-            ?? projectDirectory;
-        bool generatedAssets = !string.IsNullOrWhiteSpace(Value("RunicAssetsDist")) &&
-            !string.IsNullOrWhiteSpace(Value("RunicAssetsEntryPoint"));
-        string canonicalFrontendDirectory = NormalizeOptional(
-            Value("RunicAssetsFrontendDirectory"), evaluatedProjectDirectory);
-        if (canonicalFrontendDirectory.Length == 0)
-        {
-            string conventionalFrontend = Path.Combine(evaluatedProjectDirectory, "Frontend");
-            canonicalFrontendDirectory = File.Exists(Path.Combine(conventionalFrontend, "package.json"))
-                ? conventionalFrontend
-                : string.Empty;
-        }
-        bool canonicalFrontend = generatedAssets && canonicalFrontendDirectory.Length != 0;
-        string workspaceRoot = Normalize(
-            canonicalFrontend ? canonicalFrontendDirectory : Value("RunicApplicationFrontendWorkspaceRoot"),
-            evaluatedProjectDirectory);
-        string packageDirectory = NormalizeOptional(
-            Value("RunicApplicationFrontendPackageDirectory"),
-            workspaceRoot);
-        string targetFramework = Value("TargetFramework");
-        if (string.IsNullOrWhiteSpace(targetFramework))
-        {
-            targetFramework = Value("TargetFrameworks")
-                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                is { Length: > 0 } frameworks
-                    ? frameworks[0]
-                    : string.Empty;
-        }
-        string conventionalBridgeSource = Path.Combine(canonicalFrontendDirectory, "src", "application.bridge.ts");
-        string bridgeSource = NormalizeOptional(Value("RunicApplicationBridgeSource"), evaluatedProjectDirectory);
-        if (bridgeSource.Length == 0 && File.Exists(conventionalBridgeSource))
-        {
-            bridgeSource = conventionalBridgeSource;
-        }
-        if (bridgeSource.Length == 0 && Value("RunicApplicationBridgeAuthority") == "csharp")
-            bridgeSource = evaluatedProject;
-        string bridgeIr = NormalizeOptional(Value("RunicApplicationBridgeIr"), evaluatedProjectDirectory);
-        if (bridgeIr.Length == 0 && bridgeSource.Length != 0)
-        {
-            bridgeIr = Path.Combine(evaluatedProjectDirectory, "Contract", "bridge.ir.json");
-        }
-        string bridgeFacade = NormalizeOptional(Value("RunicApplicationBridgeFacade"), evaluatedProjectDirectory);
-        if (bridgeFacade.Length == 0 && bridgeSource.Length != 0)
-        {
-            bridgeFacade = Path.Combine(canonicalFrontendDirectory, "src", "application.bridge.generated.ts");
-        }
-
+        DevProjectConfiguration development = await DevProjectConfiguration.EvaluateAsync(
+            dotnetHost, project, configuration, cancellationToken).ConfigureAwait(false);
+        string properties = await ReadProjectPropertiesAsync(
+            dotnetHost, development.ProjectPath, development.ProjectDirectory,
+            configuration, cancellationToken).ConfigureAwait(false);
+        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(properties);
+        System.Text.Json.JsonElement values = document.RootElement.GetProperty("Properties");
+        string Value(string name) => values.TryGetProperty(name, out var value)
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
         return new(
-            evaluatedProject,
-            evaluatedProjectDirectory,
-            targetFramework,
-            canonicalFrontend || Flag("RunicApplicationFrontendEnabled"),
-            canonicalFrontend || Flag("RunicApplicationFrontendNodeEnabled"),
-            generatedAssets || Flag("RunicApplicationFrontendCompilerEnabled"),
-            workspaceRoot,
-            canonicalFrontend ? "." : Value("RunicApplicationFrontendWorkspace"),
-            canonicalFrontend ? canonicalFrontendDirectory : packageDirectory,
-            bridgeSource,
-            bridgeIr,
-            bridgeFacade,
-            Flag("RunicApplicationFrontendViteDevServerEnabled"),
-            Value("RunicApplicationFrontendViteDevServerEntry"),
-            NormalizeOptional(
-                Value("RunicApplicationFrontendViteConfiguration"),
-                packageDirectory.Length == 0 ? workspaceRoot : packageDirectory),
-            NormalizeOptional(Value("ProjectAssetsFile"), evaluatedProjectDirectory),
+            development.ProjectPath,
+            development.ProjectDirectory,
+            Value("TargetFramework"),
+            development.IsViewsWindowProject,
+            development.FrontendPackageDirectory,
+            development.ProjectAssetsFile,
             string.IsNullOrWhiteSpace(Value("RuntimeIdentifier"))
                 ? Value("NETCoreSdkRuntimeIdentifier")
-                : Value("RuntimeIdentifier")
-        );
+                : Value("RuntimeIdentifier"),
+            development.ViteDevServerEntry,
+            development.ViteConfigurationPath,
+            development.ViteDevServerEnabled);
     }
 
-    private static string Normalize(string path, string baseDirectory) =>
-        Path.GetFullPath(string.IsNullOrWhiteSpace(path) ? baseDirectory : path, baseDirectory);
-
-    private static string NormalizeOptional(string path, string baseDirectory) =>
-        string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetFullPath(path, baseDirectory);
-
-    private static string Compact(string output)
+    private static async Task<string> ReadProjectPropertiesAsync(
+        string dotnetHost,
+        string project,
+        string projectDirectory,
+        string configuration,
+        CancellationToken cancellationToken)
     {
-        string trimmed = output.Trim();
-        const int maximum = 4000;
-        return trimmed.Length <= maximum ? trimmed : trimmed[..maximum] + "…";
+        CommandResult result = await CommandRunner.RunAsync(
+            dotnetHost,
+            projectDirectory,
+            ["msbuild", project, "-nologo", $"-property:Configuration={configuration}",
+             "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,NETCoreSdkRuntimeIdentifier"],
+            cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            throw new DevUsageException("RAPPDEV1003", $"Could not evaluate '{project}'. {result.CombinedOutput.Trim()}");
+        }
+        return result.StandardOutput;
     }
 }

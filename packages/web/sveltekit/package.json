@@ -34,10 +34,6 @@
       "types": "./dist/translations/navigation.d.ts",
       "svelte": "./dist/translations/navigation.js",
       "import": "./dist/translations/navigation.js"
-    },
-    "./hosted": {
-      "types": "./dist/hosted/index.d.ts",
-      "import": "./dist/hosted/index.js"
     }
   },
   "files": [
@@ -48,7 +44,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "bun run --bun build && vitest run",
+    "test": "bun run --bun build && vitest run test/adapter.test.ts test/locale-routing.test.ts test/reference-app.test.ts test/spa-reference-app.test.ts",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
@@ -85,7 +81,6 @@
     "@types/cookie": "0.6.0"
   },
   "devDependencies": {
-    "@runic-artifex/application-bridge": "workspace:*",
     "@runic-artifex/svelte": "workspace:*",
     "@runic-artifex/vite-plugin-runic": "workspace:*",
     "@sveltejs/adapter-static": "3.0.10",

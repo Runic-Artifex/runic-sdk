@@ -22,13 +22,15 @@ should inspect state before retrying a non-idempotent command. The generated
 field-write API returns receipts and version conflicts; frontend form helpers
 must await pending edits before issuing Save.
 
-The runtime emits state and replies with generated `Utf8JsonWriter` code. The
-build tool inspects the compiled application; runtime serialization does not
-reflect over ViewModel members. Native AOT coverage from the earlier prototype
-is not yet re-run against this SDK package graph. `RUNICBRIDGE002` rejects a
+The runtime emits state and replies with generated and explicit
+`Utf8JsonWriter` code. The build tool inspects the compiled application;
+release runtime serialization does not reflect over ViewModel members. The
+first-window package is exercised through Native AOT and Chromium in CI.
+`RUNICBRIDGE002` rejects a
 selected CommunityToolkit `ObservableValidator` ViewModel in Native AOT until
 its validation behavior is verified.
 
-The examples under `examples/first-window`, `examples/notes-view-first`, and
-`examples/notes-reactive-views` exercise this source graph. It is not yet in
-the SDK shipping manifest; see [the replacement cutover](../../../VIEW-BRIDGE-CUTOVER.md).
+The [first-window](../../../examples/first-window/README.md),
+[Toolkit Notes](../../../examples/notes-view-first/README.md), and
+[Reactive Notes](../../../examples/notes-reactive-views/README.md) examples
+exercise the packaged graph and generated ordinary TypeScript client.

@@ -20,6 +20,13 @@ public static class ToolkitCommandInspector
         if (typeof(IRelayCommand).IsAssignableFrom(type) && !type.IsGenericType
             && !typeof(IAsyncRelayCommand).IsAssignableFrom(type))
             return (false, false, prefix + ")");
+        var stringAsyncRelay = type.GetInterfaces().Append(type).Any(candidate => candidate.IsGenericType
+            && candidate.GetGenericTypeDefinition() == typeof(IAsyncRelayCommand<>)
+            && candidate.GenericTypeArguments[0] == typeof(string));
+        if (stringAsyncRelay)
+            return (true, true, prefix
+                + $", async (vm, token, argument) => {{ using var registration = token.Register(vm.{command.Name}.Cancel); await vm.{command.Name}.ExecuteAsync((string)argument!); }}"
+                + ", ReadArgument: e => global::Runic.Application.Views.BridgeJson.ReadRequiredString(e.GetString()))");
         var stringRelay = !typeof(IAsyncRelayCommand).IsAssignableFrom(type)
             && type.GetInterfaces().Append(type).Any(candidate => candidate.IsGenericType
                 && candidate.GetGenericTypeDefinition() == typeof(IRelayCommand<>)

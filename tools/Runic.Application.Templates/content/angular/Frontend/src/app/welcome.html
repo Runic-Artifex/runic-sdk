@@ -1,0 +1,4 @@
+<section>
+  <h2>{{ state()?.greeting ?? "Connecting…" }}</h2>
+  @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
+</section>

@@ -2,4 +2,3 @@ bin/
 obj/
 node_modules/
 Frontend/dist/
-Frontend/.angular/

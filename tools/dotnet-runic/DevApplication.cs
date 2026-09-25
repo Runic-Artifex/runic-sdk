@@ -13,47 +13,18 @@ internal static class DevApplication
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
-        using var requestedHost = new HostSelectionScope(options.Host);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnetHost = ResolveDotNetHost();
-        DevProjectConfiguration configuration;
-        using (PhaseTimer phase = PhaseTimer.Start("Evaluating project"))
-        {
-            configuration = await DevProjectConfiguration
-                .EvaluateAsync(
-                    dotnetHost,
-                    project,
-                    options.Configuration,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            DiscoveryBuildSession? discoveryBuildSession =
-                DiscoveryBuildSession.CreateFor(configuration);
-            if (discoveryBuildSession is not null)
-            {
-                // The owner-aware props import changes compiler and restore
-                // paths, so evaluate again before any child command consumes
-                // TargetDir, ProjectAssetsFile, or the generated handoff.
-                configuration = await DevProjectConfiguration
-                    .EvaluateAsync(
-                        dotnetHost,
-                        project,
-                        options.Configuration,
-                        cancellationToken,
-                        discoveryBuildSession)
-                    .ConfigureAwait(false);
-            }
-            phase.Complete();
-        }
-        using var selectedHost = new HostSelectionScope(configuration.Host);
+        using PhaseTimer evaluation = PhaseTimer.Start("Evaluating Views Window project");
+        DevProjectConfiguration configuration = await DevProjectConfiguration
+            .EvaluateAsync(dotnetHost, project, options.Configuration, cancellationToken)
+            .ConfigureAwait(false);
+        evaluation.Complete();
         WriteConfiguration(configuration, options);
         if (options.DryRun)
         {
             return Program.Success;
         }
-        RequireDiscoveryBuildRestore(configuration, options);
-        if (!options.Restore && !string.IsNullOrEmpty(options.Host))
-            RequireRestoredHost(configuration);
-
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
         {
@@ -65,7 +36,7 @@ internal static class DevApplication
         {
             if (options.Restore)
             {
-                using var phase = PhaseTimer.Start("Restoring selected host dependencies");
+                using var phase = PhaseTimer.Start("Restoring Views Window dependencies");
                 await RequireSuccessAsync(dotnetHost, configuration.ProjectDirectory,
                     CreateRestoreArguments(configuration, options.Configuration),
                     "RAPPDEV1006", "Selected host restore failed.", stop.Token).ConfigureAwait(false);
@@ -73,21 +44,10 @@ internal static class DevApplication
             }
             if (configuration.NodeEnabled)
             {
-                await BuildCanonicalFrontendAsync(configuration, options.Restore,
-                    ShouldBuildCanonicalFrontend(configuration, options), stop.Token)
-                    .ConfigureAwait(false);
+                await InstallFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
             }
-
-            if (options.GenerateContracts && configuration.HasContracts)
-            {
-                await GenerateAndVerifyContractsAsync(configuration, stop.Token)
-                    .ConfigureAwait(false);
-            }
-
             await BuildAsync(dotnetHost, configuration, options, stop.Token)
                 .ConfigureAwait(false);
-            if (options.WatchFrontend && configuration.HasViewBridge)
-                ViewBridgeDevelopmentHandoff.Prepare(configuration);
             return await RunDevelopmentLoopAsync(
                 dotnetHost,
                 configuration,
@@ -102,46 +62,6 @@ internal static class DevApplication
         {
             Console.CancelKeyPress -= cancelHandler;
             stop.Cancel();
-            try
-            {
-                DiscoveryBuildSession.CleanupOwnedOutputs(configuration);
-            }
-            catch (Exception error) when (error is not OutOfMemoryException)
-            {
-                // Cleanup is best effort and must never replace the build or
-                // development failure which brought this session to an end.
-                Console.Error.WriteLine($"[discovery] Could not remove this session's build outputs ({error.GetType().Name}).");
-            }
-        }
-    }
-
-    private static void RequireRestoredHost(DevProjectConfiguration configuration)
-    {
-        string package = configuration.Host == "cswebui" ? "Runic.Application.CsWebUi/" : "Runic.Application.Desktop/";
-        string path = configuration.ProjectAssetsFile;
-        if (File.Exists(path))
-        {
-            using var assets = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
-            if (assets.RootElement.TryGetProperty("libraries", out var libraries))
-                foreach (var library in libraries.EnumerateObject())
-                    if (library.Name.StartsWith(package, StringComparison.Ordinal)) return;
-        }
-        throw new DevUsageException("RAPPDEV1008", $"The {configuration.Host} host has not been restored. Omit --no-restore when changing hosts.");
-    }
-
-    internal static void RequireDiscoveryBuildRestore(
-        DevProjectConfiguration configuration,
-        DevOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentNullException.ThrowIfNull(options);
-        if (configuration.HasDiscoveryBuildSession && !options.Restore)
-        {
-            throw new DevUsageException(
-                "RAPPDEV1012",
-                "The internal post-MVVM discovery fixture creates a new build-owner directory " +
-                "for each 'dotnet runic dev' session, so it cannot use --no-restore. " +
-                "Remove --no-restore to restore this session's owner-scoped project.assets.json.");
         }
     }
 
@@ -153,15 +73,10 @@ internal static class DevApplication
     {
         bool useDevelopmentServer =
             options.WatchFrontend && configuration.HasDevelopmentServer;
-        await using DevelopmentInspectorServer? inspectorServer =
-            useDevelopmentServer
-                ? DevelopmentInspectorServer.Start(configuration.ProjectDirectory)
-                : null;
         await using IFrontendDevelopmentServer? developmentServer =
             useDevelopmentServer
                 ? await StartDevelopmentServerAsync(
                     configuration,
-                    inspectorServer!,
                     cancellationToken).ConfigureAwait(false)
                 : null;
         await using var host = new HostProcessController(
@@ -190,32 +105,9 @@ internal static class DevApplication
 
         using var monitorStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken monitorToken = monitorStop.Token;
-        // Runic Assets owns archive refresh. Phase 1 has no parallel legacy
-        // manifest/mirror watcher.
+        // Runic Views owns source contract generation; the CLI coordinates
+        // the frontend and native Window process only.
         Task assetMonitor = Task.Delay(Timeout.InfiniteTimeSpan, monitorToken);
-        await using RunningProcess? contractWatcher = options.GenerateContracts && configuration.HasContracts &&
-            configuration.DevelopmentServerKind != "vite"
-                ? StartContractWatcher(configuration)
-                : null;
-        string? contractFingerprint = configuration.HasContracts
-            ? ReadContractFingerprint(configuration.BridgeIr)
-            : null;
-        Task contractMonitor = options.GenerateContracts && configuration.HasContracts
-            ? FilePoller.WatchAsync(configuration.BridgeIr, async token =>
-                {
-                    string? candidate = ReadContractFingerprint(configuration.BridgeIr);
-                    if (candidate is null || candidate == contractFingerprint) return;
-                    try
-                    {
-                        await host.RestartAsync(token).ConfigureAwait(false);
-                        contractFingerprint = candidate;
-                    }
-                    catch (DevUsageException error)
-                    {
-                        Console.Error.WriteLine($"[bridge] {error.Message}");
-                    }
-                }, monitorToken)
-            : Task.Delay(Timeout.InfiniteTimeSpan, monitorToken);
         var compilerReloadMonitors = new List<Task>();
         if (compilerReload is not null)
         {
@@ -251,12 +143,10 @@ internal static class DevApplication
         {
             host.Completion,
             assetMonitor,
-            contractMonitor,
             frontendCompilerMonitor,
             cancellation,
         };
         observed.AddRange(compilerReloadMonitors);
-        if (contractWatcher is not null) observed.Add(contractWatcher.Completion);
         if (frontend is not null)
         {
             observed.Add(frontend.Completion);
@@ -276,7 +166,6 @@ internal static class DevApplication
             }
 
             if (completed == assetMonitor ||
-                completed == contractMonitor ||
                 compilerReloadMonitors.Contains(completed) ||
                 completed == frontendCompilerMonitor)
             {
@@ -306,7 +195,6 @@ internal static class DevApplication
             var monitors = new List<Task>
             {
                 assetMonitor,
-                contractMonitor,
                 frontendCompilerMonitor,
                 cancellation,
             };
@@ -323,15 +211,12 @@ internal static class DevApplication
         }
     }
 
-    private static async Task BuildCanonicalFrontendAsync(
+    private static async Task InstallFrontendAsync(
         DevProjectConfiguration configuration,
         bool installDependencies,
-        bool buildAssets,
         CancellationToken cancellationToken)
     {
-        using PhaseTimer phase = PhaseTimer.Start(buildAssets
-            ? "Installing and building Runic Assets frontend"
-            : "Installing View Bridge frontend dependencies");
+        using PhaseTimer phase = PhaseTimer.Start("Installing Views Window frontend dependencies");
         JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
             configuration.WorkspaceRoot,
             configuration.FrontendPackageDirectory);
@@ -345,40 +230,21 @@ internal static class DevApplication
                 $"The Runic Assets frontend dependency restore with {packageManager.Name} failed. Run 'dotnet runic doctor' to verify the committed lock file and package train.",
                 cancellationToken).ConfigureAwait(false);
         }
-        if (!buildAssets)
-        {
-            phase.Complete();
-            return;
-        }
-        await RequireSuccessAsync(
-            packageManager.Executable,
-            configuration.FrontendPackageDirectory,
-            packageManager.RunScriptArguments("build", "."),
-            "RAPPDEV1006",
-            "The Runic Assets frontend build failed.",
-            cancellationToken).ConfigureAwait(false);
         phase.Complete();
     }
 
-    internal static bool ShouldBuildCanonicalFrontend(
-        DevProjectConfiguration configuration,
-        DevOptions options) =>
-        !configuration.HasViewBridge || !options.WatchFrontend;
-
     private static async Task<IFrontendDevelopmentServer> StartDevelopmentServerAsync(
         DevProjectConfiguration configuration,
-        DevelopmentInspectorServer inspectorServer,
         CancellationToken cancellationToken) =>
         configuration.DevelopmentServerKind switch
         {
             "vite" => await ViteDevelopmentServer
                 .StartAsync(
                     configuration,
-                    inspectorServer.Endpoint,
                     cancellationToken)
                 .ConfigureAwait(false),
             "angular" => await AngularDevelopmentServer
-                .StartAsync(configuration, inspectorServer.Endpoint, cancellationToken)
+                .StartAsync(configuration, cancellationToken)
                 .ConfigureAwait(false),
             _ => throw new InvalidOperationException(
                 $"Unsupported frontend development server '{configuration.DevelopmentServerKind}'."),
@@ -441,11 +307,7 @@ internal static class DevApplication
             "-nologo",
             $"-target:{configuration.FrontendCompilerHotReloadTarget}",
             $"-property:Configuration={buildConfiguration}",
-            "-property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
-            "-property:RunicApplicationFrontendEnabled=false",
-            "-property:RunicApplicationFrontendInstall=false",
         };
-        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
         return arguments;
     }
 
@@ -461,9 +323,7 @@ internal static class DevApplication
             "-nologo",
             $"-target:{configuration.FrontendWatchTarget}",
             $"-property:Configuration={buildConfiguration}",
-            "-property:RunicApplicationFrontendInstall=false",
         };
-        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
         return arguments;
     }
 
@@ -506,19 +366,11 @@ internal static class DevApplication
             "-property:DebugType=portable",
             "-property:DebugSymbols=true",
             "-property:Optimize=false",
-            "-property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
-            "-property:RunicApplicationFrontendInstall=" + (options.Restore ? "true" : "false"),
-            "-property:RunicApplicationFrontendBuild="
-                + (options.WatchFrontend && configuration.HasDevelopmentServer
-                    ? "false"
-                    : "true"),
         };
         if (!options.Restore)
         {
             arguments.Add("--no-restore");
         }
-
-        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
 
         return arguments;
     }
@@ -534,57 +386,7 @@ internal static class DevApplication
             configuration.ProjectPath,
             $"-p:Configuration={buildConfiguration}",
         };
-        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
         return arguments;
-    }
-
-    private static string? ReadContractFingerprint(string path)
-    {
-        try
-        {
-            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
-            return document.RootElement.GetProperty("fingerprint").GetProperty("value").GetString();
-        }
-        catch (Exception error) when (error is IOException or System.Text.Json.JsonException or KeyNotFoundException)
-        {
-            return null;
-        }
-    }
-
-    private static RunningProcess StartContractWatcher(DevProjectConfiguration configuration)
-    {
-        string cli = Path.Combine(configuration.FrontendPackageDirectory, "node_modules", "@runic-artifex", "application-bridge-tooling", "dist", "esm", "cli.js");
-        bool csharp = configuration.BridgeSource.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(configuration.WorkspaceRoot, configuration.FrontendPackageDirectory);
-        return RunningProcess.Start("bridge", packageManager.Name == "bun" ? "bun" : "node", configuration.FrontendPackageDirectory,
-            [cli, "watch", "--authority", csharp ? "csharp" : "effect", csharp ? "--project" : "--source",
-             configuration.BridgeSource, "--ir", configuration.BridgeIr, "--facade", configuration.BridgeFacade]);
-    }
-
-    private static async Task GenerateAndVerifyContractsAsync(
-        DevProjectConfiguration configuration,
-        CancellationToken cancellationToken)
-    {
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
-        using PhaseTimer phase = PhaseTimer.Start("Generating and verifying contracts");
-        await RequireSuccessAsync(
-            packageManager.Executable,
-            configuration.FrontendPackageDirectory,
-            packageManager.RunScriptArguments("contract:generate", "."),
-            "RAPPDEV1006",
-            $"Bridge IR generation failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect the configured toolchain.",
-            cancellationToken).ConfigureAwait(false);
-
-        await RequireSuccessAsync(
-            packageManager.Executable,
-            configuration.FrontendPackageDirectory,
-            packageManager.RunScriptArguments("contract:check", "."),
-            "RAPPDEV1006",
-            $"Bridge IR verification failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect stale outputs.",
-            cancellationToken).ConfigureAwait(false);
-        phase.Complete();
     }
 
     private static async Task RequireSuccessAsync(
@@ -626,7 +428,7 @@ internal static class DevApplication
         DevOptions options)
     {
         Console.WriteLine($"[dev] Project: {configuration.ProjectPath}");
-        Console.WriteLine($"[dev] Host: {configuration.Host}");
+        Console.WriteLine("[dev] Model: Runic Views Window project");
         Console.WriteLine(
             configuration.HasDevelopmentServer
                 ? $"[dev] Frontend: {configuration.DevelopmentServerKind} dev server " +
@@ -641,12 +443,6 @@ internal static class DevApplication
             Console.WriteLine($"[dev] Assets: {configuration.FrontendOutputDirectory}");
         }
         Console.WriteLine($"[dev] Runtime web root: {configuration.RuntimeWebRoot}");
-        if (configuration.HasContracts)
-        {
-            Console.WriteLine($"[dev] Contract: {configuration.BridgeSource}");
-            Console.WriteLine($"[dev] Bridge IR: {configuration.BridgeIr}");
-        }
-
         if (configuration.HasFrontendCompiler)
         {
             Console.WriteLine(
@@ -659,31 +455,4 @@ internal static class DevApplication
         }
     }
 
-    private static void WriteHelp()
-    {
-        Console.WriteLine(
-            """
-            Usage:
-              dotnet runic dev [PROJECT] [options] [-- APPLICATION_ARGUMENTS]
-              dotnet runic doctor [PROJECT]
-              dotnet runic inspect [PROJECT] --artifact manifest
-
-            Options:
-              --project PATH          Select a .csproj or a directory containing one.
-              --configuration NAME    Build configuration (default: Debug).
-              --no-restore            Do not restore NuGet or frontend package dependencies.
-              --no-contracts          Do not generate or watch the configured contract.
-              --no-frontend-watch     Build once without starting the frontend watcher.
-              --no-dotnet-watch       Run the managed application once (useful for gates).
-              --dry-run               Evaluate and print the development configuration.
-              -h, --help              Show this help.
-
-            The selected project supplies frontend paths through
-            optional Runic Application frontend-development MSBuild properties. The command generates and
-            verifies contracts, performs the initial build, starts the native Runic Desktop
-            host and frontend tooling. Projects that opt into Vite development-server
-            mode receive native-window CSS/JavaScript HMR without restarting .NET;
-            their private application-bridge bindings remain the transport.
-            """);
-    }
 }

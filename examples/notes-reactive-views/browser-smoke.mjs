@@ -163,10 +163,10 @@ try {
 
   await change("#document-pane [data-title]", "Shared note");
   await change("#document-pane [data-body]", "Both Views see this text.");
-  await retry(async () => await query('document.querySelector("#compact-pane [data-title]")?.textContent') === "Shared note");
-  await retry(async () => await query('document.querySelector("#compact-pane [data-body]")?.textContent') === "Both Views see this text.");
   await click("[data-save]");
   await retry(async () => (await snapshot(compactRoute)).state?.savedMessage === "Saved Shared note");
+  await retry(async () => await query('document.querySelector("#compact-pane [data-title]")?.textContent') === "Shared note");
+  await retry(async () => await query('document.querySelector("#compact-pane [data-body]")?.textContent') === "Both Views see this text.");
 
   await click("[data-pane=preview]");
   await retry(async () => await query('document.querySelector("#document-pane [data-heading]")?.textContent') === "Shared note");
@@ -216,7 +216,21 @@ try {
   if (!afterReloadRoute || afterReloadRoute.activationCount !== afterReload.activationCount + 1
       || afterReloadRoute.deactivationCount !== afterReload.deactivationCount + 1)
     throw new Error(`Navigation after reload did not release and reacquire the lease: ${JSON.stringify(afterReloadRoute)}`);
-  console.log("REACTIVE_NOTES_BROWSER_OK|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease");
+  await change("#document-pane [data-title]", "Operation roundtrip");
+  await retry(async () => (await snapshot(editorRoute)).state?.canSave === true);
+  const requestId = "browser-operation-roundtrip";
+  const admission = await evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(editorRoute + "StartSave")}, ${JSON.stringify(requestId)})))()`);
+  if (admission.kind !== "accepted" || admission.requestId !== requestId || typeof admission.contract !== "string")
+    throw new Error(`Advanced Save admission lost its wire identity: ${JSON.stringify(admission)}`);
+  const identity = JSON.stringify({ contract: admission.contract, requestId });
+  const terminal = await evaluate(`(async () => JSON.parse(await window.__runicBridge.call("__runicOperationWait", ${JSON.stringify(identity)})))()`);
+  if (terminal.kind !== "succeeded" || terminal.contract !== admission.contract || terminal.requestId !== requestId)
+    throw new Error(`Advanced Save did not finish through its window route: ${JSON.stringify(terminal)}`);
+  const cancel = await evaluate(`(async () => JSON.parse(await window.__runicBridge.call("__runicOperationCancel", ${JSON.stringify(identity)})))()`);
+  if (cancel.kind !== "not-running") throw new Error(`Terminal operation accepted cancellation: ${JSON.stringify(cancel)}`);
+  const invalid = await evaluate('(async () => JSON.parse(await window.__runicBridge.call("__runicOperationStatus", "invalid-json")))()');
+  if (invalid.kind !== "invalid-request") throw new Error(`Malformed operation identity was accepted: ${JSON.stringify(invalid)}`);
+  console.log("REACTIVE_NOTES_BROWSER_OK|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire");
   }
 } finally {
   socket?.close();

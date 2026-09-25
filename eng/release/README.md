@@ -48,7 +48,7 @@ the run’s release diagnostics and use the released source checkout. These chec
 do not republish packages.
 
 The smoke installs a .NET library and the CLI tool, runs them, and installs/imports
-the npm application bridge outside the checkout. The wider template/framework
+the npm Views Svelte outlet outside the checkout. The wider template/framework
 matrix already runs before publication. A smoke failure is actionable; it does not
 trigger an additional manual matrix automatically.
 

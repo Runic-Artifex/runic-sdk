@@ -1,7 +1,6 @@
 {
-  "name": "@runic-artifex/runic-application-starter-svelte",
+  "name": "@runic-artifex/runic-views-starter-svelte",
   "private": true,
-  "version": "1.0.0",
   "license": "MIT",
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": {
@@ -9,27 +8,15 @@
   },
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "contract:generate": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj",
-    "contract:check": "runic-bridge check --authority csharp --project ../RunicDesktopApp.csproj",
+    "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "dev": "vite",
-    "dev:mock": "vite --mode mock",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-free": "7.3.1",
-    "@popperjs/core": "2.11.8",
-    "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
-    "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
-    "@runic-artifex/svelte": "__RUNIC_SVELTE_NPM__",
-    "bootstrap": "5.3.8",
-    "effect": "4.0.0-rc.112",
+    "@runic-artifex/views-svelte": "__VIEWS_SVELTE_NPM_VERSION__",
     "svelte": "5.57.0"
   },
   "devDependencies": {
-    "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",
-    "@runic-artifex/vite-plugin-runic": "__RUNIC_VITE_NPM__",
-    "@vitejs/devtools": "0.5.2",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "svelte-check": "4.7.6",
     "typescript": "6.0.3",

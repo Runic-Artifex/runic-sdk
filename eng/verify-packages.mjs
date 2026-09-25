@@ -89,7 +89,7 @@ export function packageConsumerStrategy(packageEntry, platform = process.platfor
   };
 }
 
-function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = false, selectedProvider } = {}) {
+function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedProvider } = {}) {
   const assets = JSON.parse(readFileSync(join(consumer, "obj/project.assets.json"), "utf8"));
   const libraries = Object.keys(assets.libraries);
   assert.ok(Object.values(assets.libraries).every(library => library.type !== "project"),
@@ -97,9 +97,7 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = 
   for (const library of libraries.filter(name => name.toLowerCase().startsWith("runic."))) {
     assert.equal(library.split("/")[1], workspace.version, `stale internal dependency ${library}`);
   }
-  const isolated = platformOnly || label === "Runic.Application.Platform"
-    || label === "Runic.Application.Platform.Desktop" || label === "Runic.Application.CsWebUi"
-    || label === "CS-WebUI with Platform";
+  const isolated = platformOnly;
   if (!isolated) return;
 
   // Inspect the complete restored graph, including dependencies that are not loaded by the canary.
@@ -110,20 +108,16 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = 
     const name = library.split("/")[0].toLowerCase();
     assert.ok(!nativeProviders.has(name) || name === selectedProvider,
       `${label} unexpectedly depends on native provider ${library}`);
-    assert.ok(desktop || !name.startsWith("microsoft.aspnetcore"),
+    assert.ok(!name.startsWith("microsoft.aspnetcore"),
       `${label} unexpectedly depends on ASP.NET Core package ${library}`);
-    if (!desktop) {
-      assert.ok(!/^runic\.(desktop|application\.desktop|application\.platform\.desktop|assets\.desktop)(\.|$)/.test(name),
-        `${label} unexpectedly depends on Desktop package ${library}`);
-    }
+    assert.ok(!/^runic\.(desktop|assets\.desktop)(\.|$)/.test(name),
+      `${label} unexpectedly depends on Desktop package ${library}`);
     if (platformOnly) {
       assert.ok(!name.startsWith("runic.") || allowedPlatform.has(name),
         `${label} unexpectedly depends on host/application package ${library}`);
       assert.ok(name !== "cswebui", `${label} unexpectedly depends on CS-WebUI`);
     }
   }
-  // Desktop currently brings its ASP.NET Core server framework; its optional adapter may do so too.
-  if (desktop) return;
   const targetPath = msbuildProjectPath(consumer, "Consumer.csproj", "TargetPath");
   const runtimePath = targetPath.slice(0, -extname(targetPath).length) + ".runtimeconfig.json";
   const runtime = JSON.parse(readFileSync(runtimePath, "utf8"));
@@ -142,8 +136,8 @@ export async function verifyPackages(packageName) {
   console.log(`Package-only consumers: ${directory}`);
   const nuget = resolve(root, "artifacts/packages/nuget");
   const npm = resolve(root, "artifacts/packages/npm");
-  // Separate minimal consumers prevent Application dependencies from concealing missing dependencies
-  // in standalone CommandLine, Assets, Desktop, or Translations packages.
+  // Separate minimal consumers prevent dependencies from concealing missing
+  // dependencies in standalone CommandLine, Assets, Desktop, or Translations packages.
   const allLibraries = workspace.nuget.filter(
     (p) => !p.name.startsWith("dotnet-") && !p.name.endsWith(".Templates"),
   );
@@ -180,11 +174,36 @@ export async function verifyPackages(packageName) {
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${p.name.startsWith("Runic.Application.Views") ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : ""}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),
-      p.name.endsWith(".Build")
+      p.name === "Runic.Translations.Tooling"
+        ? `using Runic.Translations.Compiler;
+using Runic.Translations.Tooling;
+using System.Text;
+var project = new TranslationSource("translations/runic.json", Encoding.UTF8.GetBytes("""{"schemaVersion":1,"catalog":"canary","code":{"namespace":"Canary","className":"Text"},"baseLocale":"en","locales":["en",{"tag":"de","fallback":"en"}]}"""));
+TranslationSource[] messages = [
+  new("translations/en/greeting.mf2", Encoding.UTF8.GetBytes("Hello")),
+  new("translations/de/greeting.mf2", Encoding.UTF8.GetBytes("Hallo")),
+];
+Rmf2ProjectCompilationV5 compiled = TranslationCompiler.CompileMf2Project(project, messages);
+if (!compiled.Success || compiled.CatalogId != "canary" || compiled.Locales.Count != 2 || compiled.CallerFingerprint is null || compiled.SourceHash is null) throw new Exception("Packaged public v5 compiler contract failed.");
+TranslationXliffExportResult exported = TranslationInterchange.ExportXliff21(compiled);
+if (exported.Documents.Count != 1 || !exported.Report.IsLossless) throw new Exception("Packaged public v5 XLIFF export failed.");
+TranslationXliffImportResult imported = TranslationInterchange.ImportXliff21(exported.Documents[0].Bytes);
+if (imported.Messages.Count != 1 || imported.CatalogId != "canary" || imported.TargetLocale != "de") throw new Exception("Packaged public v5 XLIFF import failed.");
+Rmf2ProjectCompilationV5 grouped = TranslationCompiler.CompileProject(project, [
+  new("translations/en.rmf2", Encoding.UTF8.GetBytes("greeting = Hello")),
+  new("translations/de.rmf2", Encoding.UTF8.GetBytes("greeting = Hallo")),
+], null, CancellationToken.None);
+if (!grouped.Success || TranslationInterchange.ExportXliff21(grouped).Documents.Count != 1) throw new Exception("Packaged grouped RMF2 compiler and XLIFF export failed.");
+using var canceled = new CancellationTokenSource();
+canceled.Cancel();
+try { _ = TranslationCompiler.CompileMf2Project(project, messages, null, canceled.Token); throw new Exception("Packaged compiler ignored cancellation."); }
+catch (OperationCanceledException) { }
+Console.WriteLine("Packaged public v5 compiler and XLIFF export passed.");`
+        : p.name.endsWith(".Build")
         ? 'Console.WriteLine("Translation build targets restored.");'
         : strategy.useWpf
         ? `_ = new ${strategy.canaryType}("""{"version":1,"contracts":{},"messages":{}}""", _ => { });\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
@@ -197,7 +216,7 @@ export async function verifyPackages(packageName) {
       const resources = join(consumer, "translations");
       mkdirSync(resources);
       writeFileSync(join(resources, "runic.json"), JSON.stringify({
-        schemaVersion: 1, sourceLayout: "rmf2-v1", executionProfile: "rmf2-execution-v2", catalog: "canary",
+        schemaVersion: 1, catalog: "canary",
         code: { namespace: "PackageCanary", className: "CanaryText" },
         baseLocale: "en", locales: ["en"],
       }));
@@ -208,30 +227,11 @@ export async function verifyPackages(packageName) {
         'if (text.r_4772656574696e67("Ada") != "Hello Ada") throw new Exception("Packaged RMF2 accessor failed");\n' +
         'Console.WriteLine("Packaged RMF2 analyzer and runtime passed.");\n');
     }
-    if (
-      [
-        "Runic.Application",
-        "Runic.Application.Hosting",
-        "Runic.Application.Desktop",
-        "Runic.Application.CsWebUi",
-        "Runic.Application.Testing",
-        "Runic.Application.Platform",
-        "Runic.Application.Platform.Desktop",
-      ].includes(p.name)
-    ) {
-      const program = join(consumer, "Program.cs");
-      writeFileSync(
-        program,
-        '[assembly: Runic.Application.RunicApplicationManifest("package-canary")]\n' +
-          readFileSync(program, "utf8"),
-      );
-    }
     run("dotnet", strategy.execute
       ? ["run", "--project", "Consumer.csproj", "--configuration", configuration]
       : ["build", "Consumer.csproj", "--configuration", configuration], consumer, env);
     verifyConsumerGraph(consumer, p.name, {
       platformOnly: p.name === "Runic.Platform" || p.name.startsWith("Runic.Platform."),
-      desktop: p.name === "Runic.Application.Platform.Desktop",
       selectedProvider: nativeProviders.has(p.name.toLowerCase()) ? p.name.toLowerCase() : undefined,
     });
   }
@@ -241,40 +241,8 @@ export async function verifyPackages(packageName) {
     console.log(`Packed ${packageName} consumer passed.`);
     return;
   }
-  // Composition must retain isolation too: resolve the shared services through the public API
-  // alongside CS-WebUI without creating a native window or using workspace project references.
-  const sharedConsumer = join(directory, "cswebui-platform");
-  mkdirSync(sharedConsumer);
-  writeFileSync(join(sharedConsumer, "Consumer.csproj"),
-    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="Runic.Application.CsWebUi" Version="${workspace.version}"/><PackageReference Include="Runic.Application.Platform" Version="${workspace.version}"/></ItemGroup></Project>`);
-  writeFileSync(join(sharedConsumer, "Program.cs"), `
-using Microsoft.Extensions.DependencyInjection;
-using Runic.Application.Platform;
-using Runic.Platform;
-[assembly: Runic.Application.RunicApplicationManifest("cswebui-platform-canary")]
-var services = new ServiceCollection();
-services.AddRunicPlatform();
-await using var provider = services.BuildServiceProvider();
-await using var scope = provider.CreateAsyncScope();
-var presentation = scope.ServiceProvider.GetRequiredService<PlatformPresentation>();
-var files = scope.ServiceProvider.GetRequiredService<IFileDialogs>();
-var clipboard = scope.ServiceProvider.GetRequiredService<ITextClipboard>();
-var capabilities = scope.ServiceProvider.GetRequiredService<IPlatformCapabilities>();
-var dispatcher = scope.ServiceProvider.GetRequiredService<IUiDispatcher>();
-if (await files.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }
-    || await clipboard.ReadTextAsync(32) is not PlatformResult<string?>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }
-    || capabilities.GetSnapshot().Statuses.Values.Any(status => status is not CapabilityStatus.Unavailable)
-    || dispatcher.CheckAccess())
-    throw new InvalidOperationException("Unconfigured shared platform services must report unavailable.");
-await presentation.StopAsync();
-Console.WriteLine(typeof(Runic.Application.CsWebUi.CsWebUiApplicationHost).Assembly.GetName().Name);
-Console.WriteLine("CS-WebUI and shared Platform public API composition passed.");
-`);
-  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], sharedConsumer, env);
-  verifyConsumerGraph(sharedConsumer, "CS-WebUI with Platform");
   await verifyToolAndTemplatePackages(directory, nuget, env);
   await verifyRmf2Consumer(directory, nuget, env);
-  await verifyRmf2V4CompatibilityConsumer(directory, env);
   const frontend = join(directory, "frontend");
   mkdirSync(frontend);
   writeFileSync(
@@ -336,17 +304,11 @@ Console.WriteLine("CS-WebUI and shared Platform public API composition passed.")
     join(frontend, "consumer.mjs"),
     `
 import assert from 'node:assert/strict';
-import { defineApplicationBridgeContract } from '@runic-artifex/application-bridge';
-import * as compiler from '@runic-artifex/application-bridge-tooling';
-import * as desktop from '@runic-artifex/desktop';
 import * as vite from '@runic-artifex/vite-plugin-runic';
 import * as translations from '@runic-artifex/vite-plugin-runic-translations';
-import { createViteApplicationBridgeObserver } from '@runic-artifex/svelte/vite';
 import { runicToolkitSpaPageOptions } from '@runic-artifex/sveltekit/page-options';
-assert.equal(typeof defineApplicationBridgeContract, 'function');
-assert.equal(typeof createViteApplicationBridgeObserver, 'function');
 assert.equal(runicToolkitSpaPageOptions.ssr, false);
-for (const module of [compiler, desktop, vite, translations]) assert.ok(Object.keys(module).length);
+for (const module of [vite, translations]) assert.ok(Object.keys(module).length);
 console.log('Packed npm consumers passed.');
 `,
   );
@@ -398,8 +360,6 @@ async function verifyRmf2Consumer(directory, nuget, env) {
     `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><IsAotCompatible>true</IsAotCompatible><JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault><TranslationsGenerateOnBuild>true</TranslationsGenerateOnBuild><TranslationsEmitJson>true</TranslationsEmitJson><TranslationsEmitEsm>true</TranslationsEmitEsm></PropertyGroup><ItemGroup><PackageReference Include="Runic.Translations" Version="${workspace.version}"/><PackageReference Include="Runic.Translations.Build" Version="${workspace.version}" PrivateAssets="all"/></ItemGroup></Project>`);
   writeFileSync(join(consumer, "translations", "runic.json"), JSON.stringify({
     schemaVersion: 1,
-    sourceLayout: "rmf2-v1",
-    executionProfile: "rmf2-execution-v2",
     catalog: "checkout",
     code: { namespace: "PackageRmf2", className: "CheckoutText" },
     baseLocale: "en",
@@ -489,60 +449,12 @@ console.log("RMF2 v5 generated ESM import, execution, and locale switch passed."
   verifyConsumerGraph(consumer, "Runic.Translations RMF2 NativeAOT");
 }
 
-async function verifyRmf2V4CompatibilityConsumer(directory, env) {
-  const consumer = join(directory, "rmf2-v4-compatibility-consumer");
-  mkdirSync(join(consumer, "translations"), { recursive: true });
-  mkdirSync(join(consumer, ".config"), { recursive: true });
-  writeFileSync(join(consumer, ".config", "dotnet-tools.json"), JSON.stringify({
-    version: 1,
-    isRoot: true,
-    tools: { "dotnet-runic-translations": { version: workspace.version, commands: ["runic-translations"] } },
-  }, null, 2));
-  writeFileSync(join(consumer, "Consumer.csproj"),
-    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><TranslationsGenerateOnBuild>true</TranslationsGenerateOnBuild><TranslationsEmitEsm>true</TranslationsEmitEsm></PropertyGroup><ItemGroup><PackageReference Include="Runic.Translations" Version="${workspace.version}"/><PackageReference Include="Runic.Translations.Build" Version="${workspace.version}" PrivateAssets="all"/></ItemGroup></Project>`);
-  writeFileSync(join(consumer, "translations", "runic.json"), JSON.stringify({
-    schemaVersion: 1,
-    sourceLayout: "rmf2-v1",
-    catalog: "compatibility",
-    code: { namespace: "PackageRmf2V4", className: "CompatibilityText" },
-    baseLocale: "en",
-    locales: ["en"],
-  }, null, 2));
-  writeFileSync(join(consumer, "translations", "en.rmf2"), "application_title = RMF2 v4 compatibility\n");
-  writeFileSync(join(consumer, "Program.cs"),
-    'using PackageRmf2V4;\n' +
-    'var manager = await CompatibilityTextCatalog.CreateManagerAsync();\n' +
-    'var text = new CompatibilityText(manager);\n' +
-    'if (text.application_title != "RMF2 v4 compatibility") throw new Exception("RMF2 v4 C# compatibility failed");\n' +
-    'if (CompatibilityTextCatalog.Rmf2RuntimeAbiVersion != 1) throw new Exception("RMF2 v4 generated contract changed");\n' +
-    'Console.WriteLine("RMF2 v4 package compatibility passed.");\n');
-  run("dotnet", ["tool", "restore", "--configfile", join(directory, "NuGet.config")], consumer, env);
-  run("dotnet", dotnetBuildArguments("Consumer.csproj"), consumer, env);
-  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration, "--no-build"], consumer, env);
-  verifyConsumerGraph(consumer, "Runic.Translations RMF2 v4 compatibility");
-  const intermediate = msbuildProjectPath(consumer, "Consumer.csproj", "IntermediateOutputPath");
-  const esmRoot = join(intermediate, "translations", "compatibility.esm");
-  const webManifest = JSON.parse(readFileSync(join(esmRoot, "web-module-manifest-v2.json"), "utf8"));
-  assert.equal(webManifest.esmAbiVersion, 3, "RMF2 v4 package consumer emitted the wrong ESM ABI");
-  writeFileSync(join(consumer, "verify-esm.mjs"), `
-import assert from "node:assert/strict";
-import { m } from ${JSON.stringify(moduleSpecifier(consumer, join(esmRoot, "messages.js")))};
-import { esmAbiVersion, rmf2RuntimeAbiVersion } from ${JSON.stringify(moduleSpecifier(consumer, join(esmRoot, "runtime.js")))};
-assert.deepEqual({ esmAbiVersion, rmf2RuntimeAbiVersion }, { esmAbiVersion: 3, rmf2RuntimeAbiVersion: 1 });
-assert.equal(m.application_title(), "RMF2 v4 compatibility");
-console.log("RMF2 v4 generated ESM compatibility passed.");
-`);
-  run("node", ["verify-esm.mjs"], consumer, env);
-}
-
 async function verifyRmf2SvelteConsumer(frontend, directory) {
   const project = join(frontend, "rmf2-svelte");
   mkdirSync(join(project, "translations"), { recursive: true });
   mkdirSync(join(project, "src"), { recursive: true });
   writeFileSync(join(project, "translations", "runic.json"), JSON.stringify({
     schemaVersion: 1,
-    sourceLayout: "rmf2-v1",
-    executionProfile: "rmf2-execution-v2",
     catalog: "checkout",
     code: { namespace: "PackageRmf2", className: "CheckoutText" },
     baseLocale: "en",
@@ -660,18 +572,18 @@ export async function verifyToolAndTemplatePackages(directory, nuget, env) {
     env,
   );
 
-  // Exercise both RMF2 templates from the installed package. The item template
-  // is validated through the public tool; the project template is restored and
-  // built against the candidate packages, so neither path can hide a stale
-  // source-tree reference.
-  const rmf2Item = join(directory, "rmf2-item-template");
+  // Exercise both canonical templates from the installed package. The item
+  // template is validated through the public tool; the project template is
+  // restored and built against the candidate packages, so neither path can
+  // hide a stale source-tree reference.
+  const item = join(directory, "translation-item-template");
   run(
     "dotnet",
     [
       "new",
-      "runic-translations-rmf2",
+      "runic-translations",
       "--output",
-      rmf2Item,
+      item,
       "--catalog",
       "checkout",
       "--defaultLocale",
@@ -684,47 +596,16 @@ export async function verifyToolAndTemplatePackages(directory, nuget, env) {
     directory,
     env,
   );
-  const rmf2ItemConfig = readFileSync(join(rmf2Item, "translations", "runic.json"), "utf8");
-  assert.equal(rmf2ItemConfig.includes('"sourceLayout": "rmf2-v1"'), true,
-    "RMF2 item template did not retain its explicit source layout");
-  assert.equal(rmf2ItemConfig.includes('"executionProfile": "rmf2-execution-v2"'), true,
-    "RMF2 item template did not select the v5 execution profile");
   const translationTool = join(toolPath, "runic-translations" + (process.platform === "win32" ? ".exe" : ""));
-  run(translationTool, ["validate", "--project", join(rmf2Item, "translations")], directory, env);
+  run(translationTool, ["validate", "--project", join(item, "translations")], directory, env);
   const installedSchemas = join(directory, "installed-translation-schemas");
   run(translationTool, ["schema", "--output", installedSchemas], directory, env);
-  for (const schema of ["project-v1.schema.json", "message-ast-v5.schema.json", "locale-artifact-v5.schema.json", "web-module-manifest-v3.schema.json"])
+  for (const schema of ["project-v1.schema.json", "message-ast-v5.schema.json", "locale-artifact-v5.schema.json", "external-pack-v5.schema.json", "web-module-manifest-v3.schema.json"])
     assert.ok(readFileSync(join(installedSchemas, schema), "utf8").length > 0, `Installed translation tool omitted ${schema}`);
 
-  const rmf2Project = join(directory, "rmf2-project-template");
-  run(
-    "dotnet",
-    [
-      "new",
-      "runic-translations-project-rmf2",
-      "--name",
-      "Rmf2TranslationConsumer",
-      "--output",
-      rmf2Project,
-      "--packageVersion",
-      workspace.version,
-      "--catalog",
-      "checkout",
-      "--defaultLocale",
-      "en",
-      "--namespace",
-      "PackageRmf2",
-      "--className",
-      "CheckoutText",
-    ],
-    directory,
-    env,
-  );
-  run(translationTool, ["validate", "--project", join(rmf2Project, "translations")], directory, env);
-  run("dotnet", ["tool", "restore", "--configfile", config], rmf2Project, env);
-  run("dotnet", dotnetBuildArguments("Rmf2TranslationConsumer.csproj", configuration, ["--nologo"]), rmf2Project, env);
-  verifyConsumerGraph(rmf2Project, "Runic.Translations RMF2 v5 template");
-  const templateIntermediate = msbuildProjectPath(rmf2Project, "Rmf2TranslationConsumer.csproj", "IntermediateOutputPath");
-  const templateManifest = JSON.parse(readFileSync(join(templateIntermediate, "translations", "checkout.esm-v5", "web-module-manifest-v3.json"), "utf8"));
-  assert.equal(templateManifest.profile, "rmf2-execution-v2", "RMF2 project template did not execute the v5 profile");
+  run(translationTool, ["validate", "--project", join(translations, "translations")], directory, env);
+  verifyConsumerGraph(translations, "Runic.Translations v5 template");
+  const templateIntermediate = msbuildProjectPath(translations, "TranslationConsumer.csproj", "IntermediateOutputPath");
+  const templateManifest = JSON.parse(readFileSync(join(templateIntermediate, "translations", "product.esm-v5", "web-module-manifest-v3.json"), "utf8"));
+  assert.equal(templateManifest.profile, "rmf2-execution-v2", "Translation project template did not execute the v5 profile");
 }

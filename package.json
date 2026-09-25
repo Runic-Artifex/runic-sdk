@@ -8,18 +8,14 @@
     "node": ">=24.18.0 <25"
   },
   "workspaces": [
-    "packages/web/application-bridge",
-    "packages/web/application-bridge-tooling",
-    "packages/web/angular",
-    "packages/web/desktop",
+    "packages/web/views-svelte",
+    "packages/web/views-angular",
     "packages/web/vite-plugin-runic-translations",
     "packages/web/vite-plugin-runic",
     "packages/web/svelte",
     "packages/web/sveltekit",
     "apps/translations-editor/Frontend",
-    "docs",
-    "examples/customer-migration/Host/Frontend",
-    "examples/document-migration/Host/Frontend"
+    "docs"
   ],
   "scripts": {
     "bootstrap": "bun eng/run.mjs bootstrap",
@@ -31,13 +27,9 @@
     "dev:docs": "bun eng/run.mjs dev:docs",
     "dev:editor": "bun eng/run.mjs dev:editor",
     "affected": "bun eng/run.mjs affected",
-    "example:counter": "dotnet run --project examples/counter/Counter.csproj",
-    "example:documents": "bun eng/run.mjs example:documents",
-    "verify:footprint": "bun eng/verify-host-footprint.mjs",
+    "example:first-window": "bun eng/run.mjs example:first-window",
+    "example:notes": "bun eng/run.mjs example:notes",
     "verify:templates": "bun eng/verify-templates.mjs",
-    "example:customers": "bun eng/run.mjs example:customers",
-    "verify:customers": "bun eng/run.mjs verify:customers",
-    "verify:bridge": "bun eng/bridge/verify-artifacts.mjs",
     "ci": "bun eng/ci/local.mjs",
     "dependencies:audit": "bun eng/dependencies/audit.mjs",
     "docs:release": "bun docs/scripts/update-release.mjs"

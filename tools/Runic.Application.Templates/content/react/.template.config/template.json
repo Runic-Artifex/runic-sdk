@@ -3,13 +3,13 @@
   "author": "Runic Artifex",
   "classifications": [
     "Desktop",
-    "Runic Desktop",
+    "Runic Views",
     "React"
   ],
   "identity": "Runic.Application.Templates.React",
-  "name": "Runic Application React",
+  "name": "Runic Views React",
   "shortName": "runic-app-react",
-  "sourceName": "RunicDesktopApp",
+  "sourceName": "RunicWindowApp",
   "preferNameDirectory": true,
   "tags": {
     "language": "C#",
@@ -47,7 +47,7 @@
       "datatype": "choice",
       "defaultValue": "npm",
       "replaces": "__PACKAGE_MANAGER_NAME__",
-      "description": "JavaScript package manager used for install, build, and development scripts.",
+      "description": "JavaScript package manager used for frontend restore and development.",
       "choices": [
         {
           "choice": "npm",
@@ -85,63 +85,44 @@
         ]
       }
     },
-    "runicApplicationVersion": {
+    "frontendBuildCommand": {
+      "type": "generated",
+      "generator": "switch",
+      "replaces": "__FRONTEND_BUILD_COMMAND__",
+      "parameters": {
+        "evaluator": "C++",
+        "datatype": "string",
+        "cases": [
+          {
+            "condition": "(packageManager == 'pnpm')",
+            "value": "pnpm run build"
+          },
+          {
+            "condition": "(packageManager == 'bun')",
+            "value": "bun run --bun build"
+          },
+          {
+            "value": "npm run build"
+          }
+        ]
+      }
+    },
+    "runicViewsVersion": {
       "type": "parameter",
       "datatype": "text",
-      "defaultValue": "__RUNIC_APPLICATION_PACKAGE_VERSION__",
-      "replaces": "__RUNIC_APPLICATION_VERSION__"
+      "defaultValue": "__RUNIC_VIEWS_NUGET_VERSION_DEFAULT__",
+      "replaces": "__RUNIC_VIEWS_NUGET_VERSION__"
     },
-    "runicAssetsVersion": {
+    "dotnetRunicVersion": {
       "type": "parameter",
       "datatype": "text",
-      "defaultValue": "__RUNIC_ASSETS_PACKAGE_VERSION__",
-      "replaces": "__RUNIC_ASSETS_VERSION__"
-    },
-    "runicDesktopVersion": {
-      "type": "parameter",
-      "datatype": "text",
-      "defaultValue": "__RUNIC_DESKTOP_PACKAGE_VERSION__",
-      "replaces": "__RUNIC_DESKTOP_VERSION__"
-    },
-    "applicationBridgeNpm": {
-      "type": "parameter",
-      "datatype": "text",
-      "defaultValue": "__APPLICATION_BRIDGE_NPM_VERSION__",
-      "replaces": "__APPLICATION_BRIDGE_NPM__"
-    },
-    "runicDesktopNpm": {
-      "type": "parameter",
-      "datatype": "text",
-      "defaultValue": "__RUNIC_DESKTOP_NPM_VERSION__",
-      "replaces": "__RUNIC_DESKTOP_NPM__"
-    },
-    "runicViteNpm": {
-      "type": "parameter",
-      "datatype": "text",
-      "defaultValue": "__RUNIC_VITE_NPM_VERSION__",
-      "replaces": "__RUNIC_VITE_NPM__"
-    },
-    "host": {
-      "type": "parameter",
-      "datatype": "choice",
-      "defaultValue": "desktop",
-      "replaces": "__RUNIC_HOST__",
-      "description": "Application presentation host. CS-WebUI avoids the ASP.NET Core runtime.",
-      "choices": [
-        {
-          "choice": "desktop",
-          "description": "Runic Desktop enhancements and native close coordination"
-        },
-        {
-          "choice": "cswebui",
-          "description": "Native CS-WebUI with the same generated application model"
-        }
-      ]
+      "defaultValue": "__DOTNET_RUNIC_VERSION_DEFAULT__",
+      "replaces": "__DOTNET_RUNIC_VERSION__"
     }
   },
   "primaryOutputs": [
     {
-      "path": "RunicDesktopApp.csproj"
+      "path": "RunicWindowApp.csproj"
     }
   ]
 }

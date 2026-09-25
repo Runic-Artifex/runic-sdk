@@ -16,5 +16,9 @@ WebUiApplication.Wait();
 
 `OpenWindow` constructs the application Window with its scoped ViewModel,
 then attaches the root Bridge. The application Window disposes the host scope
-and native window. The remaining host policy work is tracked in
-[the cutover plan](../../../VIEW-BRIDGE-CUTOVER.md).
+and native window. A custom Window can forward `CloseAsync(timeout)` and
+`DisposeAsync()` to the host. Close stops new command admission immediately.
+If accepted work outlives the timeout, the native UI closes while the host
+retains its DI scope until that work finishes; await the returned `Completion`
+task before treating resources as released. Synchronous `Dispose()` requests
+an immediate close without waiting for that drain.

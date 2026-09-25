@@ -25,10 +25,28 @@
   let currentPackages = $derived(
     catalogRows.filter((entry) => entry.productId === product.releaseProduct),
   );
+  let hasViewsCatalog = $derived(
+    currentPackages.some((entry) => entry.name === 'Runic.Application.Views'),
+  );
+  let displayPackages = $derived(
+    product.slug === 'runic-toolkit' && hasViewsCatalog
+      ? catalogRows.filter(
+          (entry) =>
+            entry.productId === product.releaseProduct ||
+            entry.name.startsWith('@runic-artifex/views-'),
+        )
+      : currentPackages,
+  );
   let hasPublishedVersion = $derived(productVersion.state === 'published');
   let availabilityVersion = $derived(productVersion);
   let packageSectionTitle = $derived(
-    isApplication ? 'Source application' : 'Packages',
+    product.slug === 'runic-toolkit'
+      ? hasViewsCatalog
+        ? 'Views packages'
+        : 'Earlier published packages'
+      : isApplication
+        ? 'Source application'
+        : 'Packages',
   );
   let pageTitle = $derived(`${product.name} · Runic Artifex`);
 </script>
@@ -71,7 +89,14 @@
     </div>
     <p class="lede">{product.description}</p>
     <div class="actions">
-      {#if !isArchived && hasPublishedVersion}
+      {#if product.slug === 'runic-toolkit'}
+        <ActionLink href={resolve('/views')}
+          >Explore Windows and Views</ActionLink
+        >
+        <ActionLink href={product.source} variant="outline"
+          >View source</ActionLink
+        >
+      {:else if !isArchived && hasPublishedVersion}
         <ActionLink
           href={resolve('/products/[slug]#availability', {
             slug: product.slug,
@@ -93,7 +118,7 @@
           variant="outline">Release status</ActionLink
         >
       {/if}
-      {#if !isArchived && hasPublishedVersion}
+      {#if product.slug !== 'runic-toolkit' && !isArchived && hasPublishedVersion}
         <ActionLink href={product.source} variant="outline"
           >View source</ActionLink
         >
@@ -101,11 +126,6 @@
       {#if isApplication && product.related}
         <ActionLink href={resolve(product.related.href)} variant="outline"
           >{product.related.label}</ActionLink
-        >
-      {/if}
-      {#if product.slug === 'runic-toolkit'}
-        <ActionLink href={resolve('/application-bridge')} variant="outline"
-          >Explore Application Bridge</ActionLink
         >
       {/if}
       {#if product.related && !isApplication}
@@ -165,9 +185,13 @@
             ? 'Retired project'
             : isIndependent
               ? 'External WebUI binding'
-              : isApplication
-                ? 'Source application'
-                : `Runic SDK ${currentRelease.version}`}
+              : product.slug === 'runic-toolkit'
+                ? hasViewsCatalog
+                  ? `Runic Application Views · SDK ${currentRelease.version}`
+                  : `Views source · Published catalog ${currentRelease.version}`
+                : isApplication
+                  ? 'Source application'
+                  : `Runic SDK ${currentRelease.version}`}
         >
           <p>
             {#if isArchived}
@@ -175,11 +199,23 @@
               <a href={resolve('/products/[slug]', { slug: 'runic-toolkit' })}
                 >Runic Application</a
               >
-              for current application composition and bridge APIs.
+              for the current Window and View application model.
             {:else if isIndependent}
-              CS-WebUI is maintained separately. The SDK's
-              Runic.Application.CsWebUi adapter shares application APIs while
-              reporting native platform services unavailable.
+              CS-WebUI is maintained separately. Runic Application Views
+              provides a separate adapter for application Windows and
+              ViewModels.
+            {:else if product.slug === 'runic-toolkit'}
+              {#if hasViewsCatalog}
+                The published SDK catalog includes the current Window and View
+                packages. Keep the runtime, host adapter, templates, and
+                frontend packages on the same SDK version.
+              {:else}
+                This page describes the next-preview Window and View model. The
+                latest published catalog below is SDK {currentRelease.version}
+                and reflects an earlier application package set; its install commands
+                do not install Runic Application Views. Use the Views guide and source
+                links above for the current model.
+              {/if}
             {:else if isApplication}
               Standalone Translations Editor distributions are outside this SDK
               preview. Build and run the application from this repository.
@@ -197,8 +233,15 @@
         <section id="packages">
           <p class="eyebrow">What you get</p>
           <h2>{packageSectionTitle}</h2>
+          {#if product.slug === 'runic-toolkit' && !hasViewsCatalog}
+            <p>
+              These install commands are retained for the currently published
+              SDK snapshot. They support existing applications on that preview
+              and do not install the Views packages described on this page.
+            </p>
+          {/if}
           <div class="package-list">
-            {#each currentPackages as entry (entry.name)}
+            {#each displayPackages as entry (entry.name)}
               <span>
                 <code>{entry.name}</code>
                 {#if packageInstallCommand(entry)}

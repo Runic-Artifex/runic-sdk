@@ -61,7 +61,7 @@
         <span>Application composition</span><strong>Runic Application</strong>
       </div>
       <div class="map-ring">
-        <span>Bridge</span><span>Desktop</span><span>Assets</span><span
+        <span>Views</span><span>Desktop</span><span>Assets</span><span
           >Translations</span
         ><span>CLI</span>
       </div>
@@ -103,9 +103,9 @@
         cores do not depend back on those integrations.
       </p>
       <p>
-        Application Bridge owns its protocol and transport boundary. Frontend
-        adapters project that boundary without making the application core
-        depend on a renderer.
+        Application Views defines explicit Window and View contracts and emits
+        ordinary TypeScript clients. Frontend frameworks render their components;
+        .NET owns logical Views and ViewModel scopes.
       </p>
       <ActionLink href={resolve('/architecture')} variant="outline"
         >Read the architecture guide</ActionLink

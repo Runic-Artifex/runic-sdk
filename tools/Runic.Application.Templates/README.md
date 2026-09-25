@@ -1,38 +1,45 @@
 # Runic.Application.Templates
 
-Create a Runic Desktop app with a working Application Bridge and React, Vue, Svelte, or Angular frontend.
+Start a Runic Views Window application with React, Vue, Svelte, or Angular.
 
 ```bash
 dotnet new install Runic.Application.Templates::<VERSION>
-dotnet new runic-app-svelte --name MyApp --packageManager pnpm
+dotnet new runic-app-react --name MyApp
 cd MyApp
 dotnet tool restore
 dotnet runic doctor
-dotnet run
+dotnet runic dev
 ```
 
-Requires the .NET 10 SDK, either Node.js 24 with npm or pnpm, or Bun 1.4, plus the platform prerequisite reported by `dotnet runic doctor`. Replace `<VERSION>` with the published version shown in the [package catalog](https://docs.runic-artifex.eu/packages/), and replace `svelte` with `react`, `vue`, or `angular` to select the frontend. Vue type checking additionally requires Node.js when using Bun because the pinned `vue-tsc` does not support the Bun runtime ([upstream issue](https://github.com/vuejs/language-tools/issues/6090)). Select `npm`, `pnpm`, or `bun` with `--packageManager`; npm is the default. The explicit preview version is intentional: a template must create a version-matched NuGet/npm package set.
+Replace `react` with `vue`, `svelte`, or `angular` to select the frontend.
+Requires the .NET 10 SDK and Node.js 24 with npm or pnpm, or Bun 1.4. The
+templates default to npm; choose `--packageManager pnpm` or
+`--packageManager bun` to use the other supported package managers. Every
+generated project includes exactly one corresponding frontend lock file and a
+local `dotnet-runic` tool manifest.
 
-Every generated project contains a local `dotnet-runic` tool manifest and exactly one package-manager lock file. Standard `dev`, `build`, and `typecheck` scripts hide the underlying Vite or Angular CLI syntax, while frozen installs keep the selected graph deterministic. Publishing embeds the static frontend output, so no JavaScript runtime or package manager is required on the target machine.
+The generated .NET project declares a Runic Window, registered Views, and
+CommunityToolkit.Mvvm view models. Views MSBuild targets generate typed
+TypeScript clients and build the frontend. React and Vue consume the generated
+TypeScript modules directly. Svelte uses `@runic-artifex/views-svelte`; Angular
+uses `@runic-artifex/views-angular`. Both provide a typed outlet for composing
+Views in the frontend. The production build embeds the frontend output with the
+CS-WebUI Window adapter.
 
-Vite+ is supported as an optional command facade over the selected manager: use `vp install --frozen-lockfile` and `vp run dev|build|typecheck`. Keep the generated npm, pnpm, or Bun `packageManager` declaration and lock file; for Angular, `vp run dev` invokes the project script and therefore `ng serve`, while the Vite+-built-in `vp dev` does not.
-
-For a local candidate, install the canonical template package from the local
-NuGet feed and configure only the generated frontend's `@runic-artifex` npm
-scope to the matching local npm registry before the frozen install:
+For a local candidate, install the template from the local NuGet feed. Svelte
+and Angular projects also need the matching candidate npm archive through the
+local `@runic-artifex` registry before installing frontend dependencies:
 
 ```bash
 dotnet new install Runic.Application.Templates::<CANDIDATE> --nuget-source /path/to/nuget-feed
-dotnet new runic-app-svelte --name MyCandidateApp --packageManager pnpm
+dotnet new runic-app-svelte --name MyCandidateApp
 cd MyCandidateApp/Frontend
-pnpm config set --location=project @runic-artifex:registry http://127.0.0.1:<PORT>
-pnpm install --frozen-lockfile --ignore-scripts
+npm config set --location=project @runic-artifex:registry http://127.0.0.1:<PORT>
+npm ci
 ```
 
-`<CANDIDATE>` and the npm registry must be from the same local candidate set;
-the generated project references `Runic.Application`, `Runic.Application.Bridge`,
-and the `@runic-artifex` frontend packages by their exact candidate versions.
+`<CANDIDATE>` and the npm registry must come from the same package set. From
+the generated project root, `dotnet run -- --smoke-test` runs a headless check
+through the Window, View selection, and generated command.
 
-From the generated project root, use `dotnet run -- --smoke-test` for a headless bridge check.
-
-Each template includes a counter contract, generated C# dispatcher, frontend controller, and production asset build. Svelte uses the Runic Svelte/SvelteKit path; React, Vue, and Angular consume the controller directly. See the [template source](https://github.com/Runic-Artifex/runic-sdk/tree/main/tools/Runic.Application.Templates), [runnable examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples), and [issues](https://github.com/Runic-Artifex/runic-sdk/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).
+See the [template source](https://github.com/Runic-Artifex/runic-sdk/tree/main/tools/Runic.Application.Templates), [runnable examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples), and [issues](https://github.com/Runic-Artifex/runic-sdk/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).

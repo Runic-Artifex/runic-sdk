@@ -134,6 +134,10 @@ public static class BridgeContractShape
             ? []
             : models.Where(model => model != owner && property.PropertyType.IsAssignableFrom(model)).ToArray();
 
+    // Contract inspection runs in the build tool and Debug hot reload guard.
+    // Release/AOT bridges use the generated fingerprint and never inspect a
+    // model's CLR shape at runtime.
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Build-time and Debug-only contract inspection.")]
     private static IEnumerable<PropertyInfo> PublicDeclaredProperties(Type type) =>
         type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
             .Where(property => property.GetIndexParameters().Length == 0);
@@ -159,6 +163,7 @@ public static class BridgeContractShape
         return attribute?.ConstructorArguments.SingleOrDefault().Value as string;
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Build-time and Debug-only contract inspection.")]
     private static IEnumerable<Type> LoadableTypes(Assembly assembly)
     {
         try { return assembly.GetTypes(); }

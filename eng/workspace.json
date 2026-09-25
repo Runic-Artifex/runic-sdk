@@ -3,20 +3,12 @@
   "version": "0.3.0-preview.1",
   "npm": [
     {
-      "name": "@runic-artifex/application-bridge",
-      "path": "packages/web/application-bridge"
+      "name": "@runic-artifex/views-svelte",
+      "path": "packages/web/views-svelte"
     },
     {
-      "name": "@runic-artifex/application-bridge-tooling",
-      "path": "packages/web/application-bridge-tooling"
-    },
-    {
-      "name": "@runic-artifex/angular",
-      "path": "packages/web/angular"
-    },
-    {
-      "name": "@runic-artifex/desktop",
-      "path": "packages/web/desktop"
+      "name": "@runic-artifex/views-angular",
+      "path": "packages/web/views-angular"
     },
     {
       "name": "@runic-artifex/vite-plugin-runic-translations",
@@ -73,24 +65,20 @@
       "project": "packages/dotnet/Runic.Desktop/Runic.Desktop.csproj"
     },
     {
-      "name": "Runic.Application",
-      "project": "packages/dotnet/Runic.Application/Runic.Application.csproj"
+      "name": "Runic.Application.Views",
+      "project": "packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj"
     },
     {
-      "name": "Runic.Application.Bridge",
-      "project": "packages/dotnet/Runic.Application.Bridge/Runic.Application.Bridge.csproj"
+      "name": "Runic.Application.Views.ReactiveUI",
+      "project": "packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj"
     },
     {
-      "name": "Runic.Application.Desktop",
-      "project": "packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj"
+      "name": "Runic.Application.Views.CsWebUi",
+      "project": "packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj"
     },
     {
-      "name": "Runic.Application.Hosting",
-      "project": "packages/dotnet/Runic.Application.Hosting/Runic.Application.Hosting.csproj"
-    },
-    {
-      "name": "Runic.Application.Testing",
-      "project": "packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj"
+      "name": "Runic.Application.Views.CsWebUi.DependencyInjection",
+      "project": "packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection/Runic.Application.Views.CsWebUi.DependencyInjection.csproj"
     },
     {
       "name": "Runic.Application.Templates",
@@ -121,10 +109,6 @@
       "project": "tools/dotnet-runic-translations/dotnet-runic-translations.csproj"
     },
     {
-      "name": "Runic.Application.CsWebUi",
-      "project": "packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj"
-    },
-    {
       "name": "Runic.Platform",
       "project": "packages/dotnet/Runic.Platform/Runic.Platform.csproj"
     },
@@ -143,14 +127,6 @@
     {
       "name": "Runic.Platform.MacOS",
       "project": "packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj"
-    },
-    {
-      "name": "Runic.Application.Platform",
-      "project": "packages/dotnet/Runic.Application.Platform/Runic.Application.Platform.csproj"
-    },
-    {
-      "name": "Runic.Application.Platform.Desktop",
-      "project": "packages/dotnet/Runic.Application.Platform.Desktop/Runic.Application.Platform.Desktop.csproj"
     },
     {
       "name": "Runic.Desktop.Gtk4",
@@ -213,7 +189,6 @@
         "tests/native/Runic.Desktop.WebViewSmoke",
         "eng/build/desktop.props",
         "eng/build/desktop.targets",
-        "packages/web/desktop",
         "docs/guides/desktop",
         "eng/branding/desktop",
         "specs/desktop",
@@ -280,58 +255,27 @@
     },
     "application": {
       "dependsOn": [
-        "command-line",
-        "desktop",
-        "assets",
-        "translations"
+        "command-line"
       ],
       "paths": [
-        "packages/dotnet/Runic.Application",
-        "packages/dotnet/Runic.Application.Bridge",
-        "packages/dotnet/Runic.Application.Bridge.Generators",
-        "packages/dotnet/Runic.Application.Desktop",
-        "packages/dotnet/Runic.Application.Generators",
-        "packages/dotnet/Runic.Application.Hosting",
-        "packages/dotnet/Runic.Application.Testing",
+        "packages/dotnet/Runic.Application.Views",
+        "packages/dotnet/Runic.Application.Views.ReactiveUI",
+        "packages/dotnet/Runic.Application.Views.CsWebUi",
+        "packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection",
+        "tools/Runic.Application.Views.Codegen",
+        "tools/Runic.Application.Views.Codegen.Toolkit",
+        "tools/Runic.Application.Views.Codegen.ReactiveUI",
+        "tools/Runic.Application.Views.Dev",
         "tools/Runic.Application.Templates",
-        "tests/fixtures/application/BridgeModule",
-        "tests/fixtures/application/CounterMembers",
-        "tests/native/Runic.Application.AotSmoke",
-        "tests/native/Runic.Application.Bridge.AotSmoke",
-        "tests/dotnet/Runic.Application.Bridge.CounterTests",
-        "tests/dotnet/Runic.Application.Bridge.GeneratorTests",
-        "tests/native/Runic.Application.Bridge.MemberAotSmoke",
-        "tests/dotnet/Runic.Application.Bridge.MemberTests",
-        "tests/dotnet/Runic.Application.Bridge.PortableCore.Tests",
-        "tests/dotnet/Runic.Application.Bridge.Tests",
-        "tests/dotnet/Runic.Application.Desktop.Tests",
-        "tests/native/Runic.Application.Hosting.AotSmoke",
-        "tests/dotnet/Runic.Application.Hosting.Tests",
-        "tests/fixtures/application/Runic.Application.PackageConsumer",
-        "tests/dotnet/Runic.Application.Tests",
-        "tests/dotnet/Runic.Platform.Prototype.Tests",
-        "tests/dotnet/Runic.Application.Tool.Tests",
-        "tests/dotnet/Runic.Application.PackageCanary",
-        "tools/Runic.Application.Bridge.Inspector",
         "tools/dotnet-runic",
+        "tests/dotnet/Runic.Application.Tool.Tests",
         "eng/build/application.props",
         "eng/build/application.targets",
-        "packages/web/application-bridge",
-        "packages/web/application-bridge-tooling",
-        "packages/web/angular",
         "docs/guides/application",
         "eng/branding/application",
         "specs/application",
-        "eng/bridge/generate-application-bridge-templates.mjs",
-        "eng/bridge/verify-application-bridge-templates.mjs",
         "tests/templates",
-        "tests/web/angular-package-consumer",
-        "tests/benchmarks/application",
-        "tests/fixtures/application/experiments",
-        "eng/toolchain.mjs",
-        "packages/dotnet/Runic.Application.CsWebUi",
-        "tests/dotnet/Runic.Application.CsWebUi.Tests",
-        "tests/engineering/current"
+        "packages/web/views-angular"
       ]
     },
     "vite": {
@@ -351,6 +295,7 @@
         "packages/web/svelte",
         "packages/web/sveltekit",
         "eng/branding/svelte",
+        "packages/web/views-svelte",
         "tests/web/svelte-package-consumers"
       ]
     },
@@ -376,14 +321,14 @@
         "platform"
       ],
       "paths": [
-        "examples/counter",
-        "examples/customer-migration",
+        "examples/first-window",
+        "examples/notes-view-first",
+        "examples/notes-reactive-views",
         "examples/README.md",
         "examples/Directory.Build.props",
         "examples/Directory.Build.targets",
         "examples/Directory.Packages.props",
-        "examples/NuGet.config",
-        "examples/document-migration"
+        "examples/NuGet.config"
       ]
     },
     "docs": {
@@ -394,7 +339,6 @@
     },
     "platform": {
       "dependsOn": [
-        "application",
         "desktop"
       ],
       "paths": [
@@ -403,9 +347,6 @@
         "packages/dotnet/Runic.Platform.Windows",
         "packages/dotnet/Runic.Platform.Linux",
         "packages/dotnet/Runic.Platform.MacOS",
-        "packages/dotnet/Runic.Application.Platform",
-        "packages/dotnet/Runic.Application.Platform.Desktop",
-        "tests/dotnet/Runic.Platform.Prototype.Tests",
         "tests/dotnet/Runic.Platform.Windows.Tests",
         "tests/dotnet/Runic.Platform.Linux.Tests",
         "tests/dotnet/Runic.Platform.MacOS.Tests",
@@ -415,7 +356,8 @@
         "nixos/portal-vm",
         "packages/dotnet/Runic.Platform.Linux.Portal",
         "packages/dotnet/Runic.Platform.Linux.Gtk4",
-        "tests/dotnet/Runic.Platform.Linux.Portal.Tests"
+        "tests/dotnet/Runic.Platform.Linux.Portal.Tests",
+        "tests/dotnet/Runic.Platform.Runtime.Tests"
       ]
     }
   }

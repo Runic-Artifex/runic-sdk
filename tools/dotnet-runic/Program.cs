@@ -23,8 +23,6 @@ internal static class Program
     internal static async Task<int> Main(string[] arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        if (arguments.Length > 0 && arguments[0] == "__bridge-inspect")
-            return await BridgeInspectionClient.RunAsync(arguments[1..]).ConfigureAwait(false);
         return await new CommandApp(GeneratedCommandCatalog.Create())
         {
             Name = "dotnet runic",
@@ -42,27 +40,24 @@ internal static class Program
     internal static Task<CommandOutcome<ToolCommandResult>> Dev(
         CommandExecutionContext context,
         [Option("--no-restore")] bool noRestore,
-        [Option("--no-contracts")] bool noContracts,
         [Option("--no-frontend-watch")] bool noFrontendWatch,
         [Option("--no-dotnet-watch")] bool noDotNetWatch,
         [Option("--dry-run")] bool dryRun,
         [Argument(AllowMultipleValues = true)] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
         [Option("--project", "-p")] string project = "",
-        [Option("--configuration")] string configuration = "Debug",
-        [Option("--host")] string host = "")
+        [Option("--configuration")] string configuration = "Debug")
     {
         return ExecuteAsync(context, "dev", async () =>
         {
             var options = new DevOptions(
-            string.IsNullOrWhiteSpace(project) ? null : project,
-            configuration,
-            !noRestore,
-            !noContracts,
-            !noFrontendWatch,
-            !noDotNetWatch,
-            dryRun,
-                applicationArguments) { Host = host };
+                string.IsNullOrWhiteSpace(project) ? null : project,
+                configuration,
+                !noRestore,
+                !noFrontendWatch,
+                !noDotNetWatch,
+                dryRun,
+                applicationArguments);
             return await DevApplication.RunAsync(options, cancellationToken).ConfigureAwait(false);
         }, stream: !dryRun);
     }
@@ -76,13 +71,11 @@ internal static class Program
         CancellationToken cancellationToken,
         [Option("--project", "-p")] string project = "",
         [Option("--runtime", "-r")] string runtime = "",
-        [Option("--host")] string host = "",
-        [Option("--profile")] string profile = "default",
         [Option("--configuration")] string configuration = "Release",
         [Option("--report")] string report = "runic-size.json",
         [Option("--verify")] string verify = "") =>
         ExecuteAsync(context, "size", () => SizeApplication.RunAsync(new SizeOptions(
-            string.IsNullOrWhiteSpace(project) ? null : project, runtime, host, profile,
+            string.IsNullOrWhiteSpace(project) ? null : project, runtime,
             configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);
 
     [Command("doctor", Description = "Check the project and development environment.", Examples = ["dotnet runic doctor --project ./MyApp.csproj"])]
@@ -95,22 +88,6 @@ internal static class Program
     {
         return ExecuteAsync(context, "doctor", async () => await DoctorApplication.RunAsync(
             new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration), cancellationToken).ConfigureAwait(false));
-    }
-
-    [Command("inspect")]
-    [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
-    internal static Task<CommandOutcome<ToolCommandResult>> Inspect(
-        CommandExecutionContext context,
-        CancellationToken cancellationToken,
-        [Option("--project", "-p")] string project = "",
-        [Option("--configuration")] string configuration = "Debug",
-        [Option("--artifact")] string artifact = "manifest")
-    {
-        return ExecuteAsync(context, "inspect", async () => await InspectApplication.RunAsync(
-            string.IsNullOrWhiteSpace(project) ? null : project,
-            configuration,
-            artifact,
-            cancellationToken).ConfigureAwait(false));
     }
 
     [Command("support")]

@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.CsWebUi</PackageId>
     <Authors>RunicArtifex</Authors>
-    <Description>Experimental CS-WebUI host adapter for Runic Views.</Description>
+    <Description>CS-WebUI host adapter for Runic Window and View applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

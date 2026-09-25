@@ -59,13 +59,13 @@ export const products: Product[] = [
     kicker: 'Historical project',
     summary: 'Historical Runic Flow information and migration guidance.',
     description:
-      'Runic Flow is retired. New applications should use Runic Application and its Application Bridge for frontend commands and events.',
+      'Runic Flow is retired. New applications should use Runic Application Views for explicit Window and View contracts with generated TypeScript clients.',
     releaseProduct: null,
     version: null,
     versionState: 'unassigned',
     availability: 'archived',
     source:
-      'https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/architecture/application-bridge.md',
+      'https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md',
     bestFor: ['Understanding an older Runic integration before migrating'],
     boundaries: [
       'No current SDK package or forwarding package is published under the Runic Flow name',
@@ -76,23 +76,23 @@ export const products: Product[] = [
     name: 'Runic Application',
     shortName: 'Application',
     icon: '/products/runic-toolkit.png',
-    kicker: 'Application composition',
+    kicker: 'Window and View model',
     summary:
-      'Compose desktop windows, browser frontends, and .NET hosting around one application model with NativeAOT-safe application contracts.',
+      'Compose typed .NET Windows and Views with generated TypeScript clients for browser frontends.',
     description:
-      'Runic Application connects desktop windows, browser frontends, and .NET hosting around one application model. Its Application Bridge carries named commands and validated events between a frontend and a NativeAOT-safe .NET host.',
+      'Runic Application Views uses explicit partial Window and View types to connect scoped .NET ViewModels to ordinary TypeScript clients and framework components. The browser framework owns rendering; .NET constructs each logical View and owns its model and operation lifetime.',
     ...releaseMetadata('application'),
     source:
-      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application',
+      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views',
     bestFor: [
-      'Composing .NET desktop and browser applications',
-      'NativeAOT-safe application hosting',
-      'Effect Schema-first application contracts with generated C# dispatch',
+      'Composing typed Windows and Views over .NET ViewModels',
+      'Using generated TypeScript clients from plain TypeScript, Svelte, or Angular',
+      'Keeping browser rendering and .NET application lifetimes explicit',
     ],
     boundaries: [
       'Does not own UI languages, flow, command-line parsing, localization, or assets',
-      'Uses named domain commands and events rather than exposing ViewModels as the public application contract',
-      'Rendering frameworks own presentation state; the bridge owns validation, transport, sessions, revisions, and operations',
+      'Requires explicit Window and View contracts; it does not discover ViewModels by a legacy marker',
+      'Rendering frameworks own the visual tree; .NET owns logical Views and their ViewModel scopes',
     ],
   },
   {

@@ -502,10 +502,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     // separates their advanced request-id namespaces.
     private string OperationContract() => $"{typeof(T).FullName}:{_contractFingerprint}:{_name}";
 
-    private static string EncodeOperationStartFailure(string kind, string reason) => JsonSerializer.Serialize(new
+    private static string EncodeOperationStartFailure(string kind, string reason) => WriteJson(writer =>
     {
-        kind,
-        reason,
+        writer.WriteStartObject();
+        writer.WriteString("kind", kind);
+        writer.WriteString("reason", reason);
+        writer.WriteEndObject();
     });
 
     private string EncodeTerminal(BridgeFailure? error = null) =>

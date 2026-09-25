@@ -1,11 +1,25 @@
-# Svelte outlet source package
+# `@runic-artifex/views-svelte`
 
-`ViewOutlet.svelte` renders a registered component for a generated View kind.
-Its keyed block remounts a component when the canonical View reference changes;
-the component's existing `pageState` helper owns the Bridge connection. The
-`ViewRegistry` type checks each kind against the component's `page` prop.
-Reactive Notes imports this source package for main and nested content.
+Svelte 5 outlet for generated Runic View references. The browser component owns its
+visual tree and connection to the generated page client. The outlet selects it
+from a statically typed registry and remounts it when the View reference changes.
 
-This is source-package evidence, not a published Svelte library. It does not
-yet own `pageState`, loading/retry UI, operation acceptance, lazy components,
-or a native dialog policy.
+```svelte
+<script lang="ts">
+  import ViewOutlet from "@runic-artifex/views-svelte/ViewOutlet.svelte";
+  import type { ViewRegistry } from "@runic-artifex/views-svelte/view-registry";
+  import DocumentPage from "./DocumentPage.svelte";
+  import type { DocumentReference } from "./generated/document.js";
+
+  let { current }: { current: DocumentReference | null } = $props();
+  const registry = { document: DocumentPage } satisfies ViewRegistry<DocumentReference>;
+</script>
+
+<ViewOutlet content={current} {registry} />
+```
+
+`ViewRegistry` checks each generated `kind` and its component's `page` prop.
+Missing kinds render an alert. A changed reference unmounts the previous
+component, so each component can clean up its own page connection.
+
+The generated TypeScript client remains usable directly without Svelte.

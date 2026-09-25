@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views</PackageId>
     <Authors>RunicArtifex</Authors>
-    <Description>Experimental host-neutral ViewModel Bridge runtime and build tooling.</Description>
+    <Description>Host-neutral Window and View runtime with generated typed TypeScript clients.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

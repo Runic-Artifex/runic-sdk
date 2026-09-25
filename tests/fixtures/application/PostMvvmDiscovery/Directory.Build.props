@@ -1,8 +1,0 @@
-<Project>
-  <!-- The nearest Directory.Build.props replaces the root import, so preserve
-       repository defaults before establishing fixture-only output ownership. -->
-  <Import Project="../../../../Directory.Build.props" />
-  <PropertyGroup>
-    <RunicPostMvvmDiscoveryOutputKey Condition="'$(RunicPostMvvmDiscoveryOutputKey)' == ''">ordinary</RunicPostMvvmDiscoveryOutputKey>
-  </PropertyGroup>
-</Project>

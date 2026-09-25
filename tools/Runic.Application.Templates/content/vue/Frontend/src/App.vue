@@ -1,55 +1,55 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import { counterBridge } from "./counter-bridge";
-import type { CounterSnapshot } from "./application.bridge.generated";
+import { connectWorkspace, type WorkspaceState, type WorkspaceView } from "./generated/workspace.js";
+import CounterPage from "./pages/CounterPage.vue";
+import WelcomePage from "./pages/WelcomePage.vue";
 
-const snapshot = ref<CounterSnapshot>({ count: 0, history: [0], revision: 0 });
-const step = ref(1);
+const workspace = ref<WorkspaceView>();
+const state = ref<WorkspaceState>();
 const error = ref<string>();
-let unsubscribe: () => void = () => undefined;
+let unsubscribe = () => {};
+let active = true;
+
 onMounted(() => {
-  unsubscribe = counterBridge.subscribe(
-    (event) => { snapshot.value = event.snapshot; },
-    (failure) => { error.value = failure.message; },
-  );
-  void counterBridge.initialize().then(
-    (value) => { snapshot.value = value; },
-    (failure) => { error.value = failure.message; },
-  );
+  void connectWorkspace().then(client => {
+    if (!active) { client.dispose(); return; }
+    workspace.value = client;
+    unsubscribe = client.subscribe(next => { state.value = next; });
+  }).catch(cause => { error.value = String(cause); });
 });
-onUnmounted(() => unsubscribe());
-async function increment(): Promise<void> {
-  const receipt = await counterBridge.dispatch({ _tag: "IncrementCounter", step: step.value });
-  if (receipt && typeof receipt === "object" && "snapshot" in receipt) {
-    snapshot.value = receipt.snapshot as CounterSnapshot;
-  }
+
+onUnmounted(() => {
+  active = false;
+  unsubscribe();
+  workspace.value?.dispose();
+});
+
+async function run(command: () => Promise<unknown>) {
+  try { await command(); error.value = undefined; }
+  catch (cause) { error.value = String(cause); }
+}
+
+function showWelcome() {
+  const client = workspace.value;
+  if (client) void run(() => client.showWelcome());
+}
+
+function showCounter() {
+  const client = workspace.value;
+  if (client) void run(() => client.showCounter());
 }
 </script>
 
 <template>
-  <main class="container py-5" style="max-width: 720px">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <span class="badge text-bg-success">Vue + native C#</span>
-      <span class="badge text-bg-success">
-        Connected · r{{ snapshot.revision }}
-      </span>
-    </div>
-    <section class="card border-0 shadow"><div class="card-body p-5">
-      <p class="display-2 fw-semibold mb-2">{{ snapshot.count }}</p>
-      <p class="lead text-secondary">{{ snapshot.history.length - 1 }} named command(s)</p>
-      <label class="form-label" for="step">Increment step</label>
-      <input id="step" type="number" min="1" max="10" class="form-control"
-        v-model.number="step">
-      <div v-if="error" class="text-danger mt-2">{{ error }}</div>
-      <button class="btn btn-primary w-100 mt-3"
-        @click="increment">
-        <i class="fa-solid fa-plus me-2" aria-hidden="true" />Increment in C#
-      </button>
-      <h2 class="h6 mt-4">History</h2>
-      <div class="d-flex flex-wrap gap-2">
-        <span v-for="(value, index) in snapshot.history" :key="`${index}-${value}`"
-          class="badge text-bg-light">{{ value }}</span>
-      </div>
-    </div></section>
+  <main>
+    <header><h1>Runic Views</h1><p>Window/View starter · Vue</p></header>
+    <nav aria-label="Main navigation">
+      <button @click="showWelcome">Welcome</button>
+      <button @click="showCounter">Counter</button>
+    </nav>
+    <CounterPage v-if="state?.main.kind === 'counter'" :key="state.main.kind" :page="state.main" />
+    <WelcomePage v-else-if="state?.main.kind === 'welcome'" :key="state.main.kind" :page="state.main" />
+    <p v-else>Connecting to the Window…</p>
+    <p role="status">{{ error ?? "Connected to the .NET Window." }}</p>
   </main>
 </template>
