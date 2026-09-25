@@ -591,8 +591,13 @@ jobs:
         shell: bash
         run: |
           dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
-          ./artifacts/views-aot/FirstWindow${{ matrix.extension }} --probe-factory-failure
-          RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-aot/FirstWindow${{ matrix.extension }} --probe-factory-failure
+            GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
+          else
+            ./artifacts/views-aot/FirstWindow${{ matrix.extension }} --probe-factory-failure
+            RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
+          fi
       - name: Verify Windows View IDE launch and framework reload
         if: runner.os == 'Windows'
         shell: bash
