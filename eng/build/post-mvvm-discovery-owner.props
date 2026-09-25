@@ -16,7 +16,10 @@
     <_RunicPostMvvmDiscoveryOutputKeyIsValid Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryOutputKey)', '^[A-Za-z0-9_-]+$'))">true</_RunicPostMvvmDiscoveryOutputKeyIsValid>
     <!-- Never interpolate an unvalidated key into a filesystem path. The
          fixture-local target reports RUNICPM008 before Restore/Build/Clean. -->
-    <_RunicPostMvvmDiscoveryOwnerRoot Condition="'$(_RunicPostMvvmDiscoveryOwnerIsValid)' == 'true' and '$(_RunicPostMvvmDiscoveryOutputKeyIsValid)' == 'true'">$(MSBuildThisFileDirectory)../../tests/fixtures/application/PostMvvmDiscovery/obj/runic-post-mvvm-discovery/$(RunicPostMvvmDiscoveryOutputKey)/owners/$(RunicPostMvvmDiscoveryBuildOwner)/</_RunicPostMvvmDiscoveryOwnerRoot>
+    <!-- Keep this private fixture root short enough for conventional Windows
+         path limits even after a dependency name, configuration, and generated
+         compiler filename are appended. The repository obj folder is ignored. -->
+    <_RunicPostMvvmDiscoveryOwnerRoot Condition="'$(_RunicPostMvvmDiscoveryOwnerIsValid)' == 'true' and '$(_RunicPostMvvmDiscoveryOutputKeyIsValid)' == 'true'">$(MSBuildThisFileDirectory)../../obj/pmd/$(RunicPostMvvmDiscoveryOutputKey)/$(RunicPostMvvmDiscoveryBuildOwner)/</_RunicPostMvvmDiscoveryOwnerRoot>
 
     <!-- The outer fixture, its bootstrap, and the inspector use intentional
          slots. Every referenced project receives a name-qualified slot, so a

@@ -7,7 +7,7 @@ compile deterministic generated artifacts into the same fixture.
 The outer build first runs a guarded bootstrap compilation. The inspector then
 opens the bootstrap assembly and its closure through `MetadataLoadContext` and
 emits, under
-`obj/runic-post-mvvm-discovery/<selection>/owners/<build-owner>/generated/<Configuration>/net10.0`:
+`<SDK root>/obj/pmd/<selection>/<build-owner>/generated/<Configuration>/net10.0`:
 
 1. deterministic experimental IR;
 2. a plain ESM TypeScript contract;
@@ -71,7 +71,7 @@ direnv exec . dotnet run --project tests/dotnet/Runic.Application.Bridge.PostMvv
 RUNIC_POST_MVVM_BUILD_OWNER=33333333333333333333333333333333 direnv exec . ./eng/build/run-post-mvvm-discovery.sh -c Debug
 direnv exec . ./node_modules/.bin/tsc -p tests/fixtures/application/PostMvvmDiscovery/SmokeFrontend/tsconfig.json
 direnv exec . dotnet publish tests/fixtures/application/PostMvvmDiscovery/Smoke/PostMvvmDiscovery.Smoke.csproj -c Release -r linux-x64 -p:PublishAot=true -v:quiet -p:RunicPostMvvmDiscoveryBuildOwner=<owner>
-direnv exec . tests/fixtures/application/PostMvvmDiscovery/obj/runic-post-mvvm-discovery/ordinary/owners/<owner>/dependencies/PostMvvmDiscovery.Smoke/bin/Release/net10.0/linux-x64/publish/Runic.Application.Bridge.PostMvvmDiscovery.Smoke
+direnv exec . obj/pmd/ordinary/<owner>/dependencies/PostMvvmDiscovery.Smoke/bin/Release/net10.0/linux-x64/publish/Runic.Application.Bridge.PostMvvmDiscovery.Smoke
 ```
 
 The generated adapter is an internal fixture artifact that compiles against

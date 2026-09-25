@@ -643,12 +643,12 @@ void VerifyConcurrentBundle(string owner, string key, int expectedBindings)
         throw new InvalidOperationException($"Concurrent owner {owner} retained a temporary publication file.");
     if (Directory.EnumerateFiles(ownerRoot, "view-bridge.ready.json", SearchOption.AllDirectories).Count() != 1)
         throw new InvalidOperationException($"Concurrent owner {owner} did not retain exactly one ready bundle.");
-    string fixtureOutput = Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery");
+    string fixtureOutput = Path.Combine(root, "obj", "pmd");
     if (Directory.Exists(Path.Combine(fixtureOutput, key, "Debug")) || Directory.Exists(Path.Combine(fixtureOutput, "bootstrap", key)))
         throw new InvalidOperationException("Concurrent same-key builds wrote a legacy shared generated or bootstrap directory.");
 }
 
-string OwnerRoot(string owner, string key = outputKey) => Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery", key, "owners", owner);
+string OwnerRoot(string owner, string key = outputKey) => Path.Combine(root, "obj", "pmd", key, owner);
 
 string Artifact(string configuration, string file) => Path.Combine(OwnerRoot(serialOwner), "generated", configuration, "net10.0", file);
 
