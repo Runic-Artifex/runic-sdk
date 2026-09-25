@@ -5,6 +5,25 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+function waitForExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const onClose = () => { clearTimeout(timer); resolve(true); };
+    const timer = setTimeout(() => { child.off("close", onClose); resolve(false); }, timeoutMs);
+    child.once("close", onClose);
+  });
+}
+
+async function stopChrome(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return true;
+  const gracefulExit = waitForExit(child, 3_000);
+  child.kill("SIGTERM");
+  if (await gracefulExit) return true;
+  const forcedExit = waitForExit(child, 3_000);
+  child.kill("SIGKILL");
+  return await forcedExit;
+}
+
 async function retry(action, label) {
   const deadline = Date.now() + 20_000;
   let lastError;
@@ -81,9 +100,10 @@ try {
   console.log("FIRST_WINDOW_OK|snapshot|command|property|reload");
 } finally {
   socket?.close();
-  chrome?.kill("SIGTERM");
+  const chromeStopped = await stopChrome(chrome);
   host.stdin.end("\n");
   await pause(250);
   if (host.exitCode === null) host.kill("SIGTERM");
-  if (profile) await rm(profile, { recursive: true, force: true });
+  if (!chromeStopped) throw new Error("Chromium did not exit after SIGKILL; its profile was left for runner cleanup.");
+  if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
