@@ -86,7 +86,10 @@ try {
   await retry(async () => (await state()).status === "Connected to the .NET ViewModel.", "initial connection");
   if ((await state()).count !== "0") throw new Error("Initial count was not zero.");
   await evaluate('document.querySelector("#increment").click()');
-  await retry(async () => (await state()).count === "1", "first command");
+  await retry(async () => {
+    const current = await state();
+    return current.count === "1" && current.status === "Incremented.";
+  }, "first command");
   await evaluate('document.querySelector("#step").focus(); document.querySelector("#step").value = "3"; document.querySelector("#step").blur()');
   try {
     await retry(async () => (await state()).status === "Step updated.", "writable property");
