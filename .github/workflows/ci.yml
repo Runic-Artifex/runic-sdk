@@ -604,7 +604,7 @@ jobs:
         timeout-minutes: 10
         run: |
           npm --prefix examples/notes-reactive-views/Angular ci
-          bun --cwd examples/notes-reactive-views/Svelte install --frozen-lockfile
+          (cd examples/notes-reactive-views/Svelte && bun install --frozen-lockfile)
           dotnet build examples/notes-reactive-views/NotesReactiveViews.csproj -c Debug
           node examples/notes-reactive-views/ide-host-smoke.mjs
           RUNIC_HMR_FRONTEND=angular RUNIC_HMR_VIA_IDE=1 node examples/notes-reactive-views/hmr-smoke.mjs

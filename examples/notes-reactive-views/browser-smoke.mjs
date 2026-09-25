@@ -96,9 +96,12 @@ try {
     chrome.kill("SIGKILL");
     await retry(() => output.includes("CLIENT_DISCONNECT_OBSERVED"));
     host.stdin.end("\n");
-    await retry(() => host.exitCode !== null);
+    try { await retry(() => host.exitCode !== null || host.signalCode !== null); }
+    catch (cause) {
+      throw new Error(`The Notes host did not exit after client disconnect. exit: ${host.exitCode}; signal: ${host.signalCode}; stdout: ${output}; stderr: ${errors}; ${cause}`);
+    }
     if (host.exitCode !== 0 || !output.includes("CLIENT_DISCONNECT_OK"))
-      throw new Error(`Client disconnect verification failed: ${output}\n${errors}`);
+      throw new Error(`Client disconnect verification failed: exit: ${host.exitCode}; signal: ${host.signalCode}; ${output}\n${errors}`);
     console.log("REACTIVE_NOTES_CLIENT_DISCONNECT_OK");
   } else if (verifyPendingMount) {
     await evaluate(`(() => {

@@ -11,7 +11,7 @@ var webRoot = webRootOption >= 0
     : Path.Combine(AppContext.BaseDirectory, "www");
 
 using var app = NotesApplication.Create();
-using var window = app.OpenWindow();
+await using var window = app.OpenWindow();
 var portOption = Array.IndexOf(args, "--port");
 if (portOption >= 0)
 {
@@ -60,6 +60,10 @@ else
     debugHost?.RecordWindow();
     app.Wait();
 }
+// Server mode can still have a native worker after the final client disconnects.
+// Stop WebUI before the window's async disposal destroys its native state.
+WebUiApplication.Exit();
+await WebUiApplication.WaitAsync();
 
 static async Task<bool> ObserveDisconnect(EditorViewModel editor)
 {
