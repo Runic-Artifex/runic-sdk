@@ -15,6 +15,10 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../Runic.Application.WindowBridge.Testing/WindowBridgeCheckedTitleField.cs"
+             Link="WindowBridgeTesting/WindowBridgeCheckedTitleField.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <AdditionalFiles Include="../../../specs/application/protocol/application-bridge/setup/generated/bridge.ir.json" />
   </ItemGroup>
   <ItemGroup>
