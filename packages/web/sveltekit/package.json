@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/sveltekit",
-  "version": "0.4.0-preview.1",
+  "version": "0.5.0-preview.1",
   "description": "SvelteKit integration for Runic Toolkit applications",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/sveltekit#readme",
   "bugs": {
@@ -48,8 +48,8 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "@runic-artifex/svelte": "0.4.0-preview.1",
-    "@runic-artifex/vite-plugin-runic": "0.4.0-preview.1",
+    "@runic-artifex/svelte": "0.5.0-preview.1",
+    "@runic-artifex/vite-plugin-runic": "0.5.0-preview.1",
     "@sveltejs/adapter-static": ">=3 <4",
     "@sveltejs/kit": ">=2.53.0 <3",
     "@sveltejs/vite-plugin-svelte": ">=7 <8",
