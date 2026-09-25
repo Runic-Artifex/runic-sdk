@@ -146,6 +146,39 @@ try {
   } else {
   const firstShell = await snapshot("shell");
   if (firstShell.state.main.kind !== "home") throw new Error("Top-level router did not start at Home.");
+  const originalPins = firstShell.state.pinned;
+  if (originalPins.map(item => item.kind).join(",") !== "pinnedNote,pinnedTask")
+    throw new Error(`The polymorphic View collection has the wrong initial items: ${JSON.stringify(originalPins)}`);
+  for (const item of originalPins) {
+    if (!(await snapshot(`content${item.id}`)).state)
+      throw new Error(`The ${item.kind} View has no routed state.`);
+  }
+  if (webRoot) {
+    await retry(async () => await query('document.querySelectorAll("#pinned [data-pin]").length') === 2);
+    await retry(async () => await query('document.querySelector("#pinned [data-pin=pinnedTask]")?.textContent?.includes("High")') === true);
+    await click("[data-pinned-action=swap]");
+  } else {
+    await evaluate('(async () => window.__runicBridge.call("shellSwapPinned"))()');
+  }
+  await retry(async () => (await snapshot("shell")).state.pinned[0]?.kind === "pinnedTask");
+  const reorderedPins = (await snapshot("shell")).state.pinned;
+  if (reorderedPins[0].id !== originalPins[1].id || reorderedPins[1].id !== originalPins[0].id)
+    throw new Error("Reordering the View collection changed routed identities.");
+  if (webRoot) await click("[data-pinned-action=remove]");
+  else await evaluate('(async () => window.__runicBridge.call("shellRemovePinned"))()');
+  await retry(async () => (await snapshot("shell")).state.pinned.length === 1);
+  if ((await snapshot(`content${originalPins[0].id}`)).error?.kind !== "disconnected")
+    throw new Error("Removing a View collection item kept its route connected.");
+  if (!(await snapshot(`content${originalPins[1].id}`)).state)
+    throw new Error("Removing a sibling View disconnected the surviving item.");
+  if (webRoot) await click("[data-pinned-action=restore]");
+  else await evaluate('(async () => window.__runicBridge.call("shellRestorePinned"))()');
+  await retry(async () => (await snapshot("shell")).state.pinned.length === 2);
+  const restoredPins = (await snapshot("shell")).state.pinned;
+  if (restoredPins[0].id !== originalPins[0].id || restoredPins[1].id !== originalPins[1].id)
+    throw new Error("Restoring a View collection item lost its stable route identity.");
+  if (!(await snapshot(`content${originalPins[0].id}`)).state)
+    throw new Error("Restoring a View collection item did not reconnect its route.");
 
   await click("[data-go=document]");
   await retry(async () => await query('document.querySelector("#document-pane h2")?.textContent') === "Full editor");
@@ -233,7 +266,7 @@ try {
   if (cancel.kind !== "not-running") throw new Error(`Terminal operation accepted cancellation: ${JSON.stringify(cancel)}`);
   const invalid = await evaluate('(async () => JSON.parse(await window.__runicBridge.call("__runicOperationStatus", "invalid-json")))()');
   if (invalid.kind !== "invalid-request") throw new Error(`Malformed operation identity was accepted: ${JSON.stringify(invalid)}`);
-  console.log("REACTIVE_NOTES_BROWSER_OK|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire");
+  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire");
   }
 } finally {
   socket?.close();

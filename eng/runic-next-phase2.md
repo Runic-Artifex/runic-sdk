@@ -3,6 +3,7 @@
 Phase 1 is the Window/View SDK cutover in PR #28. Phase 2 makes that model the
 useful default across the SDK's own desktop applications, while retaining the
 host-neutral core and the lower-level Desktop API for applications that need it.
+PRs #28 and #29 are merged into `main`; the preview release remains deferred.
 
 ## Package identity
 
@@ -38,8 +39,27 @@ packages and may break before 1.0.
 - The development coordinator rebuilds and reconnects after a generated
   contract edit. Svelte and Angular browser checks add and remove a contract
   field to verify this behavior.
-- The Translations Editor's root Window and ViewModel now use ReactiveUI. Its
-  operation facade and per-document workflow state still need migration.
+- The Translations Editor's Window, routed feature and document ViewModels,
+  and command results use ReactiveUI. The root JSON operation dispatcher has
+  been removed; browser drafts stay local until a revision-checked save.
+
+## Pre-release editor and selection gate
+
+The next migration slice adds routed `IReadOnlyList<T>` ViewModel collections,
+including derived-model dispatch, stable item identities through reorder,
+route suspension on removal, and reconnection on restore. Default, Svelte,
+Angular, and concurrent-client Reactive Notes journeys exercise those rules.
+
+The editor publishes feature and document ViewModels from its root. Generated
+routes handle workspace, review, interchange, diagnostics, local state, project
+setup, document transformation, validation, and save. Browser-scoped drafts
+remain local to the editor UI; the compiler-backed session retains revision
+checking, atomic save, and conflict handling. The hosted browser journey runs once against
+source references and once against locally packed `Runic.Application`,
+`Runic.Application.CsWebUi`, and `Runic.Application.ReactiveUI` packages. The
+package-consumer CI job repeats the packed journey and checks package origin.
+Do not publish the preview until this migration PR passes the full SDK CI and
+is merge ready.
 
 ## Design limitations and implementation order
 
@@ -59,11 +79,11 @@ packages and may break before 1.0.
    supported dev loop. Preserve existing in-process Hot Reload for safe method
    and getter edits; do not promise that .NET Hot Reload can change a generated
    contract in place.
-5. Replace the Translations Editor's JSON `Execute`/`ResultJson` facade with
-   typed observable ViewModels and generated commands. Give drafts, save,
-   validation, conflict, and review state clear owners. Use the common write
-   receipts and accepted-operation semantics to isolate concurrent clients.
-   Keep ephemeral input and visual state in Svelte where appropriate.
+5. The Translations Editor now routes named ReactiveUI commands through feature
+   and document ViewModels. Typed results stay observable in their .NET owners;
+   generated web clients carry correlated responses to the typed frontend
+   bridge. The browser keeps ephemeral input and visual state. Session-backed
+   saves retain revision checking and atomic writes.
 
 Each slice uses focused checks while iterating. GitHub CI remains the full
 merge gate. Native UI checks are scoped to affected host behavior.
@@ -75,7 +95,7 @@ merge gate. Native UI checks are scoped to affected host behavior.
 | `examples/notes-reactive-views` | Already uses ReactiveUI ViewModels, routing, activation, and typed Views on CS-WebUI. | Make it the first Desktop adapter consumer; keep the existing CS-WebUI journey for host parity. |
 | `examples/notes-view-first` | Toolkit MVVM composition and View location. | Retain as Toolkit coverage, and reuse its nested-content cases when extending ReactiveUI selection. |
 | `examples/first-window` | Small Toolkit MVVM starter and package consumer. | Retain as the Toolkit entry point; add a parallel ReactiveUI starter or choose the Reactive Notes app for ReactiveUI guidance. |
-| `apps/translations-editor` | Scoped ReactiveUI root ViewModel and Window; one JSON command and response property remains, while Svelte owns workflow state. | Migrate feature by feature to typed ReactiveUI ViewModels, starting with workspace/document selection and one editable document/Save journey. Preserve compiler-backed `EditorSession` as the domain service. |
+| `apps/translations-editor` | Scoped ReactiveUI Window with routed feature and document ViewModels; compiler-backed session owns persisted data, while Svelte owns unsaved drafts and visual state. | Verify all feature owners in editor smoke and the document editing journey in the hosted browser, including the locally packed package consumer. |
 | `examples/first-window-desktop` | ReactiveUI first window on the new Desktop adapter. | Exercise generated snapshot, command, browser reload, and scoped native close; extend to richer host capabilities after the first slice. |
 | `tests/fixtures/desktop/samples/Runic.Desktop.Sample`, `tests/native/Runic.Desktop.WebViewSmoke`, and `tests/native/Runic.Desktop.Gtk4.Smoke` | Exercise low-level Desktop capabilities, native windows, dialogs, and accessibility. | Keep as low-level host tests; add separate Views-host integration journeys instead of replacing this coverage. |
 | `tools/vscode-runic-translations` and `tools/visualstudio-runic-translations` | IDE-owned command UI and message preview over the shared translation language server. | Keep native IDE UI patterns; share the compiler/domain services with the editor. A Runic ReactiveUI ViewModel would be inappropriate inside the IDE host. |
@@ -85,8 +105,8 @@ merge gate. Native UI checks are scoped to affected host behavior.
 
 This inventory covers every maintained in-repo GUI application, native UI
 fixture, IDE preview, development dock, and documentation UI. The editor is the
-principal application that still needs a substantive ReactiveUI migration.
-Reactive Notes is already the reference for that pattern. The remaining GUI
+principal application migrated to ReactiveUI. Reactive Notes remains the
+reference for that pattern. The remaining GUI
 tools are hosted by other frameworks or intentionally test lower-level APIs;
 converting those would remove useful coverage or introduce a false desktop
 dependency.

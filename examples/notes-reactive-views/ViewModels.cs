@@ -8,35 +8,72 @@ namespace NotesReactiveViews;
 
 public interface IMainPage : IRoutableViewModel;
 public interface IDocumentPane : IRoutableViewModel;
+public interface IPinnedItem;
 
 public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
 {
     private readonly HomeViewModel _home;
     private readonly DocumentViewModel _document;
     private readonly ReactiveRoutedRegion<IMainPage> _main;
+    private readonly PinnedNoteViewModel _pinnedNote = new();
+    private readonly PinnedTaskViewModel _pinnedTask = new();
+    private IReadOnlyList<IPinnedItem> _pinned;
 
     public ShellViewModel()
     {
+        _pinned = [_pinnedNote, _pinnedTask];
         _home = new HomeViewModel(this);
         _document = new DocumentViewModel(this);
         _main = new ReactiveRoutedRegion<IMainPage>(Router);
         _main.PropertyChanged += OnMainChanged;
         OpenHomeCommand = ReactiveCommand.Create(OpenHome);
         OpenDocumentCommand = ReactiveCommand.Create(OpenDocument);
+        SwapPinnedCommand = ReactiveCommand.Create(SwapPinned);
+        RemovePinnedCommand = ReactiveCommand.Create(RemovePinned);
+        RestorePinnedCommand = ReactiveCommand.Create(RestorePinned);
         Router.Navigate.Execute(_home).Subscribe(_ => { });
     }
 
     [RunicIgnore] public RoutingState Router { get; } = new();
     public IMainPage Main => _main.Current ?? _home;
+    public IReadOnlyList<IPinnedItem> Pinned => _pinned;
     internal EditorViewModel Editor => _document.Editor;
     public ReactiveCommand<RxVoid, RxVoid> OpenHomeCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenDocumentCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SwapPinnedCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> RemovePinnedCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> RestorePinnedCommand { get; }
 
     private void OpenHome() => Router.Navigate.Execute(_home).Subscribe(_ => { });
     private void OpenDocument() => Router.Navigate.Execute(_document).Subscribe(_ => { });
+    private void SwapPinned()
+    {
+        _pinned = [_pinnedTask, _pinnedNote];
+        this.RaisePropertyChanged(nameof(Pinned));
+    }
+    private void RemovePinned()
+    {
+        _pinned = [_pinnedTask];
+        this.RaisePropertyChanged(nameof(Pinned));
+    }
+    private void RestorePinned()
+    {
+        _pinned = [_pinnedNote, _pinnedTask];
+        this.RaisePropertyChanged(nameof(Pinned));
+    }
     private void OnMainChanged(object? sender, PropertyChangedEventArgs args) =>
         this.RaisePropertyChanged(nameof(Main));
     public void Dispose() { _main.PropertyChanged -= OnMainChanged; _main.Dispose(); }
+}
+
+public class PinnedNoteViewModel : ReactiveObject, IPinnedItem
+{
+    public string Label => "Pinned note";
+}
+
+public sealed class PinnedTaskViewModel : PinnedNoteViewModel
+{
+    public string Priority => "High";
 }
 
 public sealed partial class HomeViewModel(IScreen host) : ReactiveObject, IMainPage

@@ -373,6 +373,24 @@ jobs:
           version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
           bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
       - uses: ./.github/actions/install-browser
+      - name: Verify editor against locally packed View SDK
+        run: |
+          bun eng/run.mjs build-web
+          dotnet build apps/translations-editor/Runic.Translations.Editor.csproj -c Release -m:1 \
+            -p:RunicEditorUsePackedViews=true \
+            -p:RestoreAdditionalProjectSources="$PWD/artifacts/packages/nuget"
+          bun eng/ci/verify-editor-packed.mjs artifacts/packages/nuget
+          bun apps/translations-editor/tests/HostedBrowserE2E/run-hosted-rmf2-ui.mjs \
+            apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll
+        env:
+          RUNIC_EDITOR_HOSTED_E2E_REPORT_DIR: ${{ github.workspace }}/artifacts/editor-hosted-packed
+      - name: Retain packaged editor browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-hosted-packed
+          path: artifacts/editor-hosted-packed
+          if-no-files-found: ignore
       - name: Verify packaged Window factory, generated client, and browser
         run: |
           node examples/first-window/package-smoke.mjs
