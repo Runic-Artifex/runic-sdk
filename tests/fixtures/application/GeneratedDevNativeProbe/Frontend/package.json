@@ -1,0 +1,8 @@
+{
+  "name": "runic-generated-dev-native-probe",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "scripts": { "dev": "bun run --bun ./run-vite.mjs" }
+}

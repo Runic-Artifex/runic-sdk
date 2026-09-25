@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -29,6 +30,11 @@ internal static class Program
             ("Vite server arguments are explicit and loopback-only", ViteArgumentsAreExplicit),
             ("Vite readiness identifies failed probes and preserves caller cancellation", ViteReadinessFailuresAreActionable),
             ("Vite startup skips the production frontend build", ViteStartupSkipsProductionBuild),
+            ("compiled-discovery owner is session-scoped and reaches every MSBuild child", DiscoveryBuildOwnerFlowsThroughDevelopmentCommands),
+            ("compiled-discovery cleanup removes only the evaluated session owner", DiscoveryBuildOwnerCleanupIsNarrow),
+            ("opt-in View Bridge handoff exposes paths without impersonating the host", ViewBridgeHandoffIsHostOwned),
+            ("only opt-in View Bridge disables managed Hot Reload", ViewBridgeWatchRegeneratesCompiledContract),
+            ("dotnet watch stays alive after a clean child exit", WatcherOutlivesCleanChildExit),
             ("Angular server arguments use the supported development builder", AngularArgumentsAreExplicit),
             ("development bootstrap preserves private binding and remote assets", DevelopmentBootstrapIsNativeSafe),
             ("Application Bridge inspector stays bounded and source-aware", InspectorTerminalSinkIsSafe),
@@ -338,6 +344,307 @@ internal static class Program
         }
     }
 
+    private static void DiscoveryBuildOwnerFlowsThroughDevelopmentCommands()
+    {
+        const string owner = "0123456789abcdef0123456789abcdef";
+        DevProjectConfiguration ordinary = CreateDevelopmentServerConfiguration("vite", "index.html");
+        False(DiscoveryBuildSession.CreateFor(ordinary) is not null,
+            "An ordinary project created a compiled-discovery owner.");
+
+        var session = new DiscoveryBuildSession(owner);
+        IReadOnlyList<string> ownerEvaluation = DevProjectConfiguration.CreateEvaluationArguments(
+            ordinary.ProjectPath,
+            "Debug",
+            session);
+        if (!ownerEvaluation.Contains("-p:RunicPostMvvmDiscoveryBuildOwner=" + owner) ||
+            !ownerEvaluation.Contains("-p:RunicPostMvvmDiscoveryOwnerDriver=true") ||
+            !ownerEvaluation[^1].Contains("_RunicPostMvvmDiscoveryOwnerRoot", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The owner-aware evaluation did not receive its discovery properties.");
+        }
+        False(
+            DevProjectConfiguration.CreateEvaluationArguments(
+                ordinary.ProjectPath,
+                "Debug",
+                null).Any(IsDiscoveryBuildProperty),
+            "The read-only project probe received discovery build properties.");
+
+        DevProjectConfiguration discovery = ordinary with
+        {
+            UsesPostMvvmDiscovery = true,
+            DiscoveryBuildOwner = owner,
+            FrontendCompilerHotReloadTarget = "CompileChangedFrontend",
+        };
+        if (DiscoveryBuildSession.CreateFor(discovery) is null)
+        {
+            throw new InvalidOperationException("The compiled-discovery probe did not create a build session.");
+        }
+
+        var options = new DevOptions(null, "Debug", true, true, true, true, false, []);
+        DevApplication.RequireDiscoveryBuildRestore(ordinary, options with { Restore = false });
+        DevApplication.RequireDiscoveryBuildRestore(discovery, options);
+        try
+        {
+            DevApplication.RequireDiscoveryBuildRestore(discovery, options with { Restore = false });
+            throw new InvalidOperationException("The owner-scoped build accepted --no-restore.");
+        }
+        catch (DevUsageException error)
+        {
+            Equal("RAPPDEV1012", error.Code);
+            Contains(error.Message, "cannot use --no-restore");
+            Contains(error.Message, "owner-scoped project.assets.json");
+        }
+
+        AssertOneOwner(
+            DevApplication.CreateRestoreArguments(discovery, "Debug"),
+            "-p:");
+        AssertOneOwner(
+            DevApplication.CreateBuildArguments(discovery, options),
+            "-p:");
+        AssertOneOwner(
+            HostProcessController.CreateRestartBuildArguments(discovery, options),
+            "-p:");
+        AssertOneOwner(
+            HostProcessController.CreateRunArguments(discovery, options),
+            "-p:");
+        AssertOneOwner(
+            HostProcessController.CreateWatchArguments(discovery, options),
+            "--property:");
+        AssertOneOwner(
+            DevApplication.CreateFrontendCompilerArguments(discovery, "Debug"),
+            "-p:");
+        AssertOneOwner(
+            DevApplication.CreateFrontendWatcherArguments(discovery, "Debug"),
+            "-p:");
+
+        False(
+            DevApplication.CreateBuildArguments(ordinary, options)
+                .Any(IsDiscoveryBuildProperty),
+            "The ordinary build received discovery build properties.");
+
+        static void AssertOneOwner(IReadOnlyList<string> arguments, string prefix)
+        {
+            string expected = prefix + DiscoveryBuildSession.OwnerProperty + "=" + owner;
+            Equal(1, arguments.Count(argument => argument == expected));
+            string driver = prefix + DiscoveryBuildSession.OwnerDriverProperty + "=true";
+            Equal(1, arguments.Count(argument => argument == driver));
+        }
+
+        static bool IsDiscoveryBuildProperty(string argument) =>
+            argument.Contains(DiscoveryBuildSession.OwnerProperty, StringComparison.Ordinal) ||
+            argument.Contains(DiscoveryBuildSession.OwnerDriverProperty, StringComparison.Ordinal);
+    }
+
+    private static void DiscoveryBuildOwnerCleanupIsNarrow()
+    {
+        using var workspace = new TestWorkspace();
+        const string owner = "0123456789abcdef0123456789abcdef";
+        const string otherOwner = "fedcba9876543210fedcba9876543210";
+        string sdkRoot = Path.Combine(workspace.Root, "sdk");
+        string owners = Path.Combine(sdkRoot, "obj", "pmd", "ordinary");
+        string ownedRoot = Path.Combine(owners, owner);
+        string otherRoot = Path.Combine(owners, otherOwner);
+        string ownedFile = Path.Combine(ownedRoot, "outer", "obj", "project.assets.json");
+        Write(ownedFile, "owned");
+        string otherFile = Path.Combine(otherRoot, "outer", "obj", "project.assets.json");
+        Write(otherFile, "other");
+        string ordinaryFile = Path.Combine(workspace.Root, "ordinary", "obj", "keep.txt");
+        Write(ordinaryFile, "ordinary");
+
+        DevProjectConfiguration configuration = CreateDevelopmentServerConfiguration("vite", "index.html") with
+        {
+            UsesPostMvvmDiscovery = true,
+            DiscoveryBuildOwner = owner,
+            DiscoverySdkRoot = sdkRoot,
+            DiscoveryOutputKey = "ordinary",
+            DiscoveryOwnerRoot = ownedRoot,
+        };
+
+        False(DiscoveryBuildSession.CleanupOwnedOutputs(configuration with
+        {
+            DiscoveryOwnerRoot = otherRoot,
+        }), "A different GUID owner was removed.");
+        False(DiscoveryBuildSession.CleanupOwnedOutputs(configuration with
+        {
+            DiscoveryOutputKey = "../ordinary",
+        }), "An unsafe output key was accepted.");
+        False(DiscoveryBuildSession.CleanupOwnedOutputs(configuration with
+        {
+            UsesPostMvvmDiscovery = false,
+        }), "An ordinary project removed fixture outputs.");
+        False(DiscoveryBuildSession.CleanupOwnedOutputs(configuration with
+        {
+            DiscoveryOwnerRoot = Path.Combine(workspace.Root, "ordinary", "obj"),
+        }), "An ordinary project obj directory was removed.");
+        if (!File.Exists(ownedFile) || !File.Exists(otherFile) || !File.Exists(ordinaryFile))
+            throw new InvalidOperationException("Rejected cleanup changed another build's files.");
+
+        if (OperatingSystem.IsLinux())
+        {
+            string linkedSdkRoot = Path.Combine(workspace.Root, "linked-sdk");
+            Directory.CreateDirectory(linkedSdkRoot);
+            Directory.CreateSymbolicLink(Path.Combine(linkedSdkRoot, "obj"),
+                Path.Combine(sdkRoot, "obj"));
+            False(DiscoveryBuildSession.CleanupOwnedOutputs(configuration with
+            {
+                DiscoverySdkRoot = linkedSdkRoot,
+                DiscoveryOwnerRoot = Path.Combine(linkedSdkRoot, "obj", "pmd", "ordinary", owner),
+            }), "A linked fixture ancestor was accepted.");
+            if (!File.Exists(ownedFile))
+                throw new InvalidOperationException("The linked path removed its target.");
+        }
+
+        if (!DiscoveryBuildSession.CleanupOwnedOutputs(configuration) ||
+            Directory.Exists(ownedRoot) ||
+            !File.Exists(otherFile) || !File.Exists(ordinaryFile))
+        {
+            throw new InvalidOperationException("Cleanup did not isolate the exact session owner.");
+        }
+        False(DiscoveryBuildSession.CleanupOwnedOutputs(configuration),
+            "Cleanup reported deletion twice.");
+    }
+
+    private static void ViewBridgeHandoffIsHostOwned()
+    {
+        using var workspace = new TestWorkspace();
+        string ready = Path.Combine(workspace.Root, "obj", "runic", "view-bridge.ready.json");
+        string hostReady = Path.Combine(workspace.Root, "obj", "runic", "view-bridge-host.fingerprint");
+        DevProjectConfiguration configuration = CreateDevelopmentServerConfiguration("vite", "index.html") with
+        {
+            ViewBridgeReadyManifest = ready,
+            ViewBridgeHostReadyPath = hostReady,
+        };
+        configuration.ValidateViewBridgeHandoff();
+        var options = new DevOptions(null, "Debug", true, true, true, true, false, []);
+        False(DevApplication.ShouldBuildCanonicalFrontend(configuration, options),
+            "The View Bridge frontend built before MSBuild generated its modules.");
+        if (!DevApplication.ShouldBuildCanonicalFrontend(configuration, options with { WatchFrontend = false }) ||
+            !DevApplication.ShouldBuildCanonicalFrontend(
+                configuration with { ViewBridgeReadyManifest = "", ViewBridgeHostReadyPath = "" }, options))
+        {
+            throw new InvalidOperationException("The existing frontend build path changed for non-opt-in development.");
+        }
+        Throws<DevUsageException>(() => (configuration with { ViewBridgeHostReadyPath = "" })
+            .ValidateViewBridgeHandoff());
+        Throws<DevUsageException>(() => (configuration with { ViewBridgeHostReadyPath = ready })
+            .ValidateViewBridgeHandoff());
+        Throws<DevUsageException>(() => (configuration with { DevelopmentServerKind = "angular" })
+            .ValidateViewBridgeHandoff());
+        Throws<DevUsageException>(() => (configuration with { BridgeSource = "/repo/App.csproj" })
+            .ValidateViewBridgeHandoff());
+        Throws<DevUsageException>(() => ViewBridgeDevelopmentHandoff.Prepare(configuration));
+        Write(ready, """{"fingerprint":"first"}""");
+        Write(hostReady, "stale\n");
+        ViewBridgeDevelopmentHandoff.Prepare(configuration);
+        False(File.Exists(hostReady), "A stale host marker survived startup.");
+
+        var vite = ViteDevelopmentServer.CreateEnvironment(configuration,
+            new Uri("http://127.0.0.1:12345/events"), null);
+        Equal(ready, vite[ViteDevelopmentServer.ViewBridgeReadyManifestEnvironmentVariable]);
+        Equal(hostReady, vite[ViteDevelopmentServer.ViewBridgeHostReadyEnvironmentVariable]);
+        var host = HostProcessController.CreateDevelopmentEnvironment(configuration, vite);
+        Equal(hostReady, host[ViteDevelopmentServer.ViewBridgeHostReadyEnvironmentVariable]);
+        Equal(ready, host[ViteDevelopmentServer.ViewBridgeReadyManifestEnvironmentVariable]);
+        var defaultVite = ViteDevelopmentServer.CreateEnvironment(
+            configuration with { ViewBridgeReadyManifest = "", ViewBridgeHostReadyPath = "" },
+            new Uri("http://127.0.0.1:12345/events"), null);
+        Equal<string?>(null, defaultVite[ViteDevelopmentServer.ViewBridgeHostReadyEnvironmentVariable]);
+        var defaultHost = HostProcessController.CreateDevelopmentEnvironment(configuration, defaultVite);
+        Equal<string?>(null, defaultHost[ViteDevelopmentServer.ViewBridgeHostReadyEnvironmentVariable]);
+
+        False(File.Exists(hostReady), "The dev tool impersonated the managed host.");
+        Write(ready, """{"fingerprint":" "}""");
+        Equal<string?>(null, ViewBridgeDevelopmentHandoff.ReadFingerprint(ready));
+        Equal<string?>(null, ViewBridgeDevelopmentHandoff.ReadFingerprint(workspace.Write("bad.json", "[]")));
+    }
+
+    private static void ViewBridgeWatchRegeneratesCompiledContract()
+    {
+        DevProjectConfiguration ordinary = CreateDevelopmentServerConfiguration("vite", "index.html");
+        DevProjectConfiguration viewBridge = ordinary with
+        {
+            ViewBridgeReadyManifest = "/repo/obj/view-bridge.ready.json",
+            ViewBridgeHostReadyPath = "/repo/obj/view-bridge-host.fingerprint",
+        };
+        var options = new DevOptions(null, "Debug", true, true, true, true, false, []);
+        IReadOnlyList<string> bridgeWatch = HostProcessController.CreateWatchArguments(viewBridge, options);
+        IReadOnlyList<string> ordinaryWatch = HostProcessController.CreateWatchArguments(ordinary, options);
+        Equal("watch", bridgeWatch[0]);
+        Equal("--no-hot-reload", bridgeWatch[1]);
+        Equal(1, bridgeWatch.Count(value => value == "--no-hot-reload"));
+        False(ordinaryWatch.Contains("--no-hot-reload", StringComparer.Ordinal),
+            "Managed Hot Reload changed for an ordinary project.");
+        SequenceEqual((IReadOnlyList<string>)bridgeWatch.Where(value => value != "--no-hot-reload").ToArray(), ordinaryWatch);
+    }
+
+    private static void WatcherOutlivesCleanChildExit() =>
+        WatcherOutlivesCleanChildExitAsync().GetAwaiter().GetResult();
+
+    private static async Task WatcherOutlivesCleanChildExitAsync()
+    {
+        using var workspace = new TestWorkspace();
+        string marker = Path.Combine(workspace.Root, "child-exited");
+        string project = workspace.Write("WatchExit.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+              </PropertyGroup>
+            </Project>
+            """);
+        workspace.Write("Program.cs", """
+            string marker = Environment.GetEnvironmentVariable("RUNIC_TEST_WATCH_EXIT_MARKER")
+                ?? throw new InvalidOperationException("The exit marker is required.");
+            File.WriteAllText(marker, "child exited");
+            Console.WriteLine("WATCH_CHILD_EXITING");
+            """);
+        CommandResult restore = await CommandRunner.RunAsync("dotnet", workspace.Root,
+            ["restore", project], CancellationToken.None).ConfigureAwait(false);
+        if (restore.ExitCode != 0)
+            throw new InvalidOperationException($"The dotnet watch fixture did not restore: {restore.CombinedOutput}");
+
+        var configuration = new DevProjectConfiguration(
+            ProjectPath: project,
+            ProjectDirectory: workspace.Root,
+            NodeEnabled: false,
+            FrontendCompilerEnabled: false,
+            WorkspaceRoot: workspace.Root,
+            Workspace: "",
+            FrontendPackageDirectory: "",
+            FrontendOutputDirectory: "",
+            FrontendWebRoot: "www",
+            BridgeSource: "",
+            BridgeIr: "",
+            BridgeFacade: "",
+            FrontendWatchTarget: "",
+            ViteDevServerEnabled: false,
+            ViteDevServerEntry: "",
+            ViteConfigurationPath: "",
+            FrontendCompilerDiagnosticsPath: "",
+            FrontendCompilerHotReloadPath: "",
+            TargetDirectory: Path.Combine(workspace.Root, "bin"))
+        {
+            DevelopmentServerKind = "vite",
+            ViewBridgeReadyManifest = Path.Combine(workspace.Root, "ready.json"),
+            ViewBridgeHostReadyPath = Path.Combine(workspace.Root, "host-ready"),
+        };
+        var options = new DevOptions(null, "Debug", false, false, false, true, false, []);
+        await using var host = new HostProcessController("dotnet", configuration, options,
+            new Dictionary<string, string?> { ["RUNIC_TEST_WATCH_EXIT_MARKER"] = marker });
+        await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
+        for (int attempt = 0; attempt < 200 && !File.Exists(marker); attempt++)
+            await Task.Delay(25).ConfigureAwait(false);
+        if (!File.Exists(marker))
+            throw new InvalidOperationException("The watched child did not reach its clean exit.");
+
+        // `dotnet watch` reports the child as exited, then keeps its own process
+        // alive to observe the next edit. Completion is for that outer process.
+        await Task.Delay(500).ConfigureAwait(false);
+        if (host.Completion.IsCompleted)
+            throw new InvalidOperationException("A clean watched child exit terminated the dotnet watch controller.");
+    }
+
     private static void AngularArgumentsAreExplicit()
     {
         DevProjectConfiguration configuration = CreateDevelopmentServerConfiguration(
@@ -450,7 +757,8 @@ internal static class Program
 
             Contains(formatted!, "[bridge] #7 client dispatch IncrementCounter");
             Contains(formatted!, "Example.CounterBridgeHandler.IncrementCounterAsync");
-            Contains(formatted!, "/repo/CounterBridgeHandler.cs:12:6");
+            Contains(formatted!,
+                Path.Combine(Path.GetFullPath("/repo"), "CounterBridgeHandler.cs") + ":12:6");
             DoesNotContain(formatted!, "must never reach the terminal");
         }
         finally
@@ -878,6 +1186,8 @@ internal static class Program
         }
     }
 
+    [SuppressMessage("Performance", "CA1859:Change type of parameter",
+        Justification = "The helper intentionally compares arrays and non-array IReadOnlyList test results.")]
     private static void SequenceEqual<T>(IReadOnlyList<T> expected, IReadOnlyList<T> actual)
     {
         Equal(expected.Count, actual.Count);

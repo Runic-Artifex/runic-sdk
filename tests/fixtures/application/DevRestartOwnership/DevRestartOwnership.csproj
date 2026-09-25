@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- This fixture is deliberately opt-in.  It gives the development tool a
+         normal Vite workspace and the two View Bridge handoff paths without
+         importing a product host or claiming that a generated adapter exists. -->
+    <RunicApplicationFrontendEnabled>true</RunicApplicationFrontendEnabled>
+    <RunicApplicationFrontendNodeEnabled>true</RunicApplicationFrontendNodeEnabled>
+    <RunicApplicationFrontendWorkspaceRoot>$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendWorkspaceRoot>
+    <RunicApplicationFrontendWorkspace>.</RunicApplicationFrontendWorkspace>
+    <RunicApplicationFrontendPackageDirectory>$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendPackageDirectory>
+    <RunicApplicationFrontendOutputDirectory>$(MSBuildProjectDirectory)/Frontend/dist</RunicApplicationFrontendOutputDirectory>
+    <RunicApplicationFrontendWebRoot>www</RunicApplicationFrontendWebRoot>
+    <RunicApplicationFrontendDevServerKind>vite</RunicApplicationFrontendDevServerKind>
+    <RunicApplicationFrontendViteDevServerEntry>/src/main.js</RunicApplicationFrontendViteDevServerEntry>
+    <RunicApplicationFrontendViteConfiguration>$(MSBuildProjectDirectory)/Frontend/vite.config.mjs</RunicApplicationFrontendViteConfiguration>
+    <RunicApplicationViewBridgeReadyManifest>$(MSBuildProjectDirectory)/obj/runic/view-bridge.ready.json</RunicApplicationViewBridgeReadyManifest>
+    <RunicApplicationViewBridgeHostReadyPath>$(MSBuildProjectDirectory)/obj/runic/view-bridge-host.fingerprint</RunicApplicationViewBridgeHostReadyPath>
+  </PropertyGroup>
+
+  <!-- Keep the source bytes in the assembly so the running host can report the
+       fingerprint it loaded, rather than reading a newer source file on disk. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Contract.cs" LogicalName="Contract.cs" />
+  </ItemGroup>
+
+  <Target Name="PublishContractReady" AfterTargets="Build">
+    <GetFileHash Files="Contract.cs" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_ContractHash" />
+    </GetFileHash>
+    <PropertyGroup>
+      <_ContractFingerprint>@(_ContractHash->'%(FileHash)')</_ContractFingerprint>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)/obj/runic/view-bridge.ready.json"
+                      Lines="{&quot;fingerprint&quot;:&quot;$(_ContractFingerprint)&quot;}"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+</Project>

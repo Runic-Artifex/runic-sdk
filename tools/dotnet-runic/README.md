@@ -46,6 +46,10 @@ Hosts opt into the generated frontend development document by calling
 `assets.WithDevelopmentDocument()`. Only the explicit bounded entry document is
 replaced. The remaining asset manifest is unchanged.
 
+An internal [View Bridge development handoff](VIEW-BRIDGE-HANDOFF.md) describes
+the opt-in ready-manifest and host acknowledgment paths used by the separate
+MSBuild-owned View Bridge experiment.
+
 ## Publish measurements
 
 `dotnet runic size --runtime linux-x64 --host desktop --profile minimal

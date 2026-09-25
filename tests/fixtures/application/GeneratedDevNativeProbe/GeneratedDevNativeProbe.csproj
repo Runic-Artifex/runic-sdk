@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Fixture-only friend identity; this project does not define an SDK API. -->
+    <AssemblyName>Runic.Application.CsWebUi.Tests</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RunicSdkRoot Condition="'$(RUNIC_SDK_ROOT)' != ''">$(RUNIC_SDK_ROOT)</RunicSdkRoot>
+    <RunicSdkRoot Condition="'$(RunicSdkRoot)' == ''">$(MSBuildThisFileDirectory)../../../../</RunicSdkRoot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Private tool signal: creates one owner token before the second project
+         evaluation resolves this fixture's owner-scoped ready-manifest path. -->
+    <_RunicPostMvvmDiscovery>true</_RunicPostMvvmDiscovery>
+    <!-- This is owner-scoped by the top-level dev session. The exact owner is
+         injected by dotnet runic dev before evaluated paths are consumed. -->
+    <RunicPostMvvmOutput>$(_RunicPostMvvmDiscoveryOwnerRoot)generated/$(Configuration)/net10.0</RunicPostMvvmOutput>
+    <RunicApplicationFrontendEnabled>true</RunicApplicationFrontendEnabled>
+    <RunicApplicationFrontendNodeEnabled>true</RunicApplicationFrontendNodeEnabled>
+    <RunicApplicationFrontendWorkspaceRoot>$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendWorkspaceRoot>
+    <RunicApplicationFrontendWorkspace>.</RunicApplicationFrontendWorkspace>
+    <RunicApplicationFrontendPackageDirectory>$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendPackageDirectory>
+    <RunicApplicationFrontendOutputDirectory>$(MSBuildProjectDirectory)/Frontend/dist</RunicApplicationFrontendOutputDirectory>
+    <RunicApplicationFrontendWebRoot>www</RunicApplicationFrontendWebRoot>
+    <RunicApplicationFrontendDevServerKind>vite</RunicApplicationFrontendDevServerKind>
+    <RunicApplicationFrontendViteDevServerEntry>/src/main.js</RunicApplicationFrontendViteDevServerEntry>
+    <RunicApplicationFrontendViteConfiguration>$(MSBuildProjectDirectory)/Frontend/vite.config.mjs</RunicApplicationFrontendViteConfiguration>
+    <!-- The watched inner project owns this ready manifest. The host writes its
+         acknowledgement only after it has started with the loaded fingerprint. -->
+    <RunicApplicationViewBridgeReadyManifest>$(RunicPostMvvmOutput)/view-bridge.ready.json</RunicApplicationViewBridgeReadyManifest>
+    <RunicApplicationViewBridgeHostReadyPath>$(MSBuildProjectDirectory)/obj/runic/view-bridge-host.fingerprint</RunicApplicationViewBridgeHostReadyPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="PostMvvmDiscovery/**/*.cs" />
+    <ProjectReference Include="$(RunicSdkRoot)/packages/dotnet/Runic.Application.CsWebUi/Runic.Application.CsWebUi.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)PostMvvmDiscovery/PostMvvmDiscovery.csproj" />
+  </ItemGroup>
+</Project>

@@ -23,6 +23,10 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         "RUNIC_APPLICATION_DEV_PROJECT";
     internal const string BridgeHostReadyEnvironmentVariable =
         "RUNIC_APPLICATION_BRIDGE_HOST_READY";
+    internal const string ViewBridgeReadyManifestEnvironmentVariable =
+        "RUNIC_VIEW_BRIDGE_READY_MANIFEST";
+    internal const string ViewBridgeHostReadyEnvironmentVariable =
+        "RUNIC_VIEW_BRIDGE_HOST_READY";
 
     private readonly RunningProcess _process;
 
@@ -34,7 +38,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         string diagnosticsPath,
         string hotReloadPath,
         string projectPath,
-        string? bridgeHostReadyPath)
+        string? bridgeHostReadyPath,
+        string? viewBridgeReadyManifest,
+        string? viewBridgeHostReadyPath)
     {
         _process = process;
         Origin = origin;
@@ -47,6 +53,8 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             [HotReloadEnvironmentVariable] = hotReloadPath,
             [ProjectEnvironmentVariable] = projectPath,
             [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
+            [ViewBridgeReadyManifestEnvironmentVariable] = viewBridgeReadyManifest,
+            [ViewBridgeHostReadyEnvironmentVariable] = viewBridgeHostReadyPath,
         };
     }
 
@@ -83,18 +91,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 packageManager.Executable,
                 configuration.WorkspaceRoot,
                 arguments,
-                new Dictionary<string, string?>(StringComparer.Ordinal)
-                {
-                    ["BROWSER"] = "none",
-                    // Scope Vite diagnostics to the dev server. Passing DEBUG
-                    // through MSBuild can make its Exec task parse config dumps
-                    // (for example "error: [Function: error]") as build errors.
-                    ["DEBUG"] = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_VITE_DEBUG")
-                        ?? Environment.GetEnvironmentVariable("DEBUG"),
-                    ["RUNIC_APPLICATION_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
-                    ["RUNIC_APPLICATION_DEV_PROJECT"] = configuration.ProjectPath,
-                    [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
-                });
+                CreateEnvironment(configuration, inspectorEndpoint, bridgeHostReadyPath));
         }
         catch
         {
@@ -108,7 +105,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             configuration.FrontendCompilerDiagnosticsPath,
             configuration.FrontendCompilerHotReloadPath + ".ready",
             configuration.ProjectPath,
-            bridgeHostReadyPath);
+            bridgeHostReadyPath,
+            configuration.HasViewBridge ? configuration.ViewBridgeReadyManifest : null,
+            configuration.HasViewBridge ? configuration.ViewBridgeHostReadyPath : null);
         try
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
@@ -137,6 +136,26 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             throw;
         }
     }
+
+    internal static IReadOnlyDictionary<string, string?> CreateEnvironment(
+        DevProjectConfiguration configuration,
+        Uri inspectorEndpoint,
+        string? bridgeHostReadyPath) =>
+        new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["BROWSER"] = "none",
+            // Scope Vite diagnostics to the dev server. Passing DEBUG through
+            // MSBuild can make its Exec task parse config dumps as build errors.
+            ["DEBUG"] = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_VITE_DEBUG")
+                ?? Environment.GetEnvironmentVariable("DEBUG"),
+            ["RUNIC_APPLICATION_DEVTOOLS_ENDPOINT"] = inspectorEndpoint.AbsoluteUri,
+            ["RUNIC_APPLICATION_DEV_PROJECT"] = configuration.ProjectPath,
+            [BridgeHostReadyEnvironmentVariable] = bridgeHostReadyPath,
+            [ViewBridgeReadyManifestEnvironmentVariable] =
+                configuration.HasViewBridge ? configuration.ViewBridgeReadyManifest : null,
+            [ViewBridgeHostReadyEnvironmentVariable] =
+                configuration.HasViewBridge ? configuration.ViewBridgeHostReadyPath : null,
+        };
 
     private async Task<string> ReadDevelopmentDocumentAsync(
         string document,

@@ -1,0 +1,11 @@
+<Project>
+  <!-- The browser test copies this fixture outside the checkout. Restore the
+       SDK defaults from the explicitly supplied root before any project picks
+       its intermediate paths. The dev session supplies the private owner
+       driver and owner token on its second evaluation. -->
+  <PropertyGroup>
+    <RunicSdkRoot Condition="'$(RUNIC_SDK_ROOT)' != ''">$(RUNIC_SDK_ROOT)</RunicSdkRoot>
+    <RunicSdkRoot Condition="'$(RunicSdkRoot)' == ''">$(MSBuildThisFileDirectory)../../../../</RunicSdkRoot>
+  </PropertyGroup>
+  <Import Project="$(RunicSdkRoot)/Directory.Build.props" />
+</Project>

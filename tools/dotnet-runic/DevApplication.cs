@@ -26,6 +26,22 @@ internal static class DevApplication
                     options.Configuration,
                     cancellationToken)
                 .ConfigureAwait(false);
+            DiscoveryBuildSession? discoveryBuildSession =
+                DiscoveryBuildSession.CreateFor(configuration);
+            if (discoveryBuildSession is not null)
+            {
+                // The owner-aware props import changes compiler and restore
+                // paths, so evaluate again before any child command consumes
+                // TargetDir, ProjectAssetsFile, or the generated handoff.
+                configuration = await DevProjectConfiguration
+                    .EvaluateAsync(
+                        dotnetHost,
+                        project,
+                        options.Configuration,
+                        cancellationToken,
+                        discoveryBuildSession)
+                    .ConfigureAwait(false);
+            }
             phase.Complete();
         }
         using var selectedHost = new HostSelectionScope(configuration.Host);
@@ -34,6 +50,7 @@ internal static class DevApplication
         {
             return Program.Success;
         }
+        RequireDiscoveryBuildRestore(configuration, options);
         if (!options.Restore && !string.IsNullOrEmpty(options.Host))
             RequireRestoredHost(configuration);
 
@@ -50,13 +67,15 @@ internal static class DevApplication
             {
                 using var phase = PhaseTimer.Start("Restoring selected host dependencies");
                 await RequireSuccessAsync(dotnetHost, configuration.ProjectDirectory,
-                    ["restore", configuration.ProjectPath, $"-p:Configuration={options.Configuration}"],
+                    CreateRestoreArguments(configuration, options.Configuration),
                     "RAPPDEV1006", "Selected host restore failed.", stop.Token).ConfigureAwait(false);
                 phase.Complete();
             }
             if (configuration.NodeEnabled)
             {
-                await BuildCanonicalFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
+                await BuildCanonicalFrontendAsync(configuration, options.Restore,
+                    ShouldBuildCanonicalFrontend(configuration, options), stop.Token)
+                    .ConfigureAwait(false);
             }
 
             if (options.GenerateContracts && configuration.HasContracts)
@@ -67,6 +86,8 @@ internal static class DevApplication
 
             await BuildAsync(dotnetHost, configuration, options, stop.Token)
                 .ConfigureAwait(false);
+            if (options.WatchFrontend && configuration.HasViewBridge)
+                ViewBridgeDevelopmentHandoff.Prepare(configuration);
             return await RunDevelopmentLoopAsync(
                 dotnetHost,
                 configuration,
@@ -80,6 +101,17 @@ internal static class DevApplication
         finally
         {
             Console.CancelKeyPress -= cancelHandler;
+            stop.Cancel();
+            try
+            {
+                DiscoveryBuildSession.CleanupOwnedOutputs(configuration);
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                // Cleanup is best effort and must never replace the build or
+                // development failure which brought this session to an end.
+                Console.Error.WriteLine($"[discovery] Could not remove this session's build outputs ({error.GetType().Name}).");
+            }
         }
     }
 
@@ -95,6 +127,22 @@ internal static class DevApplication
                     if (library.Name.StartsWith(package, StringComparison.Ordinal)) return;
         }
         throw new DevUsageException("RAPPDEV1008", $"The {configuration.Host} host has not been restored. Omit --no-restore when changing hosts.");
+    }
+
+    internal static void RequireDiscoveryBuildRestore(
+        DevProjectConfiguration configuration,
+        DevOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(options);
+        if (configuration.HasDiscoveryBuildSession && !options.Restore)
+        {
+            throw new DevUsageException(
+                "RAPPDEV1012",
+                "The internal post-MVVM discovery fixture creates a new build-owner directory " +
+                "for each 'dotnet runic dev' session, so it cannot use --no-restore. " +
+                "Remove --no-restore to restore this session's owner-scoped project.assets.json.");
+        }
     }
 
     private static async Task<int> RunDevelopmentLoopAsync(
@@ -140,14 +188,18 @@ internal static class DevApplication
                 ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
                 : null;
 
+        using var monitorStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationToken monitorToken = monitorStop.Token;
         // Runic Assets owns archive refresh. Phase 1 has no parallel legacy
         // manifest/mirror watcher.
-        Task assetMonitor = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        Task assetMonitor = Task.Delay(Timeout.InfiniteTimeSpan, monitorToken);
         await using RunningProcess? contractWatcher = options.GenerateContracts && configuration.HasContracts &&
             configuration.DevelopmentServerKind != "vite"
                 ? StartContractWatcher(configuration)
                 : null;
-        string? contractFingerprint = ReadContractFingerprint(configuration.BridgeIr);
+        string? contractFingerprint = configuration.HasContracts
+            ? ReadContractFingerprint(configuration.BridgeIr)
+            : null;
         Task contractMonitor = options.GenerateContracts && configuration.HasContracts
             ? FilePoller.WatchAsync(configuration.BridgeIr, async token =>
                 {
@@ -162,12 +214,12 @@ internal static class DevApplication
                     {
                         Console.Error.WriteLine($"[bridge] {error.Message}");
                     }
-                }, cancellationToken)
-            : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }, monitorToken)
+            : Task.Delay(Timeout.InfiniteTimeSpan, monitorToken);
         var compilerReloadMonitors = new List<Task>();
         if (compilerReload is not null)
         {
-            compilerReloadMonitors.Add(compilerReload.WatchAsync(cancellationToken));
+            compilerReloadMonitors.Add(compilerReload.WatchAsync(monitorToken));
         }
         Task frontendCompilerMonitor = options.WatchHost &&
             configuration.FrontendCompilerEnabled &&
@@ -191,9 +243,9 @@ internal static class DevApplication
                         configuration,
                         options.Configuration,
                         token),
-                cancellationToken)
-            : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        Task cancellation = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                monitorToken)
+            : Task.Delay(Timeout.InfiniteTimeSpan, monitorToken);
+        Task cancellation = Task.Delay(Timeout.InfiniteTimeSpan, monitorToken);
 
         var observed = new List<Task>
         {
@@ -214,45 +266,72 @@ internal static class DevApplication
             observed.Add(developmentServer.Completion);
         }
 
-        Task completed = await Task.WhenAny(observed).ConfigureAwait(false);
-        if (completed == cancellation)
+        try
         {
-            await cancellation.ConfigureAwait(false);
-            return Program.Success;
-        }
+            Task completed = await Task.WhenAny(observed).ConfigureAwait(false);
+            if (completed == cancellation)
+            {
+                await cancellation.ConfigureAwait(false);
+                return Program.Success;
+            }
 
-        if (completed == assetMonitor ||
-            completed == contractMonitor ||
-            compilerReloadMonitors.Contains(completed) ||
-            completed == frontendCompilerMonitor)
+            if (completed == assetMonitor ||
+                completed == contractMonitor ||
+                compilerReloadMonitors.Contains(completed) ||
+                completed == frontendCompilerMonitor)
+            {
+                await completed.ConfigureAwait(false);
+                return Program.DevelopmentFailure;
+            }
+
+            int exitCode = await ((Task<int>)completed).ConfigureAwait(false);
+            if (completed == host.Completion &&
+                (!options.WatchHost || exitCode == Program.Success))
+            {
+                return exitCode;
+            }
+
+            throw new DevDevelopmentException(
+                "RAPPDEV1007",
+                completed == host.Completion
+                    ? $"The Runic Desktop host watcher exited unexpectedly with code {exitCode}."
+                    : completed == developmentServer?.Completion
+                        ? $"The {configuration.DevelopmentServerKind} development server " +
+                          $"exited unexpectedly with code {exitCode}."
+                        : $"The frontend watcher exited unexpectedly with code {exitCode}.");
+        }
+        finally
         {
-            await completed.ConfigureAwait(false);
-            return Program.DevelopmentFailure;
+            monitorStop.Cancel();
+            var monitors = new List<Task>
+            {
+                assetMonitor,
+                contractMonitor,
+                frontendCompilerMonitor,
+                cancellation,
+            };
+            monitors.AddRange(compilerReloadMonitors);
+            try
+            {
+                await Task.WhenAll(monitors).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                // The selected completion already controls the result. Drain
+                // every other callback before disposing the child processes.
+            }
         }
-
-        int exitCode = await ((Task<int>)completed).ConfigureAwait(false);
-        if (completed == host.Completion &&
-            (!options.WatchHost || exitCode == Program.Success))
-        {
-            return exitCode;
-        }
-
-        throw new DevDevelopmentException(
-            "RAPPDEV1007",
-            completed == host.Completion
-                ? $"The Runic Desktop host watcher exited unexpectedly with code {exitCode}."
-                : completed == developmentServer?.Completion
-                    ? $"The {configuration.DevelopmentServerKind} development server " +
-                      $"exited unexpectedly with code {exitCode}."
-                    : $"The frontend watcher exited unexpectedly with code {exitCode}.");
     }
 
     private static async Task BuildCanonicalFrontendAsync(
         DevProjectConfiguration configuration,
         bool installDependencies,
+        bool buildAssets,
         CancellationToken cancellationToken)
     {
-        using PhaseTimer phase = PhaseTimer.Start("Installing and building Runic Assets frontend");
+        using PhaseTimer phase = PhaseTimer.Start(buildAssets
+            ? "Installing and building Runic Assets frontend"
+            : "Installing View Bridge frontend dependencies");
         JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
             configuration.WorkspaceRoot,
             configuration.FrontendPackageDirectory);
@@ -266,6 +345,11 @@ internal static class DevApplication
                 $"The Runic Assets frontend dependency restore with {packageManager.Name} failed. Run 'dotnet runic doctor' to verify the committed lock file and package train.",
                 cancellationToken).ConfigureAwait(false);
         }
+        if (!buildAssets)
+        {
+            phase.Complete();
+            return;
+        }
         await RequireSuccessAsync(
             packageManager.Executable,
             configuration.FrontendPackageDirectory,
@@ -275,6 +359,11 @@ internal static class DevApplication
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
     }
+
+    internal static bool ShouldBuildCanonicalFrontend(
+        DevProjectConfiguration configuration,
+        DevOptions options) =>
+        !configuration.HasViewBridge || !options.WatchFrontend;
 
     private static async Task<IFrontendDevelopmentServer> StartDevelopmentServerAsync(
         DevProjectConfiguration configuration,
@@ -305,16 +394,7 @@ internal static class DevApplication
         await RequireSuccessAsync(
             dotnetHost,
             configuration.ProjectDirectory,
-            [
-                "msbuild",
-                configuration.ProjectPath,
-                "-nologo",
-                $"-target:{configuration.FrontendCompilerHotReloadTarget}",
-                $"-property:Configuration={buildConfiguration}",
-                "-property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
-                "-property:RunicApplicationFrontendEnabled=false",
-                "-property:RunicApplicationFrontendInstall=false",
-            ],
+            CreateFrontendCompilerArguments(configuration, buildConfiguration),
             "RAPPDEV1006",
             "Frontend compiler integration failed.",
             cancellationToken).ConfigureAwait(false);
@@ -331,14 +411,7 @@ internal static class DevApplication
                 "frontend",
                 dotnetHost,
                 configuration.ProjectDirectory,
-                [
-                    "msbuild",
-                    configuration.ProjectPath,
-                    "-nologo",
-                    $"-target:{configuration.FrontendWatchTarget}",
-                    $"-property:Configuration={buildConfiguration}",
-                    "-property:RunicApplicationFrontendInstall=false",
-                ]);
+                CreateFrontendWatcherArguments(configuration, buildConfiguration));
         }
 
         if (configuration.HasNodeWorkspace)
@@ -354,6 +427,44 @@ internal static class DevApplication
         }
 
         throw new InvalidOperationException("No frontend watcher is configured.");
+    }
+
+    internal static IReadOnlyList<string> CreateFrontendCompilerArguments(
+        DevProjectConfiguration configuration,
+        string buildConfiguration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var arguments = new List<string>
+        {
+            "msbuild",
+            configuration.ProjectPath,
+            "-nologo",
+            $"-target:{configuration.FrontendCompilerHotReloadTarget}",
+            $"-property:Configuration={buildConfiguration}",
+            "-property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
+            "-property:RunicApplicationFrontendEnabled=false",
+            "-property:RunicApplicationFrontendInstall=false",
+        };
+        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
+        return arguments;
+    }
+
+    internal static IReadOnlyList<string> CreateFrontendWatcherArguments(
+        DevProjectConfiguration configuration,
+        string buildConfiguration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var arguments = new List<string>
+        {
+            "msbuild",
+            configuration.ProjectPath,
+            "-nologo",
+            $"-target:{configuration.FrontendWatchTarget}",
+            $"-property:Configuration={buildConfiguration}",
+            "-property:RunicApplicationFrontendInstall=false",
+        };
+        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
+        return arguments;
     }
 
     private static async Task BuildAsync(
@@ -407,6 +518,23 @@ internal static class DevApplication
             arguments.Add("--no-restore");
         }
 
+        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
+
+        return arguments;
+    }
+
+    internal static IReadOnlyList<string> CreateRestoreArguments(
+        DevProjectConfiguration configuration,
+        string buildConfiguration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var arguments = new List<string>
+        {
+            "restore",
+            configuration.ProjectPath,
+            $"-p:Configuration={buildConfiguration}",
+        };
+        configuration.AddDiscoveryBuildOwner(arguments, "-p:");
         return arguments;
     }
 
