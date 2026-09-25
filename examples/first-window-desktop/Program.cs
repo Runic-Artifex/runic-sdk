@@ -8,9 +8,11 @@ var services = new ServiceCollection();
 services.AddScoped<CounterViewModel>();
 services.AddRunicBridges();
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+var serveOnly = args.Contains("--serve-only", StringComparer.Ordinal);
+var probeOwner = args.Contains("--probe-owner", StringComparer.Ordinal);
 await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
 {
-    WaitForConnection = !args.Contains("--serve-only", StringComparer.Ordinal),
+    WaitForConnection = !serveOnly && !probeOwner,
 });
 var surfaceOptions = new DesktopSurfaceOptions
 {
@@ -18,7 +20,7 @@ var surfaceOptions = new DesktopSurfaceOptions
     Content = "index.html",
 };
 
-if (args.Contains("--serve-only", StringComparer.Ordinal))
+if (serveOnly)
 {
     await using var scope = provider.CreateAsyncScope();
     await using var surface = await desktop.CreateSurfaceAsync(surfaceOptions);
@@ -36,7 +38,7 @@ if (args.Contains("--serve-only", StringComparer.Ordinal))
 await using var window = await provider.OpenDesktopWindowAsync<CounterWindow, CounterViewModel>(
     desktop, surfaceOptions, host => new CounterWindow(host),
     new DesktopWindowOptions { Browser = BrowserKind.Any, Width = 800, Height = 600 });
-if (args.Contains("--probe-owner", StringComparer.Ordinal))
+if (probeOwner)
 {
     var close = await window.CloseAsync(TimeSpan.FromSeconds(2));
     await close.Completion;

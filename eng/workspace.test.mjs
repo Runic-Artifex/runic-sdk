@@ -10,7 +10,7 @@ const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
   assert.equal(workspace.nuget.length, 29);
-  assert.equal(workspace.npm.length, 6);
+  assert.equal(workspace.npm.length, 5);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
   for (const p of workspace.nuget) {

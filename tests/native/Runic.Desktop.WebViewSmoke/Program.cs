@@ -340,6 +340,7 @@ static void AssertClosed(DesktopWindow window)
 static DesktopHostOptions CreateHostOptions() => new()
 {
     Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+    ConnectionTimeout = TimeSpan.FromSeconds(45),
     DiagnosticSink = diagnostic => Console.Error.WriteLine(
         $"Desktop diagnostic: {diagnostic.Category}/{diagnostic.Code}: {diagnostic.Message}"),
 };
