@@ -12,6 +12,10 @@
          bypass its per-owner Base* policy. -->
     <_RunicPostMvvmDiscoveryInheritedOutputPath Condition="'$(OutputPath)' != ''">$(OutputPath)</_RunicPostMvvmDiscoveryInheritedOutputPath>
     <_RunicPostMvvmDiscoveryInheritedIntermediateOutputPath Condition="'$(IntermediateOutputPath)' != ''">$(IntermediateOutputPath)</_RunicPostMvvmDiscoveryInheritedIntermediateOutputPath>
+    <_RunicPostMvvmDiscoveryInheritedBaseOutputPath Condition="'$(BaseOutputPath)' != ''">$(BaseOutputPath)</_RunicPostMvvmDiscoveryInheritedBaseOutputPath>
+    <_RunicPostMvvmDiscoveryInheritedBaseIntermediateOutputPath Condition="'$(BaseIntermediateOutputPath)' != ''">$(BaseIntermediateOutputPath)</_RunicPostMvvmDiscoveryInheritedBaseIntermediateOutputPath>
+    <_RunicPostMvvmDiscoveryInheritedProjectExtensionsPath Condition="'$(MSBuildProjectExtensionsPath)' != ''">$(MSBuildProjectExtensionsPath)</_RunicPostMvvmDiscoveryInheritedProjectExtensionsPath>
+    <_RunicPostMvvmDiscoveryInheritedProjectAssetsFile Condition="'$(ProjectAssetsFile)' != ''">$(ProjectAssetsFile)</_RunicPostMvvmDiscoveryInheritedProjectAssetsFile>
     <_RunicPostMvvmDiscoveryOwnerIsValid Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryBuildOwner)', '^[a-f0-9]{32}$'))">true</_RunicPostMvvmDiscoveryOwnerIsValid>
     <_RunicPostMvvmDiscoveryOutputKeyIsValid Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryOutputKey)', '^[A-Za-z0-9_-]+$'))">true</_RunicPostMvvmDiscoveryOutputKeyIsValid>
     <!-- Never interpolate an unvalidated key into a filesystem path. The

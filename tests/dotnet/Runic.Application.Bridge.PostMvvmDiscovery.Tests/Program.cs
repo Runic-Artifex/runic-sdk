@@ -117,11 +117,19 @@ void VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork()
     File.WriteAllText(sentinel, sentinelContents);
     try
     {
-        foreach (string property in new[] { "OutputPath", "IntermediateOutputPath" })
+        foreach (string property in new[]
+        {
+            "OutputPath", "IntermediateOutputPath", "BaseOutputPath",
+            "BaseIntermediateOutputPath", "MSBuildProjectExtensionsPath", "ProjectAssetsFile",
+        })
         {
             ProcessResult result = ExecuteFixtureWrapper("-p:" + property + "=" + escapeDirectory + Path.DirectorySeparatorChar);
             if (result.ExitCode == 0 || !result.Output.Contains("RUNICPM010", StringComparison.Ordinal))
                 throw new InvalidOperationException($"Global {property} did not fail in the top-level owner driver before fixture work:\n{result.Output}");
+            ProcessResult direct = ExecuteDotnetWithOwner(serialOwner,
+                ["restore", fixture, "--nologo", "-p:" + property + "=" + escapeDirectory + Path.DirectorySeparatorChar]);
+            if (direct.ExitCode == 0 || !direct.Output.Contains("RUNICPM010", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Global {property} did not fail the fixture's direct restore guard:\n{direct.Output}");
             string[] entries = Directory.EnumerateFileSystemEntries(escapeDirectory, "*", SearchOption.AllDirectories)
                 .Select(entry => Path.GetRelativePath(escapeDirectory, entry))
                 .OrderBy(entry => entry, StringComparer.Ordinal)
@@ -129,7 +137,7 @@ void VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork()
             if (!entries.SequenceEqual(["must-survive.txt"], StringComparer.Ordinal) || File.ReadAllText(sentinel) != sentinelContents)
                 throw new InvalidOperationException($"Global {property} wrote to the attempted shared output directory before the owner driver rejected it.");
         }
-        Console.WriteLine("POST_MVVM_SDK_OUTPUT_OVERRIDE_REJECTED|top-level-owner-driver-before-restore-build|output-and-intermediate-path|outside-sentinel-retained");
+        Console.WriteLine("POST_MVVM_SDK_OUTPUT_OVERRIDE_REJECTED|wrapper-and-direct-restore|output-intermediate-base-and-assets-paths|outside-sentinel-retained");
     }
     finally
     {

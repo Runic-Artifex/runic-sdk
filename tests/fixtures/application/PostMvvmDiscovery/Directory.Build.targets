@@ -12,8 +12,8 @@
     <Error Condition="'$(RunicPostMvvmDiscoveryOwnerDriver)' != 'true'"
            Code="RUNICPM011"
            Text="The internal post-MVVM discovery fixture requires its top-level owner driver to establish owner-scoped restore and compiler paths." />
-    <Error Condition="'$(_RunicPostMvvmDiscoveryInheritedOutputPath)' != '' or '$(_RunicPostMvvmDiscoveryInheritedIntermediateOutputPath)' != ''"
+    <Error Condition="'$(_RunicPostMvvmDiscoveryInheritedOutputPath)' != '' or '$(_RunicPostMvvmDiscoveryInheritedIntermediateOutputPath)' != '' or '$(_RunicPostMvvmDiscoveryInheritedBaseOutputPath)' != '' or '$(_RunicPostMvvmDiscoveryInheritedBaseIntermediateOutputPath)' != '' or '$(_RunicPostMvvmDiscoveryInheritedProjectExtensionsPath)' != '' or '$(_RunicPostMvvmDiscoveryInheritedProjectAssetsFile)' != ''"
            Code="RUNICPM010"
-           Text="The internal post-MVVM discovery fixture does not accept global OutputPath or IntermediateOutputPath overrides because they bypass its build-owner isolation." />
+           Text="The internal post-MVVM discovery fixture does not accept global output, intermediate, or restore path overrides because they bypass its build-owner isolation." />
   </Target>
 </Project>

@@ -40,6 +40,10 @@ The POSIX wrapper has a matching PowerShell entry at
 private owner token activates the repository-level early props policy for all
 projects in this one build graph, which gives the fixture and every referenced
 tool project disjoint `obj` and `bin` paths.
+The wrappers and fixture reject global `OutputPath`, `IntermediateOutputPath`,
+`BaseOutputPath`, `BaseIntermediateOutputPath`,
+`MSBuildProjectExtensionsPath`, and `ProjectAssetsFile` overrides. Any of
+these can redirect compiler or restore artifacts outside the owner directory.
 
 Both wrappers normally generate their owner. Their
 `RUNIC_POST_MVVM_BUILD_OWNER` override exists only for deterministic fixture

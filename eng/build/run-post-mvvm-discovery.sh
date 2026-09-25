@@ -7,9 +7,14 @@ fixture="${sdk_root}/tests/fixtures/application/PostMvvmDiscovery/PostMvvmDiscov
 owner="${RUNIC_POST_MVVM_BUILD_OWNER:-$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')}"
 key="${RUNICP_MVVM_OUTPUT_KEY:-ordinary}"
 for argument in "$@"; do
-  case "${argument}" in
-    -p:OutputPath=*|/p:OutputPath=*|--property:OutputPath=*|-p:IntermediateOutputPath=*|/p:IntermediateOutputPath=*|--property:IntermediateOutputPath=*)
-      printf '%s\n' 'RUNICPM010: The internal post-MVVM discovery fixture does not accept global OutputPath or IntermediateOutputPath overrides because they bypass its build-owner isolation.' >&2
+  case "${argument,,}" in
+    -p:outputpath=*|/p:outputpath=*|--property:outputpath=*|\
+    -p:intermediateoutputpath=*|/p:intermediateoutputpath=*|--property:intermediateoutputpath=*|\
+    -p:baseoutputpath=*|/p:baseoutputpath=*|--property:baseoutputpath=*|\
+    -p:baseintermediateoutputpath=*|/p:baseintermediateoutputpath=*|--property:baseintermediateoutputpath=*|\
+    -p:msbuildprojectextensionspath=*|/p:msbuildprojectextensionspath=*|--property:msbuildprojectextensionspath=*|\
+    -p:projectassetsfile=*|/p:projectassetsfile=*|--property:projectassetsfile=*)
+      printf '%s\n' 'RUNICPM010: The internal post-MVVM discovery fixture does not accept global output, intermediate, or restore path overrides because they bypass its build-owner isolation.' >&2
       exit 2
       ;;
   esac

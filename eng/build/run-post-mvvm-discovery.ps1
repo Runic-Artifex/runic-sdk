@@ -21,8 +21,8 @@ $properties = @(
 )
 
 foreach ($argument in $BuildArguments) {
-    if ($argument -match '^(?:-p:|/p:|--property:)(?:OutputPath|IntermediateOutputPath)=') {
-        [Console]::Error.WriteLine("RUNICPM010: The internal post-MVVM discovery fixture does not accept global OutputPath or IntermediateOutputPath overrides because they bypass its build-owner isolation.")
+    if ($argument -match '^(?:-p:|/p:|--property:)(?:OutputPath|IntermediateOutputPath|BaseOutputPath|BaseIntermediateOutputPath|MSBuildProjectExtensionsPath|ProjectAssetsFile)=') {
+        [Console]::Error.WriteLine("RUNICPM010: The internal post-MVVM discovery fixture does not accept global output, intermediate, or restore path overrides because they bypass its build-owner isolation.")
         exit 2
     }
 }
