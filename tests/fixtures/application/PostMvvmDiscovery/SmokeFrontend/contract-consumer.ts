@@ -10,7 +10,7 @@ import {
   type TitleReply,
   type ViewModelCommands,
   type ViewModelState,
-} from "../obj/runic-post-mvvm-discovery/ordinary/Debug/net10.0/view-bridge.contract.js";
+} from "../obj/runic-post-mvvm-discovery/ordinary/owners/33333333333333333333333333333333/generated/Debug/net10.0/view-bridge.contract.js";
 
 declare const state: ViewModelState;
 declare const commands: ViewModelCommands;

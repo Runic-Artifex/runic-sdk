@@ -6,12 +6,16 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 string root = FindRoot();
 string fixture = Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "PostMvvmDiscovery.csproj");
 string smoke = Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "Smoke", "PostMvvmDiscovery.Smoke.csproj");
 const string outputKey = "ordinary";
+string serialOwner = Guid.NewGuid().ToString("N");
 var observedDiagnostics = new Dictionary<string, string>(StringComparer.Ordinal);
+RestoreFixture(serialOwner);
+VerifyUnwrappedFixtureOperationsAreRejected();
 VerifyUnsafeOutputKeysAreRejectedBeforeDeletion();
 foreach (string configuration in new[] { "Debug", "Release" })
 {
@@ -40,12 +44,29 @@ ArtifactSet debugArtifacts = VerifyConfiguration("Debug");
 ArtifactSet releaseArtifacts = VerifyConfiguration("Release");
 if (debugArtifacts != releaseArtifacts)
     throw new InvalidOperationException("Debug and Release post-MVVM IR, ESM, adapter, or ready manifest bytes differ.");
+VerifyConcurrentSameKeyBuildOwnership();
 foreach (string configuration in new[] { "Debug", "Release" })
 {
     string output = RunDotnet("run", "--project", smoke, "-c", configuration, "--no-launch-profile");
     Equal(1, Count(output, "POST_MVVM_SDK_TYPED_ACCESSOR_OK"), $"The {configuration} typed fixture accessor did not run.");
 }
-Console.WriteLine("POST_MVVM_SDK_EMISSION_OK|toolkit-generated-title|toolkit-save-command|reactive-refresh-command|typed-accessors-run|explicit-window-view|one-and-two-key-interface-mapping|stable-declared-title-routes|declared-contract-only|deterministic-ir-esm-adapter-ready|binding-diagnostics|metadata-nonexecution|bootstrap=1|outer=1");
+Console.WriteLine("POST_MVVM_SDK_EMISSION_OK|toolkit-generated-title|toolkit-save-command|reactive-refresh-command|typed-accessors-run|explicit-window-view|one-and-two-key-interface-mapping|stable-declared-title-routes|declared-contract-only|deterministic-ir-esm-adapter-ready|binding-diagnostics|metadata-nonexecution|same-key-concurrent-owner-isolation|bootstrap=1|outer=1");
+
+void VerifyUnwrappedFixtureOperationsAreRejected()
+{
+    foreach (string operation in new[] { "restore", "build", "clean" })
+    {
+        string[] command = operation == "build"
+            ? [operation, fixture, "-c", "Debug", "--nologo", "--no-restore"]
+            : operation == "clean"
+                ? [operation, fixture, "-c", "Debug", "--nologo"]
+                : [operation, fixture, "--nologo"];
+        ProcessResult result = ExecuteRawDotnet(command);
+        if (result.ExitCode == 0 || !result.Output.Contains("RUNICPM009", StringComparison.Ordinal))
+            throw new InvalidOperationException($"Unwrapped post-MVVM {operation} did not explain that a build owner is required:\n{result.Output}");
+    }
+    Console.WriteLine("POST_MVVM_SDK_BUILD_OWNER_REQUIRED|restore|build|clean");
+}
 
 void VerifyUnsafeOutputKeysAreRejectedBeforeDeletion()
 {
@@ -62,11 +83,13 @@ void VerifyUnsafeOutputKeysAreRejectedBeforeDeletion()
         // evaluates this project.
         foreach (string unsafeKey in new[] { "", "..", "../../../" + escapeName, "has/separator", "has%3Bitem-list" })
         {
-            foreach (string operation in new[] { "build", "clean" })
+            foreach (string operation in new[] { "restore", "build", "clean" })
             {
                 string[] command = operation == "build"
                     ? [operation, fixture, "-c", "Debug", "--nologo", "--no-restore", "-p:RunicPostMvvmDiscoveryOutputKey=" + unsafeKey]
-                    : [operation, fixture, "-c", "Debug", "--nologo", "-p:RunicPostMvvmDiscoveryOutputKey=" + unsafeKey];
+                    : operation == "clean"
+                        ? [operation, fixture, "-c", "Debug", "--nologo", "-p:RunicPostMvvmDiscoveryOutputKey=" + unsafeKey]
+                        : [operation, fixture, "--nologo", "-p:RunicPostMvvmDiscoveryOutputKey=" + unsafeKey];
                 ProcessResult result = ExecuteDotnet(command);
                 if (result.ExitCode == 0 || !result.Output.Contains("RUNICPM008", StringComparison.Ordinal))
                     throw new InvalidOperationException($"Unsafe output key '{unsafeKey}' did not fail {operation} validation before deletion:\n{result.Output}");
@@ -74,7 +97,7 @@ void VerifyUnsafeOutputKeysAreRejectedBeforeDeletion()
                     throw new InvalidOperationException($"Unsafe output key '{unsafeKey}' removed content outside the generated discovery output.");
             }
         }
-        Console.WriteLine("POST_MVVM_SDK_OUTPUT_KEY_REJECTED|empty|traversal|separator|item-list|outside-sentinel-retained");
+        Console.WriteLine("POST_MVVM_SDK_OUTPUT_KEY_REJECTED|restore|build|clean|empty|traversal|separator|item-list|outside-sentinel-retained");
     }
     finally
     {
@@ -89,7 +112,7 @@ ArtifactSet VerifyMappedInterfaceBinding(string configuration, bool multiple)
     Environment.SetEnvironmentVariable("RUNIC_POST_MVVM_SENTINEL", sentinel);
     try
     {
-        RunDotnet("clean", fixture, "-c", configuration, "--nologo");
+        CleanFixture(serialOwner, configuration);
         if (File.Exists(sentinel)) File.Delete(sentinel);
 
         string scenario = multiple ? "POST_MVVM_INTERFACE_MULTIPLE_MODELS" : "POST_MVVM_INTERFACE_SINGLE_MAPPING";
@@ -197,7 +220,7 @@ ArtifactSet VerifyInterfaceViewBinding(string configuration)
     Environment.SetEnvironmentVariable("RUNIC_POST_MVVM_SENTINEL", sentinel);
     try
     {
-        RunDotnet("clean", fixture, "-c", configuration, "--nologo");
+        CleanFixture(serialOwner, configuration);
         if (File.Exists(sentinel)) File.Delete(sentinel);
 
         string firstBuild = RunDotnet("build", fixture, "-c", configuration, "--nologo", "--no-restore", "-p:DefineConstants=POST_MVVM_INTERFACE_VIEW");
@@ -247,7 +270,7 @@ void VerifyRejectedBinding(string configuration, string scenario, string expecte
     Environment.SetEnvironmentVariable("RUNIC_POST_MVVM_SENTINEL", sentinel);
     try
     {
-        RunDotnet("clean", fixture, "-c", configuration, "--nologo");
+        CleanFixture(serialOwner, configuration);
         if (File.Exists(sentinel)) File.Delete(sentinel);
         ProcessResult result = ExecuteDotnet("build", fixture, "-c", configuration, "--nologo", "--no-restore", $"-p:DefineConstants={scenario}");
         if (result.ExitCode == 0) throw new InvalidOperationException($"{configuration} {scenario} unexpectedly built.");
@@ -281,7 +304,7 @@ ArtifactSet VerifyConfiguration(string configuration)
     Environment.SetEnvironmentVariable("RUNIC_POST_MVVM_SENTINEL", sentinel);
     try
     {
-        RunDotnet("clean", fixture, "-c", configuration, "--nologo");
+        CleanFixture(serialOwner, configuration);
         if (File.Exists(Artifact(configuration, "stages.log"))) throw new InvalidOperationException($"Clean retained generated {configuration} discovery artifacts.");
         if (File.Exists(sentinel)) File.Delete(sentinel);
 
@@ -492,7 +515,7 @@ void VerifyFixtureRuntime(JsonElement rootElement, string modelName)
 
 void VerifyOuterAdapter(string configuration)
 {
-    string assemblyPath = Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "bin", configuration, "net10.0", "Runic.Application.Bridge.PostMvvmDiscovery.Fixture.dll");
+    string assemblyPath = Path.Combine(OwnerRoot(serialOwner), "outer", "bin", configuration, "net10.0", "Runic.Application.Bridge.PostMvvmDiscovery.Fixture.dll");
     using var context = new MetadataLoadContext(new PathAssemblyResolver(MetadataClosure(assemblyPath)));
     Assembly assembly = context.LoadFromAssemblyPath(assemblyPath);
     Type adapter = assembly.GetType("Runic.Application.Bridge.PostMvvmFixture.Generated.PostMvvmDiscoveryAdapter", throwOnError: true)!;
@@ -504,7 +527,62 @@ void VerifyOuterAdapter(string configuration)
         throw new InvalidOperationException("The compiled adapter omitted generated command metadata.");
 }
 
-string Artifact(string configuration, string file) => Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery", outputKey, configuration, "net10.0", file);
+void VerifyConcurrentSameKeyBuildOwnership()
+{
+    const string key = "same-key-concurrent";
+    const string singleOwner = "11111111111111111111111111111111";
+    const string multipleOwner = "22222222222222222222222222222222";
+    string barrier = Path.Combine(Path.GetTempPath(), "runic-post-mvvm-barrier-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(barrier);
+    try
+    {
+        RestoreFixture(singleOwner, key);
+        RestoreFixture(multipleOwner, key);
+        using Process single = StartFixtureBuild(singleOwner, key, "POST_MVVM_INTERFACE_SINGLE_MAPPING", barrier);
+        using Process multiple = StartFixtureBuild(multipleOwner, key, "POST_MVVM_INTERFACE_MULTIPLE_MODELS", barrier);
+        ProcessResult singleResult = WaitForProcess(single, "single-model");
+        ProcessResult multipleResult = WaitForProcess(multiple, "multiple-model");
+        if (singleResult.ExitCode != 0 || multipleResult.ExitCode != 0)
+            throw new InvalidOperationException($"Concurrent same-key discovery builds failed. Single:\n{singleResult.Output}\nMultiple:\n{multipleResult.Output}");
+        Equal(1, Count(singleResult.Output, "POST_MVVM_SDK_DISCOVERY_TARGET"), "The single-model concurrent build did not invoke one discovery target.");
+        Equal(1, Count(multipleResult.Output, "POST_MVVM_SDK_DISCOVERY_TARGET"), "The multiple-model concurrent build did not invoke one discovery target.");
+        VerifyConcurrentBundle(singleOwner, key, expectedBindings: 1);
+        VerifyConcurrentBundle(multipleOwner, key, expectedBindings: 2);
+        Console.WriteLine("POST_MVVM_SDK_CONCURRENT_OWNER_OK|same-selection-key|one-and-two-bindings|isolated-obj-bin-bootstrap-inspector-generated");
+    }
+    finally
+    {
+        if (Directory.Exists(barrier)) Directory.Delete(barrier, recursive: true);
+    }
+}
+
+void VerifyConcurrentBundle(string owner, string key, int expectedBindings)
+{
+    string ownerRoot = OwnerRoot(owner, key);
+    string generated = Path.Combine(ownerRoot, "generated", "Debug", "net10.0");
+    string ir = File.ReadAllText(Path.Combine(generated, "view-bridge.ir.json"));
+    string esm = File.ReadAllText(Path.Combine(generated, "view-bridge.contract.ts"));
+    string adapter = File.ReadAllText(Path.Combine(generated, "PostMvvmDiscoveryAdapter.g.cs"));
+    using JsonDocument irDocument = JsonDocument.Parse(ir);
+    string fingerprint = irDocument.RootElement.GetProperty("fingerprint").GetString() ?? throw new InvalidOperationException("Concurrent IR has no fingerprint.");
+    if (irDocument.RootElement.GetProperty("bindings").GetArrayLength() != expectedBindings)
+        throw new InvalidOperationException($"Concurrent owner {owner} did not retain its expected {expectedBindings} bindings.");
+    using JsonDocument ready = JsonDocument.Parse(File.ReadAllText(Path.Combine(generated, "view-bridge.ready.json")));
+    if (ready.RootElement.GetProperty("fingerprint").GetString() != fingerprint ||
+        !esm.Contains($"export const fingerprint = \"{fingerprint}\";", StringComparison.Ordinal) ||
+        !adapter.Contains($"public const string Fingerprint = \"{fingerprint}\";", StringComparison.Ordinal))
+        throw new InvalidOperationException($"Concurrent owner {owner} published a mixed ready bundle.");
+    if (!File.Exists(Path.Combine(ownerRoot, "bootstrap", "bin", "Debug", "net10.0", "Runic.Application.Bridge.PostMvvmDiscovery.Fixture.dll")) ||
+        !File.Exists(Path.Combine(ownerRoot, "inspector", "bin", "Debug", "net10.0", "Runic.Application.Bridge.Inspector.dll")) ||
+        !File.Exists(Path.Combine(ownerRoot, "outer", "bin", "Debug", "net10.0", "Runic.Application.Bridge.PostMvvmDiscovery.Fixture.dll")))
+        throw new InvalidOperationException($"Concurrent owner {owner} did not retain owner-scoped bootstrap, inspector, and outer outputs.");
+    if (Directory.EnumerateFiles(ownerRoot, "*.tmp", SearchOption.AllDirectories).Any())
+        throw new InvalidOperationException($"Concurrent owner {owner} retained a temporary publication file.");
+}
+
+string OwnerRoot(string owner, string key = outputKey) => Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery", key, "owners", owner);
+
+string Artifact(string configuration, string file) => Path.Combine(OwnerRoot(serialOwner), "generated", configuration, "net10.0", file);
 
 IEnumerable<string> MetadataClosure(string assemblyPath)
 {
@@ -526,18 +604,77 @@ string RunDotnet(params string[] arguments)
 
 ProcessResult ExecuteDotnet(params string[] arguments)
 {
-    var start = new ProcessStartInfo("dotnet") { WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
-    foreach (string argument in arguments) start.ArgumentList.Add(argument);
-    if (arguments[0] is "build" or "clean")
-    {
-        start.ArgumentList.Add("-m:1");
-        start.ArgumentList.Add("/nr:false");
-    }
-    using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start dotnet.");
+    return ExecuteDotnetWithOwner(serialOwner, arguments);
+}
+
+void RestoreFixture(string owner, string key = outputKey)
+{
+    ProcessResult result = ExecuteDotnetWithOwner(owner, ["restore", fixture, "--nologo", "-p:RunicPostMvvmDiscoveryOutputKey=" + key]);
+    if (result.ExitCode != 0) throw new InvalidOperationException($"Could not restore fixture owner {owner}:\n{result.Output}");
+}
+
+void CleanFixture(string owner, string configuration)
+{
+    ProcessResult result = ExecuteDotnetWithOwner(owner, ["clean", fixture, "-c", configuration, "--nologo"]);
+    if (result.ExitCode != 0) throw new InvalidOperationException($"Could not clean fixture owner {owner}:\n{result.Output}");
+    RestoreFixture(owner);
+}
+
+ProcessResult ExecuteDotnetWithOwner(string owner, params string[] arguments)
+{
+    using Process process = StartDotnet(arguments, owner);
     string output = process.StandardOutput.ReadToEnd();
     string error = process.StandardError.ReadToEnd();
     process.WaitForExit();
     return new ProcessResult(process.ExitCode, output + error);
+}
+
+ProcessResult ExecuteRawDotnet(params string[] arguments)
+{
+    using Process process = StartDotnet(arguments, owner: null);
+    string output = process.StandardOutput.ReadToEnd();
+    string error = process.StandardError.ReadToEnd();
+    process.WaitForExit();
+    return new ProcessResult(process.ExitCode, output + error);
+}
+
+Process StartFixtureBuild(string owner, string key, string scenario, string barrier)
+{
+    return StartDotnet(
+        ["build", fixture, "-c", "Debug", "--nologo", "--no-restore", "-p:RunicPostMvvmDiscoveryOutputKey=" + key, "-p:DefineConstants=" + scenario],
+        owner,
+        new Dictionary<string, string> {
+            ["RUNIC_POST_MVVM_BARRIER_DIRECTORY"] = barrier,
+            ["RUNIC_POST_MVVM_BARRIER_PARTICIPANT"] = owner,
+        });
+}
+
+ProcessResult WaitForProcess(Process process, string label)
+{
+    Task<string> output = process.StandardOutput.ReadToEndAsync();
+    Task<string> error = process.StandardError.ReadToEndAsync();
+    if (!process.WaitForExit(120_000))
+    {
+        process.Kill(entireProcessTree: true);
+        throw new TimeoutException($"The {label} same-key fixture build did not finish within 120 seconds.");
+    }
+    return new ProcessResult(process.ExitCode, output.GetAwaiter().GetResult() + error.GetAwaiter().GetResult());
+}
+
+Process StartDotnet(IEnumerable<string> arguments, string? owner, IReadOnlyDictionary<string, string>? environment = null)
+{
+    var start = new ProcessStartInfo("dotnet") { WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
+    foreach (string argument in arguments) start.ArgumentList.Add(argument);
+    string operation = arguments.First();
+    if (operation is "restore" or "build" or "clean")
+    {
+        start.ArgumentList.Add("-m:1");
+        start.ArgumentList.Add("/nr:false");
+    }
+    if (owner is not null) start.ArgumentList.Add("-p:RunicPostMvvmDiscoveryBuildOwner=" + owner);
+    if (environment is not null)
+        foreach ((string key, string value) in environment) start.Environment[key] = value;
+    return Process.Start(start) ?? throw new InvalidOperationException("Could not start dotnet.");
 }
 
 string FindRoot()

@@ -6,7 +6,8 @@ compile deterministic generated artifacts into the same fixture.
 
 The outer build first runs a guarded bootstrap compilation. The inspector then
 opens the bootstrap assembly and its closure through `MetadataLoadContext` and
-emits, under `obj/runic-post-mvvm-discovery/<selection>/<Configuration>/net10.0`:
+emits, under
+`obj/runic-post-mvvm-discovery/<selection>/owners/<build-owner>/generated/<Configuration>/net10.0`:
 
 1. deterministic experimental IR;
 2. a plain ESM TypeScript contract;
@@ -19,11 +20,20 @@ it, and none of its attributes, IR, generated route names, ESM shape, or
 selection keys are public authoring API.
 
 `RunicPostMvvmDiscoveryOutputKey` is always one nonempty ASCII directory
-segment (`ordinary` by default). The fixture rejects an empty key, traversal,
-path separators, and MSBuild item-list separators before either discovery
-target can remove generated output. It deliberately does not provide
-same-key multi-process publication ownership; that remains a separate
-development-loop design concern.
+segment (`ordinary` by default). `RunicPostMvvmDiscoveryBuildOwner` is one
+private 32-character lowercase hexadecimal token for a restore/build/clean
+session. The owner token selects the outer compiler, bootstrap compiler,
+inspector, referenced-project, and generated-artifact directories before
+restore chooses `project.assets.json`. The fixture rejects an absent or
+malformed owner and an empty, traversal, separator, or item-list selection key
+before Restore, Build, or Clean performs fixture work.
+
+`eng/build/run-post-mvvm-discovery.sh` creates one owner token and supplies it
+unchanged to restore and build. Direct fixture `dotnet restore`, `build`, and
+`clean` intentionally fail with `RUNICPM009`; this temporary experiment has no
+ambient or generated owner value. A later `runic dev` session must create and
+retain the same owner across its evaluation, restore, rebuild, watcher, and
+host lifecycle.
 
 The ordinary fixture contains an explicit Window/View pair backed by a
 CommunityToolkit `NotesViewModel`. The generated projection accesses the
@@ -44,11 +54,12 @@ and unmapped-model inputs. It also compiles and runs a small typed consumer.
 Run the focused checks from the SDK root:
 
 ```sh
-direnv exec . dotnet restore tests/fixtures/application/PostMvvmDiscovery/PostMvvmDiscovery.csproj
+direnv exec . ./eng/build/run-post-mvvm-discovery.sh -c Debug
 direnv exec . dotnet run --project tests/dotnet/Runic.Application.Bridge.PostMvvmDiscovery.Tests/Runic.Application.Bridge.PostMvvmDiscovery.Tests.csproj -c Debug
+RUNIC_POST_MVVM_BUILD_OWNER=33333333333333333333333333333333 direnv exec . ./eng/build/run-post-mvvm-discovery.sh -c Debug
 direnv exec . ./node_modules/.bin/tsc -p tests/fixtures/application/PostMvvmDiscovery/SmokeFrontend/tsconfig.json
-direnv exec . dotnet publish tests/fixtures/application/PostMvvmDiscovery/Smoke/PostMvvmDiscovery.Smoke.csproj -c Release -r linux-x64 -p:PublishAot=true -v:quiet
-direnv exec . tests/fixtures/application/PostMvvmDiscovery/Smoke/bin/Release/net10.0/linux-x64/publish/Runic.Application.Bridge.PostMvvmDiscovery.Smoke
+direnv exec . dotnet publish tests/fixtures/application/PostMvvmDiscovery/Smoke/PostMvvmDiscovery.Smoke.csproj -c Release -r linux-x64 -p:PublishAot=true -v:quiet -p:RunicPostMvvmDiscoveryBuildOwner=<owner>
+direnv exec . tests/fixtures/application/PostMvvmDiscovery/obj/runic-post-mvvm-discovery/ordinary/owners/<owner>/dependencies/PostMvvmDiscovery.Smoke/bin/Release/net10.0/linux-x64/publish/Runic.Application.Bridge.PostMvvmDiscovery.Smoke
 ```
 
 The generated adapter is an internal fixture artifact that compiles against

@@ -1,0 +1,13 @@
+<Project>
+  <Import Project="../../../../Directory.Build.targets" />
+  <Target Name="RunicPostMvvmDiscoveryRequireBuildOwner"
+          BeforeTargets="Restore;PrepareForBuild;CoreCompile;CoreClean"
+          Condition="'$(MSBuildProjectName)' == 'PostMvvmDiscovery'">
+    <Error Condition="'$(RunicPostMvvmDiscoveryOutputKey)' == '' or $([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryOutputKey)', '[^A-Za-z0-9_-]'))"
+           Code="RUNICPM008"
+           Text="RunicPostMvvmDiscoveryOutputKey must be a nonempty single segment containing only ASCII letters, digits, hyphen, or underscore." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryBuildOwner)', '^[a-f0-9]{32}$'))"
+           Code="RUNICPM009"
+           Text="The internal post-MVVM discovery fixture requires RunicPostMvvmDiscoveryBuildOwner: a 32-character lowercase hexadecimal build-owner token supplied by its top-level wrapper." />
+  </Target>
+</Project>

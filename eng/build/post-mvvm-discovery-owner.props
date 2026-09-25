@@ -1,0 +1,28 @@
+<Project>
+  <!--
+    This is an opt-in early props import for the internal post-MVVM fixture.
+    Repository Directory.Build.props imports it when the private owner token is
+    present, before each participating project selects its obj/bin paths. It
+    is not imported by shipping SDK projects.
+  -->
+  <PropertyGroup>
+    <RunicPostMvvmDiscoveryOutputKey Condition="'$(RunicPostMvvmDiscoveryOutputKey)' == ''">ordinary</RunicPostMvvmDiscoveryOutputKey>
+    <_RunicPostMvvmDiscoveryOwnerIsValid Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryBuildOwner)', '^[a-f0-9]{32}$'))">true</_RunicPostMvvmDiscoveryOwnerIsValid>
+    <_RunicPostMvvmDiscoveryOutputKeyIsValid Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryOutputKey)', '^[A-Za-z0-9_-]+$'))">true</_RunicPostMvvmDiscoveryOutputKeyIsValid>
+    <!-- Never interpolate an unvalidated key into a filesystem path. The
+         fixture-local target reports RUNICPM008 before Restore/Build/Clean. -->
+    <_RunicPostMvvmDiscoveryOwnerRoot Condition="'$(_RunicPostMvvmDiscoveryOwnerIsValid)' == 'true' and '$(_RunicPostMvvmDiscoveryOutputKeyIsValid)' == 'true'">$(MSBuildThisFileDirectory)../../tests/fixtures/application/PostMvvmDiscovery/obj/runic-post-mvvm-discovery/$(RunicPostMvvmDiscoveryOutputKey)/owners/$(RunicPostMvvmDiscoveryBuildOwner)/</_RunicPostMvvmDiscoveryOwnerRoot>
+
+    <!-- The outer fixture, its bootstrap, and the inspector use intentional
+         slots. Every referenced project receives a name-qualified slot, so a
+         single build session has no shared compiler or restore directories. -->
+    <_RunicPostMvvmDiscoveryProjectSlot Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != '' and '$(MSBuildProjectName)' == 'PostMvvmDiscovery' and '$(RunicPostMvvmDiscoveryBuildRole)' == 'bootstrap'">bootstrap</_RunicPostMvvmDiscoveryProjectSlot>
+    <_RunicPostMvvmDiscoveryProjectSlot Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != '' and '$(MSBuildProjectName)' == 'PostMvvmDiscovery' and '$(RunicPostMvvmDiscoveryBuildRole)' == ''">outer</_RunicPostMvvmDiscoveryProjectSlot>
+    <_RunicPostMvvmDiscoveryProjectSlot Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != '' and '$(MSBuildProjectName)' == 'Runic.Application.Bridge.Inspector'">inspector</_RunicPostMvvmDiscoveryProjectSlot>
+    <_RunicPostMvvmDiscoveryProjectSlot Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != '' and '$(_RunicPostMvvmDiscoveryProjectSlot)' == ''">$(RunicPostMvvmDiscoveryBuildRole)-dependencies/$(MSBuildProjectName)</_RunicPostMvvmDiscoveryProjectSlot>
+    <_RunicPostMvvmDiscoveryProjectSlot Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != '' and '$(_RunicPostMvvmDiscoveryProjectSlot)' == '-dependencies/$(MSBuildProjectName)'">dependencies/$(MSBuildProjectName)</_RunicPostMvvmDiscoveryProjectSlot>
+
+    <BaseIntermediateOutputPath Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != ''">$(_RunicPostMvvmDiscoveryOwnerRoot)$(_RunicPostMvvmDiscoveryProjectSlot)/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != ''">$(_RunicPostMvvmDiscoveryOwnerRoot)$(_RunicPostMvvmDiscoveryProjectSlot)/bin/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

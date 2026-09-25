@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Runic.Application.Tool;
@@ -57,6 +58,7 @@ internal static class PostMvvmDiscoveryInspection
             "runic-sdk.post-mvvm-discovery-ready", 1, fingerprint,
             Path.GetFileName(irPath), Path.GetFileName(esmPath), Path.GetFileName(adapterPath)), Json);
 
+        WaitForFixtureBarrier();
         AtomicWrite(irPath, ir);
         AtomicWrite(esmPath, esm);
         AtomicWrite(adapterPath, adapter);
@@ -1164,9 +1166,32 @@ internal static class PostMvvmDiscoveryInspection
     private static void AtomicWrite(string path, string content)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? throw new InvalidOperationException("Output path has no directory."));
-        string temporary = path + ".tmp";
-        File.WriteAllText(temporary, content + Environment.NewLine, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        using (var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+            writer.Write(content + Environment.NewLine);
         File.Move(temporary, path, overwrite: true);
+    }
+
+    private static void WaitForFixtureBarrier()
+    {
+        string? directory = Environment.GetEnvironmentVariable("RUNIC_POST_MVVM_BARRIER_DIRECTORY");
+        string? participant = Environment.GetEnvironmentVariable("RUNIC_POST_MVVM_BARRIER_PARTICIPANT");
+        if (String.IsNullOrWhiteSpace(directory) && String.IsNullOrWhiteSpace(participant)) return;
+        if (String.IsNullOrWhiteSpace(directory) || !Path.IsPathFullyQualified(directory) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(participant ?? String.Empty, "^[a-f0-9]{32}$"))
+            throw new InvalidOperationException("The internal post-MVVM fixture barrier requires an absolute directory and a 32-character lowercase hexadecimal participant.");
+
+        string fullDirectory = Path.GetFullPath(directory);
+        Directory.CreateDirectory(fullDirectory);
+        File.WriteAllText(Path.Combine(fullDirectory, participant + ".arrived"), String.Empty);
+        DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+        while (Directory.EnumerateFiles(fullDirectory, "*.arrived").Count() < 2)
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("The internal post-MVVM fixture barrier did not observe two inspectors within 30 seconds.");
+            Thread.Sleep(25);
+        }
     }
 
     private sealed record InspectionResult(string Assembly, IReadOnlyList<View> Views, IReadOnlyList<Model> Models,
