@@ -23,6 +23,7 @@ internal static class WindowBridgeFirstSliceTests
         await FailedAsyncReattachIsObservedByClose().ConfigureAwait(false);
         await EndpointDrainRetiresIngressBeforeReleasingViewOrScope().ConfigureAwait(false);
         await FailedDetachStillDrainsOwnedScope().ConfigureAwait(false);
+        await FailedManifestBatcherDetachStillDrainsAndFailsClose().ConfigureAwait(false);
         DisconnectDrainsRemainingPresentationLeasesAfterFailure();
         await ParentForgetDuringChildAttachLeavesNoOrphanRoute().ConfigureAwait(false);
         await TwoLogicalWindowsIsolateSharedModels().ConfigureAwait(false);
@@ -354,6 +355,51 @@ internal static class WindowBridgeFirstSliceTests
         }
         catch (AggregateException) { }
         Equal(1, scope.Disposals, "A failing attachment cleanup skipped owned scope disposal.");
+    }
+
+    private static async Task FailedManifestBatcherDetachStillDrainsAndFailsClose()
+    {
+        await AssertFailedManifestBatcherDetachStillDrains("entry", throwOnBegin: 2, throwOnEnd: 0).ConfigureAwait(false);
+        await AssertFailedManifestBatcherDetachStillDrains("exit", throwOnBegin: 0, throwOnEnd: 2).ConfigureAwait(false);
+    }
+
+    private static async Task AssertFailedManifestBatcherDetachStillDrains(string phase, int throwOnBegin, int throwOnEnd)
+    {
+        var transport = new FaultingManifestBatchTransport(throwOnBegin, throwOnEnd);
+        var scope = new Scope();
+        var session = new WindowBridgeSession(transport, scope);
+        var resource = new Resource();
+        var model = new Child();
+        WindowBridgeReference reference = session.Expose("child", model, (routes, _, route) =>
+            WindowBridgeAttachment.Create(resource, routes.Bind(route, _ => "{}")));
+
+        try
+        {
+            session.Suspend(model);
+            throw new InvalidOperationException("A manifest batch " + phase + " failure was hidden during detachment.");
+        }
+        catch (AggregateException exception)
+        {
+            IReadOnlyCollection<Exception> failures = exception.Flatten().InnerExceptions;
+            True(failures.Count(error => error.Message == "expected manifest " + phase + " failure") == 1,
+                "The manifest batch " + phase + " failure was not surfaced by detachment.");
+        }
+
+        Equal(1, resource.Disposals, "A manifest batch " + phase + " failure skipped attachment retirement.");
+        True(!transport.Has("content" + reference.Id), "A manifest batch " + phase + " failure retained an endpoint.");
+
+        try
+        {
+            await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            throw new InvalidOperationException("A manifest batch " + phase + " failure was hidden by close.");
+        }
+        catch (AggregateException exception)
+        {
+            IReadOnlyCollection<Exception> failures = exception.Flatten().InnerExceptions;
+            True(failures.Count(error => error.Message == "expected manifest " + phase + " failure") == 1,
+                "Close did not retain the manifest batch " + phase + " failure.");
+        }
+        Equal(1, scope.Disposals, "A manifest batch " + phase + " failure stranded close before scope disposal.");
     }
 
     private static async Task FailedAsyncReattachIsObservedByClose()
@@ -931,6 +977,13 @@ internal static class WindowBridgeFirstSliceTests
             "A disconnected native connection started a replacement document.");
         Throws(() => session.Mount(editor, connection, replacement, "after-disconnect"),
             "A delayed callback mounted after its native connection disconnected.");
+        WindowBridgeDocumentEpoch reconnected = WindowBridgeDocumentEpoch.Create("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
+        True(session.BeginDocument(connection, reconnected).Accepted,
+            "A strictly newer document did not reopen a reused raw native callback pair.");
+        using WindowBridgePresentationLease reconnectedLease = session.Mount(editor, connection, reconnected, "after-reconnect");
+        WindowBridgeDocumentAdmission oldAfterReconnect = session.BeginDocument(connection, replacement);
+        True(!oldAfterReconnect.Accepted && oldAfterReconnect.Error == "The document epoch is not newer than the current document.",
+            "A prior document epoch reclaimed a raw callback pair after a newer reconnect.");
 
         await using var repeated = new WindowBridgeSession(new RecordingTransport());
         WindowBridgeConnection repeatedConnection = WindowBridgeConnection.Create("client", "many-reloads");
@@ -1118,6 +1171,37 @@ internal static class WindowBridgeFirstSliceTests
             public string GetString() => "{}";
             public long GetInt64() => 0;
             public bool GetBoolean() => false;
+        }
+    }
+
+    private sealed class FaultingManifestBatchTransport(int throwOnBegin, int throwOnEnd) : IWindowBridgeTransport, IWindowBridgeEndpointManifestBatcher
+    {
+        private readonly Dictionary<string, IDisposable> _bindings = new(StringComparer.Ordinal);
+        private int _begins;
+        private int _ends;
+
+        public WindowBridgeEndpointLease Bind(string route, Func<WindowBridgeArguments, string> _) => Add(route);
+
+        public WindowBridgeEndpointLease BindAsync(string route, Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> _) => Add(route);
+
+        public void Publish(string _, string __) { }
+
+        public IDisposable BeginEndpointManifestUpdate()
+        {
+            if (++_begins == throwOnBegin) throw new InvalidOperationException("expected manifest entry failure");
+            return new Release(() =>
+            {
+                if (++_ends == throwOnEnd) throw new InvalidOperationException("expected manifest exit failure");
+            });
+        }
+
+        internal bool Has(string route) => _bindings.ContainsKey(route);
+
+        private WindowBridgeEndpointLease Add(string route)
+        {
+            var binding = new Release(() => _bindings.Remove(route));
+            _bindings.Add(route, binding);
+            return WindowBridgeEndpointLease.Direct(route, binding);
         }
     }
 

@@ -450,7 +450,9 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
     /// <summary>
     /// Admits one loaded document on a native connection. Replacing its epoch
     /// releases every presentation from the preceding document, while keeping
-    /// window models and accepted work alive.
+    /// window models and accepted work alive. A disconnected raw callback pair
+    /// remains closed for its current epoch, but a strictly newer epoch may
+    /// reopen that pair when a native host reuses its callback identifiers.
     /// </summary>
     internal WindowBridgeDocumentAdmission BeginDocument(WindowBridgeConnection connection, WindowBridgeDocumentEpoch epoch)
     {
@@ -1002,28 +1004,40 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         Entry? previous = _disposingEntry.Value;
         _disposingEntry.Value = entry;
         IDisposable? manifestUpdate = null;
+        List<Exception>? failures = null;
         try
         {
-            manifestUpdate = (_transport as IWindowBridgeEndpointManifestBatcher)?.BeginEndpointManifestUpdate();
-            attachment.Dispose();
+            try { manifestUpdate = (_transport as IWindowBridgeEndpointManifestBatcher)?.BeginEndpointManifestUpdate(); }
+            catch (Exception exception) { (failures ??= []).Add(exception); }
+            try { attachment.Dispose(); }
+            catch (Exception exception) { (failures ??= []).Add(exception); }
         }
         finally
         {
             try { manifestUpdate?.Dispose(); }
-            finally { _disposingEntry.Value = previous; }
+            catch (Exception exception) { (failures ??= []).Add(exception); }
+            finally
+            {
+                _disposingEntry.Value = previous;
+                _ = CompleteAttachmentAsync(entry, attachment, failures);
+            }
         }
-        _ = CompleteAttachmentAsync(entry, attachment);
+        if (failures is null) return;
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        throw new AggregateException(failures);
     }
 
-    private async Task CompleteAttachmentAsync(Entry entry, WindowBridgeAttachment attachment)
+    private async Task CompleteAttachmentAsync(Entry entry, WindowBridgeAttachment attachment, List<Exception>? failures = null)
     {
-        Exception? failure = null;
+        Exception? completionFailure = null;
         try { await attachment.Completion.ConfigureAwait(false); }
-        catch (Exception exception) { failure = exception; }
+        catch (Exception exception) { completionFailure = exception; }
         bool reattach;
         lock (_gate)
         {
-            if (failure is not null) _attachmentFailures.Add(failure);
+            if (failures is not null) _attachmentFailures.AddRange(failures);
+            if (completionFailure is not null) _attachmentFailures.Add(completionFailure);
             entry.Detaching = false;
             reattach = entry.ReattachRequested && !_disposed && _references.ContainsKey(entry.Reference.Id);
             entry.ReattachRequested = false;
@@ -1289,7 +1303,11 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         foreach ((Entry entry, WindowBridgeAttachment attachment) in attachments)
         {
             try { DisposeAttachment(entry, attachment); }
-            catch (Exception exception) { (failures ??= []).Add(exception); }
+            // DisposeAttachment records a synchronous manifest-batch failure
+            // with the attachment completion before it returns. Keep draining
+            // the remaining attachments; the collected close failure below
+            // reports it once the transition has finished.
+            catch (Exception) { }
         }
         try { await attachmentTransitions.ConfigureAwait(false); }
         catch (Exception exception) { (failures ??= []).Add(exception); }
