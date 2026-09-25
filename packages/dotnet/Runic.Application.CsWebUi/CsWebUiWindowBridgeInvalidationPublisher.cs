@@ -15,8 +15,10 @@ namespace Runic.Application.CsWebUi;
 internal sealed class CsWebUiWindowBridgeInvalidationPublisher
 {
     private readonly object _gate = new();
+    private readonly object _sendGate = new();
     private readonly WindowBridgeSession _session;
     private readonly CsWebUiWindowBridgeTransport _transport;
+    private readonly Action? _beforeNativeSend;
     private readonly int _maximumReferences;
     // Deferred references have their own cap so a full active queue can retain
     // one latest hint for other views without making total publisher memory
@@ -27,14 +29,17 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
     private readonly HashSet<WindowBridgeReference> _active = [];
     private readonly Dictionary<WindowBridgeReference, WindowBridgeInvalidation> _followUps = [];
     private readonly Dictionary<WindowBridgeReference, WindowBridgeInvalidation> _deferred = [];
-    private readonly Queue<WindowBridgeReference> _order = [];
-    private readonly Queue<WindowBridgeReference> _deferredOrder = [];
+    private readonly LinkedList<WindowBridgeReference> _order = [];
+    private readonly Dictionary<WindowBridgeReference, LinkedListNode<WindowBridgeReference>> _queuedNodes = [];
+    private readonly LinkedList<WindowBridgeReference> _deferredOrder = [];
+    private readonly Dictionary<WindowBridgeReference, LinkedListNode<WindowBridgeReference>> _deferredNodes = [];
     private TaskCompletionSource? _drained;
     private bool _workerActive;
-    private bool _stopped;
+    private volatile bool _stopped;
 
     internal CsWebUiWindowBridgeInvalidationPublisher(WindowBridgeSession session,
-        CsWebUiWindowBridgeTransport transport, int maximumReferences = 64, int maximumDeferredReferences = 64)
+        CsWebUiWindowBridgeTransport transport, int maximumReferences = 64, int maximumDeferredReferences = 64,
+        Action? beforeNativeSend = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -42,9 +47,12 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumDeferredReferences);
         _maximumReferences = maximumReferences;
         _maximumDeferredReferences = maximumDeferredReferences;
+        _beforeNativeSend = beforeNativeSend;
     }
 
     internal int RegisteredReferenceCount { get { lock (_gate) return _endpoints.Count; } }
+    internal int PendingQueueNodeCount { get { lock (_gate) return _order.Count; } }
+    internal int DeferredQueueNodeCount { get { lock (_gate) return _deferredOrder.Count; } }
 
     /// <summary>Associates an adapter-local outbound endpoint with one exposed reference.</summary>
     internal IDisposable Register(WindowBridgeReference reference, WindowBridgeEndpointLease endpoint)
@@ -90,11 +98,11 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
             {
                 if (_deferred.Count >= _maximumDeferredReferences) return false;
                 _deferred.Add(invalidation.Reference, invalidation);
-                _deferredOrder.Enqueue(invalidation.Reference);
+                _deferredNodes.Add(invalidation.Reference, _deferredOrder.AddLast(invalidation.Reference));
                 return false;
             }
             _queued.Add(invalidation.Reference, invalidation);
-            _order.Enqueue(invalidation.Reference);
+            _queuedNodes.Add(invalidation.Reference, _order.AddLast(invalidation.Reference));
             if (!_workerActive)
             {
                 _workerActive = true;
@@ -112,14 +120,19 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
     /// </summary>
     internal void StopAdmission()
     {
+        // This gate is held through a synchronous native send. Marking stop
+        // here means a worker that was queued before stop but has not entered
+        // the transport cannot cross that boundary afterwards.
+        lock (_sendGate) _stopped = true;
         lock (_gate)
         {
-            _stopped = true;
             _queued.Clear();
             _followUps.Clear();
             _deferred.Clear();
             _order.Clear();
+            _queuedNodes.Clear();
             _deferredOrder.Clear();
+            _deferredNodes.Clear();
             if (!_workerActive) _drained?.TrySetResult();
         }
     }
@@ -151,7 +164,9 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
                     _drained?.TrySetResult();
                     return;
                 }
-                WindowBridgeReference reference = _order.Dequeue();
+                WindowBridgeReference reference = _order.First!.Value;
+                _order.RemoveFirst();
+                _queuedNodes.Remove(reference);
                 if (!_queued.Remove(reference, out invalidation))
                 {
                     if (!_stopped) PromoteDeferredUnsafe();
@@ -172,8 +187,12 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
             {
                 // Recheck as late as possible, immediately before entering
                 // the transport's synchronous native-send critical section.
-                if (_session.CanDispatch(invalidation))
-                    _transport.PublishRefreshHint(endpoint, invalidation.Revision);
+                // StopAdmission shares this gate, so after stop returns a
+                // worker paused before this point cannot enter native code.
+                _beforeNativeSend?.Invoke();
+                lock (_sendGate)
+                    if (!_stopped && _session.CanDispatch(invalidation))
+                        _transport.PublishRefreshHint(endpoint, invalidation.Revision);
             }
             catch
             {
@@ -208,8 +227,12 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
             if (!_endpoints.TryGetValue(reference, out CsWebUiWindowBridgeEndpoint? current) || current != descriptor) return;
             _endpoints.Remove(reference);
             _queued.Remove(reference);
+            if (_queuedNodes.Remove(reference, out LinkedListNode<WindowBridgeReference>? queuedNode))
+                _order.Remove(queuedNode);
             _followUps.Remove(reference);
             _deferred.Remove(reference);
+            if (_deferredNodes.Remove(reference, out LinkedListNode<WindowBridgeReference>? deferredNode))
+                _deferredOrder.Remove(deferredNode);
         }
     }
 
@@ -217,23 +240,31 @@ internal sealed class CsWebUiWindowBridgeInvalidationPublisher
     {
         if (_queued.Count + _active.Count < _maximumReferences)
         {
-            _queued[invalidation.Reference] = invalidation;
-            _order.Enqueue(invalidation.Reference);
+            if (_queued.ContainsKey(invalidation.Reference))
+            {
+                _queued[invalidation.Reference] = invalidation;
+                return;
+            }
+            _queued.Add(invalidation.Reference, invalidation);
+            _queuedNodes.Add(invalidation.Reference, _order.AddLast(invalidation.Reference));
             return;
         }
-        if (_deferred.TryAdd(invalidation.Reference, invalidation)) _deferredOrder.Enqueue(invalidation.Reference);
+        if (_deferred.TryAdd(invalidation.Reference, invalidation))
+            _deferredNodes.Add(invalidation.Reference, _deferredOrder.AddLast(invalidation.Reference));
         else _deferred[invalidation.Reference] = invalidation;
     }
 
     private void PromoteDeferredUnsafe()
     {
-        while (_queued.Count + _active.Count < _maximumReferences && _deferredOrder.Count != 0)
+        while (_queued.Count + _active.Count < _maximumReferences && _deferredOrder.First is not null)
         {
-            WindowBridgeReference reference = _deferredOrder.Dequeue();
+            WindowBridgeReference reference = _deferredOrder.First.Value;
+            _deferredOrder.RemoveFirst();
+            _deferredNodes.Remove(reference);
             if (!_deferred.Remove(reference, out WindowBridgeInvalidation invalidation)
                 || !_endpoints.ContainsKey(reference)) continue;
             _queued.Add(reference, invalidation);
-            _order.Enqueue(reference);
+            _queuedNodes.Add(reference, _order.AddLast(reference));
         }
     }
 

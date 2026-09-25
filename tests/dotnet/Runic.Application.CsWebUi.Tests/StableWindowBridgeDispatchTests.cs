@@ -20,6 +20,9 @@ internal static class StableWindowBridgeDispatchTests
         await ReconcilesDeferredLatestHintAtCapacityAsync();
         await CancelsQueuedRefreshAfterUnmountAndDocumentReplacementAsync();
         await JoinsHeldNativeSendAfterAnEarlierDrainAsync();
+        await CancelsPreSendWorkBeforeNativeAdmissionAsync();
+        await RegistrationChurnDoesNotRetainQueueNodesAsync();
+        await RegistrationChurnDoesNotRetainPendingQueueNodesAsync();
         RejectsUnauthenticatedAndMalformedEnvelopes();
         Console.WriteLine("CS-WebUI stable dispatch: fixed native registration, endpoint retirement, dynamic handoff, in-flight drain, and guards passed.");
     }
@@ -198,10 +201,147 @@ internal static class StableWindowBridgeDispatchTests
         native.HoldNextScript();
         Check(publisher.TryPublish(model, "editor"), "The second drain-epoch refresh was not admitted.");
         await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
-        Task stop = publisher.StopAndDrainAsync();
+        Task stop = Task.Run(publisher.StopAndDrainAsync);
         Check(!stop.IsCompleted, "Publisher drain completed while a later native send was still held.");
         native.ReleaseHeldScript();
         await stop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+    }
+
+    private static async Task CancelsPreSendWorkBeforeNativeAdmissionAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var reachedPreSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePreSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport,
+            beforeNativeSend: () =>
+            {
+                reachedPreSend.TrySetResult();
+                releasePreSend.Task.GetAwaiter().GetResult();
+            });
+        var model = new object();
+        WindowBridgeReference reference = session.Expose("editor", model,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        using WindowBridgeEndpointLease outbound = transport.BindEndpoint("editor.refresh", _ => "{\"ok\":true}");
+        using IDisposable registration = publisher.Register(reference, outbound);
+        WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "pre-send-stop");
+        WindowBridgeDocumentEpoch document = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+        Check(session.BeginDocument(connection, document).Accepted, "The pre-send document was not admitted.");
+        using WindowBridgePresentationLease presentation = session.Mount(reference, connection, document, "editor");
+        int scriptsBefore = native.ScriptCount;
+        Check(publisher.TryPublish(model, "editor"), "The pre-send refresh was not admitted.");
+        await reachedPreSend.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        // Stop admission deliberately takes the native-send gate. Run it on
+        // another task so this test can release the worker paused before that
+        // gate and prove it never reaches the native transport.
+        Task stop = Task.Run(publisher.StopAndDrainAsync);
+        releasePreSend.TrySetResult();
+        await stop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        Check(native.ScriptCount == scriptsBefore,
+            "A refresh worker entered native delivery after StopAdmission returned.");
+    }
+
+    private static async Task RegistrationChurnDoesNotRetainQueueNodesAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var holderModel = new object();
+        var churnModel = new object();
+        WindowBridgeReference holder = session.Expose("holder", holderModel,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        WindowBridgeReference churn = session.Expose("churn", churnModel,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        using WindowBridgeEndpointLease holderEndpoint = transport.BindEndpoint("holder.refresh", _ => "{\"ok\":true}");
+        var churnEndpoints = new List<WindowBridgeEndpointLease>();
+        try
+        {
+            for (int index = 0; index < 128; index++)
+                churnEndpoints.Add(transport.BindEndpoint("churn.refresh." + index, _ => "{\"ok\":true}"));
+            var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport,
+                maximumReferences: 1, maximumDeferredReferences: 1);
+            using IDisposable holderRegistration = publisher.Register(holder, holderEndpoint);
+            WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "queue-churn");
+            WindowBridgeDocumentEpoch document = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+            Check(session.BeginDocument(connection, document).Accepted, "The queue-churn document was not admitted.");
+            using WindowBridgePresentationLease holderPresentation = session.Mount(holder, connection, document, "holder");
+            using WindowBridgePresentationLease churnPresentation = session.Mount(churn, connection, document, "churn");
+            native.HoldNextScript();
+            int scriptsBefore = native.ScriptCount;
+            Check(publisher.TryPublish(holderModel, "holder"), "The queue-churn holder was not admitted.");
+            await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            foreach (WindowBridgeEndpointLease endpoint in churnEndpoints)
+            {
+                using IDisposable registration = publisher.Register(churn, endpoint);
+                Check(!publisher.TryPublish(churnModel, "churn"), "A full queue claimed immediate churn admission.");
+                Check(publisher.PendingQueueNodeCount == 0 && publisher.DeferredQueueNodeCount == 1,
+                    "Registration churn did not retain exactly one current deferred node.");
+            }
+            Check(publisher.PendingQueueNodeCount == 0 && publisher.DeferredQueueNodeCount == 0
+                && publisher.RegisteredReferenceCount == 1,
+                "Disposed registrations retained stale queue nodes or endpoint registrations.");
+            native.ReleaseHeldScript();
+            await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Check(native.ScriptCount == scriptsBefore + 1,
+                "Registration churn left deferred work for a retired registration.");
+            await publisher.StopAndDrainAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            foreach (WindowBridgeEndpointLease endpoint in churnEndpoints) endpoint.Dispose();
+        }
+    }
+
+    private static async Task RegistrationChurnDoesNotRetainPendingQueueNodesAsync()
+    {
+        var native = new FakeNative();
+        using var transport = new CsWebUiWindowBridgeTransport(native, Credential, BridgeLimits.Default);
+        await using var session = new WindowBridgeSession(transport);
+        var holderModel = new object();
+        var churnModel = new object();
+        WindowBridgeReference holder = session.Expose("holder", holderModel,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        WindowBridgeReference churn = session.Expose("churn", churnModel,
+            (routes, _, route) => routes.Bind(route, _ => "{\"ok\":true}"));
+        using WindowBridgeEndpointLease holderEndpoint = transport.BindEndpoint("holder.refresh", _ => "{\"ok\":true}");
+        var churnEndpoints = new List<WindowBridgeEndpointLease>();
+        try
+        {
+            for (int index = 0; index < 128; index++)
+                churnEndpoints.Add(transport.BindEndpoint("pending.churn.refresh." + index, _ => "{\"ok\":true}"));
+            var publisher = new CsWebUiWindowBridgeInvalidationPublisher(session, transport,
+                maximumReferences: 2, maximumDeferredReferences: 1);
+            using IDisposable holderRegistration = publisher.Register(holder, holderEndpoint);
+            WindowBridgeConnection connection = WindowBridgeConnection.Create("client", "pending-queue-churn");
+            WindowBridgeDocumentEpoch document = WindowBridgeDocumentEpoch.Create("0000000000000001AAAAAAAAAAAAAAAA");
+            Check(session.BeginDocument(connection, document).Accepted, "The pending-queue-churn document was not admitted.");
+            using WindowBridgePresentationLease holderPresentation = session.Mount(holder, connection, document, "holder");
+            using WindowBridgePresentationLease churnPresentation = session.Mount(churn, connection, document, "churn");
+            native.HoldNextScript();
+            int scriptsBefore = native.ScriptCount;
+            Check(publisher.TryPublish(holderModel, "holder"), "The pending queue holder was not admitted.");
+            await native.HeldScriptEntered!.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            foreach (WindowBridgeEndpointLease endpoint in churnEndpoints)
+            {
+                using IDisposable registration = publisher.Register(churn, endpoint);
+                Check(publisher.TryPublish(churnModel, "churn"), "A free pending queue slot did not admit the churn reference.");
+                Check(publisher.PendingQueueNodeCount == 1 && publisher.DeferredQueueNodeCount == 0,
+                    "Registration churn did not retain exactly one current pending node.");
+            }
+            Check(publisher.PendingQueueNodeCount == 0 && publisher.DeferredQueueNodeCount == 0
+                && publisher.RegisteredReferenceCount == 1,
+                "Disposed registrations retained stale pending queue nodes or endpoint registrations.");
+            native.ReleaseHeldScript();
+            await publisher.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Check(native.ScriptCount == scriptsBefore + 1,
+                "Registration churn left pending work for a retired registration.");
+            await publisher.StopAndDrainAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            foreach (WindowBridgeEndpointLease endpoint in churnEndpoints) endpoint.Dispose();
+        }
     }
 
     private static async Task RetiresEndpointsWithoutGrowingNativeRegistrationsAsync()

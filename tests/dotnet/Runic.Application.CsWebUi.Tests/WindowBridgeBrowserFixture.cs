@@ -29,9 +29,8 @@ internal static class WindowBridgeBrowserFixture
         var saveOwnerGate = new object();
         var dialogGate = new object();
         var batchGate = new object();
-        WindowBridgeEndpointLease? refreshEndpoint = null;
         CsWebUiWindowBridgeInvalidationPublisher? invalidations = null;
-        var refreshRegistration = new InvalidationRegistration();
+        InvalidationRegistration? pendingRefreshRegistration = null;
         await using var host = new CsWebUiWindowBridgeHost(new CsWebUiWindowBridgeHostOptions
         {
             Assets = new EntryAssets(),
@@ -43,11 +42,13 @@ internal static class WindowBridgeBrowserFixture
                 var shell = new ShellModel();
                 WindowBridgeReference shellReference = session.Expose("shell", shell, (routes, _, route) =>
                     routes.Bind(route, _ => "{\"ok\":true,\"kind\":\"shell\"}"));
-                editorReference = session.Present(shellReference, "main", "editor", editor, (routes, _, route) =>
+                Func<IWindowBridgeTransport, EditorModel, string, WindowBridgeAttachment> attachEditor = (routes, _, route) =>
                 {
                     WindowBridgeEndpointLease endpoint = routes.Bind(route, _ => "{\"ok\":true,\"kind\":\"editor\"}");
                     WindowBridgeEndpointLease refresh = routes.Bind(route + ".refresh", _ => "{\"ok\":false,\"kind\":\"rejected\"}");
-                    refreshEndpoint = refresh;
+                    var refreshRegistration = new InvalidationRegistration(refresh);
+                    if (invalidations is { } publisher) refreshRegistration.Register(publisher, editorReference!);
+                    else pendingRefreshRegistration = refreshRegistration;
                     try
                     {
                         WindowBridgeEndpointLease[] titleEndpoints = CsWebUiWindowBridgeNotesDescriptor.AttachEndpoints(routes, title,
@@ -55,7 +56,8 @@ internal static class WindowBridgeBrowserFixture
                         return WindowBridgeAttachment.Create(refreshRegistration, [endpoint, refresh, .. titleEndpoints]);
                     }
                     catch { endpoint.Dispose(); refresh.Dispose(); throw; }
-                });
+                };
+                editorReference = session.Present(shellReference, "main", "editor", editor, attachEditor);
                 scope.Add(transport.Bind("notes.editor.mount", arguments =>
                 {
                     try
@@ -353,6 +355,23 @@ internal static class WindowBridgeBrowserFixture
                     }
                     catch (JsonException) { return "{\"ok\":false,\"kind\":\"rejected\"}"; }
                 }));
+                scope.Add(transport.Bind("notes.debug.reattach", arguments =>
+                {
+                    try
+                    {
+                        using JsonDocument request = JsonDocument.Parse(arguments.GetString());
+                        if (!TryPresentationRequest(request.RootElement, out WindowBridgeDocumentEpoch? epoch, out string? presentationId)
+                            || !session.HasPresentation(editorReference!, arguments.Connection, epoch, presentationId!))
+                            return "{\"ok\":false,\"kind\":\"rejected\"}";
+                        session.Suspend(editor);
+                        // Keep the same logical child slot ownership. Expose
+                        // would promote it to a root, so later navigation
+                        // could no longer retire this reattached Editor.
+                        editorReference = session.Present(shellReference, "main", "editor", editor, attachEditor);
+                        return "{\"ok\":true}";
+                    }
+                    catch (JsonException) { return "{\"ok\":false,\"kind\":\"rejected\"}"; }
+                }));
                 // Regression for a legal route that has special meaning in a
                 // normal JavaScript object literal or prototype chain.
                 scope.Add(transport.Bind("__proto__", arguments =>
@@ -430,7 +449,7 @@ internal static class WindowBridgeBrowserFixture
             ConfigureInvalidations = (_, publisher) =>
             {
                 invalidations = publisher;
-                refreshRegistration.Set(publisher.Register(editorReference!, refreshEndpoint!));
+                pendingRefreshRegistration!.Register(publisher, editorReference!);
             },
         });
         try
@@ -490,15 +509,31 @@ internal static class WindowBridgeBrowserFixture
         internal string? SavedTitle { get; set; }
     }
 
-    private sealed class InvalidationRegistration : IDisposable
+    private sealed class InvalidationRegistration(WindowBridgeEndpointLease endpoint) : IDisposable
     {
+        private readonly object _gate = new();
+        private readonly WindowBridgeEndpointLease _endpoint = endpoint;
         private IDisposable? _value;
-        internal void Set(IDisposable value)
+        private bool _disposed;
+        internal void Register(CsWebUiWindowBridgeInvalidationPublisher publisher, WindowBridgeReference reference)
         {
-            ArgumentNullException.ThrowIfNull(value);
-            Interlocked.Exchange(ref _value, value)?.Dispose();
+            ArgumentNullException.ThrowIfNull(publisher);
+            ArgumentNullException.ThrowIfNull(reference);
+            IDisposable registration = publisher.Register(reference, _endpoint);
+            IDisposable? previous = null;
+            lock (_gate)
+            {
+                if (_disposed) previous = registration;
+                else { previous = _value; _value = registration; }
+            }
+            previous?.Dispose();
         }
-        public void Dispose() => Interlocked.Exchange(ref _value, null)?.Dispose();
+        public void Dispose()
+        {
+            IDisposable? registration;
+            lock (_gate) { _disposed = true; registration = _value; _value = null; }
+            registration?.Dispose();
+        }
     }
 
     private sealed class OwnedScope : IAsyncDisposable

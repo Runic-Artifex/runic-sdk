@@ -210,10 +210,39 @@ try {
   const duplicateSave = await evaluate("globalThis.owners.replacement.startSave('ordinary-save')");
   if (duplicateSave.accepted || duplicateSave.kind !== "succeeded" || duplicateSave.requestId !== "ordinary-save")
     throw new Error(`A duplicate Save request was replayed or decoded incorrectly: ${JSON.stringify(duplicateSave)}`);
+  // Reattach the same Notes model. Its new attachment owns a new outbound
+  // registration, so a fresh mounted component still receives the hint and
+  // performs an authorized typed pull. The retired owner cannot trigger it.
+  const reattach = await rawCall("notes.debug.reattach", { presentationId: hotIds[1] });
+  if (reattach.ok !== true) throw new Error(`The fixture did not reattach Notes: ${JSON.stringify(reattach)}`);
+  const reattachedId = await evaluate(`(async () => {
+    const reattached = globalThis.notes.editor();
+    globalThis.owners.reattached = reattached;
+    await reattached.mount();
+    globalThis.__runicBridgePublish = hint => {
+      globalThis.refreshHints.push(hint);
+      globalThis.refreshPull = reattached.title();
+    };
+    return reattached.presentationId;
+  })()`);
+  const reattachedRefresh = await rawCall("notes.debug.refresh", { presentationId: reattachedId });
+  if (reattachedRefresh.ok !== true) throw new Error(`The reattached Editor could not request a refresh hint: ${JSON.stringify(reattachedRefresh)}`);
+  const reattachedPull = await evaluate("globalThis.refreshPull");
+  const reattachedHint = await evaluate("globalThis.refreshHints.at(-1)");
+  if (reattachedPull.value !== "Shared title" || reattachedPull.version !== 2
+      || reattachedHint?.payload?.revision !== 2)
+    throw new Error(`The reattached Editor did not receive an authorized refresh pull: ${JSON.stringify({ reattachedHint, reattachedPull })}`);
+  const retiredRefresh = await rawCall("notes.debug.refresh", { presentationId: hotIds[1] });
+  await delay(50);
+  const hintCountAfterRetiredRefresh = await evaluate("globalThis.refreshHints.length");
+  if (retiredRefresh.ok !== false || retiredRefresh.kind !== "rejected" || hintCountAfterRetiredRefresh !== 2)
+    throw new Error(`A retired attachment owner triggered a refresh hint: ${JSON.stringify({ retiredRefresh, hintCountAfterRetiredRefresh })}`);
   await evaluate("globalThis.notes.navigateToPreview()");
-  const titleRetired = await evaluate("globalThis.runicCsWebUi.endpoints['notes.title.get'] === undefined");
+  // The native callback reply and the pushed attachment manifest use separate
+  // browser deliveries, so wait for the authoritative retired-route manifest.
+  const titleRetired = await retry(() => evaluate("globalThis.runicCsWebUi.endpoints['notes.title.get'] === undefined"));
   if (!titleRetired) throw new Error("Preview navigation retained the Editor title endpoint.");
-  await evaluate("globalThis.owners.replacement.release()");
+  await evaluate("globalThis.owners.reattached.release()");
   browserSucceeded = true;
 } finally {
   socket?.close();
@@ -224,4 +253,4 @@ try {
   if (host.exitCode === null) host.kill("SIGTERM");
   if (profile) await rm(profile, { recursive: true, force: true });
 }
-console.log("SDK_WINDOW_BRIDGE_ORDINARY_CLIENT_OK|one-document|two-consumers|typed-snapshot|setter-receipts|refresh-hint-authorized-pull|stale-refresh-rejected|awaited-save|duplicate-admission-decoded|independent-release|exact-presentation-callback-gate|late-mount-drained|overlap-replacement|stale-cleanup-rejected|navigation-before-unmount|scope-drained");
+console.log("SDK_WINDOW_BRIDGE_ORDINARY_CLIENT_OK|one-document|two-consumers|typed-snapshot|setter-receipts|refresh-hint-authorized-pull|stale-refresh-rejected|reattach-refresh-authorized-pull|awaited-save|duplicate-admission-decoded|independent-release|exact-presentation-callback-gate|late-mount-drained|overlap-replacement|stale-cleanup-rejected|navigation-before-unmount|scope-drained");

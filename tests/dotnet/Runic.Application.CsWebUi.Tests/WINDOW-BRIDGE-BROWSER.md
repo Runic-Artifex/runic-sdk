@@ -247,9 +247,11 @@ the title snapshot, direct setter, checked-write conflict and rebase receipts,
 and an ordinary `await editor.save()` that waits for a held .NET operation.
 It also installs a fixture listener for the adapter's data-free refresh hint,
 triggers that hint from a mounted Editor, and uses the mounted peer's ordinary
-typed `title()` route to pull the current snapshot. The released owner cannot
-trigger another hint or that typed pull. This is a fixture proof of the
-refresh-hint path, not a generated subscription API.
+typed `title()` route to pull the current snapshot. It then suspends and
+reattaches the same Notes model, proves that the new attachment receives a
+fresh hint and typed pull, and proves that the retired presentation cannot
+trigger either. This is a fixture proof of the refresh-hint path, not a
+generated subscription API.
 The separate `startSave()` method still exposes admission; a duplicate
 request ID reports the existing terminal outcome without replay. Releasing one of
 two mounted consumers leaves the peer able to read the title. It sends raw
@@ -264,7 +266,7 @@ ordinary client treats the ensuing rejected unmount as completed component
 teardown. It waits for the host scope to drain before printing:
 
 ```text
-SDK_WINDOW_BRIDGE_ORDINARY_CLIENT_OK|one-document|two-consumers|typed-snapshot|setter-receipts|refresh-hint-authorized-pull|stale-refresh-rejected|awaited-save|duplicate-admission-decoded|independent-release|exact-presentation-callback-gate|late-mount-drained|overlap-replacement|stale-cleanup-rejected|navigation-before-unmount|scope-drained
+SDK_WINDOW_BRIDGE_ORDINARY_CLIENT_OK|one-document|two-consumers|typed-snapshot|setter-receipts|refresh-hint-authorized-pull|stale-refresh-rejected|reattach-refresh-authorized-pull|awaited-save|duplicate-admission-decoded|independent-release|exact-presentation-callback-gate|late-mount-drained|overlap-replacement|stale-cleanup-rejected|navigation-before-unmount|scope-drained
 ```
 
 The overlap models an HMR component replacement; it does not run Vite or a
