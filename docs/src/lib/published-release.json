@@ -1,6 +1,6 @@
 {
-  "version": "0.4.0-preview.1",
-  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.4.0-preview.1",
+  "version": "0.5.0-preview.2",
+  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.5.0-preview.2",
   "packages": [
     {
       "identity": "Runic.Platform.Administration.Windows",
@@ -63,25 +63,25 @@
       "installKind": "nuget-package"
     },
     {
-      "identity": "Runic.Application.Bridge",
+      "identity": "Runic.Application.Testing",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.ReactiveUI",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.CsWebUi",
       "ecosystem": "nuget",
       "product": "application",
       "installKind": "nuget-package"
     },
     {
       "identity": "Runic.Application.Desktop",
-      "ecosystem": "nuget",
-      "product": "application",
-      "installKind": "nuget-package"
-    },
-    {
-      "identity": "Runic.Application.Hosting",
-      "ecosystem": "nuget",
-      "product": "application",
-      "installKind": "nuget-package"
-    },
-    {
-      "identity": "Runic.Application.Testing",
       "ecosystem": "nuget",
       "product": "application",
       "installKind": "nuget-package"
@@ -129,12 +129,6 @@
       "installKind": "dotnet-tool"
     },
     {
-      "identity": "Runic.Application.CsWebUi",
-      "ecosystem": "nuget",
-      "product": "application",
-      "installKind": "nuget-package"
-    },
-    {
       "identity": "Runic.Platform",
       "ecosystem": "nuget",
       "product": "platform",
@@ -165,18 +159,6 @@
       "installKind": "nuget-package"
     },
     {
-      "identity": "Runic.Application.Platform",
-      "ecosystem": "nuget",
-      "product": "platform",
-      "installKind": "nuget-package"
-    },
-    {
-      "identity": "Runic.Application.Platform.Desktop",
-      "ecosystem": "nuget",
-      "product": "platform",
-      "installKind": "nuget-package"
-    },
-    {
       "identity": "Runic.Desktop.Gtk4",
       "ecosystem": "nuget",
       "product": "desktop",
@@ -201,27 +183,9 @@
       "installKind": "nuget-package"
     },
     {
-      "identity": "@runic-artifex/application-bridge",
-      "ecosystem": "npm",
-      "product": "application",
-      "installKind": "npm-package"
-    },
-    {
-      "identity": "@runic-artifex/application-bridge-tooling",
-      "ecosystem": "npm",
-      "product": "application",
-      "installKind": "npm-package"
-    },
-    {
       "identity": "@runic-artifex/angular",
       "ecosystem": "npm",
       "product": "application",
-      "installKind": "npm-package"
-    },
-    {
-      "identity": "@runic-artifex/desktop",
-      "ecosystem": "npm",
-      "product": "desktop",
       "installKind": "npm-package"
     },
     {

@@ -14,19 +14,16 @@ test('published catalog has unique installable packages and matching registry li
     assert.ok(row.registryUrl.endsWith(`/${publishedRelease.version}`));
   }
   assert.ok(rows.some((row) => row.name === 'Runic.Application.Templates'));
-  assert.ok(
-    rows.some(
-      (row) =>
-        row.name === 'Runic.Application.Views' ||
-        row.name === '@runic-artifex/application-bridge',
-    ),
-    'expected either the current Views package or the preserved historical Bridge package',
-  );
+  assert.ok(rows.some((row) => row.name === 'Runic.Application'));
+  assert.ok(rows.some((row) => row.name === 'Runic.Application.Testing'));
+  assert.ok(rows.some((row) => row.name === 'Runic.Application.ReactiveUI'));
+  assert.ok(rows.some((row) => row.name === '@runic-artifex/svelte'));
   assert.ok(
     rows.every(
       (row) =>
         !row.name.includes('Editor') &&
-        row.name !== 'Runic.Application.Bridge.Generators',
+        row.name !== 'Runic.Application.Bridge' &&
+        row.name !== '@runic-artifex/application-bridge',
     ),
   );
 });
@@ -35,9 +32,9 @@ test('commands cover libraries, templates, tools and npm packages', () => {
   const version = { state: 'published', value: '1.2.3-preview.4' };
   for (const [name, installKind, expected] of [
     [
-      'Runic.Application.Views',
+      'Runic.Application',
       'nuget-package',
-      'dotnet add package Runic.Application.Views --version 1.2.3-preview.4',
+      'dotnet add package Runic.Application --version 1.2.3-preview.4',
     ],
     [
       'Runic.Application.Templates',
@@ -50,9 +47,9 @@ test('commands cover libraries, templates, tools and npm packages', () => {
       'dotnet tool install --local dotnet-runic --version 1.2.3-preview.4',
     ],
     [
-      '@runic-artifex/views-react',
+      '@runic-artifex/svelte',
       'npm-package',
-      'npm install --save-exact @runic-artifex/views-react@1.2.3-preview.4',
+      'npm install --save-exact @runic-artifex/svelte@1.2.3-preview.4',
     ],
   ])
     assert.equal(

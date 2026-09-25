@@ -250,6 +250,15 @@ test('links release notes and renders published install commands', async () => {
       );
     }
   }
+  const applicationHtml = await render('/products/runic-toolkit');
+  for (const name of [
+    'Runic.Application',
+    'Runic.Application.Testing',
+    'Runic.Application.ReactiveUI',
+    '@runic-artifex/svelte',
+  ])
+    assert.ok(applicationHtml.includes(name), name);
+  assert.doesNotMatch(applicationHtml, /Runic\.Application\.Bridge/);
 });
 
 test('resolves every internal route link and fragment in the prerendered site', async () => {

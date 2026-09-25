@@ -59,7 +59,7 @@ export const products: Product[] = [
     kicker: 'Historical project',
     summary: 'Historical Runic Flow information and migration guidance.',
     description:
-      'Runic Flow is retired. New applications should use Runic Application Views for explicit Window and View contracts with generated TypeScript clients.',
+      'Runic Flow is retired. New applications should use Runic Application for explicit Window and View contracts with generated TypeScript clients.',
     releaseProduct: null,
     version: null,
     versionState: 'unassigned',
@@ -80,7 +80,7 @@ export const products: Product[] = [
     summary:
       'Compose typed .NET Windows and Views with generated TypeScript clients for browser frontends.',
     description:
-      'Runic Application Views uses explicit partial Window and View types to connect scoped .NET ViewModels to ordinary TypeScript clients and framework components. The browser framework owns rendering; .NET constructs each logical View and owns its model and operation lifetime.',
+      'Runic Application uses explicit partial Window and View types to connect scoped .NET ViewModels to ordinary TypeScript clients and framework components. The browser framework owns rendering; .NET constructs each logical View and owns its model and operation lifetime.',
     ...releaseMetadata('application'),
     source:
       'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views',
