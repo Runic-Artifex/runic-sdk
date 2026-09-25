@@ -1,10 +1,10 @@
-# `@runic-artifex/views-angular`
+# `@runic-artifex/angular`
 
 Angular outlet for generated Runic View references. Register a component for
 each generated View kind and pass the current reference to the outlet.
 
 ```ts
-import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/views-angular";
+import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
 import { DocumentPage } from "./document-page";
 import type { DocumentReference } from "./generated/document";
 

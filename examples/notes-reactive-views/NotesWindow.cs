@@ -1,5 +1,5 @@
 using CsWebUi;
-using Runic.Application.Views.CsWebUi.DependencyInjection;
+using Runic.Application.Views.CsWebUi;
 using Runic.Application.Views.ReactiveUI;
 
 namespace NotesReactiveViews;

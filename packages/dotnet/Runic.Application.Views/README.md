@@ -1,4 +1,4 @@
-# Runic Application Views
+# Runic Application
 
 This is the host-neutral replacement for the preview Application Bridge. It
 selects contracts through explicit partial `RunicWindow<TViewModel>` and

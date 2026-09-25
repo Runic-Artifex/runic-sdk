@@ -24,7 +24,7 @@ The C# Window owns a scoped WorkspaceViewModel; the selected Views are
 resolved through Microsoft DI. The TypeScript clients are generated from those
 ViewModels. React and Vue render generated page references directly.
 Svelte and Angular use the typed ViewOutlet helpers from
-@runic-artifex/views-svelte and @runic-artifex/views-angular.
+@runic-artifex/svelte and @runic-artifex/angular.
 
 See the Runic Views examples at
 https://github.com/Runic-Artifex/runic-sdk/tree/main/examples for larger

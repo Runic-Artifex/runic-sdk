@@ -73,9 +73,22 @@
         "vite": "8.2.2",
       },
     },
+    "packages/web/angular": {
+      "name": "@runic-artifex/angular",
+      "version": "0.5.0-preview.2",
+      "devDependencies": {
+        "@angular/compiler": "22.1.5",
+        "@angular/compiler-cli": "22.1.5",
+        "@angular/core": "22.1.5",
+        "typescript": "6.0.3",
+      },
+      "peerDependencies": {
+        "@angular/core": ">=20.3.26 <23",
+      },
+    },
     "packages/web/svelte": {
       "name": "@runic-artifex/svelte",
-      "version": "0.5.0-preview.1",
+      "version": "0.5.0-preview.2",
       "devDependencies": {
         "@sveltejs/adapter-static": "3.0.10",
         "@sveltejs/kit": "2.70.3",
@@ -95,7 +108,7 @@
     },
     "packages/web/sveltekit": {
       "name": "@runic-artifex/sveltekit",
-      "version": "0.5.0-preview.1",
+      "version": "0.5.0-preview.2",
       "dependencies": {
         "@types/cookie": "0.6.0",
       },
@@ -116,8 +129,8 @@
         "vitest": "5.0.0",
       },
       "peerDependencies": {
-        "@runic-artifex/svelte": "0.5.0-preview.1",
-        "@runic-artifex/vite-plugin-runic": "0.5.0-preview.1",
+        "@runic-artifex/svelte": "0.5.0-preview.2",
+        "@runic-artifex/vite-plugin-runic": "0.5.0-preview.2",
         "@sveltejs/adapter-static": ">=3 <4",
         "@sveltejs/kit": ">=2.53.0 <3",
         "@sveltejs/vite-plugin-svelte": ">=7 <8",
@@ -129,35 +142,9 @@
         "@runic-artifex/vite-plugin-runic",
       ],
     },
-    "packages/web/views-angular": {
-      "name": "@runic-artifex/views-angular",
-      "version": "0.5.0-preview.1",
-      "devDependencies": {
-        "@angular/compiler": "22.1.5",
-        "@angular/compiler-cli": "22.1.5",
-        "@angular/core": "22.1.5",
-        "typescript": "6.0.3",
-      },
-      "peerDependencies": {
-        "@angular/core": ">=20.3.26 <23",
-      },
-    },
-    "packages/web/views-svelte": {
-      "name": "@runic-artifex/views-svelte",
-      "version": "0.5.0-preview.1",
-      "devDependencies": {
-        "@sveltejs/package": "2.5.8",
-        "svelte": "5.57.0",
-        "svelte-check": "4.7.6",
-        "typescript": "6.0.3",
-      },
-      "peerDependencies": {
-        "svelte": ">=5.46.4 <6",
-      },
-    },
     "packages/web/vite-plugin-runic": {
       "name": "@runic-artifex/vite-plugin-runic",
-      "version": "0.5.0-preview.1",
+      "version": "0.5.0-preview.2",
       "devDependencies": {
         "@types/node": "24.13.3",
         "@vitejs/devtools": "0.5.2",
@@ -175,7 +162,7 @@
     },
     "packages/web/vite-plugin-runic-translations": {
       "name": "@runic-artifex/vite-plugin-runic-translations",
-      "version": "0.5.0-preview.1",
+      "version": "0.5.0-preview.2",
       "devDependencies": {
         "typescript": "^6.0.3",
         "vite": "^8.2.2",
@@ -403,15 +390,13 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
+    "@runic-artifex/angular": ["@runic-artifex/angular@workspace:packages/web/angular"],
+
     "@runic-artifex/svelte": ["@runic-artifex/svelte@workspace:packages/web/svelte"],
 
     "@runic-artifex/sveltekit": ["@runic-artifex/sveltekit@workspace:packages/web/sveltekit"],
 
     "@runic-artifex/translations-editor-frontend": ["@runic-artifex/translations-editor-frontend@workspace:apps/translations-editor/Frontend"],
-
-    "@runic-artifex/views-angular": ["@runic-artifex/views-angular@workspace:packages/web/views-angular"],
-
-    "@runic-artifex/views-svelte": ["@runic-artifex/views-svelte@workspace:packages/web/views-svelte"],
 
     "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@workspace:packages/web/vite-plugin-runic"],
 

@@ -24,7 +24,7 @@
   <Target Name="RunicViewsDetectBridgeUse" BeforeTargets="PrepareForBuild">
     <ItemGroup>
       <_RunicBridgeDirectPackage Include="@(PackageReference)"
-        Condition="'%(PackageReference.Identity)' == 'Runic.Application.Views' or '%(PackageReference.Identity)' == 'Runic.Application.Views.CsWebUi' or '%(PackageReference.Identity)' == 'Runic.Application.Views.CsWebUi.DependencyInjection'" />
+        Condition="'%(PackageReference.Identity)' == 'Runic.Application' or '%(PackageReference.Identity)' == 'Runic.Application.CsWebUi' or '%(PackageReference.Identity)' == 'Runic.Application.Desktop'" />
     </ItemGroup>
     <PropertyGroup>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and Exists('$(RunicBridgeCodegenProject)')">true</RunicBridgeBuildEnabled>

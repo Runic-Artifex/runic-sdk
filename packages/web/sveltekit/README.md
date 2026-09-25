@@ -1,8 +1,7 @@
 # `@runic-artifex/sveltekit`
 
 SvelteKit adapter and locale routing helpers for Runic Desktop and Runic
-Translations. Application Views use the separate `@runic-artifex/views-svelte`
-outlet package.
+Translations. Application Views use the `@runic-artifex/svelte/views` export.
 
 ```ts
 import { runicToolkitAdapter } from "@runic-artifex/sveltekit";

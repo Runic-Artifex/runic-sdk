@@ -72,8 +72,8 @@ export function verifyPackagedTemplateLocks(nupkg, archives) {
   assert.deepEqual(Object.keys(files).sort(), expected.sort(), 'Packaged template lock inventory differs');
   const entries = Object.entries(files).reduce((total, [filename, text]) => {
     const framework = filename.match(/content\/content\/(react|vue|svelte|angular)\/Frontend\//)?.[1];
-    const expectedPackage = framework === 'svelte' ? '@runic-artifex/views-svelte'
-      : framework === 'angular' ? '@runic-artifex/views-angular' : undefined;
+    const expectedPackage = framework === 'svelte' ? '@runic-artifex/svelte'
+      : framework === 'angular' ? '@runic-artifex/angular' : undefined;
     return total + verifyTemplateLock(text, filename, candidates,
       { requireRunic: Boolean(expectedPackage), expectedPackage });
   }, 0);

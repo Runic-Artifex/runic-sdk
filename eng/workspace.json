@@ -1,14 +1,10 @@
 {
   "schemaVersion": 2,
-  "version": "0.5.0-preview.1",
+  "version": "0.5.0-preview.2",
   "npm": [
     {
-      "name": "@runic-artifex/views-svelte",
-      "path": "packages/web/views-svelte"
-    },
-    {
-      "name": "@runic-artifex/views-angular",
-      "path": "packages/web/views-angular"
+      "name": "@runic-artifex/angular",
+      "path": "packages/web/angular"
     },
     {
       "name": "@runic-artifex/vite-plugin-runic-translations",
@@ -65,20 +61,20 @@
       "project": "packages/dotnet/Runic.Desktop/Runic.Desktop.csproj"
     },
     {
-      "name": "Runic.Application.Views",
+      "name": "Runic.Application",
       "project": "packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj"
     },
     {
-      "name": "Runic.Application.Views.ReactiveUI",
+      "name": "Runic.Application.ReactiveUI",
       "project": "packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj"
     },
     {
-      "name": "Runic.Application.Views.CsWebUi",
+      "name": "Runic.Application.CsWebUi",
       "project": "packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj"
     },
     {
-      "name": "Runic.Application.Views.CsWebUi.DependencyInjection",
-      "project": "packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection/Runic.Application.Views.CsWebUi.DependencyInjection.csproj"
+      "name": "Runic.Application.Desktop",
+      "project": "packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj"
     },
     {
       "name": "Runic.Application.Templates",
@@ -261,7 +257,7 @@
         "packages/dotnet/Runic.Application.Views",
         "packages/dotnet/Runic.Application.Views.ReactiveUI",
         "packages/dotnet/Runic.Application.Views.CsWebUi",
-        "packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection",
+        "packages/dotnet/Runic.Application.Desktop",
         "tools/Runic.Application.Views.Codegen",
         "tools/Runic.Application.Views.Codegen.Toolkit",
         "tools/Runic.Application.Views.Codegen.ReactiveUI",
@@ -275,7 +271,7 @@
         "eng/branding/application",
         "specs/application",
         "tests/templates",
-        "packages/web/views-angular"
+        "packages/web/angular"
       ]
     },
     "vite": {
@@ -295,7 +291,6 @@
         "packages/web/svelte",
         "packages/web/sveltekit",
         "eng/branding/svelte",
-        "packages/web/views-svelte",
         "tests/web/svelte-package-consumers"
       ]
     },
@@ -322,6 +317,7 @@
       ],
       "paths": [
         "examples/first-window",
+        "examples/first-window-desktop",
         "examples/notes-view-first",
         "examples/notes-reactive-views",
         "examples/README.md",

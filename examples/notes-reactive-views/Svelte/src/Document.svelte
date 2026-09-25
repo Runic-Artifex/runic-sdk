@@ -4,8 +4,8 @@
   import Editor from "./Editor.svelte";
   import Compact from "./Compact.svelte";
   import Preview from "./Preview.svelte";
-  import ViewOutlet from "../../../../packages/web/views-svelte/src/ViewOutlet.svelte";
-  import type { ViewRegistry } from "../../../../packages/web/views-svelte/src/view-registry.js";
+  import ViewOutlet from "../../../../packages/web/svelte/src/views/ViewOutlet.svelte";
+  import type { ViewRegistry } from "../../../../packages/web/svelte/src/views/view-registry.js";
 
   const paneViews = { editor: Editor, preview: Preview } satisfies ViewRegistry<DocumentState["currentPane"]>;
   const compactViews = { editorCompact: Compact } satisfies ViewRegistry<DocumentState["compactNote"]>;

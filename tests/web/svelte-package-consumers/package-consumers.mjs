@@ -14,11 +14,10 @@ const execFile = (command, args, options) => {
 };
 const root = await mkdtemp(join(tmpdir(), "runic-svelte-package-"));
 try {
-  for (const workspace of ["@runic-artifex/views-svelte", "@runic-artifex/svelte", "@runic-artifex/sveltekit", "@runic-artifex/vite-plugin-runic"]) {
+  for (const workspace of ["@runic-artifex/svelte", "@runic-artifex/sveltekit", "@runic-artifex/vite-plugin-runic"]) {
     await execFile("npm", ["run", "build", "--workspace", workspace]);
   }
   const archives = await Promise.all([
-    "@runic-artifex/views-svelte",
     "@runic-artifex/svelte",
     "@runic-artifex/sveltekit",
     "@runic-artifex/vite-plugin-runic",
@@ -27,16 +26,14 @@ try {
     const files = (await execFile("tar", ["-tf", archive])).stdout.split("\n").filter(Boolean);
     assert.equal(files.some((file) => file.startsWith("package/src/") || file.startsWith("package/test/")), false);
   }
-  const [views, svelte] = archives;
-  const viewFiles = (await execFile("tar", ["-tf", views])).stdout.split("\n");
-  assert.ok(viewFiles.includes("package/dist/ViewOutlet.svelte"));
-  assert.ok(viewFiles.includes("package/dist/ViewOutlet.svelte.d.ts"));
-  assert.ok(viewFiles.includes("package/dist/view-registry.d.ts"));
-  const viewManifest = JSON.parse((await execFile("tar", ["-xOf", views, "package/package.json"])).stdout);
+  const [svelte] = archives;
+  const viewFiles = (await execFile("tar", ["-tf", svelte])).stdout.split("\n");
+  assert.ok(viewFiles.includes("package/dist/views/ViewOutlet.svelte"));
+  assert.ok(viewFiles.includes("package/dist/views/ViewOutlet.svelte.d.ts"));
+  assert.ok(viewFiles.includes("package/dist/views/view-registry.d.ts"));
   const svelteManifest = JSON.parse((await execFile("tar", ["-xOf", svelte, "package/package.json"])).stdout);
-  assert.equal(viewManifest.name, "@runic-artifex/views-svelte");
   assert.equal(svelteManifest.name, "@runic-artifex/svelte");
-  assert.equal(Object.keys(svelteManifest.exports).includes("./bridge"), false);
+  assert.ok(Object.keys(svelteManifest.exports).includes("./views"));
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module" }), "utf8");
   await execFile("npm", [
     "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--legacy-peer-deps",

@@ -17,4 +17,4 @@ the [Toolkit Notes](../../../examples/notes-view-first/README.md) and
 [Reactive Notes](../../../examples/notes-reactive-views/README.md) examples. For
 installation and templates, see [getting started](getting-started/README.md).
 The package API and build details are in
-[`Runic.Application.Views`](../../../packages/dotnet/Runic.Application.Views/README.md).
+[`Runic.Application`](../../../packages/dotnet/Runic.Application.Views/README.md).

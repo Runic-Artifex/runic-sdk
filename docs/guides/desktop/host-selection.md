@@ -6,7 +6,7 @@ then choose React, Vue, Svelte, or Angular with the corresponding template name.
 For a starter walkthrough, see [getting started](../application/getting-started/README.md)
 and the [first Window example](../../../examples/first-window/README.md).
 
-[`Runic.Application.Views.CsWebUi.DependencyInjection`](../../../packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection/README.md)
+[`Runic.Application.CsWebUi`](../../../packages/dotnet/Runic.Application.Views.CsWebUi/README.md)
 connects the generated Window and View contracts to a CS-WebUI presentation.
 CS-WebUI remains a separately maintained upstream product, and applications can
 also use its lower-level API directly.
@@ -16,3 +16,8 @@ WebView windows. Choose its embedded backend and fallback policy explicitly; its
 [package guide](../../../packages/dotnet/Runic.Desktop/README.md) documents native
 prerequisites. Do not assume a template's CS-WebUI composition changes to Desktop
 when a provider is installed.
+
+[`Runic.Application.Desktop`](../../../packages/dotnet/Runic.Application.Desktop/README.md)
+connects generated Windows and Views to a Desktop surface. The
+[ReactiveUI first-window example](../../../examples/first-window-desktop/README.md)
+shows the browser client and scoped native Window lifetime.

@@ -2,7 +2,7 @@ using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 
-namespace Runic.Application.Views.CsWebUi.DependencyInjection;
+namespace Runic.Application.Views.CsWebUi;
 
 /// <summary>
 /// Owns one CS-WebUI window, its DI scope, and its Bridge attachments.

@@ -13,14 +13,14 @@ try {
   let archive = process.argv[2];
   if (process.argv.length > 3) throw new Error("Usage: node test-package-consumer.mjs [views-angular.tgz]");
   if (!archive) {
-    await execute("npm", ["run", "build", "--workspace", "@runic-artifex/views-angular"]);
-    const packed = await execute("npm", ["pack", "--json", "--workspace", "@runic-artifex/views-angular", "--pack-destination", root]);
+    await execute("npm", ["run", "build", "--workspace", "@runic-artifex/angular"]);
+    const packed = await execute("npm", ["pack", "--json", "--workspace", "@runic-artifex/angular", "--pack-destination", root]);
     const result = JSON.parse(packed.stdout);
     archive = join(root, (Array.isArray(result) ? result[0] : Object.values(result)[0]).filename);
   }
   archive = resolve(archive);
   const manifest = JSON.parse((await execute("tar", ["-xOf", archive, "package/package.json"])).stdout);
-  assert.equal(manifest.name, "@runic-artifex/views-angular");
+  assert.equal(manifest.name, "@runic-artifex/angular");
   assert.equal(manifest.private, undefined);
   assert.equal(manifest.license, "MIT");
   const archiveJs = (await execute("tar", ["-xOf", archive, "package/dist/esm/view-outlet.js"])).stdout;
@@ -29,7 +29,7 @@ try {
   assert.match(archiveJs, /isStandalone: true/);
   assert.match(archiveTypes, /static ɵcmp:/);
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module", scripts: { build: "ng build" }, dependencies: {
-    "@runic-artifex/views-angular": `file:${archive}`,
+    "@runic-artifex/angular": `file:${archive}`,
     "@angular/common": "22.1.5", "@angular/core": "22.1.5", "@angular/platform-browser": "22.1.5", "rxjs": "7.8.2"
   }, devDependencies: {
     "@angular/build": "22.1.7", "@angular/cli": "22.1.7", "@angular/compiler": "22.1.5",
@@ -52,7 +52,7 @@ try {
   await writeFile(join(root, "src/index.html"), "<!doctype html><html><head><meta charset=\"utf-8\"><base href=\"/\"></head><body><consumer-root></consumer-root></body></html>", "utf8");
   await writeFile(join(root, "src/main.ts"), `import { Component, input, provideZonelessChangeDetection, type InputSignal } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
-import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/views-angular";
+import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
 type Page = { readonly kind: "counter"; connect(): Promise<unknown> };
 @Component({ selector: "counter-page", standalone: true, template: "{{ page().kind }}" })
 class CounterPage { readonly page: InputSignal<Page> = input.required<Page>(); }

@@ -13,7 +13,7 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@runic-artifex/views-svelte": "__VIEWS_SVELTE_NPM_VERSION__",
+    "@runic-artifex/svelte": "__VIEWS_SVELTE_NPM_VERSION__",
     "svelte": "5.57.0"
   },
   "devDependencies": {

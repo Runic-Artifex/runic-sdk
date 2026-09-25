@@ -4,7 +4,7 @@ import { pageSignal } from "./bridge-signal";
 import { EditorComponent } from "./editor";
 import { CompactComponent } from "./compact";
 import { PreviewComponent } from "./preview";
-import { RunicViewOutlet, type ViewRegistry } from "../../../../../packages/web/views-angular/src/view-outlet";
+import { RunicViewOutlet, type ViewRegistry } from "../../../../../packages/web/angular/src/view-outlet";
 
 const paneViews = { editor: EditorComponent, preview: PreviewComponent } satisfies ViewRegistry<DocumentState["currentPane"]>;
 const compactViews = { editorCompact: CompactComponent } satisfies ViewRegistry<DocumentState["compactNote"]>;

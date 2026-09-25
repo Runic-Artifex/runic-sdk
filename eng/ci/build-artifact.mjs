@@ -8,7 +8,7 @@ import { sourceDigest } from "./source-state.mjs";
 
 export function buildPaths(base = root, npm = workspace.npm) {
   const projects = [...readFileSync(resolve(base, "RunicSdk.Core.slnx"), "utf8").matchAll(/<Project Path="([^"]+)"/g)].map(([, path]) => path);
-  const viewsExamples = ["first-window", "notes-view-first", "notes-reactive-views"];
+  const viewsExamples = ["first-window", "first-window-desktop", "notes-view-first", "notes-reactive-views"];
   const paths = [
     ...projects.flatMap(path => ["bin", "obj"].map(output => `${dirname(path)}/${output}`)),
     ...npm.map(item => `${item.path}/dist`),

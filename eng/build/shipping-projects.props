@@ -10,10 +10,10 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" PackageId="Runic.CommandLine.Spectre" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.CommandLine.Testing/Runic.CommandLine.Testing.csproj" PackageId="Runic.CommandLine.Testing" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" PackageId="Runic.Desktop" />
-    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" PackageId="Runic.Application.Views" />
-    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" PackageId="Runic.Application.Views.ReactiveUI" />
-    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj" PackageId="Runic.Application.Views.CsWebUi" />
-    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views.CsWebUi.DependencyInjection/Runic.Application.Views.CsWebUi.DependencyInjection.csproj" PackageId="Runic.Application.Views.CsWebUi.DependencyInjection" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" PackageId="Runic.Application" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" PackageId="Runic.Application.ReactiveUI" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj" PackageId="Runic.Application.CsWebUi" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" PackageId="Runic.Application.Desktop" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../tools/Runic.Application.Templates/Runic.Application.Templates.csproj" PackageId="Runic.Application.Templates" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../tools/dotnet-runic/Runic.Application.Tool.csproj" PackageId="dotnet-runic" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Translations/Runic.Translations.csproj" PackageId="Runic.Translations" />

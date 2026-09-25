@@ -184,9 +184,14 @@ try {
     await retry(async () => (await query('(async () => (await fetch("/__runic_dev/status")).json())()')).generation === 1);
     await pause(300);
     probeFile = join(dirname(project), `RunicDevSmokeProbe${process.pid}.cs`);
-    await writeFile(probeFile, "namespace NotesReactiveViews; internal static class RunicDevSmokeProbe { }\n");
+    await writeFile(probeFile, "namespace NotesReactiveViews; public sealed partial class HomeViewModel { public string ContractProbe => \"restarted\"; }\n");
     await retry(() => hostOutput.includes("RUNIC_DEV_RESTARTED|generation=2"), 60_000);
+    await retry(async () => (await readFile(join(dirname(project), "Frontend/src/generated/home.ts"), "utf8")).includes("contractProbe"), 10_000);
     await retry(async () => await query('window.__hmrSentinel === undefined && document.readyState === "complete" && document.querySelector("#main h1")?.textContent === "Reactive Notes"'), 30_000);
+    await rm(probeFile);
+    probeFile = undefined;
+    await retry(() => hostOutput.includes("RUNIC_DEV_RESTARTED|generation=3"), 60_000);
+    await retry(async () => !(await readFile(join(dirname(project), "Frontend/src/generated/home.ts"), "utf8")).includes("contractProbe"), 10_000);
     host.kill("SIGTERM");
     await retry(() => host.exitCode !== null || host.signalCode !== null, 10_000);
     for (const port of devPorts) {
@@ -202,7 +207,7 @@ try {
         throw new Error(`runic dev left port ${port} open after exit: ${hostOutput}\n${hostErrors}\n${cause}`);
       }
     }
-    console.log(`${frontend.toUpperCase()}_REACTIVE_RUNIC_DEV_OK|framework-hmr|backend-rebuild|browser-reload`);
+    console.log(`${frontend.toUpperCase()}_REACTIVE_RUNIC_DEV_OK|framework-hmr|contract-rebuild|browser-reload`);
   } else {
     console.log(`${frontend.toUpperCase()}_REACTIVE_${viaIde ? "IDE_" : ""}HMR_OK|same-document|shared-state|command|route-cleanup`);
   }

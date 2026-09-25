@@ -21,8 +21,8 @@ local `dotnet-runic` tool manifest.
 The generated .NET project declares a Runic Window, registered Views, and
 CommunityToolkit.Mvvm view models. Views MSBuild targets generate typed
 TypeScript clients and build the frontend. React and Vue consume the generated
-TypeScript modules directly. Svelte uses `@runic-artifex/views-svelte`; Angular
-uses `@runic-artifex/views-angular`. Both provide a typed outlet for composing
+TypeScript modules directly. Svelte uses `@runic-artifex/svelte`; Angular
+uses `@runic-artifex/angular`. Both provide a typed outlet for composing
 Views in the frontend. The production build embeds the frontend output with the
 CS-WebUI Window adapter.
 
