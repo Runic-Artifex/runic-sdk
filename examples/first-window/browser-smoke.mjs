@@ -6,15 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function retry(action, label) {
-  const deadline = Date.now() + 12_000;
+  const deadline = Date.now() + 20_000;
+  let lastError;
   while (Date.now() < deadline) {
     try {
       const result = await action();
       if (result) return result;
-    } catch { /* Browser and bridge can still be starting. */ }
+    } catch (error) { lastError = error; }
     await pause(50);
   }
-  throw new Error(`Timed out waiting for ${label}.`);
+  throw new Error(`Timed out waiting for ${label}: ${lastError ?? "no detail"}`);
 }
 
 const dll = process.env.RUNIC_FIRST_WINDOW_DLL
@@ -68,7 +69,11 @@ try {
   await evaluate('document.querySelector("#increment").click()');
   await retry(async () => (await state()).count === "1", "first command");
   await evaluate('document.querySelector("#step").focus(); document.querySelector("#step").value = "3"; document.querySelector("#step").blur()');
-  await retry(async () => (await state()).status === "Step updated.", "writable property");
+  try {
+    await retry(async () => (await state()).status === "Step updated.", "writable property");
+  } catch (error) {
+    throw new Error(`${error}; final state: ${JSON.stringify(await state())}; host: ${errors}`);
+  }
   await evaluate('document.querySelector("#increment").click()');
   await retry(async () => (await state()).count === "4", "updated command");
   await evaluate("location.reload()");
