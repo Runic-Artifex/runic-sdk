@@ -26,9 +26,9 @@
     <p class="eyebrow">Runic Application</p>
     <h1>Compose typed Windows and Views. Render with your frontend.</h1>
     <p class="lede">
-      Runic Application Views connects explicit .NET Window and View types to
-      ordinary TypeScript clients. The frontend owns its component tree; .NET
-      owns ViewModel scopes, logical View lifetimes, commands, and operations.
+      Runic Application connects explicit .NET Window and View types to ordinary
+      TypeScript clients. The frontend owns its component tree; .NET owns
+      ViewModel scopes, logical View lifetimes, commands, and operations.
     </p>
     <div class="actions">
       <ActionLink
@@ -46,8 +46,8 @@
     <ContentCard eyebrow="Composition" title="Select a Window explicitly" full>
       <p>
         A partial <code>RunicWindow&lt;TViewModel&gt;</code> declares the logical
-        window boundary. Dependency injection owns the Window's ViewModel scope;
-        a host adapter supplies native presentation and lifecycle.
+        window boundary. Dependency injection owns the Window's ViewModel scope; a
+        host adapter supplies native presentation and lifecycle.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Content" title="Views carry typed context">
@@ -72,17 +72,24 @@
         accepted operations stay owned by .NET through a browser reload.
       </p>
     </ContentCard>
-    <ContentCard eyebrow="Examples" title="Compare Window and View patterns" full>
+    <ContentCard
+      eyebrow="Examples"
+      title="Compare Window and View patterns"
+      full
+    >
       <p>
         The first Window introduces a single ViewModel and generated client.
         Toolkit Notes exercises nested content and scoped Views. Reactive Notes
         shows routed ViewModels and multiple logical Views for one model.
       </p>
       <div class="actions">
-        <ActionLink href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first"
+        <ActionLink
+          href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first"
           >Toolkit Notes</ActionLink
         >
-        <ActionLink variant="outline" href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-reactive-views"
+        <ActionLink
+          variant="outline"
+          href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-reactive-views"
           >Reactive Notes</ActionLink
         >
       </div>

@@ -48,8 +48,8 @@
       full
     >
       <p>
-        Runic Application Views defines explicit .NET Window and View contracts
-        and generates ordinary TypeScript clients. Svelte, React, Vue and Angular
+        Runic Application defines explicit .NET Window and View contracts and
+        generates ordinary TypeScript clients. Svelte, React, Vue and Angular
         render those contracts with their own components; the application model
         does not own a framework's visual tree.
       </p>
@@ -69,7 +69,7 @@
         through NuGet and npm. Translations Editor is available from source. All
         package families share the SDK release workflow. CS-WebUI remains an
         independent upstream compatibility product; the SDK includes the
-        Runic.Application.Views integrations.
+        Runic.Application integrations.
       </p>
     </ContentCard>
     <ContentCard
@@ -109,8 +109,8 @@
       full
     >
       <p>
-        Explicit partial Window and View types are the contract authority.
-        The build inspects the compiled application after MVVM generators run and
+        Explicit partial Window and View types are the contract authority. The
+        build inspects the compiled application after MVVM generators run and
         emits C# attachments and ordinary TypeScript modules. UI frameworks own
         rendering while .NET scopes ViewModels, logical Views, commands, and
         operations.
