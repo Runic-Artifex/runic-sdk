@@ -70,7 +70,7 @@ direnv exec . ./eng/build/run-post-mvvm-discovery.sh -c Debug
 direnv exec . dotnet run --project tests/dotnet/Runic.Application.Bridge.PostMvvmDiscovery.Tests/Runic.Application.Bridge.PostMvvmDiscovery.Tests.csproj -c Debug
 RUNIC_POST_MVVM_BUILD_OWNER=33333333333333333333333333333333 direnv exec . ./eng/build/run-post-mvvm-discovery.sh -c Debug
 direnv exec . ./node_modules/.bin/tsc -p tests/fixtures/application/PostMvvmDiscovery/SmokeFrontend/tsconfig.json
-direnv exec . dotnet publish tests/fixtures/application/PostMvvmDiscovery/Smoke/PostMvvmDiscovery.Smoke.csproj -c Release -r linux-x64 -p:PublishAot=true -v:quiet -p:RunicPostMvvmDiscoveryBuildOwner=<owner>
+direnv exec . dotnet publish tests/fixtures/application/PostMvvmDiscovery/Smoke/PostMvvmDiscovery.Smoke.csproj -c Release -r linux-x64 -p:PublishAot=true -v:quiet -p:RunicPostMvvmDiscoveryBuildOwner=<owner> -p:RunicPostMvvmDiscoveryOwnerDriver=true
 direnv exec . obj/pmd/ordinary/<owner>/dependencies/PostMvvmDiscovery.Smoke/bin/Release/net10.0/linux-x64/publish/Runic.Application.Bridge.PostMvvmDiscovery.Smoke
 ```
 
