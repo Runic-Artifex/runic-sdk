@@ -190,12 +190,17 @@ try {
     host.kill("SIGTERM");
     await retry(() => host.exitCode !== null || host.signalCode !== null, 10_000);
     for (const port of devPorts) {
-      await retry(async () => {
-        try {
-          await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(500) });
-          return false;
-        } catch { return true; }
-      }, 10_000);
+      try {
+        await retry(async () => {
+          try {
+            const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(500) });
+            await response.arrayBuffer();
+            return false;
+          } catch { return true; }
+        }, 10_000);
+      } catch (cause) {
+        throw new Error(`runic dev left port ${port} open after exit: ${hostOutput}\n${hostErrors}\n${cause}`);
+      }
     }
     console.log(`${frontend.toUpperCase()}_REACTIVE_RUNIC_DEV_OK|framework-hmr|backend-rebuild|browser-reload`);
   } else {

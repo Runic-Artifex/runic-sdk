@@ -37,7 +37,8 @@ function unusedPort() {
 
 function run(command, args, cwd, environment = {}) {
   const child = spawn(command, args, {
-    cwd, env: { ...process.env, ...environment }, stdio: ["pipe", "pipe", "pipe"]
+    cwd, env: { ...process.env, ...environment }, stdio: ["pipe", "pipe", "pipe"],
+    detached: process.platform !== "win32"
   });
   for (const stream of [child.stdout, child.stderr])
     stream.on("data", chunk => process.stdout.write(chunk));
@@ -51,13 +52,24 @@ function exited(child) {
   });
 }
 
+function signalTree(child, signal) {
+  if (!child?.pid) return;
+  if (process.platform === "win32") { child.kill(signal); return; }
+  try { process.kill(-child.pid, signal); }
+  catch (error) { if (error.code !== "ESRCH") throw error; }
+}
+
 async function stop(child) {
-  if (!child || child.exitCode !== null) return;
-  const done = exited(child);
+  if (!child) return;
+  const done = child.exitCode === null && child.signalCode === null ? exited(child) : Promise.resolve();
   child.stdin?.end();
-  child.kill("SIGTERM");
+  signalTree(child, "SIGTERM");
   await Promise.race([done, new Promise(accept => setTimeout(accept, 3000))]);
-  if (child.exitCode === null) child.kill("SIGKILL");
+  if (process.platform !== "win32") {
+    // npm may exit before its dev-server child; finish the owned process group.
+    await new Promise(accept => setTimeout(accept, 150));
+    signalTree(child, "SIGKILL");
+  } else if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 }
 
 const options = optionsFrom(process.argv.slice(2));
@@ -134,7 +146,9 @@ async function startFrontend() {
     if (frontend.exitCode !== null) throw new Error("Frontend dev server exited.");
     try {
       const response = await fetch(`http://127.0.0.1:${frontendPort}/`);
-      if (response.ok) return;
+      const ready = response.ok;
+      await response.arrayBuffer();
+      if (ready) return;
     } catch { /* wait for server */ }
     await new Promise(accept => setTimeout(accept, 250));
   }
@@ -171,8 +185,7 @@ async function close() {
   closing = true;
   clearTimeout(timer);
   watcher?.close();
-  build?.kill("SIGTERM");
-  await Promise.all([stop(backend), stop(frontend)]);
+  await Promise.all([stop(build), stop(backend), stop(frontend)]);
   for (const client of clients) client.end();
   coordinator.close();
 }
