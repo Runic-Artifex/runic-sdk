@@ -3,6 +3,9 @@ using System.Text.Json;
 using Runic.Application.Bridge;
 using Runic.Application.CsWebUi;
 
+if (args is ["--window-bridge-browser-host"])
+    return await WindowBridgeBrowserFixture.RunAsync();
+
 try
 {
     await RunAsync();
@@ -52,6 +55,7 @@ static async Task RunAsync()
     await mailbox.DisposeAsync();
     await Reject(() => mailbox.PollAsync(1, 3, default).AsTask());
     Console.WriteLine("CS-WebUI admission, reconnect, bounded events, cancellation and disposal passed.");
+    await WindowBridgeHostTests.RunAsync();
 
 }
 

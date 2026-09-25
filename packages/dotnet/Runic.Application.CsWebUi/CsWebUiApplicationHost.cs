@@ -33,7 +33,6 @@ public sealed record CsWebUiApplicationHostOptions
 /// may start in a process, and stopping it also closes any additional WebUI windows.</remarks>
 public sealed class CsWebUiApplicationHost : IApplicationHost
 {
-    private static int _runtimeClaimed;
     private const string FrameBinding = "__runicApplicationFrame";
     private const string PollBinding = "__runicApplicationPoll";
     private readonly CsWebUiApplicationHostOptions _options;
@@ -74,8 +73,7 @@ public sealed class CsWebUiApplicationHost : IApplicationHost
             var session = _options.CreateBridgeSession?.Invoke() ?? RunicApplicationBridgeCompositionRegistry.CreateSession(services) as ApplicationBridgeSession
                 ?? throw new InvalidOperationException("No generated application bridge session was registered.");
             _mailbox = new BridgeMailbox(session, _options.Limits);
-            if (Interlocked.CompareExchange(ref _runtimeClaimed, 1, 0) != 0)
-                throw new InvalidOperationException("A CS-WebUI application host already owns this process's native runtime. Start another application in a separate process.");
+            CsWebUiNativeRuntimeClaim.Claim();
             _ownsRuntime = true;
             _readinessPath = "/.runic-ready/" + Guid.NewGuid().ToString("N");
             WebUiApplication.SetConfiguration(WebUiConfiguration.UseCookies, true);
