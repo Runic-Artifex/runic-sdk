@@ -1,7 +1,6 @@
 {
-  "name": "@runic-artifex/runic-application-starter-vue",
+  "name": "@runic-artifex/runic-views-starter-vue",
   "private": true,
-  "version": "1.0.0",
   "license": "MIT",
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": {
@@ -9,26 +8,15 @@
   },
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "contract:generate": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj",
-    "contract:check": "runic-bridge check --authority csharp --project ../RunicDesktopApp.csproj",
+    "build": "vue-tsc --noEmit && vite build",
     "dev": "vite",
-    "dev:mock": "vite --mode mock",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-free": "7.3.1",
-    "@popperjs/core": "2.11.8",
-    "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
-    "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
-    "bootstrap": "5.3.8",
-    "effect": "4.0.0-rc.112",
     "vue": "3.5.42"
   },
   "devDependencies": {
-    "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",
     "@vitejs/plugin-vue": "6.0.8",
-    "@runic-artifex/vite-plugin-runic": "__RUNIC_VITE_NPM__",
     "typescript": "6.0.3",
     "vite": "8.2.2",
     "vue-tsc": "3.3.11"

@@ -19,9 +19,9 @@ nix develop
 bun run ci --list
 bun run ci                          # Entire Linux workflow, including native checks
 bun run ci --job docs
-bun run ci --job managed --matrix suite:application
-bun run ci --job web --matrix package:application-bridge
-bun run ci --job customers --matrix journey:dev
+bun run ci --job managed --matrix suite:platform
+bun run ci --job web --matrix package:svelte
+bun run ci --job views
 bun run ci --job templates           # Includes build and package prerequisites
 bun run ci --dryrun
 ```
@@ -33,8 +33,8 @@ workflow (up to four containers). Select a job/matrix entry on a machine with
 limited memory or disk space; `--concurrent-jobs 2` increases group concurrency
 when sufficient resources are available. Run one SDK invocation per checkout at
 a time because act uses stable container names. First-party
-commands use Bun. Only jobs exercising npm/pnpm compatibility explicitly install
-Node and those package managers. GitHub JavaScript actions have their own Node
+commands use Bun. Browser journeys and npm/pnpm compatibility jobs explicitly
+install Node and the package managers they need. GitHub JavaScript actions have their own Node
 runtime, which is independent of the project's choice of Bun.
 
 The first real run builds `runner.Containerfile` on a digest-pinned Ubuntu 24.04
@@ -80,16 +80,15 @@ Dependency caches are separate from build artifacts and never authorize reusing
 an old build for changed source.
 
 Packages are materialized after the build independently of test completion.
-Separate package-consumer, template and footprint jobs validate these candidates.
+Separate package-consumer and template jobs validate these candidates.
 Only the final `verify` gate succeeding means all required jobs have passed.
 
-Both desktop conformance paths (default and minimal host) use
+Desktop conformance uses
 `desktop.runsettings`: xUnit reports tests running longer than 30 seconds and
 VSTest records diagnostics and TRX results. A two-minute hang limit aborts the
 test host, with a three-minute session deadline and a five-minute Actions step
 backstop for stalls outside individual tests. Failure artifacts are retained
-by the following `always()` upload step, including for the minimal-host test
-that runs before footprint publishing. No crash dumps are requested.
+by the following `always()` upload step. No crash dumps are requested.
 
 ## GitHub reruns
 

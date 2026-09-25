@@ -4,7 +4,7 @@ The root `Directory.Build.props` supplies workspace identity and `RunicSdkRoot`.
 Managed projects explicitly import their policy from this directory, so moving a
 project does not silently change its language, analyzer or package settings.
 
-- `application`: application runtime, bridge generators, hosting and CLI.
+- `application`: View runtime, host adapters, code generation and CLI.
 - `assets`: archive/runtime adapters and asset packer.
 - `command-line`: command catalogs, generators and process APIs.
 - `desktop`: native window/transport runtime and platform checks.

@@ -1,22 +1,40 @@
-using System;
-using System.Threading.Tasks;
-using Runic.Application;
-using Runic.Application.Bridge;
-using System.Reflection;
-using Runic.Assets;
-using RunicDesktopApp;
+using CsWebUi;
+using Microsoft.Extensions.DependencyInjection;
+using Runic.Application.Views;
+using Runic.Application.Views.CsWebUi.DependencyInjection;
+using RunicWindowApp;
 
-[assembly: RunicApplicationManifest("RunicDesktopApp", Version = "1.0.0", Provenance = "template")]
-[assembly: RunicApplicationCapability("desktop")]
-[assembly: RunicApplicationArtifact("assets", "runic.assets/1:Runic.Assets.StaticFiles", "Runic.Assets.StaticFiles")]
-[assembly: ApplicationBridgeContract("runic.artifex.counter", 1, ContractName = "Counter")]
+var services = new ServiceCollection();
+services.AddScoped<WorkspaceViewModel>();
+services.AddScoped<WelcomeViewModel>();
+services.AddScoped<CounterViewModel>();
+services.AddTransient<WelcomeView>();
+services.AddTransient<CounterView>();
+services.AddScoped<IRunicViewLocator, MicrosoftViewLocator>();
+services.AddRunicBridges();
 
-if (Array.Exists(args, static argument => argument == "--smoke-test"))
-    return await CounterSmokeTest.RunAsync();
+using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+{
+    ValidateScopes = true,
+    ValidateOnBuild = true
+});
 
-var assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssembly()).WithDevelopmentDocument();
-await using ApplicationHost application = RunicApplication.CreateBuilder(args)
-    .UseHost(HostComposition.Create(assets))
-    .Build();
-await application.RunAsync();
-return 0;
+if (args.Contains("--smoke-test", StringComparer.Ordinal))
+{
+    using var scope = provider.CreateScope();
+    var workspace = scope.ServiceProvider.GetRequiredService<WorkspaceViewModel>();
+    workspace.ShowCounterCommand.Execute(null);
+    if (workspace.Main is not CounterViewModel counter)
+        throw new InvalidOperationException("The Window did not select its Counter View.");
+    counter.IncrementCommand.Execute(null);
+    if (counter.Count != 1)
+        throw new InvalidOperationException("The generated command did not update the Counter ViewModel.");
+    Console.WriteLine("RUNIC_VIEWS_TEMPLATE_OK|window|view|command");
+    return;
+}
+
+using var window = provider.OpenWindow<WorkspaceWindow, WorkspaceViewModel>(host => new WorkspaceWindow(host));
+window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
+window.Show("index.html");
+WebUiApplication.Wait();
+WebUiApplication.Clean();

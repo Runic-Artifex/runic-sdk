@@ -13,5 +13,4 @@
       Condition="'$(RunicToolkitBuildMode)' != 'Development' and '$(RunicToolkitBuildMode)' != 'Verification'"
       Text="RunicToolkitBuildMode must be either Development or Verification." />
   </Target>
-  <Import Project="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Bridge/buildTransitive/Runic.Application.Bridge.targets" />
 </Project>

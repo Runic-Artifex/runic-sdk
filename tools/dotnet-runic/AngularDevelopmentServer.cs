@@ -39,11 +39,9 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
 
     internal static async Task<AngularDevelopmentServer> StartAsync(
         DevProjectConfiguration configuration,
-        Uri inspectorEndpoint,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentNullException.ThrowIfNull(inspectorEndpoint);
         using PhaseTimer phase = PhaseTimer.Start("Starting Angular development server");
         int port = ReserveLoopbackPort();
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
@@ -73,7 +71,6 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                 FrontendDevelopmentDocument.Write(
                     configuration,
                     origin,
-                    inspectorEndpoint,
                     destination,
                     document);
             }

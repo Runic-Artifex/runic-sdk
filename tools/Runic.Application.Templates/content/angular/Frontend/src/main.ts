@@ -1,3 +1,4 @@
-import { bootstrapCounterApplication } from "./application";
+import { bootstrapApplication } from "@angular/platform-browser";
+import { AppComponent } from "./app/app";
 
-await bootstrapCounterApplication();
+bootstrapApplication(AppComponent).catch(error => console.error(error));

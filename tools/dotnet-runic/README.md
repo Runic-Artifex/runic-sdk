@@ -1,27 +1,42 @@
 # dotnet-runic
 
-Run generated-command diagnostics and coordinate local development for a Runic Application.
-
-Generated applications pin this tool locally:
+`dotnet-runic` checks and coordinates a Runic Views Window project. Generated
+projects pin the tool locally:
 
 ```bash
 dotnet tool restore
 dotnet runic doctor --project path/to/App.csproj
+dotnet runic dev --project path/to/App.csproj
 ```
 
-For other projects, install it globally with `dotnet tool install --global dotnet-runic --prerelease`. The frontend may use Node.js with npm or pnpm, or Bun; `doctor` reads the declared `packageManager` and committed lock file, then checks the matching toolchain. Use `dev` to run the managed host with configured Vite, Angular, or custom frontend development support and `inspect` for generated diagnostics.
+`dev` requires `RunicViewsWindowProject=true`. The Views MSBuild targets own
+View discovery, typed TypeScript generation, frontend builds, and asset copying.
+The CLI restores the selected .NET and JavaScript dependencies, invokes that
+MSBuild owner, then runs the native Window alongside the configured Vite,
+Angular, or frontend watcher. Frontend and application arguments after `--` are
+passed as ordinary process arguments.
 
-Vite+ remains an optional facade over that declared manager and the standard project scripts. `vp run dev` is compatible with generated projects, but `dotnet runic dev` deliberately uses the underlying npm, pnpm, or Bun declaration so the reproducible build does not depend on a separate global Vite+ installation.
+`doctor` checks the Views Window opt-in, the selected package train, the .NET
+SDK, the declared JavaScript runtime and package manager, the matching lock
+file, and configured frontend development-server inputs. It treats an absent
+browser as a warning because browser availability is only needed for browser
+smoke checks.
+
+`size` publishes an application for a required runtime identifier, inventories
+all published files, hashes each file, and writes an optional executable-check
+result into a JSON report:
 
 ```bash
-dotnet runic dev --project path/to/App.csproj
-dotnet runic dev --project path/to/App.csproj -- --safe-mode profile-a
-dotnet runic inspect --project path/to/App.csproj
+dotnet runic size --project path/to/App.csproj --runtime linux-x64 --report measurements/linux.json
 ```
 
 ## Local support envelope
 
-`support` only reads an explicitly selected Editor diagnostic ZIP. It can preview the selected collector and every omission, collect one unsigned local JSON envelope, or verify and remove that envelope. It never launches a product, scans a workspace, uploads data, opens a network transport, or configures telemetry.
+`support` only reads an explicitly selected Editor diagnostic ZIP. It can
+preview the selected collector and every omission, collect one unsigned local
+JSON envelope, or verify and remove that envelope. It never launches a product,
+scans a workspace, uploads data, opens a network transport, or configures
+telemetry.
 
 ```bash
 dotnet runic support --mode preview --editor-diagnostics /path/to/editor-diagnostics.zip
@@ -29,29 +44,9 @@ dotnet runic support --mode collect --editor-diagnostics /path/to/editor-diagnos
 dotnet runic support --mode remove --destination /path/to/support-envelope.json
 ```
 
-The collector accepts only `runic.translations.editor-diagnostics/1` and rejects paths, source/translation/review text, sessions, cookies, and tokens. The resulting `runic.support-envelope/1` contains normalized application/workspace counts plus a fixed omission record; it is not a telemetry or hosted-diagnostics API.
+The collector accepts only `runic.translations.editor-diagnostics/1` and
+rejects paths, source/translation/review text, sessions, cookies, and tokens.
+The resulting `runic.support-envelope/1` contains normalized
+application/workspace counts plus a fixed omission record.
 
-Everything after `--` is forwarded unchanged to the application, including option-looking and negative values. The tool reads optional project properties and runs only your configured local commands. See the [development guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/contributing/development.md), [examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples), and [issues](https://github.com/Runic-Artifex/runic-sdk/issues). Preview tool; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).
-
-## Application host selection
-
-`dotnet runic dev --host desktop|cswebui` selects the matching project references,
-contract generation, frontend build and child process environment. Generated
-projects expose `RunicHost`; normal builds and publishes accept
-`-p:RunicHost=cswebui`. Restore when changing hosts. With no override, `dev`
-uses the project selection. Development progress streams immediately; JSON mode
-keeps progress on stderr and reserves stdout for the final result envelope.
-
-Hosts opt into the generated frontend development document by calling
-`assets.WithDevelopmentDocument()`. Only the explicit bounded entry document is
-replaced. The remaining asset manifest is unchanged.
-
-## Publish measurements
-
-`dotnet runic size --runtime linux-x64 --host desktop --profile minimal
---report measurements/minimal.json` publishes a fresh self-contained NativeAOT
-distribution and records disk/ZIP bytes, file hashes, package versions, evaluated
-settings and behavior-check status. `--verify <executable>` and repeated
-`--verify-argument <value>` invoke a shell-free checker against the published
-directory and main executable. Without a checker the report says `not-run`.
-See the [size and tuning guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/size-and-tuning.md).
+Preview tool; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).

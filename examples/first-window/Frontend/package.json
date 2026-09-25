@@ -1,0 +1,5 @@
+{
+  "name": "@runic-artifex/first-window", "private": true, "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json && node copy-static.mjs", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "devDependencies": { "typescript": "6.0.3" }
+}

@@ -25,9 +25,9 @@ try {
   writeFileSync(join(directory, 'package.json'), JSON.stringify({name: 'runic-public-smoke', private: true, type: 'module'}));
   run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '--save-exact', '--no-audit', '--no-fund',
     '--registry=https://registry.npmjs.org', '--@runic-artifex:registry=https://registry.npmjs.org',
-    `--cache=${process.env.npm_config_cache ?? resolve('.cache/npm')}`, `@runic-artifex/application-bridge@${VERSION}`]);
-  run('bun', ['-e', 'const bridge = await import("@runic-artifex/application-bridge"); if (!Object.keys(bridge).length) throw Error("Empty bridge exports");']);
-  console.log('Public .NET library, tool and npm bridge installation passed.');
+    `--cache=${process.env.npm_config_cache ?? resolve('.cache/npm')}`, `@runic-artifex/views-svelte@${VERSION}`]);
+  run('bun', ['-e', 'await import("@runic-artifex/views-svelte/view-registry");']);
+  console.log('Public .NET library, tool and npm Views outlet installation passed.');
 } finally {
   writeFileSync(join(logs, 'public-smoke.log'), log);
   rmSync(directory, {recursive: true, force: true});

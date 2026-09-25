@@ -53,8 +53,10 @@ uses the current checkout and incremental builds, without containers:
 ```sh
 bun run test --list
 bun run test command-line
-bun run test web/application-bridge
+bun run test web/views-svelte
 bun run test eng/release/contracts.test.mjs
+cd docs
+direnv exec .. bun run test
 bun run test tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj
 ```
 

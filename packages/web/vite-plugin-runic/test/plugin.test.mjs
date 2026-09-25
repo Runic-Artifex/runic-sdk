@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { DevTools } from "@vitejs/devtools";
@@ -169,106 +168,6 @@ test("runs the Vite, HMR, and SSR fixtures without browser-only state", async ()
   }
 });
 
-test("generates bridge IR on startup and regenerates imported schema changes with a full reload", async () => {
-  const root = await fixtureRoot();
-  await linkBridgeFixtureDependencies(root);
-  await writeFile(join(root, "src", "snapshot.ts"), `
-import { Schema } from "effect";
-export const Snapshot = Schema.Struct({ value: Schema.Int });
-`, "utf8");
-  await writeFile(join(root, "src", "application.bridge.ts"), `
-import { Schema } from "effect";
-import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
-import { Snapshot } from "./snapshot.js";
-export default defineApplicationBridgeContract({
-  protocol: { identity: "runic.test", version: 1 },
-  csharp: { namespace: "Runic.Test", contractName: "Test" },
-  snapshot: Snapshot,
-  commands: [],
-  events: [], errors: []
-});
-`, "utf8");
-  const plugin = runic({
-    devtools: false,
-    applicationBridge: { authority: "effect", source: "src/application.bridge.ts", ir: "Contract/bridge.ir.json" },
-  });
-  const messages = [];
-  const server = await createServer({
-    root,
-    configFile: false,
-    logLevel: "silent",
-    plugins: [plugin],
-    server: { host: "127.0.0.1", port: 0, strictPort: false },
-  });
-  try {
-    server.ws.on = server.ws.on.bind(server.ws);
-    const send = server.ws.send.bind(server.ws);
-    server.ws.send = (message) => { messages.push(message); return send(message); };
-    await server.listen();
-    const irPath = join(root, "Contract", "bridge.ir.json");
-    const facadePath = join(root, "src", "application.bridge.generated.ts");
-    const first = JSON.parse(await readFile(irPath, "utf8"));
-    assert.equal(first.wire.protocol.identity, "runic.test");
-    assert.doesNotMatch(await readFile(facadePath, "utf8"), /Schema\./);
-    const changed = new Promise((resolve) => server.watcher.once("change", resolve));
-    await writeFile(join(root, "src", "snapshot.ts"), `
-import { Schema } from "effect";
-export const Snapshot = Schema.Struct({ value: Schema.Int, label: Schema.String });
-`, "utf8");
-    await changed;
-    for (let attempt = 0; attempt < 40 && !messages.some((message) => message.type === "full-reload"); attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    const second = JSON.parse(await readFile(irPath, "utf8"));
-    assert.notEqual(second.fingerprint.value, first.fingerprint.value);
-    assert.equal(messages.some((message) => message.type === "full-reload"), true);
-  } finally {
-    await server.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("waits for the matching managed-host fingerprint before reloading", async () => {
-  const root = await fixtureRoot();
-  const readyPath = join(root, "host-ready.fingerprint");
-  const previousReadyPath = process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
-  process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY = readyPath;
-  try {
-    await linkBridgeFixtureDependencies(root);
-    const sourcePath = join(root, "src", "application.bridge.ts");
-    await writeFile(sourcePath, bridgeFixtureSource("Schema.Struct({ value: Schema.Int })"), "utf8");
-    const messages = [];
-    const plugin = runic({ devtools: false, applicationBridge: { authority: "effect", source: "src/application.bridge.ts", ir: "Contract/bridge.ir.json" } });
-    plugin.configResolved({ command: "serve", mode: "development", root });
-    await plugin.configureServer({
-      ws: { on: () => undefined, send: (message) => messages.push(message) },
-      watcher: { add: () => undefined },
-      middlewares: { use: () => undefined },
-      httpServer: undefined,
-    });
-    const irPath = join(root, "Contract", "bridge.ir.json");
-    const first = JSON.parse(await readFile(irPath, "utf8"));
-    await writeFile(readyPath, `${first.fingerprint.value}\n`, "utf8");
-    await writeFile(sourcePath, bridgeFixtureSource("Schema.Struct({ value: Schema.Int, label: Schema.String })"), "utf8");
-    const update = plugin.handleHotUpdate({ file: sourcePath });
-    let second;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      second = JSON.parse(await readFile(irPath, "utf8"));
-      if (second.fingerprint.value !== first.fingerprint.value) break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assert.notEqual(second.fingerprint.value, first.fingerprint.value);
-    assert.equal(messages.some((message) => message.type === "full-reload"), false);
-    await writeFile(readyPath, `${second.fingerprint.value}\n`, "utf8");
-    await update;
-    assert.equal(messages.some((message) => message.type === "full-reload"), true);
-  } finally {
-    if (previousReadyPath === undefined) delete process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
-    else process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY = previousReadyPath;
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
 test("registers the official Vite DevTools dock, shared state, and command", async () => {
   const plugin = runic({
     contract: { identity: "sample", version: "1", fingerprint: "abc" },
@@ -422,7 +321,7 @@ test("fails closed on hostile summaries and bounds a million-key detail object",
   assert.ok(JSON.stringify(entry).length <= 2_048);
 });
 
-test("accepts bridge, asset, and translation summaries through one bounded timeline", () => {
+test("accepts view, asset, and translation summaries through one bounded timeline", () => {
   const plugin = runic({ devtools: false, maxTimelineEntries: 2 });
   let latest;
   plugin.configureServer({
@@ -433,7 +332,7 @@ test("accepts bridge, asset, and translation summaries through one bounded timel
     middlewares: { use: () => undefined },
     httpServer: undefined,
   });
-  plugin.diagnostics.report({ source: "application-bridge", kind: "connection", label: "Connected" });
+  plugin.diagnostics.report({ source: "views", kind: "connection", label: "Connected" });
   plugin.diagnostics.report({ source: "assets", kind: "event", label: "Asset refreshed" });
   plugin.diagnostics.report({
     source: "translations",
@@ -450,21 +349,6 @@ test("accepts bridge, asset, and translation summaries through one bounded timel
   );
 });
 
-function bridgeFixtureSource(snapshot) {
-  return `
-import { Schema } from "effect";
-import { bridge, defineApplicationBridgeContract } from "@runic-artifex/application-bridge";
-const Snapshot = ${snapshot}.annotate({ identifier: "Snapshot" });
-export default defineApplicationBridgeContract({
-  protocol: { identity: "runic.test", version: 1 },
-  csharp: { namespace: "Runic.Test", contractName: "Test" },
-  snapshot: Snapshot,
-  commands: [],
-  events: [], errors: []
-});
-`;
-}
-
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-fixture-"));
   await cp(join(process.cwd(), "test", "fixtures", "vite"), root, { recursive: true });
@@ -472,35 +356,6 @@ async function fixtureRoot() {
   await mkdir(packageDirectory, { recursive: true });
   await symlink(process.cwd(), join(packageDirectory, "vite-plugin-runic"), "dir");
   return root;
-}
-
-async function linkBridgeFixtureDependencies(root) {
-  const toolingRequire = createRequire(import.meta.resolve("@runic-artifex/application-bridge-tooling"));
-  const runicPackages = join(root, "node_modules", "@runic-artifex");
-  await symlink(
-    await installedPackageRoot(toolingRequire, "@runic-artifex/application-bridge"),
-    join(runicPackages, "application-bridge"),
-    "dir",
-  );
-  await symlink(
-    await installedPackageRoot(toolingRequire, "effect"),
-    join(root, "node_modules", "effect"),
-    "dir",
-  );
-}
-
-async function installedPackageRoot(require, packageName) {
-  let directory = dirname(require.resolve(packageName));
-  while (dirname(directory) !== directory) {
-    try {
-      const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
-      if (manifest.name === packageName) return directory;
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
-    }
-    directory = dirname(directory);
-  }
-  throw new Error(`Could not locate installed package root for ${packageName}.`);
 }
 
 function serverPort(server) {
@@ -572,64 +427,3 @@ async function ssrRevisionAfterUpdate(server) {
   }
   return (await server.ssrLoadModule("/src/ssr-entry.js")).revision;
 }
-
-test("watches C# source modules outside the frontend, coalesces edits and retains last-good files", async () => {
-  const { EventEmitter } = await import("node:events");
-  const { generateApplicationBridge } = await import("@runic-artifex/application-bridge-tooling");
-  const root = await fixtureRoot();
-  const previous = { dotnet: process.env.DOTNET_HOST_PATH, inspector: process.env.RUNIC_BRIDGE_INSPECTOR, ready: process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY };
-  const watcher = new EventEmitter();
-  const watched = [];
-  watcher.add = value => watched.push(value);
-  let cleanup;
-  try {
-    await linkBridgeFixtureDependencies(root);
-    await writeFile(join(root, "src/application.bridge.ts"), bridgeFixtureSource("Schema.Struct({ value: Schema.Int })"));
-    const baseline = await generateApplicationBridge({ authority: "effect", root, source: "src/application.bridge.ts", ir: "baseline.json" });
-    const project = join(root, "App.csproj");
-    const module = join(root, "module", "Module.csproj");
-    const source = join(root, "module", "Commands.cs");
-    await mkdir(dirname(module));
-    await writeFile(project, "<Project />"); await writeFile(module, "<Project />"); await writeFile(source, "1");
-    const fake = join(root, "inspector.mjs");
-    await writeFile(fake, `
-import fs from "node:fs"; import crypto from "node:crypto";
-const ir = JSON.parse(fs.readFileSync(${JSON.stringify(join(root, "baseline.json"))}, "utf8"));
-const source = fs.readFileSync(${JSON.stringify(source)}, "utf8");
-if (source === "invalid") { console.error("Commands.cs(1): RTKAB2001: invalid command"); process.exit(1); }
-ir.authority = "csharp"; ir.wire.protocol.version = Number(source.split(":")[0]);
-ir.bindings = { source };
-const canonical = value => value === null || typeof value !== "object" ? value : Array.isArray(value) ? value.map(canonical) : Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
-ir.fingerprint.value = crypto.createHash("sha256").update(JSON.stringify(canonical(ir.wire), null, 2) + "\\n").digest("hex");
-console.log(JSON.stringify({ ir, dependencies: ${JSON.stringify([project, module, source])} }));
-`);
-    process.env.DOTNET_HOST_PATH = process.execPath;
-    process.env.RUNIC_BRIDGE_INSPECTOR = fake;
-    delete process.env.RUNIC_APPLICATION_BRIDGE_HOST_READY;
-    const messages = [];
-    const plugin = runic({ devtools: false, applicationBridge: { authority: "csharp", project, ir: "Contract/bridge.ir.json" } });
-    plugin.configResolved({ command: "serve", mode: "development", root });
-    cleanup = await plugin.configureServer({ ws: { on() {}, send: message => messages.push(message) }, watcher, middlewares: { use() {} }, httpServer: undefined });
-    assert.ok(watched.flat().includes(dirname(module)));
-    const irPath = join(root, "Contract/bridge.ir.json");
-    const initial = await readFile(irPath, "utf8");
-    const waitFor = async predicate => { for (let i = 0; i < 200; i++) { if (await predicate()) return; await new Promise(resolve => setTimeout(resolve, 10)); } assert.fail("C# watcher did not settle"); };
-    await writeFile(source, "invalid"); watcher.emit("change", source);
-    await waitFor(() => messages.some(message => message.type === "error"));
-    assert.equal(await readFile(irPath, "utf8"), initial);
-    await writeFile(source, "2"); watcher.emit("change", source); watcher.emit("change", source); watcher.emit("change", module);
-    await waitFor(() => messages.some(message => message.type === "full-reload"));
-    assert.equal(messages.filter(message => message.type === "full-reload").length, 1);
-    const fingerprint = JSON.parse(await readFile(irPath, "utf8")).fingerprint.value;
-    await writeFile(source, "2:renamed"); watcher.emit("change", source);
-    await waitFor(async () => JSON.parse(await readFile(irPath, "utf8")).bindings.source === "2:renamed");
-    assert.equal(JSON.parse(await readFile(irPath, "utf8")).fingerprint.value, fingerprint);
-    assert.equal(messages.filter(message => message.type === "full-reload").length, 1);
-  } finally {
-    if (typeof cleanup === "function") cleanup();
-    for (const [key, value] of [["DOTNET_HOST_PATH", previous.dotnet], ["RUNIC_BRIDGE_INSPECTOR", previous.inspector], ["RUNIC_APPLICATION_BRIDGE_HOST_READY", previous.ready]]) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-    await rm(root, { recursive: true, force: true });
-  }
-});

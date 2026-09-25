@@ -32,7 +32,6 @@ function main() {
   }
   const selected = selection(scope);
   process.env.NUGET_PACKAGES ??= resolve(root, '.cache/nuget');
-  process.env.RUNIC_BRIDGE_INSPECTOR = resolve(root, `tools/Runic.Application.Bridge.Inspector/bin/${configuration}/net10.0/Runic.Application.Bridge.Inspector.dll`);
   if (selected.kind === 'bun') run('bun', ['test', '--timeout', '180000', ...selected.paths, ...extra]);
   else if (selected.kind === 'web') {
     run('bun', ['eng/run.mjs', 'build-web']);

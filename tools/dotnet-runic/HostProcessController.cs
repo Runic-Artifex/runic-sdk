@@ -74,13 +74,12 @@ internal sealed class HostProcessController : IAsyncDisposable
         try
         {
             CommandResult build = await CommandRunner.RunAsync(_dotnetHost, _configuration.ProjectDirectory,
-                ["build", _configuration.ProjectPath, "--configuration", _options.Configuration, "--no-restore",
-                 "-p:RunicApplicationFrontendBuild=false", "-p:RunicApplicationFrontendInstall=false"], cancellationToken).ConfigureAwait(false);
+                CreateRestartBuildArguments(_configuration, _options), cancellationToken).ConfigureAwait(false);
             if (build.ExitCode != 0)
             {
                 Console.Error.Write(build.StandardError);
                 Console.Error.Write(build.StandardOutput);
-                throw new DevUsageException("RAPPDEV1006", "Host rebuild failed; the running host has been retained.");
+                throw new DevUsageException("RAPPDEV1006", "Window rebuild failed; the running application has been retained.");
             }
             if (_host is not null)
             {
@@ -90,7 +89,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine($"[dev] Reloading the {_configuration.Host} application host.");
+            Console.WriteLine("[dev] Reloading the Runic Views Window application.");
             _host = Start();
             ObserveExit(_host);
         }
@@ -103,59 +102,12 @@ internal sealed class HostProcessController : IAsyncDisposable
     private RunningProcess Start()
     {
         var arguments = _options.WatchHost
-            ? new List<string>
-            {
-                "watch",
-                "--project",
-                _configuration.ProjectPath,
-                "--configuration",
-                _options.Configuration,
-                "--property:DebugType=portable",
-                "--property:DebugSymbols=true",
-                "--property:Optimize=false",
-                "--property:RunicApplicationFrontendCompilerDevelopmentHotReload=true",
-                "--no-restore",
-                "--non-interactive",
-                "run",
-                "--no-launch-profile",
-            }
-            : new List<string>
-            {
-                "run",
-                "--project",
-                _configuration.ProjectPath,
-                "--configuration",
-                _options.Configuration,
-                "--no-restore",
-                "--no-build",
-                "--no-launch-profile",
-            };
+            ? new List<string>(CreateWatchArguments(_configuration, _options))
+            : new List<string>(CreateRunArguments(_configuration, _options));
         if (_options.ApplicationArguments.Count != 0)
         {
             arguments.Add("--");
             arguments.AddRange(_options.ApplicationArguments);
-        }
-
-        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
-        {
-            ["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"] = _developmentEnvironment.Count == 0 ? null :
-                System.IO.Path.GetFullPath(_configuration.DevelopmentServerDocuments[0], _configuration.RuntimeWebRoot),
-            ["RunicApplicationFrontendEnabled"] = "false",
-            ["RunicApplicationFrontendInstall"] = "false",
-            ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "1",
-            [ViteDevelopmentServer.ServerEnvironmentVariable] = null,
-            [ViteDevelopmentServer.EntryEnvironmentVariable] = null,
-            [ViteDevelopmentServer.PackageDirectoryEnvironmentVariable] = null,
-            [ViteDevelopmentServer.DiagnosticsEnvironmentVariable] = null,
-            [ViteDevelopmentServer.HotReloadEnvironmentVariable] = null,
-            [ViteDevelopmentServer.ProjectEnvironmentVariable] = null,
-            [ViteDevelopmentServer.BridgeHostReadyEnvironmentVariable] = null,
-            [AngularDevelopmentServer.ServerEnvironmentVariable] = null,
-            [AngularDevelopmentServer.KindEnvironmentVariable] = null,
-        };
-        foreach ((string key, string? value) in _developmentEnvironment)
-        {
-            environment[key] = value;
         }
 
         RunningProcess process = RunningProcess.Start(
@@ -163,13 +115,99 @@ internal sealed class HostProcessController : IAsyncDisposable
             _dotnetHost,
             _configuration.ProjectDirectory,
             arguments,
-            environment);
+            CreateDevelopmentEnvironment(_configuration, _developmentEnvironment));
         if (_options.WatchHost)
         {
             process.OutputReceived += ObserveOutput;
         }
 
         return process;
+    }
+
+    internal static IReadOnlyList<string> CreateWatchArguments(
+        DevProjectConfiguration configuration,
+        DevOptions options)
+    {
+        var arguments = new List<string> { "watch" };
+        // The Views MSBuild owner regenerates typed clients before compilation.
+        // Restart the Window process so it cannot keep running a stale View shape.
+        if (configuration.IsViewsWindowProject) arguments.Add("--no-hot-reload");
+        arguments.AddRange([
+            "--project",
+            configuration.ProjectPath,
+            "--configuration",
+            options.Configuration,
+            "--property:DebugType=portable",
+            "--property:DebugSymbols=true",
+            "--property:Optimize=false",
+            "--no-restore",
+            "--non-interactive",
+            "run",
+            "--no-launch-profile",
+        ]);
+        return arguments;
+    }
+
+    internal static IReadOnlyList<string> CreateRunArguments(
+        DevProjectConfiguration configuration,
+        DevOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(options);
+        var arguments = new List<string>
+        {
+            "run",
+            "--project",
+            configuration.ProjectPath,
+            "--configuration",
+            options.Configuration,
+            "--no-restore",
+            "--no-build",
+            "--no-launch-profile",
+        };
+        return arguments;
+    }
+
+    internal static IReadOnlyList<string> CreateRestartBuildArguments(
+        DevProjectConfiguration configuration,
+        DevOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(options);
+        var arguments = new List<string>
+        {
+            "build",
+            configuration.ProjectPath,
+            "--configuration",
+            options.Configuration,
+            "--no-restore",
+        };
+        return arguments;
+    }
+
+    internal static IReadOnlyDictionary<string, string?> CreateDevelopmentEnvironment(
+        DevProjectConfiguration configuration,
+        IReadOnlyDictionary<string, string?> developmentEnvironment)
+    {
+        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"] = developmentEnvironment.Count == 0 ? null :
+                System.IO.Path.GetFullPath(configuration.DevelopmentServerDocuments[0], configuration.RuntimeWebRoot),
+            ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "1",
+            [ViteDevelopmentServer.ServerEnvironmentVariable] = null,
+            [ViteDevelopmentServer.EntryEnvironmentVariable] = null,
+            [ViteDevelopmentServer.PackageDirectoryEnvironmentVariable] = null,
+            [ViteDevelopmentServer.DiagnosticsEnvironmentVariable] = null,
+            [ViteDevelopmentServer.HotReloadEnvironmentVariable] = null,
+            [ViteDevelopmentServer.ProjectEnvironmentVariable] = null,
+            [AngularDevelopmentServer.ServerEnvironmentVariable] = null,
+            [AngularDevelopmentServer.KindEnvironmentVariable] = null,
+        };
+        foreach ((string key, string? value) in developmentEnvironment)
+        {
+            environment[key] = value;
+        }
+        return environment;
     }
 
     private void ObserveOutput(string line)
@@ -181,11 +219,6 @@ internal sealed class HostProcessController : IAsyncDisposable
             Interlocked.Increment(ref _hotReloadGeneration);
         }
 
-        if (line.Contains(")] Exited", StringComparison.Ordinal) &&
-            !line.Contains("error code", StringComparison.OrdinalIgnoreCase))
-        {
-            _unexpectedExit.TrySetResult(0);
-        }
     }
 
     private async void ObserveExit(RunningProcess process)

@@ -12,12 +12,12 @@ using System.Threading.Tasks;
 
 namespace Runic.Application.Tool;
 
-internal sealed record SizeOptions(string? Project, string Runtime, string Host, string Profile,
+internal sealed record SizeOptions(string? Project, string Runtime,
     string Configuration, string Report, bool Aot, string Verify, IReadOnlyList<string> VerifyArguments);
 internal sealed record SizeFile(string Path, string Category, long Bytes, string Sha256);
 internal sealed record SizeVerification(string Status, int? ExitCode, string? Executable, IReadOnlyList<string> Arguments);
 internal sealed record SizeReport(string Schema, DateTimeOffset CreatedUtc, string Project, string Runtime,
-    string Host, string Profile, string Sdk, string BuildOperatingSystem, string BuildArchitecture, string InstalledRuntimes, string? SourceRevision,
+    string Sdk, string BuildOperatingSystem, string BuildArchitecture, string InstalledRuntimes, string? SourceRevision,
     bool? SourceDirty, IReadOnlyDictionary<string, string> EffectiveProperties,
     IReadOnlyDictionary<string, string> Libraries, string PublishDirectory, int PublishExitCode,
     string PublishLog, string Archive, long TotalBytes, long CompressedBytes,
@@ -30,17 +30,15 @@ internal partial class SizeJsonContext : JsonSerializerContext;
 internal static class SizeApplication
 {
     private static readonly string[] Properties = ["AssemblyName", "TargetFramework", "RuntimeIdentifier",
-        "RunicHost", "PublishAot", "PublishTrimmed", "TrimMode", "OptimizationPreference", "SelfContained",
+        "PublishAot", "PublishTrimmed", "TrimMode", "OptimizationPreference", "SelfContained",
         "InvariantGlobalization", "StripSymbols", "DebugType", "DebugSymbols", "StackTraceSupport",
         "EventSourceSupport", "UseSystemResourceKeys", "HttpActivityPropagationSupport", "EnableUnsafeBinaryFormatterSerialization",
-        "RunicDesktopMinimalHost", "ProjectAssetsFile", "RuntimeFrameworkVersion", "TargetLatestRuntimePatch"];
+        "ProjectAssetsFile", "RuntimeFrameworkVersion", "TargetLatestRuntimePatch"];
 
     internal static async Task<int> RunAsync(SizeOptions options, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Runtime))
             throw new DevUsageException("RTKSIZE1001", "Specify --runtime explicitly, for example linux-x64.");
-        if (options.Profile is not ("default" or "minimal"))
-            throw new DevUsageException("RTKSIZE1001", "Profile must be default or minimal.");
         if (options.VerifyArguments.Count != 0 && string.IsNullOrWhiteSpace(options.Verify))
             throw new DevUsageException("RTKSIZE1001", "--verify-argument requires --verify.");
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
@@ -48,12 +46,10 @@ internal static class SizeApplication
         string reportPath = Path.GetFullPath(options.Report);
         if (File.Exists(reportPath))
             throw new DevUsageException("RTKSIZE1001", "The report already exists. Select a new --report path to preserve prior evidence.");
-        using var requestedHost = new HostSelectionScope(options.Host);
         string dotnet = DevApplication.ResolveDotNetHost();
         var settings = new List<string> { $"-p:Configuration={options.Configuration}",
             $"-p:RuntimeIdentifier={options.Runtime}", $"-p:PublishAot={options.Aot.ToString().ToLowerInvariant()}",
-            "-p:SelfContained=true", "-p:OptimizationPreference=Size",
-            $"-p:RunicDesktopMinimalHost={(options.Profile == "minimal" ? "true" : "false")}" };
+            "-p:SelfContained=true", "-p:OptimizationPreference=Size" };
         async Task<CommandResult> Run(string executable, IReadOnlyList<string> arguments) =>
             await CommandRunner.RunAsync(executable, workingDirectory, arguments, cancellationToken).ConfigureAwait(false);
         async Task<Dictionary<string, string>> Evaluate()
@@ -67,11 +63,6 @@ internal static class SizeApplication
                 .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "", StringComparer.Ordinal);
         }
         Dictionary<string, string> effective = await Evaluate();
-        string host = effective["RunicHost"];
-        if (options.Profile == "minimal" && host == "cswebui")
-            throw new DevUsageException("RTKSIZE1001", "The minimal profile applies to Desktop. Use --profile default with CS-WebUI.");
-        // The evaluated selection also reaches contract generation and frontend tooling.
-        using var selectedHost = new HostSelectionScope(host);
         string directory = Path.Combine(Path.GetDirectoryName(reportPath)!,
             $"{Path.GetFileNameWithoutExtension(reportPath)}-{Guid.NewGuid():N}");
         string publishDirectory = Path.Combine(directory, "publish");
@@ -94,7 +85,7 @@ internal static class SizeApplication
             }
         }
         catch (DevUsageException) { /* Source provenance is unavailable outside Git installations. */ }
-        Console.WriteLine($"Publishing {host} / {options.Profile} for {options.Runtime}...");
+        Console.WriteLine($"Publishing application for {options.Runtime}...");
         CommandResult publish = await Run(dotnet, ["publish", project, "--nologo", .. settings, "--output", publishDirectory]);
         await File.WriteAllTextAsync(logPath, publish.CombinedOutput, cancellationToken);
         Console.Write(publish.CombinedOutput);
@@ -121,7 +112,7 @@ internal static class SizeApplication
             verification = new(check.ExitCode == 0 ? "passed" : "failed", check.ExitCode, options.Verify, arguments);
         }
         var report = new SizeReport("runic.size/1", DateTimeOffset.UtcNow, project, options.Runtime,
-            host, options.Profile, sdk, RuntimeInformation.OSDescription, RuntimeInformation.ProcessArchitecture.ToString(), runtimes, revision, dirty, effective, libraries,
+            sdk, RuntimeInformation.OSDescription, RuntimeInformation.ProcessArchitecture.ToString(), runtimes, revision, dirty, effective, libraries,
             publishDirectory, publish.ExitCode, logPath, archive, files.Sum(file => file.Bytes),
             new FileInfo(archive).Length, files, verification,
             ["All publish files are counted. File categories are heuristic and never remove files.",

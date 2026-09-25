@@ -1,7 +1,7 @@
 # Runic SDK
 
 Build native desktop applications with C# logic and React, Vue, Svelte or Angular.
-Adopt Application, Desktop, Assets, Translations and Command Line independently;
+Adopt Application Views, Desktop, Assets, Translations and Command Line independently;
 the SDK's NuGet and npm packages release together.
 
 ## Start building an application
@@ -11,9 +11,10 @@ to install the published templates and run an app. For an existing project, copy
 the install command for the capability you need from the
 [package catalog](https://docs.runic-artifex.eu/packages/).
 
-Explore the [customer editor](examples/customer-migration/README.md) and
-[document application](examples/document-migration/README.md) for complete examples.
-The instructions below are for contributing to the SDK itself.
+Explore the [first Window](examples/first-window/README.md),
+[Toolkit Notes](examples/notes-view-first/README.md), and
+[Reactive Notes](examples/notes-reactive-views/README.md) for the current
+Window and View model. The instructions below are for contributing to the SDK itself.
 
 ## Start developing
 
@@ -30,9 +31,6 @@ nix develop             # Linux: use the complete pinned environment
 bun run bootstrap       # One frozen npm workspace install and .NET restore
 bun run build           # SDK, editor, current example, and documentation
 bun run test command-line # Focused checks in the current checkout
-bun run example:counter # Small member-based bridge example
-bun run example:customers # Customer editor migrated away from CommunityToolkit MVVM
-bun run example:documents # Open, edit and save text documents
 bun run dev:docs        # Documentation development server
 bun run dev:editor      # Build and launch the translations editor
 ```
@@ -49,7 +47,7 @@ platform webview runtime described in [Desktop guidance](docs/guides/desktop/win
 | `packages/dotnet`, `packages/web` | Published libraries, generators and framework integrations |
 | `tools` | CLI, bridge inspector, asset packer, translation compiler and templates |
 | `apps` | First-party applications |
-| `examples` | Maintained counter, customer and document examples |
+| `examples` | First Window and Notes application examples |
 | `tests` | Managed/native suites, package/template consumers and required fixtures |
 | `specs` | Shared protocols, schemas and conformance corpora |
 | `docs` | Documentation site and product/architecture guides |
@@ -67,11 +65,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership, development and verificati
 
 ## Migrating existing applications
 
-The [customer migration reference](examples/customer-migration/README.md)
-includes an original WPF/CommunityToolkit implementation, shared business rules,
-and an idiomatic Runic replacement. Its [migration guide](docs/guides/application/architecture/mvvm-migration-rfc.md)
-records the boundaries used by the maintained examples. Select Desktop or CS-WebUI
-at composition time; see [host selection](docs/guides/desktop/host-selection.md).
+Start with the [first Window](examples/first-window/README.md), then compare the
+[Toolkit Notes](examples/notes-view-first/README.md) and
+[Reactive Notes](examples/notes-reactive-views/README.md) examples. They use
+explicit .NET Window and View types, generated TypeScript clients, and ordinary
+frontend components. See the [Views guide](docs/guides/application/README.md)
+and [host selection](docs/guides/desktop/host-selection.md).
 The [host-choice and footprint assessment](docs/guides/desktop/host-choice-and-footprint.md)
 retains the historical Linux measurement and links to current size guidance.
 

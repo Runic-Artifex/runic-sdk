@@ -8,14 +8,13 @@ On Apple Silicon macOS, create a small text file outside the application's
 container, then run the retained app from Terminal:
 
 ```sh
-RunicPlatform.app/Contents/MacOS/Runic.Platform.Prototype.Tests --native-select
+RunicPlatform.app/Contents/MacOS/Runic.Platform.Runtime.Tests --native-select
 ```
 
 Select that file in the owned open sheet. The test reads at most 4096 bytes without
-printing content, releases the acquired lease, then exercises open-sheet
-cancellation and owner closure during a save sheet. Cancellation/dismissal of the
+printing content, then releases the acquired lease. Cancellation/dismissal of the
 manual selection fails the evidence run; it is not recorded as granted access.
-The native watchdog permits four minutes for this manual run.
+The native watchdog permits five minutes for this manual run.
 
 Record the OS version, binary commit/hash, codesign entitlement output, selection
 location relative to the sandbox, and complete test log. Repeat with a revoked or
@@ -24,7 +23,9 @@ is attached to the app window and focus returns after cancellation. Do not recor
 private file content. The provider balances only security access it starts; it
 makes no retained-bookmark or general filesystem permission promise.
 
-For an ordinary desktop-session selection test, the same `--native-select` flag
-works with the Windows/Linux/macOS prototype executable outside a sandbox. Linux
-Wayland/portal evidence additionally needs a supported compositor and portal;
-Xvfb cancellation is not a substitute.
+The Runtime test uses a `Runic.Desktop` embedded WebView as the native window
+owner, with the provider selected directly from `Runic.Platform`. For an ordinary
+desktop-session selection test, the same `--native-select` flag works with the
+Windows/Linux/macOS executable outside a sandbox. Linux Wayland/portal evidence
+additionally needs a supported compositor and portal; Xvfb cancellation is not a
+substitute.

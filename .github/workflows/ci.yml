@@ -15,12 +15,11 @@ env:
   DOTNET_NOLOGO: "1"
   CONFIGURATION: Release
   NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
-  RUNIC_BRIDGE_INSPECTOR: ${{ github.workspace }}/tools/Runic.Application.Bridge.Inspector/bin/Release/net10.0/Runic.Application.Bridge.Inspector.dll
 jobs:
   build:
     name: Build shared SDK inputs
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     outputs:
       web: ${{ steps.plan.outputs.web }}
     steps:
@@ -57,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [application, assets, command-line, translations]
+        suite: [platform, assets, command-line, translations, application]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -65,8 +64,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - uses: ./.github/actions/restore-build
-      - uses: ./.github/actions/install-browser
-        if: matrix.suite == 'application'
       - name: Install the C++20 conformance compiler
         if: matrix.suite == 'translations'
         run: |
@@ -84,9 +81,6 @@ jobs:
       - name: Run bounded RMF2 LSP performance guard
         if: matrix.suite == 'translations'
         run: dotnet run --project tests/dotnet/Runic.Translations.Build.Tests/Runic.Translations.Build.Tests.csproj -c Release --no-build -- --rmf2-lsp-benchmark
-      - name: Exercise the counter application
-        if: matrix.suite == 'application'
-        run: dotnet run --project examples/counter/Counter.csproj -c Release --no-build
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   web:
@@ -143,8 +137,6 @@ jobs:
           bun eng/render-capabilities.mjs --check
       - name: Check generated packing project inventory
         run: bun eng/generate-shipping-projects.mjs --check
-      - name: Verify document candidate export boundaries
-        run: python3 examples/document-migration/eng/test-candidate.py
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   framework-consumers:
@@ -170,19 +162,51 @@ jobs:
         run: bun tests/web/svelte-package-consumers/package-consumers.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
-  bridge:
+  views:
+    name: Window and View journeys
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
+        with:
+          node: "true"
       - uses: ./.github/actions/restore-build
-      - name: Verify generated bridge artifacts and template contracts
-        run: bun eng/bridge/verify-artifacts.mjs
+      - uses: ./.github/actions/install-browser
+      - name: Exercise first Window generated client
+        run: node examples/first-window/browser-smoke.mjs
+      - name: Check composed View lifetime and window scopes
+        run: |
+          dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
+          dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime --splat
+          node examples/notes-view-first/window-smoke.mjs
+      - name: Exercise Toolkit and ReactiveUI typed clients
+        run: |
+          node examples/notes-view-first/browser-smoke.mjs
+          node examples/notes-reactive-views/browser-smoke.mjs
+          RUNIC_VERIFY_PENDING_MOUNT=1 node examples/notes-reactive-views/browser-smoke.mjs
+          RUNIC_VERIFY_CLIENT_DISCONNECT=1 node examples/notes-reactive-views/browser-smoke.mjs
+      - name: Exercise Svelte and Angular View outlets
+        run: |
+          (cd examples/notes-view-first/Svelte && bun install --frozen-lockfile && bun run build)
+          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/browser-smoke.mjs
+          npm --prefix examples/notes-view-first/Angular ci
+          npm --prefix examples/notes-view-first/Angular run build
+          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
+          (cd examples/notes-reactive-views/Svelte && bun install --frozen-lockfile && bun run build)
+          RUNIC_WEB_ROOT="$PWD/examples/notes-reactive-views/Svelte/dist" node examples/notes-reactive-views/browser-smoke.mjs
+          npm --prefix examples/notes-reactive-views/Angular ci
+          npm --prefix examples/notes-reactive-views/Angular run build
+          RUNIC_WEB_ROOT="$PWD/examples/notes-reactive-views/Angular/dist/angular-reactive/browser" node examples/notes-reactive-views/browser-smoke.mjs
+      - name: Exercise View development reload and IDE host
+        run: |
+          RUNIC_HMR_FRONTEND=svelte RUNIC_HMR_VIA_RUNIC_DEV=1 node examples/notes-reactive-views/hmr-smoke.mjs
+          dotnet build examples/notes-reactive-views/NotesReactiveViews.csproj -c Debug
+          node examples/notes-reactive-views/ide-host-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   editor:
@@ -292,69 +316,6 @@ jobs:
         run: bun run --bun test
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
-  customers:
-    name: Customer migration / ${{ matrix.journey }}
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        journey: [browser, dev]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/setup-sdk
-      - uses: ./.github/actions/restore-build
-      - uses: ./.github/actions/install-browser
-      - name: Build the customer application
-        run: dotnet build examples/customer-migration/Host/CustomerDesktop.csproj -c Release
-      - name: Verify feature behavior
-        if: matrix.journey == 'browser'
-        working-directory: examples/customer-migration/Host/Frontend
-        run: bun run --bun test
-      - name: Check generated customer contracts
-        if: matrix.journey == 'browser'
-        working-directory: examples/customer-migration/Host/Frontend
-        run: bun run --bun contract:check
-      - name: Exercise the live bridge and lifecycle
-        if: matrix.journey == 'browser'
-        working-directory: examples/customer-migration/Host/Frontend
-        run: bun run --bun test:browser
-      - name: Build the document migration application
-        if: matrix.journey == 'browser'
-        run: dotnet build examples/document-migration/Host/DocumentDesktop.csproj -c Release
-      - name: Verify document draft behavior
-        if: matrix.journey == 'browser'
-        working-directory: examples/document-migration/Host/Frontend
-        run: bun run --bun test
-      - name: Exercise document bridge and dirty-close behavior
-        if: matrix.journey == 'browser'
-        working-directory: examples/document-migration/Host/Frontend
-        run: bun run --bun test:browser
-      - name: Build the document migration application with CS-WebUI
-        if: matrix.journey == 'browser'
-        run: dotnet build examples/document-migration/Host/DocumentDesktop.csproj -c Release -p:RunicHost=cswebui
-      - name: Exercise document CS-WebUI bridge and dirty-close behavior
-        if: matrix.journey == 'browser'
-        working-directory: examples/document-migration/Host/Frontend
-        run: bun run --bun test:browser
-      - name: Exercise both hosts with frontend HMR
-        if: matrix.journey == 'dev'
-        working-directory: examples/customer-migration/Host/Frontend
-        run: bun run --bun test:dev
-      - name: Retain development logs
-        if: always() && matrix.journey == 'dev'
-        uses: actions/upload-artifact@v7
-        with:
-          name: host-dev-${{ github.run_id }}
-          path: artifacts/host-dev
-          if-no-files-found: ignore
-          overwrite: true
-      - name: Check generated files and lockfile
-        run: bun eng/ci/source-state.mjs check
   packages:
     name: Materialize package candidates
     needs: build
@@ -403,23 +364,13 @@ jobs:
         run: |
           $version = (Get-Content eng/workspace.json -Raw | ConvertFrom-Json).version
           ./tests/fixtures/command-line/package-consumer/Runic.CommandLine.PackageConsumer/Invoke-PackageConsumer.ps1 -PackageVersion $version -PackageDirectory artifacts/packages/nuget -RuntimeIdentifier linux-x64 -Configuration Release
-      - name: Verify Angular library and application package consumption
+      - name: Verify packaged Angular View outlet
         run: |
           version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
-          bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-application-bridge-$version.tgz" "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
+          bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-views-angular-$version.tgz"
       - uses: ./.github/actions/install-browser
-      - name: Verify package-only document migration in both hosts
-        run: |
-          version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
-          python3 examples/document-migration/eng/verify-candidate.py --version "$version" --nuget-feed artifacts/packages/nuget --npm-feed artifacts/packages/npm --report artifacts/document-package-acceptance/linux-x64
-      - name: Retain package-only document evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: document-package-acceptance-${{ github.run_id }}
-          path: artifacts/document-package-acceptance
-          if-no-files-found: ignore
-          overwrite: true
+      - name: Verify packaged Window factory, generated client, and browser
+        run: node examples/first-window/package-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   wpf-package-consumer:
@@ -479,7 +430,7 @@ jobs:
             provider: MacOS
             extension: ""
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7
         with:
@@ -491,13 +442,14 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Install pinned npm
+        shell: bash
+        run: npm install --global npm@12.0.2
       - run: bun install --frozen-lockfile
       - uses: ./.github/actions/install-browser
-      - name: Build Desktop browser fixture
-        shell: bash
-        run: |
-          bun run --cwd packages/web/desktop --bun build
-          bun build packages/web/desktop/test/browser-entry.ts --target browser --outfile artifacts/browser/runic-desktop-test.js
       - name: Build managed desktop contracts
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       - name: Test managed desktop contracts
@@ -557,36 +509,6 @@ jobs:
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
-      - name: Build platform lifetime and native picker conformance
-        run: dotnet build tests/dotnet/Runic.Platform.Prototype.Tests -c Release
-      - name: Verify live CS-WebUI presentation service lifetime on Linux
-        if: runner.os == 'Linux'
-        timeout-minutes: 2
-        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --live-cswebui
-      - name: Verify live CS-WebUI presentation service lifetime
-        if: runner.os != 'Linux'
-        timeout-minutes: 2
-        run: dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --live-cswebui
-      - name: Verify GTK picker ownership and presentation shutdown
-        if: runner.os == 'Linux'
-        timeout-minutes: 3
-        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --native
-      - name: Verify native picker ownership and presentation shutdown
-        if: runner.os != 'Linux'
-        timeout-minutes: 3
-        run: dotnet tests/dotnet/Runic.Platform.Prototype.Tests/bin/Release/net10.0/Runic.Platform.Prototype.Tests.dll --native
-      - name: Publish platform lifetime and picker conformance with NativeAOT
-        timeout-minutes: 10
-        run: dotnet publish tests/dotnet/Runic.Platform.Prototype.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/platform-aot
-      - name: Exercise NativeAOT GTK picker lifecycle
-        if: runner.os == 'Linux'
-        timeout-minutes: 3
-        run: GDK_BACKEND=x11 xvfb-run -a artifacts/platform-aot/Runic.Platform.Prototype.Tests --native
-      - name: Exercise NativeAOT picker lifecycle
-        if: runner.os != 'Linux'
-        timeout-minutes: 3
-        shell: bash
-        run: ./artifacts/platform-aot/Runic.Platform.Prototype.Tests${{ matrix.extension }} --native
       - name: Verify Windows administration native inspection
         if: runner.os == 'Windows'
         timeout-minutes: 5
@@ -628,13 +550,19 @@ jobs:
         timeout-minutes: 3
         shell: bash
         run: ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --native
+      - name: Publish and run platform runtime conformance with NativeAOT
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/platform-runtime-aot
+          ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}
       - name: Prepare signed macOS sandbox fixture for manual permission evidence
         if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p artifacts/platform-sandbox/RunicPlatform.app/Contents/MacOS
           cp tests/native/platform-sandbox/Info.plist artifacts/platform-sandbox/RunicPlatform.app/Contents/Info.plist
-          ditto artifacts/platform-aot artifacts/platform-sandbox/RunicPlatform.app/Contents/MacOS
+          ditto artifacts/platform-runtime-aot artifacts/platform-sandbox/RunicPlatform.app/Contents/MacOS
           codesign --force --deep --sign - --entitlements tests/native/platform-sandbox/entitlements.plist artifacts/platform-sandbox/RunicPlatform.app
           codesign --verify --deep --strict artifacts/platform-sandbox/RunicPlatform.app
           tar -czf artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz -C artifacts/platform-sandbox RunicPlatform.app
@@ -645,9 +573,6 @@ jobs:
           name: platform-sandbox-${{ matrix.rid }}-${{ github.run_id }}
           path: artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz
           if-no-files-found: error
-      - name: Compile the original WPF migration example
-        if: runner.os == 'Windows'
-        run: dotnet build examples/customer-migration/Wpf/CustomerWpf.csproj -c Release
       - name: Verify WPF translation rendering
         if: runner.os == 'Windows'
         run: dotnet run --project tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj -c Release
@@ -660,80 +585,32 @@ jobs:
           mkdir artifacts/webview-exe-only
           cp artifacts/webview-aot/Runic.Desktop.WebViewSmoke.exe artifacts/webview-exe-only/
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe)
-      - name: Publish generated member bridge with NativeAOT
+      - name: Publish Window and View application with NativeAOT
         shell: bash
         run: |
-          dotnet publish tests/native/Runic.Application.Bridge.MemberAotSmoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/native
-          ./artifacts/native/Runic.Application.Bridge.MemberAotSmoke${{ matrix.extension }}
-
-  footprint:
-    name: Footprint / ${{ matrix.rid }}
-    needs: packages
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            rid: linux-x64
-          - os: windows-latest
-            rid: win-x64
-          - os: macos-26
-            rid: osx-arm64
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-      - uses: actions/download-artifact@v8
-        with:
-          name: runic-sdk-${{ github.run_id }}
-          path: artifacts/packages
-      - name: Restore and build verification tools
+          dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-aot/FirstWindow${{ matrix.extension }} --probe-factory-failure
+            GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
+          else
+            ./artifacts/views-aot/FirstWindow${{ matrix.extension }} --probe-factory-failure
+            RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
+          fi
+      - name: Verify Windows View IDE launch and framework reload
+        if: runner.os == 'Windows'
         shell: bash
+        timeout-minutes: 10
         run: |
-          bun run bootstrap
-          dotnet build tools/dotnet-runic -c Release
-      - name: Build frontend verification dependencies
-        run: bun eng/run.mjs build-web
-      - name: Test CS-WebUI startup readiness
-        run: dotnet run --project tests/dotnet/Runic.Application.CsWebUi.Tests -c Release
-      - uses: ./.github/actions/install-browser
-      - name: Build Desktop browser fixture
-        run: bun build packages/web/desktop/test/browser-entry.ts --target browser --outfile artifacts/browser/runic-desktop-test.js
-      - name: Build minimal Desktop conformance
-        run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopMinimalHost=true
-      - name: Verify minimal Desktop conformance
-        timeout-minutes: 5
-        run: >-
-          dotnet test tests/dotnet/Runic.Desktop.Tests -c Release --no-build -p:RunicDesktopMinimalHost=true
-          --settings eng/ci/desktop.runsettings --diag artifacts/host-footprint/minimal-tests/vstest.log
-          --logger "console;verbosity=normal" --logger "trx;LogFileName=desktop-minimal.trx"
-          --results-directory artifacts/host-footprint/minimal-tests
-          --blame-hang-timeout 2m --blame-hang-dump-type none
-      - name: Publish, measure and verify all three package consumers
-        run: bun run verify:footprint
-        env:
-          RUNIC_SIZE_RID: ${{ matrix.rid }}
-      - name: Retain measurements and actual published distributions
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: host-footprint-${{ matrix.rid }}-${{ github.run_id }}
-          path: artifacts/host-footprint
-          if-no-files-found: warn
-          overwrite: true
+          npm --prefix examples/notes-reactive-views/Angular ci
+          (cd examples/notes-reactive-views/Svelte && bun install --frozen-lockfile)
+          dotnet build examples/notes-reactive-views/NotesReactiveViews.csproj -c Debug
+          node examples/notes-reactive-views/ide-host-smoke.mjs
+          RUNIC_HMR_FRONTEND=angular RUNIC_HMR_VIA_IDE=1 node examples/notes-reactive-views/hmr-smoke.mjs
 
   verify:
     name: verify
     if: always()
-    needs: [build, managed, web, engineering, framework-consumers, bridge, editor, docs, customers, packages, package-consumers, wpf-package-consumer, templates, native, footprint, ide-packaging, ide-windows-package]
+    needs: [build, managed, web, engineering, framework-consumers, views, editor, docs, packages, package-consumers, wpf-package-consumer, templates, native, ide-packaging, ide-windows-package]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every verification job to pass

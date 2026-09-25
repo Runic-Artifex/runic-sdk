@@ -8,12 +8,13 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.333" />
     <PackageVersion Include="System.DirectoryServices.Protocols" Version="10.0.10" />
+    <PackageVersion Include="System.Reflection.MetadataLoadContext" Version="10.0.0" />
     <PackageVersion Include="Tmds.DBus.Protocol" Version="0.95.1" />
     <PackageVersion Include="Tmds.DBus.Generator" Version="0.95.1" />
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
     <PackageVersion Include="GirCore.WebKit-6.0" Version="0.8.1" />
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
-    <PackageVersion Include="CsWebUi" Version="2.5.0-beta.4.4" />
+    <PackageVersion Include="CsWebUi" Version="2.5.0-beta.4.5" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" Condition="$([System.String]::Copy('$(MSBuildProjectName)').StartsWith('Runic.Translations')) or '$(MSBuildProjectName)' == 'dotnet-runic-translations'" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.9.6" />
@@ -30,6 +31,7 @@
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <PackageVersion Include="ReactiveUI" Version="24.2.0" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="3.2.0" />
+    <PackageVersion Include="Splat" Version="21.0.0" />
     <!-- Used only by compiler contract tests to validate emitted instances against draft 2020-12 schemas. -->
     <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
     <PackageVersion Include="Runic.Platform" Version="$(RunicSdkVersion)" />
@@ -38,12 +40,10 @@
     <PackageVersion Include="Runic.Platform.Windows" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.MacOS" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Application.Platform" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Application.Platform.Desktop" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Application" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Application.Bridge" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Application.Desktop" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Application.Hosting" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Views" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Views.ReactiveUI" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Views.CsWebUi" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Views.CsWebUi.DependencyInjection" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.AspNetCore" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.Desktop" Version="$(RunicSdkVersion)" />

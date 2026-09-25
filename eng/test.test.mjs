@@ -4,8 +4,8 @@ test('focused selections include only their managed suite or web package', () =>
   const commandLine = selection('command-line');
   expect(commandLine.kind).toBe('managed');
   expect(commandLine.paths.length).toBeGreaterThan(0);
-  expect(commandLine.paths.every(p => p.includes('Runic.CommandLine'))).toBe(true);
-  expect(selection('web/application-bridge')).toEqual({kind: 'web', paths: ['packages/web/application-bridge']});
+  expect(commandLine.paths.every(p => p.includes('Runic.CommandLine') || p.startsWith('examples/command-line/'))).toBe(true);
+  expect(selection('web/svelte')).toEqual({kind: 'web', paths: ['packages/web/svelte']});
   expect(() => selection('command-lien')).toThrow('Unknown test scope');
 });
 test('single file and single .NET test project avoid full workspace execution', () => {

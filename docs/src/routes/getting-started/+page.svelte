@@ -91,21 +91,20 @@ dotnet run`;
     </ContentCard>
     <ContentCard eyebrow="Make it yours" title="Change the counter" full>
       <p>
-        The generated app contains a counter, a typed Application Bridge
-        contract and a C# command handler. Change the page in <code
-          >Frontend</code
-        >, then follow its increment command into the host. UI state stays in
-        your frontend; application commands run in C#.
+        The generated app contains a .NET Window, a typed View contract and a
+        C# ViewModel. Change the page in <code>Frontend</code>, then follow its
+        generated client calls into the Window. The frontend owns rendering;
+        .NET owns the application model and operation lifetime.
       </p>
       <p>
-        <a class="text-link" href={resolve('/application-bridge')}
-          >Learn how the bridge works</a
+        <a class="text-link" href={resolve('/views')}
+          >Learn about Windows and Views</a
         >, or explore the
         <a
           class="text-link"
-          href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/document-migration"
-          >document application example</a
-        > for editing, saving and native file dialogs.
+          href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first"
+          >Notes example</a
+        > for nested content, editing, and navigation.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Share your app" title="Publish for your platform">
@@ -118,16 +117,15 @@ dotnet run`;
     </ContentCard>
     <ContentCard eyebrow="Existing project" title="Add one capability">
       <p>
-        You can adopt Application, Desktop, Assets, Translations or Command Line
+        You can adopt Application Views, Desktop, Assets, Translations or Command Line
         separately. Choose a package and copy its installation command from the <a
           class="text-link"
           href={resolve('/packages')}>package catalog</a
         >.
       </p>
       <p>
-        The Application Bridge source generator is included with <code
-          >Runic.Application.Bridge</code
-        >; it does not need a separate package install.
+        Application Views uses explicit Window and View types. Its build tooling
+        emits the C# attachments and TypeScript client modules for those contracts.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Next steps" title="Keep building" full>

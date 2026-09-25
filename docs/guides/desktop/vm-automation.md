@@ -136,7 +136,7 @@ The locked GNOME image supplies US English and Intelligent Pinyin input sources.
 The runner owns a Mutter RemoteDesktop session, establishes initial native focus,
 types `runic`, checks Tab/Shift+Tab focus movement, switches sources with
 Super+Space, types `nihao`, and commits `你好` with Space. It verifies native text,
-application bridge output, and real composition start/end events. It restores
+generated View client output, and real composition start/end events. It restores
 the original input source and stops its input session afterward. Run this only
 in the disposable test desktop: it generates keyboard input in that session.
 

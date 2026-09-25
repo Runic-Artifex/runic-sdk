@@ -69,6 +69,7 @@ function core() {
     "RunicSdk.Core.slnx",
     "-c",
     configuration,
+    "-m:1",
     "--nologo",
   ]);
 }
@@ -78,20 +79,6 @@ function build() {
   run("dotnet", [
     "build",
     "apps/translations-editor/Runic.Translations.Editor.csproj",
-    "-c",
-    configuration,
-    "--nologo",
-  ]);
-  run("dotnet", [
-    "build",
-    "examples/customer-migration/Host/CustomerDesktop.csproj",
-    "-c",
-    configuration,
-    "--nologo",
-  ]);
-  run("dotnet", [
-    "build",
-    "examples/document-migration/Host/DocumentDesktop.csproj",
     "-c",
     configuration,
     "--nologo",
@@ -169,11 +156,6 @@ export function affectedComponents(files) {
 async function main() {
   const command = process.argv[2];
   process.env.NUGET_PACKAGES ??= resolve(root, ".cache/nuget");
-  // Always use this checkout's compiler, even if an older checkout exported an override.
-  process.env.RUNIC_BRIDGE_INSPECTOR = resolve(
-    root,
-    `tools/Runic.Application.Bridge.Inspector/bin/${configuration}/net10.0/Runic.Application.Bridge.Inspector.dll`,
-  );
   switch (command) {
     case "bootstrap":
       run("bun", ["install", "--frozen-lockfile"]);
@@ -200,36 +182,21 @@ async function main() {
     case "affected":
       affected();
       break;
-    case "example:documents":
-    case "example:customers":
+    case "example:first-window":
+    case "example:notes":
       core();
       web("build");
       run("dotnet", [
         "run",
         "--project",
-        command === "example:documents"
-          ? "examples/document-migration/Host/DocumentDesktop.csproj"
-          : "examples/customer-migration/Host/CustomerDesktop.csproj",
+        command === "example:notes"
+          ? "examples/notes-view-first/NotesViewFirst.csproj"
+          : "examples/first-window/FirstWindow.csproj",
         "-c",
         configuration,
         "--",
         ...process.argv.slice(3),
       ]);
-      break;
-    case "verify:customers":
-      core();
-      web("build");
-      run("dotnet", [
-        "build",
-        "examples/customer-migration/Host/CustomerDesktop.csproj",
-        "-c",
-        configuration,
-      ]);
-      run(
-        "bun",
-        ["run", "test:browser"],
-        resolve(root, "examples/customer-migration/Host/Frontend"),
-      );
       break;
     case "dev:docs":
       run("bun", ["run", "dev"], resolve(root, "docs"));
@@ -247,7 +214,7 @@ async function main() {
       break;
     default:
       throw new Error(
-        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:customers, example:documents, verify:customers, dev:docs, or dev:editor. Run bun run ci for workflow verification.",
+        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:first-window, example:notes, dev:docs, or dev:editor. Run bun run ci for workflow verification.",
       );
   }
 }

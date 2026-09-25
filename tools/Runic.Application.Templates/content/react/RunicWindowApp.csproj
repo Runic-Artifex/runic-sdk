@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicViewsWindowProject>true</RunicViewsWindowProject>
+    <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
+    <RunicBridgeCompositionType>RunicWindowApp.RunicBridgeComposition</RunicBridgeCompositionType>
+    <RunicBridgeFrontendBuildCommand>__FRONTEND_BUILD_COMMAND__</RunicBridgeFrontendBuildCommand>
+    <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir>
+    <RunicBridgeTypescriptDir>$(MSBuildProjectDirectory)/Frontend/src/generated</RunicBridgeTypescriptDir>
+    <RunicApplicationFrontendEnabled>true</RunicApplicationFrontendEnabled>
+    <RunicApplicationFrontendNodeEnabled>true</RunicApplicationFrontendNodeEnabled>
+    <RunicApplicationFrontendWorkspaceRoot>$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendWorkspaceRoot>
+    <RunicApplicationFrontendWorkspace>.</RunicApplicationFrontendWorkspace>
+    <RunicApplicationFrontendPackageDirectory>$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendPackageDirectory>
+    <RunicApplicationFrontendOutputDirectory>$(MSBuildProjectDirectory)/Frontend/dist</RunicApplicationFrontendOutputDirectory>
+    <RunicApplicationFrontendViteDevServerEnabled Condition="'vite' == 'vite'">true</RunicApplicationFrontendViteDevServerEnabled>
+    <RunicApplicationFrontendViteDevServerEntry>/src/main.tsx</RunicApplicationFrontendViteDevServerEntry>
+    <RunicApplicationFrontendViteConfiguration>$(MSBuildProjectDirectory)/Frontend/vite.config.ts</RunicApplicationFrontendViteConfiguration>
+    <RunicApplicationFrontendDevServerKind>vite</RunicApplicationFrontendDevServerKind>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Runic.Application.Views.CsWebUi.DependencyInjection" Version="__RUNIC_VIEWS_NUGET_VERSION__" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+</Project>

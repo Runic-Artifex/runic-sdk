@@ -3,10 +3,18 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
     "strict": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "allowJs": true,
-    "types": ["svelte", "vite/client", "@runic-artifex/vite-plugin-runic/virtual"]
+    "checkJs": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte.ts", "src/**/*.svelte", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte"]
 }

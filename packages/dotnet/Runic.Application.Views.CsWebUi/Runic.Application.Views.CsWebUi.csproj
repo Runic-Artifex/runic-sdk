@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.Views.CsWebUi</PackageId>
+    <Authors>RunicArtifex</Authors>
+    <Description>CS-WebUI host adapter for Runic Window and View applications.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CsWebUi" />
+    <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Update="build/Runic.Application.Views.CsWebUi.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.targets" />
+    <None Update="www/runic-cswebui.js" Pack="true" PackagePath="www/runic-cswebui.js" />
+  </ItemGroup>
+</Project>

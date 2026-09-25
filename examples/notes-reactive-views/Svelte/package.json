@@ -1,0 +1,7 @@
+{
+  "name": "@runic-artifex/notes-reactive-svelte",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "check": "svelte-check --tsconfig tsconfig.json", "build": "bun run --bun check && vite build" },
+  "devDependencies": { "@sveltejs/vite-plugin-svelte": "7.3.0", "svelte": "5.57.0", "svelte-check": "4.7.6", "typescript": "6.0.3", "vite": "8.2.2" }
+}

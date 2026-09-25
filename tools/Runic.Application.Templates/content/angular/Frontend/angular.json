@@ -13,43 +13,18 @@
             "outputPath": { "base": "dist", "browser": "" },
             "browser": "src/main.ts",
             "index": "src/index.html",
-            "tsConfig": "tsconfig.app.json",
-            "styles": [
-              "node_modules/bootstrap/dist/css/bootstrap.min.css",
-              "node_modules/@fortawesome/fontawesome-free/css/all.min.css"
-            ],
-            "scripts": ["node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"]
+            "tsConfig": "tsconfig.app.json"
           },
           "configurations": {
-            "production": {
-              "optimization": true,
-              "outputHashing": "all",
-              "sourceMap": false
-            },
-            "development": {
-              "optimization": false,
-              "outputHashing": "none",
-              "sourceMap": true
-            },
-            "mock": {
-              "browser": "src/main.mock.ts",
-              "optimization": false,
-              "outputHashing": "none",
-              "sourceMap": true
-            }
+            "production": { "optimization": true, "outputHashing": "all", "sourceMap": false },
+            "development": { "optimization": false, "outputHashing": "none", "sourceMap": true }
           },
           "defaultConfiguration": "production"
         },
         "serve": {
           "builder": "@angular/build:dev-server",
-          "options": {
-            "headers": {
-              "Access-Control-Allow-Origin": "*"
-            }
-          },
           "configurations": {
-            "development": { "buildTarget": "frontend:build:development" },
-            "mock": { "buildTarget": "frontend:build:mock" }
+            "development": { "buildTarget": "frontend:build:development" }
           },
           "defaultConfiguration": "development"
         }

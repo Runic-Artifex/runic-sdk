@@ -44,13 +44,14 @@
     </ContentCard>
     <ContentCard
       eyebrow="A concrete example"
-      title="Application Bridge keeps renderers outside the core"
+      title="Windows and Views keep rendering in the frontend"
       full
     >
       <p>
-        Application Bridge defines the validated application boundary. Svelte,
-        Vite, and native-host integrations project that boundary without making
-        the application core depend on a renderer or host implementation.
+        Runic Application Views defines explicit .NET Window and View contracts
+        and generates ordinary TypeScript clients. Svelte, React, Vue and Angular
+        render those contracts with their own components; the application model
+        does not own a framework's visual tree.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Portable cores" title="Cores stay portable">
@@ -68,7 +69,7 @@
         through NuGet and npm. Translations Editor is available from source. All
         package families share the SDK release workflow. CS-WebUI remains an
         independent upstream compatibility product; the SDK includes the
-        Runic.Application.CsWebUi integration.
+        Runic.Application.Views integrations.
       </p>
     </ContentCard>
     <ContentCard
@@ -97,9 +98,9 @@
     <ContentCard eyebrow="Preview compatibility" title="Pin the exact versions">
       <p>
         Pin exact preview versions and upgrade the Runic package set together.
-        Regenerate bridge outputs and retest after upgrades. Compatibility is
-        verified in the applications that consume the integrations, in frontend
-        builds, and, where applicable, in NativeAOT runs.
+        Rebuild generated Window and View clients and retest after upgrades.
+        Compatibility is verified in consuming applications, frontend builds,
+        and, where applicable, NativeAOT runs.
       </p>
     </ContentCard>
     <ContentCard
@@ -108,11 +109,11 @@
       full
     >
       <p>
-        Effect Schema is the authority for Application Bridge wire values.
-        Deterministic JSON Schema and a canonical manifest feed the
-        reflection-free C# generator. UI frameworks then project validated
-        application events into their own state systems without owning transport
-        lifecycle.
+        Explicit partial Window and View types are the contract authority.
+        The build inspects the compiled application after MVVM generators run and
+        emits C# attachments and ordinary TypeScript modules. UI frameworks own
+        rendering while .NET scopes ViewModels, logical Views, commands, and
+        operations.
       </p>
     </ContentCard>
   </section>

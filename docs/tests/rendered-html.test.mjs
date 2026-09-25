@@ -23,7 +23,7 @@ const primaryRoutes = [
   '/readiness',
   '/products/runic-toolkit',
   '/products/runic-desktop',
-  '/application-bridge',
+  '/views',
   '/products/runic-assets',
   '/products/runic-translations',
   '/products/runic-translations-editor',
@@ -124,7 +124,7 @@ test('keeps navigation usable before hydration and exposes the Sheet trigger con
   for (const [href, label] of [
     ['./getting-started', 'Start'],
     ['./products', 'Products'],
-    ['./application-bridge', 'Application Bridge'],
+    ['./views', 'Window and View'],
     ['./architecture', 'Architecture'],
     ['./packages', 'Packages'],
     ['./releases', 'Releases'],

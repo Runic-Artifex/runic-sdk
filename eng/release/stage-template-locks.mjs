@@ -19,9 +19,13 @@ for (const framework of ["react", "vue", "svelte", "angular"]) {
     const staged = join(output, framework, "Frontend", name);
     mkdirSync(dirname(staged), { recursive: true });
     copyFileSync(join(content, framework, "Frontend", name), staged);
-    execFileSync(process.execPath, [join(repository, "eng/release/stamp-template-lock.mjs"), staged, ...archives],
-      { stdio: "inherit" });
-    verifyTemplateLock(readFileSync(staged, "utf8"), name, candidates);
+    const expectedPackage = framework === "svelte" ? "@runic-artifex/views-svelte"
+      : framework === "angular" ? "@runic-artifex/views-angular" : undefined;
+    if (expectedPackage)
+      execFileSync(process.execPath, [join(repository, "eng/release/stamp-template-lock.mjs"), staged, ...archives],
+        { stdio: "inherit" });
+    verifyTemplateLock(readFileSync(staged, "utf8"), name, candidates,
+      { requireRunic: Boolean(expectedPackage), expectedPackage });
   }
 }
 console.log("Staged all 12 template locks against final npm archive bytes.");

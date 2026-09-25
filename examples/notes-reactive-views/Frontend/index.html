@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reactive Notes · Runic Next</title>
+  <script src="webui.js"></script>
+  <script src="runic-cswebui.js"></script>
+  <script type="module" src="/src/app.ts"></script>
+  <style>
+    :root { font:16px system-ui,sans-serif; color:#223129; background:#f4f3ec; }
+    * { box-sizing:border-box; } body { margin:0; } button,input,textarea { font:inherit; }
+    button { cursor:pointer; border:1px solid #9baea4; border-radius:.4rem; padding:.5rem .8rem; background:#fff; color:#204735; }
+    button[aria-current=page] { background:#21513e; color:white; }
+    header { background:#173e32; color:#fff; padding:1rem 1.5rem; display:flex; justify-content:space-between; }
+    .layout { display:grid; grid-template-columns:13rem minmax(0,1fr); min-height:calc(100vh - 3.5rem); }
+    nav { background:#e6eee6; padding:1.5rem; display:flex; flex-direction:column; align-items:stretch; gap:.6rem; }
+    main { padding:1.5rem clamp(1rem,4vw,3rem); } h1 { font:normal 2.4rem Georgia,serif; margin:.2rem 0 1rem; }
+    .document { display:grid; grid-template-columns:minmax(0,1fr) 18rem; gap:1.5rem; }
+    .card { background:white; border:1px solid #ccd6ca; border-radius:.7rem; padding:1.3rem; }
+    .tabs { display:flex; gap:.5rem; margin:1rem 0; }
+    label { display:block; margin:.8rem 0; font-weight:600; } input,textarea { display:block; width:100%; margin:.3rem 0; padding:.5rem; border:1px solid #9baea4; border-radius:.35rem; }
+    textarea { min-height:10rem; resize:vertical; } .muted { color:#60746a; } .error { color:#a22d37; } #status { padding:0 1.5rem; font-size:.85rem; }
+    @media(max-width:850px) { .document { grid-template-columns:1fr; } } @media(max-width:600px) { .layout { grid-template-columns:1fr; } nav { flex-direction:row; padding:.8rem; } }
+  </style>
+</head>
+<body>
+  <header><strong>Reactive Notes</strong><span>Routing · View contracts · activation</span></header>
+  <div class="layout"><nav aria-label="Main navigation"><button data-go="home">Home</button><button data-go="document">Document</button></nav><main id="main"></main></div>
+  <p id="status" role="status">Connecting…</p>
+</body>
+</html>

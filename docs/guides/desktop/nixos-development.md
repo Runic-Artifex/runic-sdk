@@ -42,6 +42,10 @@ server directly. Requesting application exit before disposal exited 0.
 in the same process. Stopping this host also closes any other WebUI windows in
 that process. The host is not a restartable, independently owned native server.
 
+The SDK's current Views examples use `CsWebUi.Native 2.5.0-beta.4.5`, which
+bundles WebUI revision `52f9e75b92faf9a23fd150b3c60051c4ec85fc69`. The
+Reactive Notes server sample also awaits WebUI exit before disposing its window.
+
 The separate SIGABRT report came from an unhandled exception in the new mailbox
 test executable. Test failures now print diagnostics and return exit code 1,
 following the other integration test executables, instead of escaping `Main`.

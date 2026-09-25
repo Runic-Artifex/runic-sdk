@@ -1,35 +1,25 @@
 {
-  "name": "@runic-artifex/runic-application-starter-angular",
+  "name": "@runic-artifex/runic-views-starter-angular",
   "private": true,
-  "version": "1.0.0",
   "license": "MIT",
   "packageManager": "__PACKAGE_MANAGER__",
   "engines": {
     "node": ">=24.18.0 <25"
   },
+  "type": "module",
   "scripts": {
-    "build": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj && ng build frontend",
-    "contract:generate": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj",
-    "contract:check": "runic-bridge check --authority csharp --project ../RunicDesktopApp.csproj",
-    "dev": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj && ng serve frontend --configuration development",
-    "dev:mock": "runic-bridge generate --authority csharp --project ../RunicDesktopApp.csproj && ng serve frontend --configuration mock",
+    "build": "ng build frontend",
+    "dev": "ng serve frontend",
     "typecheck": "ngc --project tsconfig.app.json --noEmit"
   },
   "dependencies": {
     "@angular/common": "22.1.5",
     "@angular/core": "22.1.5",
     "@angular/platform-browser": "22.1.5",
-    "@fortawesome/fontawesome-free": "7.3.1",
-    "@popperjs/core": "2.11.8",
-    "@runic-artifex/angular": "__RUNIC_ANGULAR_NPM__",
-    "@runic-artifex/application-bridge": "__APPLICATION_BRIDGE_NPM__",
-    "@runic-artifex/desktop": "__RUNIC_DESKTOP_NPM__",
-    "bootstrap": "5.3.8",
-    "effect": "4.0.0-rc.112",
+    "@runic-artifex/views-angular": "__VIEWS_ANGULAR_NPM_VERSION__",
     "rxjs": "7.8.2"
   },
   "devDependencies": {
-    "@runic-artifex/application-bridge-tooling": "__APPLICATION_BRIDGE_NPM__",
     "@angular/build": "22.1.7",
     "@angular/cli": "22.1.7",
     "@angular/compiler": "22.1.5",

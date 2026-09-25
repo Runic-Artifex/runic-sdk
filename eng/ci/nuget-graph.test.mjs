@@ -3,13 +3,13 @@ import { test } from "node:test";
 import { assertCsWebUiDependencies } from "./nuget-graph.mjs";
 
 const graph = () => ({
-  libraries: { "Runic.Application.CsWebUi/1.0.0-preview.1": { type: "package" } },
+  libraries: { "Runic.Application.Views.CsWebUi/1.0.0-preview.1": { type: "package" } },
   project: { frameworks: { "net10.0": {
     frameworkReferences: { "Microsoft.NETCore.App": {} },
     downloadDependencies: [{ name: "Microsoft.AspNetCore.App.Ref", version: "10.0.10" }],
     packagesToPrune: { "Microsoft.AspNetCore.App": "(,10.0]" },
   } } },
-  targets: { "net10.0/linux-x64": { "Runic.Application.CsWebUi/1.0.0-preview.1": {} } },
+  targets: { "net10.0/linux-x64": { "Runic.Application.Views.CsWebUi/1.0.0-preview.1": {} } },
 });
 
 test("SDK download and pruning metadata does not imply a runtime framework reference", () => {

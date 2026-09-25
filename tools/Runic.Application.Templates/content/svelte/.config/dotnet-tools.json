@@ -3,7 +3,7 @@
   "isRoot": true,
   "tools": {
     "dotnet-runic": {
-      "version": "__RUNIC_APPLICATION_VERSION__",
+      "version": "__DOTNET_RUNIC_VERSION__",
       "commands": ["dotnet-runic"]
     }
   }

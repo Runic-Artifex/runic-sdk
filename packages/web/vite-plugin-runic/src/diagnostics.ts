@@ -7,7 +7,7 @@ export type RunicTraceKind =
   | "error";
 
 export type RunicDiagnosticSource =
-  | "application-bridge"
+  | "views"
   | "assets"
   | "translations";
 
@@ -72,7 +72,7 @@ export function sanitizeDiagnosticSummary(
 }
 
 export function diagnosticSource(value: unknown): RunicDiagnosticSource | undefined {
-  return value === "application-bridge" || value === "assets" || value === "translations"
+  return value === "views" || value === "assets" || value === "translations"
     ? value
     : undefined;
 }

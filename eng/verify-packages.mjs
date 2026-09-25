@@ -89,7 +89,7 @@ export function packageConsumerStrategy(packageEntry, platform = process.platfor
   };
 }
 
-function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = false, selectedProvider } = {}) {
+function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedProvider } = {}) {
   const assets = JSON.parse(readFileSync(join(consumer, "obj/project.assets.json"), "utf8"));
   const libraries = Object.keys(assets.libraries);
   assert.ok(Object.values(assets.libraries).every(library => library.type !== "project"),
@@ -97,9 +97,7 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = 
   for (const library of libraries.filter(name => name.toLowerCase().startsWith("runic."))) {
     assert.equal(library.split("/")[1], workspace.version, `stale internal dependency ${library}`);
   }
-  const isolated = platformOnly || label === "Runic.Application.Platform"
-    || label === "Runic.Application.Platform.Desktop" || label === "Runic.Application.CsWebUi"
-    || label === "CS-WebUI with Platform";
+  const isolated = platformOnly;
   if (!isolated) return;
 
   // Inspect the complete restored graph, including dependencies that are not loaded by the canary.
@@ -110,20 +108,16 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, desktop = 
     const name = library.split("/")[0].toLowerCase();
     assert.ok(!nativeProviders.has(name) || name === selectedProvider,
       `${label} unexpectedly depends on native provider ${library}`);
-    assert.ok(desktop || !name.startsWith("microsoft.aspnetcore"),
+    assert.ok(!name.startsWith("microsoft.aspnetcore"),
       `${label} unexpectedly depends on ASP.NET Core package ${library}`);
-    if (!desktop) {
-      assert.ok(!/^runic\.(desktop|application\.desktop|application\.platform\.desktop|assets\.desktop)(\.|$)/.test(name),
-        `${label} unexpectedly depends on Desktop package ${library}`);
-    }
+    assert.ok(!/^runic\.(desktop|assets\.desktop)(\.|$)/.test(name),
+      `${label} unexpectedly depends on Desktop package ${library}`);
     if (platformOnly) {
       assert.ok(!name.startsWith("runic.") || allowedPlatform.has(name),
         `${label} unexpectedly depends on host/application package ${library}`);
       assert.ok(name !== "cswebui", `${label} unexpectedly depends on CS-WebUI`);
     }
   }
-  // Desktop currently brings its ASP.NET Core server framework; its optional adapter may do so too.
-  if (desktop) return;
   const targetPath = msbuildProjectPath(consumer, "Consumer.csproj", "TargetPath");
   const runtimePath = targetPath.slice(0, -extname(targetPath).length) + ".runtimeconfig.json";
   const runtime = JSON.parse(readFileSync(runtimePath, "utf8"));
@@ -142,8 +136,8 @@ export async function verifyPackages(packageName) {
   console.log(`Package-only consumers: ${directory}`);
   const nuget = resolve(root, "artifacts/packages/nuget");
   const npm = resolve(root, "artifacts/packages/npm");
-  // Separate minimal consumers prevent Application dependencies from concealing missing dependencies
-  // in standalone CommandLine, Assets, Desktop, or Translations packages.
+  // Separate minimal consumers prevent dependencies from concealing missing
+  // dependencies in standalone CommandLine, Assets, Desktop, or Translations packages.
   const allLibraries = workspace.nuget.filter(
     (p) => !p.name.startsWith("dotnet-") && !p.name.endsWith(".Templates"),
   );
@@ -180,7 +174,7 @@ export async function verifyPackages(packageName) {
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${p.name.startsWith("Runic.Application.Views") ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : ""}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${p.name === "Runic.Translations.Build" ? `<PackageReference Include="Runic.Translations" Version="${workspace.version}"/>` : ""}</ItemGroup></Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),
@@ -233,30 +227,11 @@ Console.WriteLine("Packaged public v5 compiler and XLIFF export passed.");`
         'if (text.r_4772656574696e67("Ada") != "Hello Ada") throw new Exception("Packaged RMF2 accessor failed");\n' +
         'Console.WriteLine("Packaged RMF2 analyzer and runtime passed.");\n');
     }
-    if (
-      [
-        "Runic.Application",
-        "Runic.Application.Hosting",
-        "Runic.Application.Desktop",
-        "Runic.Application.CsWebUi",
-        "Runic.Application.Testing",
-        "Runic.Application.Platform",
-        "Runic.Application.Platform.Desktop",
-      ].includes(p.name)
-    ) {
-      const program = join(consumer, "Program.cs");
-      writeFileSync(
-        program,
-        '[assembly: Runic.Application.RunicApplicationManifest("package-canary")]\n' +
-          readFileSync(program, "utf8"),
-      );
-    }
     run("dotnet", strategy.execute
       ? ["run", "--project", "Consumer.csproj", "--configuration", configuration]
       : ["build", "Consumer.csproj", "--configuration", configuration], consumer, env);
     verifyConsumerGraph(consumer, p.name, {
       platformOnly: p.name === "Runic.Platform" || p.name.startsWith("Runic.Platform."),
-      desktop: p.name === "Runic.Application.Platform.Desktop",
       selectedProvider: nativeProviders.has(p.name.toLowerCase()) ? p.name.toLowerCase() : undefined,
     });
   }
@@ -266,37 +241,6 @@ Console.WriteLine("Packaged public v5 compiler and XLIFF export passed.");`
     console.log(`Packed ${packageName} consumer passed.`);
     return;
   }
-  // Composition must retain isolation too: resolve the shared services through the public API
-  // alongside CS-WebUI without creating a native window or using workspace project references.
-  const sharedConsumer = join(directory, "cswebui-platform");
-  mkdirSync(sharedConsumer);
-  writeFileSync(join(sharedConsumer, "Consumer.csproj"),
-    `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="Runic.Application.CsWebUi" Version="${workspace.version}"/><PackageReference Include="Runic.Application.Platform" Version="${workspace.version}"/></ItemGroup></Project>`);
-  writeFileSync(join(sharedConsumer, "Program.cs"), `
-using Microsoft.Extensions.DependencyInjection;
-using Runic.Application.Platform;
-using Runic.Platform;
-[assembly: Runic.Application.RunicApplicationManifest("cswebui-platform-canary")]
-var services = new ServiceCollection();
-services.AddRunicPlatform();
-await using var provider = services.BuildServiceProvider();
-await using var scope = provider.CreateAsyncScope();
-var presentation = scope.ServiceProvider.GetRequiredService<PlatformPresentation>();
-var files = scope.ServiceProvider.GetRequiredService<IFileDialogs>();
-var clipboard = scope.ServiceProvider.GetRequiredService<ITextClipboard>();
-var capabilities = scope.ServiceProvider.GetRequiredService<IPlatformCapabilities>();
-var dispatcher = scope.ServiceProvider.GetRequiredService<IUiDispatcher>();
-if (await files.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }
-    || await clipboard.ReadTextAsync(32) is not PlatformResult<string?>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured }
-    || capabilities.GetSnapshot().Statuses.Values.Any(status => status is not CapabilityStatus.Unavailable)
-    || dispatcher.CheckAccess())
-    throw new InvalidOperationException("Unconfigured shared platform services must report unavailable.");
-await presentation.StopAsync();
-Console.WriteLine(typeof(Runic.Application.CsWebUi.CsWebUiApplicationHost).Assembly.GetName().Name);
-Console.WriteLine("CS-WebUI and shared Platform public API composition passed.");
-`);
-  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], sharedConsumer, env);
-  verifyConsumerGraph(sharedConsumer, "CS-WebUI with Platform");
   await verifyToolAndTemplatePackages(directory, nuget, env);
   await verifyRmf2Consumer(directory, nuget, env);
   const frontend = join(directory, "frontend");
@@ -360,17 +304,11 @@ Console.WriteLine("CS-WebUI and shared Platform public API composition passed.")
     join(frontend, "consumer.mjs"),
     `
 import assert from 'node:assert/strict';
-import { defineApplicationBridgeContract } from '@runic-artifex/application-bridge';
-import * as compiler from '@runic-artifex/application-bridge-tooling';
-import * as desktop from '@runic-artifex/desktop';
 import * as vite from '@runic-artifex/vite-plugin-runic';
 import * as translations from '@runic-artifex/vite-plugin-runic-translations';
-import { createViteApplicationBridgeObserver } from '@runic-artifex/svelte/vite';
 import { runicToolkitSpaPageOptions } from '@runic-artifex/sveltekit/page-options';
-assert.equal(typeof defineApplicationBridgeContract, 'function');
-assert.equal(typeof createViteApplicationBridgeObserver, 'function');
 assert.equal(runicToolkitSpaPageOptions.ssr, false);
-for (const module of [compiler, desktop, vite, translations]) assert.ok(Object.keys(module).length);
+for (const module of [vite, translations]) assert.ok(Object.keys(module).length);
 console.log('Packed npm consumers passed.');
 `,
   );

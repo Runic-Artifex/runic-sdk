@@ -1,31 +1,19 @@
 # Examples
 
-From the repository root, run `bun run example:counter`. This headless example exercises
-member discovery, generated codecs, scoped dependency injection, initialization, and
-command dispatch without requiring a native webview.
+These examples exercise the current Runic Application Views model from package
+source. Each uses explicit .NET Window and View contracts and generated
+TypeScript clients.
 
-For complete React, Vue, Svelte, and Angular applications, the maintained source is
-`tools/Runic.Application.Templates/content`. Run
-`bun run verify:templates` after `bun run pack` to create fresh applications from the
-packed templates and build them with npm, pnpm, and Bun. This tests the public installation
-path separately from workspace project references.
+- [First Window](first-window/README.md) introduces one Window, ViewModel, and frontend client.
+- [Toolkit Notes](notes-view-first/README.md) shows nested content, View scopes, and typed writes.
+- [Reactive Notes](notes-reactive-views/README.md) demonstrates ReactiveUI routing and multiple Views over a model.
+- [Command line](command-line/README.md) is an independent CLI example.
 
-The [customer migration](customer-migration/README.md) follows a WPF/CommunityToolkit
-editor through an idiomatic Runic feature and a native React host.
-
-The [document migration](document-migration/README.md) preserves a MAUI-derived
-text-document model while replacing MVVM orchestration with commands and frontend drafts.
-
-## Use the examples
-
-After `bun run bootstrap`, launch from the SDK root:
+Run the focused example checks from the repository root using the commands in
+each example README. The template acceptance suite separately packs the
+published templates and verifies React, Vue, Svelte, and Angular consumers:
 
 ```sh
-bun run example:counter   # Headless introduction
-bun run example:documents # Open, edit and save text documents
-bun run example:customers # Edit contacts, import/export and copy/paste
+bun run pack
+bun run verify:templates
 ```
-
-The native examples use the project's configured desktop/browser environment.
-Use them to explore the SDK and record concrete friction. They are available
-starting points; no application has been selected as the next product yet.

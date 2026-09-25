@@ -44,7 +44,6 @@
     <RunicToolkitGeneratorTargetFramework>net10.0</RunicToolkitGeneratorTargetFramework>
     <!-- Package consumer verification supplies an isolated artifact feed. -->
     <RestoreAdditionalProjectSources Condition="'$(RunicVerificationFeed)' != ''">$(RunicVerificationFeed)</RestoreAdditionalProjectSources>
-    <IsPackable Condition="'$(MSBuildProjectName)' == 'Runic.Application.Bridge.Generators'">false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
