@@ -25,6 +25,7 @@
     <InternalsVisibleTo Include="Runic.Application.Bridge.Tests" />
     <InternalsVisibleTo Include="Runic.Application.CsWebUi" />
     <InternalsVisibleTo Include="Runic.Application.CsWebUi.Tests" />
+    <InternalsVisibleTo Include="Runic.Application.CsWebUi.WindowBridgeAotSmoke" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

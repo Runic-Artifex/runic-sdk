@@ -94,6 +94,7 @@
   <Folder Name="/tests/native/">
     <Project Path="tests/native/Runic.Application.AotSmoke/Runic.Application.AotSmoke.csproj" />
     <Project Path="tests/native/Runic.Application.Bridge.AotSmoke/Runic.Application.Bridge.AotSmoke.csproj" />
+    <Project Path="tests/native/Runic.Application.CsWebUi.WindowBridgeAotSmoke/Runic.Application.CsWebUi.WindowBridgeAotSmoke.csproj" />
     <Project Path="tests/native/Runic.Application.Bridge.MemberAotSmoke/Runic.Application.Bridge.MemberAotSmoke.csproj" />
     <Project Path="tests/native/Runic.Application.Hosting.AotSmoke/Runic.Application.Hosting.AotSmoke.csproj" />
     <Project Path="tests/native/Runic.CommandLine.AotSmoke/Runic.CommandLine.AotSmoke.csproj" />

@@ -15,6 +15,7 @@
     <ProjectReference Include="../Runic.Application.Bridge/Runic.Application.Bridge.csproj" />
     <ProjectReference Include="../Runic.Assets/Runic.Assets.csproj" />
     <InternalsVisibleTo Include="Runic.Application.CsWebUi.Tests" />
+    <InternalsVisibleTo Include="Runic.Application.CsWebUi.WindowBridgeAotSmoke" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
