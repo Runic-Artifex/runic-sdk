@@ -37,6 +37,7 @@ internal static class WindowBridgeFirstSliceTests
         await PendingExposeFailureDoesNotClaimRootOwnership().ConfigureAwait(false);
         await FailedNewExposeDoesNotRetainRootOwnership().ConfigureAwait(false);
         await FailedNewExposeRemovesEntryBeforeWaitingExposeCanAttach().ConfigureAwait(false);
+        await WaitingExposeDoesNotAttachBeforeSuspendedLeaseDrains().ConfigureAwait(false);
         await PresentationTombstonesRemainConnectionOwned().ConfigureAwait(false);
         await DocumentTombstonesRemainDocumentOwned().ConfigureAwait(false);
         await DocumentEpochRetiresReloadedPresentationAndPreservesSameReferenceIndependence().ConfigureAwait(false);
@@ -887,6 +888,50 @@ internal static class WindowBridgeFirstSliceTests
         using WindowBridgePresentationLease lease = session.Mount(retry, WindowBridgeConnection.Create("client", "retry"), "child");
     }
 
+    private static async Task WaitingExposeDoesNotAttachBeforeSuspendedLeaseDrains()
+    {
+        var firstAttachEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstAttach = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiterObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDrain = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondAttachEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var session = new WindowBridgeSession(new RecordingTransport(), beforeAttachmentWait: () => waiterObserved.TrySetResult());
+        var child = new Child();
+        int attachments = 0;
+        Task<WindowBridgeReference> first = Task.Run(() => session.Expose("child", child, (_, _, _) =>
+        {
+            int number = Interlocked.Increment(ref attachments);
+            if (number == 1)
+            {
+                firstAttachEntered.TrySetResult();
+                releaseFirstAttach.Task.GetAwaiter().GetResult();
+            }
+            else secondAttachEntered.TrySetResult();
+            return WindowBridgeAttachment.Create(new ControlledDrainLease(number == 1 ? releaseFirstDrain.Task : Task.CompletedTask));
+        }));
+        try
+        {
+            await firstAttachEntered.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Task<WindowBridgeReference> waiting = Task.Run(() => session.Expose("child", child,
+                (_, _, _) => throw new InvalidOperationException("The existing entry must keep its original factory.")));
+            await waiterObserved.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            session.Suspend(child);
+            releaseFirstAttach.TrySetResult();
+            WindowBridgeReference firstReference = await first.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            WindowBridgeReference waitedReference = await waiting.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Equal(firstReference, waitedReference, "The waiting Expose changed route identity after Suspend.");
+            Equal(1, Volatile.Read(ref attachments), "The waiting Expose attached before the suspended lease drained.");
+            releaseFirstDrain.TrySetResult();
+            await secondAttachEntered.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Equal(2, Volatile.Read(ref attachments), "The route did not reattach after its old lease drained.");
+        }
+        finally
+        {
+            releaseFirstAttach.TrySetResult();
+            releaseFirstDrain.TrySetResult();
+        }
+    }
+
     private static async Task PresentationTombstonesRemainConnectionOwned()
     {
         await using var session = new WindowBridgeSession(new RecordingTransport(), maximumRetainedTerminals: 0, maximumExpired: 2);
@@ -1116,6 +1161,12 @@ internal static class WindowBridgeFirstSliceTests
     {
         internal int Disposals;
         public void Dispose() => Disposals++;
+    }
+
+    private sealed class ControlledDrainLease(Task drain) : WindowBridgeEndpointLease
+    {
+        public override Task Drain => drain;
+        public override void Dispose() { }
     }
 
     private sealed class DrainingTransport : IWindowBridgeTransport

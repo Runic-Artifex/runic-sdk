@@ -105,6 +105,13 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
                     || !current.TryGetValue(kind, out Entry? currentEntry) || !ReferenceEquals(currentEntry, existing))
                     throw new InvalidOperationException("The ViewModel route was forgotten while it was being attached.");
                 if (retainRoot) existing.RootOwned = true;
+                // Suspend can retire the attachment while this Expose waits for its
+                // factory. Do not attach again until the retired lease has drained.
+                if (existing.Detaching)
+                {
+                    existing.ReattachRequested = true;
+                    return existing.Reference;
+                }
                 if (existing.Attachment is null)
                 {
                     existing.Attaching = true;
