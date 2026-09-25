@@ -4,7 +4,7 @@
        while this repository-level props file is still early enough for NuGet
        and the compiler to select owner-scoped obj/bin paths. -->
   <Import Project="eng/build/post-mvvm-discovery-owner.props"
-          Condition="'$(RunicPostMvvmDiscoveryBuildOwner)' != ''" />
+          Condition="'$(RunicPostMvvmDiscoveryBuildOwner)' != '' and '$(RunicPostMvvmDiscoveryOwnerDriver)' == 'true'" />
   <PropertyGroup>
     <RunicSdkRoot>$(MSBuildThisFileDirectory)</RunicSdkRoot>
     <RepositoryUrl>https://github.com/Runic-Artifex/runic-sdk</RepositoryUrl>

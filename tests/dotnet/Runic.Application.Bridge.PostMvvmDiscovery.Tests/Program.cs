@@ -17,6 +17,7 @@ var observedDiagnostics = new Dictionary<string, string>(StringComparer.Ordinal)
 RestoreFixture(serialOwner);
 VerifyUnwrappedFixtureOperationsAreRejected();
 VerifyUnsafeOutputKeysAreRejectedBeforeDeletion();
+VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork();
 foreach (string configuration in new[] { "Debug", "Release" })
 {
     VerifyRejectedBinding(configuration, "POST_MVVM_OPEN_GENERIC", "RUNICPM001", "GenericNotesView`1");
@@ -103,6 +104,35 @@ void VerifyUnsafeOutputKeysAreRejectedBeforeDeletion()
     {
         string escapeRoot = Path.Combine(applicationDirectory, escapeName);
         if (Directory.Exists(escapeRoot)) Directory.Delete(escapeRoot, recursive: true);
+    }
+}
+
+void VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork()
+{
+    string escapeDirectory = Path.Combine(Path.GetTempPath(), "runic-post-mvvm-output-override-" + Guid.NewGuid().ToString("N"));
+    string sentinel = Path.Combine(escapeDirectory, "must-survive.txt");
+    const string sentinelContents = "outside build-owner output root";
+    Directory.CreateDirectory(escapeDirectory);
+    File.WriteAllText(sentinel, sentinelContents);
+    try
+    {
+        foreach (string property in new[] { "OutputPath", "IntermediateOutputPath" })
+        {
+            ProcessResult result = ExecuteFixtureWrapper("-p:" + property + "=" + escapeDirectory + Path.DirectorySeparatorChar);
+            if (result.ExitCode == 0 || !result.Output.Contains("RUNICPM010", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Global {property} did not fail in the top-level owner driver before fixture work:\n{result.Output}");
+            string[] entries = Directory.EnumerateFileSystemEntries(escapeDirectory, "*", SearchOption.AllDirectories)
+                .Select(entry => Path.GetRelativePath(escapeDirectory, entry))
+                .OrderBy(entry => entry, StringComparer.Ordinal)
+                .ToArray();
+            if (!entries.SequenceEqual(["must-survive.txt"], StringComparer.Ordinal) || File.ReadAllText(sentinel) != sentinelContents)
+                throw new InvalidOperationException($"Global {property} wrote to the attempted shared output directory before the owner driver rejected it.");
+        }
+        Console.WriteLine("POST_MVVM_SDK_OUTPUT_OVERRIDE_REJECTED|top-level-owner-driver-before-restore-build|output-and-intermediate-path|outside-sentinel-retained");
+    }
+    finally
+    {
+        if (Directory.Exists(escapeDirectory)) Directory.Delete(escapeDirectory, recursive: true);
     }
 }
 
@@ -578,6 +608,11 @@ void VerifyConcurrentBundle(string owner, string key, int expectedBindings)
         throw new InvalidOperationException($"Concurrent owner {owner} did not retain owner-scoped bootstrap, inspector, and outer outputs.");
     if (Directory.EnumerateFiles(ownerRoot, "*.tmp", SearchOption.AllDirectories).Any())
         throw new InvalidOperationException($"Concurrent owner {owner} retained a temporary publication file.");
+    if (Directory.EnumerateFiles(ownerRoot, "view-bridge.ready.json", SearchOption.AllDirectories).Count() != 1)
+        throw new InvalidOperationException($"Concurrent owner {owner} did not retain exactly one ready bundle.");
+    string fixtureOutput = Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery");
+    if (Directory.Exists(Path.Combine(fixtureOutput, key, "Debug")) || Directory.Exists(Path.Combine(fixtureOutput, "bootstrap", key)))
+        throw new InvalidOperationException("Concurrent same-key builds wrote a legacy shared generated or bootstrap directory.");
 }
 
 string OwnerRoot(string owner, string key = outputKey) => Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery", key, "owners", owner);
@@ -638,6 +673,32 @@ ProcessResult ExecuteRawDotnet(params string[] arguments)
     return new ProcessResult(process.ExitCode, output + error);
 }
 
+ProcessResult ExecuteFixtureWrapper(string buildArgument)
+{
+    ProcessStartInfo start;
+    if (OperatingSystem.IsWindows())
+    {
+        string script = Path.Combine(root, "eng", "build", "run-post-mvvm-discovery.ps1");
+        start = new ProcessStartInfo("pwsh") { WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.ArgumentList.Add("-NoProfile");
+        start.ArgumentList.Add("-Command");
+        start.ArgumentList.Add("& '" + script.Replace("'", "''", StringComparison.Ordinal) + "' -BuildArguments @('" +
+            buildArgument.Replace("'", "''", StringComparison.Ordinal) + "'); exit $LASTEXITCODE");
+    }
+    else
+    {
+        string script = Path.Combine(root, "eng", "build", "run-post-mvvm-discovery.sh");
+        start = new ProcessStartInfo("bash") { WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.ArgumentList.Add(script);
+        start.ArgumentList.Add(buildArgument);
+    }
+    using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the post-MVVM owner wrapper.");
+    string output = process.StandardOutput.ReadToEnd();
+    string error = process.StandardError.ReadToEnd();
+    process.WaitForExit();
+    return new ProcessResult(process.ExitCode, output + error);
+}
+
 Process StartFixtureBuild(string owner, string key, string scenario, string barrier)
 {
     return StartDotnet(
@@ -671,7 +732,11 @@ Process StartDotnet(IEnumerable<string> arguments, string? owner, IReadOnlyDicti
         start.ArgumentList.Add("-m:1");
         start.ArgumentList.Add("/nr:false");
     }
-    if (owner is not null) start.ArgumentList.Add("-p:RunicPostMvvmDiscoveryBuildOwner=" + owner);
+    if (owner is not null)
+    {
+        start.ArgumentList.Add("-p:RunicPostMvvmDiscoveryBuildOwner=" + owner);
+        start.ArgumentList.Add("-p:RunicPostMvvmDiscoveryOwnerDriver=true");
+    }
     if (environment is not null)
         foreach ((string key, string value) in environment) start.Environment[key] = value;
     return Process.Start(start) ?? throw new InvalidOperationException("Could not start dotnet.");

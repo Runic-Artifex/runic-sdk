@@ -7,6 +7,11 @@
   -->
   <PropertyGroup>
     <RunicPostMvvmDiscoveryOutputKey Condition="'$(RunicPostMvvmDiscoveryOutputKey)' == ''">ordinary</RunicPostMvvmDiscoveryOutputKey>
+    <!-- At this import point these values can only be command-line/global
+         overrides. Remember them so the fixture can reject a path that would
+         bypass its per-owner Base* policy. -->
+    <_RunicPostMvvmDiscoveryInheritedOutputPath Condition="'$(OutputPath)' != ''">$(OutputPath)</_RunicPostMvvmDiscoveryInheritedOutputPath>
+    <_RunicPostMvvmDiscoveryInheritedIntermediateOutputPath Condition="'$(IntermediateOutputPath)' != ''">$(IntermediateOutputPath)</_RunicPostMvvmDiscoveryInheritedIntermediateOutputPath>
     <_RunicPostMvvmDiscoveryOwnerIsValid Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryBuildOwner)', '^[a-f0-9]{32}$'))">true</_RunicPostMvvmDiscoveryOwnerIsValid>
     <_RunicPostMvvmDiscoveryOutputKeyIsValid Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryOutputKey)', '^[A-Za-z0-9_-]+$'))">true</_RunicPostMvvmDiscoveryOutputKeyIsValid>
     <!-- Never interpolate an unvalidated key into a filesystem path. The

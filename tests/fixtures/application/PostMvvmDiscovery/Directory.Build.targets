@@ -9,5 +9,11 @@
     <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryBuildOwner)', '^[a-f0-9]{32}$'))"
            Code="RUNICPM009"
            Text="The internal post-MVVM discovery fixture requires RunicPostMvvmDiscoveryBuildOwner: a 32-character lowercase hexadecimal build-owner token supplied by its top-level wrapper." />
+    <Error Condition="'$(RunicPostMvvmDiscoveryOwnerDriver)' != 'true'"
+           Code="RUNICPM011"
+           Text="The internal post-MVVM discovery fixture requires its top-level owner driver to establish owner-scoped restore and compiler paths." />
+    <Error Condition="'$(_RunicPostMvvmDiscoveryInheritedOutputPath)' != '' or '$(_RunicPostMvvmDiscoveryInheritedIntermediateOutputPath)' != ''"
+           Code="RUNICPM010"
+           Text="The internal post-MVVM discovery fixture does not accept global OutputPath or IntermediateOutputPath overrides because they bypass its build-owner isolation." />
   </Target>
 </Project>

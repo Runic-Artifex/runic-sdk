@@ -35,6 +35,18 @@ ambient or generated owner value. A later `runic dev` session must create and
 retain the same owner across its evaluation, restore, rebuild, watcher, and
 host lifecycle.
 
+The POSIX wrapper has a matching PowerShell entry at
+`eng/build/run-post-mvvm-discovery.ps1`. Both are fixture-only tools. The
+private owner token activates the repository-level early props policy for all
+projects in this one build graph, which gives the fixture and every referenced
+tool project disjoint `obj` and `bin` paths.
+
+Both wrappers normally generate their owner. Their
+`RUNIC_POST_MVVM_BUILD_OWNER` override exists only for deterministic fixture
+regressions such as the checked TypeScript import below; it still accepts only
+the private 32-character token shape and must not become a development-session
+discovery mechanism.
+
 The ordinary fixture contains an explicit Window/View pair backed by a
 CommunityToolkit `NotesViewModel`. The generated projection accesses the
 Toolkit `Title` and `SaveCommand` members and a ReactiveUI `RefreshCommand`
