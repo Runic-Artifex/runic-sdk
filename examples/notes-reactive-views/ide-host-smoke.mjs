@@ -19,6 +19,7 @@ async function retry(action, timeout = 30_000) {
 async function responds(url) {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(700) });
+    await response.arrayBuffer();
     return { ok: response.ok, status: response.status };
   }
   catch (error) { return { ok: false, error: String(error) }; }
