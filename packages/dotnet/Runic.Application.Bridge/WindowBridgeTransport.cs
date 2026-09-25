@@ -7,33 +7,17 @@ internal interface IWindowBridgeTransport
 {
     WindowBridgeEndpointLease Bind(string route, Func<WindowBridgeArguments, string> handler);
     WindowBridgeEndpointLease BindAsync(string route, Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> handler);
-    void Publish(string route, string payload);
 }
 
 /// <summary>
-/// Optional internal capability of a transport that publishes through a stable
-/// native dispatcher rather than a direct native route.
+/// Optional internal transaction around one attachment mutation. A transport
+/// can make every endpoint addition or retirement from that mutation visible
+/// together, without exposing how it represents those endpoints.
 /// </summary>
-internal interface IWindowBridgeEndpointTransport : IWindowBridgeTransport
+internal interface IWindowBridgeAttachmentBatcher
 {
-    WindowBridgeEndpointLease BindEndpoint(string route, Func<WindowBridgeArguments, string> handler);
-    WindowBridgeEndpointLease BindEndpointAsync(string route,
-        Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> handler);
-    void Publish(WindowBridgeEndpoint endpoint, string payload);
+    IDisposable BeginAttachmentUpdate();
 }
-
-/// <summary>
-/// Optional internal capability for transports whose browser route descriptors
-/// are published as one revisioned manifest. A scope makes an attachment's
-/// endpoint additions or removals visible to the browser in one snapshot.
-/// </summary>
-internal interface IWindowBridgeEndpointManifestBatcher
-{
-    IDisposable BeginEndpointManifestUpdate();
-}
-
-/// <summary>Opaque identity of one live adapter endpoint.</summary>
-internal sealed record WindowBridgeEndpoint(string Id, long Generation);
 
 /// <summary>
 /// Retires one endpoint idempotently. <see cref="Drain"/> completes after
@@ -41,16 +25,14 @@ internal sealed record WindowBridgeEndpoint(string Id, long Generation);
 /// </summary>
 internal abstract class WindowBridgeEndpointLease : IDisposable
 {
-    public abstract WindowBridgeEndpoint Endpoint { get; }
     public abstract Task Drain { get; }
     public abstract void Dispose();
 
-    internal static WindowBridgeEndpointLease Direct(string route, IDisposable resource) => new DirectLease(route, resource);
+    internal static WindowBridgeEndpointLease Direct(string _, IDisposable resource) => new DirectLease(resource);
 
-    private sealed class DirectLease(string route, IDisposable resource) : WindowBridgeEndpointLease
+    private sealed class DirectLease(IDisposable resource) : WindowBridgeEndpointLease
     {
         private IDisposable? _resource = resource;
-        public override WindowBridgeEndpoint Endpoint { get; } = new(route, 0);
         public override Task Drain => Task.CompletedTask;
         public override void Dispose() => Interlocked.Exchange(ref _resource, null)?.Dispose();
     }

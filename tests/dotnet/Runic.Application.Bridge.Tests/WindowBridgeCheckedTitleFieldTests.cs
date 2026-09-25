@@ -206,7 +206,6 @@ internal static class WindowBridgeCheckedTitleFieldTests
     {
         public WindowBridgeEndpointLease Bind(string route, Func<WindowBridgeArguments, string> __) => WindowBridgeEndpointLease.Direct(route, new Release());
         public WindowBridgeEndpointLease BindAsync(string route, Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> __) => WindowBridgeEndpointLease.Direct(route, new Release());
-        public void Publish(string _, string __) { }
     }
 
     private sealed class Release : IDisposable { public void Dispose() { } }

@@ -23,7 +23,8 @@ internal static class WindowBridgeFirstSliceTests
         await FailedAsyncReattachIsObservedByClose().ConfigureAwait(false);
         await EndpointDrainRetiresIngressBeforeReleasingViewOrScope().ConfigureAwait(false);
         await FailedDetachStillDrainsOwnedScope().ConfigureAwait(false);
-        await FailedManifestBatcherDetachStillDrainsAndFailsClose().ConfigureAwait(false);
+        await FailedAttachmentBatchDetachStillDrainsAndFailsClose().ConfigureAwait(false);
+        await AttachmentBatchCommitsMultiEndpointMutationAtomically().ConfigureAwait(false);
         DisconnectDrainsRemainingPresentationLeasesAfterFailure();
         await ParentForgetDuringChildAttachLeavesNoOrphanRoute().ConfigureAwait(false);
         await TwoLogicalWindowsIsolateSharedModels().ConfigureAwait(false);
@@ -357,15 +358,15 @@ internal static class WindowBridgeFirstSliceTests
         Equal(1, scope.Disposals, "A failing attachment cleanup skipped owned scope disposal.");
     }
 
-    private static async Task FailedManifestBatcherDetachStillDrainsAndFailsClose()
+    private static async Task FailedAttachmentBatchDetachStillDrainsAndFailsClose()
     {
-        await AssertFailedManifestBatcherDetachStillDrains("entry", throwOnBegin: 2, throwOnEnd: 0).ConfigureAwait(false);
-        await AssertFailedManifestBatcherDetachStillDrains("exit", throwOnBegin: 0, throwOnEnd: 2).ConfigureAwait(false);
+        await AssertFailedAttachmentBatchDetachStillDrains("entry", throwOnBegin: 2, throwOnEnd: 0).ConfigureAwait(false);
+        await AssertFailedAttachmentBatchDetachStillDrains("exit", throwOnBegin: 0, throwOnEnd: 2).ConfigureAwait(false);
     }
 
-    private static async Task AssertFailedManifestBatcherDetachStillDrains(string phase, int throwOnBegin, int throwOnEnd)
+    private static async Task AssertFailedAttachmentBatchDetachStillDrains(string phase, int throwOnBegin, int throwOnEnd)
     {
-        var transport = new FaultingManifestBatchTransport(throwOnBegin, throwOnEnd);
+        var transport = new FaultingAttachmentBatchTransport(throwOnBegin, throwOnEnd);
         var scope = new Scope();
         var session = new WindowBridgeSession(transport, scope);
         var resource = new Resource();
@@ -376,30 +377,51 @@ internal static class WindowBridgeFirstSliceTests
         try
         {
             session.Suspend(model);
-            throw new InvalidOperationException("A manifest batch " + phase + " failure was hidden during detachment.");
+            throw new InvalidOperationException("An attachment batch " + phase + " failure was hidden during detachment.");
         }
         catch (AggregateException exception)
         {
             IReadOnlyCollection<Exception> failures = exception.Flatten().InnerExceptions;
-            True(failures.Count(error => error.Message == "expected manifest " + phase + " failure") == 1,
-                "The manifest batch " + phase + " failure was not surfaced by detachment.");
+            True(failures.Count(error => error.Message == "expected attachment batch " + phase + " failure") == 1,
+                "The attachment batch " + phase + " failure was not surfaced by detachment.");
         }
 
-        Equal(1, resource.Disposals, "A manifest batch " + phase + " failure skipped attachment retirement.");
-        True(!transport.Has("content" + reference.Id), "A manifest batch " + phase + " failure retained an endpoint.");
+        Equal(1, resource.Disposals, "An attachment batch " + phase + " failure skipped attachment retirement.");
+        True(!transport.Has("content" + reference.Id), "An attachment batch " + phase + " failure retained an endpoint.");
 
         try
         {
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
-            throw new InvalidOperationException("A manifest batch " + phase + " failure was hidden by close.");
+            throw new InvalidOperationException("An attachment batch " + phase + " failure was hidden by close.");
         }
         catch (AggregateException exception)
         {
             IReadOnlyCollection<Exception> failures = exception.Flatten().InnerExceptions;
-            True(failures.Count(error => error.Message == "expected manifest " + phase + " failure") == 1,
-                "Close did not retain the manifest batch " + phase + " failure.");
+            True(failures.Count(error => error.Message == "expected attachment batch " + phase + " failure") == 1,
+                "Close did not retain the attachment batch " + phase + " failure.");
         }
-        Equal(1, scope.Disposals, "A manifest batch " + phase + " failure stranded close before scope disposal.");
+        Equal(1, scope.Disposals, "An attachment batch " + phase + " failure stranded close before scope disposal.");
+    }
+
+    private static async Task AttachmentBatchCommitsMultiEndpointMutationAtomically()
+    {
+        var transport = new AtomicAttachmentBatchTransport();
+        await using var session = new WindowBridgeSession(transport);
+        var model = new Child();
+        WindowBridgeReference reference = session.Expose("child", model, (routes, _, route) =>
+            WindowBridgeAttachment.Create(
+                routes.Bind(route + ".one", _ => "{}"),
+                routes.Bind(route + ".two", _ => "{}")));
+
+        Equal(1, transport.Commits, "Attachment creation did not commit one atomic endpoint update.");
+        True(transport.Has("content" + reference.Id + ".one") && transport.Has("content" + reference.Id + ".two"),
+            "Attachment creation exposed only part of its endpoint set.");
+
+        session.Suspend(model);
+
+        Equal(2, transport.Commits, "Attachment retirement did not commit one atomic endpoint update.");
+        True(!transport.Has("content" + reference.Id + ".one") && !transport.Has("content" + reference.Id + ".two"),
+            "Attachment retirement exposed a partial endpoint set.");
     }
 
     private static async Task FailedAsyncReattachIsObservedByClose()
@@ -1107,8 +1129,6 @@ internal static class WindowBridgeFirstSliceTests
         public WindowBridgeEndpointLease BindAsync(string route, Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
             Add(route, handler);
 
-        public void Publish(string _, string __) { }
-
         internal bool Has(string route) { lock (_gate) return _routes.ContainsKey(route); }
 
         internal async Task<string> InvokeAsync(string route)
@@ -1160,7 +1180,6 @@ internal static class WindowBridgeFirstSliceTests
 
         private sealed class HeldLease(DrainingTransport owner, Endpoint endpoint) : WindowBridgeEndpointLease
         {
-            public override WindowBridgeEndpoint Endpoint { get; } = new(endpoint.Route, 1);
             public override Task Drain => endpoint.Drain.Task;
             public override void Dispose() => owner.Retire(endpoint);
         }
@@ -1174,7 +1193,7 @@ internal static class WindowBridgeFirstSliceTests
         }
     }
 
-    private sealed class FaultingManifestBatchTransport(int throwOnBegin, int throwOnEnd) : IWindowBridgeTransport, IWindowBridgeEndpointManifestBatcher
+    private sealed class FaultingAttachmentBatchTransport(int throwOnBegin, int throwOnEnd) : IWindowBridgeTransport, IWindowBridgeAttachmentBatcher
     {
         private readonly Dictionary<string, IDisposable> _bindings = new(StringComparer.Ordinal);
         private int _begins;
@@ -1184,14 +1203,12 @@ internal static class WindowBridgeFirstSliceTests
 
         public WindowBridgeEndpointLease BindAsync(string route, Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> _) => Add(route);
 
-        public void Publish(string _, string __) { }
-
-        public IDisposable BeginEndpointManifestUpdate()
+        public IDisposable BeginAttachmentUpdate()
         {
-            if (++_begins == throwOnBegin) throw new InvalidOperationException("expected manifest entry failure");
+            if (++_begins == throwOnBegin) throw new InvalidOperationException("expected attachment batch entry failure");
             return new Release(() =>
             {
-                if (++_ends == throwOnEnd) throw new InvalidOperationException("expected manifest exit failure");
+                if (++_ends == throwOnEnd) throw new InvalidOperationException("expected attachment batch exit failure");
             });
         }
 
@@ -1202,6 +1219,44 @@ internal static class WindowBridgeFirstSliceTests
             var binding = new Release(() => _bindings.Remove(route));
             _bindings.Add(route, binding);
             return WindowBridgeEndpointLease.Direct(route, binding);
+        }
+    }
+
+    private sealed class AtomicAttachmentBatchTransport : IWindowBridgeTransport, IWindowBridgeAttachmentBatcher
+    {
+        private readonly Dictionary<string, bool> _routes = new(StringComparer.Ordinal);
+        private readonly List<Action> _pending = [];
+        private int _depth;
+
+        internal int Commits { get; private set; }
+
+        public WindowBridgeEndpointLease Bind(string route, Func<WindowBridgeArguments, string> _) => Add(route);
+
+        public WindowBridgeEndpointLease BindAsync(string route, Func<WindowBridgeArguments, CancellationToken, ValueTask<string>> _) => Add(route);
+
+        public IDisposable BeginAttachmentUpdate()
+        {
+            _depth++;
+            return new Release(() =>
+            {
+                if (--_depth != 0) return;
+                foreach (Action change in _pending) change();
+                _pending.Clear();
+                Commits++;
+            });
+        }
+
+        internal bool Has(string route) => _routes.ContainsKey(route);
+
+        private WindowBridgeEndpointLease Add(string route)
+        {
+            if (_depth == 0) throw new InvalidOperationException("Endpoint binding escaped its attachment transaction.");
+            _pending.Add(() => _routes.Add(route, true));
+            return WindowBridgeEndpointLease.Direct(route, new Release(() =>
+            {
+                if (_depth == 0) throw new InvalidOperationException("Endpoint retirement escaped its attachment transaction.");
+                _pending.Add(() => _routes.Remove(route));
+            }));
         }
     }
 
@@ -1223,7 +1278,6 @@ internal static class WindowBridgeFirstSliceTests
             return WindowBridgeEndpointLease.Direct(route, binding);
         }
 
-        public void Publish(string _, string __) { }
         internal bool Has(string route) => _bindings.ContainsKey(route);
     }
 }

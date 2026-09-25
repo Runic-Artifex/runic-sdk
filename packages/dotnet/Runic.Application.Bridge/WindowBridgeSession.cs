@@ -1,6 +1,5 @@
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace Runic.Application.Bridge;
 
@@ -23,16 +22,12 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
     private readonly Dictionary<OperationKey, OperationEntry> _operations = [];
     private readonly LinkedList<OperationKey> _terminalOrder = [];
     private readonly Dictionary<OperationKey, OperationTombstone> _expired = [];
-    private readonly Queue<Entry> _outboundPublications = [];
-    private readonly Dictionary<Entry, OutboundPublication> _pendingOutboundPublications = [];
-    private readonly Dictionary<Entry, ActiveOutboundPublication> _activeOutboundPublications = [];
     private readonly List<Exception> _attachmentFailures = [];
     private readonly LinkedList<OperationKey> _expiredOrder = [];
     private readonly int _maximumOperations;
     private readonly int _maximumRetainedTerminals;
     private readonly int _maximumExpired;
     private readonly int _maximumRequestIdLength;
-    private readonly int _maximumOutboundPublications;
     private readonly Action? _beforeRetiredCleanup;
     private readonly Action? _beforeAttachmentWait;
     private readonly AsyncLocal<Entry?> _disposingEntry = new();
@@ -43,28 +38,21 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
     private int _remainingOperationsAtClose;
     private int _attachmentTransitions;
     private TaskCompletionSource? _attachmentsDrained;
-    private TaskCompletionSource? _outboundPublicationsDrained;
-    private bool _outboundPublisherActive;
-    private int _outboundPublicationCount;
-    private long _nextDeferredPublicationSequence;
 
     internal WindowBridgeSession(IWindowBridgeTransport transport, IAsyncDisposable? ownedScope = null,
         int maximumOperations = 64, int maximumRetainedTerminals = 32, int maximumExpired = 128,
-        int maximumRequestIdLength = 128, Action? beforeRetiredCleanup = null, Action? beforeAttachmentWait = null,
-        int maximumOutboundPublications = 64)
+        int maximumRequestIdLength = 128, Action? beforeRetiredCleanup = null, Action? beforeAttachmentWait = null)
     {
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         ArgumentOutOfRangeException.ThrowIfNegative(maximumOperations);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumRetainedTerminals);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumExpired);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumRequestIdLength);
-        ArgumentOutOfRangeException.ThrowIfNegative(maximumOutboundPublications);
         _ownedScope = ownedScope;
         _maximumOperations = maximumOperations;
         _maximumRetainedTerminals = maximumRetainedTerminals;
         _maximumExpired = maximumExpired;
         _maximumRequestIdLength = maximumRequestIdLength;
-        _maximumOutboundPublications = maximumOutboundPublications;
         _beforeRetiredCleanup = beforeRetiredCleanup;
         _beforeAttachmentWait = beforeAttachmentWait;
     }
@@ -368,82 +356,6 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
             if (!_references.TryGetValue(id, out Entry? entry) || entry.Reference.Kind != kind)
                 throw new InvalidOperationException("The ViewModel reference does not belong to this window.");
             return entry.Reference;
-        }
-    }
-
-    /// <summary>
-    /// Publishes an internal fixture invalidation for every current document that
-    /// presents one exposed model. The envelope intentionally contains no model
-    /// state: each recipient must use its exact presentation lease to pull its
-    /// typed snapshot.
-    ///
-    /// Admission is synchronized with ownership, then drained by one internal
-    /// publisher without holding the window ownership lock across host work.
-    /// A queued or deferred publication is cancelled before host dispatch if
-    /// its exposed entry retired or has no current document presentation. Once
-    /// a host send has entered, this core cannot retract it; every eventual
-    /// typed pull is still exact-presentation authorized. This is not a
-    /// durable, targeted outbound channel: broadcast hosts still send the
-    /// envelope to every peer.
-    /// </summary>
-    internal bool PublishPublicInvalidation(object model, string kind, string route)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
-        ArgumentException.ThrowIfNullOrWhiteSpace(route);
-        OutboundPublication publication;
-        var startPublisher = false;
-        lock (_gate)
-        {
-            if (_disposed || !_models.TryGetValue(model, out Dictionary<string, Entry>? variants)
-                || !variants.TryGetValue(kind, out Entry? entry) || entry.Attachment is null || entry.Detaching)
-                return false;
-
-            if (!HasCurrentDocumentPresentation(entry)) return false;
-            publication = new(entry, entry.Generation, route, RenderPublicInvalidation(++entry.InvalidationRevision));
-            if (_pendingOutboundPublications.ContainsKey(entry))
-            {
-                // Preserve one queue position per exposed entry and let the
-                // next send carry its newest invalidation revision.
-                _pendingOutboundPublications[entry] = publication;
-                return true;
-            }
-            if (_activeOutboundPublications.TryGetValue(entry, out ActiveOutboundPublication? active))
-            {
-                // An active entry retains its bounded queue slot until its
-                // host call returns. Keep one dirty/latest record beside it
-                // so a change during a slow send is not silently lost.
-                active.FollowUp = publication;
-                return true;
-            }
-            if (_outboundPublicationCount >= _maximumOutboundPublications)
-            {
-                // Preserve only the newest rejected revision on its already
-                // retained entry. The publisher promotes it when a slot frees.
-                // The return value still reports that immediate admission lost.
-                DeferOutboundPublicationUnsafe(publication);
-                return false;
-            }
-            _pendingOutboundPublications.Add(entry, publication);
-            _outboundPublications.Enqueue(entry);
-            if (_outboundPublicationCount++ == 0)
-                _outboundPublicationsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!_outboundPublisherActive)
-            {
-                _outboundPublisherActive = true;
-                startPublisher = true;
-            }
-        }
-        if (startPublisher) _ = Task.Run(DrainOutboundPublicationsAsync);
-        return true;
-    }
-
-    /// <summary>Completes when all admitted public invalidations have dispatched or been cancelled.</summary>
-    internal Task OutboundPublicationDrain
-    {
-        get
-        {
-            lock (_gate) return _outboundPublicationsDrained?.Task ?? Task.CompletedTask;
         }
     }
 
@@ -947,16 +859,16 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         Exception? failure = null;
         Entry? previous = _attachingEntry.Value;
         _attachingEntry.Value = entry;
-        IDisposable? manifestUpdate = null;
+        IDisposable? attachmentUpdate = null;
         try
         {
-            manifestUpdate = (_transport as IWindowBridgeEndpointManifestBatcher)?.BeginEndpointManifestUpdate();
+            attachmentUpdate = (_transport as IWindowBridgeAttachmentBatcher)?.BeginAttachmentUpdate();
             attachment = entry.CreateAttachment();
         }
         catch (Exception exception) { failure = exception; }
         finally
         {
-            try { manifestUpdate?.Dispose(); }
+            try { attachmentUpdate?.Dispose(); }
             catch (Exception exception) { failure ??= exception; }
             _attachingEntry.Value = previous;
         }
@@ -1003,18 +915,18 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
     {
         Entry? previous = _disposingEntry.Value;
         _disposingEntry.Value = entry;
-        IDisposable? manifestUpdate = null;
+        IDisposable? attachmentUpdate = null;
         List<Exception>? failures = null;
         try
         {
-            try { manifestUpdate = (_transport as IWindowBridgeEndpointManifestBatcher)?.BeginEndpointManifestUpdate(); }
+            try { attachmentUpdate = (_transport as IWindowBridgeAttachmentBatcher)?.BeginAttachmentUpdate(); }
             catch (Exception exception) { (failures ??= []).Add(exception); }
             try { attachment.Dispose(); }
             catch (Exception exception) { (failures ??= []).Add(exception); }
         }
         finally
         {
-            try { manifestUpdate?.Dispose(); }
+            try { attachmentUpdate?.Dispose(); }
             catch (Exception exception) { (failures ??= []).Add(exception); }
             finally
             {
@@ -1091,118 +1003,6 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         !_disconnectedConnections.Contains(connection)
         && _documents.TryGetValue(connection, out DocumentEntry? document) && document.Current == epoch;
 
-    private bool HasCurrentDocumentPresentation(Entry entry) =>
-        _presentations.Keys.Any(key => key.ReferenceId == entry.Reference.Id && key.DocumentEpoch is not null
-            && !_disconnectedConnections.Contains(new WindowBridgeConnection(key.ClientId, key.ConnectionId))
-            && _documents.TryGetValue(new WindowBridgeConnection(key.ClientId, key.ConnectionId), out DocumentEntry? document)
-            && document.Current.Value == key.DocumentEpoch);
-
-    private bool CanDispatchOutboundPublicationUnsafe(OutboundPublication publication) =>
-        !_disposed && publication.Entry.Generation == publication.Generation
-        && publication.Entry.Attachment is not null && !publication.Entry.Detaching
-        && HasCurrentDocumentPresentation(publication.Entry);
-
-    private void DeferOutboundPublicationUnsafe(OutboundPublication publication)
-    {
-        Entry entry = publication.Entry;
-        if (entry.DeferredOutboundPublication is null)
-            entry.DeferredOutboundPublicationSequence = checked(++_nextDeferredPublicationSequence);
-        entry.DeferredOutboundPublication = publication;
-    }
-
-    /// <summary>
-    /// Moves the oldest live deferred entry into available bounded queue slots.
-    /// Each exposed entry owns only one deferred/latest record, so rejected
-    /// notifications cannot create an unbounded overflow queue.
-    /// </summary>
-    private void PromoteDeferredOutboundPublicationsUnsafe()
-    {
-        while (!_disposed && _outboundPublicationCount < _maximumOutboundPublications)
-        {
-            Entry? candidate = null;
-            foreach (Entry entry in _references.Values)
-            {
-                if (entry.DeferredOutboundPublication is not { } deferred) continue;
-                if (!CanDispatchOutboundPublicationUnsafe(deferred))
-                {
-                    entry.DeferredOutboundPublication = null;
-                    continue;
-                }
-                if (candidate is null || entry.DeferredOutboundPublicationSequence < candidate.DeferredOutboundPublicationSequence)
-                    candidate = entry;
-            }
-            if (candidate?.DeferredOutboundPublication is not { } publication) return;
-            candidate.DeferredOutboundPublication = null;
-            _pendingOutboundPublications.Add(candidate, publication);
-            _outboundPublications.Enqueue(candidate);
-            _outboundPublicationCount++;
-        }
-    }
-
-    private async Task DrainOutboundPublicationsAsync()
-    {
-        while (true)
-        {
-            OutboundPublication publication;
-            ActiveOutboundPublication active;
-            lock (_gate)
-            {
-                if (_outboundPublications.Count == 0)
-                {
-                    _outboundPublisherActive = false;
-                    return;
-                }
-                Entry entry = _outboundPublications.Dequeue();
-                publication = _pendingOutboundPublications[entry];
-                _pendingOutboundPublications.Remove(entry);
-                active = new();
-                _activeOutboundPublications.Add(entry, active);
-            }
-
-            try
-            {
-                bool dispatch;
-                lock (_gate)
-                {
-                    dispatch = CanDispatchOutboundPublicationUnsafe(publication);
-                }
-                if (dispatch) _transport.Publish(publication.Route, publication.Payload);
-            }
-            catch
-            {
-                // Public invalidation is best-effort. A failed host send must
-                // not fault model notification or retain the window scope.
-            }
-            finally
-            {
-                lock (_gate)
-                {
-                    _activeOutboundPublications.Remove(publication.Entry);
-                    if (active.FollowUp is { } followUp)
-                        DeferOutboundPublicationUnsafe(followUp);
-                    _outboundPublicationCount--;
-                    PromoteDeferredOutboundPublicationsUnsafe();
-                    if (_outboundPublicationCount == 0)
-                        _outboundPublicationsDrained?.TrySetResult();
-                }
-            }
-            await Task.Yield();
-        }
-    }
-
-    private static string RenderPublicInvalidation(long revision)
-    {
-        var bytes = new System.Buffers.ArrayBufferWriter<byte>();
-        using var writer = new System.Text.Json.Utf8JsonWriter(bytes);
-        writer.WriteStartObject();
-        writer.WriteString("protocol", "runic-sdk.fixture-public-invalidation");
-        writer.WriteNumber("version", 1);
-        writer.WriteNumber("revision", revision);
-        writer.WriteEndObject();
-        writer.Flush();
-        return Encoding.UTF8.GetString(bytes.WrittenSpan);
-    }
-
     private bool HasPresentationCore(WindowBridgeReference reference, WindowBridgeConnection connection,
         WindowBridgeDocumentEpoch? epoch, string? presentationId = null)
     {
@@ -1277,7 +1077,6 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         (Entry Entry, WindowBridgeAttachment Attachment)[] attachments;
         Task[] operations;
         Task attachmentTransitions;
-        Task outboundPublicationDrain;
         lock (_gate)
         {
             leases = _presentations.Values.ToArray();
@@ -1293,7 +1092,6 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
                 }).ToArray();
             operations = _operations.Values.Select(operation => operation.Completed.Task).ToArray();
             attachmentTransitions = _attachmentsDrained?.Task ?? Task.CompletedTask;
-            outboundPublicationDrain = _outboundPublicationsDrained?.Task ?? Task.CompletedTask;
         }
         foreach (PresentationLease lease in leases)
         {
@@ -1303,15 +1101,13 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         foreach ((Entry entry, WindowBridgeAttachment attachment) in attachments)
         {
             try { DisposeAttachment(entry, attachment); }
-            // DisposeAttachment records a synchronous manifest-batch failure
+            // DisposeAttachment records a synchronous attachment-batch failure
             // with the attachment completion before it returns. Keep draining
             // the remaining attachments; the collected close failure below
             // reports it once the transition has finished.
             catch (Exception) { }
         }
         try { await attachmentTransitions.ConfigureAwait(false); }
-        catch (Exception exception) { (failures ??= []).Add(exception); }
-        try { await outboundPublicationDrain.ConfigureAwait(false); }
         catch (Exception exception) { (failures ??= []).Add(exception); }
         lock (_gate)
             if (_attachmentFailures.Count > 0)
@@ -1349,22 +1145,7 @@ internal sealed class WindowBridgeSession : IAsyncDisposable
         internal bool RootOwned { get; set; }
         internal long Generation { get; set; }
         internal long OwnershipGeneration { get; set; }
-        internal long InvalidationRevision { get; set; }
-        internal OutboundPublication? DeferredOutboundPublication { get; set; }
-        internal long DeferredOutboundPublicationSequence { get; set; }
         internal int Publishing { get; set; }
-    }
-
-    private sealed record OutboundPublication(Entry Entry, long Generation, string Route, string Payload);
-
-    /// <summary>
-    /// One active entry may retain one latest revision while its synchronous
-    /// host send is in flight. The worker is single-threaded, so this adds at
-    /// most one dirty record beyond the bounded entry queue.
-    /// </summary>
-    private sealed class ActiveOutboundPublication
-    {
-        internal OutboundPublication? FollowUp { get; set; }
     }
 
     private sealed class OperationEntry(OperationKey key, long sourceGeneration, WindowBridgeConnection? initiatingConnection,
