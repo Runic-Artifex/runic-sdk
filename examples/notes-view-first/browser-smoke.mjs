@@ -129,8 +129,11 @@ try {
   await retry(async () => await query('document.querySelector("#document-pane input")?.value') === "Draft");
   await evaluate("location.reload()");
   await retry(async () => await query('document.querySelector("#document-pane input")?.value') === "Draft");
-  if (await query('document.querySelector("#status")?.textContent') !== "Connected.")
-    throw new Error("Reconnect reported an error.");
+  try {
+    await retry(async () => await query('document.querySelector("#status")?.textContent') === "Connected.");
+  } catch (error) {
+    throw new Error(`Reconnect did not settle: ${await query('document.querySelector("#status")?.textContent')}; ${error}`);
+  }
   if (process.env.RUNIC_VERIFY_WEB_MOUNT === "1") {
     host.stdin.end("\n");
     await retry(() => host.exitCode !== null);
