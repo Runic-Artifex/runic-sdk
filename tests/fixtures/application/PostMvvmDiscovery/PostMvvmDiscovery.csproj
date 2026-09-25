@@ -7,6 +7,10 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <_RunicPostMvvmDiscovery>true</_RunicPostMvvmDiscovery>
+    <!-- A concrete default makes the effective deletion key nonempty. A global
+         empty or malformed override remains empty/malformed and is rejected by
+         the imported target before it can reach RemoveDir. -->
+    <RunicPostMvvmDiscoveryOutputKey Condition="'$(RunicPostMvvmDiscoveryOutputKey)' == ''">ordinary</RunicPostMvvmDiscoveryOutputKey>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Smoke/**/*.cs" />

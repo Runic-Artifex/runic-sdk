@@ -18,6 +18,13 @@ The target is imported by this fixture alone. No shipping SDK target imports
 it, and none of its attributes, IR, generated route names, ESM shape, or
 selection keys are public authoring API.
 
+`RunicPostMvvmDiscoveryOutputKey` is always one nonempty ASCII directory
+segment (`ordinary` by default). The fixture rejects an empty key, traversal,
+path separators, and MSBuild item-list separators before either discovery
+target can remove generated output. It deliberately does not provide
+same-key multi-process publication ownership; that remains a separate
+development-loop design concern.
+
 The ordinary fixture contains an explicit Window/View pair backed by a
 CommunityToolkit `NotesViewModel`. The generated projection accesses the
 Toolkit `Title` and `SaveCommand` members and a ReactiveUI `RefreshCommand`

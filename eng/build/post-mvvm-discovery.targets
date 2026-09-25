@@ -2,11 +2,9 @@
   <!-- Internal fixture experiment: this file is intentionally not imported by shipping targets. -->
   <PropertyGroup>
     <_RunicPostMvvmDiscoveryRoot>$(MSBuildThisFileDirectory)../../</_RunicPostMvvmDiscoveryRoot>
-    <!-- A selected fixture mode can build the same source project with a
-         different compiled contract. Keep those generated artifacts outside
-         the default consumer path. The empty key preserves its established
-         path for the ordinary fixture. -->
-    <_RunicPostMvvmDiscoveryOutputSegment Condition="'$(RunicPostMvvmDiscoveryOutputKey)' != ''">$(RunicPostMvvmDiscoveryOutputKey)/</_RunicPostMvvmDiscoveryOutputSegment>
+    <!-- This is a directory name, not a path. The validation target below is
+         a dependency of every target that removes generated output. -->
+    <_RunicPostMvvmDiscoveryOutputSegment>$(RunicPostMvvmDiscoveryOutputKey)/</_RunicPostMvvmDiscoveryOutputSegment>
     <_RunicPostMvvmDiscoveryGeneratedDir>$(MSBuildProjectDirectory)/obj/runic-post-mvvm-discovery/$(_RunicPostMvvmDiscoveryOutputSegment)$(Configuration)/$(TargetFramework)/</_RunicPostMvvmDiscoveryGeneratedDir>
     <_RunicPostMvvmDiscoveryBootstrapDir>$(MSBuildProjectDirectory)/obj/runic-post-mvvm-discovery/bootstrap/$(_RunicPostMvvmDiscoveryOutputSegment)$(Configuration)/</_RunicPostMvvmDiscoveryBootstrapDir>
     <_RunicPostMvvmDiscoveryInspectorProject>$(_RunicPostMvvmDiscoveryRoot)tools/Runic.Application.Bridge.Inspector/Runic.Application.Bridge.Inspector.csproj</_RunicPostMvvmDiscoveryInspectorProject>
@@ -19,7 +17,14 @@
     <_RunicPostMvvmDiscoveryStages>$(_RunicPostMvvmDiscoveryGeneratedDir)stages.log</_RunicPostMvvmDiscoveryStages>
   </PropertyGroup>
 
+  <Target Name="RunicPostMvvmDiscoveryValidateOutputKey">
+    <Error Condition="'$(RunicPostMvvmDiscoveryOutputKey)' == '' or $([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicPostMvvmDiscoveryOutputKey)', '[^A-Za-z0-9_-]'))"
+           Code="RUNICPM008"
+           Text="RunicPostMvvmDiscoveryOutputKey must be a nonempty single segment containing only ASCII letters, digits, hyphen, or underscore." />
+  </Target>
+
   <Target Name="RunicPostMvvmDiscoveryPrepare" BeforeTargets="RunicPostMvvmDiscoveryGenerate"
+          DependsOnTargets="RunicPostMvvmDiscoveryValidateOutputKey"
           Condition="'$(_RunicPostMvvmDiscovery)' == 'true' and '$(RunicPostMvvmDiscoveryBootstrap)' != 'true' and '$(RunicPostMvvmDiscoveryGenerate)' != 'false'">
     <RemoveDir Directories="$(_RunicPostMvvmDiscoveryGeneratedDir)" />
     <MakeDir Directories="$(_RunicPostMvvmDiscoveryGeneratedDir)" />
@@ -33,6 +38,7 @@
   </Target>
 
   <Target Name="RunicPostMvvmDiscoveryClean" AfterTargets="CoreClean"
+          DependsOnTargets="RunicPostMvvmDiscoveryValidateOutputKey"
           Condition="'$(_RunicPostMvvmDiscovery)' == 'true' and '$(RunicPostMvvmDiscoveryBootstrap)' != 'true'">
     <RemoveDir Directories="$(_RunicPostMvvmDiscoveryGeneratedDir);$(_RunicPostMvvmDiscoveryBootstrapDir)" />
   </Target>

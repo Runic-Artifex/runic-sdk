@@ -10,7 +10,9 @@ using System.Text.RegularExpressions;
 string root = FindRoot();
 string fixture = Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "PostMvvmDiscovery.csproj");
 string smoke = Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "Smoke", "PostMvvmDiscovery.Smoke.csproj");
+const string outputKey = "ordinary";
 var observedDiagnostics = new Dictionary<string, string>(StringComparer.Ordinal);
+VerifyUnsafeOutputKeysAreRejectedBeforeDeletion();
 foreach (string configuration in new[] { "Debug", "Release" })
 {
     VerifyRejectedBinding(configuration, "POST_MVVM_OPEN_GENERIC", "RUNICPM001", "GenericNotesView`1");
@@ -44,6 +46,42 @@ foreach (string configuration in new[] { "Debug", "Release" })
     Equal(1, Count(output, "POST_MVVM_SDK_TYPED_ACCESSOR_OK"), $"The {configuration} typed fixture accessor did not run.");
 }
 Console.WriteLine("POST_MVVM_SDK_EMISSION_OK|toolkit-generated-title|toolkit-save-command|reactive-refresh-command|typed-accessors-run|explicit-window-view|one-and-two-key-interface-mapping|stable-declared-title-routes|declared-contract-only|deterministic-ir-esm-adapter-ready|binding-diagnostics|metadata-nonexecution|bootstrap=1|outer=1");
+
+void VerifyUnsafeOutputKeysAreRejectedBeforeDeletion()
+{
+    string applicationDirectory = Path.Combine(root, "tests", "fixtures", "application");
+    string escapeName = "post-mvvm-output-key-sentinel-" + Guid.NewGuid().ToString("N");
+    string escapeDirectory = Path.Combine(applicationDirectory, escapeName, "Debug", "net10.0");
+    string sentinel = Path.Combine(escapeDirectory, "must-survive.txt");
+    Directory.CreateDirectory(escapeDirectory);
+    File.WriteAllText(sentinel, "outside generated discovery output");
+    try
+    {
+        // `%3B` reaches MSBuild as a literal item-list separator; a raw `;`
+        // is rejected by the dotnet command-line property parser before MSBuild
+        // evaluates this project.
+        foreach (string unsafeKey in new[] { "", "..", "../../../" + escapeName, "has/separator", "has%3Bitem-list" })
+        {
+            foreach (string operation in new[] { "build", "clean" })
+            {
+                string[] command = operation == "build"
+                    ? [operation, fixture, "-c", "Debug", "--nologo", "--no-restore", "-p:RunicPostMvvmDiscoveryOutputKey=" + unsafeKey]
+                    : [operation, fixture, "-c", "Debug", "--nologo", "-p:RunicPostMvvmDiscoveryOutputKey=" + unsafeKey];
+                ProcessResult result = ExecuteDotnet(command);
+                if (result.ExitCode == 0 || !result.Output.Contains("RUNICPM008", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"Unsafe output key '{unsafeKey}' did not fail {operation} validation before deletion:\n{result.Output}");
+                if (!File.Exists(sentinel))
+                    throw new InvalidOperationException($"Unsafe output key '{unsafeKey}' removed content outside the generated discovery output.");
+            }
+        }
+        Console.WriteLine("POST_MVVM_SDK_OUTPUT_KEY_REJECTED|empty|traversal|separator|item-list|outside-sentinel-retained");
+    }
+    finally
+    {
+        string escapeRoot = Path.Combine(applicationDirectory, escapeName);
+        if (Directory.Exists(escapeRoot)) Directory.Delete(escapeRoot, recursive: true);
+    }
+}
 
 ArtifactSet VerifyMappedInterfaceBinding(string configuration, bool multiple)
 {
@@ -466,7 +504,7 @@ void VerifyOuterAdapter(string configuration)
         throw new InvalidOperationException("The compiled adapter omitted generated command metadata.");
 }
 
-string Artifact(string configuration, string file) => Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery", configuration, "net10.0", file);
+string Artifact(string configuration, string file) => Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-discovery", outputKey, configuration, "net10.0", file);
 
 IEnumerable<string> MetadataClosure(string assemblyPath)
 {
