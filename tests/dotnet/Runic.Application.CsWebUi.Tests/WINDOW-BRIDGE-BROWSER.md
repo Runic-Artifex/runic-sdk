@@ -58,6 +58,15 @@ a fixture-only consumer that imports emitted metadata/types, infers four
 fixture routes, and calls Toolkit Title/Save plus ReactiveUI Refresh. It does
 not make that inferred convention a generated frontend runtime or public API.
 
+## Direct-route drain boundary
+
+The fixed dispatcher can drain callbacks that entered through an attachment's
+endpoint lease. It has no transport-wide drain contract for arbitrary direct
+native callbacks. A generated route that owns a View, scoped service, or other
+retireable resource must therefore remain attachment-owned until the host has
+that broader drain proof. This fixture does not make direct native callbacks
+safe to outlive an attachment.
+
 ## Actual browser document-epoch acceptance
 
 `window-bridge-reload-smoke.mjs` reloads that same headless Chromium page with
