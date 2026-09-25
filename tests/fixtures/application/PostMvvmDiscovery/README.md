@@ -42,8 +42,15 @@ projects in this one build graph, which gives the fixture and every referenced
 tool project disjoint `obj` and `bin` paths.
 The wrappers and fixture reject global `OutputPath`, `IntermediateOutputPath`,
 `BaseOutputPath`, `BaseIntermediateOutputPath`,
-`MSBuildProjectExtensionsPath`, and `ProjectAssetsFile` overrides. Any of
+`MSBuildProjectExtensionsPath`, `ProjectAssetsFile`, `OutDir`, and
+`RestoreOutputPath` overrides. Any of
 these can redirect compiler or restore artifacts outside the owner directory.
+This guard covers the standard build and restore roots. MSBuild also permits
+direct filenames such as `ProjectAssetsCacheFile`, `GeneratedAssemblyInfoFile`,
+`PdbFile`, and `ErrorLog`. This fixture does not promise containment when a
+caller injects arbitrary artifact-filename properties. A public build driver
+would need a property allowlist or a broader output policy before making that
+guarantee.
 
 Both wrappers normally generate their owner. Their
 `RUNIC_POST_MVVM_BUILD_OWNER` override exists only for deterministic fixture

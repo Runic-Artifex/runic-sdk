@@ -13,7 +13,9 @@ for argument in "$@"; do
     -p:baseoutputpath=*|/p:baseoutputpath=*|--property:baseoutputpath=*|\
     -p:baseintermediateoutputpath=*|/p:baseintermediateoutputpath=*|--property:baseintermediateoutputpath=*|\
     -p:msbuildprojectextensionspath=*|/p:msbuildprojectextensionspath=*|--property:msbuildprojectextensionspath=*|\
-    -p:projectassetsfile=*|/p:projectassetsfile=*|--property:projectassetsfile=*)
+    -p:projectassetsfile=*|/p:projectassetsfile=*|--property:projectassetsfile=*|\
+    -p:outdir=*|/p:outdir=*|--property:outdir=*|\
+    -p:restoreoutputpath=*|/p:restoreoutputpath=*|--property:restoreoutputpath=*)
       printf '%s\n' 'RUNICPM010: The internal post-MVVM discovery fixture does not accept global output, intermediate, or restore path overrides because they bypass its build-owner isolation.' >&2
       exit 2
       ;;

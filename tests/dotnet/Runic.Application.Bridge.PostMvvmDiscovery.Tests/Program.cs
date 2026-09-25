@@ -121,6 +121,7 @@ void VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork()
         {
             "OutputPath", "IntermediateOutputPath", "BaseOutputPath",
             "BaseIntermediateOutputPath", "MSBuildProjectExtensionsPath", "ProjectAssetsFile",
+            "OutDir", "RestoreOutputPath",
         })
         {
             ProcessResult result = ExecuteFixtureWrapper("-p:" + property + "=" + escapeDirectory + Path.DirectorySeparatorChar);
@@ -137,7 +138,7 @@ void VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork()
             if (!entries.SequenceEqual(["must-survive.txt"], StringComparer.Ordinal) || File.ReadAllText(sentinel) != sentinelContents)
                 throw new InvalidOperationException($"Global {property} wrote to the attempted shared output directory before the owner driver rejected it.");
         }
-        Console.WriteLine("POST_MVVM_SDK_OUTPUT_OVERRIDE_REJECTED|wrapper-and-direct-restore|output-intermediate-base-and-assets-paths|outside-sentinel-retained");
+        Console.WriteLine("POST_MVVM_SDK_OUTPUT_OVERRIDE_REJECTED|wrapper-and-direct-restore|output-intermediate-base-assets-outdir-and-restore-paths|outside-sentinel-retained");
     }
     finally
     {
