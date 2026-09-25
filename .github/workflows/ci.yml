@@ -192,14 +192,12 @@ jobs:
           RUNIC_VERIFY_CLIENT_DISCONNECT=1 node examples/notes-reactive-views/browser-smoke.mjs
       - name: Exercise Svelte and Angular View outlets
         run: |
-          bun --cwd examples/notes-view-first/Svelte install --frozen-lockfile
-          bun --cwd examples/notes-view-first/Svelte run build
+          (cd examples/notes-view-first/Svelte && bun install --frozen-lockfile && bun run build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/browser-smoke.mjs
           npm --prefix examples/notes-view-first/Angular ci
           npm --prefix examples/notes-view-first/Angular run build
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
-          bun --cwd examples/notes-reactive-views/Svelte install --frozen-lockfile
-          bun --cwd examples/notes-reactive-views/Svelte run build
+          (cd examples/notes-reactive-views/Svelte && bun install --frozen-lockfile && bun run build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-reactive-views/Svelte/dist" node examples/notes-reactive-views/browser-smoke.mjs
           npm --prefix examples/notes-reactive-views/Angular ci
           npm --prefix examples/notes-reactive-views/Angular run build
