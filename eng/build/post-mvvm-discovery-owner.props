@@ -29,5 +29,10 @@
 
     <BaseIntermediateOutputPath Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != ''">$(_RunicPostMvvmDiscoveryOwnerRoot)$(_RunicPostMvvmDiscoveryProjectSlot)/obj/</BaseIntermediateOutputPath>
     <BaseOutputPath Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != ''">$(_RunicPostMvvmDiscoveryOwnerRoot)$(_RunicPostMvvmDiscoveryProjectSlot)/bin/</BaseOutputPath>
+    <!-- The SDK normally excludes obj/bin via BaseIntermediateOutputPath and
+         BaseOutputPath. Redirecting those bases outside a referenced project's
+         folder must not make its conventional, pre-existing obj/bin eligible
+         for the default Compile glob (notably generated assembly attributes). -->
+    <DefaultItemExcludes Condition="'$(_RunicPostMvvmDiscoveryOwnerRoot)' != ''">$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

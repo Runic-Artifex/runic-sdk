@@ -18,6 +18,7 @@ RestoreFixture(serialOwner);
 VerifyUnwrappedFixtureOperationsAreRejected();
 VerifyUnsafeOutputKeysAreRejectedBeforeDeletion();
 VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork();
+VerifyConventionalProjectOutputsAreExcluded();
 foreach (string configuration in new[] { "Debug", "Release" })
 {
     VerifyRejectedBinding(configuration, "POST_MVVM_OPEN_GENERIC", "RUNICPM001", "GenericNotesView`1");
@@ -133,6 +134,38 @@ void VerifyExplicitOutputOverridesAreRejectedBeforeFixtureWork()
     finally
     {
         if (Directory.Exists(escapeDirectory)) Directory.Delete(escapeDirectory, recursive: true);
+    }
+}
+
+void VerifyConventionalProjectOutputsAreExcluded()
+{
+    string[] probes =
+    [
+        Path.Combine(root, "packages", "dotnet", "Runic.Application.Bridge.Generators", "obj", "runic-post-mvvm-exclusion-probe", "Poison.cs"),
+        Path.Combine(root, "tests", "fixtures", "application", "PostMvvmDiscovery", "obj", "runic-post-mvvm-exclusion-probe", "Poison.cs"),
+    ];
+    try
+    {
+        foreach (string probe in probes)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(probe)!);
+            File.WriteAllText(probe, "#error RUNICPM_CONVENTIONAL_OBJ_WAS_COMPILED");
+        }
+
+        ProcessResult result = ExecuteDotnet("build", fixture, "-c", "Debug", "--nologo", "--no-restore", "-p:DefineConstants=POST_MVVM_OPEN_GENERIC");
+        if (result.ExitCode == 0 || !result.Output.Contains("RUNICPM001:", StringComparison.Ordinal) ||
+            result.Output.Contains("RUNICPM_CONVENTIONAL_OBJ_WAS_COMPILED", StringComparison.Ordinal))
+            throw new InvalidOperationException("Owner-scoped discovery compiled a conventional project obj directory or missed its expected binding diagnostic:\n" + result.Output);
+        Console.WriteLine("POST_MVVM_SDK_CONVENTIONAL_OUTPUTS_EXCLUDED|generator-obj|fixture-obj");
+    }
+    finally
+    {
+        foreach (string probe in probes)
+        {
+            if (File.Exists(probe)) File.Delete(probe);
+            string directory = Path.GetDirectoryName(probe)!;
+            if (Directory.Exists(directory)) Directory.Delete(directory);
+        }
     }
 }
 
