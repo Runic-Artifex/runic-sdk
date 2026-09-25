@@ -29,6 +29,9 @@ internal static class WindowBridgeBrowserFixture
         var saveOwnerGate = new object();
         var dialogGate = new object();
         var batchGate = new object();
+        WindowBridgeEndpointLease? refreshEndpoint = null;
+        CsWebUiWindowBridgeInvalidationPublisher? invalidations = null;
+        var refreshRegistration = new InvalidationRegistration();
         await using var host = new CsWebUiWindowBridgeHost(new CsWebUiWindowBridgeHostOptions
         {
             Assets = new EntryAssets(),
@@ -43,13 +46,15 @@ internal static class WindowBridgeBrowserFixture
                 editorReference = session.Present(shellReference, "main", "editor", editor, (routes, _, route) =>
                 {
                     WindowBridgeEndpointLease endpoint = routes.Bind(route, _ => "{\"ok\":true,\"kind\":\"editor\"}");
+                    WindowBridgeEndpointLease refresh = routes.Bind(route + ".refresh", _ => "{\"ok\":false,\"kind\":\"rejected\"}");
+                    refreshEndpoint = refresh;
                     try
                     {
                         WindowBridgeEndpointLease[] titleEndpoints = CsWebUiWindowBridgeNotesDescriptor.AttachEndpoints(routes, title,
                             (connection, epoch, presentationId) => session.HasPresentation(editorReference!, connection, epoch, presentationId));
-                        return WindowBridgeAttachment.Create([endpoint, .. titleEndpoints]);
+                        return WindowBridgeAttachment.Create(refreshRegistration, [endpoint, refresh, .. titleEndpoints]);
                     }
-                    catch { endpoint.Dispose(); throw; }
+                    catch { endpoint.Dispose(); refresh.Dispose(); throw; }
                 });
                 scope.Add(transport.Bind("notes.editor.mount", arguments =>
                 {
@@ -332,6 +337,22 @@ internal static class WindowBridgeBrowserFixture
                     }
                     catch (JsonException) { return "{\"ok\":false,\"kind\":\"rejected\"}"; }
                 }));
+                // Fixture-only trigger for the adapter-owned refresh hint. Its
+                // exact-presentation guard lets the browser prove that a hint
+                // is followed by an authorized typed pull, while a released
+                // owner cannot cause that pull to reach a peer.
+                scope.Add(transport.Bind("notes.debug.refresh", arguments =>
+                {
+                    try
+                    {
+                        using JsonDocument request = JsonDocument.Parse(arguments.GetString());
+                        if (!TryPresentationRequest(request.RootElement, out WindowBridgeDocumentEpoch? epoch, out string? presentationId)
+                            || !session.HasPresentation(editorReference!, arguments.Connection, epoch, presentationId!))
+                            return "{\"ok\":false,\"kind\":\"rejected\"}";
+                        return JsonSerializer.Serialize(new { ok = invalidations?.TryPublish(editor, "editor") == true });
+                    }
+                    catch (JsonException) { return "{\"ok\":false,\"kind\":\"rejected\"}"; }
+                }));
                 // Regression for a legal route that has special meaning in a
                 // normal JavaScript object literal or prototype chain.
                 scope.Add(transport.Bind("__proto__", arguments =>
@@ -406,6 +427,11 @@ internal static class WindowBridgeBrowserFixture
                 }));
                 return session;
             },
+            ConfigureInvalidations = (_, publisher) =>
+            {
+                invalidations = publisher;
+                refreshRegistration.Set(publisher.Register(editorReference!, refreshEndpoint!));
+            },
         });
         try
         {
@@ -462,6 +488,17 @@ internal static class WindowBridgeBrowserFixture
     {
         internal string Title { get; set; } = "Draft";
         internal string? SavedTitle { get; set; }
+    }
+
+    private sealed class InvalidationRegistration : IDisposable
+    {
+        private IDisposable? _value;
+        internal void Set(IDisposable value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            Interlocked.Exchange(ref _value, value)?.Dispose();
+        }
+        public void Dispose() => Interlocked.Exchange(ref _value, null)?.Dispose();
     }
 
     private sealed class OwnedScope : IAsyncDisposable

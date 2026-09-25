@@ -104,6 +104,24 @@ try {
       || titleWork.rebased.kind !== "applied" || titleWork.rebased.current.value !== "Shared title"
       || titleWork.rebased.current.version !== 2)
     throw new Error(`The ordinary title methods lost their typed receipts: ${JSON.stringify(titleWork)}`);
+  // The adapter emits only a data-free refresh hint. The mounted owner uses
+  // its ordinary typed route to pull state after receiving it.
+  await evaluate(`(() => {
+    globalThis.refreshHints = [];
+    globalThis.__runicBridgePublish = hint => {
+      globalThis.refreshHints.push(hint);
+      globalThis.refreshPull = globalThis.owners.peer.title();
+    };
+  })()`);
+  const refreshTrigger = await rawCall("notes.debug.refresh", { presentationId: ids[1] });
+  if (refreshTrigger.ok !== true) throw new Error(`A mounted Editor could not request a refresh hint: ${JSON.stringify(refreshTrigger)}`);
+  const refreshPull = await evaluate("globalThis.refreshPull");
+  const refreshHint = await evaluate("globalThis.refreshHints[0]");
+  if (refreshPull.value !== "Shared title" || refreshPull.version !== 2
+      || refreshHint?.payload?.protocol !== "runic.window-bridge.refresh"
+      || refreshHint?.payload?.version !== 1 || refreshHint?.payload?.revision !== 1
+      || Object.keys(refreshHint.payload).length !== 3)
+    throw new Error(`A refresh hint did not lead to an authorized typed pull: ${JSON.stringify({ refreshHint, refreshPull })}`);
   await evaluate("globalThis.owners.first.release()");
   const peerTitle = await evaluate("globalThis.owners.peer.title()");
   if (peerTitle.value !== "Shared title" || peerTitle.version !== 2)
@@ -123,6 +141,11 @@ try {
       || staleFirstChecked.ok !== false || staleFirstChecked.kind !== "rejected"
       || staleFirstSave.accepted !== false || staleFirstSave.kind !== "rejected")
     throw new Error(`A released Editor callback reached its peer's model: ${JSON.stringify({ staleFirstGet, staleFirstSet, staleFirstChecked, staleFirstSave })}`);
+  const staleRefresh = await rawCall("notes.debug.refresh", { presentationId: ids[0] });
+  await delay(50);
+  const hintCountAfterStaleRefresh = await evaluate("globalThis.refreshHints.length");
+  if (staleRefresh.ok !== false || staleRefresh.kind !== "rejected" || hintCountAfterStaleRefresh !== 1)
+    throw new Error(`A released Editor caused a refresh hint or typed pull: ${JSON.stringify({ staleRefresh, hintCountAfterStaleRefresh })}`);
   const peerAfterStale = await evaluate("globalThis.owners.peer.title()");
   if (peerAfterStale.value !== "Shared title" || peerAfterStale.version !== 2)
     throw new Error(`A stale Editor callback changed the peer's title: ${JSON.stringify(peerAfterStale)}`);
@@ -201,4 +224,4 @@ try {
   if (host.exitCode === null) host.kill("SIGTERM");
   if (profile) await rm(profile, { recursive: true, force: true });
 }
-console.log("SDK_WINDOW_BRIDGE_ORDINARY_CLIENT_OK|one-document|two-consumers|typed-snapshot|setter-receipts|awaited-save|duplicate-admission-decoded|independent-release|exact-presentation-callback-gate|late-mount-drained|overlap-replacement|stale-cleanup-rejected|navigation-before-unmount|scope-drained");
+console.log("SDK_WINDOW_BRIDGE_ORDINARY_CLIENT_OK|one-document|two-consumers|typed-snapshot|setter-receipts|refresh-hint-authorized-pull|stale-refresh-rejected|awaited-save|duplicate-admission-decoded|independent-release|exact-presentation-callback-gate|late-mount-drained|overlap-replacement|stale-cleanup-rejected|navigation-before-unmount|scope-drained");
