@@ -29,7 +29,7 @@ public sealed class NotesApplication : IDisposable
         var services = new ServiceCollection();
         // A window scope owns one execution lane for the whole reactive graph.
         // The Shell binds its children before the bridge can expose any of them.
-        services.AddScoped<IRunicModelContext, RunicModelContext>();
+        services.AddRunicReactiveModelContext();
         services.AddScoped<ShellViewModel>();
         services.AddScoped<IRunicViewLocator>(_ => new ReactiveRunicViewLocator(locator));
         services.AddRunicBridges();

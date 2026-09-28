@@ -1,5 +1,6 @@
 using ReactiveUI;
 using ReactiveUI.Primitives;
+using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 
@@ -13,11 +14,10 @@ public sealed class CounterViewModel : ReactiveObject, IDisposable
 
     public static int Disposals => Volatile.Read(ref _disposals);
 
-    public CounterViewModel(IRunicModelContext modelContext)
+    public CounterViewModel(IRunicModelContext modelContext, ISequencer scheduler)
     {
         _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this);
-        IncrementCommand = ReactiveCommand.Create(() => { Count++; },
-            new RunicReactiveSchedulerProvider().For(modelContext));
+        IncrementCommand = ReactiveCommand.Create(() => { Count++; }, scheduler);
     }
 
     public int Count

@@ -2,10 +2,11 @@ using FirstWindowDesktop;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
+using Runic.Application.Views.ReactiveUI;
 using Runic.Desktop;
 
 var services = new ServiceCollection();
-services.AddScoped<IRunicModelContext, RunicModelContext>();
+services.AddRunicReactiveModelContext();
 services.AddScoped<CounterViewModel>();
 services.AddRunicBridges();
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });

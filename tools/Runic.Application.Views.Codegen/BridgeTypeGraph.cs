@@ -99,10 +99,10 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Decimal => "string",
             BridgeWireKind.String or BridgeWireKind.Guid or BridgeWireKind.DateOnly or BridgeWireKind.TimeOnly or
             BridgeWireKind.DateTime or BridgeWireKind.DateTimeOffset or BridgeWireKind.TimeSpan or BridgeWireKind.Enum => "string",
-            BridgeWireKind.Array or BridgeWireKind.List => $"readonly {TypeScriptType(node.Element!)}[]",
+            BridgeWireKind.Array or BridgeWireKind.List => $"readonly ({TypeScriptType(node.Element!)})[]",
             BridgeWireKind.StringDictionary => $"Readonly<Record<string, {TypeScriptType(node.Value!)}>>",
             BridgeWireKind.Dto => "{ " + string.Join("; ", node.Members.Select(member =>
-                $"readonly {member.WireName}: {TypeScriptType(member.Type)}")) + " }",
+                $"readonly [{Quote(member.WireName)}]: {TypeScriptType(member.Type)}")) + " }",
             BridgeWireKind.Union => string.Join(" | ", node.Cases.Select(@case =>
                 $"({{ readonly $case: {Quote(@case.Discriminator)} }} & {TypeScriptType(@case.Type)})")),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptType,
@@ -135,11 +135,11 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.TimeOnly => $"bridgeWire.timeOnly({expression})",
             BridgeWireKind.DateTime => $"bridgeWire.dateTime({expression})",
             BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({expression})",
-            BridgeWireKind.TimeSpan => $"bridgeWire.int64String({expression})",
+            BridgeWireKind.TimeSpan => $"bridgeWire.duration({expression})",
             BridgeWireKind.Enum => $"bridgeWire.enumName({expression}, [{string.Join(", ", node.EnumCases.Select(@case => Quote(@case.WireName)))}])",
             BridgeWireKind.Array or BridgeWireKind.List => $"bridgeWire.array({expression}, item => {EmitTypeScriptDecoder(node.Element!, "item")})",
             BridgeWireKind.StringDictionary => $"bridgeWire.stringRecord({expression}, item => {EmitTypeScriptDecoder(node.Value!, "item")})",
-            BridgeWireKind.Dto => $"bridgeWire.object({expression}, value => ({{ {string.Join(", ", node.Members.Select(member => member.WireName + ": " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]"))) }}}))",
+            BridgeWireKind.Dto => $"bridgeWire.object({expression}, value => ({{ {string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]"))) }}}))",
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
             _ => throw new InvalidOperationException($"No TypeScript decoder exists for {node.Kind}.")
@@ -152,7 +152,7 @@ internal sealed class BridgeTypeGraph
         var cases = string.Join(" ", node.Cases.Select(@case =>
         {
             var fields = string.Join(", ", @case.Type.Members.Select(member =>
-                Quote(member.WireName) + ": " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]")));
+                "[" + Quote(member.WireName) + "]: " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]")));
             return $"case {Quote(@case.Discriminator)}: return {{ \"$case\": {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
         }));
         return $"(() => {{ const value: any = bridgeWire.union({expression}); switch (value.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
@@ -168,9 +168,13 @@ internal sealed class BridgeTypeGraph
         var nonNull = node.Kind switch
         {
             BridgeWireKind.Int64 or BridgeWireKind.UInt64 or BridgeWireKind.BigInteger => $"{value}.toString()",
+            // TimeSpan is an invariant "c" string. Validate outbound values too:
+            // generated clients otherwise accept malformed values until the route
+            // rejects them, while snapshots are validated on the way in.
+            BridgeWireKind.TimeSpan => $"bridgeWire.duration({value})",
             BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => {EncodeTypeScript(node.Element!, "item")})",
             BridgeWireKind.StringDictionary => $"Object.fromEntries(Object.entries({value}).map(([key, item]) => [key, {EncodeTypeScript(node.Value!, "item")}]))",
-            BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => Quote(member.WireName) + ": " + EncodeTypeScript(member.Type, value + "[" + Quote(member.WireName) + "]"))) + " }",
+            BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeTypeScript(member.Type, value + "[" + Quote(member.WireName) + "]"))) + " }",
             BridgeWireKind.Union => EncodeUnionTypeScript(node, value),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptEncoderExpression.Replace("$value", value, StringComparison.Ordinal),
             _ => value,
@@ -186,7 +190,7 @@ internal sealed class BridgeTypeGraph
         var cases = string.Join(" ", node.Cases.Select(@case =>
         {
             var fields = string.Join(", ", @case.Type.Members.Select(member =>
-                Quote(member.WireName) + ": " + EncodeTypeScript(member.Type, unionValue + "[" + Quote(member.WireName) + "]")));
+                "[" + Quote(member.WireName) + "]: " + EncodeTypeScript(member.Type, unionValue + "[" + Quote(member.WireName) + "]")));
             return $"case {Quote(@case.Discriminator)}: return {{ \"$case\": {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
         }));
         return $"(() => {{ const {unionValue}: any = bridgeWire.encodeUnion({expression}); switch ({unionValue}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
@@ -347,12 +351,14 @@ internal sealed class BridgeTypeGraph
         }
         if (genericName == "System.Collections.ObjectModel.ObservableCollection`1")
         {
-            source.AppendLine($"        return new global::System.Collections.ObjectModel.ObservableCollection<{CSharpType(node.Element!.Type)}>(element.EnumerateArray().Select(Read{node.Element.Id}).ToList());");
+            var element = node.Element ?? throw new InvalidOperationException("An observable collection needs an element type.");
+            source.AppendLine($"        return new global::System.Collections.ObjectModel.ObservableCollection<{CSharpNodeType(element)}>(element.EnumerateArray().Select(Read{element.Id}).ToList());");
             return;
         }
         if (genericName == "System.Collections.ObjectModel.ReadOnlyObservableCollection`1")
         {
-            source.AppendLine($"        return new global::System.Collections.ObjectModel.ReadOnlyObservableCollection<{CSharpType(node.Element!.Type)}>(new global::System.Collections.ObjectModel.ObservableCollection<{CSharpType(node.Element.Type)}>(element.EnumerateArray().Select(Read{node.Element.Id}).ToList()));");
+            var element = node.Element ?? throw new InvalidOperationException("A read-only observable collection needs an element type.");
+            source.AppendLine($"        return new global::System.Collections.ObjectModel.ReadOnlyObservableCollection<{CSharpNodeType(element)}>(new global::System.Collections.ObjectModel.ObservableCollection<{CSharpNodeType(element)}>(element.EnumerateArray().Select(Read{element.Id}).ToList()));");
             return;
         }
         source.AppendLine($"        return element.EnumerateArray().Select(Read{node.Element!.Id}).{materialize};");
@@ -403,8 +409,28 @@ internal sealed class BridgeTypeGraph
         return "global::" + name + "<" + string.Join(", ", type.GetGenericArguments().Select(CSharpType)) + ">";
     }
 
-    private static string CSharpNodeType(BridgeTypeNode node) => CSharpType(node.Type)
-        + (node.IsNullable && !node.NonNullableType.IsValueType ? "?" : string.Empty);
+    private static string CSharpNodeType(BridgeTypeNode node)
+    {
+        string type;
+        if (node.Kind == BridgeWireKind.Array)
+            type = CSharpNodeType(node.Element!) + "[]";
+        else if (node.Kind == BridgeWireKind.List)
+        {
+            var generic = node.NonNullableType.GetGenericTypeDefinition().FullName
+                ?? throw new InvalidOperationException("A collection needs a generic type name.");
+            type = "global::" + generic[..generic.IndexOf('`')].Replace('+', '.')
+                + "<" + CSharpNodeType(node.Element!) + ">";
+        }
+        else if (node.Kind == BridgeWireKind.StringDictionary)
+        {
+            var generic = node.NonNullableType.GetGenericTypeDefinition().FullName
+                ?? throw new InvalidOperationException("A dictionary needs a generic type name.");
+            type = "global::" + generic[..generic.IndexOf('`')].Replace('+', '.')
+                + "<string, " + CSharpNodeType(node.Value!) + ">";
+        }
+        else type = CSharpType(node.Type);
+        return type + (node.IsNullable && !node.NonNullableType.IsValueType ? "?" : string.Empty);
+    }
 
     private sealed class Builder
     {

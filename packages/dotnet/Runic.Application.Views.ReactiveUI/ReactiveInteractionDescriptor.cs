@@ -81,6 +81,12 @@ public static class ReactiveInteractionDescriptor
             {
                 lock (_gate)
                 {
+                    var conflicting = _bindings.FirstOrDefault(existing => ReferenceEquals(existing.Session, binding.Session)
+                        && string.Equals(existing.Route, binding.Route, StringComparison.Ordinal)
+                        && (!string.Equals(existing.Name, binding.Name, StringComparison.Ordinal)
+                            || !string.Equals(existing.Contract, binding.Contract, StringComparison.Ordinal)));
+                    if (conflicting is not null)
+                        throw new InvalidOperationException("The same ReactiveUI Interaction instance cannot be exposed by multiple generated interaction members on one bridge route.");
                     if (_registration is null)
                         _registration = interaction.RegisterHandler(HandleAsync);
                     _bindings.Add(binding);

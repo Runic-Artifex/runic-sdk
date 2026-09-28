@@ -123,11 +123,16 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
 
     private bool Enqueue(IWorkItem item)
     {
+        // A model turn may be queued while a trusted bridge invocation is
+        // active. Capture its ambient execution context with this individual
+        // item, rather than with the drain, because one drain deliberately
+        // batches unrelated callers. This also honors SuppressFlow.
+        var captured = new ExecutionContextWorkItem(item, ExecutionContext.Capture());
         var queueDrain = false;
         lock (_gate)
         {
             if (_disposed) return false;
-            _queued.Enqueue(item);
+            _queued.Enqueue(captured);
             if (!_draining)
             {
                 _draining = true;
@@ -142,6 +147,11 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
     private void Drain()
     {
         var previous = Current;
+        // Unsafe queueing prevents the caller's ambient values from becoming
+        // this worker's baseline. A suppressed-flow item must nevertheless
+        // run in this clean baseline even when it follows an item that did
+        // capture an AsyncLocal scope.
+        var baselineExecutionContext = ExecutionContext.Capture();
         Current = this;
         try
         {
@@ -159,7 +169,7 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
                     item = _queued.Dequeue();
                 }
 
-                item.Execute();
+                item.Execute(baselineExecutionContext);
             }
         }
         finally
@@ -170,8 +180,24 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
 
     private interface IWorkItem
     {
-        void Execute();
+        void Execute(ExecutionContext? baselineExecutionContext);
         void RejectDisposed();
+    }
+
+    private sealed class ExecutionContextWorkItem(IWorkItem inner, ExecutionContext? context) : IWorkItem
+    {
+        public void Execute(ExecutionContext? baselineExecutionContext)
+        {
+            var executionContext = context ?? baselineExecutionContext;
+            if (executionContext is null)
+            {
+                inner.Execute(null);
+                return;
+            }
+            ExecutionContext.Run(executionContext, static state => ((IWorkItem)state!).Execute(null), inner);
+        }
+
+        public void RejectDisposed() => inner.RejectDisposed();
     }
 
     private void ReportUnhandled(Exception error)
@@ -189,7 +215,7 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
 
     private sealed class PostedWorkItem(Action turn, Action<Exception> report) : IWorkItem
     {
-        public void Execute()
+        public void Execute(ExecutionContext? baselineExecutionContext)
         {
             try { turn(); }
             catch (Exception error) { report(error); }
@@ -215,7 +241,7 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
 
         public Task Completion => _completion.Task;
 
-        public void Execute()
+        public void Execute(ExecutionContext? baselineExecutionContext)
         {
             if (Interlocked.CompareExchange(ref _state, 1, 0) != 0)
             {
@@ -268,7 +294,7 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
 
         public Task<T> Completion => _completion.Task;
 
-        public void Execute()
+        public void Execute(ExecutionContext? baselineExecutionContext)
         {
             if (Interlocked.CompareExchange(ref _state, 1, 0) != 0)
             {

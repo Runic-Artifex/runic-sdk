@@ -21,7 +21,9 @@ internal sealed class BridgeOperationRegistry : IDisposable
     private readonly int _maximumRetainedTerminals;
     private readonly int _maximumRetainedExpiredIds;
     private readonly int _maximumRetainedResultBytes;
-    private int _retainedResultBytes;
+    private readonly int _maximumRunningStreamBytes;
+    private int _retainedBytes;
+    private int _reservedRunningStreamBytes;
     private bool _closing;
     private bool _disposed;
 
@@ -33,6 +35,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         int maximumRetainedTerminals = 32,
         int maximumRetainedExpiredIds = 128,
         int maximumRetainedResultBytes = 262_144,
+        int maximumRunningStreamBytes = 262_144,
         CancellationToken ownerShutdown = default)
     {
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("An owner identity is required.", nameof(ownerId));
@@ -43,12 +46,15 @@ internal sealed class BridgeOperationRegistry : IDisposable
             throw new ArgumentOutOfRangeException(nameof(maximumRetainedExpiredIds));
         if (maximumRetainedResultBytes < 0)
             throw new ArgumentOutOfRangeException(nameof(maximumRetainedResultBytes));
+        if (maximumRunningStreamBytes < 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumRunningStreamBytes));
 
         OwnerId = ownerId;
         _maximumOperations = maximumOperations;
         _maximumRetainedTerminals = maximumRetainedTerminals;
         _maximumRetainedExpiredIds = maximumRetainedExpiredIds;
         _maximumRetainedResultBytes = maximumRetainedResultBytes;
+        _maximumRunningStreamBytes = maximumRunningStreamBytes;
         _ownerShutdown = CancellationTokenSource.CreateLinkedTokenSource(ownerShutdown);
     }
 
@@ -135,7 +141,17 @@ internal sealed class BridgeOperationRegistry : IDisposable
             if (canStart is not null && !canStart())
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "unavailable");
 
-            accepted = new Entry(requestId, request, stream, _ownerShutdown.Token);
+            // A stream can retain values while work is still running. Reserve
+            // its declared maximum before execution so concurrent producers
+            // cannot collectively exceed the window's running-memory bound.
+            if (stream is not null &&
+                (stream.MaximumBytes > _maximumRunningStreamBytes ||
+                 _reservedRunningStreamBytes > _maximumRunningStreamBytes - stream.MaximumBytes))
+                return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "stream-capacity");
+
+            accepted = new Entry(requestId, request, stream, _ownerShutdown.Token,
+                stream?.MaximumBytes ?? 0);
+            _reservedRunningStreamBytes += accepted.ReservedRunningStreamBytes;
             _operations.Add(requestId, accepted);
         }
 
@@ -149,44 +165,51 @@ internal sealed class BridgeOperationRegistry : IDisposable
 
     // A caller may stop waiting with its own token without affecting work
     // owned by this registry. Another presentation can look it up later.
-    internal ValueTask<BridgeOperationStatus> WaitForTerminalAsync(string requestId, CancellationToken observerCancellation = default)
+    internal ValueTask<BridgeOperationStatus> WaitForTerminalAsync(
+        string requestId, string? member = null, CancellationToken observerCancellation = default)
     {
         Task<BridgeOperationStatus>? terminal;
         lock (_gate)
         {
-            if (!_operations.TryGetValue(requestId, out var entry))
-                return ValueTask.FromResult(StatusForMissing(requestId));
+            if (!_operations.TryGetValue(requestId, out var entry) || !entry.MatchesMember(member))
+                return ValueTask.FromResult(StatusForMissing(requestId, member));
             terminal = entry.Terminal.Task;
         }
         return new(terminal.WaitAsync(observerCancellation));
     }
 
-    internal BridgeOperationStatus Lookup(string requestId)
+    // Preserve the pre-member internal call shape for host integrations.
+    internal ValueTask<BridgeOperationStatus> WaitForTerminalAsync(
+        string requestId, CancellationToken observerCancellation) =>
+        WaitForTerminalAsync(requestId, member: null, observerCancellation: observerCancellation);
+
+    internal BridgeOperationStatus Lookup(string requestId, string? member = null)
     {
         lock (_gate)
-            return _operations.TryGetValue(requestId, out var entry)
+            return _operations.TryGetValue(requestId, out var entry) && entry.MatchesMember(member)
                 ? entry.Snapshot()
-                : StatusForMissing(requestId);
+                : StatusForMissing(requestId, member);
     }
 
-    internal BridgeOperationStreamLookup ReadStream(string requestId, long cursor)
+    internal BridgeOperationStreamLookup ReadStream(string requestId, long cursor, string? member = null)
     {
         lock (_gate)
         {
-            if (!_operations.TryGetValue(requestId, out var entry))
-                return new(StatusForMissing(requestId), null);
+            if (!_operations.TryGetValue(requestId, out var entry) || !entry.MatchesMember(member))
+                return new(StatusForMissing(requestId, member), null);
             return new(entry.Snapshot(), entry.Stream?.ReadAfter(cursor) ?? entry.Result.OperationStream?.ReadAfter(cursor));
         }
     }
 
     // This is a request to the operation's cancellation token, not a terminal
     // state transition. A successful return still wins over a late request.
-    internal bool RequestCancellation(string requestId)
+    internal bool RequestCancellation(string requestId, string? member = null)
     {
         CancellationTokenSource? cancellation = null;
         lock (_gate)
         {
-            if (_operations.TryGetValue(requestId, out var entry) && entry.Status is BridgeOperationStatusKind.Running)
+            if (_operations.TryGetValue(requestId, out var entry) && entry.MatchesMember(member) &&
+                entry.Status is BridgeOperationStatusKind.Running)
                 cancellation = entry.Cancellation;
         }
         if (cancellation is null) return false;
@@ -240,17 +263,57 @@ internal sealed class BridgeOperationRegistry : IDisposable
             failure = "The operation failed.";
         }
 
+        // A cancelled or failed producer must not keep a live stream writer
+        // after its operation has reached a terminal state.
+        entry.Stream?.Complete();
+        result.OperationStream?.Complete();
+
         lock (_gate)
         {
+            _reservedRunningStreamBytes -= entry.ReservedRunningStreamBytes;
             if (result.Kind is BridgeOperationResultKind.Value)
             {
                 var bytes = result.EncodedByteCount;
-                if (bytes > _maximumRetainedResultBytes || _retainedResultBytes > _maximumRetainedResultBytes - bytes)
+                if (bytes > _maximumRetainedResultBytes)
                     result = result.WithoutValue(BridgeOperationDeliveryFailure.ResultTooLarge(_maximumRetainedResultBytes));
                 else
                 {
-                    entry.RetainedResultBytes = bytes;
-                    _retainedResultBytes += bytes;
+                    TrimRetention(bytes);
+                    if (_retainedBytes > _maximumRetainedResultBytes - bytes)
+                        result = result.WithoutValue(BridgeOperationDeliveryFailure.ResultTooLarge(_maximumRetainedResultBytes));
+                    else
+                    {
+                        entry.RetainedResultBytes = bytes;
+                        _retainedBytes += bytes;
+                    }
+                }
+            }
+            var retainedStream = entry.Stream ?? result.OperationStream;
+            if (retainedStream is not null)
+            {
+                var bytes = retainedStream.RetainedByteCount;
+                if (bytes > _maximumRetainedResultBytes)
+                {
+                    var delivery = BridgeOperationDeliveryFailure.StreamRetentionTooLarge(_maximumRetainedResultBytes);
+                    retainedStream.DiscardRetention(delivery);
+                    if (result.OperationStream is not null)
+                        result = result.WithoutValue(delivery);
+                }
+                else
+                {
+                    TrimRetention(bytes);
+                    if (_retainedBytes > _maximumRetainedResultBytes - bytes)
+                    {
+                        var delivery = BridgeOperationDeliveryFailure.StreamRetentionTooLarge(_maximumRetainedResultBytes);
+                        retainedStream.DiscardRetention(delivery);
+                        if (result.OperationStream is not null)
+                            result = result.WithoutValue(delivery);
+                    }
+                    else
+                    {
+                        entry.RetainedStreamBytes = bytes;
+                        _retainedBytes += bytes;
+                    }
                 }
             }
             entry.Status = terminal;
@@ -275,14 +338,27 @@ internal sealed class BridgeOperationRegistry : IDisposable
         while (_terminals.Count > _maximumRetainedTerminals ||
                (preferCapacity && _operations.Count >= _maximumOperations && _terminals.Count > 0))
         {
-            var candidate = _terminals.Dequeue();
-            if (_operations.TryGetValue(candidate.RequestId, out var current) && ReferenceEquals(candidate, current) &&
-                candidate.Status is not BridgeOperationStatusKind.Running)
-            {
-                _operations.Remove(candidate.RequestId);
-                _retainedResultBytes -= candidate.RetainedResultBytes;
-                RetainExpiredId(candidate.RequestId, candidate.Request);
-            }
+            EvictTerminalEntry(_terminals.Dequeue());
+        }
+    }
+
+    // Values and replayed stream items are both recovered through the same
+    // terminal history, so they compete for one byte budget and evict using
+    // the same oldest-terminal policy.
+    private void TrimRetention(int requiredBytes)
+    {
+        while (_retainedBytes > _maximumRetainedResultBytes - requiredBytes && _terminals.Count > 0)
+            EvictTerminalEntry(_terminals.Dequeue());
+    }
+
+    private void EvictTerminalEntry(Entry candidate)
+    {
+        if (_operations.TryGetValue(candidate.RequestId, out var current) && ReferenceEquals(candidate, current) &&
+            candidate.Status is not BridgeOperationStatusKind.Running)
+        {
+            _operations.Remove(candidate.RequestId);
+            _retainedBytes -= candidate.RetainedResultBytes + candidate.RetainedStreamBytes;
+            RetainExpiredId(candidate.RequestId, candidate.Request);
         }
     }
 
@@ -296,8 +372,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
             _expiredIds.Remove(_expiredOrder.Dequeue());
     }
 
-    private BridgeOperationStatus StatusForMissing(string requestId) =>
-        _expiredIds.ContainsKey(requestId)
+    private BridgeOperationStatus StatusForMissing(string requestId, string? member = null) =>
+        _expiredIds.TryGetValue(requestId, out var request) && MatchesMember(request, member)
             ? BridgeOperationStatus.Expired(requestId)
             : BridgeOperationStatus.Unknown(requestId);
 
@@ -367,11 +443,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
     {
         private int _cancellationDisposed;
 
-        public Entry(string requestId, BridgeOperationRequest? request, BridgeOperationStream? stream, CancellationToken ownerShutdown)
+        public Entry(string requestId, BridgeOperationRequest? request, BridgeOperationStream? stream,
+            CancellationToken ownerShutdown, int reservedRunningStreamBytes)
         {
             RequestId = requestId;
             Request = request;
             Stream = stream;
+            ReservedRunningStreamBytes = reservedRunningStreamBytes;
             Cancellation = CancellationTokenSource.CreateLinkedTokenSource(ownerShutdown);
         }
 
@@ -383,8 +461,11 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public string? Failure { get; set; }
         public BridgeOperationResult Result { get; set; } = BridgeOperationResult.None;
         public int RetainedResultBytes { get; set; }
+        public int RetainedStreamBytes { get; set; }
+        public int ReservedRunningStreamBytes { get; }
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Matches(BridgeOperationRequest? request) => BridgeOperationRegistry.Matches(Request, request);
+        public bool MatchesMember(string? member) => BridgeOperationRegistry.MatchesMember(Request, member);
         public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result);
         public void DisposeCancellation()
         {
@@ -397,6 +478,9 @@ internal sealed class BridgeOperationRegistry : IDisposable
         first is null && second is null ||
         first is { } firstValue && second is { } secondValue &&
         firstValue.Member == secondValue.Member && firstValue.InputDigest == secondValue.InputDigest;
+
+    private static bool MatchesMember(BridgeOperationRequest? request, string? member) =>
+        member is null || request is { } value && value.Member == member;
 }
 
 internal enum BridgeOperationAdmissionKind { Accepted, Duplicate, Expired, Rejected }

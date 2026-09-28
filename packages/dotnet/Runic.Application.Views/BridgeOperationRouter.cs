@@ -85,37 +85,51 @@ internal sealed class BridgeOperationRouter : IDisposable
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
-    internal BridgeOperationStatusReply Lookup(string contract, string requestId)
+    // `member` is optional only for the established public routes. Generated
+    // clients always supply it, which prevents a recovery handle for one
+    // command from observing a same-shaped result produced by another.
+    internal BridgeOperationStatusReply Lookup(string contract, string requestId, string? member = null)
     {
         var identity = BridgeOperationIdentity.Create(contract, requestId);
-        return new(identity, _operations.Lookup(identity.RegistryKey));
+        ValidateOptionalMember(member);
+        return new(identity, _operations.Lookup(identity.RegistryKey, member));
     }
 
-    internal BridgeOperationCancelReply RequestCancellation(string contract, string requestId)
+    internal BridgeOperationCancelReply RequestCancellation(string contract, string requestId, string? member = null)
     {
         var identity = BridgeOperationIdentity.Create(contract, requestId);
-        var status = _operations.Lookup(identity.RegistryKey);
+        ValidateOptionalMember(member);
+        var status = _operations.Lookup(identity.RegistryKey, member);
         if (status.Kind is BridgeOperationStatusKind.Unknown or BridgeOperationStatusKind.Expired)
             return new(identity, status.Kind, false);
         if (status.Kind is not BridgeOperationStatusKind.Running)
             return new(identity, status.Kind, false);
-        return new(identity, status.Kind, _operations.RequestCancellation(identity.RegistryKey));
+        return new(identity, status.Kind, _operations.RequestCancellation(identity.RegistryKey, member));
     }
 
     internal async ValueTask<BridgeOperationStatusReply> WaitForTerminalAsync(
         string contract,
         string requestId,
+        string? member = null,
         CancellationToken observerCancellation = default)
     {
         var identity = BridgeOperationIdentity.Create(contract, requestId);
-        var status = await _operations.WaitForTerminalAsync(identity.RegistryKey, observerCancellation).ConfigureAwait(false);
+        ValidateOptionalMember(member);
+        var status = await _operations.WaitForTerminalAsync(identity.RegistryKey, member, observerCancellation).ConfigureAwait(false);
         return new(identity, status);
     }
 
-    internal BridgeOperationStreamReply ReadStream(string contract, string requestId, long cursor)
+    // Keep the original host-facing overload for callers that pass the
+    // observer token positionally.
+    internal ValueTask<BridgeOperationStatusReply> WaitForTerminalAsync(
+        string contract, string requestId, CancellationToken observerCancellation) =>
+        WaitForTerminalAsync(contract, requestId, member: null, observerCancellation: observerCancellation);
+
+    internal BridgeOperationStreamReply ReadStream(string contract, string requestId, long cursor, string? member = null)
     {
         var identity = BridgeOperationIdentity.Create(contract, requestId);
-        var lookup = _operations.ReadStream(identity.RegistryKey, cursor);
+        ValidateOptionalMember(member);
+        var lookup = _operations.ReadStream(identity.RegistryKey, cursor, member);
         return new(identity, lookup.Status, lookup.Stream);
     }
 
@@ -123,22 +137,24 @@ internal sealed class BridgeOperationRouter : IDisposable
         _operations.BeginCloseAsync(timeout);
 
     private string Status(IBridgeArguments arguments) =>
-        TryReadIdentity(arguments, out var identity)
-            ? EncodeStatus(new BridgeOperationStatusReply(identity, _operations.Lookup(identity.RegistryKey)))
+        TryReadIdentity(arguments, out var routeIdentity)
+            ? EncodeStatus(new BridgeOperationStatusReply(routeIdentity.Identity,
+                _operations.Lookup(routeIdentity.Identity.RegistryKey, routeIdentity.Member)))
             : InvalidRequest();
 
     private async ValueTask<string> WaitAsync(IBridgeArguments arguments, CancellationToken observerCancellation)
     {
-        if (!TryReadIdentity(arguments, out var identity)) return InvalidRequest();
+        if (!TryReadIdentity(arguments, out var routeIdentity)) return InvalidRequest();
         // Do not catch OperationCanceledException: callback cancellation is an
         // observer/transport event, not a command terminal result.
-        var status = await _operations.WaitForTerminalAsync(identity.RegistryKey, observerCancellation).ConfigureAwait(false);
-        return EncodeStatus(new BridgeOperationStatusReply(identity, status));
+        var status = await _operations.WaitForTerminalAsync(routeIdentity.Identity.RegistryKey, routeIdentity.Member,
+            observerCancellation).ConfigureAwait(false);
+        return EncodeStatus(new BridgeOperationStatusReply(routeIdentity.Identity, status));
     }
 
     private string Cancel(IBridgeArguments arguments) =>
-        TryReadIdentity(arguments, out var identity)
-            ? EncodeCancel(RequestCancellation(identity.Contract, identity.RequestId))
+        TryReadIdentity(arguments, out var routeIdentity)
+            ? EncodeCancel(RequestCancellation(routeIdentity.Identity.Contract, routeIdentity.Identity.RequestId, routeIdentity.Member))
             : InvalidRequest();
 
     private string Stream(IBridgeArguments arguments)
@@ -147,34 +163,51 @@ internal sealed class BridgeOperationRouter : IDisposable
         {
             using var document = JsonDocument.Parse(arguments.GetString());
             var root = document.RootElement;
-            var reply = ReadStream(
-                root.GetProperty("contract").GetString() ?? "",
-                root.GetProperty("requestId").GetString() ?? "",
-                root.GetProperty("cursor").GetInt64());
+            var routeIdentity = ReadRouteIdentity(root);
+            var reply = ReadStream(routeIdentity.Identity.Contract, routeIdentity.Identity.RequestId,
+                root.GetProperty("cursor").GetInt64(), routeIdentity.Member);
             return EncodeStream(reply);
         }
-        catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or FormatException)
+        catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or FormatException or KeyNotFoundException)
         {
             return InvalidRequest();
         }
     }
 
-    private static bool TryReadIdentity(IBridgeArguments arguments, out BridgeOperationIdentity identity)
+    private static bool TryReadIdentity(IBridgeArguments arguments, out BridgeOperationRouteIdentity routeIdentity)
     {
         try
         {
             using var document = JsonDocument.Parse(arguments.GetString());
             var root = document.RootElement;
-            identity = BridgeOperationIdentity.Create(
-                root.GetProperty("contract").GetString() ?? "",
-                root.GetProperty("requestId").GetString() ?? "");
+            routeIdentity = ReadRouteIdentity(root);
             return true;
         }
-        catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException)
+        catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or KeyNotFoundException)
         {
-            identity = default;
+            routeIdentity = default;
             return false;
         }
+    }
+
+    private static BridgeOperationRouteIdentity ReadRouteIdentity(JsonElement root)
+    {
+        var member = root.TryGetProperty("member", out var memberElement)
+            ? memberElement.ValueKind is JsonValueKind.String
+                ? memberElement.GetString()
+                : throw new ArgumentException("The command member is invalid.", "member")
+            : null;
+        ValidateOptionalMember(member);
+        return new(
+            BridgeOperationIdentity.Create(
+                root.GetProperty("contract").GetString() ?? "",
+                root.GetProperty("requestId").GetString() ?? ""),
+            member);
+    }
+
+    private static void ValidateOptionalMember(string? member)
+    {
+        if (member is not null) _ = BridgeOperationRequest.ValidateMember(member);
     }
 
     internal static string EncodeAdmission(BridgeOperationAdmissionReply reply) => WriteJson(writer =>
@@ -300,6 +333,7 @@ internal sealed class BridgeOperationRouter : IDisposable
         BridgeOperationDeliveryFailureKind.ResultTooLarge => "result-too-large",
         BridgeOperationDeliveryFailureKind.ResultEncodingFailed => "result-encoding-failed",
         BridgeOperationDeliveryFailureKind.StreamOverflow => "stream-overflow",
+        BridgeOperationDeliveryFailureKind.StreamRetentionTooLarge => "stream-retention-too-large",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -311,6 +345,8 @@ internal sealed class BridgeOperationRouter : IDisposable
         _operations.Dispose();
     }
 }
+
+internal readonly record struct BridgeOperationRouteIdentity(BridgeOperationIdentity Identity, string? Member);
 
 // The registry accepts a string internally. Length prefixes make the composed
 // key unambiguous without exposing an operation registry key to generated TS.
@@ -358,7 +394,7 @@ internal readonly record struct BridgeOperationRequest(
         return new(identity, ValidateMember(member), ValidateInputDigest(inputDigest));
     }
 
-    private static string ValidateMember(string member)
+    internal static string ValidateMember(string member)
     {
         if (string.IsNullOrWhiteSpace(member) || member.Length > MaximumMemberLength || member.Any(char.IsControl))
             throw new ArgumentException("The command member is invalid.", nameof(member));

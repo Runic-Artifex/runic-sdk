@@ -758,11 +758,19 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     }
     OperationTypeScriptEmitter.AppendDefinitions(ts, operationPlans, shortName);
-    if (hasContent || needsCheckedWriter)
+    // The public state is the decoded TypeScript contract. The transport is
+    // JSON, so every graph-backed field must remain unknown until hydrate
+    // validates and converts it (for example Int64 strings to bigint).
+    if (hasContent || needsCheckedWriter || valueProperties.Count > 0)
     {
-        var names = contentBindings.Select(entry => $"\"{WireName(entry.Key)}\"").ToList();
+        var names = contentBindings.Select(entry => $"\"{WireName(entry.Key)}\"")
+            .Concat(valueProperties.Keys.Select(property => $"\"{WireName(property)}\""))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
         if (names.Count == 0) names.Add("never");
         ts.AppendLine($"type WireState = Omit<{shortName}State, {string.Join(" | ", names)}> & {{");
+        foreach (var property in valueProperties.Keys)
+            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: unknown;");
         foreach (var (property, pages) in contentProperties)
         {
             var rawType = string.Join(" | ", pages.Select(page => $"{{ readonly kind: \"{PageKind(page.Name, ContractFor(property))}\"; readonly id: string }}"));
@@ -788,6 +796,11 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (needsCheckedWriter) ts.AppendLine("  const { __runicFields: _runicFields, ...state } = wire;");
         ts.AppendLine("  return {");
         ts.AppendLine(needsCheckedWriter ? "    ...state," : "    ...wire,");
+        foreach (var (property, graph) in valueProperties)
+        {
+            var field = WireName(property);
+            ts.AppendLine($"    {TsPropertyName(field)}: {graph.EmitTypeScriptDecoder(TsAccess("wire", field))},");
+        }
         foreach (var (property, pages) in contentProperties)
         {
             var field = WireName(property);
@@ -1159,10 +1172,18 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (interactions.Length > 0)
     {
         ts.Append(interactionRuntime.Setup);
+        ts.AppendLine("  async function awaitInteractionCapabilities(): Promise<void> {");
+        ts.AppendLine("    if (interactionHandlers.size === 0) return;");
+        ts.AppendLine("    try { await interactionCapabilitySync; }");
+        ts.AppendLine("    catch { throw new BridgeError(bridge.isConnected() ? \"failed\" : \"disconnected\", \"The interaction handler could not be registered.\"); }");
+        ts.AppendLine("    if (interactionUnavailable) throw new BridgeError(\"disconnected\", \"The interaction presentation is no longer available.\");");
+        ts.AppendLine("  }");
         ts.AppendLine("  disposeInteractions = () => {");
         ts.AppendLine(interactionRuntime.Dispose);
         ts.AppendLine("  };");
     }
+    else
+        ts.AppendLine("  async function awaitInteractionCapabilities(): Promise<void> { }");
     if (needsCheckedWriter)
     {
         ts.AppendLine($"  function fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): FieldBaseline<{shortName}CheckedFields[K]> {{");
@@ -1243,6 +1264,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ? $", JSON.stringify({inputGraph.EncodeTypeScript("argument")})"
             : plan.HasStringArgument ? ", JSON.stringify(argument)" : "";
         ts.AppendLine($"    async {LowerFirst(name)}({(plan.HasArgument ? "argument" : "")}) {{");
+        ts.AppendLine("      await awaitInteractionCapabilities();");
         ts.AppendLine($"      return invoke(`${{route}}{name}`{argument});");
         ts.AppendLine("    },");
         if (plan.HasArgument)

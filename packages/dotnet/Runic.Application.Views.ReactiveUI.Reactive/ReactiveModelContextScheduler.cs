@@ -42,15 +42,19 @@ internal sealed class RunicModelContextScheduler(IRunicModelContext context) : I
     {
         ArgumentNullException.ThrowIfNull(action);
         var work = new ScheduledWork();
+        // Schedule calls may arrive under distinct trusted interaction scopes.
+        // Keep the caller's context with this individual work item; the model
+        // queue is deliberately batched and cannot capture one drain context.
+        var executionContext = ExecutionContext.Capture();
         if (dueTime <= TimeSpan.Zero)
         {
-            if (!_context.TryPost(() => work.Run(this, state, action))) work.Dispose();
+            if (!PostWithoutAmbientFlow(() => work.Run(this, state, action, executionContext))) work.Dispose();
             return work;
         }
 
         var timer = new Timer(
             static callback => ((TimerState<TState>)callback!).Run(),
-            new TimerState<TState>(_context, work, this, state, action),
+            new TimerState<TState>(work, this, state, action, executionContext),
             Timeout.InfiniteTimeSpan,
             Timeout.InfiniteTimeSpan);
         work.SetTimer(timer);
@@ -58,16 +62,22 @@ internal sealed class RunicModelContextScheduler(IRunicModelContext context) : I
         return work;
     }
 
+    private bool PostWithoutAmbientFlow(Action work)
+    {
+        if (ExecutionContext.IsFlowSuppressed()) return _context.TryPost(work);
+        using (ExecutionContext.SuppressFlow()) return _context.TryPost(work);
+    }
+
     private sealed class TimerState<TState>(
-        IRunicModelContext context,
         ScheduledWork work,
         RunicModelContextScheduler scheduler,
         TState state,
-        Func<IScheduler, TState, IDisposable> action)
+        Func<IScheduler, TState, IDisposable> action,
+        ExecutionContext? executionContext)
     {
         public void Run()
         {
-            if (!context.TryPost(() => work.Run(scheduler, state, action))) work.Dispose();
+            if (!scheduler.PostWithoutAmbientFlow(() => work.Run(scheduler, state, action, executionContext))) work.Dispose();
         }
     }
 
@@ -87,7 +97,8 @@ internal sealed class RunicModelContextScheduler(IRunicModelContext context) : I
             }
         }
 
-        public void Run<TState>(IScheduler scheduler, TState state, Func<IScheduler, TState, IDisposable> action)
+        public void Run<TState>(IScheduler scheduler, TState state, Func<IScheduler, TState, IDisposable> action,
+            ExecutionContext? executionContext)
         {
             lock (_gate)
             {
@@ -96,13 +107,20 @@ internal sealed class RunicModelContextScheduler(IRunicModelContext context) : I
                 if (_disposed) return;
             }
 
-            IDisposable inner;
-            try { inner = action(scheduler, state) ?? Disposable.Empty; }
+            IDisposable? inner = null;
+            try
+            {
+                if (executionContext is null)
+                    inner = action(scheduler, state) ?? Disposable.Empty;
+                else
+                    ExecutionContext.Run(executionContext, _ => inner = action(scheduler, state) ?? Disposable.Empty, null);
+            }
             catch
             {
                 Dispose();
                 throw;
             }
+            inner ??= Disposable.Empty;
 
             lock (_gate)
             {

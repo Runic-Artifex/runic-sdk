@@ -17,4 +17,8 @@
     <Project Path="examples/notes-view-first/NotesViewFirst.csproj" />
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.ReactiveUI.Conformance.Tests.csproj" />
+    <Project Path="tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.ReactiveUI.Reactive.Conformance.Tests.csproj" />
+  </Folder>
 </Solution>

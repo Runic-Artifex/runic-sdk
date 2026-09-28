@@ -56,7 +56,7 @@ The wire format is intentionally exact:
 | enum                             | declared stable name string                                                                              |
 | GUID and date/time values        | validated round-trip string; `DateTime` preserves its CLR kind and `DateTimeOffset` is normalized to UTC |
 | `TimeSpan`                       | invariant `c` duration string                                                                            |
-| collection                       | snapshot array; collection changes and supported nested DTO/item notifications publish a new snapshot    |
+| observable collection            | snapshot array; collection changes and supported nested DTO/item notifications publish a new snapshot    |
 
 DTO members include inherited application members and stop before framework
 base classes. A public constructor must be usable to reconstruct a decoded DTO.
@@ -79,6 +79,13 @@ For a type outside the built-in graph, implement static
 The shape gives the generated TypeScript type, validating decoder expression,
 and optional encoder expression (identity is the default); a .NET-only JSON
 converter cannot describe a safe frontend contract.
+
+`ObservableCollection` and `ReadOnlyObservableCollection` report item changes
+and refresh their generated snapshot. Plain `List<T>` and
+`Dictionary<string, TValue>` are supported data shapes, but they have no
+in-place mutation event. Raise `PropertyChanged` for their owning property or
+replace the collection/dictionary after a mutation so the bridge can publish
+the next snapshot.
 
 ## Typed command operations
 
@@ -106,12 +113,18 @@ The generated client exposes `startSave(input)`,
 `recoverSaveWithRequestId(requestId)`. Each returns an operation with
 `status()`, `completion`, `wait()`, and `cancel()`. A stream operation also
 has `stream(cursor?)`, returning ordered `{ sequence, value }` items and the
-next cursor. Results, operation count, and stream replay are bounded. A
-delivery error such as `result-too-large`, `result-encoding-failed`, or
-`stream-overflow` is visible in the status; it does not make a completed effect
-safe to retry. `BridgeOperationUncertainError` means admission/status could
-not be observed, so recover that request ID instead of automatically starting
-the action again.
+next cursor. `completion` starts its terminal wait only when it is read, and
+`wait()` starts the same cached wait. Results, operation count, individual
+stream replay, and aggregate window retention are bounded. A delivery error
+such as `result-too-large`, `result-encoding-failed`, `stream-overflow`, or
+`stream-retention-too-large` is
+visible in the status; it does not make a completed effect safe to retry.
+`BridgeOperationUncertainError` means admission/status could not be observed,
+so recover that request ID instead of automatically starting the action again.
+
+The generated handle supplies its command member on status, wait, cancellation,
+and stream reads. Reusing a request ID cannot let a handle for one command read
+or cancel another command's operation, even where the command shapes match.
 
 Runic cancels the subscription for an individual command execution. Task work
 must honor its cancellation token. Continue observing `ThrownExceptions` in
@@ -154,6 +167,12 @@ trusted bridge command/operation scope. Background .NET work has no implicit
 "last mounted window" target: use a normal .NET handler or explicitly enter a
 `RunicInteractionInvocation` scope with the intended session and route.
 
+Browser handler capabilities are registered independently of the request pull,
+so an active handler remains eligible across a short polling gap. Each mounted
+presentation has a bounded pending queue. A request that is no longer eligible
+for that presentation is cancelled on delivery; it is not moved to another
+window.
+
 ## Execution contexts
 
 `RunicModelContext` queues short synchronous reads and mutations. Await I/O or
@@ -182,11 +201,14 @@ Create and bind the context before constructing commands, then pass its
 scheduler as the positional scheduler argument to the ReactiveUI factory:
 
 ```csharp
-services.AddScoped<IRunicModelContext, RunicModelContext>();
+services.AddRunicReactiveModelContext();
 
-public EditorViewModel(EditorSession session, IRunicModelContext modelContext)
+public EditorViewModel(
+    EditorSession session,
+    IRunicModelContext modelContext,
+    ISequencer scheduler)
 {
-    _scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+    _scheduler = scheduler;
     Workspace = new EditorWorkspaceViewModel(session, this, _scheduler);
     _contextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this, Workspace);
 }
@@ -197,11 +219,21 @@ protected ReactiveCommand<string, RxVoid> CreateCommand(Func<string, Task> work)
 
 Bind every independently presented child, including dynamically routed document
 models, to that same context; keep each lease for as long as it is presented.
+`AddRunicReactiveModelContext()` uses `TryAdd` to register one scoped default
+context, one singleton scheduler provider, and one scoped scheduler, so an
+application's custom registrations remain in control. Dispose the DI scope
+asynchronously to drain a default context it owns.
+
 Command `Execute` completion is separate from scheduled `IsExecuting` and
 `CanExecute` notifications. The context scheduler serializes those
 bridge-visible notifications with model turns, so state publication and bridge
 replies retain their ordering. A default headless scheduler can notify later;
 that is a normal scheduling choice, not a global scheduler setting to change.
+
+The model context and both scheduler adapters capture `ExecutionContext` per
+queued item. This preserves a trusted command/operation interaction scope for
+its own deferred work without leaking that ambient state into another queued
+turn; `ExecutionContext.SuppressFlow()` remains respected.
 
 ## Avalonia comparison
 
@@ -222,6 +254,12 @@ and [ReactiveUI adapter](../../../../packages/dotnet/Runic.Application.Views.Rea
 The ReactiveUI-specific Native AOT fixture exercises the direct generated
 codecs and command bridge without warnings. It is focused contract coverage;
 it does not claim full host, platform, or frontend-matrix coverage.
+
+The default and System.Reactive flavors also run the same behavioral
+conformance source. It covers command cardinality, cancellation and actual
+availability; scheduler FIFO/cancellation/ambient-context flow; scoped DI and
+custom-registration preservation; plus .NET fallback and typed browser
+interaction paths.
 
 Upstream: [ReactiveUI 25.0.0](https://github.com/reactiveui/ReactiveUI/releases/tag/25.0.0),
 [25.0.1](https://github.com/reactiveui/ReactiveUI/releases/tag/25.0.1),

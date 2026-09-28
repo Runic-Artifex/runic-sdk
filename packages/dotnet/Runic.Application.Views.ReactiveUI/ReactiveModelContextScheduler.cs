@@ -40,16 +40,39 @@ internal sealed class RunicModelContextSequencer : ISequencer
     public void Schedule(IWorkItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
-        _state.Schedule(item);
+        _state.Schedule(new ExecutionContextWorkItem(item, ExecutionContext.Capture()));
     }
 
     public void Schedule(IWorkItem item, long dueTimestamp)
     {
         ArgumentNullException.ThrowIfNull(item);
-        _state.Schedule(item, dueTimestamp);
+        _state.Schedule(new ExecutionContextWorkItem(item, ExecutionContext.Capture()), dueTimestamp);
     }
 
-    private bool PostDrain(Action drain) => _context.TryPost(drain);
+    private bool PostDrain(Action drain)
+    {
+        // The state object batches multiple scheduled items behind this one
+        // drain. Its own queued callback must not carry the first caller's
+        // scope; each wrapped IWorkItem restores its captured scope instead.
+        if (ExecutionContext.IsFlowSuppressed()) return _context.TryPost(drain);
+        using (ExecutionContext.SuppressFlow()) return _context.TryPost(drain);
+    }
 
     private void RunDrain() => _state.RunDrain();
+
+    // DispatchSequencerState batches several IWorkItems behind one posted
+    // drain. Each caller must retain its own ambient bridge invocation rather
+    // than inheriting the context of whichever item posted that drain first.
+    private sealed class ExecutionContextWorkItem(IWorkItem inner, ExecutionContext? context) : IWorkItem
+    {
+        public void Execute()
+        {
+            if (context is null)
+            {
+                inner.Execute();
+                return;
+            }
+            ExecutionContext.Run(context, static state => ((IWorkItem)state!).Execute(), inner);
+        }
+    }
 }

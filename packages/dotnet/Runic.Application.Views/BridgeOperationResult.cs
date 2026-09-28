@@ -62,7 +62,13 @@ public enum BridgeOperationResultKind { None, Value, Stream }
 // Delivery/retention is deliberately distinct from command execution. A
 // command can have completed its side effect even when its encoded answer was
 // too large to retain for reconnect/recovery.
-public enum BridgeOperationDeliveryFailureKind { ResultTooLarge, ResultEncodingFailed, StreamOverflow }
+public enum BridgeOperationDeliveryFailureKind
+{
+    ResultTooLarge,
+    ResultEncodingFailed,
+    StreamOverflow,
+    StreamRetentionTooLarge,
+}
 
 public sealed record BridgeOperationDeliveryFailure(BridgeOperationDeliveryFailureKind Kind, string Message)
 {
@@ -77,6 +83,10 @@ public sealed record BridgeOperationDeliveryFailure(BridgeOperationDeliveryFailu
     internal static BridgeOperationDeliveryFailure StreamOverflow(int maximumItems, int maximumBytes) =>
         new(BridgeOperationDeliveryFailureKind.StreamOverflow,
             $"The operation stream exceeded its {maximumItems} item or {maximumBytes} byte retention limit.");
+
+    internal static BridgeOperationDeliveryFailure StreamRetentionTooLarge(int maximumBytes) =>
+        new(BridgeOperationDeliveryFailureKind.StreamRetentionTooLarge,
+            $"The operation stream exceeded the {maximumBytes} byte aggregate retention limit.");
 }
 
 // A stream is opt-in and has a cursor protocol. It never silently discards an
@@ -124,6 +134,22 @@ public sealed class BridgeOperationStream
         lock (_gate) _completed = true;
     }
 
+    // Registry retention is separate from the producer's per-stream limit.
+    // Once the window-wide budget is exhausted, retaining partial history
+    // would make later recovery depend on admission order. Clear it and make
+    // that delivery outcome explicit instead.
+    internal void DiscardRetention(BridgeOperationDeliveryFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+        lock (_gate)
+        {
+            _items.Clear();
+            _retainedBytes = 0;
+            _completed = true;
+            _failure = failure;
+        }
+    }
+
     /// <summary>Stops accepting values and exposes a delivery failure to stream readers.</summary>
     public void Fail(BridgeOperationDeliveryFailure failure)
     {
@@ -149,6 +175,13 @@ public sealed class BridgeOperationStream
     {
         get { lock (_gate) return _failure; }
     }
+
+    internal int RetainedByteCount
+    {
+        get { lock (_gate) return _retainedBytes; }
+    }
+
+    internal int MaximumBytes => _maximumBytes;
 }
 
 public sealed record BridgeOperationStreamItem(long Sequence, string EncodedJson);

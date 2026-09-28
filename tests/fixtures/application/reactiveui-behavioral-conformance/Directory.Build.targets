@@ -1,0 +1,8 @@
+<Project>
+  <!-- Each project has a distinct intermediate directory under this shared
+       fixture root. Exclude the sibling project's generated C# from default
+       globbing. -->
+  <ItemGroup>
+    <Compile Remove="$(MSBuildThisFileDirectory)obj/**/*.cs" />
+  </ItemGroup>
+</Project>

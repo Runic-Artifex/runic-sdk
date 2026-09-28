@@ -20,6 +20,9 @@
   <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
     <Compile Remove="Program.cs" />
     <Compile Remove="*Tests.cs" />
+    <!-- The exporter intentionally instantiates generated bridge types, which
+         do not exist during the source-only bootstrap compilation. -->
+    <Compile Remove="GeneratedClientFixtureExporter.cs" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
 </Project>

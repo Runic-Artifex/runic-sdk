@@ -32,6 +32,10 @@ reference rather than becoming a recursive DTO.
 Data subscriptions follow supported nested DTO members and collection items,
 disposing removed/replaced subscriptions before publishing the next complete
 snapshot. This is observation, not a deep browser patch protocol.
+`ObservableCollection` changes provide their own collection events. Plain
+`List<T>` and `Dictionary<string, TValue>` remain valid snapshot values, but
+their in-place mutations need an owning `PropertyChanged` notification or a
+replacement value to become visible.
 
 The codec is canonical: 64-bit and arbitrary integers are decimal strings,
 decimals are exact strings, floats must be finite, and dictionaries are written
@@ -63,6 +67,17 @@ execution result. Waiters can stop waiting without cancelling work. Explicit
 `cancel()` requests the work token, while a later successful completion remains
 successful. Closing a session stops admission, asks its owned operations to
 cancel, then drains them.
+
+Generated handles attach their command member to every recovery, status, wait,
+cancel, and stream request. A request ID is therefore not an accidental shared
+namespace for unrelated commands. Scalar results and terminal stream replay
+share a 256 KiB window budget. Completing a stream evicts older terminal
+operations until its replay fits; a replay larger than the budget is cleared
+and reports `stream-retention-too-large`. Running streams separately reserve
+their declared maximum against a 256 KiB budget before execution; an admission
+that cannot fit is rejected with `stream-capacity`. A default-size stream
+therefore occupies that running budget until it completes. Handle `completion`
+is lazy: the first read or `wait()` begins one cached terminal observation.
 
 Result cardinality is explicit. `RxVoid`/`Unit` has no result; non-void
 ReactiveUI commands require exactly one value by default. The
@@ -102,6 +117,12 @@ application-owned context to an application-shared root and its independently
 presented children. A model cannot silently move to another context; conflicting
 claims fail. Presentation lifetimes do not dispose a shared context.
 
+Both model context and context-backed scheduler queues capture
+`ExecutionContext` for each individual item rather than for a whole queue
+drain. A trusted interaction invocation therefore follows its deferred work
+without becoming ambient state for unrelated queued work; suppressed flow stays
+suppressed.
+
 Snapshots are captured in the model turn and then delivered through an ordered
 outbound queue. This avoids re-entering model mutation while a native transport
 is synchronously publishing JavaScript. Full snapshots can coalesce at the
@@ -109,10 +130,17 @@ delivery boundary; operation terminals and interaction requests do not use the
 broadcast channel.
 
 The ReactiveUI adapters expose a context-backed scheduler provider. The default
-flavor returns `ReactiveUI.Primitives.Advanced.ISequencer`; the System.Reactive
+flavor returns `ReactiveUI.Primitives.Concurrency.ISequencer`; the System.Reactive
 flavor returns `System.Reactive.Concurrency.IScheduler`. Neither modifies a
 process-wide main-thread scheduler. Native UI dispatch and browser rendering
 remain owned by their hosts.
+
+`services.AddRunicReactiveModelContext()` is the DI setup for either selected
+adapter. It uses `TryAdd` for the scoped `IRunicModelContext`, singleton
+scheduler provider, and selected flavor's scoped scheduler, preserving
+application overrides. The default context is drained by asynchronous scope
+disposal. Application composition still binds each root and independently
+presented child through `RunicModelContextRegistry`.
 
 ## Interaction ownership and delivery
 
@@ -136,6 +164,12 @@ authenticated request receives the prompt and it replies through
 contract, route, presentation, connection, handler generation, and output
 codec match the pending request. Duplicate equal replies return the original
 receipt; stale or conflicting replies cannot complete another request.
+
+Capability registration is separate from the request pull. An active handler
+therefore stays eligible between polls, and each selected presentation has a
+bounded pending queue. A request that is no longer eligible for that
+presentation is cancelled on delivery; Runic does not reassign it to another
+window.
 
 Unmounting, connection loss, scope cancellation, timeout, and session close
 terminate a selected pending interaction. The generated TypeScript handler gets

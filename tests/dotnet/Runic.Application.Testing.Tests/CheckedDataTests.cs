@@ -12,6 +12,10 @@ internal static class CheckedDataTests
     {
         RetainedCheckedValuesAreImmutableBaselines();
         NestedDataSubscriptionsReleaseRemovedObjects();
+        ScalarUpdatesDoNotChurnUnrelatedSubscriptions();
+        OneShotCollectionsAreNotReenumeratedForUnrelatedChanges();
+        PlainCollectionsReconcileWhenTheirOwnerNotifies();
+        NestedCollectionsReconcileAtEveryLevel();
     }
 
     private static void RetainedCheckedValuesAreImmutableBaselines()
@@ -88,6 +92,153 @@ internal static class CheckedDataTests
         // contains a model cycle.
         retained.Next = retained;
         Require(notifications == 8, "A cyclic DTO graph did not complete its rebuild.");
+
+        // The same object can occur more than once. Removing one occurrence
+        // must retain the remaining path, while removing the final occurrence
+        // must release its subscription.
+        var shared = new MutableNode();
+        root.Items.Add(shared);
+        root.Items.Add(shared);
+        root.Items.Remove(shared);
+        shared.Value = 6;
+        Require(notifications == 12, "A shared collection item was released after only one occurrence was removed.");
+        root.Items.Remove(shared);
+        shared.Value = 7;
+        Require(notifications == 13, "A removed shared collection item remained subscribed.");
+
+        var replaced = new MutableNode();
+        root.Items[0] = replaced;
+        retained.Value = 8;
+        Require(notifications == 14, "A replaced collection item remained subscribed.");
+        replaced.Value = 9;
+        Require(notifications == 15, "A replacement collection item was not subscribed.");
+    }
+
+    private static void ScalarUpdatesDoNotChurnUnrelatedSubscriptions()
+    {
+        var left = new CountingNode();
+        var right = new CountingNode();
+        var root = new ChurnRoot { Left = left, Right = right };
+        var childMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("value", static owner => ((CountingNode)owner).Value)
+        };
+        var members = new[]
+        {
+            new BridgeDataSubscriptionMember("left", static owner => ((ChurnRoot)owner).Left, childMembers),
+            new BridgeDataSubscriptionMember("right", static owner => ((ChurnRoot)owner).Right, childMembers)
+        };
+        var notifications = 0;
+        using var subscriptions = new BridgeDataSubscriptions(root, members, () => notifications++);
+
+        left.Value = 1;
+        Require(notifications == 1, "A scalar leaf update did not publish.");
+        Require(left.Adds == 1 && left.Removes == 0 && right.Adds == 1 && right.Removes == 0,
+            "A scalar leaf update rebuilt subscriptions for retained graph branches.");
+    }
+
+    private static void OneShotCollectionsAreNotReenumeratedForUnrelatedChanges()
+    {
+        var root = new EnumerableRoot { Sequence = new OneShotEnumerable([new MutableNode()]) };
+        var childMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("value", static owner => ((MutableNode)owner).Value)
+        };
+        var members = new[]
+        {
+            new BridgeDataSubscriptionMember("sequence", static owner => ((EnumerableRoot)owner).Sequence,
+                childMembers, static value => (IEnumerable)value),
+            new BridgeDataSubscriptionMember("tick", static owner => ((EnumerableRoot)owner).Tick)
+        };
+        var notifications = 0;
+        using var subscriptions = new BridgeDataSubscriptions(root, members, () => notifications++);
+
+        Require(root.Sequence.EnumerationCount == 1, "The initial collection graph was not enumerated once.");
+        root.Tick = 1;
+        Require(notifications == 1 && root.Sequence.EnumerationCount == 1,
+            "An unrelated scalar update re-enumerated a retained one-shot collection.");
+    }
+
+    private static void PlainCollectionsReconcileWhenTheirOwnerNotifies()
+    {
+        var removed = new MutableNode();
+        var root = new PlainListRoot();
+        root.Items.Add(removed);
+        var childMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("value", static owner => ((MutableNode)owner).Value)
+        };
+        var members = new[]
+        {
+            new BridgeDataSubscriptionMember("items", static owner => ((PlainListRoot)owner).Items,
+                childMembers, static value => (IEnumerable)value)
+        };
+        var notifications = 0;
+        using var subscriptions = new BridgeDataSubscriptions(root, members, () => notifications++);
+
+        var added = new MutableNode();
+        root.Items.Add(added);
+        root.NotifyItemsChanged();
+        added.Value = 1;
+        Require(notifications == 2, "A notified plain List addition did not attach its nested DTO.");
+        root.Items.Remove(removed);
+        root.NotifyItemsChanged();
+        removed.Value = 2;
+            Require(notifications == 3, "A notified plain List removal retained its nested DTO subscription.");
+    }
+
+    private static void NestedCollectionsReconcileAtEveryLevel()
+    {
+        var old = new MutableNode();
+        var inner = new ObservableCollection<MutableNode> { old };
+        var root = new NestedCollectionRoot();
+        root.Groups.Add(inner);
+        var nodeMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("value", static owner => ((MutableNode)owner).Value)
+        };
+        var innerMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("$items", static owner => owner, nodeMembers,
+                static value => (IEnumerable)value)
+        };
+        var rootMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("groups", static owner => ((NestedCollectionRoot)owner).Groups,
+                innerMembers, static value => (IEnumerable)value)
+        };
+        var notifications = 0;
+        using var subscriptions = new BridgeDataSubscriptions(root, rootMembers, () => notifications++);
+
+        old.Value = 1;
+        var added = new MutableNode();
+        inner.Add(added);
+        added.Value = 2;
+        inner.Remove(old);
+        old.Value = 3;
+        Require(notifications == 4, "Nested collection updates did not reconcile the inner DTO graph.");
+        root.Groups.Remove(inner);
+        added.Value = 4;
+        Require(notifications == 5, "Removing an inner collection retained its descendants.");
+
+        var scalarInner = new ObservableCollection<int> { 1 };
+        var scalarRoot = new NestedScalarCollectionRoot();
+        scalarRoot.Groups.Add(scalarInner);
+        var scalarInnerMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("$items", static owner => owner, [], static value => (IEnumerable)value)
+        };
+        var scalarRootMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("groups", static owner => ((NestedScalarCollectionRoot)owner).Groups,
+                scalarInnerMembers, static value => (IEnumerable)value)
+        };
+        var scalarNotifications = 0;
+        using var scalarSubscriptions = new BridgeDataSubscriptions(scalarRoot, scalarRootMembers,
+            () => scalarNotifications++);
+        scalarInner.Add(2);
+        Require(scalarNotifications == 1,
+            "An inner scalar ObservableCollection mutation did not publish its outer data snapshot.");
     }
 
     private sealed class MutableOwner
@@ -119,6 +270,37 @@ internal static class CheckedDataTests
         internal ObservableCollection<MutableNode> Items { get; } = [];
     }
 
+    private sealed class ChurnRoot : NotifyBase
+    {
+        private CountingNode? _left;
+        private CountingNode? _right;
+        internal CountingNode? Left { get => _left; set => Set(ref _left, value); }
+        internal CountingNode? Right { get => _right; set => Set(ref _right, value); }
+    }
+
+    private sealed class EnumerableRoot : NotifyBase
+    {
+        private int _tick;
+        internal OneShotEnumerable Sequence { get; set; } = null!;
+        internal int Tick { get => _tick; set => Set(ref _tick, value); }
+    }
+
+    private sealed class PlainListRoot : NotifyBase
+    {
+        internal List<MutableNode> Items { get; } = [];
+        internal void NotifyItemsChanged() => Raise(nameof(Items));
+    }
+
+    private sealed class NestedCollectionRoot : NotifyBase
+    {
+        internal ObservableCollection<ObservableCollection<MutableNode>> Groups { get; } = [];
+    }
+
+    private sealed class NestedScalarCollectionRoot : NotifyBase
+    {
+        internal ObservableCollection<ObservableCollection<int>> Groups { get; } = [];
+    }
+
     private sealed class MutableNode : NotifyBase
     {
         private int _value;
@@ -137,6 +319,41 @@ internal static class CheckedDataTests
         }
     }
 
+    private sealed class CountingNode : INotifyPropertyChanged
+    {
+        private PropertyChangedEventHandler? _propertyChanged;
+        private int _value;
+        internal int Adds { get; private set; }
+        internal int Removes { get; private set; }
+        public event PropertyChangedEventHandler? PropertyChanged
+        {
+            add { Adds++; _propertyChanged += value; }
+            remove { Removes++; _propertyChanged -= value; }
+        }
+        internal int Value
+        {
+            get => _value;
+            set
+            {
+                if (_value == value) return;
+                _value = value;
+                _propertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Value)));
+            }
+        }
+    }
+
+    private sealed class OneShotEnumerable(IEnumerable<MutableNode> values) : IEnumerable
+    {
+        private readonly IEnumerable<MutableNode> _values = values;
+        internal int EnumerationCount { get; private set; }
+        public IEnumerator GetEnumerator()
+        {
+            if (++EnumerationCount != 1)
+                throw new InvalidOperationException("The one-shot sequence was enumerated more than once.");
+            return _values.GetEnumerator();
+        }
+    }
+
     private abstract class NotifyBase : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -147,6 +364,8 @@ internal static class CheckedDataTests
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
+
+        protected void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
     private static void Require(bool condition, string message)

@@ -15,8 +15,16 @@ public sealed class DataShapeItem : DataShapeBase
 {
     private string _name = string.Empty;
     private int? _retryAfter;
+    [RunicAlias("__proto__")]
     public string Name { get => _name; set => this.RaiseAndSetIfChanged(ref _name, value); }
+    [RunicAlias("retry-after")]
     public int? RetryAfter { get => _retryAfter; set => this.RaiseAndSetIfChanged(ref _retryAfter, value); }
+}
+
+public sealed class DataShapeGroup : ReactiveObject
+{
+    public ObservableCollection<DataShapeItem> Items { get; set; } =
+    [new DataShapeItem { Name = "nested-first", RetryAfter = 5 }];
 }
 
 [RunicUnion(typeof(DataShapeText), typeof(DataShapeCount))]
@@ -50,7 +58,15 @@ public sealed class DataShapeViewModel : ReactiveObject
     public DataShapeItem? OptionalItem { get; set; }
     public int? Optional { get => _optional; set => this.RaiseAndSetIfChanged(ref _optional, value); }
     public ObservableCollection<DataShapeItem> Items { get; } = [new DataShapeItem { Name = "first", RetryAfter = 3 }];
-    public Dictionary<string, DataShapeItem> Lookup { get; } = new(StringComparer.Ordinal) { ["first"] = new DataShapeItem { Name = "lookup" } };
+    public List<DataShapeItem?> OptionalItems { get; } = [null, new DataShapeItem { Name = "optional-item" }];
+    public ObservableCollection<DataShapeGroup> Groups { get; } = [new DataShapeGroup()];
+    public Dictionary<string, DataShapeItem> Lookup { get; } = new(StringComparer.Ordinal)
+    {
+        ["first"] = new DataShapeItem { Name = "lookup" },
+        // This is a legal .NET dictionary key and must stay an own property in
+        // generated JavaScript records instead of mutating their prototype.
+        ["__proto__"] = new DataShapeItem { Name = "prototype-safe" },
+    };
     public DataShapePayload Payload { get; set; } = new DataShapeText("payload");
     public DataShapeMoney Money { get; set; } = new(12.50m);
     public DataShapeItem Whole { get; set; } = new() { Name = "whole" };

@@ -3,6 +3,12 @@ using Runic.Application.Testing;
 using Runic.Application.Testing.Tests;
 using Runic.Application.Views;
 
+if (args is ["--export-generated-client-fixture", var fixturePath])
+{
+    await GeneratedClientFixtureExporter.WriteAsync(fixturePath);
+    return;
+}
+
 var model = new RootViewModel();
 using (var host = new RunicWindowTestHost<RootViewModel>(model, "root",
     (transport, content, vm) => new RootBridge(transport, vm, content: content),
@@ -119,6 +125,8 @@ await TypedReactiveTests.RunAsync();
 await SnapshotDeliveryTests.RunAsync();
 await InteractionFixture.VerifyAsync();
 await GeneratedInteractionTests.RunAsync();
+await GeneratedClientHarness.RunAsync();
+await GeneratedInteractionClientHarness.RunAsync();
 
 Console.WriteLine("Runic.Application.Testing Window/View host passed.");
 

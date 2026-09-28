@@ -83,16 +83,19 @@ turns and deliberately does not set ReactiveUI's process-global scheduler.
 Use normal host dispatchers for native UI and explicitly marshal background
 state changes through the model context.
 
-Create the model context before the ViewModel creates its commands and pass the
-sequencer directly to the factory. Bind the root and every independently
+Call `AddRunicReactiveModelContext()` before the ViewModel creates its commands
+and inject the scoped sequencer. Bind the root and every independently
 presented child to that same context:
 
 ```csharp
-services.AddScoped<IRunicModelContext, RunicModelContext>();
+services.AddRunicReactiveModelContext();
 
-public EditorViewModel(EditorSession session, IRunicModelContext modelContext)
+public EditorViewModel(
+    EditorSession session,
+    IRunicModelContext modelContext,
+    ISequencer scheduler)
 {
-    _scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+    _scheduler = scheduler;
     Workspace = new EditorWorkspaceViewModel(session, this, _scheduler);
     _contextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this, Workspace);
 }
@@ -107,6 +110,13 @@ with bridge replies and state publication. A default headless scheduler may
 deliver them later; do not solve that by changing ReactiveUI's global scheduler.
 Bind dynamically created or independently presented children to the same
 context and retain their leases until their presentation is removed.
+
+The extension uses `TryAdd` for the scoped `IRunicModelContext`, singleton
+`IRunicReactiveSchedulerProvider`, and scoped `ISequencer`, preserving custom
+application registrations. Dispose a scope asynchronously to drain its default
+owned context. Each queued context/scheduler item captures its own
+`ExecutionContext`, so a trusted interaction scope follows its own deferred
+work without leaking to another queued operation.
 
 The [ReactiveUI reference guide](../../../docs/guides/application/reference/reactiveui.md)
 defines the supported data shapes, operation semantics, interaction targeting,

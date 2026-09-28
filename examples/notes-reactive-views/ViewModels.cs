@@ -2,6 +2,7 @@ using System.ComponentModel;
 using ReactiveUI;
 using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
+using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 
@@ -21,12 +22,11 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
     private readonly PinnedTaskViewModel _pinnedTask = new();
     private IReadOnlyList<IPinnedItem> _pinned;
 
-    public ShellViewModel(IRunicModelContext modelContext)
+    public ShellViewModel(IRunicModelContext modelContext, ISequencer scheduler)
     {
-        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
         _pinned = [_pinnedNote, _pinnedTask];
         _home = new HomeViewModel(this);
-        _document = new DocumentViewModel(this, modelContext);
+        _document = new DocumentViewModel(this, modelContext, scheduler);
         _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext,
             this, _home, _document, _document.Editor, _document.Preview, _pinnedNote, _pinnedTask);
         Router = new RoutingState(scheduler);
@@ -101,11 +101,10 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
     private readonly PreviewViewModel _preview;
     private readonly ReactiveRoutedRegion<IDocumentPane> _pane;
 
-    public DocumentViewModel(ShellViewModel host, IRunicModelContext modelContext)
+    public DocumentViewModel(ShellViewModel host, IRunicModelContext modelContext, ISequencer scheduler)
     {
-        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
         HostScreen = host;
-        _editor = new EditorViewModel(this, modelContext);
+        _editor = new EditorViewModel(this, modelContext, scheduler);
         _preview = new PreviewViewModel(this, _editor);
         Router = new RoutingState(scheduler);
         _pane = new ReactiveRoutedRegion<IDocumentPane>(Router);
@@ -155,7 +154,7 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
     private int _activationCount;
     private int _deactivationCount;
 
-    public EditorViewModel(DocumentViewModel host, IRunicModelContext modelContext)
+    public EditorViewModel(DocumentViewModel host, IRunicModelContext modelContext, ISequencer scheduler)
     {
         HostScreen = host;
         _modelContext = modelContext;
@@ -166,7 +165,6 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
             context.SetOutput(false);
             return Task.CompletedTask;
         });
-        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, scheduler);
         DiscardCommand = ReactiveCommand.CreateFromTask(DiscardAsync, scheduler);
         this.WhenActivated((Action<Action<IDisposable>>)(dispose =>

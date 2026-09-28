@@ -12,9 +12,10 @@ const bridgeWire = {
   timeOnly(value: unknown): string { const text = this.string(value); if (!/^\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?$/.test(text)) throw new TypeError("Expected an ISO time."); return text; },
   dateTime(value: unknown): string { const text = this.string(value); if (!/^\d{4}-\d{2}-\d{2}T/.test(text)) throw new TypeError("Expected an ISO date-time."); return text; },
   dateTimeOffset(value: unknown): string { const text = this.dateTime(value); if (!/(Z|[+-]\d{2}:\d{2})$/.test(text)) throw new TypeError("Expected an ISO offset date-time."); return text; },
+  duration(value: unknown): string { const text = this.string(value); const match = /^(-)?(?:(\d+)\.)?(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,7}))?$/.exec(text); if (!match) throw new TypeError("Expected an invariant time span."); const days = BigInt(match[2] ?? "0"); const hours = BigInt(match[3]); const minutes = BigInt(match[4]); const seconds = BigInt(match[5]); if (hours > 23n || minutes > 59n || seconds > 59n) throw new RangeError("Time span component is out of range."); const fraction = BigInt((match[6] ?? "").padEnd(7, "0") || "0"); const ticks = (((days * 24n + hours) * 60n + minutes) * 60n + seconds) * 10000000n + fraction; const signed = match[1] ? -ticks : ticks; if (signed < -9223372036854775808n || signed > 9223372036854775807n) throw new RangeError("Time span is out of range."); return text; },
   enumName(value: unknown, names?: readonly string[]): string { const text = this.string(value); if (names !== undefined && !names.includes(text)) throw new RangeError("Unknown enum name."); return text; },
   array<T>(value: unknown, decode: (item: unknown) => T): readonly T[] { if (!Array.isArray(value)) throw new TypeError("Expected an array."); return value.map(decode); },
-  stringRecord<T>(value: unknown, decode: (item: unknown) => T): Readonly<Record<string, T>> { const object = this.object(value, item => item); const result: Record<string, T> = {}; for (const [key, item] of Object.entries(object)) result[key] = decode(item); return result; },
+  stringRecord<T>(value: unknown, decode: (item: unknown) => T): Readonly<Record<string, T>> { const object = this.object(value, item => item); const result = Object.create(null) as Record<string, T>; for (const [key, item] of Object.entries(object)) result[key] = decode(item); return result; },
   object<T>(value: unknown, decode: (item: Record<string, unknown>) => T): T { if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Expected an object."); return decode(value as Record<string, unknown>); },
   union(value: unknown): any { const object = this.object(value, item => item); if (typeof object.$case !== "string") throw new TypeError("Expected a union discriminator."); return object; },
   encodeUnion(value: unknown): Record<string, unknown> { const object = this.object(value, item => item); if (typeof object.$case !== "string") throw new TypeError("Expected a union discriminator."); return object; },
@@ -39,7 +40,7 @@ export interface EditorInteractionContext {
 }
 export interface EditorInteractions {
   readonly confirmDiscard: {
-    handle(handler: (input: { readonly title: string; readonly bodyLength: number }, context: EditorInteractionContext) => boolean | Promise<boolean>): () => void;
+    handle(handler: (input: { readonly ["title"]: string; readonly ["bodyLength"]: number }, context: EditorInteractionContext) => boolean | Promise<boolean>): () => void;
   };
 }
 
@@ -116,7 +117,7 @@ export class BridgeError extends Error {
   constructor(readonly kind: BridgeErrorKind, message: string) { super(message); this.name = "BridgeError"; }
 }
 export type BridgeOperationStatusKind = "running" | "succeeded" | "failed" | "cancelled" | "expired" | "unknown";
-export type BridgeOperationDeliveryKind = "result-too-large" | "result-encoding-failed" | "stream-overflow";
+export type BridgeOperationDeliveryKind = "result-too-large" | "result-encoding-failed" | "stream-overflow" | "stream-retention-too-large";
 export interface BridgeOperationStatus<TResult = never> { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationStatusKind; readonly error?: { readonly kind: "failed"; readonly message: string }; readonly result?: TResult; readonly delivery?: { readonly kind: BridgeOperationDeliveryKind; readonly message: string }; readonly stream?: true; }
 export type BridgeOperationCancelKind = "cancellation-requested" | "not-running" | "unknown" | "expired";
 export interface BridgeOperationCancelResult { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationCancelKind; }
@@ -137,7 +138,13 @@ export interface EditorDiscardOperation {
   wait(): Promise<BridgeOperationStatus<never>>;
   cancel(): Promise<BridgeOperationCancelResult>;
 }
-type WireState = Omit<EditorState, never> & {
+type WireState = Omit<EditorState, "urlPathSegment" | "title" | "body" | "savedMessage" | "activationCount" | "deactivationCount"> & {
+  readonly urlPathSegment: unknown;
+  readonly title: unknown;
+  readonly body: unknown;
+  readonly savedMessage: unknown;
+  readonly activationCount: unknown;
+  readonly deactivationCount: unknown;
   readonly __runicFields: {
     readonly title: { readonly version: number };
     readonly body: { readonly version: number };
@@ -147,6 +154,12 @@ function hydrate(wire: WireState): EditorState {
   const { __runicFields: _runicFields, ...state } = wire;
   return {
     ...state,
+    urlPathSegment: bridgeWire.string(wire.urlPathSegment),
+    title: bridgeWire.string(wire.title),
+    body: bridgeWire.string(wire.body),
+    savedMessage: bridgeWire.string(wire.savedMessage),
+    activationCount: bridgeWire.integer(wire.activationCount, -2147483648, 2147483647),
+    deactivationCount: bridgeWire.integer(wire.deactivationCount, -2147483648, 2147483647),
   };
 }
 interface BridgeReply { readonly ok: boolean; readonly state: WireState | null; readonly error: { readonly kind: BridgeErrorKind; readonly message: string } | null; }
@@ -347,36 +360,40 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
     if (status.contract !== contractId || status.requestId !== requestId || !(["running", "succeeded", "failed", "cancelled", "expired", "unknown"] as const).includes(status.kind)) throw new BridgeError("failed", "The operation service returned a mismatched status.");
     if (status.result !== undefined) status = { ...status, result: decode(status.result) }; return status;
   }
-  async function operationStatus<TResult>(requestId: string, wait: boolean, decode: (value: unknown) => TResult): Promise<BridgeOperationStatus<TResult>> {
-    const identity = JSON.stringify({ contract: contractId, requestId }); let reply: string;
+  async function operationStatus<TResult>(member: string, requestId: string, wait: boolean, decode: (value: unknown) => TResult): Promise<BridgeOperationStatus<TResult>> {
+    const identity = JSON.stringify({ contract: contractId, member, requestId }); let reply: string;
     try { reply = await bridge.call(wait ? "__runicOperationWait" : "__runicOperationStatus", identity); } catch { throw new BridgeOperationUncertainError(contractId, requestId, "The operation status could not be observed."); }
     return parseOperationStatus(reply, requestId, decode);
   }
-  async function operationCancel(requestId: string): Promise<BridgeOperationCancelResult> {
-    let reply: string; try { reply = await bridge.call("__runicOperationCancel", JSON.stringify({ contract: contractId, requestId })); } catch { throw new BridgeOperationUncertainError(contractId, requestId, "The cancellation request could not be observed."); }
+  async function operationCancel(member: string, requestId: string): Promise<BridgeOperationCancelResult> {
+    let reply: string; try { reply = await bridge.call("__runicOperationCancel", JSON.stringify({ contract: contractId, member, requestId })); } catch { throw new BridgeOperationUncertainError(contractId, requestId, "The cancellation request could not be observed."); }
     let result: BridgeOperationCancelResult; try { result = JSON.parse(reply) as BridgeOperationCancelResult; } catch { throw new BridgeError("failed", "The cancellation service returned invalid JSON."); }
     if (result.contract !== contractId || result.requestId !== requestId) throw new BridgeError("failed", "The cancellation service returned a mismatched result."); return result;
   }
   function saveOperation(requestId: string, terminal?: BridgeOperationStatus<never>): EditorSaveOperation {
-    const completion: Promise<BridgeOperationStatus<never>> = terminal === undefined ? operationStatus(requestId, true, value => undefined as never) : Promise.resolve(terminal);
-    return { requestId, status: () => terminal === undefined ? operationStatus(requestId, false, value => undefined as never) : Promise.resolve(terminal), completion, wait: () => completion, cancel: () => operationCancel(requestId), };
+    let completion: Promise<BridgeOperationStatus<never>> | undefined;
+    const wait = () => completion ??= terminal === undefined ? operationStatus("Save", requestId, true, value => undefined as never) : Promise.resolve(terminal);
+    return { requestId, status: () => terminal === undefined ? operationStatus("Save", requestId, false, value => undefined as never) : Promise.resolve(terminal), get completion() { return wait(); }, wait, cancel: () => operationCancel("Save", requestId), };
   }
   async function startSaveWithRequestId(requestId: string, _input?: never): Promise<EditorSaveOperation> {
     if (requestId.length === 0) throw new RangeError("Operation requestId is required."); if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The Bridge is disconnected.");
-    let reply: string; try { reply = await bridge.call(`${route}StartSave`, requestId); } catch { const recovered = await operationStatus(requestId, false, value => undefined as never); if (recovered.kind === "unknown" || recovered.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return saveOperation(requestId, recovered.kind === "running" ? undefined : recovered); }
+    await awaitInteractionCapabilities();
+    let reply: string; try { reply = await bridge.call(`${route}StartSave`, requestId); } catch { const recovered = await operationStatus("Save", requestId, false, value => undefined as never); if (recovered.kind === "unknown" || recovered.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return saveOperation(requestId, recovered.kind === "running" ? undefined : recovered); }
     const admission = JSON.parse(reply) as { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown }; if (admission.kind === "accepted" || admission.kind === "duplicate") { const terminal = admission.terminal === null || admission.terminal === undefined ? undefined : parseOperationStatus(JSON.stringify(admission.terminal), requestId, value => undefined as never); return saveOperation(requestId, terminal); } throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.");
   }
-  async function recoverSaveWithRequestId(requestId: string): Promise<EditorSaveOperation> { const status = await operationStatus(requestId, false, value => undefined as never); if (status.kind === "unknown" || status.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return saveOperation(requestId, status.kind === "running" ? undefined : status); }
+  async function recoverSaveWithRequestId(requestId: string): Promise<EditorSaveOperation> { const status = await operationStatus("Save", requestId, false, value => undefined as never); if (status.kind === "unknown" || status.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return saveOperation(requestId, status.kind === "running" ? undefined : status); }
   function discardOperation(requestId: string, terminal?: BridgeOperationStatus<never>): EditorDiscardOperation {
-    const completion: Promise<BridgeOperationStatus<never>> = terminal === undefined ? operationStatus(requestId, true, value => undefined as never) : Promise.resolve(terminal);
-    return { requestId, status: () => terminal === undefined ? operationStatus(requestId, false, value => undefined as never) : Promise.resolve(terminal), completion, wait: () => completion, cancel: () => operationCancel(requestId), };
+    let completion: Promise<BridgeOperationStatus<never>> | undefined;
+    const wait = () => completion ??= terminal === undefined ? operationStatus("Discard", requestId, true, value => undefined as never) : Promise.resolve(terminal);
+    return { requestId, status: () => terminal === undefined ? operationStatus("Discard", requestId, false, value => undefined as never) : Promise.resolve(terminal), get completion() { return wait(); }, wait, cancel: () => operationCancel("Discard", requestId), };
   }
   async function startDiscardWithRequestId(requestId: string, _input?: never): Promise<EditorDiscardOperation> {
     if (requestId.length === 0) throw new RangeError("Operation requestId is required."); if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The Bridge is disconnected.");
-    let reply: string; try { reply = await bridge.call(`${route}StartDiscard`, requestId); } catch { const recovered = await operationStatus(requestId, false, value => undefined as never); if (recovered.kind === "unknown" || recovered.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return discardOperation(requestId, recovered.kind === "running" ? undefined : recovered); }
+    await awaitInteractionCapabilities();
+    let reply: string; try { reply = await bridge.call(`${route}StartDiscard`, requestId); } catch { const recovered = await operationStatus("Discard", requestId, false, value => undefined as never); if (recovered.kind === "unknown" || recovered.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return discardOperation(requestId, recovered.kind === "running" ? undefined : recovered); }
     const admission = JSON.parse(reply) as { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown }; if (admission.kind === "accepted" || admission.kind === "duplicate") { const terminal = admission.terminal === null || admission.terminal === undefined ? undefined : parseOperationStatus(JSON.stringify(admission.terminal), requestId, value => undefined as never); return discardOperation(requestId, terminal); } throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.");
   }
-  async function recoverDiscardWithRequestId(requestId: string): Promise<EditorDiscardOperation> { const status = await operationStatus(requestId, false, value => undefined as never); if (status.kind === "unknown" || status.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return discardOperation(requestId, status.kind === "running" ? undefined : status); }
+  async function recoverDiscardWithRequestId(requestId: string): Promise<EditorDiscardOperation> { const status = await operationStatus("Discard", requestId, false, value => undefined as never); if (status.kind === "unknown" || status.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return discardOperation(requestId, status.kind === "running" ? undefined : status); }
   let disposeInteractions: (() => void) | undefined;
   function dispose(): void {
     if (lease.disposed) return;
@@ -412,8 +429,18 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
   type InteractionHandler = { readonly name: string; readonly contract: string; readonly generation: number; readonly controller: AbortController; readonly handle: (input: unknown, context: EditorInteractionContext) => unknown | Promise<unknown> };
   const interactionHandlers = new Map<string, InteractionHandler>();
   let interactionGeneration = 0;
+  let interactionCapabilityGeneration = 0;
   let interactionDisposed = false;
+  let interactionUnavailable = false;
   let interactionLoop: Promise<void> | undefined;
+  let interactionControlLoop: Promise<void> | undefined;
+  let interactionCapabilitySync: Promise<void> = Promise.resolve();
+  let interactionRetry: Promise<void> | undefined;
+  let interactionRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  let interactionRetryResolve: (() => void) | undefined;
+  let interactionRetryDelay = 25;
+  const activeInteractionRequests = new Map<string, AbortController>();
+  const cancelledInteractionRequests = new Map<string, ReturnType<typeof setTimeout>>();
   const interactionPresentationId = mountToken;
   function interactionIdentity(name: string, contract: string): string { return `${name.length}:${name}${contract.length}:${contract}`; }
   function interactionContract(name: string): string {
@@ -432,9 +459,43 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
     if (kind === "answered") payload.output = output;
     try { await bridge.call("__runicInteractionReply", jsonForInteraction(payload)); } catch { /* The request will be cancelled by its presentation lifecycle. */ }
   }
+  function abortActiveInteractions(): void {
+    for (const controller of activeInteractionRequests.values()) controller.abort();
+    activeInteractionRequests.clear();
+    for (const timer of cancelledInteractionRequests.values()) clearTimeout(timer);
+    cancelledInteractionRequests.clear();
+  }
+  function cancelInteractionRequest(requestId: string): void {
+    const active = activeInteractionRequests.get(requestId); if (active) { active.abort(); return; }
+    if (cancelledInteractionRequests.has(requestId)) return;
+    if (cancelledInteractionRequests.size >= 32) { const oldest = cancelledInteractionRequests.keys().next().value as string | undefined; if (oldest) { const timer = cancelledInteractionRequests.get(oldest); if (timer) clearTimeout(timer); cancelledInteractionRequests.delete(oldest); } }
+    const timer = setTimeout(() => cancelledInteractionRequests.delete(requestId), 120_000);
+    cancelledInteractionRequests.set(requestId, timer);
+  }
+  function stopInteractionLoops(): void { interactionUnavailable = true; abortActiveInteractions(); interactionRetryResolve?.(); }
+  function waitForInteractionRetry(): Promise<void> {
+    if (interactionRetry) return interactionRetry;
+    const delay = interactionRetryDelay; interactionRetryDelay = Math.min(interactionRetryDelay * 2, 500);
+    interactionRetry = new Promise<void>(resolve => {
+      const finish = () => { if (interactionRetryTimer) clearTimeout(interactionRetryTimer); interactionRetryTimer = undefined; interactionRetryResolve = undefined; interactionRetry = undefined; resolve(); };
+      interactionRetryResolve = finish; interactionRetryTimer = setTimeout(finish, delay);
+    });
+    return interactionRetry;
+  }
+  function syncInteractionCapabilities(): void {
+    if (!interactionPresentationId) return;
+    const generation = ++interactionCapabilityGeneration;
+    const handlers = [...interactionHandlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
+    interactionCapabilitySync = interactionCapabilitySync.catch(() => undefined).then(async () => {
+      if (interactionDisposed || interactionUnavailable || lease.disposed || !isLive() || !bridge.isConnected()) return;
+      const reply = JSON.parse(await bridge.call("__runicInteractionControl", jsonForInteraction({ route, presentationId: interactionPresentationId, generation, handlers }))) as { kind?: unknown };
+      if (reply?.kind !== "ok") { interactionUnavailable = true; abortActiveInteractions(); throw new BridgeError("disconnected", "The interaction presentation is no longer available."); }
+    });
+    void interactionCapabilitySync.catch(() => undefined);
+  }
   function decodeInteractionInput(name: string, value: unknown): unknown {
     switch (name) {
-      case "confirmDiscard": return bridgeWire.object(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)}));
+      case "confirmDiscard": return bridgeWire.object(value, value => ({ ["title"]: bridgeWire.string(value["title"]), ["bodyLength"]: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)}));
       default: throw new BridgeError("failed", "Unknown interaction input.");
     }
   }
@@ -444,53 +505,97 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
       default: throw new BridgeError("failed", "Unknown interaction output.");
     }
   }
+  async function handleInteractionRequest(request: Record<string, unknown>): Promise<void> {
+    if (typeof request.requestId !== "string" || typeof request.route !== "string" || typeof request.presentationId !== "string" || typeof request.ownerEpoch !== "number" || !Number.isSafeInteger(request.ownerEpoch) || typeof request.name !== "string" || typeof request.contract !== "string") return;
+    const identity = { requestId: request.requestId, route: request.route, presentationId: request.presentationId, ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract };
+    const key = interactionIdentity(request.name, request.contract);
+    const handler = interactionHandlers.get(key);
+    if (!handler || request.route !== route || request.presentationId !== interactionPresentationId) { await replyInteraction(identity, "cancelled"); return; }
+    const controller = new AbortController();
+    const expiresAt = typeof request.expiresAt === "string" ? Date.parse(request.expiresAt) : Number.NaN;
+    const deadline = Number.isFinite(expiresAt) && expiresAt > Date.now() ? setTimeout(() => controller.abort(), Math.min(expiresAt - Date.now(), 600_000)) : undefined;
+    const abortFromHandler = () => controller.abort();
+    handler.controller.signal.addEventListener("abort", abortFromHandler, { once: true });
+    activeInteractionRequests.set(identity.requestId, controller);
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) controller.abort();
+    const cancelledBeforeDelivery = cancelledInteractionRequests.get(identity.requestId);
+    if (cancelledBeforeDelivery) { clearTimeout(cancelledBeforeDelivery); cancelledInteractionRequests.delete(identity.requestId); controller.abort(); }
+    try {
+      const input = decodeInteractionInput(request.name, request.input);
+      const output = await handler.handle(input, { signal: controller.signal });
+      if (interactionDisposed || lease.disposed || !isLive() || controller.signal.aborted || interactionHandlers.get(key) !== handler) await replyInteraction(identity, "cancelled");
+      else await replyInteraction(identity, "answered", encodeInteractionOutput(request.name, output));
+    } catch {
+      await replyInteraction(identity, controller.signal.aborted ? "cancelled" : "failed");
+    } finally {
+      handler.controller.signal.removeEventListener("abort", abortFromHandler);
+      if (deadline) clearTimeout(deadline);
+      if (activeInteractionRequests.get(identity.requestId) === controller) activeInteractionRequests.delete(identity.requestId);
+    }
+  }
   async function runInteractionLoop(): Promise<void> {
-    while (!interactionDisposed && !lease.disposed && isLive() && bridge.isConnected() && interactionHandlers.size !== 0) {
+    if (!interactionPresentationId) return;
+    while (!interactionDisposed && !interactionUnavailable && !lease.disposed && isLive() && bridge.isConnected() && interactionHandlers.size !== 0) {
+      try { await interactionCapabilitySync; } catch { if (interactionUnavailable || !bridge.isConnected()) { stopInteractionLoops(); return; } await waitForInteractionRetry(); syncInteractionCapabilities(); continue; }
+      if (interactionDisposed || interactionUnavailable || lease.disposed || !isLive() || !bridge.isConnected() || interactionHandlers.size === 0) return;
       const handlers = [...interactionHandlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
-      if (!interactionPresentationId) return;
       let envelope: unknown;
-      try { envelope = JSON.parse(await bridge.call("__runicInteractionWait", jsonForInteraction({ route, presentationId: interactionPresentationId, handlers }))); }
-      catch { return; }
+      try { envelope = JSON.parse(await bridge.call("__runicInteractionWait", jsonForInteraction({ route, presentationId: interactionPresentationId, generation: interactionCapabilityGeneration, handlers }))); }
+      catch { if (!bridge.isConnected()) { stopInteractionLoops(); return; } await waitForInteractionRetry(); continue; }
+      if (interactionDisposed || interactionUnavailable || lease.disposed || !isLive() || !bridge.isConnected() || interactionHandlers.size === 0) return;
+      interactionRetryDelay = 25;
       if (envelope === null || typeof envelope !== "object") continue;
       const request = envelope as Record<string, unknown>;
-      if (request.kind !== "request") continue;
-      if (typeof request.requestId !== "string" || typeof request.route !== "string" || typeof request.presentationId !== "string" || typeof request.ownerEpoch !== "number" || !Number.isSafeInteger(request.ownerEpoch) || typeof request.name !== "string" || typeof request.contract !== "string") continue;
-      const key = interactionIdentity(request.name, request.contract);
-      const handler = interactionHandlers.get(key);
-      const identity = { requestId: request.requestId, route: request.route, presentationId: request.presentationId, ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract };
-      if (!handler || request.route !== route || request.presentationId !== interactionPresentationId) { await replyInteraction(identity, "cancelled"); continue; }
-      try {
-        const input = decodeInteractionInput(request.name, request.input);
-        const output = await handler.handle(input, { signal: handler.controller.signal });
-        if (interactionDisposed || lease.disposed || !isLive() || handler.controller.signal.aborted || interactionHandlers.get(key) !== handler) await replyInteraction(identity, "cancelled");
-        else await replyInteraction(identity, "answered", encodeInteractionOutput(request.name, output));
-      } catch (error) {
-        await replyInteraction(identity, handler.controller.signal.aborted ? "cancelled" : "failed");
-      }
+      if (request.kind === "disconnected" || request.kind === "ignored" || request.kind === "unsupported" || request.kind === "invalid-request" || request.kind === "cancelled") { stopInteractionLoops(); return; }
+      if (request.kind === "request") void handleInteractionRequest(request);
+    }
+  }
+  async function runInteractionControlLoop(): Promise<void> {
+    if (!interactionPresentationId) return;
+    while (!interactionDisposed && !interactionUnavailable && !lease.disposed && isLive() && bridge.isConnected() && interactionHandlers.size !== 0) {
+      let envelope: unknown;
+      try { envelope = JSON.parse(await bridge.call("__runicInteractionControlWait", jsonForInteraction({ route, presentationId: interactionPresentationId }))); }
+      catch { if (!bridge.isConnected()) { stopInteractionLoops(); return; } await waitForInteractionRetry(); continue; }
+      if (interactionDisposed || interactionUnavailable || lease.disposed || !isLive() || !bridge.isConnected() || interactionHandlers.size === 0) return;
+      interactionRetryDelay = 25;
+      if (envelope === null || typeof envelope !== "object") continue;
+      const control = envelope as Record<string, unknown>;
+      if (control.kind === "disconnected" || control.kind === "ignored" || control.kind === "invalid-request" || (control.kind === "cancelled" && typeof control.requestId !== "string")) { stopInteractionLoops(); return; }
+      if (control.kind === "cancelled" && typeof control.requestId === "string") cancelInteractionRequest(control.requestId);
     }
   }
   function ensureInteractionLoop(): void {
-    if (interactionLoop || interactionDisposed || lease.disposed || interactionHandlers.size === 0) return;
-    interactionLoop = runInteractionLoop().finally(() => { interactionLoop = undefined; if (!interactionDisposed && !lease.disposed && interactionHandlers.size !== 0) ensureInteractionLoop(); });
+    if (interactionDisposed || interactionUnavailable || lease.disposed || interactionHandlers.size === 0) return;
+    if (!interactionLoop) interactionLoop = runInteractionLoop().finally(() => { interactionLoop = undefined; if (!interactionDisposed && !interactionUnavailable && !lease.disposed && isLive() && bridge.isConnected() && interactionHandlers.size !== 0) ensureInteractionLoop(); });
+    if (!interactionControlLoop) interactionControlLoop = runInteractionControlLoop().finally(() => { interactionControlLoop = undefined; if (!interactionDisposed && !interactionUnavailable && !lease.disposed && isLive() && bridge.isConnected() && interactionHandlers.size !== 0) ensureInteractionLoop(); });
   }
   const interactions: EditorInteractions = {
     confirmDiscard: {
       handle(handler) {
-        if (interactionDisposed || lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The interaction view is disconnected.");
+        if (interactionDisposed || interactionUnavailable || lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The interaction view is disconnected.");
         const key = interactionIdentity("confirmDiscard", interactionContract("confirmDiscard"));
         const previous = interactionHandlers.get(key);
         previous?.controller.abort();
         const registered: InteractionHandler = { name: "confirmDiscard", contract: interactionContract("confirmDiscard"), generation: ++interactionGeneration, controller: new AbortController(), handle: handler as InteractionHandler["handle"] };
         interactionHandlers.set(key, registered);
+        syncInteractionCapabilities();
         ensureInteractionLoop();
-        return () => { if (interactionHandlers.get(key) === registered) { interactionHandlers.delete(key); registered.controller.abort(); } };
+        return () => { if (interactionHandlers.get(key) === registered) { interactionHandlers.delete(key); registered.controller.abort(); syncInteractionCapabilities(); } };
       },
     },
   };
+  async function awaitInteractionCapabilities(): Promise<void> {
+    if (interactionHandlers.size === 0) return;
+    try { await interactionCapabilitySync; }
+    catch { throw new BridgeError(bridge.isConnected() ? "failed" : "disconnected", "The interaction handler could not be registered."); }
+    if (interactionUnavailable) throw new BridgeError("disconnected", "The interaction presentation is no longer available.");
+  }
   disposeInteractions = () => {
     interactionDisposed = true;
+    stopInteractionLoops();
     for (const handler of interactionHandlers.values()) handler.controller.abort();
     interactionHandlers.clear();
+    syncInteractionCapabilities();
   };
   function fieldBaseline<K extends keyof EditorCheckedFields>(field: K): FieldBaseline<EditorCheckedFields[K]> {
     if (lease.disposed || !isLive() || lease.current === undefined) throw new BridgeError("disconnected", "ViewModel is not connected.");
@@ -542,9 +647,11 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
       return invokeFieldWrite<string>(`${route}WriteBody`, JSON.stringify({ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }));
     },
     async save() {
+      await awaitInteractionCapabilities();
       return invoke(`${route}Save`);
     },
     async discard() {
+      await awaitInteractionCapabilities();
       return invoke(`${route}Discard`);
     },
     startSave() { return startSaveWithRequestId(globalThis.crypto.randomUUID(), undefined); },

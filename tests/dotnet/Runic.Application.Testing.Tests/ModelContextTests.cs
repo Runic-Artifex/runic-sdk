@@ -1,4 +1,6 @@
 using ReactiveUI.Primitives.Concurrency;
+using ReactiveUI.Binding;
+using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
@@ -20,6 +22,8 @@ public static class ModelContextTests
         await SessionCloseFromModelTurnDoesNotDeadlock();
         await ShutdownRejectsQueuedTurnsAndWaitsForCurrentTurn();
         await ReactiveSchedulerDeliversOnTheModelContext();
+        await PostedTurnsRetainTheirOwnAmbientInvocation();
+        await ScheduledInteractionsRetainTheirOwnAmbientInvocation();
     }
 
     private static async Task SerialTurnsPreservePostingOrder()
@@ -161,6 +165,153 @@ public static class ModelContextTests
         Require(delivered == 1, "The ReactiveUI scheduler did not deliver through the model context.");
     }
 
+    private static async Task PostedTurnsRetainTheirOwnAmbientInvocation()
+    {
+        await using var context = new RunicModelContext();
+        using var transport = new InMemoryViewTransport();
+        using var session = new WindowContentSession(transport);
+        using var drainStarted = new ManualResetEventSlim();
+        using var releaseDrain = new ManualResetEventSlim();
+        Require(context.TryPost(() =>
+        {
+            drainStarted.Set();
+            releaseDrain.Wait();
+        }), "The direct-post batch barrier was rejected.");
+        Require(drainStarted.Wait(TimeSpan.FromSeconds(5)), "The direct-post batch barrier did not start.");
+
+        var observed = new List<string?>();
+        using (RunicInteractionInvocation.Enter(session, "direct", "client-a", "connection-a", commandName: "first"))
+            Require(context.TryPost(() =>
+            {
+                Require(context.IsExecuting, "A direct post did not execute on its model context.");
+                observed.Add(RunicInteractionInvocation.Current?.CommandName);
+            }), "The first scoped direct post was rejected.");
+        using (RunicInteractionInvocation.Enter(session, "direct", "client-b", "connection-b", commandName: "second"))
+            Require(context.TryPost(() => observed.Add(RunicInteractionInvocation.Current?.CommandName)),
+                "The second scoped direct post was rejected.");
+        using (ExecutionContext.SuppressFlow())
+        using (RunicInteractionInvocation.Enter(session, "direct", "client-a", "connection-a", commandName: "suppressed"))
+            Require(context.TryPost(() => observed.Add(RunicInteractionInvocation.Current?.CommandName)),
+                "The suppressed direct post was rejected.");
+        Require(context.TryPost(() => observed.Add(RunicInteractionInvocation.Current?.CommandName)),
+            "The unscoped direct post was rejected.");
+        releaseDrain.Set();
+        await context.InvokeAsync(() => { });
+        Require(observed.SequenceEqual(["first", "second", null, null]),
+            "Queued model turns crossed, ignored suppression of, or leaked their ambient invocation scopes.");
+    }
+
+    private static async Task ScheduledInteractionsRetainTheirOwnAmbientInvocation()
+    {
+        await using var context = new RunicModelContext();
+        using var transport = new InMemoryViewTransport();
+        using var session = new WindowContentSession(transport);
+        var model = new ScheduledInteractionModel();
+        const string route = "scheduledInteraction";
+        const string name = "confirm";
+        const string contract = "testing.scheduled-interaction.v1";
+        using var descriptor = ReactiveInteractionDescriptor.Create<ScheduledInteractionModel, string, bool>(
+            name, contract, value => value.Confirm,
+            static value => JsonSerializer.Serialize(value), static value => value.GetBoolean()).Attach(session, model, route);
+        using var rootMount = session.AttachRootInteractionPresentation(route);
+        Require(transport.Call($"{route}Mount", new(StringValue: "browser-a:present", ClientKey: "client-a",
+            ConnectionKey: "connection-a")) == "ok", "The first scheduled interaction presentation did not mount.");
+        Require(transport.Call($"{route}Mount", new(StringValue: "browser-b:present", ClientKey: "client-b",
+            ConnectionKey: "connection-b")) == "ok", "The second scheduled interaction presentation did not mount.");
+
+        var firstWait = transport.CallAsync(BridgeInteractionRouter.WaitRoute,
+            new(StringValue: WaitJson(route, "browser-a:present", name, contract), ClientKey: "client-a",
+                ConnectionKey: "connection-a")).AsTask();
+        var secondWait = transport.CallAsync(BridgeInteractionRouter.WaitRoute,
+            new(StringValue: WaitJson(route, "browser-b:present", name, contract), ClientKey: "client-b",
+                ConnectionKey: "connection-b")).AsTask();
+        await Task.Yield();
+
+        var scheduler = new RunicReactiveSchedulerProvider().For(context);
+        using var drainStarted = new ManualResetEventSlim();
+        using var releaseDrain = new ManualResetEventSlim();
+        Require(context.TryPost(() =>
+        {
+            drainStarted.Set();
+            releaseDrain.Wait();
+        }), "The model context rejected the scheduler batch barrier.");
+        Require(drainStarted.Wait(TimeSpan.FromSeconds(5)), "The scheduler batch barrier did not start.");
+        var observedScopes = new List<string?>();
+        Task<bool>? firstAnswer = null;
+        Task<bool>? secondAnswer = null;
+        string? suppressedScope = "not-run";
+        string? leakedScope = "not-run";
+
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", commandName: "first"))
+            scheduler.Schedule(() =>
+            {
+                Require(context.IsExecuting, "A scheduled interaction did not execute on its model context.");
+                observedScopes.Add(RunicInteractionInvocation.Current?.CommandName);
+                firstAnswer = model.Confirm.Handle("first");
+            });
+        using (RunicInteractionInvocation.Enter(session, route, "client-b", "connection-b", commandName: "second"))
+            scheduler.Schedule(() =>
+            {
+                Require(context.IsExecuting, "A batched scheduled interaction did not execute on its model context.");
+                observedScopes.Add(RunicInteractionInvocation.Current?.CommandName);
+                secondAnswer = model.Confirm.Handle("second");
+            });
+        using (ExecutionContext.SuppressFlow())
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", commandName: "suppressed"))
+            scheduler.Schedule(() => suppressedScope = RunicInteractionInvocation.Current?.CommandName);
+        scheduler.Schedule(() => leakedScope = RunicInteractionInvocation.Current?.CommandName);
+        releaseDrain.Set();
+
+        using var firstRequest = JsonDocument.Parse(await Within(firstWait,
+            "The first scheduled interaction did not reach its browser endpoint."));
+        using var secondRequest = JsonDocument.Parse(await Within(secondWait,
+            "The second scheduled interaction inherited the wrong browser invocation."));
+        Require(firstRequest.RootElement.GetProperty("input").GetString() == "first"
+            && secondRequest.RootElement.GetProperty("input").GetString() == "second",
+            "Batched scheduled interactions crossed their trusted invocation scopes.");
+        Reply(transport, firstRequest.RootElement, route, "browser-a:present", name, contract,
+            "client-a", "connection-a", true);
+        Reply(transport, secondRequest.RootElement, route, "browser-b:present", name, contract,
+            "client-b", "connection-b", false);
+        Require(firstAnswer is not null && await firstAnswer, "The first scheduled interaction response was not delivered.");
+        Require(secondAnswer is not null && !await secondAnswer, "The second scheduled interaction response was not delivered.");
+        await context.InvokeAsync(() => { });
+        Require(observedScopes.SequenceEqual(["first", "second"]),
+            "Scheduled work did not retain its own trusted invocation scope.");
+        Require(suppressedScope is null, "ExecutionContext.SuppressFlow was ignored for scheduled work.");
+        Require(leakedScope is null, "A completed scheduled callback leaked its interaction scope into the next turn.");
+    }
+
+    private static string WaitJson(string route, string presentationId, string name, string contract) =>
+        JsonSerializer.Serialize(new { route, presentationId, handlers = new[] { new { name, contract } } });
+
+    private static void Reply(InMemoryViewTransport transport, JsonElement request, string route, string presentationId,
+        string name, string contract, string clientKey, string connectionKey, bool output)
+    {
+        var reply = JsonSerializer.Serialize(new
+        {
+            kind = "answered",
+            requestId = request.GetProperty("requestId").GetString(),
+            route,
+            presentationId,
+            ownerEpoch = request.GetProperty("ownerEpoch").GetInt64(),
+            name,
+            contract,
+            output,
+        });
+        using var accepted = JsonDocument.Parse(transport.Call(BridgeInteractionRouter.ReplyRoute,
+            new(StringValue: reply, ClientKey: clientKey, ConnectionKey: connectionKey)));
+        Require(accepted.RootElement.GetProperty("kind").GetString() == "ok",
+            "The browser response to a scheduled interaction was rejected.");
+    }
+
+    private static async Task<T> Within<T>(Task<T> task, string message)
+    {
+        if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5))) != task)
+            throw new InvalidOperationException(message);
+        return await task;
+    }
+
     private static async Task RootlessSessionReleasesForgottenContentIdentity()
     {
         var registry = RunicModelContextRegistry.Shared;
@@ -217,5 +368,10 @@ public static class ModelContextTests
     private sealed class NoopAttachment : IDisposable
     {
         public void Dispose() { }
+    }
+
+    private sealed class ScheduledInteractionModel
+    {
+        public Interaction<string, bool> Confirm { get; } = new();
     }
 }
