@@ -185,7 +185,7 @@ function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route
   callbacks[callbackName] = sharedRoute.callback;
   return sharedRoute;
 }
-const bridgeContract = "NotesWindowViews.ConfirmNavigationViewModel:7AAEEC8689B4E712C56607EC3A0014ED53F4BD52B1A2B134AFDB2321F4C1208B";
+const bridgeContract = "NotesWindowViews.ConfirmNavigationViewModel:EA9D00205EEEDEAD6B25CCE8015194BA35045AFC44F88EE1113DE50A68D503DF";
 
 export function connectConfirmNavigation(): Promise<ConfirmNavigationView> { return connectConfirmNavigationAt("confirmNavigation", false); }
 async function connectConfirmNavigationAt(route: string, needsMount = false): Promise<ConfirmNavigationView> {

@@ -1,7 +1,10 @@
+import { runToolkitGeneratedClient, type ToolkitGeneratedClientTranscript } from "./ToolkitGeneratedClientHarness.ts";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 type Transcript = {
+  readonly toolkitTyped: ToolkitGeneratedClientTranscript;
+  readonly validationSnapshot: string;
   readonly dataShape: {
     readonly snapshot: string;
     readonly duration: string;
@@ -14,6 +17,9 @@ type Transcript = {
     readonly wholeReply: string;
     readonly exactIdWriteRequest: string;
     readonly exactIdWriteReply: string;
+    readonly conflictRequest: string; readonly conflictReply: string;
+    readonly failedRequest: string; readonly failedReply: string;
+    readonly unionRequest: string; readonly unionReply: string;
   };
   readonly typedReactive: {
     readonly snapshot: string;
@@ -46,7 +52,14 @@ const bridge: Bridge = {
       case "dataShapeSetDuration": expectArgs(route, args, fixture.dataShape.durationRequest); return fixture.dataShape.durationReply;
       case "dataShapeSetAmount": expectArgs(route, args, fixture.dataShape.amountRequest); return fixture.dataShape.amountReply;
       case "dataShapeSetWhole": expectArgs(route, args, fixture.dataShape.wholeRequest); return fixture.dataShape.wholeReply;
-      case "dataShapeWriteExactId": expectArgs(route, args, fixture.dataShape.exactIdWriteRequest); return fixture.dataShape.exactIdWriteReply;
+      case "dataShapeWritePayload": expectArgs(route, args, fixture.dataShape.unionRequest); return fixture.dataShape.unionReply;
+      case "dataShapeWriteExactId": {
+        const request = JSON.parse(String(args[0]));
+        const pair = request.requestId === "generated-client-conflict" ? [fixture.dataShape.conflictRequest, fixture.dataShape.conflictReply]
+          : request.requestId === "generated-client-post-apply" ? [fixture.dataShape.failedRequest, fixture.dataShape.failedReply]
+          : [fixture.dataShape.exactIdWriteRequest, fixture.dataShape.exactIdWriteReply];
+        expectArgs(route, args, pair[0]!); return pair[1]!;
+      }
       case "typedReactiveSnapshot": return fixture.typedReactive.snapshot;
       case "typedReactiveStartSave": expectArgs(route, args, fixture.typedReactive.startRequest); return fixture.typedReactive.admission;
       case "__runicOperationWait": expectArgs(route, args, fixture.typedReactive.waitRequest); return fixture.typedReactive.completion;
@@ -83,11 +96,26 @@ await expectThrows(() => data.setDuration("10675199.02:48:05.4775808"), "Generat
 await data.setDuration(fixture.dataShape.duration);
 await data.setAmount(fixture.dataShape.amount);
 await data.setWhole({ source: "base", ["__proto__"]: "whole-from-client", "retry-after": 11 });
-await data.writeExactId(9007199254740992n, {
+const appliedReceipt = await data.writeExactId(9007199254740992n, {
   requestId: "generated-client-exact-id",
   baseline: data.fieldBaseline("exact-id"),
 });
 expect(data.snapshot["exact-id"] === 9007199254740992n, "Checked bigint write did not accept the C# receipt state.");
+
+expect(appliedReceipt.kind === "applied" && appliedReceipt.snapshot.value === 9007199254740992n,
+  "Applied checked-write receipt did not decode its Int64 value.");
+const conflictReceipt = await data.writeExactId(2n, { requestId: "generated-client-conflict",
+  baseline: { version: JSON.parse(fixture.dataShape.conflictRequest).expectedVersion, value: 9007199254740993n } });
+expect(conflictReceipt.kind === "conflict" && conflictReceipt.incoming.value === 9007199254740992n,
+  "Conflict checked-write receipt did not decode its incoming Int64 value.");
+const failedReceipt = await data.writeExactId(-1n, { requestId: "generated-client-post-apply", baseline: data.fieldBaseline("exact-id") });
+expect(failedReceipt.kind === "committed-with-error" && failedReceipt.snapshot.value === -1n,
+  "Committed-with-error receipt did not decode its post-setter Int64 value.");
+const unionReceipt = await data.writePayload({ $case: "count", count: 42 }, {
+  requestId: "generated-client-union", baseline: data.fieldBaseline("payload"),
+});
+expect(unionReceipt.kind === "applied" && unionReceipt.snapshot.value.$case === "count"
+  && unionReceipt.snapshot.value.count === 42, "Checked-write union receipt did not decode.");
 
 const typed = await typedReactive.connectTypedReactive();
 const operation = await typed.startSaveWithRequestId(fixture.typedReactive.requestId,
@@ -107,6 +135,20 @@ await expectThrows(() => typed.recoverLastResultWithRequestId(fixture.typedReact
 
 data.dispose();
 typed.dispose();
+await runToolkitGeneratedClient(fixture.toolkitTyped, generatedDirectory);
+host.window!.__runicBridge = { isConnected: () => true, async call(route: string) {
+  if (route !== "validationSnapshot") throw new Error(`Unexpected validation route ${route}`);
+  return fixture.validationSnapshot;
+} };
+const validationModule = await import(pathToFileURL(resolve(generatedDirectory, "validation.ts")).href);
+const validationView = await validationModule.connectValidation();
+const validation = validationView.snapshot.validation;
+expect(validation.hasErrors && validation.errors.some((error: {path: unknown[]; code?: string}) => error.path.length === 0 && error.code === "entity"),
+  "Structured entity validation was not decoded.");
+expect(validation.errors.some((error: {path: unknown[]}) => JSON.stringify(error.path) === '["model-profile","postal-code"]')
+  && validation.errors.some((error: {path: unknown[]}) => JSON.stringify(error.path) === '["items",0,"label"]'),
+  "Nested validation paths did not retain aliases and list indexes.");
+validationView.dispose();
 
 function expectArgs(route: string, actual: readonly unknown[], expected: string): void {
   expect(actual.length === 1 && actual[0] === expected,

@@ -149,13 +149,14 @@ internal sealed class BridgeTypeGraph
 
     private static string DecodeUnionTypeScript(BridgeTypeNode node, string expression)
     {
+        var value = $"bridgeDecodedUnion{node.Id}";
         var cases = string.Join(" ", node.Cases.Select(@case =>
         {
             var fields = string.Join(", ", @case.Type.Members.Select(member =>
-                "[" + Quote(member.WireName) + "]: " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]")));
+                "[" + Quote(member.WireName) + "]: " + EmitTypeScriptDecoder(member.Type, value + "[" + Quote(member.WireName) + "]")));
             return $"case {Quote(@case.Discriminator)}: return {{ \"$case\": {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
         }));
-        return $"(() => {{ const value: any = bridgeWire.union({expression}); switch (value.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
+        return $"(() => {{ const {value}: any = bridgeWire.union({expression}); switch ({value}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
     }
 
     private static string EncodeTypeScript(BridgeTypeNode node, string expression)

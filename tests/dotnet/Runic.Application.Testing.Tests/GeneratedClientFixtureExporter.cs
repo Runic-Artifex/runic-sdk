@@ -19,7 +19,14 @@ internal static class GeneratedClientFixtureExporter
 
         var dataShape = CreateDataShapeTranscript();
         var typedReactive = await CreateTypedReactiveTranscriptAsync();
-        var fixture = new GeneratedClientFixture(dataShape, typedReactive);
+        var toolkitTyped = await ToolkitGeneratedClientFixture.CreateAsync();
+        var validationModel = new ValidationViewModel();
+        validationModel.SetErrors(null, new BridgeValidationMessage("Entity failure", "entity", "error"));
+        validationModel.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new BridgeValidationMessage("Invalid postal code", "postal"));
+        validationModel.Items[0].SetErrors(nameof(ValidationItem.Name), "Missing label");
+        using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validationModel, "validation",
+            (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new TestViewLocator());
+        var fixture = new GeneratedClientFixture(dataShape, typedReactive, toolkitTyped, validationHost.Transport.Call("validationSnapshot"));
 
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixture, Json)).ConfigureAwait(false);
     }
@@ -61,8 +68,24 @@ internal static class GeneratedClientFixtureExporter
         var exactIdWriteRequest = JsonSerializer.Serialize(exactIdWrite, Json);
         var exactIdWriteReply = host.Transport.Call("dataShapeWriteExactId", new(StringValue: exactIdWriteRequest));
 
+        var conflictRequest = JsonSerializer.Serialize(new { requestId = "generated-client-conflict",
+            expectedVersion = baselineVersion, expectedValue = "9007199254740993", value = "2" }, Json);
+        var conflictReply = host.Transport.Call("dataShapeWriteExactId", new(StringValue: conflictRequest));
+        using var applied = JsonDocument.Parse(exactIdWriteReply);
+        var nextVersion = applied.RootElement.GetProperty("receipt").GetProperty("snapshot").GetProperty("version").GetInt64();
+        var failedRequest = JsonSerializer.Serialize(new { requestId = "generated-client-post-apply",
+            expectedVersion = nextVersion, expectedValue = "9007199254740992", value = "-1" }, Json);
+        var failedReply = host.Transport.Call("dataShapeWriteExactId", new(StringValue: failedRequest));
+        using var afterFailure = JsonDocument.Parse(failedReply);
+        var payloadState = afterFailure.RootElement.GetProperty("state");
+        var unionRequest = JsonSerializer.Serialize(new { requestId = "generated-client-union",
+            expectedVersion = payloadState.GetProperty("__runicFields").GetProperty("payload").GetProperty("version").GetInt64(),
+            expectedValue = payloadState.GetProperty("payload"),
+            value = new Dictionary<string, object> { ["$case"] = "count", ["count"] = 42 } }, Json);
+        var unionReply = host.Transport.Call("dataShapeWritePayload", new(StringValue: unionRequest));
         return new(snapshot, duration, durationRequest, durationReply, amount, amountRequest, amountReply,
-            wholeRequest, wholeReply, exactIdWriteRequest, exactIdWriteReply);
+            wholeRequest, wholeReply, exactIdWriteRequest, exactIdWriteReply, conflictRequest, conflictReply, failedRequest, failedReply,
+            unionRequest, unionReply);
     }
 
     private static async Task<TypedReactiveTranscript> CreateTypedReactiveTranscriptAsync()
@@ -94,7 +117,8 @@ internal static class GeneratedClientFixtureExporter
         return new(snapshot, requestId, request, admission, waitRequest, completion, wrongMemberStatusRequest, wrongMemberStatus);
     }
 
-    private sealed record GeneratedClientFixture(DataShapeTranscript DataShape, TypedReactiveTranscript TypedReactive);
+    private sealed record GeneratedClientFixture(DataShapeTranscript DataShape, TypedReactiveTranscript TypedReactive,
+        ToolkitGeneratedClientTranscript ToolkitTyped, string ValidationSnapshot);
 
     private sealed record DataShapeTranscript(
         string Snapshot,
@@ -107,7 +131,9 @@ internal static class GeneratedClientFixtureExporter
         string WholeRequest,
         string WholeReply,
         string ExactIdWriteRequest,
-        string ExactIdWriteReply);
+        string ExactIdWriteReply,
+        string ConflictRequest, string ConflictReply, string FailedRequest, string FailedReply,
+        string UnionRequest, string UnionReply);
 
     private sealed record TypedReactiveTranscript(
         string Snapshot,

@@ -13,13 +13,16 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
 {
     private readonly object _gate = new();
     private readonly string _ownerId;
+    private readonly int _maximumRetainedReceiptBytes;
     private readonly Dictionary<object, ModelEntries> _models = new(ReferenceEqualityComparer.Instance);
     private bool _disposed;
 
-    internal BridgeFieldWriteRegistryProvider(string ownerId)
+    internal BridgeFieldWriteRegistryProvider(string ownerId, int maximumRetainedReceiptBytes = 262_144)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        if (maximumRetainedReceiptBytes < 0) throw new ArgumentOutOfRangeException(nameof(maximumRetainedReceiptBytes));
         _ownerId = ownerId;
+        _maximumRetainedReceiptBytes = maximumRetainedReceiptBytes;
     }
 
     // The first registration for a (model identity, contract, property) key
@@ -35,7 +38,9 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         int maximumRetainedWrites = 64,
         Func<T, string?>? validate = null,
         Func<T, T>? snapshot = null,
-        IEqualityComparer<T>? equalityComparer = null)
+        IEqualityComparer<T>? equalityComparer = null,
+        Func<T, string>? canonicalize = null,
+        Func<T, int>? retainedValueByteCount = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentException.ThrowIfNullOrWhiteSpace(contract);
@@ -49,7 +54,7 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         // model-turn -> provider ownership.
         var turn = BridgeModelTurn.For(model);
         return turn.Run(() => GetOrCreateCore(model, contract, property, read, apply,
-            maximumRetainedWrites, validate, snapshot, equalityComparer, turn));
+            maximumRetainedWrites, validate, snapshot, equalityComparer, canonicalize, retainedValueByteCount, turn));
     }
 
     private BridgeFieldWriteRegistry<T> GetOrCreateCore<T>(
@@ -62,6 +67,8 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         Func<T, string?>? validate,
         Func<T, T>? snapshot,
         IEqualityComparer<T>? equalityComparer,
+        Func<T, string>? canonicalize,
+        Func<T, int>? retainedValueByteCount,
         BridgeModelTurn turn)
     {
         lock (_gate)
@@ -83,7 +90,8 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
 
             var registry = new BridgeFieldWriteRegistry<T>(
                 $"{_ownerId}:{contract}:{property}", property, read, apply,
-                maximumRetainedWrites, validate, turn, snapshot, equalityComparer);
+                maximumRetainedWrites, validate, turn, snapshot, equalityComparer,
+                _maximumRetainedReceiptBytes, canonicalize, retainedValueByteCount);
             PropertyChangedEventHandler observer = (_, args) =>
             {
                 if (!string.IsNullOrEmpty(args.PropertyName) && args.PropertyName != property) return;

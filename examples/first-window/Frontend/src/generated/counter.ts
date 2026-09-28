@@ -95,7 +95,7 @@ function hydrate(wire: WireState): CounterState {
   };
 }
 interface BridgeReply { readonly ok: boolean; readonly state: WireState | null; readonly error: { readonly kind: BridgeErrorKind; readonly message: string } | null; }
-interface FieldWriteReply<T> extends BridgeReply { readonly receipt: FieldWriteReceipt<T> | null; }
+interface FieldWriteReply extends BridgeReply { readonly receipt: unknown; }
 interface RunicBridgeClient {
   isConnected(): boolean;
   call(name: string, ...args: unknown[]): Promise<string>;
@@ -205,7 +205,7 @@ function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route
   callbacks[callbackName] = sharedRoute.callback;
   return sharedRoute;
 }
-const bridgeContract = "FirstWindow.CounterViewModel:6340D4DB01F84F6D3CAC8D4CDDF949A7961B66C54F7E8959917935F20D714982";
+const bridgeContract = "FirstWindow.CounterViewModel:6DFAE25E8DF7EA19126F4533D46CAFDB19F44CFBED882E1FE2A4F19C222F8BAD";
 
 export function connectCounter(): Promise<CounterView> { return connectCounterAt("counter", false); }
 async function connectCounterAt(route: string, needsMount = false): Promise<CounterView> {
@@ -273,19 +273,31 @@ async function connectCounterAt(route: string, needsMount = false): Promise<Coun
     if (lease.disposed || !isLive()) throw new BridgeError("disconnected", "This view was disposed. Reconnect for the current state.");
     return unpack(reply);
   }
-  async function invokeFieldWrite<T>(name: string, payload: string): Promise<FieldWriteReceipt<T>> {
+  async function invokeFieldWrite<T>(name: string, payload: string, decode: (value: unknown) => T): Promise<FieldWriteReceipt<T>> {
     if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The Bridge is disconnected.");
     let json: string;
     try { json = await bridge.call(name, payload); }
     catch { throw new BridgeError(bridge.isConnected() ? "failed" : "disconnected", "The Bridge call could not complete."); }
     if (lease.disposed || !isLive()) throw new BridgeError("disconnected", "This view was disposed. Reconnect for the current state.");
-    let reply: FieldWriteReply<T>;
-    try { reply = JSON.parse(json) as FieldWriteReply<T>; }
+    let reply: FieldWriteReply;
+    try { reply = bridgeWire.object(JSON.parse(json), value => value) as unknown as FieldWriteReply; }
     catch { throw new BridgeError("failed", "The Bridge returned an invalid response."); }
     if (reply.state !== null) shared.accept(reply.state);
     if (!reply.ok) throw new BridgeError(reply.error?.kind ?? "failed", reply.error?.message ?? "The checked write failed.");
-    if (reply.receipt === null || typeof reply.receipt.kind !== "string") throw new BridgeError("failed", "The checked write returned no receipt.");
-    return reply.receipt;
+    try {
+      const receipt = bridgeWire.object(reply.receipt, value => value);
+      const baseline = (value: unknown): FieldBaseline<T> => bridgeWire.object(value, field => ({
+        value: decode(field.value), version: bridgeWire.integer(field.version, 0, Number.MAX_SAFE_INTEGER),
+      }));
+      switch (receipt.kind) {
+        case "applied": return { kind: "applied", snapshot: baseline(receipt.snapshot),
+          ...(receipt.validation === undefined ? {} : { validation: bridgeWire.string(receipt.validation) }) };
+        case "committed-with-error": return { kind: "committed-with-error", snapshot: baseline(receipt.snapshot), message: bridgeWire.string(receipt.message) };
+        case "conflict": return { kind: "conflict", incoming: baseline(receipt.incoming), message: bridgeWire.string(receipt.message) };
+        case "rejected": return { kind: "rejected", message: bridgeWire.string(receipt.message) };
+        default: throw new TypeError("Unknown checked write receipt kind.");
+      }
+    } catch { throw new BridgeError("failed", "The Bridge returned an invalid checked write receipt."); }
   }
   function parseOperationStatus<TResult>(json: string, requestId: string, decode: (value: unknown) => TResult): BridgeOperationStatus<TResult> {
     let status: BridgeOperationStatus<TResult>; try { status = JSON.parse(json) as BridgeOperationStatus<TResult>; } catch { throw new BridgeError("failed", "The operation service returned invalid JSON."); }
@@ -366,7 +378,7 @@ async function connectCounterAt(route: string, needsMount = false): Promise<Coun
       if (typeof options?.requestId !== "string" || options.requestId.trim().length === 0) throw new RangeError("A checked field requestId is required.");
       const baseline = options.baseline;
       if (typeof value !== "number" || !Number.isSafeInteger(value) || !baseline || typeof baseline.value !== "number" || !Number.isSafeInteger(baseline.value) || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError("A checked field value and baseline are required.");
-      return invokeFieldWrite<number>(`${route}WriteStep`, JSON.stringify({ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }));
+      return invokeFieldWrite<number>(`${route}WriteStep`, JSON.stringify({ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }), value => bridgeWire.integer(value, -2147483648, 2147483647));
     },
     async increment() {
       await awaitInteractionCapabilities();

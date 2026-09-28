@@ -16,7 +16,7 @@ public static class BridgeContractShape
         ArgumentNullException.ThrowIfNull(model);
         var views = DiscoverViews(model.Assembly);
         var models = views.Select(view => view.ModelType).Append(model).Distinct().ToArray();
-        var parts = new List<string> { "runic-bridge-contract-v3" };
+        var parts = new List<string> { "runic-bridge-contract-v4" };
         var nullability = new NullabilityInfoContext();
         foreach (var known in models.OrderBy(TypeName, StringComparer.Ordinal))
         {
@@ -48,9 +48,13 @@ public static class BridgeContractShape
             }
             if (kind == "command")
             {
-                var input = property.GetCustomAttribute<RunicCommandInputAttribute>(true)?.Input;
+                var toolkit = GenericContract(property.PropertyType, "CommunityToolkit.Mvvm.Input.IAsyncRelayCommand`1", "CommunityToolkit.Mvvm.Input.IRelayCommand`1");
+                var input = toolkit?.GenericTypeArguments[0] ?? property.GetCustomAttribute<RunicCommandInputAttribute>(true)?.Input;
                 if (input is not null)
-                    AppendType(parts, input, null, $"{model.Name}.{property.Name}.input", []);
+                    AppendType(parts, input, toolkit is null ? null : GenericAnnotation(nullability.Create(property), 0), $"{model.Name}.{property.Name}.input", []);
+                var isAsync = property.PropertyType.GetInterfaces().Append(property.PropertyType)
+                    .Any(type => type.FullName == "CommunityToolkit.Mvvm.Input.IAsyncRelayCommand");
+                parts.Add($"command-async:{TypeName(model)}:{property.Name}:{isAsync}");
                 continue;
             }
             if (kind == "interaction" && interaction is not null)
@@ -77,6 +81,8 @@ public static class BridgeContractShape
         var nullable = !declared.IsValueType ? annotation?.ReadState == NullabilityState.Nullable : Nullable.GetUnderlyingType(declared) is not null;
         var type = Nullable.GetUnderlyingType(declared) ?? declared;
         parts.Add($"wire:{path}:type:{TypeName(type)}:nullable:{nullable}");
+        if (typeof(INotifyDataErrorInfo).IsAssignableFrom(type))
+            parts.Add($"validation-errors:{path}:true");
         if (IsScalar(type)) return;
         if (type.IsEnum)
         {

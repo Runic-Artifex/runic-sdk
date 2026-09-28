@@ -46,6 +46,13 @@ try
         if (compositionType is not null && registerGlobally)
             throw new ArgumentException("--di-composition requires --no-registry.");
 
+        string[] cacheArguments = [$"aot={aot}", $"registry={registerGlobally}",
+            $"composition={compositionType}", $"reactiveui={CodegenOptions.ReactiveUiFlavor}"];
+        if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments))
+        {
+            Console.WriteLine("Bridge generation is up to date.");
+            return;
+        }
         var assembly = Assembly.LoadFrom(Path.GetFullPath(positional[1]));
         var viewTypes = new Dictionary<Type, List<Type>>();
         foreach (var type in assembly.GetTypes())
@@ -105,6 +112,7 @@ try
             if (File.Exists(compositionPath)) File.Delete(compositionPath);
         }
         else GenerateCompositionRegistration(compositionPath, compositionType, models);
+        BridgeGenerationCache.Save(positional[1], positional[2], positional[3], cacheArguments);
     }
     else
     {
@@ -325,11 +333,14 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
             throw new NotSupportedException($"{command.Name}: Bridge commands must end with Command.");
-        var toolkit = ToolkitCommandInspector.Inspect(command, fullType);
+        var toolkit = ToolkitCommandInspector.InspectContract(command);
         var reactive = ReactiveCommandInspector.InspectContract(command, CodegenOptions.ReactiveUiFlavor);
         var plainInput = command.GetCustomAttribute<RunicCommandInputAttribute>(true);
         var plan = toolkit is { } existing
-            ? new GeneratedCommandPlan(existing.HasStringArgument, existing.IsAsync, existing.Descriptor)
+            ? new GeneratedCommandPlan(false, existing.IsAsync, ToolkitContract: existing,
+                InputGraph: existing.Input is { } toolkitInput ? BridgeTypeGraph.Discover(toolkitInput,
+                    command.PropertyType.IsGenericType ? nullability.Create(command).GenericTypeArguments.FirstOrDefault() : null,
+                    $"{model.Name}.{command.Name}.input") : null)
             : reactive is { } contract
                 ? GeneratedCommandPlan.Reactive(contract,
                     contract.HasInput ? BridgeTypeGraph.Discover(contract.Input, rootPath: $"{model.Name}.{command.Name}.input") : null,
@@ -356,6 +367,10 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         throw new ArgumentException("The public Bridge name must be a C#/TypeScript identifier.");
     var prefix = LowerFirst(shortName);
     var hasErrors = typeof(INotifyDataErrorInfo).IsAssignableFrom(model);
+    var hasValidation = hasErrors || valueProperties.Values.Any(graph =>
+        graph.Nodes.Any(node => typeof(INotifyDataErrorInfo).IsAssignableFrom(node.Type)));
+    if (hasValidation && properties.Any(property => WireName(property) == "validation"))
+        throw new NotSupportedException($"{model.Name}: validation is reserved for generated validation state. Alias the model property.");
     // Checked writes require a WindowContentSession-owned provider. Keep the
     // established global Bridge surface direct until it gains an equivalent
     // explicit window owner. The window slice supports the scalar codecs that
@@ -428,8 +443,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("        ],");
     }
     else cs.AppendLine("        null,");
-    cs.AppendLine("        dataSubscriptions:");
-    BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties);
+    cs.AppendLine("        dataSubscriptions: DataMetadata");
     cs.AppendLine("        )");
     cs.AppendLine("    {");
     if (hasContent) cs.AppendLine("        _content = content!; _owner = vm;");
@@ -440,6 +454,9 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     cs.AppendLine("    }");
     cs.AppendLine();
+    cs.AppendLine("    private static readonly global::Runic.Application.Views.BridgeDataSubscriptionMember[] DataMetadata =");
+    BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties);
+    cs.AppendLine("    ;");
     foreach (var (property, graph) in valueProperties)
     {
         graph.AppendCSharpCodec(cs, property.Name + "ValueCodec");
@@ -574,6 +591,11 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (hasErrors)
             cs.AppendLine($"        global::Runic.Application.Views.BridgeJson.WriteErrors(writer, vm, \"{property.Name}\", \"{jsonName}Errors\");");
     }
+    if (hasValidation)
+    {
+        cs.AppendLine("        writer.WritePropertyName(\"validation\");");
+        cs.AppendLine("        global::Runic.Application.Views.BridgeValidation.Write(writer, vm, DataMetadata);");
+    }
     foreach (var command in commands)
     {
         var plan = commandPlans[command];
@@ -629,7 +651,9 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     if (hasContent) ts.AppendLine();
     BridgeTypeScriptWireEmitter.AppendRuntime(ts);
+    if (hasValidation) ValidationTypeScriptEmitter.AppendRuntime(ts);
     ts.AppendLine($"export interface {shortName}State {{");
+    if (hasValidation) ts.AppendLine("  readonly validation: BridgeValidationState;");
     ts.AppendLine("  readonly revision: number;");
     foreach (var property in properties)
     {
@@ -735,40 +759,20 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("export class BridgeError extends Error {");
     ts.AppendLine("  constructor(readonly kind: BridgeErrorKind, message: string) { super(message); this.name = \"BridgeError\"; }");
     ts.AppendLine("}");
-    if (Environment.ProcessId < 0)
-    {
-    ts.AppendLine("export type BridgeOperationStatusKind = \"running\" | \"succeeded\" | \"failed\" | \"cancelled\" | \"expired\" | \"unknown\";");
-    ts.AppendLine("export interface BridgeOperationStatus<TResult = never> { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationStatusKind; readonly error?: { readonly kind: \"failed\"; readonly message: string }; readonly result?: TResult; readonly delivery?: { readonly kind: \"result-too-large\" | \"stream-overflow\"; readonly message: string }; readonly stream?: true; }");
-    ts.AppendLine("export type BridgeOperationCancelKind = \"cancellation-requested\" | \"not-running\" | \"unknown\" | \"expired\";");
-    ts.AppendLine("export interface BridgeOperationCancelResult { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationCancelKind; }");
-    ts.AppendLine("export class BridgeOperationUncertainError extends Error {");
-    ts.AppendLine("  constructor(readonly contract: string, readonly requestId: string, message: string) { super(message); this.name = \"BridgeOperationUncertainError\"; }");
-    ts.AppendLine("}");
-    foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
-    {
-        var operationName = command.Name[..^"Command".Length];
-        var resultType = commandPlans[command].ResultGraph?.TypeScriptType() ?? "never";
-        ts.AppendLine($"export interface {shortName}{operationName}Operation {{");
-        ts.AppendLine("  readonly requestId: string;");
-        ts.AppendLine($"  status(): Promise<BridgeOperationStatus<{resultType}>>;");
-        ts.AppendLine($"  readonly completion: Promise<BridgeOperationStatus<{resultType}>>;");
-        ts.AppendLine($"  wait(): Promise<BridgeOperationStatus<{resultType}>>;");
-        ts.AppendLine("  cancel(): Promise<BridgeOperationCancelResult>;");
-        ts.AppendLine("}");
-    }
-    }
     OperationTypeScriptEmitter.AppendDefinitions(ts, operationPlans, shortName);
     // The public state is the decoded TypeScript contract. The transport is
     // JSON, so every graph-backed field must remain unknown until hydrate
     // validates and converts it (for example Int64 strings to bigint).
-    if (hasContent || needsCheckedWriter || valueProperties.Count > 0)
+    if (hasContent || needsCheckedWriter || valueProperties.Count > 0 || hasValidation)
     {
         var names = contentBindings.Select(entry => $"\"{WireName(entry.Key)}\"")
             .Concat(valueProperties.Keys.Select(property => $"\"{WireName(property)}\""))
             .Distinct(StringComparer.Ordinal)
             .ToList();
+        if (hasValidation) names.Add("\"validation\"");
         if (names.Count == 0) names.Add("never");
         ts.AppendLine($"type WireState = Omit<{shortName}State, {string.Join(" | ", names)}> & {{");
+        if (hasValidation) ts.AppendLine("  readonly validation: unknown;");
         foreach (var property in valueProperties.Keys)
             ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: unknown;");
         foreach (var (property, pages) in contentProperties)
@@ -796,6 +800,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (needsCheckedWriter) ts.AppendLine("  const { __runicFields: _runicFields, ...state } = wire;");
         ts.AppendLine("  return {");
         ts.AppendLine(needsCheckedWriter ? "    ...state," : "    ...wire,");
+        if (hasValidation) ts.AppendLine("    validation: decodeBridgeValidation(wire.validation),");
         foreach (var (property, graph) in valueProperties)
         {
             var field = WireName(property);
@@ -832,7 +837,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     ts.AppendLine($"interface BridgeReply {{ readonly ok: boolean; readonly state: WireState | null; readonly error: {{ readonly kind: BridgeErrorKind; readonly message: string }} | null; }}");
     if (needsCheckedWriter)
-        ts.AppendLine("interface FieldWriteReply<T> extends BridgeReply { readonly receipt: FieldWriteReceipt<T> | null; }");
+        ts.AppendLine("interface FieldWriteReply extends BridgeReply { readonly receipt: unknown; }");
     ts.AppendLine("interface RunicBridgeClient {");
     ts.AppendLine("  isConnected(): boolean;");
     ts.AppendLine("  call(name: string, ...args: unknown[]): Promise<string>;");
@@ -1010,129 +1015,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    if (lease.disposed || !isLive()) throw new BridgeError(\"disconnected\", \"This view was disposed. Reconnect for the current state.\");");
     ts.AppendLine("    return unpack(reply);");
     ts.AppendLine("  }");
-    if (needsCheckedWriter)
-    {
-        ts.AppendLine("  async function invokeFieldWrite<T>(name: string, payload: string): Promise<FieldWriteReceipt<T>> {");
-        ts.AppendLine("    if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError(\"disconnected\", \"The Bridge is disconnected.\");");
-        ts.AppendLine("    let json: string;");
-        ts.AppendLine("    try { json = await bridge.call(name, payload); }");
-        ts.AppendLine("    catch { throw new BridgeError(bridge.isConnected() ? \"failed\" : \"disconnected\", \"The Bridge call could not complete.\"); }");
-        ts.AppendLine("    if (lease.disposed || !isLive()) throw new BridgeError(\"disconnected\", \"This view was disposed. Reconnect for the current state.\");");
-        ts.AppendLine("    let reply: FieldWriteReply<T>;");
-        ts.AppendLine("    try { reply = JSON.parse(json) as FieldWriteReply<T>; }");
-        ts.AppendLine("    catch { throw new BridgeError(\"failed\", \"The Bridge returned an invalid response.\"); }");
-        ts.AppendLine("    if (reply.state !== null) shared.accept(reply.state);");
-        ts.AppendLine("    if (!reply.ok) throw new BridgeError(reply.error?.kind ?? \"failed\", reply.error?.message ?? \"The checked write failed.\");");
-        ts.AppendLine("    if (reply.receipt === null || typeof reply.receipt.kind !== \"string\") throw new BridgeError(\"failed\", \"The checked write returned no receipt.\");");
-        ts.AppendLine("    return reply.receipt;");
-        ts.AppendLine("  }");
-    }
-    if (Environment.ProcessId < 0)
-    {
-    ts.AppendLine("  function operationKey(requestId: string): string { return `${contractId.length}:${contractId}${requestId.length}:${requestId}`; }");
-    ts.AppendLine("  function reserveOperation(key: string): void {");
-    ts.AppendLine("    const maximumRetainedOperations = 128;");
-    ts.AppendLine("    while (runtime.operations.size >= maximumRetainedOperations) {");
-    ts.AppendLine("      const candidate = [...runtime.operations.entries()].find(([, operation]) => operation.state === \"accepted\");");
-    ts.AppendLine("      if (!candidate)");
-    ts.AppendLine("        throw new BridgeOperationUncertainError(contractId, key, \"Pending operation identities are at capacity. Reconcile them before starting another operation.\");");
-    ts.AppendLine("      runtime.operations.delete(candidate[0]);");
-    ts.AppendLine("    }");
-    ts.AppendLine("  }");
-    ts.AppendLine("  function parseOperationStatus(json: string, requestId: string): BridgeOperationStatus {");
-    ts.AppendLine("    let status: BridgeOperationStatus;");
-    ts.AppendLine("    try { status = JSON.parse(json) as BridgeOperationStatus; }");
-    ts.AppendLine("    catch { throw new BridgeError(\"failed\", \"The operation service returned an invalid response.\"); }");
-    ts.AppendLine("    if (status.contract !== contractId || status.requestId !== requestId) throw new BridgeError(\"failed\", \"The operation service returned a mismatched identity.\");");
-    ts.AppendLine("    if (!([\"running\", \"succeeded\", \"failed\", \"cancelled\", \"expired\", \"unknown\"] as const).includes(status.kind)) throw new BridgeError(\"failed\", \"The operation service returned an unknown status.\");");
-    ts.AppendLine("    return status;");
-    ts.AppendLine("  }");
-    ts.AppendLine("  function operationFromInline(value: unknown, requestId: string): BridgeOperationStatus | undefined {");
-    ts.AppendLine("    if (value === null || typeof value !== \"object\") return undefined;");
-    ts.AppendLine("    const status = value as BridgeOperationStatus;");
-    ts.AppendLine("    if (status.contract !== contractId || status.requestId !== requestId) throw new BridgeError(\"failed\", \"The operation admission returned a mismatched terminal identity.\");");
-    ts.AppendLine("    if (!([\"succeeded\", \"failed\", \"cancelled\"] as const).includes(status.kind as \"succeeded\" | \"failed\" | \"cancelled\")) throw new BridgeError(\"failed\", \"The operation admission returned an invalid terminal result.\");");
-    ts.AppendLine("    return status;");
-    ts.AppendLine("  }");
-    ts.AppendLine("  async function operationStatus(requestId: string, wait: boolean): Promise<BridgeOperationStatus> {");
-    ts.AppendLine("    const identity = JSON.stringify({ contract: contractId, requestId });");
-    ts.AppendLine("    let reply: string;");
-    ts.AppendLine("    try { reply = await bridge.call(wait ? \"__runicOperationWait\" : \"__runicOperationStatus\", identity); }");
-    ts.AppendLine("    catch { throw new BridgeOperationUncertainError(contractId, requestId, \"The operation status could not be observed.\"); }");
-    ts.AppendLine("    return parseOperationStatus(reply, requestId);");
-    ts.AppendLine("  }");
-    ts.AppendLine("  async function recoverAdmission(requestId: string): Promise<BridgeOperationStatus> {");
-    ts.AppendLine("    const status = await operationStatus(requestId, false);");
-    ts.AppendLine("    if (status.kind === \"unknown\" || status.kind === \"expired\")");
-    ts.AppendLine("      throw new BridgeOperationUncertainError(contractId, requestId, \"The admission reply was lost. Do not start the operation again automatically.\");");
-    ts.AppendLine("    return status;");
-    ts.AppendLine("  }");
-    foreach (var command in commands.Where(command => !commandPlans[command].HasStringArgument && commandPlans[command].IsAsync))
-    {
-        var operationName = command.Name[..^"Command".Length];
-        var methodName = LowerFirst(operationName);
-        ts.AppendLine($"  function {methodName}Operation(requestId: string, terminal?: BridgeOperationStatus): {shortName}{operationName}Operation {{");
-        ts.AppendLine("    const completion = terminal === undefined ? operationStatus(requestId, true) : Promise.resolve(terminal);");
-        ts.AppendLine("    return {");
-        ts.AppendLine("      requestId,");
-        ts.AppendLine("      status: () => terminal === undefined ? operationStatus(requestId, false) : Promise.resolve(terminal),");
-        ts.AppendLine("      completion,");
-        ts.AppendLine("      wait: () => completion,");
-        ts.AppendLine("      async cancel() {");
-        ts.AppendLine("        const identity = JSON.stringify({ contract: contractId, requestId });");
-        ts.AppendLine("        let reply: string;");
-        ts.AppendLine("        try { reply = await bridge.call(\"__runicOperationCancel\", identity); }");
-        ts.AppendLine("        catch { throw new BridgeOperationUncertainError(contractId, requestId, \"The cancellation request could not be observed.\"); }");
-        ts.AppendLine("        let result: BridgeOperationCancelResult;");
-        ts.AppendLine("        try { result = JSON.parse(reply) as BridgeOperationCancelResult; }");
-        ts.AppendLine("        catch { throw new BridgeError(\"failed\", \"The cancellation service returned an invalid response.\"); }");
-        ts.AppendLine("        if (result.contract !== contractId || result.requestId !== requestId || !([\"cancellation-requested\", \"not-running\", \"unknown\", \"expired\"] as const).includes(result.kind)) throw new BridgeError(\"failed\", \"The cancellation service returned a mismatched result.\");");
-        ts.AppendLine("        return result;");
-        ts.AppendLine("      },");
-        ts.AppendLine("    };");
-        ts.AppendLine("  }");
-        ts.AppendLine($"  async function start{operationName}WithRequestId(requestId: string): Promise<{shortName}{operationName}Operation> {{");
-        ts.AppendLine("    if (requestId.length === 0) throw new RangeError(\"Operation requestId is required.\");");
-        ts.AppendLine("    const key = operationKey(requestId);");
-        ts.AppendLine("    const prior = runtime.operations.get(key);");
-        ts.AppendLine("    if (prior?.state === \"uncertain\") throw new BridgeOperationUncertainError(contractId, requestId, \"Admission is uncertain. Recover this request ID without issuing Start again.\");");
-        ts.AppendLine($"    if (prior?.admission) return prior.admission as Promise<{shortName}{operationName}Operation>;");
-        ts.AppendLine("    if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError(\"disconnected\", \"The Bridge is disconnected.\");");
-        ts.AppendLine("    reserveOperation(key);");
-        ts.AppendLine("    const tracked: SharedOperation = { contract: contractId, requestId, state: \"pending\", admission: undefined, handle: undefined };");
-        ts.AppendLine("    runtime.operations.set(key, tracked);");
-        ts.AppendLine("    const admission = (async () => {");
-        ts.AppendLine("      let reply: string;");
-        ts.AppendLine($"      try {{ reply = await bridge.call(`${{route}}Start{operationName}`, requestId); }}");
-        ts.AppendLine("      catch { try { const recoveredStatus = await recoverAdmission(requestId); const recovered = " + methodName + "Operation(requestId, recoveredStatus.kind === \"succeeded\" || recoveredStatus.kind === \"failed\" || recoveredStatus.kind === \"cancelled\" ? recoveredStatus : undefined); tracked.state = \"accepted\"; tracked.handle = recovered; return recovered; } catch (error) { tracked.state = \"uncertain\"; throw error; } }");
-        ts.AppendLine("      let result: { readonly contract?: string; readonly requestId?: string; readonly kind?: string; readonly status?: string; readonly reason?: string; readonly terminal?: unknown };");
-        ts.AppendLine("      try { result = JSON.parse(reply) as { readonly contract?: string; readonly requestId?: string; readonly kind?: string; readonly status?: string; readonly reason?: string; readonly terminal?: unknown }; }");
-        ts.AppendLine("      catch { tracked.state = \"uncertain\"; throw new BridgeOperationUncertainError(contractId, requestId, \"The operation admission returned invalid JSON. Recover this request ID without starting it again.\"); }");
-        ts.AppendLine("      const requiresIdentity = result.kind === \"accepted\" || result.kind === \"duplicate\" || result.kind === \"expired\" || result.kind === \"unknown\";");
-        ts.AppendLine("      if ((requiresIdentity && (result.contract !== contractId || result.requestId !== requestId)) || ((result.contract !== undefined || result.requestId !== undefined) && (result.contract !== contractId || result.requestId !== requestId))) { tracked.state = \"uncertain\"; throw new BridgeOperationUncertainError(contractId, requestId, \"The operation admission returned a mismatched identity. Recover this request ID without starting it again.\"); }");
-        ts.AppendLine("      if (result.kind === \"accepted\" || result.kind === \"duplicate\") {");
-        ts.AppendLine("        let terminal: BridgeOperationStatus | undefined; try { terminal = operationFromInline(result.terminal, requestId); } catch (error) { tracked.state = \"uncertain\"; throw error; } const handle = " + methodName + "Operation(requestId, terminal); tracked.state = \"accepted\"; tracked.handle = handle; return handle;");
-        ts.AppendLine("      }");
-        ts.AppendLine("      if (result.kind === \"expired\" || result.kind === \"unknown\")");
-        ts.AppendLine("        { tracked.state = \"uncertain\"; throw new BridgeOperationUncertainError(contractId, requestId, \"The operation admission is no longer observable. Do not start it again automatically.\"); }");
-        ts.AppendLine("      if (runtime.operations.get(key) === tracked) runtime.operations.delete(key);");
-        ts.AppendLine("      throw new BridgeError(result.kind === \"disconnected\" ? \"disconnected\" : result.kind === \"cancelled\" ? \"cancelled\" : result.kind === \"rejected\" ? \"rejected\" : \"failed\", result.reason ?? \"The operation was not accepted.\");");
-        ts.AppendLine("    })();");
-        ts.AppendLine("    tracked.admission = admission;");
-        ts.AppendLine("    return admission;");
-        ts.AppendLine("  }");
-        ts.AppendLine($"  async function recover{operationName}WithRequestId(requestId: string): Promise<{shortName}{operationName}Operation> {{");
-        ts.AppendLine("    if (requestId.length === 0) throw new RangeError(\"Operation requestId is required.\");");
-        ts.AppendLine("    if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError(\"disconnected\", \"The Bridge is disconnected.\");");
-        ts.AppendLine("    const status = await recoverAdmission(requestId);");
-        ts.AppendLine("    const terminal = status.kind === \"succeeded\" || status.kind === \"failed\" || status.kind === \"cancelled\" ? status : undefined;");
-        ts.AppendLine("    const handle = " + methodName + "Operation(requestId, terminal);");
-        ts.AppendLine("    const key = operationKey(requestId);");
-        ts.AppendLine("    runtime.operations.set(key, { contract: contractId, requestId, state: \"accepted\", admission: Promise.resolve(handle), handle });");
-        ts.AppendLine("    return handle;");
-        ts.AppendLine("  }");
-    }
-    }
+    if (needsCheckedWriter) CheckedWriteTypeScriptEmitter.AppendRuntime(ts);
     OperationTypeScriptEmitter.AppendRuntime(ts, operationPlans, shortName);
     var interactionRuntime = InteractionCodeEmitter.TypeScriptRuntime(interactions, shortName);
     if (interactions.Length > 0)
@@ -1253,7 +1136,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var valueGraph = valueProperties[property];
         var encodedBaseline = valueGraph.EncodeTypeScript("baseline.value");
         var encodedValue = valueGraph.EncodeTypeScript("value");
-        ts.AppendLine($"      return invokeFieldWrite<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}));");
+        ts.AppendLine($"      return invokeFieldWrite<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}), value => {valueGraph.EmitTypeScriptDecoder("value")});");
         ts.AppendLine("    },");
     }
     foreach (var command in commands)
@@ -1340,8 +1223,8 @@ static class CodegenOptions
     internal static ReactiveUiFlavor ReactiveUiFlavor { get; set; } = ReactiveUiFlavor.Default;
 }
 
-// This plan keeps toolkit commands on their established source form while the
-// ReactiveUI path carries the input/result graph needed by generated codecs.
+// Every supported command adapter shares input graphs and operation emission.
+// Only the framework-specific execution contract remains in its inspector.
 sealed record GeneratedCommandPlan(
     bool HasStringArgument,
     bool IsAsync,
@@ -1349,7 +1232,8 @@ sealed record GeneratedCommandPlan(
     ReactiveCommandContract? ReactiveContract = null,
     BridgeTypeGraph? InputGraph = null,
     BridgeTypeGraph? ResultGraph = null,
-    bool IsPlainICommand = false)
+    bool IsPlainICommand = false,
+    ToolkitCommandContract? ToolkitContract = null)
 {
     internal bool HasArgument => InputGraph is not null || HasStringArgument;
     internal static GeneratedCommandPlan Reactive(ReactiveCommandContract contract,
@@ -1363,6 +1247,15 @@ sealed record GeneratedCommandPlan(
     internal string DescriptorFor(PropertyInfo property, string modelType)
     {
         if (LegacyDescriptor is not null) return LegacyDescriptor;
+        if (ToolkitContract is { } toolkit)
+        {
+            var toolkitType = toolkit.Input is null ? null : BridgeTypeGraph.CSharpType(toolkit.Input);
+            var readArgument = toolkit.HasInput
+                ? $"ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}" : null;
+            var encodeArgument = toolkit.HasInput
+                ? $"EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({toolkitType})argument!))" : null;
+            return ToolkitCommandInspector.DescriptorFor(property, modelType, toolkit, toolkitType, readArgument, encodeArgument);
+        }
         if (IsPlainICommand)
         {
             var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");

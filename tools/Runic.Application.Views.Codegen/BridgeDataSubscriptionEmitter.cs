@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using Runic.Application.Views;
+using System.Text.Json.Serialization;
 
 // Emits the delegate graph consumed by BridgeDataSubscriptions. The runtime
 // follows only these direct accesses, so nested DTO/list changes stay AOT-safe.
@@ -14,7 +16,7 @@ internal static class BridgeDataSubscriptionEmitter
         foreach (var (property, graph) in properties)
         {
             var getter = $"static owner => (({modelType})owner).{property.Name}";
-            AppendMember(source, property.Name, property.Name, getter, graph.Root, 12);
+            AppendMember(source, WireName(property), property.Name, getter, graph.Root, 12);
             source.AppendLine(",");
         }
         source.AppendLine("        ]");
@@ -37,9 +39,17 @@ internal static class BridgeDataSubscriptionEmitter
             source.Append($"{pad}]");
         }
         if (node.Kind is BridgeWireKind.Array or BridgeWireKind.List)
+        {
             source.Append(", enumerateChildren: static value => (global::System.Collections.IEnumerable)value");
+            source.Append(", enumerateValidationChildren: static value => global::Runic.Application.Views.BridgeValidation.EnumerateIndexed((global::System.Collections.IEnumerable)value)");
+        }
         else if (node.Kind is BridgeWireKind.StringDictionary)
-            source.Append($", enumerateChildren: static value => global::System.Linq.Enumerable.Select((global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, {BridgeTypeGraph.CSharpType(node.Value!.Type)}>>)value, static entry => (object?)entry.Value)");
+        {
+            var valueType = BridgeTypeGraph.CSharpType(node.Value!.Type);
+            source.Append($", enumerateChildren: static value => global::System.Linq.Enumerable.Select((global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, {valueType}>>)value, static entry => (object?)entry.Value)");
+            source.Append($", enumerateValidationChildren: static value => global::Runic.Application.Views.BridgeValidation.EnumerateDictionary((global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, {valueType}>>)value)");
+        }
+        if (name == "$items") source.Append(", isPathTransparent: true");
         source.Append($", propertyName: {Quote(propertyName)})");
     }
 
@@ -69,6 +79,11 @@ internal static class BridgeDataSubscriptionEmitter
             : Children(element);
 
     private static string Quote(string value) => JsonSerializer.Serialize(value);
+
+    private static string WireName(PropertyInfo property) =>
+        property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name ??
+        property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ??
+        char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
 
     private sealed record Child(string Name, string PropertyName, string Getter, BridgeTypeNode Node);
 }

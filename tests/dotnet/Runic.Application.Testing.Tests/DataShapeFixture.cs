@@ -49,8 +49,13 @@ public sealed class DataShapeMoneyCodec : IRunicBridgeCodec<DataShapeMoney>
 public sealed class DataShapeViewModel : ReactiveObject
 {
     private int? _optional;
+    private long _exactId = 9_007_199_254_740_993;
     [RunicAlias("exact-id")]
-    public long ExactId { get; set; } = 9_007_199_254_740_993;
+    public long ExactId
+    {
+        get => _exactId;
+        set { _exactId = value; if (value == -1) throw new InvalidOperationException("Fixture post-apply failure."); }
+    }
     public decimal Amount { get; set; } = 1234567890.123456789m;
     public DateOnly Day { get; set; } = new(2026, 9, 28);
     public DateTime When { get; set; } = new(2026, 9, 28, 10, 11, 12, DateTimeKind.Unspecified);

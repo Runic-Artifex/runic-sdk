@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Collections;
+using System.ComponentModel;
 using System.Text.Json;
 using ReactiveUI;
 using Runic.Application.Views;
@@ -9,6 +11,17 @@ namespace ReactiveUi25AotProof;
 public sealed record AotSaveRequest(string DocumentId, long ExpectedVersion, decimal Amount, DateTime When);
 public sealed record AotSaveResult(string DocumentId, long SavedVersion, decimal Amount, DateTime When);
 public sealed record AotStateItem(string? Label, long ExactId, DateOnly Day, TimeSpan Duration);
+
+public sealed class AotValidationItem : INotifyDataErrorInfo
+{
+    public string Text { get; set; } = string.Empty;
+    [RunicIgnore]
+    public bool HasErrors => true;
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
+    public IEnumerable GetErrors(string? propertyName) => propertyName == nameof(Text)
+        ? new[] { new BridgeValidationMessage("Required", "required", "error", [nameof(Text)]) }
+        : Array.Empty<BridgeValidationMessage>();
+}
 
 public sealed class AotProofViewModel : ReactiveObject
 {
@@ -22,6 +35,7 @@ public sealed class AotProofViewModel : ReactiveObject
     public long ExactId { get; set; } = 9_007_199_254_740_993;
     public decimal Amount { get; set; } = 1234567890.123456789m;
     public int? Optional { get; set; }
+    public AotValidationItem ValidationItem { get; } = new();
     public DateTime When { get; set; } = new(2026, 9, 28, 10, 11, 12, DateTimeKind.Unspecified);
     public IReadOnlyList<AotStateItem> Items { get; } = [new("item", 9_007_199_254_740_993, new DateOnly(2026, 9, 28), TimeSpan.FromTicks(123456789))];
     public IReactiveCommand<AotSaveRequest, AotSaveResult> SaveCommand { get; }

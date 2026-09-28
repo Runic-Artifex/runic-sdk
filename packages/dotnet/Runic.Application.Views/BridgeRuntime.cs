@@ -148,7 +148,8 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 {
 }
 
-public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal where T : INotifyPropertyChanged
+public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
+    IBridgeSnapshotBatchParticipant where T : INotifyPropertyChanged
 {
     private const int MaximumFieldWritePayloadLength = 64 * 1024;
     private const int MaximumFieldWriteRequestIdLength = 256;
@@ -267,7 +268,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                         new CheckedPropertyBinding(descriptor, content.FieldWrites.GetOrCreate(
                             _vm, contract, descriptor.Name,
                             () => descriptor.Get(_vm), value => descriptor.Set(_vm, value),
-                            snapshot: descriptor.Snapshot, equalityComparer: descriptor.Comparer))).ToArray();
+                            snapshot: descriptor.Snapshot, equalityComparer: descriptor.Comparer,
+                            canonicalize: value => EncodeCheckedValue(value, descriptor),
+                            retainedValueByteCount: value => Encoding.UTF8.GetByteCount(EncodeCheckedValue(value, descriptor))))).ToArray();
                 }
             }
             _vm.PropertyChanged += OnChanged;
@@ -381,7 +384,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 var value = ReadCheckedValue(root.GetProperty("value"), property.Descriptor);
                 request = new BridgeFieldWriteRequest<object?>(requestId, expectedVersion, expectedValue, value);
             }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
+            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException or KeyNotFoundException or OverflowException)
             {
                 return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write."));
             }
@@ -410,6 +413,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         CheckedFieldValueKind.Json => descriptor.Read!(value),
         _ => throw new FormatException("The checked field value does not match its generated type."),
     };
+
+    private static string EncodeCheckedValue(object? value, CheckedPropertyDescriptor<T> descriptor) =>
+        BridgeWire.EncodeCanonical(writer => WriteCheckedValue(writer, value, descriptor));
 
     private static void WriteCheckedValue(Utf8JsonWriter writer, object? value, CheckedPropertyDescriptor<T> descriptor)
     {
@@ -753,7 +759,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => Publish();
     private void OnCanExecuteChanged(object? sender, EventArgs e) => Publish();
 
-    private void Publish() => _modelTurn.Run(PublishCore);
+    private void Publish()
+    {
+        _modelTurn.Run(PublishCore);
+    }
+
+    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.Run(PublishBatchedSnapshotCore);
 
     private void PublishCore()
     {
@@ -761,16 +772,36 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         {
             if (IsInactive) return;
             _revision++;
-            try
-            {
-                var state = WriteSnapshot();
-                if (!IsInactive) _delivery.Enqueue(state);
-            }
-            catch (BridgeSnapshotDetachedException)
-            {
-                // The session detached this route after this callback started.
-                // There is no current endpoint to publish to.
-            }
+            // Capture is more expensive than queue delivery. A batch defers
+            // only capture, never the revision: route replies that serialize
+            // state during the batch must remain newer than their predecessor.
+            if (BridgeSnapshotBatch.TryDefer(_vm, this)) return;
+            PublishSnapshotCore();
+        }
+    }
+
+    private void PublishBatchedSnapshotCore()
+    {
+        lock (_modelGate)
+        {
+            if (IsInactive) return;
+            // Each notification already advanced the revision in PublishCore.
+            // The outer batch only serializes the final revision once.
+            PublishSnapshotCore();
+        }
+    }
+
+    private void PublishSnapshotCore()
+    {
+        try
+        {
+            var state = WriteSnapshot();
+            if (!IsInactive) _delivery.Enqueue(state);
+        }
+        catch (BridgeSnapshotDetachedException)
+        {
+            // The session detached this route after this callback started.
+            // There is no current endpoint to publish to.
         }
     }
 

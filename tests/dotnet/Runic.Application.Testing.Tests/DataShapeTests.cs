@@ -10,6 +10,13 @@ internal static class DataShapeTests
         var model = new DataShapeViewModel();
         using var host = new RunicWindowTestHost<DataShapeViewModel>(model, "dataShape",
             (transport, content, vm) => new DataShapeBridge(transport, vm, content: content), new TestViewLocator());
+        foreach (var malformed in new[] { "{}", "{\"requestId\":\"missing\"}", "{\"requestId\":\"overflow\",\"expectedVersion\":999999999999999999999999}" })
+        {
+            using var reply = JsonDocument.Parse(host.Transport.Call("dataShapeWriteExactId", new(StringValue: malformed)));
+            Require(!reply.RootElement.GetProperty("ok").GetBoolean()
+                && reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "rejected",
+                "Malformed checked write escaped the normal rejected response.");
+        }
         using var snapshot = host.Snapshot();
         var state = snapshot.RootElement.GetProperty("state");
         Require(state.GetProperty("exact-id").GetString() == "9007199254740993", "Root RunicAlias was not emitted as an exact Int64 string.");

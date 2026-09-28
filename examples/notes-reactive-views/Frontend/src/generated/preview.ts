@@ -187,7 +187,7 @@ function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route
   callbacks[callbackName] = sharedRoute.callback;
   return sharedRoute;
 }
-const bridgeContract = "NotesReactiveViews.PreviewViewModel:7ED0E200F9F8FC011CC4B8E9C64EEF41A3CF01ADD3040C0DB796642FF58201B7";
+const bridgeContract = "NotesReactiveViews.PreviewViewModel:9DD4712CD2ADDAE90C81157400DA366A04322CAA69E64D7CFFB385CD9C66065E";
 
 export function connectPreview(): Promise<PreviewView> { return connectPreviewAt("preview", false); }
 async function connectPreviewAt(route: string, needsMount = false): Promise<PreviewView> {

@@ -15,7 +15,9 @@ public sealed class BridgeDataSubscriptionMember
         Func<object, object?> read,
         IReadOnlyList<BridgeDataSubscriptionMember>? children = null,
         Func<object, IEnumerable?>? enumerateChildren = null,
-        string? propertyName = null)
+        string? propertyName = null,
+        Func<object, IEnumerable<BridgeValidationChild>>? enumerateValidationChildren = null,
+        bool isPathTransparent = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(read);
@@ -24,6 +26,8 @@ public sealed class BridgeDataSubscriptionMember
         Read = read;
         Children = children ?? [];
         EnumerateChildren = enumerateChildren;
+        EnumerateValidationChildren = enumerateValidationChildren;
+        IsPathTransparent = isPathTransparent;
     }
 
     internal string Name { get; }
@@ -36,6 +40,12 @@ public sealed class BridgeDataSubscriptionMember
     // INotifyCollectionChanged are supported as snapshot values: replace the
     // owning property (or notify it) after changing their contents.
     internal Func<object, IEnumerable?>? EnumerateChildren { get; }
+
+    // The validation traversal needs each collection's wire path segment as
+    // well as its value. Subscription reconciliation intentionally retains
+    // only values, so this generated delegate stays separate.
+    internal Func<object, IEnumerable<BridgeValidationChild>>? EnumerateValidationChildren { get; }
+    internal bool IsPathTransparent { get; }
 }
 
 // Own this alongside the bridge instance. The retained graph gives each
@@ -53,6 +63,8 @@ internal sealed class BridgeDataSubscriptions : IDisposable
     private readonly Dictionary<object, PropertyWatch> _propertyWatches =
         new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<INotifyCollectionChanged, CollectionWatch> _collectionWatches =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<INotifyDataErrorInfo, ErrorWatch> _errorWatches =
         new(ReferenceEqualityComparer.Instance);
     private readonly NodeKey _rootKey;
     private bool _disposed;
@@ -121,6 +133,15 @@ internal sealed class BridgeDataSubscriptions : IDisposable
                 SweepDetached();
                 return true;
             }
+        });
+        if (changed) _changed();
+    }
+
+    private void OnErrorsChanged(INotifyDataErrorInfo source, DataErrorsChangedEventArgs args)
+    {
+        var changed = _modelTurn.Run(() =>
+        {
+            lock (_gate) return !_disposed && _errorWatches.ContainsKey(source);
         });
         if (changed) _changed();
     }
@@ -222,6 +243,10 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         var node = new Node(owner, members);
         _nodes.Add(key, node); // Reserve before children so recursive DTOs terminate.
         AttachProperty(node);
+        // ViewModelBridge already observes the root INotifyDataErrorInfo.
+        // Avoid emitting a second revision for root-level errors while still
+        // watching every reachable nested (including errors-only) object.
+        if (!ReferenceEquals(owner, _root)) AttachErrors(node);
         foreach (var member in members)
         {
             var edge = new Edge(node, member);
@@ -280,6 +305,28 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         _collectionWatches.Remove(source);
     }
 
+    private void AttachErrors(Node node)
+    {
+        if (node.Owner is not INotifyDataErrorInfo source) return;
+        if (!_errorWatches.TryGetValue(source, out var watch))
+        {
+            watch = new ErrorWatch(this, source);
+            _errorWatches.Add(source, watch);
+            source.ErrorsChanged += watch.Handler;
+        }
+        watch.Nodes.Add(node);
+    }
+
+    private void DetachErrors(Node node)
+    {
+        if (node.Owner is not INotifyDataErrorInfo source ||
+            !_errorWatches.TryGetValue(source, out var watch)) return;
+        watch.Nodes.Remove(node);
+        if (watch.Nodes.Count != 0) return;
+        source.ErrorsChanged -= watch.Handler;
+        _errorWatches.Remove(source);
+    }
+
     private void SweepDetached()
     {
         var reachable = new HashSet<NodeKey>(NodeKeyComparer.Instance);
@@ -289,6 +336,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable
             if (reachable.Contains(pair.Key)) continue;
             foreach (var edge in pair.Value.Edges) DetachCollection(edge);
             DetachProperty(pair.Value);
+            DetachErrors(pair.Value);
             _nodes.Remove(pair.Key);
         }
     }
@@ -311,8 +359,10 @@ internal sealed class BridgeDataSubscriptions : IDisposable
             _disposed = true;
             foreach (var watch in _propertyWatches.Values) watch.Source.PropertyChanged -= watch.Handler;
             foreach (var watch in _collectionWatches.Values) watch.Source.CollectionChanged -= watch.Handler;
+            foreach (var watch in _errorWatches.Values) watch.Source.ErrorsChanged -= watch.Handler;
             _propertyWatches.Clear();
             _collectionWatches.Clear();
+            _errorWatches.Clear();
             _nodes.Clear();
         }
     }
@@ -356,6 +406,18 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         internal INotifyCollectionChanged Source { get; }
         internal NotifyCollectionChangedEventHandler Handler { get; }
         internal HashSet<Edge> Edges { get; } = new(ReferenceEqualityComparer.Instance);
+    }
+
+    private sealed class ErrorWatch
+    {
+        internal ErrorWatch(BridgeDataSubscriptions owner, INotifyDataErrorInfo source)
+        {
+            Source = source;
+            Handler = (_, args) => owner.OnErrorsChanged(source, args);
+        }
+        internal INotifyDataErrorInfo Source { get; }
+        internal EventHandler<DataErrorsChangedEventArgs> Handler { get; }
+        internal HashSet<Node> Nodes { get; } = new(ReferenceEqualityComparer.Instance);
     }
 
     private readonly record struct NodeKey(object Owner, IReadOnlyList<BridgeDataSubscriptionMember> Members);

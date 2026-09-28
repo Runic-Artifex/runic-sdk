@@ -194,7 +194,7 @@ function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route
   callbacks[callbackName] = sharedRoute.callback;
   return sharedRoute;
 }
-const bridgeContract = "FirstWindowDesktop.CounterViewModel:11E63FB22DA81EEE884A3AF55D141F8D76898FAFE848A483E4203F0084C438A8";
+const bridgeContract = "FirstWindowDesktop.CounterViewModel:29F2EE89DB8A1AFA399F576B733C84936F7594188C275EAE11E607EBD0E94002";
 
 export function connectCounter(): Promise<CounterView> { return connectCounterAt("counter", false); }
 async function connectCounterAt(route: string, needsMount = false): Promise<CounterView> {
