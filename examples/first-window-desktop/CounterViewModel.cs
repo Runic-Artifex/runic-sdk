@@ -1,16 +1,24 @@
 using ReactiveUI;
 using ReactiveUI.Primitives;
+using Runic.Application.Views;
+using Runic.Application.Views.ReactiveUI;
 
 namespace FirstWindowDesktop;
 
 public sealed class CounterViewModel : ReactiveObject, IDisposable
 {
+    private readonly IRunicModelContextLease _modelContextLease;
     private int _count;
     private static int _disposals;
 
     public static int Disposals => Volatile.Read(ref _disposals);
 
-    public CounterViewModel() => IncrementCommand = ReactiveCommand.Create(() => { Count++; });
+    public CounterViewModel(IRunicModelContext modelContext)
+    {
+        _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this);
+        IncrementCommand = ReactiveCommand.Create(() => { Count++; },
+            new RunicReactiveSchedulerProvider().For(modelContext));
+    }
 
     public int Count
     {
@@ -20,5 +28,10 @@ public sealed class CounterViewModel : ReactiveObject, IDisposable
 
     public ReactiveCommand<RxVoid, RxVoid> IncrementCommand { get; }
 
-    public void Dispose() => Interlocked.Increment(ref _disposals);
+    public void Dispose()
+    {
+        IncrementCommand.Dispose();
+        _modelContextLease.Dispose();
+        Interlocked.Increment(ref _disposals);
+    }
 }

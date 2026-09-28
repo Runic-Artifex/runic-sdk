@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("EditScopeHostProbe")]
 [assembly: InternalsVisibleTo("OperationAcceptanceProbe")]
 [assembly: InternalsVisibleTo("SourceBackedIndependentDraftProbe")]
+[assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
 
 namespace Runic.Application.Views;
 
@@ -31,7 +32,13 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
     private readonly Action<T> _apply;
     private readonly Func<T, string?>? _validate;
     private readonly IBridgeModelTurn? _modelTurn;
-    private readonly EqualityComparer<T> _equals = EqualityComparer<T>.Default;
+    // State retained by this registry is a baseline for a later compare, not
+    // merely a convenient copy of the model field.  In particular a mutable
+    // DTO or collection must not be able to mutate that baseline through a
+    // previously returned snapshot or receipt.  Generated complex codecs pass
+    // a structural comparer and a codec-backed snapshot function here.
+    private readonly Func<T, T> _snapshot;
+    private readonly IEqualityComparer<T> _equals;
     private readonly Dictionary<string, BridgeFieldWriteReceipt<T>> _receipts = new(StringComparer.Ordinal);
     private readonly Queue<string> _receiptOrder = new();
     private readonly HashSet<string> _expiredRequestIds = new(StringComparer.Ordinal);
@@ -48,7 +55,9 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         Action<T> apply,
         int maximumRetainedWrites = 64,
         Func<T, string?>? validate = null,
-        IBridgeModelTurn? modelTurn = null)
+        IBridgeModelTurn? modelTurn = null,
+        Func<T, T>? snapshot = null,
+        IEqualityComparer<T>? equalityComparer = null)
     {
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("An owner identity is required.", nameof(ownerId));
         if (string.IsNullOrWhiteSpace(fieldName)) throw new ArgumentException("A field name is required.", nameof(fieldName));
@@ -62,8 +71,10 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         _apply = apply;
         _validate = validate;
         _modelTurn = modelTurn;
+        _snapshot = snapshot ?? (static value => value);
+        _equals = equalityComparer ?? EqualityComparer<T>.Default;
         _maximumRetainedWrites = maximumRetainedWrites;
-        _current = new(InTurn(_read), Version: 0);
+        _current = new(Capture(InTurn(_read)), Version: 0);
     }
 
     internal string OwnerId { get; }
@@ -78,7 +89,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
                 lock (_gate)
                 {
                     ThrowIfDisposed();
-                    return _current;
+                    return CopySnapshot(_current);
                 }
             });
         }
@@ -99,16 +110,16 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_receipts.TryGetValue(request.RequestId, out var existing)) return existing;
+            if (_receipts.TryGetValue(request.RequestId, out var existing)) return CopyReceipt(existing);
             if (_expiredRequestIds.Contains(request.RequestId))
-                return new(request.RequestId, BridgeFieldWriteReceiptKind.Conflict, _current,
+                return new(request.RequestId, BridgeFieldWriteReceiptKind.Conflict, CopySnapshot(_current),
                     "The request identity expired. Reconcile authoritative field state before issuing a new write.", null);
 
             // A writer bypassed ObserveExternal. Do not use a stale cached
             // value to overwrite it; advance the field version and report a
             // conflict. The owner should still arrange explicit observation
             // for normal background updates and cross-thread coordination.
-            var actual = _read();
+            var actual = Capture(_read());
             if (!_equals.Equals(actual, _current.Value))
             {
                 _current = Advance(actual);
@@ -124,7 +135,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
             {
                 _applying = true;
                 _apply(request.Value);
-                var applied = _read(); // Preserve setter normalization in the receipt.
+                var applied = Capture(_read()); // Preserve setter normalization in the receipt.
                 _current = Advance(applied);
             }
             catch (Exception error)
@@ -132,7 +143,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
                 // A setter may validate before or after changing its backing
                 // field. Re-read it so a receipt never leaves the owner with a
                 // stale observed snapshot.
-                var afterFailure = _read();
+                var afterFailure = Capture(_read());
                 if (!_equals.Equals(afterFailure, _current.Value))
                 {
                     _current = Advance(afterFailure);
@@ -154,7 +165,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
             try
             {
                 return Retain(new(request.RequestId, BridgeFieldWriteReceiptKind.Applied, _current,
-                    null, _validate?.Invoke(_current.Value)));
+                    null, _validate?.Invoke(Capture(_current.Value))));
             }
             catch (Exception error)
             {
@@ -178,16 +189,16 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
-            var actual = _read();
+            var actual = Capture(_read());
             if (!_equals.Equals(actual, value))
                 throw new ArgumentException("The observed value does not match the authoritative field.", nameof(value));
 
             // A synchronous property-changed observer can re-enter while the
             // registry itself applies a write. That is acknowledgement of the
             // same write, not a second external version advance.
-            if (_applying) return _current;
+            if (_applying) return CopySnapshot(_current);
             _current = Advance(actual);
-            return _current;
+            return CopySnapshot(_current);
         }
     }
 
@@ -198,7 +209,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         {
             ThrowIfDisposed();
             return _receipts.TryGetValue(requestId, out var receipt)
-                ? new(requestId, BridgeFieldWriteStatusKind.Retained, receipt)
+                ? new(requestId, BridgeFieldWriteStatusKind.Retained, CopyReceipt(receipt))
                 : new(requestId, BridgeFieldWriteStatusKind.Unknown, null);
         }
     }
@@ -215,13 +226,22 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         }
     }
 
-    private BridgeFieldSnapshot<T> Advance(T value) => new(value, checked(_current.Version + 1));
+    private BridgeFieldSnapshot<T> Advance(T value) => new(Capture(value), checked(_current.Version + 1));
+
+    private T Capture(T value) => _snapshot(value);
+
+    private BridgeFieldSnapshot<T> CopySnapshot(BridgeFieldSnapshot<T> snapshot) =>
+        new(Capture(snapshot.Value), snapshot.Version);
+
+    private BridgeFieldWriteReceipt<T> CopyReceipt(BridgeFieldWriteReceipt<T> receipt) =>
+        new(receipt.RequestId, receipt.Kind, CopySnapshot(receipt.Current), receipt.Message, receipt.Validation);
 
     private TReturn InTurn<TReturn>(Func<TReturn> work) => _modelTurn is null ? work() : _modelTurn.Run(work);
 
     private BridgeFieldWriteReceipt<T> Retain(BridgeFieldWriteReceipt<T> receipt)
     {
-        _receipts.Add(receipt.RequestId, receipt);
+        var retained = CopyReceipt(receipt);
+        _receipts.Add(retained.RequestId, retained);
         _receiptOrder.Enqueue(receipt.RequestId);
         while (_receipts.Count > _maximumRetainedWrites)
         {
@@ -229,7 +249,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
             _receipts.Remove(expired);
             RetainExpiredRequestId(expired);
         }
-        return receipt;
+        return CopyReceipt(retained);
     }
 
     // Retaining a finite tombstone prevents an immediate late retry from

@@ -1,4 +1,6 @@
 using System.Runtime.CompilerServices;
+using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -16,6 +18,7 @@ internal sealed class BridgeOperationRouter : IDisposable
     internal const string StatusRoute = "__runicOperationStatus";
     internal const string WaitRoute = "__runicOperationWait";
     internal const string CancelRoute = "__runicOperationCancel";
+    internal const string StreamRoute = "__runicOperationStream";
 
     private readonly BridgeOperationRegistry _operations;
     private readonly IDisposable[] _bindings;
@@ -31,13 +34,14 @@ internal sealed class BridgeOperationRouter : IDisposable
     {
         ArgumentNullException.ThrowIfNull(transport);
         _operations = new BridgeOperationRegistry(
-            ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown);
+            ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown: ownerShutdown);
         var bindings = new List<IDisposable>();
         try
         {
             bindings.Add(transport.Bind(StatusRoute, Status));
             bindings.Add(transport.BindAsync(WaitRoute, WaitAsync));
             bindings.Add(transport.Bind(CancelRoute, Cancel));
+            bindings.Add(transport.Bind(StreamRoute, Stream));
             _bindings = [.. bindings];
         }
         catch
@@ -56,6 +60,29 @@ internal sealed class BridgeOperationRouter : IDisposable
         var identity = BridgeOperationIdentity.Create(contract, requestId);
         var admission = _operations.Accept(identity.RegistryKey, work);
         return new(identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
+    }
+
+    // The availability callback is intentionally supplied to the registry.
+    // It is evaluated only for a newly admitted identity; a duplicate retry
+    // returns the original operation before a newer CanExecute value can
+    // reject it.
+    internal BridgeOperationAdmissionReply Accept(
+        BridgeOperationRequest request,
+        Func<bool> canStart,
+        Func<CancellationToken, Task<BridgeOperationResult>> work)
+    {
+        var admission = _operations.Accept(request, canStart, work);
+        return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
+    }
+
+    internal BridgeOperationAdmissionReply Accept(
+        BridgeOperationRequest request,
+        Func<bool> canStart,
+        BridgeOperationStream stream,
+        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
+    {
+        var admission = _operations.Accept(request, canStart, stream, work);
+        return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
     internal BridgeOperationStatusReply Lookup(string contract, string requestId)
@@ -85,6 +112,13 @@ internal sealed class BridgeOperationRouter : IDisposable
         return new(identity, status);
     }
 
+    internal BridgeOperationStreamReply ReadStream(string contract, string requestId, long cursor)
+    {
+        var identity = BridgeOperationIdentity.Create(contract, requestId);
+        var lookup = _operations.ReadStream(identity.RegistryKey, cursor);
+        return new(identity, lookup.Status, lookup.Stream);
+    }
+
     internal ValueTask<BridgeOperationCloseResult> BeginCloseAsync(TimeSpan timeout) =>
         _operations.BeginCloseAsync(timeout);
 
@@ -106,6 +140,24 @@ internal sealed class BridgeOperationRouter : IDisposable
         TryReadIdentity(arguments, out var identity)
             ? EncodeCancel(RequestCancellation(identity.Contract, identity.RequestId))
             : InvalidRequest();
+
+    private string Stream(IBridgeArguments arguments)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(arguments.GetString());
+            var root = document.RootElement;
+            var reply = ReadStream(
+                root.GetProperty("contract").GetString() ?? "",
+                root.GetProperty("requestId").GetString() ?? "",
+                root.GetProperty("cursor").GetInt64());
+            return EncodeStream(reply);
+        }
+        catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or FormatException)
+        {
+            return InvalidRequest();
+        }
+    }
 
     private static bool TryReadIdentity(IBridgeArguments arguments, out BridgeOperationIdentity identity)
     {
@@ -155,6 +207,38 @@ internal sealed class BridgeOperationRouter : IDisposable
         writer.WriteEndObject();
     });
 
+    private static string EncodeStream(BridgeOperationStreamReply reply) => WriteJson(writer =>
+    {
+        writer.WriteStartObject();
+        WriteIdentity(writer, reply.Identity);
+        writer.WriteString("kind", Wire(reply.Status.Kind));
+        if (reply.Stream is { } stream)
+        {
+            writer.WriteNumber("cursor", stream.NextCursor);
+            writer.WriteBoolean("completed", stream.Completed);
+            writer.WritePropertyName("items");
+            writer.WriteStartArray();
+            foreach (var item in stream.Items)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("sequence", item.Sequence);
+                writer.WritePropertyName("value");
+                writer.WriteRawValue(item.EncodedJson, skipInputValidation: true);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            if (stream.Failure is { } failure)
+            {
+                writer.WritePropertyName("delivery");
+                writer.WriteStartObject();
+                writer.WriteString("kind", Wire(failure.Kind));
+                writer.WriteString("message", failure.Message);
+                writer.WriteEndObject();
+            }
+        }
+        writer.WriteEndObject();
+    });
+
     private static void WriteStatusPayload(Utf8JsonWriter writer, BridgeOperationIdentity identity,
         BridgeOperationStatus status)
     {
@@ -168,6 +252,24 @@ internal sealed class BridgeOperationRouter : IDisposable
             writer.WriteString("kind", "failed");
             writer.WriteString("message", status.Failure ?? "The operation failed.");
             writer.WriteEndObject();
+        }
+        if (status.Kind is BridgeOperationStatusKind.Succeeded && status.Result is { } result)
+        {
+            if (result.Kind is BridgeOperationResultKind.Value && result.EncodedJson is { } encodedJson)
+            {
+                writer.WritePropertyName("result");
+                writer.WriteRawValue(encodedJson, skipInputValidation: true);
+            }
+            if (result.DeliveryFailure is { } delivery)
+            {
+                writer.WritePropertyName("delivery");
+                writer.WriteStartObject();
+                writer.WriteString("kind", Wire(delivery.Kind));
+                writer.WriteString("message", delivery.Message);
+                writer.WriteEndObject();
+            }
+            if (result.Kind is BridgeOperationResultKind.Stream)
+                writer.WriteBoolean("stream", true);
         }
         writer.WriteEndObject();
     }
@@ -193,6 +295,13 @@ internal sealed class BridgeOperationRouter : IDisposable
     }
     private static string Wire(BridgeOperationAdmissionKind kind) => kind.ToString().ToLowerInvariant();
     private static string Wire(BridgeOperationStatusKind kind) => kind.ToString().ToLowerInvariant();
+    private static string Wire(BridgeOperationDeliveryFailureKind kind) => kind switch
+    {
+        BridgeOperationDeliveryFailureKind.ResultTooLarge => "result-too-large",
+        BridgeOperationDeliveryFailureKind.ResultEncodingFailed => "result-encoding-failed",
+        BridgeOperationDeliveryFailureKind.StreamOverflow => "stream-overflow",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 
     public void Dispose()
     {
@@ -224,6 +333,113 @@ internal readonly record struct BridgeOperationIdentity(string Contract, string 
     }
 }
 
+// The request keeps the public recovery identity (contract + request ID)
+// small, while binding that identity to the command member and canonical input
+// at admission. Reusing a request ID for different work is a protocol error,
+// not a second idempotency namespace.
+internal readonly record struct BridgeOperationRequest(
+    BridgeOperationIdentity Identity,
+    string Member,
+    string InputDigest)
+{
+    internal const int MaximumMemberLength = 256;
+    internal const int MaximumDigestLength = 128;
+
+    internal BridgeOperationRequest(string contract, string member, string requestId, string inputDigest)
+        : this(BridgeOperationIdentity.Create(contract, requestId), ValidateMember(member), ValidateInputDigest(inputDigest))
+    {
+    }
+
+    internal static BridgeOperationRequest Create(string contract, string member, string requestId, string inputDigest) =>
+        new(contract, member, requestId, inputDigest);
+
+    internal static BridgeOperationRequest Create(BridgeOperationIdentity identity, string member, string inputDigest)
+    {
+        return new(identity, ValidateMember(member), ValidateInputDigest(inputDigest));
+    }
+
+    private static string ValidateMember(string member)
+    {
+        if (string.IsNullOrWhiteSpace(member) || member.Length > MaximumMemberLength || member.Any(char.IsControl))
+            throw new ArgumentException("The command member is invalid.", nameof(member));
+        return member;
+    }
+
+    private static string ValidateInputDigest(string inputDigest)
+    {
+        if (string.IsNullOrWhiteSpace(inputDigest) || inputDigest.Length > MaximumDigestLength || inputDigest.Any(char.IsControl))
+            throw new ArgumentException("The command input digest is invalid.", nameof(inputDigest));
+        return inputDigest;
+    }
+
+    internal static string CanonicalDigest(string encodedJson)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(encodedJson);
+        using var document = JsonDocument.Parse(encodedJson);
+        return CanonicalDigest(document.RootElement);
+    }
+
+    internal static string CanonicalDigest(JsonElement element)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer)) WriteCanonical(writer, element);
+        return Convert.ToHexString(SHA256.HashData(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)))).ToLowerInvariant();
+    }
+
+    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var property in value.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteCanonical(writer, property.Value);
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in value.EnumerateArray()) WriteCanonical(writer, item);
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.String:
+                writer.WriteStringValue(value.GetString());
+                break;
+            case JsonValueKind.Number:
+                WriteCanonicalNumber(writer, value.GetRawText());
+                break;
+            case JsonValueKind.True:
+                writer.WriteBooleanValue(true);
+                break;
+            case JsonValueKind.False:
+                writer.WriteBooleanValue(false);
+                break;
+            case JsonValueKind.Null:
+                writer.WriteNullValue();
+                break;
+            default:
+                throw new JsonException("The operation input contains an unsupported JSON value.");
+        }
+    }
+
+    private static void WriteCanonicalNumber(Utf8JsonWriter writer, string raw)
+    {
+        if (decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue))
+        {
+            writer.WriteRawValue(decimalValue.ToString("G29", CultureInfo.InvariantCulture));
+            return;
+        }
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue) && double.IsFinite(doubleValue))
+        {
+            writer.WriteRawValue(doubleValue.ToString("G17", CultureInfo.InvariantCulture));
+            return;
+        }
+        throw new JsonException("The operation input contains an invalid JSON number.");
+    }
+}
+
 internal sealed record BridgeOperationAdmissionReply(
     BridgeOperationIdentity Identity,
     BridgeOperationAdmissionKind Kind,
@@ -233,3 +449,7 @@ internal sealed record BridgeOperationAdmissionReply(
 
 internal sealed record BridgeOperationStatusReply(BridgeOperationIdentity Identity, BridgeOperationStatus Status);
 internal sealed record BridgeOperationCancelReply(BridgeOperationIdentity Identity, BridgeOperationStatusKind Status, bool Requested);
+internal sealed record BridgeOperationStreamReply(
+    BridgeOperationIdentity Identity,
+    BridgeOperationStatus Status,
+    BridgeOperationStreamRead? Stream);

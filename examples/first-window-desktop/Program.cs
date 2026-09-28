@@ -5,6 +5,7 @@ using Runic.Application.Views.Desktop;
 using Runic.Desktop;
 
 var services = new ServiceCollection();
+services.AddScoped<IRunicModelContext, RunicModelContext>();
 services.AddScoped<CounterViewModel>();
 services.AddRunicBridges();
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
@@ -25,8 +26,8 @@ if (serveOnly)
     await using var scope = provider.CreateAsyncScope();
     await using var surface = await desktop.CreateSurfaceAsync(surfaceOptions);
     var transport = new DesktopBridgeTransport(surface);
-    using var content = new WindowContentSession(transport);
     var viewModel = scope.ServiceProvider.GetRequiredService<CounterViewModel>();
+    using var content = new WindowContentSession(transport, rootModel: viewModel);
     using var attachment = scope.ServiceProvider.GetRequiredService<
         Func<IBridgeTransport, WindowContentSession, CounterViewModel, IDisposable>>()(transport, content, viewModel);
     Console.WriteLine(surface.Url);

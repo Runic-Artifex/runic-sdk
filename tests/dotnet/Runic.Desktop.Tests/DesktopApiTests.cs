@@ -170,6 +170,42 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task PresentationSessionIdentityIsUniquePerAuthenticatedConnection()
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            Security = new DesktopSecurityPolicy { ClientAdmission = DesktopClientAdmission.Multiple },
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        var captured = new ConcurrentQueue<PresentationInvocation>();
+        var bothInvocations = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = surface.RegisterCapability("identity", (invocation, _) =>
+        {
+            captured.Enqueue(invocation);
+            if (captured.Count == 2) bothInvocations.TrySetResult();
+            return ValueTask.FromResult(PresentationResult.None);
+        });
+        using var client = new HttpClient();
+        var bootstrap = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
+        var token = ExtractUnsigned(bootstrap, "const TOKEN = ");
+        var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL = \"");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var first = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
+        using var second = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
+
+        await SendPacketAsync(first, CreatePacket(token, 1, 0xF9, [.. "identity\0\0"u8]), timeout.Token);
+        _ = await ReceivePacketAsync(first, timeout.Token);
+        await SendPacketAsync(second, CreatePacket(token, 1, 0xF9, [.. "identity\0\0"u8]), timeout.Token);
+        _ = await ReceivePacketAsync(second, timeout.Token);
+        await bothInvocations.Task.WaitAsync(timeout.Token);
+
+        var identities = captured.ToArray();
+        Assert.Equal(2, identities.Length);
+        Assert.All(identities, invocation => Assert.Equal(invocation.SessionId, invocation.Session.Id));
+        Assert.NotEqual(identities[0].Session.Id, identities[1].Session.Id);
+    }
+
+    [Fact]
     public async Task HostSharesListenerAndCreatesARequestScopePerRequest()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -514,6 +550,26 @@ public sealed class DesktopApiTests
         Scheme = "ws",
         Path = $"{surfaceUrl.AbsolutePath}_webui_ws_connect",
     }.Uri;
+
+    private static async Task<ClientWebSocket> ConnectAuthenticatedAsync(
+        Uri surfaceUrl, string credential, uint token, CancellationToken cancellationToken)
+    {
+        var socket = new ClientWebSocket();
+        try
+        {
+            socket.Options.SetRequestHeader("Origin", $"{surfaceUrl.Scheme}://{surfaceUrl.Authority}");
+            socket.Options.AddSubProtocol($"runic-desktop.{credential}");
+            await socket.ConnectAsync(ToWebSocketUrl(surfaceUrl), cancellationToken);
+            await SendPacketAsync(socket, CreatePacket(token, 0, 0xF5, [0]), cancellationToken);
+            _ = await ReceivePacketAsync(socket, cancellationToken);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
 
     private static byte[] CreatePacket(uint token, ushort id, byte command, byte[] payload)
     {

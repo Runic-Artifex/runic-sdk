@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows.Input;
 using Runic.Application.Views;
 using Runic.Application.Views.Codegen.Toolkit;
@@ -26,6 +28,14 @@ try
                 case "--no-registry": registerGlobally = false; break;
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
+                    break;
+                case "--reactiveui-flavor" when i + 1 < args.Length:
+                    CodegenOptions.ReactiveUiFlavor = args[++i] switch
+                    {
+                        "primitives" => ReactiveUiFlavor.Default,
+                        "reactive" => ReactiveUiFlavor.SystemReactive,
+                        var value => throw new ArgumentException($"Unsupported ReactiveUI flavor '{value}'. Expected 'primitives' or 'reactive'."),
+                    };
                     break;
                 default: values.Add(args[i]); break;
             }
@@ -249,15 +259,22 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 attribute.AttributeType.FullName == "Runic.Application.Views.RunicIgnoreAttribute"))
         .OrderBy(property => property.MetadataToken)
         .ToArray();
-    var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)).ToArray();
-    var properties = declared.Except(commands).ToArray();
-    if (properties.Any(property => LowerFirst(property.Name) == "revision"))
+    var contractFingerprint = BridgeContractShape.Compute(model);
+    var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint);
+    var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
+        || ReactiveCommandInspector.InspectContract(property, CodegenOptions.ReactiveUiFlavor) is not null).ToArray();
+    var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property)).ToArray();
+    if (properties.Any(property => WireName(property) == "revision"))
         throw new NotSupportedException($"{model.Name}.Revision conflicts with the generated Bridge revision field.");
+    var duplicateWireName = properties.GroupBy(WireName, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
+    if (duplicateWireName is not null)
+        throw new NotSupportedException($"{model.Name}: state properties share the generated wire name '{duplicateWireName.Key}'.");
     var nullability = new NullabilityInfoContext();
-    if (properties.Length == 0 && commands.Length == 0)
-        throw new InvalidOperationException("A ViewModel needs at least one state property or command.");
+    if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0)
+        throw new InvalidOperationException("A ViewModel needs at least one state property, command, or interaction.");
     var contentProperties = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
     var contentCollections = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
+    var valueProperties = new Dictionary<PropertyInfo, BridgeTypeGraph>();
     foreach (var property in properties)
     {
         if (property.GetMethod is null) throw new NotSupportedException($"{property.Name}: a public getter is required.");
@@ -295,46 +312,60 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             if (itemType == typeof(object) || typeof(INotifyPropertyChanged).IsAssignableFrom(itemType))
                 throw new NotSupportedException($"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.");
         }
-        if (property.PropertyType != typeof(int) && property.PropertyType != typeof(string)
-            && property.PropertyType != typeof(bool)
-            && !TryListItem(property.PropertyType, out _))
-            throw new NotSupportedException($"{property.Name}: only int, string, bool, and read-only lists of simple records are supported.");
-        if (property.SetMethod?.IsPublic == true && property.PropertyType != typeof(int)
-            && property.PropertyType != typeof(string) && property.PropertyType != typeof(bool))
-            throw new NotSupportedException($"{property.Name}: writable collections are not supported yet.");
+        valueProperties.Add(property, BridgeTypeGraph.Discover(property.PropertyType,
+            nullability.Create(property), $"{model.Name}.{property.Name}"));
     }
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
     var contentBindings = contentProperties.Concat(contentCollections).ToArray();
-    if (hasContent && registerGlobally)
-        throw new InvalidOperationException($"{model.Name} contains ViewModel content. Generate it with --no-registry and attach it through a window content session.");
+    if ((hasContent || interactions.Length > 0) && registerGlobally)
+        throw new InvalidOperationException($"{model.Name} contains ViewModel content or interactions. Generate it with --no-registry and attach it through a window content session.");
     var fullType = $"global::{model.FullName}";
-    var commandPlans = new Dictionary<PropertyInfo, (bool HasStringArgument, bool IsAsync, string Descriptor)>();
+    var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
     foreach (var command in commands)
     {
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
             throw new NotSupportedException($"{command.Name}: Bridge commands must end with Command.");
-        var plan = ToolkitCommandInspector.Inspect(command, fullType)
-            ?? ReactiveCommandInspector.Inspect(command, fullType)
-            ?? throw new NotSupportedException($"{command.Name}: unsupported CommunityToolkit or ReactiveUI command shape.");
+        var toolkit = ToolkitCommandInspector.Inspect(command, fullType);
+        var reactive = ReactiveCommandInspector.InspectContract(command, CodegenOptions.ReactiveUiFlavor);
+        var plainInput = command.GetCustomAttribute<RunicCommandInputAttribute>(true);
+        var plan = toolkit is { } existing
+            ? new GeneratedCommandPlan(existing.HasStringArgument, existing.IsAsync, existing.Descriptor)
+            : reactive is { } contract
+                ? GeneratedCommandPlan.Reactive(contract,
+                    contract.HasInput ? BridgeTypeGraph.Discover(contract.Input, rootPath: $"{model.Name}.{command.Name}.input") : null,
+                    contract.HasResult ? BridgeTypeGraph.Discover(contract.Result, rootPath: $"{model.Name}.{command.Name}.result") : null)
+                : plainInput is not null
+                    ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
+                        rootPath: $"{model.Name}.{command.Name}.input"))
+                : throw new NotSupportedException($"{command.Name}: unsupported CommunityToolkit or ReactiveUI command shape.");
         commandPlans.Add(command, plan);
     }
+    var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
+    {
+        var plan = commandPlans[command];
+        return new OperationTypeScriptPlan(command.Name[..^"Command".Length],
+            plan.InputGraph?.TypeScriptType() ?? "never",
+            plan.ResultGraph?.TypeScriptType() ?? "never",
+            plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined as never",
+            plan.InputGraph?.EncodeTypeScript("input") ?? "undefined",
+            plan.HasArgument,
+            plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream);
+    }).ToArray();
 
     if (shortName.Length == 0 || !shortName.All(char.IsLetterOrDigit) || !char.IsLetter(shortName[0]))
         throw new ArgumentException("The public Bridge name must be a C#/TypeScript identifier.");
     var prefix = LowerFirst(shortName);
     var hasErrors = typeof(INotifyDataErrorInfo).IsAssignableFrom(model);
-    var contractFingerprint = BridgeContractShape.Compute(model);
     // Checked writes require a WindowContentSession-owned provider. Keep the
     // established global Bridge surface direct until it gains an equivalent
     // explicit window owner. The window slice supports the scalar codecs that
     // the ordinary Bridge already serializes without reflection.
     var checkedProperties = !registerGlobally
-        ? properties.Where(property => property.SetMethod?.IsPublic == true
-            && (property.PropertyType == typeof(string)
-                || property.PropertyType == typeof(int)
-                || property.PropertyType == typeof(bool))).ToArray()
+        ? properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)).ToArray()
         : [];
     var needsCheckedWriter = checkedProperties.Length > 0;
+    InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions,
+        checkedProperties);
 
     var cs = new StringBuilder();
     cs.AppendLine("// <auto-generated />");
@@ -343,6 +374,8 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine($"namespace {model.Namespace};");
     cs.AppendLine($"internal sealed class {shortName}Bridge : ViewModelBridge<{fullType}>");
     cs.AppendLine("{");
+    if (interactions.Length > 0)
+        cs.AppendLine("    private readonly global::System.IDisposable? _rootInteractionMount;");
     if (hasContent)
     {
         cs.AppendLine("    private readonly WindowContentSession _content;");
@@ -359,13 +392,16 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var property in properties)
     {
         var setter = property.SetMethod?.IsPublic == true
-            ? property.PropertyType == typeof(int)
-                ? $"(vm, e) => {{ var value = e.GetInt64(); if (value is < int.MinValue or > int.MaxValue) throw new global::System.ArgumentOutOfRangeException(nameof(value)); vm.{property.Name} = (int)value; }}"
-                : property.PropertyType == typeof(bool)
-                    ? $"(vm, e) => vm.{property.Name} = e.GetBoolean()"
-                : IsNullableString(property)
-                    ? $"(vm, e) => vm.{property.Name} = global::Runic.Application.Views.BridgeJson.ReadNullableString(e.GetString())"
-                    : $"(vm, e) => vm.{property.Name} = e.GetString()"
+            && valueProperties.TryGetValue(property, out var graph)
+                ? property.PropertyType == typeof(int)
+                    ? $"(vm, e) => vm.{property.Name} = checked((int)e.GetInt64())"
+                    : property.PropertyType == typeof(bool)
+                        ? $"(vm, e) => vm.{property.Name} = e.GetBoolean()"
+                        : property.PropertyType == typeof(string) && !IsNullableString(property)
+                            ? $"(vm, e) => vm.{property.Name} = e.GetString()"
+                            : property.PropertyType == typeof(string)
+                                ? $"(vm, e) => vm.{property.Name} = global::Runic.Application.Views.BridgeJson.ReadNullableString(e.GetString())"
+                                : $"(vm, e) => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); vm.{property.Name} = {property.Name}ValueCodec.Read(document.RootElement); }}"
             : "null";
         cs.AppendLine($"            new PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}),");
     }
@@ -375,24 +411,46 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("        [");
         foreach (var property in checkedProperties)
         {
-            var kind = property.PropertyType == typeof(int) ? "Int32"
-                : property.PropertyType == typeof(bool) ? "Boolean"
-                : IsNullableString(property) ? "NullableString" : "String";
-            var setter = property.PropertyType == typeof(int) ? $"(vm, value) => vm.{property.Name} = (int)value!"
-                : property.PropertyType == typeof(bool) ? $"(vm, value) => vm.{property.Name} = (bool)value!"
-                : IsNullableString(property) ? $"(vm, value) => vm.{property.Name} = (string?)value"
-                : $"(vm, value) => vm.{property.Name} = (string)value!";
-            cs.AppendLine($"            new CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{LowerFirst(property.Name)}\", CheckedFieldValueKind.{kind}, vm => vm.{property.Name}, {setter}),");
+            var type = BridgeTypeGraph.CSharpType(property.PropertyType);
+            cs.AppendLine($"            new CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, ReadValue: element => {property.Name}ValueCodec.Read(element), WriteValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)),");
         }
         cs.AppendLine("        ],");
     }
     cs.AppendLine("        [");
     foreach (var command in commands)
-        cs.AppendLine($"            {commandPlans[command].Descriptor},");
-    if (hasContent)
-        cs.AppendLine($"        ], \"{contractFingerprint}\", content) {{ _content = content!; _owner = vm; }}");
-    else cs.AppendLine($"        ], \"{contractFingerprint}\", content) {{ }}");
+        cs.AppendLine($"            {commandPlans[command].DescriptorFor(command, fullType)},");
+    cs.AppendLine($"        ], \"{contractFingerprint}\", content,");
+    if (interactions.Length > 0)
+    {
+        cs.AppendLine("        [");
+        foreach (var descriptor in InteractionCodeEmitter.CSharpDescriptors(interactions, fullType))
+            cs.AppendLine($"            {descriptor},");
+        cs.AppendLine("        ],");
+    }
+    else cs.AppendLine("        null,");
+    cs.AppendLine("        dataSubscriptions:");
+    BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties);
+    cs.AppendLine("        )");
+    cs.AppendLine("    {");
+    if (hasContent) cs.AppendLine("        _content = content!; _owner = vm;");
+    if (interactions.Length > 0)
+    {
+        cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
+        cs.AppendLine($"        _rootInteractionMount = routePrefix is null ? content.AttachRootInteractionPresentation(\"{prefix}\") : null;");
+    }
+    cs.AppendLine("    }");
     cs.AppendLine();
+    foreach (var (property, graph) in valueProperties)
+    {
+        graph.AppendCSharpCodec(cs, property.Name + "ValueCodec");
+        cs.AppendLine();
+    }
+    foreach (var (command, plan) in commandPlans)
+    {
+        if (plan.InputGraph is { } input) { input.AppendCSharpCodec(cs, command.Name + "InputCodec"); cs.AppendLine(); }
+        if (plan.ResultGraph is { } result) { result.AppendCSharpCodec(cs, command.Name + "ResultCodec"); cs.AppendLine(); }
+    }
+    InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
     if (hasContent || needsCheckedWriter)
     {
         cs.AppendLine(needsCheckedWriter
@@ -414,7 +472,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("        writer.WriteNumber(\"revision\", revision);");
     foreach (var property in properties)
     {
-        var jsonName = LowerFirst(property.Name);
+        var jsonName = WireName(property);
         if (contentProperties.TryGetValue(property, out var pageModels))
         {
             cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
@@ -507,40 +565,44 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             cs.AppendLine("            writer.WriteEndArray();");
             cs.AppendLine("        }");
         }
-        else if (TryListItem(property.PropertyType, out var item))
+        else if (valueProperties.ContainsKey(property))
         {
             cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
-            cs.AppendLine($"        if (vm.{property.Name} is null) writer.WriteNullValue();");
-            cs.AppendLine("        else");
-            cs.AppendLine("        {");
-            cs.AppendLine("            writer.WriteStartArray();");
-            cs.AppendLine($"            foreach (var item in vm.{property.Name})");
-            cs.AppendLine("            {");
-            cs.AppendLine("                if (item is null) { writer.WriteNullValue(); continue; }");
-            cs.AppendLine("                writer.WriteStartObject();");
-            foreach (var member in ListMembers(item!))
-                cs.AppendLine($"                writer.{WriterMethod(member.PropertyType)}(\"{LowerFirst(member.Name)}\", item.{member.Name});");
-            cs.AppendLine("                writer.WriteEndObject();");
-            cs.AppendLine("            }");
-            cs.AppendLine("            writer.WriteEndArray();");
-            cs.AppendLine("        }");
+            cs.AppendLine($"        {property.Name}ValueCodec.Write(writer, vm.{property.Name});");
         }
-        else cs.AppendLine($"        writer.{WriterMethod(property.PropertyType)}(\"{jsonName}\", vm.{property.Name});");
+        else throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated value codec.");
         if (hasErrors)
             cs.AppendLine($"        global::Runic.Application.Views.BridgeJson.WriteErrors(writer, vm, \"{property.Name}\", \"{jsonName}Errors\");");
     }
     foreach (var command in commands)
-        if (!commandPlans[command].HasStringArgument)
-            cs.AppendLine($"        writer.WriteBoolean(\"can{command.Name[..^"Command".Length]}\", ((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null));");
+    {
+        var plan = commandPlans[command];
+        if (plan.HasArgument) continue;
+        var name = command.Name[..^"Command".Length];
+        if (plan.ReactiveContract is { } contract)
+        {
+            var commandType = $"global::ReactiveUI.IReactiveCommand<{BridgeTypeGraph.CSharpType(contract.Input)}, {BridgeTypeGraph.CSharpType(contract.Result)}>";
+            var helper = contract.Flavor is ReactiveUiFlavor.SystemReactive
+                ? "global::Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution"
+                : "global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution";
+            var input = contract.Input.FullName == "System.Reactive.Unit"
+                ? "default(global::System.Reactive.Unit)"
+                : "global::ReactiveUI.Primitives.RxVoid.Default";
+            cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", {helper}.CanExecute(({commandType})vm.{command.Name}, {input}));");
+            cs.AppendLine($"        writer.WriteBoolean(\"is{name}Executing\", {helper}.IsExecuting(({commandType})vm.{command.Name}));");
+        }
+        else cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", ((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null));");
+    }
     if (needsCheckedWriter) cs.AppendLine("        writeFieldMetadata(writer);");
     cs.AppendLine("        writer.WriteEndObject();");
     cs.AppendLine("    }");
-    if (hasContent)
+    if (hasContent || interactions.Length > 0)
     {
         cs.AppendLine("    public override void Dispose()");
         cs.AppendLine("    {");
+        if (interactions.Length > 0) cs.AppendLine("        _rootInteractionMount?.Dispose();");
         cs.AppendLine("        base.Dispose();");
-        cs.AppendLine("        _content.ClearOwner(_owner);");
+        if (hasContent) cs.AppendLine("        _content.ClearOwner(_owner);");
         cs.AppendLine("    }");
     }
     cs.AppendLine("}");
@@ -566,18 +628,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine($"import {{ {members} }} from \"./{LowerFirst(pageName)}.js\";");
     }
     if (hasContent) ts.AppendLine();
-    foreach (var list in properties.Where(property => !contentCollections.ContainsKey(property))
-        .Select(property => property.PropertyType).Where(type => TryListItem(type, out _)))
-    {
-        TryListItem(list, out var item);
-        ts.AppendLine($"export interface {item!.Name} {{");
-        foreach (var member in ListMembers(item))
-        {
-            ts.AppendLine($"  readonly {LowerFirst(member.Name)}: {TsPropertyType(member)};");
-        }
-        ts.AppendLine("}");
-        ts.AppendLine();
-    }
+    BridgeTypeScriptWireEmitter.AppendRuntime(ts);
     ts.AppendLine($"export interface {shortName}State {{");
     ts.AppendLine("  readonly revision: number;");
     foreach (var property in properties)
@@ -590,15 +641,23 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 ? "readonly (" + string.Join(" | ", collectionPages.Select(page =>
                     $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))
                     + ")[]" + (nullability.Create(property).ReadState == NullabilityState.Nullable ? " | null" : "")
-            : TsPropertyType(property);
-        ts.AppendLine($"  readonly {LowerFirst(property.Name)}: {propertyType};");
-        if (hasErrors) ts.AppendLine($"  readonly {LowerFirst(property.Name)}Errors: readonly string[];");
+            : valueProperties.TryGetValue(property, out var valueGraph)
+                ? valueGraph.TypeScriptType()
+                : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
+        ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {propertyType};");
+        if (hasErrors) ts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];");
     }
     foreach (var command in commands)
-        if (!commandPlans[command].HasStringArgument)
+    {
+        var plan = commandPlans[command];
+        if (!plan.HasArgument)
             ts.AppendLine($"  readonly can{command.Name[..^"Command".Length]}: boolean;");
+        if (plan.ReactiveContract is not null)
+            ts.AppendLine($"  readonly is{command.Name[..^"Command".Length]}Executing: boolean;");
+    }
     ts.AppendLine("}");
     ts.AppendLine();
+    InteractionCodeEmitter.AppendTypeScriptSurface(ts, interactions, shortName);
     if (needsCheckedWriter)
     {
         ts.AppendLine("export type FieldBaseline<T> = { readonly value: T; readonly version: number };");
@@ -610,7 +669,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine("  | { readonly kind: \"conflict\"; readonly incoming: FieldBaseline<T>; readonly message: string };");
         ts.AppendLine($"export interface {shortName}CheckedFields {{");
         foreach (var property in checkedProperties)
-            ts.AppendLine($"  readonly {LowerFirst(property.Name)}: {TsPropertyType(property)};");
+            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {TsPropertyType(property)};");
         ts.AppendLine("}");
         ts.AppendLine();
     }
@@ -618,6 +677,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine($"  readonly snapshot: {shortName}State;");
     ts.AppendLine($"  subscribe(listener: (state: {shortName}State) => void): () => void;");
     ts.AppendLine("  dispose(): void;");
+    if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
         ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
     foreach (var property in checkedProperties)
@@ -625,12 +685,20 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (needsCheckedWriter)
         ts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): FieldBaseline<{shortName}CheckedFields[K]>;");
     foreach (var command in commands)
-        ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({(commandPlans[command].HasStringArgument ? "argument: string" : "")}): Promise<{shortName}State>;");
-    foreach (var command in commands.Where(command => !commandPlans[command].HasStringArgument && commandPlans[command].IsAsync))
     {
+        var plan = commandPlans[command];
+        var input = plan.HasArgument ? $"argument: {CommandInputType(plan)}" : "";
+        ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{shortName}State>;");
+        if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}(argument: {CommandInputType(plan)}): Promise<boolean>;");
+    }
+    foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
+    {
+        var plan = commandPlans[command];
         var operationName = command.Name[..^"Command".Length];
-        ts.AppendLine($"  start{operationName}(): Promise<{shortName}{operationName}Operation>;");
-        ts.AppendLine($"  start{operationName}WithRequestId(requestId: string): Promise<{shortName}{operationName}Operation>;");
+        var input = plan.HasArgument ? $"argument: {CommandInputType(plan)}" : "";
+        var suffix = plan.HasArgument ? $", {input}" : "";
+        ts.AppendLine($"  start{operationName}({input}): Promise<{shortName}{operationName}Operation>;");
+        ts.AppendLine($"  start{operationName}WithRequestId(requestId: string{suffix}): Promise<{shortName}{operationName}Operation>;");
         ts.AppendLine($"  recover{operationName}WithRequestId(requestId: string): Promise<{shortName}{operationName}Operation>;");
     }
     ts.AppendLine("}");
@@ -667,47 +735,52 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("export class BridgeError extends Error {");
     ts.AppendLine("  constructor(readonly kind: BridgeErrorKind, message: string) { super(message); this.name = \"BridgeError\"; }");
     ts.AppendLine("}");
+    if (Environment.ProcessId < 0)
+    {
     ts.AppendLine("export type BridgeOperationStatusKind = \"running\" | \"succeeded\" | \"failed\" | \"cancelled\" | \"expired\" | \"unknown\";");
-    ts.AppendLine("export interface BridgeOperationStatus { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationStatusKind; readonly error?: { readonly kind: \"failed\"; readonly message: string }; }");
+    ts.AppendLine("export interface BridgeOperationStatus<TResult = never> { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationStatusKind; readonly error?: { readonly kind: \"failed\"; readonly message: string }; readonly result?: TResult; readonly delivery?: { readonly kind: \"result-too-large\" | \"stream-overflow\"; readonly message: string }; readonly stream?: true; }");
     ts.AppendLine("export type BridgeOperationCancelKind = \"cancellation-requested\" | \"not-running\" | \"unknown\" | \"expired\";");
     ts.AppendLine("export interface BridgeOperationCancelResult { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationCancelKind; }");
     ts.AppendLine("export class BridgeOperationUncertainError extends Error {");
     ts.AppendLine("  constructor(readonly contract: string, readonly requestId: string, message: string) { super(message); this.name = \"BridgeOperationUncertainError\"; }");
     ts.AppendLine("}");
-    foreach (var command in commands.Where(command => !commandPlans[command].HasStringArgument && commandPlans[command].IsAsync))
+    foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
     {
         var operationName = command.Name[..^"Command".Length];
+        var resultType = commandPlans[command].ResultGraph?.TypeScriptType() ?? "never";
         ts.AppendLine($"export interface {shortName}{operationName}Operation {{");
         ts.AppendLine("  readonly requestId: string;");
-        ts.AppendLine("  status(): Promise<BridgeOperationStatus>;");
-        ts.AppendLine("  readonly completion: Promise<BridgeOperationStatus>;");
-        ts.AppendLine("  wait(): Promise<BridgeOperationStatus>;");
+        ts.AppendLine($"  status(): Promise<BridgeOperationStatus<{resultType}>>;");
+        ts.AppendLine($"  readonly completion: Promise<BridgeOperationStatus<{resultType}>>;");
+        ts.AppendLine($"  wait(): Promise<BridgeOperationStatus<{resultType}>>;");
         ts.AppendLine("  cancel(): Promise<BridgeOperationCancelResult>;");
         ts.AppendLine("}");
     }
+    }
+    OperationTypeScriptEmitter.AppendDefinitions(ts, operationPlans, shortName);
     if (hasContent || needsCheckedWriter)
     {
-        var names = contentBindings.Select(entry => $"\"{LowerFirst(entry.Key.Name)}\"").ToList();
+        var names = contentBindings.Select(entry => $"\"{WireName(entry.Key)}\"").ToList();
         if (names.Count == 0) names.Add("never");
         ts.AppendLine($"type WireState = Omit<{shortName}State, {string.Join(" | ", names)}> & {{");
         foreach (var (property, pages) in contentProperties)
         {
             var rawType = string.Join(" | ", pages.Select(page => $"{{ readonly kind: \"{PageKind(page.Name, ContractFor(property))}\"; readonly id: string }}"));
             if (nullability.Create(property).ReadState == NullabilityState.Nullable) rawType += " | null";
-            ts.AppendLine($"  readonly {LowerFirst(property.Name)}: {rawType};");
+            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {rawType};");
         }
         foreach (var (property, pages) in contentCollections)
         {
             var rawType = "readonly (" + string.Join(" | ", pages.Select(page =>
                 $"{{ readonly kind: \"{PageKind(page.Name, ContractFor(property))}\"; readonly id: string }}")) + ")[]";
             if (nullability.Create(property).ReadState == NullabilityState.Nullable) rawType += " | null";
-            ts.AppendLine($"  readonly {LowerFirst(property.Name)}: {rawType};");
+            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {rawType};");
         }
         if (needsCheckedWriter)
         {
             ts.AppendLine("  readonly __runicFields: {");
             foreach (var property in checkedProperties)
-                ts.AppendLine($"    readonly {LowerFirst(property.Name)}: {{ readonly version: number }};");
+                ts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {{ readonly version: number }};");
             ts.AppendLine("  };");
         }
         ts.AppendLine("};");
@@ -717,24 +790,24 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine(needsCheckedWriter ? "    ...state," : "    ...wire,");
         foreach (var (property, pages) in contentProperties)
         {
-            var field = LowerFirst(property.Name);
+            var field = WireName(property);
             var expression = string.Join(" : ", pages.Select(page =>
-                $"wire.{field}.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}(wire.{field}.id)"));
+                $"{TsAccess("wire", field)}.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}({TsAccess("wire", field)}.id)"));
             expression += $" : (() => {{ throw new BridgeError(\"failed\", \"Unknown {field} kind.\"); }})()";
             if (nullability.Create(property).ReadState == NullabilityState.Nullable)
-                expression = $"wire.{field} === null ? null : {expression}";
-            ts.AppendLine($"    {field}: {expression},");
+                expression = $"{TsAccess("wire", field)} === null ? null : {expression}";
+            ts.AppendLine($"    {TsPropertyName(field)}: {expression},");
         }
         foreach (var (property, pages) in contentCollections)
         {
-            var field = LowerFirst(property.Name);
+            var field = WireName(property);
             var expression = string.Join(" : ", pages.Select(page =>
                 $"item.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}(item.id)"));
             expression += $" : (() => {{ throw new BridgeError(\"failed\", \"Unknown {field} kind.\"); }})()";
-            var hydrated = $"wire.{field}.map(item => {expression})";
+            var hydrated = $"{TsAccess("wire", field)}.map(item => {expression})";
             if (nullability.Create(property).ReadState == NullabilityState.Nullable)
-                hydrated = $"wire.{field} === null ? null : {hydrated}";
-            ts.AppendLine($"    {field}: {hydrated},");
+                hydrated = $"{TsAccess("wire", field)} === null ? null : {hydrated}";
+            ts.AppendLine($"    {TsPropertyName(field)}: {hydrated},");
         }
         ts.AppendLine("  };");
         ts.AppendLine("}");
@@ -858,7 +931,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("}");
     ts.AppendLine($"const bridgeContract = \"{model.FullName}:{contractFingerprint}\";");
     ts.AppendLine();
-    ts.AppendLine($"export function connect{shortName}(): Promise<{shortName}View> {{ return connect{shortName}At(\"{prefix}\"); }}");
+    ts.AppendLine($"export function connect{shortName}(): Promise<{shortName}View> {{ return connect{shortName}At(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}); }}");
     ts.AppendLine($"async function connect{shortName}At(route: string, needsMount = false): Promise<{shortName}View> {{");
     ts.AppendLine("  const bridge = await waitForBridge();");
     ts.AppendLine("  const runtime = sharedRuntimeFor(bridge);");
@@ -941,6 +1014,8 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine("    return reply.receipt;");
         ts.AppendLine("  }");
     }
+    if (Environment.ProcessId < 0)
+    {
     ts.AppendLine("  function operationKey(requestId: string): string { return `${contractId.length}:${contractId}${requestId.length}:${requestId}`; }");
     ts.AppendLine("  function reserveOperation(key: string): void {");
     ts.AppendLine("    const maximumRetainedOperations = 128;");
@@ -1044,9 +1119,16 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine("    return handle;");
         ts.AppendLine("  }");
     }
+    }
+    OperationTypeScriptEmitter.AppendRuntime(ts, operationPlans, shortName);
+    var interactionRuntime = InteractionCodeEmitter.TypeScriptRuntime(interactions, shortName);
+    if (interactions.Length > 0)
+        ts.AppendLine("  let disposeInteractions: (() => void) | undefined;");
     ts.AppendLine("  function dispose(): void {");
     ts.AppendLine("    if (lease.disposed) return;");
     ts.AppendLine("    lease.disposed = true;");
+    if (interactions.Length > 0)
+        ts.AppendLine("    disposeInteractions?.();");
     ts.AppendLine("    if (lease.mounted && lease.mountToken) void bridge.call(`${route}Unmount`, lease.mountToken).catch(() => {});");
     ts.AppendLine("    lease.listeners.clear();");
     ts.AppendLine("    shared.leases.delete(lease);");
@@ -1074,6 +1156,13 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    }");
     ts.AppendLine("  }");
     ts.AppendLine("  if (!isLive()) { dispose(); throw new BridgeError(\"disconnected\", \"The Bridge session changed during connection.\"); }");
+    if (interactions.Length > 0)
+    {
+        ts.Append(interactionRuntime.Setup);
+        ts.AppendLine("  disposeInteractions = () => {");
+        ts.AppendLine(interactionRuntime.Dispose);
+        ts.AppendLine("  };");
+    }
     if (needsCheckedWriter)
     {
         ts.AppendLine($"  function fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): FieldBaseline<{shortName}CheckedFields[K]> {{");
@@ -1081,11 +1170,11 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine("    switch (field) {");
         foreach (var property in checkedProperties)
         {
-            var wireName = LowerFirst(property.Name);
+            var wireName = WireName(property);
             ts.AppendLine($"      case \"{wireName}\": {{");
-            ts.AppendLine($"        const version = (shared.wire as WireState | undefined)?.__runicFields?.{wireName}?.version;");
+            ts.AppendLine($"        const version = {TsAccess("(shared.wire as WireState | undefined)?.__runicFields", wireName)}?.version;");
             ts.AppendLine("        if (typeof version !== \"number\" || !Number.isSafeInteger(version) || version < 0) throw new BridgeError(\"failed\", \"The checked field baseline is unavailable for this connection.\");");
-            ts.AppendLine($"        return {{ value: (lease.current as {shortName}State).{wireName}, version }} as FieldBaseline<{shortName}CheckedFields[K]>;");
+            ts.AppendLine($"        return {{ value: {TsAccess($"(lease.current as {shortName}State)", wireName)}, version }} as FieldBaseline<{shortName}CheckedFields[K]>;");
             ts.AppendLine("      }");
         }
         ts.AppendLine("    }");
@@ -1105,6 +1194,8 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("      return () => lease.listeners.delete(typed);");
     ts.AppendLine("    },");
     ts.AppendLine("    dispose,");
+    if (interactions.Length > 0)
+        ts.AppendLine(interactionRuntime.ViewMember);
     if (needsCheckedWriter)
     {
         ts.AppendLine("    fieldBaseline,");
@@ -1114,7 +1205,12 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine($"    async set{property.Name}(value) {{");
         if (property.PropertyType == typeof(int))
             ts.AppendLine("      if (!Number.isSafeInteger(value)) throw new RangeError(\"Value must be an integer.\");");
-        var argument = IsNullableString(property) ? "JSON.stringify(value)" : "value";
+        var argument = valueProperties.TryGetValue(property, out var valueGraph)
+            && property.PropertyType != typeof(int)
+            && property.PropertyType != typeof(bool)
+            && property.PropertyType != typeof(string)
+                ? $"JSON.stringify({valueGraph.EncodeTypeScript("value")})"
+                : IsNullableString(property) ? "JSON.stringify(value)" : "value";
         ts.AppendLine($"      return invoke(`${{route}}Set{property.Name}`, {argument});");
         ts.AppendLine("    },");
     }
@@ -1127,34 +1223,42 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ? "typeof value !== \"number\" || !Number.isSafeInteger(value) || !baseline || typeof baseline.value !== \"number\" || !Number.isSafeInteger(baseline.value)"
             : property.PropertyType == typeof(bool)
                 ? "typeof value !== \"boolean\" || !baseline || typeof baseline.value !== \"boolean\""
-                : IsNullableString(property)
-                    ? "(value !== null && typeof value !== \"string\") || !baseline || (baseline.value !== null && typeof baseline.value !== \"string\")"
-                    : "typeof value !== \"string\" || !baseline || typeof baseline.value !== \"string\"";
+            : IsNullableString(property)
+                ? "(value !== null && typeof value !== \"string\") || !baseline || (baseline.value !== null && typeof baseline.value !== \"string\")"
+                    : property.PropertyType == typeof(string)
+                        ? "typeof value !== \"string\" || !baseline || typeof baseline.value !== \"string\""
+                        : "!baseline";
         ts.AppendLine($"      if ({check} || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError(\"A checked field value and baseline are required.\");");
-        ts.AppendLine($"      return invokeFieldWrite<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value }}));");
+        var valueGraph = valueProperties[property];
+        var encodedBaseline = valueGraph.EncodeTypeScript("baseline.value");
+        var encodedValue = valueGraph.EncodeTypeScript("value");
+        ts.AppendLine($"      return invokeFieldWrite<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}));");
         ts.AppendLine("    },");
     }
     foreach (var command in commands)
     {
         var name = command.Name[..^"Command".Length];
-        var hasStringArgument = commandPlans[command].HasStringArgument;
-        ts.AppendLine($"    async {LowerFirst(name)}({(hasStringArgument ? "argument" : "")}) {{");
-        ts.AppendLine($"      return invoke(`${{route}}{name}`{(hasStringArgument ? ", JSON.stringify(argument)" : "")});");
+        var plan = commandPlans[command];
+        var argument = plan.InputGraph is { } inputGraph
+            ? $", JSON.stringify({inputGraph.EncodeTypeScript("argument")})"
+            : plan.HasStringArgument ? ", JSON.stringify(argument)" : "";
+        ts.AppendLine($"    async {LowerFirst(name)}({(plan.HasArgument ? "argument" : "")}) {{");
+        ts.AppendLine($"      return invoke(`${{route}}{name}`{argument});");
         ts.AppendLine("    },");
+        if (plan.HasArgument)
+        {
+            ts.AppendLine($"    async can{name}(argument) {{");
+            ts.AppendLine("      if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError(\"disconnected\", \"The Bridge is disconnected.\");");
+            ts.AppendLine("      let reply: string;");
+            ts.AppendLine($"      try {{ reply = await bridge.call(`${{route}}Can{name}`{argument}); }}");
+            ts.AppendLine("      catch { throw new BridgeError(bridge.isConnected() ? \"failed\" : \"disconnected\", \"The command availability query could not complete.\"); }");
+            ts.AppendLine("      if (reply === \"true\") return true;");
+            ts.AppendLine("      if (reply === \"false\") return false;");
+            ts.AppendLine("      throw new BridgeError(\"failed\", \"The command availability query returned an invalid response.\");");
+            ts.AppendLine("    },");
+        }
     }
-    foreach (var command in commands.Where(command => !commandPlans[command].HasStringArgument && commandPlans[command].IsAsync))
-    {
-        var operationName = command.Name[..^"Command".Length];
-        ts.AppendLine($"    start{operationName}() {{");
-        ts.AppendLine($"      return start{operationName}WithRequestId(globalThis.crypto.randomUUID());");
-        ts.AppendLine("    },");
-        ts.AppendLine($"    start{operationName}WithRequestId(requestId) {{");
-        ts.AppendLine($"      return start{operationName}WithRequestId(requestId);");
-        ts.AppendLine("    },");
-        ts.AppendLine($"    recover{operationName}WithRequestId(requestId) {{");
-        ts.AppendLine($"      return recover{operationName}WithRequestId(requestId);");
-        ts.AppendLine("    },");
-    }
+    OperationTypeScriptEmitter.AppendClientMethods(ts, operationPlans);
     ts.AppendLine("  };");
     ts.AppendLine("}");
 
@@ -1162,45 +1266,42 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     WriteIfChanged(typescriptPath, ts.ToString());
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
 
-    string TsPropertyType(PropertyInfo property) =>
-        TsType(property.PropertyType) + (IsNullableString(property) ? " | null" : "");
+    string TsPropertyType(PropertyInfo property) => valueProperties.TryGetValue(property, out var graph)
+        ? graph.TypeScriptType()
+        : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
+
+    string CommandInputType(GeneratedCommandPlan plan) => plan.InputGraph?.TypeScriptType()
+        ?? (plan.HasStringArgument ? "string" : "never");
 
     bool IsNullableString(PropertyInfo property) =>
         property.PropertyType == typeof(string)
         && nullability.Create(property).ReadState == NullabilityState.Nullable;
 
-    static string WriterMethod(Type type) => type == typeof(int) ? "WriteNumber"
-        : type == typeof(bool) ? "WriteBoolean" : "WriteString";
-
-    static PropertyInfo[] ListMembers(Type item) =>
-        item.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
-            .Where(member => member.GetIndexParameters().Length == 0)
-            .Select(member =>
-            {
-                if (member.GetMethod is null || member.PropertyType != typeof(int)
-                    && member.PropertyType != typeof(string) && member.PropertyType != typeof(bool))
-                    throw new NotSupportedException($"{item.Name}.{member.Name}: only readable int, string, and bool record fields are supported.");
-                return member;
-            }).ToArray();
 }
 
 static string LowerFirst(string text) => char.ToLowerInvariant(text[0]) + text[1..];
 
-static bool TryListItem(Type type, out Type? item)
+static string WireName(PropertyInfo property)
 {
-    item = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)
-        ? type.GenericTypeArguments[0] : null;
-    return item is { IsClass: true, IsPublic: true } && item != typeof(string);
+    var name = property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name
+        ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name
+        ?? LowerFirst(property.Name);
+    if (string.IsNullOrWhiteSpace(name))
+        throw new NotSupportedException($"{property.DeclaringType?.Name}.{property.Name}: a bridge wire name is required.");
+    return name;
 }
 
-static string TsType(Type type)
-{
-    if (type == typeof(int)) return "number";
-    if (type == typeof(string)) return "string";
-    if (type == typeof(bool)) return "boolean";
-    if (TryListItem(type, out var item)) return $"readonly {item!.Name}[]";
-    throw new NotSupportedException($"Unsupported TypeScript member type: {type.FullName}");
-}
+static bool IsTypeScriptIdentifier(string name) => name.Length > 0
+    && (char.IsLetter(name[0]) || name[0] is '_' or '$')
+    && name.Skip(1).All(character => char.IsLetterOrDigit(character) || character is '_' or '$');
+
+static string TsPropertyName(string name) => IsTypeScriptIdentifier(name)
+    ? name
+    : JsonSerializer.Serialize(name);
+
+static string TsAccess(string target, string name) => IsTypeScriptIdentifier(name)
+    ? $"{target}.{name}"
+    : $"{target}[{JsonSerializer.Serialize(name)}]";
 
 static void WriteIfChanged(string path, string content)
 {
@@ -1211,3 +1312,70 @@ static void WriteIfChanged(string path, string content)
 }
 
 sealed class AotValidationException(string message) : Exception(message);
+
+static class CodegenOptions
+{
+    internal static ReactiveUiFlavor ReactiveUiFlavor { get; set; } = ReactiveUiFlavor.Default;
+}
+
+// This plan keeps toolkit commands on their established source form while the
+// ReactiveUI path carries the input/result graph needed by generated codecs.
+sealed record GeneratedCommandPlan(
+    bool HasStringArgument,
+    bool IsAsync,
+    string? LegacyDescriptor = null,
+    ReactiveCommandContract? ReactiveContract = null,
+    BridgeTypeGraph? InputGraph = null,
+    BridgeTypeGraph? ResultGraph = null,
+    bool IsPlainICommand = false)
+{
+    internal bool HasArgument => InputGraph is not null || HasStringArgument;
+    internal static GeneratedCommandPlan Reactive(ReactiveCommandContract contract,
+        BridgeTypeGraph? input, BridgeTypeGraph? result) =>
+        new(contract.HasInput && contract.Input == typeof(string),
+            IsAsync: true, ReactiveContract: contract, InputGraph: input, ResultGraph: result);
+
+    internal static GeneratedCommandPlan Plain(BridgeTypeGraph input) =>
+        new(HasStringArgument: false, IsAsync: false, InputGraph: input, IsPlainICommand: true);
+
+    internal string DescriptorFor(PropertyInfo property, string modelType)
+    {
+        if (LegacyDescriptor is not null) return LegacyDescriptor;
+        if (IsPlainICommand)
+        {
+            var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");
+            var plainInputType = BridgeTypeGraph.CSharpType(plainGraph.Root.Type);
+            var name = property.Name[..^"Command".Length];
+            return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
+        }
+        var contract = ReactiveContract ?? throw new InvalidOperationException("Command plan has no descriptor.");
+        var inputType = BridgeTypeGraph.CSharpType(contract.Input);
+        var resultType = BridgeTypeGraph.CSharpType(contract.Result);
+        var commandType = $"global::ReactiveUI.IReactiveCommand<{inputType}, {resultType}>";
+        var typed = $"({commandType})vm.{property.Name}";
+        var helper = contract.Flavor is ReactiveUiFlavor.SystemReactive
+            ? "global::Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution"
+            : "global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution";
+        var input = contract.HasInput ? $"({inputType})argument!"
+            : contract.Input.FullName == "System.Reactive.Unit" ? "default(global::System.Reactive.Unit)"
+            : "global::ReactiveUI.Primitives.RxVoid.Default";
+        var read = contract.HasInput
+            ? $", ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}"
+            : "";
+        var canonical = contract.HasInput
+            ? $", EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({inputType})argument!))"
+            : "";
+        var canExecute = $", CanExecute: (vm, argument) => {helper}.CanExecute({typed}, {input})";
+        var subscribe = $", Subscribe: (vm, changed) => {helper}.Observe({typed}, changed)";
+        if (contract.HasResult && contract.Cardinality is BridgeCommandResultCardinality.Stream)
+        {
+            var streamExecute = $"async (vm, execution, token, argument) => await {helper}.ExecuteStream({typed}, {input}, execution.Stream!, result => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)), token).ConfigureAwait(false)";
+            return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, CreateStream: () => new global::Runic.Application.Views.BridgeOperationStream(), ExecuteStreamAsync: {streamExecute}{read}{canonical}{canExecute}{subscribe})";
+        }
+        var executionMethod = contract.Cardinality is BridgeCommandResultCardinality.Last ? "ExecuteLast" : "Execute";
+        var execute = contract.HasResult
+            ? $"async (vm, token, argument) => {{ var result = await {helper}.{executionMethod}({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result))); }}"
+            : $"async (vm, token, argument) => {{ await {helper}.ExecuteCompletion({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.None; }}";
+        return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, ExecuteResultAsync: {execute}{read}{canonical}{canExecute}{subscribe})";
+    }
+}

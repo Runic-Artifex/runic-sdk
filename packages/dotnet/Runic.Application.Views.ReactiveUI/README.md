@@ -1,23 +1,127 @@
 # ReactiveUI integration for Runic Views
 
-This assembly references ReactiveUI and the shared Bridge, with no
-CommunityToolkit dependency. It offers typed logical `ReactiveRunicView<T>`
-and `ReactiveRunicWindow<T>` classes implementing `IViewFor<T>`, a typed
-ReactiveUI view locator, a `RoutingState` projection, and ViewModel activation
-over an explicit web mount lease. The command descriptor awaits the command's
-observable completion, error, or cancellation.
+`Runic.Application.ReactiveUI` is the default ReactiveUI 25 adapter for Runic
+Views. It references ReactiveUI's `ReactiveUI.Primitives` flavor and has no
+CommunityToolkit dependency. It provides:
 
-The Reactive Notes example tests nested routers, a default and alternate View contract,
-two Views sharing one ViewModel, replacement while mounted, a typed Window,
-and command outcomes. It invokes `OnWebMounted` and `OnWebUnmounted` directly.
-When the core uses `WindowContentSession.AttachPresentation`, every web outlet
-receives its own `ReactiveRunicView` instance and therefore its own activation
-lease; ReactiveUI keeps the shared ViewModel active until the final View
-releases its lease.
-The [Reactive Notes](../../../examples/notes-reactive-views/README.md)
-browser app sends those signals through generated page references and verifies
-`WhenActivated` across two Views. Splat logger registration is supplied by
-the app.
-An app must also observe ReactiveUI `ThrownExceptions` for commands it creates.
-The build coordinator uses a separate ReactiveUI command inspector and emits
-awaited observable invokers.
+- `ReactiveRunicView<T>` and `ReactiveRunicWindow<T>`, which implement
+  `IViewFor<T>` over a typed Runic `DataContext`;
+- `ReactiveRunicViewLocator`, adapting explicit ReactiveUI view mappings and
+  contracts;
+- `ReactiveRoutedRegion<T>`, projecting `RoutingState.CurrentViewModel` into
+  a generated content property;
+- mount-owned `IActivatableViewModel` leases; and
+- typed command, interaction, and model-context scheduler adapters used by
+  the compiled-model generator.
+
+One browser presentation gets one logical Runic View and activation lease. A
+shared ViewModel stays activated while any presentation remains mounted.
+`WindowContentSession.AttachPresentation` creates those logical views for
+generated content routes. The [Reactive Notes](../../../examples/notes-reactive-views/README.md)
+example covers multiple views over one ViewModel, routed content, explicit view
+contracts, and activation lifetimes.
+
+## ReactiveUI 25
+
+This package targets ReactiveUI **25.0.1**, Binding **8.6.0**, and
+SourceGenerators **4.2.0**. ReactiveUI 25 moved `IViewFor<T>` and
+`IViewLocator` to `ReactiveUI.Binding`, so upgrade the Runic adapter, app, and
+generated web client together. An adapter binary compiled against ReactiveUI
+24 can fail at runtime against ReactiveUI 25 even if a dependency override
+compiles.
+
+ReactiveUI now includes shared source generators. Remove old explicit generator
+pins or update them to 4.2.0 or later. The SDK centrally pins 4.2.0; the same
+generator package supports the System.Reactive flavor, so there is no separate
+`ReactiveUI.Reactive.SourceGenerators` package.
+
+Create explicit mappings with the Binding locator:
+
+```csharp
+var locator = new DefaultViewLocator();
+locator.CreateMappingBuilder()
+    .Map<EditorViewModel>(() => new EditorView())
+    .Map<EditorViewModel>(() => new CompactEditorView(), "compact");
+```
+
+For global lookup, replace `ReactiveUI.ViewLocator.Current` with
+`ReactiveUI.Binding.ViewLocator.GetCurrent()`.
+
+## Generated ReactiveUI contracts
+
+Public `IReactiveCommand<TInput, TResult>` properties are inspected through
+their interface contract, so `ReactiveCommand`, a base type, and a combined
+command use the same generated input/result bridge. `RxVoid` is a no-result
+operation and can complete with zero observable values; a non-void result must
+produce exactly one observable value unless the property opts into `Last` or
+`Stream` with `[RunicCommandResult(...)]`.
+Generated TypeScript exposes operation start, request-ID recovery, status,
+cancellation, retained results, and cursor reads for streams.
+
+Use `[RunicCommandInput(typeof(TInput))]` on a plain `ICommand` property to
+generate a typed argument. That command remains synchronous fire-and-snapshot
+work and has no generated operation result or cancellation handle.
+
+Public getter-only `Interaction<TInput, TOutput>` properties become typed
+browser surfaces. The generated client uses this shape:
+
+```ts
+const unregister = view.interactions.confirmDiscard.handle(
+  async (request, { signal }) => confirmInFrontend(request, signal),
+);
+```
+
+The disposer, replacement handler, view disposal, unmount, and disconnect
+abort the handler signal as appropriate. Requests go only to a selected mounted
+endpoint through a pull route. With no eligible browser handler, the adapter
+does not consume the interaction, preserving normal ReactiveUI .NET handler
+precedence and unhandled behavior.
+
+`RunicReactiveSchedulerProvider.For(context)` returns a context-backed
+`ISequencer`. It serializes scheduled notifications with short Runic model
+turns and deliberately does not set ReactiveUI's process-global scheduler.
+Use normal host dispatchers for native UI and explicitly marshal background
+state changes through the model context.
+
+Create the model context before the ViewModel creates its commands and pass the
+sequencer directly to the factory. Bind the root and every independently
+presented child to that same context:
+
+```csharp
+services.AddScoped<IRunicModelContext, RunicModelContext>();
+
+public EditorViewModel(EditorSession session, IRunicModelContext modelContext)
+{
+    _scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+    Workspace = new EditorWorkspaceViewModel(session, this, _scheduler);
+    _contextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this, Workspace);
+}
+
+protected ReactiveCommand<string, RxVoid> CreateCommand(Func<string, Task> work) =>
+    ReactiveCommand.CreateFromTask<string>(work, _scheduler);
+```
+
+`Execute` may complete before its scheduled `IsExecuting` and `CanExecute`
+notifications arrive. The context-backed scheduler orders those notifications
+with bridge replies and state publication. A default headless scheduler may
+deliver them later; do not solve that by changing ReactiveUI's global scheduler.
+Bind dynamically created or independently presented children to the same
+context and retain their leases until their presentation is removed.
+
+The [ReactiveUI reference guide](../../../docs/guides/application/reference/reactiveui.md)
+defines the supported data shapes, operation semantics, interaction targeting,
+and model-context ownership.
+
+## System.Reactive flavor
+
+Applications using `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`,
+`System.Reactive.Unit`, or `IScheduler` should instead reference
+[`Runic.Application.ReactiveUI.Reactive`](../Runic.Application.Views.ReactiveUI.Reactive/README.md).
+The two packages expose distinct ReactiveUI namespaces and must not be mixed in
+one application. If a generic interface command does not reveal its flavor to
+the compiled-model generator, set
+`RunicBridgeReactiveUiFlavor=reactive` in the project that generates the
+bridge.
+
+See the upstream [Binding migration guide](https://www.reactiveui.net/documentation/reactiveui/upgrading/reactiveui-binding-migration/)
+for ReactiveUI's application-level migration details.

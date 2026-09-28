@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("FieldRegistryProviderProbe")]
+[assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
 
 namespace Runic.Application.Views;
 
@@ -32,7 +33,9 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         Func<T> read,
         Action<T> apply,
         int maximumRetainedWrites = 64,
-        Func<T, string?>? validate = null)
+        Func<T, string?>? validate = null,
+        Func<T, T>? snapshot = null,
+        IEqualityComparer<T>? equalityComparer = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentException.ThrowIfNullOrWhiteSpace(contract);
@@ -40,6 +43,27 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(apply);
 
+        // The provider may allocate a registry, whose initial snapshot reads
+        // the model. Acquire the shared model turn before the provider gate so
+        // a snapshot callback that exposes checked fields cannot invert
+        // model-turn -> provider ownership.
+        var turn = BridgeModelTurn.For(model);
+        return turn.Run(() => GetOrCreateCore(model, contract, property, read, apply,
+            maximumRetainedWrites, validate, snapshot, equalityComparer, turn));
+    }
+
+    private BridgeFieldWriteRegistry<T> GetOrCreateCore<T>(
+        INotifyPropertyChanged model,
+        string contract,
+        string property,
+        Func<T> read,
+        Action<T> apply,
+        int maximumRetainedWrites,
+        Func<T, string?>? validate,
+        Func<T, T>? snapshot,
+        IEqualityComparer<T>? equalityComparer,
+        BridgeModelTurn turn)
+    {
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -57,10 +81,9 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
                 return (BridgeFieldWriteRegistry<T>)existing.Registry;
             }
 
-            var turn = BridgeModelTurn.For(model);
             var registry = new BridgeFieldWriteRegistry<T>(
                 $"{_ownerId}:{contract}:{property}", property, read, apply,
-                maximumRetainedWrites, validate, turn);
+                maximumRetainedWrites, validate, turn, snapshot, equalityComparer);
             PropertyChangedEventHandler observer = (_, args) =>
             {
                 if (!string.IsNullOrEmpty(args.PropertyName) && args.PropertyName != property) return;

@@ -1,0 +1,9 @@
+<Project>
+  <!-- This fixture deliberately contains two executable projects. Keep their
+       generated source and launch artifacts separate before SDK defaults are
+       evaluated. -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)bin/$(MSBuildProjectName)/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

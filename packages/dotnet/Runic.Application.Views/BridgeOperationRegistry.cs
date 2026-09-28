@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("BridgeOperationRegistryProbe")]
 [assembly: InternalsVisibleTo("OperationAcceptanceProbe")]
+[assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
 
 namespace Runic.Application.Views;
 
@@ -13,12 +14,14 @@ internal sealed class BridgeOperationRegistry : IDisposable
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _operations = new(StringComparer.Ordinal);
     private readonly Queue<Entry> _terminals = new();
-    private readonly HashSet<string> _expiredIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BridgeOperationRequest?> _expiredIds = new(StringComparer.Ordinal);
     private readonly Queue<string> _expiredOrder = new();
     private readonly CancellationTokenSource _ownerShutdown;
     private readonly int _maximumOperations;
     private readonly int _maximumRetainedTerminals;
     private readonly int _maximumRetainedExpiredIds;
+    private readonly int _maximumRetainedResultBytes;
+    private int _retainedResultBytes;
     private bool _closing;
     private bool _disposed;
 
@@ -29,6 +32,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         int maximumOperations = 64,
         int maximumRetainedTerminals = 32,
         int maximumRetainedExpiredIds = 128,
+        int maximumRetainedResultBytes = 262_144,
         CancellationToken ownerShutdown = default)
     {
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("An owner identity is required.", nameof(ownerId));
@@ -37,11 +41,14 @@ internal sealed class BridgeOperationRegistry : IDisposable
             throw new ArgumentOutOfRangeException(nameof(maximumRetainedTerminals));
         if (maximumRetainedExpiredIds < 0)
             throw new ArgumentOutOfRangeException(nameof(maximumRetainedExpiredIds));
+        if (maximumRetainedResultBytes < 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumRetainedResultBytes));
 
         OwnerId = ownerId;
         _maximumOperations = maximumOperations;
         _maximumRetainedTerminals = maximumRetainedTerminals;
         _maximumRetainedExpiredIds = maximumRetainedExpiredIds;
+        _maximumRetainedResultBytes = maximumRetainedResultBytes;
         _ownerShutdown = CancellationTokenSource.CreateLinkedTokenSource(ownerShutdown);
     }
 
@@ -54,6 +61,51 @@ internal sealed class BridgeOperationRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
         ArgumentNullException.ThrowIfNull(work);
+        return AcceptCore(requestId, request: null, canStart: null, stream: null, async (_, cancellationToken) =>
+        {
+            await work(cancellationToken).ConfigureAwait(false);
+            return BridgeOperationResult.None;
+        });
+    }
+
+    // A typed request reserves the request identity before availability is
+    // evaluated. Consequently an idempotent retry observes prior work even
+    // when current CanExecute has changed, while a changed member or input is
+    // rejected instead of being misidentified as the original request.
+    internal BridgeOperationAdmission Accept(
+        BridgeOperationRequest request,
+        Func<bool> canStart,
+        Func<CancellationToken, Task<BridgeOperationResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(canStart);
+        ArgumentNullException.ThrowIfNull(work);
+        return AcceptCore(request.Identity.RegistryKey, request, canStart, stream: null,
+            (_, cancellationToken) => work(cancellationToken));
+    }
+
+    // A stream belongs to the admitted entry before work starts. Reads can
+    // replay published values while the command is still running; returning a
+    // stream only from a terminal task would make incremental delivery
+    // impossible.
+    internal BridgeOperationAdmission Accept(
+        BridgeOperationRequest request,
+        Func<bool> canStart,
+        BridgeOperationStream stream,
+        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(canStart);
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(work);
+        return AcceptCore(request.Identity.RegistryKey, request, canStart, stream, work);
+    }
+
+    private BridgeOperationAdmission AcceptCore(
+        string requestId,
+        BridgeOperationRequest? request,
+        Func<bool>? canStart,
+        BridgeOperationStream? stream,
+        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
+    {
 
         Entry accepted;
         lock (_gate)
@@ -63,17 +115,27 @@ internal sealed class BridgeOperationRegistry : IDisposable
                     _disposed ? "owner-disposed" : "owner-closing");
 
             if (_operations.TryGetValue(requestId, out var existing))
+            {
+                if (!existing.Matches(request))
+                    return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown,
+                        "identity-conflict");
                 return new(requestId, BridgeOperationAdmissionKind.Duplicate, existing.Status, null,
                     existing.Status is BridgeOperationStatusKind.Running ? null : existing.Snapshot());
+            }
 
-            if (_expiredIds.Contains(requestId))
-                return new(requestId, BridgeOperationAdmissionKind.Expired, BridgeOperationStatusKind.Expired, "expired");
+            if (_expiredIds.TryGetValue(requestId, out var expiredRequest))
+                return !Matches(expiredRequest, request)
+                    ? new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "identity-conflict")
+                    : new(requestId, BridgeOperationAdmissionKind.Expired, BridgeOperationStatusKind.Expired, "expired");
 
             TrimTerminalEntries(preferCapacity: true);
             if (_operations.Count >= _maximumOperations)
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "capacity");
 
-            accepted = new Entry(requestId, _ownerShutdown.Token);
+            if (canStart is not null && !canStart())
+                return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "unavailable");
+
+            accepted = new Entry(requestId, request, stream, _ownerShutdown.Token);
             _operations.Add(requestId, accepted);
         }
 
@@ -107,6 +169,16 @@ internal sealed class BridgeOperationRegistry : IDisposable
                 : StatusForMissing(requestId);
     }
 
+    internal BridgeOperationStreamLookup ReadStream(string requestId, long cursor)
+    {
+        lock (_gate)
+        {
+            if (!_operations.TryGetValue(requestId, out var entry))
+                return new(StatusForMissing(requestId), null);
+            return new(entry.Snapshot(), entry.Stream?.ReadAfter(cursor) ?? entry.Result.OperationStream?.ReadAfter(cursor));
+        }
+    }
+
     // This is a request to the operation's cancellation token, not a terminal
     // state transition. A successful return still wins over a late request.
     internal bool RequestCancellation(string requestId)
@@ -129,13 +201,27 @@ internal sealed class BridgeOperationRegistry : IDisposable
         }
     }
 
-    private async Task Run(Entry entry, Func<CancellationToken, Task> work)
+    private async Task Run(Entry entry, Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
     {
         BridgeOperationStatusKind terminal;
         string? failure = null;
+        BridgeOperationResult result = BridgeOperationResult.None;
         try
         {
-            await work(entry.Cancellation.Token).ConfigureAwait(false);
+            result = await work(new BridgeOperationExecution(entry.Stream), entry.Cancellation.Token).ConfigureAwait(false);
+            if (entry.Stream is not null)
+            {
+                entry.Stream.Complete();
+                result = BridgeOperationResult.Stream(entry.Stream);
+                if (entry.Stream.Failure is { } streamFailure)
+                    result = result.WithoutValue(streamFailure);
+            }
+            else if (result.Kind is BridgeOperationResultKind.Stream)
+            {
+                result.OperationStream?.Complete();
+                if (result.OperationStream?.Failure is { } streamFailure)
+                    result = result.WithoutValue(streamFailure);
+            }
             // Do not inspect IsCancellationRequested here. The work returned
             // successfully, so a cancellation request made before that return
             // cannot rewrite its terminal success.
@@ -156,8 +242,20 @@ internal sealed class BridgeOperationRegistry : IDisposable
 
         lock (_gate)
         {
+            if (result.Kind is BridgeOperationResultKind.Value)
+            {
+                var bytes = result.EncodedByteCount;
+                if (bytes > _maximumRetainedResultBytes || _retainedResultBytes > _maximumRetainedResultBytes - bytes)
+                    result = result.WithoutValue(BridgeOperationDeliveryFailure.ResultTooLarge(_maximumRetainedResultBytes));
+                else
+                {
+                    entry.RetainedResultBytes = bytes;
+                    _retainedResultBytes += bytes;
+                }
+            }
             entry.Status = terminal;
             entry.Failure = failure;
+            entry.Result = result;
             var snapshot = entry.Snapshot();
             entry.Terminal.TrySetResult(snapshot);
             _terminals.Enqueue(entry);
@@ -182,23 +280,24 @@ internal sealed class BridgeOperationRegistry : IDisposable
                 candidate.Status is not BridgeOperationStatusKind.Running)
             {
                 _operations.Remove(candidate.RequestId);
-                RetainExpiredId(candidate.RequestId);
+                _retainedResultBytes -= candidate.RetainedResultBytes;
+                RetainExpiredId(candidate.RequestId, candidate.Request);
             }
         }
     }
 
     // Tombstones reject an immediate same-ID replay after terminal eviction.
     // They are finite reconnect assistance, never durable exactly-once state.
-    private void RetainExpiredId(string requestId)
+    private void RetainExpiredId(string requestId, BridgeOperationRequest? request)
     {
         if (_maximumRetainedExpiredIds == 0) return;
-        if (_expiredIds.Add(requestId)) _expiredOrder.Enqueue(requestId);
+        if (_expiredIds.TryAdd(requestId, request)) _expiredOrder.Enqueue(requestId);
         while (_expiredOrder.Count > _maximumRetainedExpiredIds)
             _expiredIds.Remove(_expiredOrder.Dequeue());
     }
 
     private BridgeOperationStatus StatusForMissing(string requestId) =>
-        _expiredIds.Contains(requestId)
+        _expiredIds.ContainsKey(requestId)
             ? BridgeOperationStatus.Expired(requestId)
             : BridgeOperationStatus.Unknown(requestId);
 
@@ -268,24 +367,36 @@ internal sealed class BridgeOperationRegistry : IDisposable
     {
         private int _cancellationDisposed;
 
-        public Entry(string requestId, CancellationToken ownerShutdown)
+        public Entry(string requestId, BridgeOperationRequest? request, BridgeOperationStream? stream, CancellationToken ownerShutdown)
         {
             RequestId = requestId;
+            Request = request;
+            Stream = stream;
             Cancellation = CancellationTokenSource.CreateLinkedTokenSource(ownerShutdown);
         }
 
         public string RequestId { get; }
+        public BridgeOperationRequest? Request { get; }
+        public BridgeOperationStream? Stream { get; }
         public CancellationTokenSource Cancellation { get; }
         public BridgeOperationStatusKind Status { get; set; } = BridgeOperationStatusKind.Running;
         public string? Failure { get; set; }
+        public BridgeOperationResult Result { get; set; } = BridgeOperationResult.None;
+        public int RetainedResultBytes { get; set; }
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure);
+        public bool Matches(BridgeOperationRequest? request) => BridgeOperationRegistry.Matches(Request, request);
+        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result);
         public void DisposeCancellation()
         {
             if (Interlocked.Exchange(ref _cancellationDisposed, 1) == 0)
                 Cancellation.Dispose();
         }
     }
+
+    private static bool Matches(BridgeOperationRequest? first, BridgeOperationRequest? second) =>
+        first is null && second is null ||
+        first is { } firstValue && second is { } secondValue &&
+        firstValue.Member == secondValue.Member && firstValue.InputDigest == secondValue.InputDigest;
 }
 
 internal enum BridgeOperationAdmissionKind { Accepted, Duplicate, Expired, Rejected }
@@ -301,10 +412,20 @@ internal sealed record BridgeOperationAdmission(
 internal sealed record BridgeOperationStatus(
     string RequestId,
     BridgeOperationStatusKind Kind,
-    string? Failure)
+    string? Failure,
+    BridgeOperationResult? Result = null)
 {
     public static BridgeOperationStatus Unknown(string requestId) => new(requestId, BridgeOperationStatusKind.Unknown, null);
     public static BridgeOperationStatus Expired(string requestId) => new(requestId, BridgeOperationStatusKind.Expired, null);
 }
 
 internal sealed record BridgeOperationCloseResult(bool Drained, int RemainingRunningOperations);
+internal sealed record BridgeOperationStreamLookup(BridgeOperationStatus Status, BridgeOperationStreamRead? Stream);
+
+// Supplied only to the streaming admission overload. Command descriptors can
+// publish each encoded item as work progresses, while the registry retains the
+// bounded cursor/replay history under the operation identity.
+public sealed class BridgeOperationExecution(BridgeOperationStream? stream)
+{
+    public BridgeOperationStream? Stream { get; } = stream;
+}

@@ -18,3 +18,7 @@ reload, and a reconnect receives a fresh snapshot.
 See the [first Window](../../../../examples/first-window/README.md) for the smallest
 composition and [Notes examples](../../../../examples/notes-view-first/README.md) for
 nested content, routing, and multiple Views over a ViewModel.
+
+The [reactive contract expansion proposal](reactiveui-expansion.md) explores
+typed data/command results, browser interactions and model execution ownership.
+It describes planned capabilities, not the current public API.

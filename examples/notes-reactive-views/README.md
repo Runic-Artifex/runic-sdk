@@ -5,6 +5,13 @@ depends on no old Application Bridge package. Its explicit
 [Window](NotesWindow.cs) and [Views](Views.cs) select the generated bridge
 contracts; [ViewModels](ViewModels.cs) use ReactiveUI routing and commands.
 
+The scoped application composition binds the whole routed ViewModel graph to
+one `IRunicModelContext`. The editor captures state and commits it on that
+lane around asynchronous work. Its **Discard changes** command is a typed
+`Interaction<DiscardNoteRequest, bool>`: a mounted browser confirms or
+declines it, while the regular .NET fallback declines when no browser endpoint
+is available. The browser smoke check covers both answers.
+
 The shell routes Home or Document. Document routes Editor or Preview. It also
 presents the same Editor ViewModel in a `compact` View contract. Full and compact
 Views can be mounted together; leaving one does not deactivate the ViewModel
@@ -34,8 +41,9 @@ replacement [dev coordinator](../../tools/Runic.Application.Views.Dev/runic-dev.
 The [IDE host check](ide-host-smoke.mjs) covers development host startup and
 shutdown. The dev server proxies `/webui.js` from the native host.
 
-This example deliberately tests a fixed View map. Dynamic View location from
-a routed collection, interface based binding contracts, automatic restart when
-a generated contract changes, and the final native Window close policy are
-still open design work. See
+This example uses a fixed map of View types known at generation time. It covers
+interface-based content, polymorphic ViewModel collections, stable reorder and
+route removal/restoration. Arbitrary View types discovered at runtime are not
+part of that generated map. Automatic restart when a generated contract changes
+and the final native Window close policy remain separate design work. See
 [the cutover plan](../../VIEW-BRIDGE-CUTOVER.md).

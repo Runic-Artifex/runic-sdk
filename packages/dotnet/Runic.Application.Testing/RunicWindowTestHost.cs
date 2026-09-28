@@ -24,7 +24,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         Transport = new InMemoryViewTransport();
         try
         {
-            Content = new WindowContentSession(Transport, viewLocator, operationShutdown);
+            Content = new WindowContentSession(Transport, viewLocator, operationShutdown, viewModel);
             IDisposable? attachment = null;
             try
             {

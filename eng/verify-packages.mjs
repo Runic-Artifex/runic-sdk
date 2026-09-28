@@ -177,7 +177,7 @@ export async function verifyPackages(packageName) {
     const viewTestConsumer = p.name === "Runic.Application.Testing";
     const bridgeProperties = viewTestConsumer
       ? `<RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled><RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally><RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand><RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir><RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir><OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>`
-      : ["Runic.Application", "Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.Desktop"].includes(p.name)
+      : ["Runic.Application", "Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.ReactiveUI.Reactive", "Runic.Application.Desktop"].includes(p.name)
         ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : "";
     mkdirSync(consumer);
     writeFileSync(
@@ -200,8 +200,13 @@ if (snapshot.RootElement.GetProperty("state").GetProperty("value").GetInt32() !=
     throw new Exception("The packaged headless Window snapshot failed.");
 _ = host.Transport.Call("consumerSetValue", new(Int64Value: 8));
 if (model.Value != 8) throw new Exception("The packaged generated setter failed.");
-if (host.Transport.DrainPublications().Count != 1)
-    throw new Exception("The packaged generated publication failed.");
+var published = false;
+for (var attempt = 0; attempt < 100 && !published; attempt++)
+{
+    published = host.Transport.DrainPublications().Count > 0;
+    if (!published) await Task.Delay(10);
+}
+if (!published) throw new Exception("The packaged generated publication failed.");
 Console.WriteLine("Packaged Window/View test host passed.");`
       : p.name === "Runic.Translations.Tooling"
         ? `using Runic.Translations.Compiler;

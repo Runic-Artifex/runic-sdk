@@ -17,15 +17,19 @@ public sealed class NotesApplication : IDisposable
     {
         AppLocator.CurrentMutable.RegisterConstant(new NullLogger(), typeof(ILogger));
         AppLocator.CurrentMutable.RegisterConstant(new DefaultLogManager(AppLocator.Current), typeof(ILogManager));
-        var locator = new DefaultViewLocator()
-            .Map<HomeViewModel, HomeView>(() => new HomeView())
-            .Map<DocumentViewModel, DocumentView>(() => new DocumentView())
-            .Map<EditorViewModel, EditorView>(() => new EditorView())
-            .Map<EditorViewModel, CompactEditorView>(() => new CompactEditorView(), "compact")
-            .Map<PreviewViewModel, PreviewView>(() => new PreviewView())
-            .Map<PinnedNoteViewModel, PinnedNoteView>(() => new PinnedNoteView())
-            .Map<PinnedTaskViewModel, PinnedTaskView>(() => new PinnedTaskView());
+        var locator = new DefaultViewLocator();
+        locator.CreateMappingBuilder()
+            .Map<HomeViewModel>(() => new HomeView())
+            .Map<DocumentViewModel>(() => new DocumentView())
+            .Map<EditorViewModel>(() => new EditorView())
+            .Map<EditorViewModel>(() => new CompactEditorView(), "compact")
+            .Map<PreviewViewModel>(() => new PreviewView())
+            .Map<PinnedNoteViewModel>(() => new PinnedNoteView())
+            .Map<PinnedTaskViewModel>(() => new PinnedTaskView());
         var services = new ServiceCollection();
+        // A window scope owns one execution lane for the whole reactive graph.
+        // The Shell binds its children before the bridge can expose any of them.
+        services.AddScoped<IRunicModelContext, RunicModelContext>();
         services.AddScoped<ShellViewModel>();
         services.AddScoped<IRunicViewLocator>(_ => new ReactiveRunicViewLocator(locator));
         services.AddRunicBridges();

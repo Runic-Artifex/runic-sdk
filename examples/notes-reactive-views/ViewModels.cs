@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using ReactiveUI;
+using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
@@ -12,6 +13,7 @@ public interface IPinnedItem;
 
 public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
 {
+    private readonly IRunicModelContextLease _modelContextLease;
     private readonly HomeViewModel _home;
     private readonly DocumentViewModel _document;
     private readonly ReactiveRoutedRegion<IMainPage> _main;
@@ -19,22 +21,26 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
     private readonly PinnedTaskViewModel _pinnedTask = new();
     private IReadOnlyList<IPinnedItem> _pinned;
 
-    public ShellViewModel()
+    public ShellViewModel(IRunicModelContext modelContext)
     {
+        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
         _pinned = [_pinnedNote, _pinnedTask];
         _home = new HomeViewModel(this);
-        _document = new DocumentViewModel(this);
+        _document = new DocumentViewModel(this, modelContext);
+        _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext,
+            this, _home, _document, _document.Editor, _document.Preview, _pinnedNote, _pinnedTask);
+        Router = new RoutingState(scheduler);
         _main = new ReactiveRoutedRegion<IMainPage>(Router);
         _main.PropertyChanged += OnMainChanged;
-        OpenHomeCommand = ReactiveCommand.Create(OpenHome);
-        OpenDocumentCommand = ReactiveCommand.Create(OpenDocument);
-        SwapPinnedCommand = ReactiveCommand.Create(SwapPinned);
-        RemovePinnedCommand = ReactiveCommand.Create(RemovePinned);
-        RestorePinnedCommand = ReactiveCommand.Create(RestorePinned);
+        OpenHomeCommand = ReactiveCommand.Create(OpenHome, scheduler);
+        OpenDocumentCommand = ReactiveCommand.Create(OpenDocument, scheduler);
+        SwapPinnedCommand = ReactiveCommand.Create(SwapPinned, scheduler);
+        RemovePinnedCommand = ReactiveCommand.Create(RemovePinned, scheduler);
+        RestorePinnedCommand = ReactiveCommand.Create(RestorePinned, scheduler);
         Router.Navigate.Execute(_home).Subscribe(_ => { });
     }
 
-    [RunicIgnore] public RoutingState Router { get; } = new();
+    [RunicIgnore] public RoutingState Router { get; }
     public IMainPage Main => _main.Current ?? _home;
     public IReadOnlyList<IPinnedItem> Pinned => _pinned;
     internal EditorViewModel Editor => _document.Editor;
@@ -63,7 +69,13 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
     }
     private void OnMainChanged(object? sender, PropertyChangedEventArgs args) =>
         this.RaisePropertyChanged(nameof(Main));
-    public void Dispose() { _main.PropertyChanged -= OnMainChanged; _main.Dispose(); }
+    public void Dispose()
+    {
+        _main.PropertyChanged -= OnMainChanged;
+        _main.Dispose();
+        _document.Dispose();
+        _modelContextLease.Dispose();
+    }
 }
 
 public class PinnedNoteViewModel : ReactiveObject, IPinnedItem
@@ -89,23 +101,26 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
     private readonly PreviewViewModel _preview;
     private readonly ReactiveRoutedRegion<IDocumentPane> _pane;
 
-    public DocumentViewModel(ShellViewModel host)
+    public DocumentViewModel(ShellViewModel host, IRunicModelContext modelContext)
     {
+        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
         HostScreen = host;
-        _editor = new EditorViewModel(this);
+        _editor = new EditorViewModel(this, modelContext);
         _preview = new PreviewViewModel(this, _editor);
+        Router = new RoutingState(scheduler);
         _pane = new ReactiveRoutedRegion<IDocumentPane>(Router);
         _pane.PropertyChanged += OnPaneChanged;
-        ShowEditorCommand = ReactiveCommand.Create(ShowEditor);
-        ShowPreviewCommand = ReactiveCommand.Create(ShowPreview);
+        ShowEditorCommand = ReactiveCommand.Create(ShowEditor, scheduler);
+        ShowPreviewCommand = ReactiveCommand.Create(ShowPreview, scheduler);
         Router.Navigate.Execute(_editor).Subscribe(_ => { });
     }
 
     public string UrlPathSegment => "document";
     [RunicIgnore] public IScreen HostScreen { get; }
-    [RunicIgnore] public RoutingState Router { get; } = new();
+    [RunicIgnore] public RoutingState Router { get; }
     public IDocumentPane CurrentPane => _pane.Current ?? _editor;
     internal EditorViewModel Editor => _editor;
+    internal PreviewViewModel Preview => _preview;
     [RunicViewContract("compact")]
     public EditorViewModel CompactNote => _editor;
     public string ActivePane => ReferenceEquals(CurrentPane, _editor) ? "Editor" : "Preview";
@@ -119,26 +134,41 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
         this.RaisePropertyChanged(nameof(CurrentPane));
         this.RaisePropertyChanged(nameof(ActivePane));
     }
-    public void Dispose() { _pane.PropertyChanged -= OnPaneChanged; _pane.Dispose(); }
+    public void Dispose()
+    {
+        _pane.PropertyChanged -= OnPaneChanged;
+        _pane.Dispose();
+        _preview.Dispose();
+        _editor.Dispose();
+    }
 }
 
-public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatableViewModel
+public sealed record DiscardNoteRequest(string Title, int BodyLength);
+
+public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatableViewModel, IDisposable
 {
+    private readonly IRunicModelContext _modelContext;
+    private readonly IDisposable _fallbackDiscardHandler;
     private string _title = "Untitled";
     private string _body = "";
     private string _savedMessage = "";
     private int _activationCount;
     private int _deactivationCount;
 
-    public EditorViewModel(DocumentViewModel host)
+    public EditorViewModel(DocumentViewModel host, IRunicModelContext modelContext)
     {
         HostScreen = host;
-        SaveCommand = ReactiveCommand.CreateFromTask(async (CancellationToken token) =>
+        _modelContext = modelContext;
+        _fallbackDiscardHandler = ConfirmDiscard.RegisterHandler(context =>
         {
-            if (string.IsNullOrWhiteSpace(Title)) throw new ArgumentException("A note needs a title.");
-            await Task.Delay(120, token);
-            SavedMessage = $"Saved {Title}";
+            // A native or headless invocation has no mounted browser endpoint.
+            // Keep ReactiveUI's normal handler precedence and decline the discard.
+            context.SetOutput(false);
+            return Task.CompletedTask;
         });
+        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+        SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, scheduler);
+        DiscardCommand = ReactiveCommand.CreateFromTask(DiscardAsync, scheduler);
         this.WhenActivated((Action<Action<IDisposable>>)(dispose =>
         {
             ActivationCount++;
@@ -154,7 +184,46 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
     public string SavedMessage { get => _savedMessage; private set => this.RaiseAndSetIfChanged(ref _savedMessage, value); }
     public int ActivationCount { get => _activationCount; private set => this.RaiseAndSetIfChanged(ref _activationCount, value); }
     public int DeactivationCount { get => _deactivationCount; private set => this.RaiseAndSetIfChanged(ref _deactivationCount, value); }
+    public Interaction<DiscardNoteRequest, bool> ConfirmDiscard { get; } = new();
     public ReactiveCommand<RxVoid, RxVoid> SaveCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> DiscardCommand { get; }
+
+    private async Task SaveAsync(CancellationToken token)
+    {
+        var input = await _modelContext.InvokeAsync(() => new { Title, Body }, token);
+        if (string.IsNullOrWhiteSpace(input.Title)) throw new ArgumentException("A note needs a title.");
+        await Task.Delay(120, token);
+        await _modelContext.InvokeAsync(() => SavedMessage = $"Saved {input.Title}", token);
+    }
+
+    private async Task DiscardAsync(CancellationToken token)
+    {
+        var request = await _modelContext.InvokeAsync(() => new DiscardNoteRequest(Title, Body.Length), token);
+        if (request.BodyLength == 0)
+        {
+            await _modelContext.InvokeAsync(() => SavedMessage = "Nothing to discard.", token);
+            return;
+        }
+
+        bool approved = await ConfirmDiscard.Handle(request);
+        token.ThrowIfCancellationRequested();
+        await _modelContext.InvokeAsync(() =>
+        {
+            if (approved)
+            {
+                Body = "";
+                SavedMessage = $"Discarded {request.Title}";
+            }
+            else SavedMessage = "Kept current changes.";
+        }, token);
+    }
+
+    public void Dispose()
+    {
+        _fallbackDiscardHandler.Dispose();
+        SaveCommand.Dispose();
+        DiscardCommand.Dispose();
+    }
 
     private sealed class ActivationLease(Action dispose) : IDisposable
     {

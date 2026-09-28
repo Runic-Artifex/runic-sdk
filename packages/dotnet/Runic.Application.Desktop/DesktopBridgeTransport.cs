@@ -36,6 +36,11 @@ public sealed class DesktopBridgeTransport(DesktopSurface surface) : IBridgeTran
 
     private sealed class DesktopBridgeArguments(PresentationInvocation invocation) : IBridgeArguments
     {
+        // PresentationSession.Id is WebUiEvent.ConnectionId, allocated for an
+        // authenticated WebSocket connection. It is deliberately not the
+        // engine's private session GUID. Desktop has one browser client for a
+        // connection, so the trusted client and connection identities are the
+        // same value; reconnecting receives a different key.
         private readonly string _connectionKey = invocation.Session.Id.ToString(CultureInfo.InvariantCulture);
         private int _nextArgument;
 

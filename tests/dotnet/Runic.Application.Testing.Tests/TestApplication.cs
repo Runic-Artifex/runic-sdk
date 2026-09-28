@@ -17,7 +17,13 @@ public sealed partial class ChildView : RunicView<ChildViewModel>,
 
     public void OnAttached() => Attached++;
     public void OnDetached() => Detached++;
-    public void OnWebMounted() => Mounted++;
+    public void OnWebMounted()
+    {
+        Mounted++;
+        // Exercises a real presentation lifetime mutation. WindowContentSession must
+        // run it on the shared model context after releasing its attachment gate.
+        DataContext!.Title = "mounted";
+    }
     public void OnWebUnmounted() => Unmounted++;
     public void Dispose() => Disposed++;
 }

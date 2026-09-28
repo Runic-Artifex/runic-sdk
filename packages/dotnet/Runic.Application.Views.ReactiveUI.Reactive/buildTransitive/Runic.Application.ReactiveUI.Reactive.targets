@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <!-- The command interface lives in ReactiveUI.Core for both distributions,
+         so a typed IReactiveCommand property cannot always reveal its flavor
+         through reflection. Selecting this adapter supplies that build-time
+         choice to Runic's generator. -->
+    <RunicBridgeReactiveUiFlavor Condition="'$(RunicBridgeReactiveUiFlavor)' == ''">reactive</RunicBridgeReactiveUiFlavor>
+  </PropertyGroup>
+  <Target Name="RunicRejectMixedReactiveUiFlavors" BeforeTargets="ResolveReferences">
+    <ItemGroup>
+      <_RunicDefaultReactiveUiPackage Include="@(PackageReference)" Condition="'%(Identity)' == 'Runic.Application.ReactiveUI'" />
+      <_RunicDefaultReactiveUiProject Include="@(ProjectReference)" Condition="'%(Filename)' == 'Runic.Application.Views.ReactiveUI'" />
+    </ItemGroup>
+    <Error Condition="'@(_RunicDefaultReactiveUiPackage)' != '' Or '@(_RunicDefaultReactiveUiProject)' != ''"
+           Text="Runic.Application.ReactiveUI.Reactive uses ReactiveUI's System.Reactive flavor and cannot be referenced with Runic.Application.ReactiveUI. Select one ReactiveUI flavor for the application." />
+  </Target>
+</Project>

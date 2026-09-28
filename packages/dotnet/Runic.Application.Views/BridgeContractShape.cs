@@ -3,186 +3,171 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Windows.Input;
 
 namespace Runic.Application.Views;
 
-/// <summary>
-/// The generated Bridge contract that a Debug process can reconstruct from its
-/// compiled model and presentation types. This deliberately follows only the
-/// supported code-generator surface; it is not a general-purpose .NET ABI hash.
-/// </summary>
+/// <summary>Build-time/Debug reconstruction of the generated Bridge wire shape.</summary>
 public static class BridgeContractShape
 {
-    /// <summary>
-    /// Computes the contract fingerprint embedded into generated Bridges. A
-    /// fingerprint covers every model discovered by the current generator
-    /// convention because a model can appear in another model's content union
-    /// or DI composition.
-    /// </summary>
     public static string Compute([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type model)
     {
         ArgumentNullException.ThrowIfNull(model);
-
         var views = DiscoverViews(model.Assembly);
-        var models = DiscoverModels(model, views);
+        var models = views.Select(view => view.ModelType).Append(model).Distinct().ToArray();
+        var parts = new List<string> { "runic-bridge-contract-v3" };
         var nullability = new NullabilityInfoContext();
-        var parts = new List<string> { "runic-bridge-contract-v2" };
-
-        foreach (var knownModel in models.OrderBy(TypeIdentity, StringComparer.Ordinal))
+        foreach (var known in models.OrderBy(TypeName, StringComparer.Ordinal))
         {
-            parts.Add($"model:{TypeIdentity(knownModel)}:public-name:{PublicName(knownModel)}");
-            AppendModelMembers(parts, knownModel, models, nullability);
-            AppendCompositionShape(parts, knownModel, models);
+            parts.Add($"model:{TypeName(known)}:public-name:{PublicName(known)}");
+            AppendModel(parts, known, models, nullability);
         }
-
-        foreach (var view in views.OrderBy(view => TypeIdentity(view.ViewType), StringComparer.Ordinal))
-            parts.Add($"view:{TypeIdentity(view.ViewType)}:model:{TypeIdentity(view.ModelType)}:contract:{view.Contract ?? "default"}");
-
+        foreach (var view in views.OrderBy(view => TypeName(view.ViewType), StringComparer.Ordinal))
+            parts.Add($"view:{TypeName(view.ViewType)}:model:{TypeName(view.ModelType)}:contract:{view.Contract ?? "default"}");
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', parts))));
     }
 
-    private static void AppendModelMembers(List<string> parts, Type model, IReadOnlyList<Type> models,
-        NullabilityInfoContext nullability)
+    private static void AppendModel(List<string> parts, Type model, IReadOnlyList<Type> models, NullabilityInfoContext nullability)
     {
-        var properties = PublicDeclaredProperties(model)
-            .Where(property => !HasAttribute(property, nameof(RunicIgnoreAttribute)))
-            .OrderBy(property => property.MetadataToken);
-
+        var properties = PublicModelProperties(model).Where(property => property.GetCustomAttribute<RunicIgnoreAttribute>(true) is null).ToArray();
         foreach (var property in properties)
         {
-            var kind = typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
-            var access = property.SetMethod?.IsPublic == true ? "write" : "read";
-            parts.Add($"member:{TypeIdentity(model)}:{property.Name}:{TypeIdentity(property.PropertyType)}:{access}:{kind}");
-
-            if (kind == "command") continue;
-
-            var contentModels = ContentModels(property, model, models);
-            if (contentModels.Count > 0)
+            var interaction = GenericContract(property.PropertyType, "ReactiveUI.Binding.IInteraction`2", "ReactiveUI.Binding.Reactive.IInteraction`2");
+            var command = GenericContract(property.PropertyType, "ReactiveUI.IReactiveCommand`2", "ReactiveUI.Reactive.IReactiveCommand`2");
+            var kind = interaction is not null ? "interaction" : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
+            parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
+            if (kind == "command" && command is not null)
             {
-                var contract = ContractFor(property) ?? "default";
-                var collection = property.PropertyType.IsGenericType
-                    && property.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>);
-                parts.Add($"content:{TypeIdentity(model)}:{property.Name}:nullable:{IsReadNullable(property, nullability)}:contract:{contract}");
-                if (collection) parts.Add($"content-collection:{TypeIdentity(model)}:{property.Name}");
-                foreach (var contentModel in contentModels.OrderBy(TypeIdentity, StringComparer.Ordinal))
-                    parts.Add($"content-target:{TypeIdentity(model)}:{property.Name}:{TypeIdentity(contentModel)}:{PublicName(contentModel)}");
+                AppendType(parts, command.GenericTypeArguments[0], null, $"{model.Name}.{property.Name}.input", []);
+                AppendType(parts, command.GenericTypeArguments[1], null, $"{model.Name}.{property.Name}.result", []);
+                var cardinality = property.GetCustomAttribute<RunicCommandResultAttribute>(true)?.Cardinality
+                    ?? BridgeCommandResultCardinality.Single;
+                parts.Add($"command-cardinality:{TypeName(model)}:{property.Name}:{cardinality.ToString().ToLowerInvariant()}");
                 continue;
             }
-
-            // Only nullable strings alter the generated ordinary-state and
-            // setter TypeScript types. The generator presently ignores other
-            // CLR nullable annotations.
-            if (property.PropertyType == typeof(string))
-                parts.Add($"string-nullability:{TypeIdentity(model)}:{property.Name}:{IsReadNullable(property, nullability)}");
-
-            if (TryListItem(property.PropertyType, out var item))
-                AppendListCodec(parts, model, property, item!, nullability);
+            if (kind == "command")
+            {
+                var input = property.GetCustomAttribute<RunicCommandInputAttribute>(true)?.Input;
+                if (input is not null)
+                    AppendType(parts, input, null, $"{model.Name}.{property.Name}.input", []);
+                continue;
+            }
+            if (kind == "interaction" && interaction is not null)
+            {
+                AppendType(parts, interaction.GenericTypeArguments[0], null, $"{model.Name}.{property.Name}.input", []);
+                AppendType(parts, interaction.GenericTypeArguments[1], null, $"{model.Name}.{property.Name}.output", []);
+                continue;
+            }
+            if (kind != "state") continue;
+            if (ContentModels(property, model, models).Count > 0)
+            {
+                parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}");
+                continue;
+            }
+            AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
         }
-
-        // Observable validation changes every emitted state property by adding
-        // its accompanying error array.
-        parts.Add($"validation-errors:{TypeIdentity(model)}:{typeof(INotifyDataErrorInfo).IsAssignableFrom(model)}");
+        parts.Add($"validation-errors:{TypeName(model)}:{typeof(INotifyDataErrorInfo).IsAssignableFrom(model)}");
     }
 
-    private static void AppendListCodec(List<string> parts, Type model, PropertyInfo property, Type item,
-        NullabilityInfoContext nullability)
+    // Canonical recursive shape only. Generated code uses direct accesses; it
+    // never invokes this reflection path under trimming/AOT.
+    private static void AppendType(List<string> parts, Type declared, NullabilityInfo? annotation, string path, HashSet<Type> stack, RunicBridgeCodecAttribute? memberCodec = null)
     {
-        parts.Add($"list-codec:{TypeIdentity(model)}:{property.Name}:{TypeIdentity(item)}");
-        foreach (var member in PublicDeclaredProperties(item).OrderBy(member => member.MetadataToken))
+        var nullable = !declared.IsValueType ? annotation?.ReadState == NullabilityState.Nullable : Nullable.GetUnderlyingType(declared) is not null;
+        var type = Nullable.GetUnderlyingType(declared) ?? declared;
+        parts.Add($"wire:{path}:type:{TypeName(type)}:nullable:{nullable}");
+        if (IsScalar(type)) return;
+        if (type.IsEnum)
         {
-            // This is deliberately the same supported primitive surface used by
-            // the code generator's generated Utf8JsonWriter calls.
-            var writer = member.PropertyType == typeof(int) ? "number"
-                : member.PropertyType == typeof(bool) ? "boolean"
-                : member.PropertyType == typeof(string) ? "string"
-                : "unsupported";
-            var readable = member.GetMethod?.IsPublic == true;
-            parts.Add($"list-member:{TypeIdentity(item)}:{member.Name}:{TypeIdentity(member.PropertyType)}:{readable}:{writer}" +
-                (member.PropertyType == typeof(string) ? $":nullable:{IsReadNullable(member, nullability)}" : string.Empty));
+            parts.Add($"enum:{path}:flags:{type.IsDefined(typeof(FlagsAttribute), false)}");
+            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Static).OrderBy(field => field.MetadataToken))
+                parts.Add($"enum-case:{path}:{field.Name}:wire:{field.GetCustomAttribute<RunicAliasAttribute>()?.Name ?? field.Name}");
+            return;
         }
+        var custom = memberCodec ?? type.GetCustomAttribute<RunicBridgeCodecAttribute>(true);
+        if (custom is not null)
+        {
+            var shape = custom.CodecType.GetCustomAttribute<RunicCodecShapeAttribute>();
+            parts.Add($"custom:{path}:codec:{TypeName(custom.CodecType)}:ts:{shape?.TypeScriptType ?? "missing"}:decoder:{shape?.DecoderExpression ?? "missing"}:encoder:{shape?.EncoderExpression ?? "missing"}");
+            return;
+        }
+        var union = type.GetCustomAttribute<RunicUnionAttribute>();
+        if (union is not null)
+        {
+            parts.Add($"union:{path}:root:{TypeName(type)}");
+            foreach (var @case in union.Cases.OrderBy(TypeName, StringComparer.Ordinal))
+            {
+                var tag = @case.GetCustomAttribute<RunicUnionCaseAttribute>()?.Name ?? "missing";
+                parts.Add($"union-case:{path}:{tag}:{TypeName(@case)}");
+                AppendType(parts, @case, null, path + ".$case=" + tag, stack);
+            }
+            return;
+        }
+        if (TryDictionary(type, out var dictionaryValue))
+        {
+            parts.Add($"dictionary:{path}:key:string");
+            AppendType(parts, dictionaryValue!, GenericAnnotation(annotation, 1), path + "{}", stack);
+            return;
+        }
+        if (TryCollection(type, out var item))
+        {
+            parts.Add($"collection:{path}");
+            AppendType(parts, item!, GenericAnnotation(annotation, 0), path + "[]", stack);
+            return;
+        }
+        if (!type.IsPublic || type.IsAbstract || !(type.IsClass || type.IsValueType) || stack.Contains(type))
+        {
+            parts.Add($"unsupported:{path}:{TypeName(type)}");
+            return;
+        }
+        stack.Add(type);
+        parts.Add($"dto:{path}:{TypeName(type)}");
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var property in PublicDtoProperties(type).Where(property => property.GetCustomAttribute<RunicIgnoreAttribute>(true) is null))
+        {
+            var wire = WireName(property);
+            parts.Add($"dto-member:{path}:{property.DeclaringType?.FullName}:{property.Name}:wire:{wire}:set:{property.SetMethod?.IsPublic == true}:collision:{!names.Add(wire)}");
+            AppendType(parts, property.PropertyType, new NullabilityInfoContext().Create(property), path + "." + wire, stack, property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
+        }
+        var constructors = type.GetConstructors(BindingFlags.Instance | BindingFlags.Public).OrderBy(constructor => constructor.MetadataToken)
+            .Select(constructor => string.Join(",", constructor.GetParameters().Select(parameter => parameter.Name + ":" + TypeName(parameter.ParameterType))));
+        parts.Add($"dto-constructors:{path}:{string.Join("|", constructors)}");
+        stack.Remove(type);
     }
 
-    private static void AppendCompositionShape(List<string> parts, Type model, IReadOnlyList<Type> models)
+    private static bool IsScalar(Type type) => type == typeof(string) || type == typeof(bool) || type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort) || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong) || type == typeof(float) || type == typeof(double) || type == typeof(decimal) || type == typeof(Guid) || type == typeof(DateOnly) || type == typeof(TimeOnly) || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(System.Numerics.BigInteger);
+    private static bool TryCollection(Type type, out Type? item)
     {
-        var hasContent = PublicDeclaredProperties(model)
-            .Where(property => !HasAttribute(property, nameof(RunicIgnoreAttribute)))
-            .Any(property => ContentModels(property, model, models).Count > 0);
-        parts.Add($"composition:{TypeIdentity(model)}:content:{hasContent}");
+        item = type.IsArray ? type.GetElementType() : null;
+        if (item is not null) return true;
+        if (type == typeof(string)) return false;
+        var candidate = type.GetInterfaces().Append(type).FirstOrDefault(value => value.IsGenericType && value.GetGenericTypeDefinition() is var generic && (generic == typeof(IEnumerable<>) || generic == typeof(IReadOnlyList<>) || generic == typeof(IReadOnlyCollection<>) || generic == typeof(IList<>)));
+        item = candidate?.GenericTypeArguments[0]; return item is not null;
     }
-
-    private static IReadOnlyList<Type> DiscoverModels(Type requestedModel, IReadOnlyList<PresentationView> views)
+    private static bool TryDictionary(Type type, out Type? value)
     {
-        return views.Select(view => view.ModelType).Append(requestedModel).Distinct().ToArray();
+        var candidate = type.GetInterfaces().Append(type).FirstOrDefault(entry => entry.IsGenericType && entry.GetGenericTypeDefinition() is var generic && (generic == typeof(IReadOnlyDictionary<,>) || generic == typeof(IDictionary<,>)) && entry.GenericTypeArguments[0] == typeof(string));
+        value = candidate?.GenericTypeArguments[1]; return value is not null;
     }
-
-    private static IReadOnlyList<PresentationView> DiscoverViews(Assembly assembly) =>
-        LoadableTypes(assembly)
-            .Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested)
-            .Select(type => (ViewType: type, ModelType: ViewModelFor(type)))
-            .Where(candidate => candidate.ModelType is not null)
-            .Select(candidate => new PresentationView(candidate.ViewType, candidate.ModelType!, ContractFor(candidate.ViewType)))
-            .ToArray();
-
-    private static Type? ViewModelFor(Type view)
+    private static IEnumerable<PropertyInfo> PublicModelProperties(Type type) => type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public).Where(property => property.GetIndexParameters().Length == 0);
+    private static IEnumerable<PropertyInfo> PublicDtoProperties(Type type)
     {
-        for (var current = view.BaseType; current is not null; current = current.BaseType)
-            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>))
-                return current.GenericTypeArguments[0];
-        return null;
+        var hierarchy = new Stack<Type>();
+        for (var current = type; current is not null && current != typeof(object) && !IsFrameworkBase(current); current = current.BaseType) hierarchy.Push(current);
+        return hierarchy.SelectMany(current => current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)).Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod is not null);
     }
-
-    private static IReadOnlyList<Type> ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models)
-    {
-        var candidate = property.PropertyType.IsGenericType
-            && property.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)
-            ? property.PropertyType.GenericTypeArguments[0] : property.PropertyType;
-        return candidate == typeof(object)
-            ? []
-            : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray();
-    }
-
-    // Contract inspection runs in the build tool and Debug hot reload guard.
-    // Release/AOT bridges use the generated fingerprint and never inspect a
-    // model's CLR shape at runtime.
-    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Build-time and Debug-only contract inspection.")]
-    private static IEnumerable<PropertyInfo> PublicDeclaredProperties(Type type) =>
-        type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
-            .Where(property => property.GetIndexParameters().Length == 0);
-
-    private static bool TryListItem(Type type, out Type? item)
-    {
-        item = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)
-            ? type.GenericTypeArguments[0]
-            : null;
-        return item is { IsClass: true, IsPublic: true } && item != typeof(string);
-    }
-
-    private static bool IsReadNullable(PropertyInfo property, NullabilityInfoContext nullability) =>
-        nullability.Create(property).ReadState == NullabilityState.Nullable;
-
-    private static bool HasAttribute(MemberInfo member, string attributeName) =>
-        member.CustomAttributes.Any(attribute => attribute.AttributeType.FullName == $"{typeof(RunicIgnoreAttribute).Namespace}.{attributeName}");
-
-    private static string? ContractFor(MemberInfo member)
-    {
-        var attribute = member.CustomAttributes.FirstOrDefault(candidate =>
-            candidate.AttributeType.FullName == typeof(RunicViewContractAttribute).FullName);
-        return attribute?.ConstructorArguments.SingleOrDefault().Value as string;
-    }
-
+    private static bool IsFrameworkBase(Type type) => type.FullName is "ReactiveUI.ReactiveObject" or "CommunityToolkit.Mvvm.ComponentModel.ObservableObject" || type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
+    private static NullabilityInfo? GenericAnnotation(NullabilityInfo? value, int index) => value is { GenericTypeArguments.Length: > 0 } && value.GenericTypeArguments.Length > index ? value.GenericTypeArguments[index] : null;
+    private static string WireName(PropertyInfo property) => property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
+    private static Type? GenericContract(Type type, params string[] names) => type.GetInterfaces().Append(type).FirstOrDefault(candidate => candidate.IsGenericType && names.Contains(candidate.GetGenericTypeDefinition().FullName, StringComparer.Ordinal));
+    private static IReadOnlyList<Type> ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
+    private static IReadOnlyList<PresentationView> DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
+    private static Type? ViewModelFor(Type view) { for (var current = view.BaseType; current is not null; current = current.BaseType) if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>)) return current.GenericTypeArguments[0]; return null; }
+    private static string? ContractFor(MemberInfo member) => member.GetCustomAttribute<RunicViewContractAttribute>(true)?.Contract;
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Build-time and Debug-only contract inspection.")]
-    private static IEnumerable<Type> LoadableTypes(Assembly assembly)
-    {
-        try { return assembly.GetTypes(); }
-        catch (ReflectionTypeLoadException error) { return error.Types.OfType<Type>(); }
-    }
-
-    private static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal)
-        ? model.Name[..^"ViewModel".Length]
-        : model.Name;
-
-    private static string TypeIdentity(Type type) => type.FullName ?? type.Name;
-
+    private static IEnumerable<Type> LoadableTypes(Assembly assembly) { try { return assembly.GetTypes(); } catch (ReflectionTypeLoadException error) { return error.Types.OfType<Type>(); } }
+    private static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal) ? model.Name[..^"ViewModel".Length] : model.Name;
+    private static string TypeName(Type type) { if (type.IsArray) return TypeName(type.GetElementType()!) + "[]"; if (!type.IsGenericType) return type.FullName ?? type.Name; var name = type.GetGenericTypeDefinition().FullName!; name = name[..name.IndexOf('`')]; return name + "<" + string.Join(",", type.GetGenericArguments().Select(TypeName)) + ">"; }
     private sealed record PresentationView(Type ViewType, Type ModelType, string? Contract);
 }

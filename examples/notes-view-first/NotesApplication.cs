@@ -93,6 +93,6 @@ public sealed class SplatViewLocator : IRunicViewLocator
     public TView Locate<TView, TViewModel>()
         where TView : class, IRunicView
         where TViewModel : class =>
-        ReactiveUI.ViewLocator.Current.ResolveView<TViewModel>() as TView
+        ReactiveUI.Binding.ViewLocator.GetCurrent().ResolveView<TViewModel>() as TView
             ?? throw new InvalidOperationException($"ReactiveUI could not locate {typeof(TView).Name} for {typeof(TViewModel).Name}.");
 }

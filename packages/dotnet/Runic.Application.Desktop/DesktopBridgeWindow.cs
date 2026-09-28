@@ -175,7 +175,7 @@ public static class DesktopBridgeWindowExtensions
             surface = await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
             var transport = new DesktopBridgeTransport(surface);
             content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>());
+                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel);
             connectionBinding = surface.SubscribeConnectionEvents(invocation =>
             {
                 if (invocation.Kind == PresentationEventKind.Disconnected)

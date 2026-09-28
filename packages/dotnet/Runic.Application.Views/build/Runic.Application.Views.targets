@@ -66,7 +66,10 @@
     </PropertyGroup>
     <Error Condition="!Exists('$(RunicBridgeCodegenDll)')"
            Text="Runic Bridge code generator was not found at $(RunicBridgeCodegenDll)." />
-    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeRegistrationArgument) $(RunicBridgeCompositionArgument)" />
+    <PropertyGroup>
+      <RunicBridgeReactiveUiFlavorArgument Condition="'$(RunicBridgeReactiveUiFlavor)' != ''">--reactiveui-flavor &quot;$(RunicBridgeReactiveUiFlavor)&quot;</RunicBridgeReactiveUiFlavorArgument>
+    </PropertyGroup>
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeRegistrationArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument)" />
     <ItemGroup>
       <Compile Include="$(RunicBridgeGeneratedDir)*Bridge.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />

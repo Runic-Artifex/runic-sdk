@@ -266,7 +266,16 @@ try {
   if (cancel.kind !== "not-running") throw new Error(`Terminal operation accepted cancellation: ${JSON.stringify(cancel)}`);
   const invalid = await evaluate('(async () => JSON.parse(await window.__runicBridge.call("__runicOperationStatus", "invalid-json")))()');
   if (invalid.kind !== "invalid-request") throw new Error(`Malformed operation identity was accepted: ${JSON.stringify(invalid)}`);
-  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire");
+  await evaluate("window.confirm = () => false");
+  await click("[data-discard]");
+  await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Kept current changes.");
+  if ((await snapshot(editorRoute)).state?.body !== "Both Views see this text.")
+    throw new Error("A declined discard changed the shared note.");
+  await evaluate("window.confirm = () => true");
+  await click("[data-discard]");
+  await retry(async () => (await snapshot(editorRoute)).state?.body === "");
+  await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Discarded Operation roundtrip");
+  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation");
   }
 } finally {
   socket?.close();

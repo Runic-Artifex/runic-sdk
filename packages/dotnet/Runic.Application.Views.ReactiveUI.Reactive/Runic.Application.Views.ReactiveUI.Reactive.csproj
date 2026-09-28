@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.ReactiveUI.Reactive</PackageId>
+    <Authors>RunicArtifex</Authors>
+    <Description>System.Reactive-flavor ReactiveUI routing, view location, activation, and scheduling for Runic Views.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ReactiveUI.Reactive" />
+    <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/Runic.Application.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
+  </ItemGroup>
+</Project>

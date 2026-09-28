@@ -101,12 +101,12 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         catch (Exception error)
         {
             errors.Add(error);
-            errors.AddRange(FinalizeResources());
+            errors.AddRange(await FinalizeResourcesAsync().ConfigureAwait(false));
             throw new AggregateException(errors);
         }
         if (result.Drained)
         {
-            errors.AddRange(FinalizeResources());
+            errors.AddRange(await FinalizeResourcesAsync().ConfigureAwait(false));
             return new(true, 0, CompletionFor(errors));
         }
 
@@ -132,7 +132,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         }
         finally
         {
-            errors.AddRange(FinalizeResources());
+            errors.AddRange(await FinalizeResourcesAsync().ConfigureAwait(false));
         }
         if (errors.Count > 0) throw new AggregateException(errors);
     }
@@ -153,7 +153,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         if (errors.Count > 0) throw new AggregateException(errors);
     }
 
-    private List<Exception> FinalizeResources()
+    private async Task<List<Exception>> FinalizeResourcesAsync()
     {
         lock (_closeGate)
         {
@@ -164,7 +164,9 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         Capture(_content.Dispose, errors);
         Capture(_transport.Dispose, errors);
         Capture(_window.Dispose, errors);
-        Capture(_scope.Dispose, errors);
+        if (_scope is IAsyncDisposable asynchronousScope)
+            await CaptureAsync(asynchronousScope.DisposeAsync, errors).ConfigureAwait(false);
+        else Capture(_scope.Dispose, errors);
         return errors;
     }
 
@@ -178,6 +180,12 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
     private static void Capture(Action action, List<Exception> errors)
     {
         try { action(); }
+        catch (Exception error) { errors.Add(error); }
+    }
+
+    private static async ValueTask CaptureAsync(Func<ValueTask> action, List<Exception> errors)
+    {
+        try { await action().ConfigureAwait(false); }
         catch (Exception error) { errors.Add(error); }
     }
 }
@@ -214,7 +222,7 @@ public static class CsWebUiBridgeWindowExtensions
             window = new WebUiWindow();
             transport = window.CreateBridgeSession();
             content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>());
+                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel);
             connectionBinding = window.Bind("", e =>
             {
                 if (e.EventType == WebUiEventType.Disconnected)
@@ -259,7 +267,12 @@ public static class CsWebUiBridgeWindowExtensions
                     finally
                     {
                         try { window?.Dispose(); }
-                        finally { scope.Dispose(); }
+                        finally
+                        {
+                            if (scope is IAsyncDisposable asynchronousScope)
+                                asynchronousScope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                            else scope.Dispose();
+                        }
                     }
                 }
             }

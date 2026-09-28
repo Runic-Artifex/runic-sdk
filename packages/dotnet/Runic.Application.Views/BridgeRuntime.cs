@@ -36,20 +36,42 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
 // setter descriptor. Their registry belongs to a WindowContentSession, so a
 // second presentation of the same model receives the same baseline, receipt
 // history, and PropertyChanged observer.
-public enum CheckedFieldValueKind { String, NullableString, Int32, Boolean }
+public enum CheckedFieldValueKind { String, NullableString, Int32, Boolean, Json }
 
 public sealed class CheckedPropertyDescriptor<T>(
     string name,
     string wireName,
     CheckedFieldValueKind valueKind,
     Func<T, object?> getter,
-    Action<T, object?> setter)
+    Action<T, object?> setter,
+    Func<JsonElement, object?>? ReadValue = null,
+    Action<Utf8JsonWriter, object?>? WriteValue = null)
 {
     public string Name { get; } = name;
     public string WireName { get; } = wireName;
     public CheckedFieldValueKind ValueKind { get; } = valueKind;
     internal Func<T, object?> Get { get; } = getter;
     internal Action<T, object?> Set { get; } = setter;
+    internal Func<JsonElement, object?>? Read { get; } = ReadValue;
+    internal Action<Utf8JsonWriter, object?>? Write { get; } = WriteValue;
+
+    internal object? Snapshot(object? value)
+    {
+        if (ValueKind is not CheckedFieldValueKind.Json) return value;
+        using var document = JsonDocument.Parse(Encode(value));
+        return Read!(document.RootElement);
+    }
+
+    internal string Encode(object? value) => BridgeWire.EncodeCanonical(writer => Write!(writer, value));
+
+    internal IEqualityComparer<object?> Comparer => ValueKind is CheckedFieldValueKind.Json
+        ? new WireComparer(this) : EqualityComparer<object?>.Default;
+
+    private sealed class WireComparer(CheckedPropertyDescriptor<T> owner) : IEqualityComparer<object?>
+    {
+        public new bool Equals(object? left, object? right) => owner.Encode(left) == owner.Encode(right);
+        public int GetHashCode(object? value) => StringComparer.Ordinal.GetHashCode(owner.Encode(value));
+    }
 }
 
 // Generated snapshot writers call the supplied callback while their JSON
@@ -60,9 +82,15 @@ public delegate void BridgeSnapshotWriter<T>(Utf8JsonWriter writer, T viewModel,
 
 public sealed record CommandDescriptor<T>(
     string Name,
-    Func<T, ICommand> Get,
+    Func<T, object> Get,
     Func<T, CancellationToken, object?, Task>? ExecuteAsync = null,
-    Func<IBridgeArguments, object?>? ReadArgument = null);
+    Func<IBridgeArguments, object?>? ReadArgument = null,
+    Func<T, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteResultAsync = null,
+    Func<object?, string>? EncodeArgument = null,
+    Func<T, object?, bool>? CanExecute = null,
+    Func<T, Action, IDisposable>? Subscribe = null,
+    Func<BridgeOperationStream>? CreateStream = null,
+    Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync = null);
 
 internal sealed record BridgeFailure(string Kind, string Message);
 
@@ -125,6 +153,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private const int MaximumFieldWritePayloadLength = 64 * 1024;
     private const int MaximumFieldWriteRequestIdLength = 256;
     private readonly object _modelGate;
+    private readonly BridgeSnapshotDelivery _delivery;
+    private readonly BridgeModelTurn _modelTurn;
+    private readonly WindowContentSession? _content;
     private readonly IBridgeTransport _transport;
     private readonly T _vm;
     private readonly string _name;
@@ -133,6 +164,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly PropertyDescriptor<T>[] _properties;
     private readonly CheckedPropertyBinding[] _checkedProperties;
     private readonly CommandDescriptor<T>[] _commands;
+    private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
     private readonly INotifyDataErrorInfo? _errors;
@@ -149,9 +181,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         PropertyDescriptor<T>[] properties,
         CommandDescriptor<T>[] commands,
         string? contractFingerprint = null,
-        WindowContentSession? content = null)
+        WindowContentSession? content = null,
+        BridgeInteractionDescriptor<T>[]? interactions = null,
+        BridgeDataSubscriptionMember[]? dataSubscriptions = null)
         : this(transport, vm, name, writeSnapshot, null, properties, [], commands,
-            contractFingerprint, content)
+            contractFingerprint, content, interactions, dataSubscriptions)
     {
     }
 
@@ -164,9 +198,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         CheckedPropertyDescriptor<T>[] checkedProperties,
         CommandDescriptor<T>[] commands,
         string? contractFingerprint = null,
-        WindowContentSession? content = null)
+        WindowContentSession? content = null,
+        BridgeInteractionDescriptor<T>[]? interactions = null,
+        BridgeDataSubscriptionMember[]? dataSubscriptions = null)
         : this(transport, vm, name, null, writeSnapshot, properties, checkedProperties,
-            commands, contractFingerprint, content)
+            commands, contractFingerprint, content, interactions, dataSubscriptions)
     {
     }
 
@@ -180,11 +216,16 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         CheckedPropertyDescriptor<T>[] checkedProperties,
         CommandDescriptor<T>[] commands,
         string? contractFingerprint,
-        WindowContentSession? content)
+        WindowContentSession? content,
+        BridgeInteractionDescriptor<T>[]? interactions,
+        BridgeDataSubscriptionMember[]? dataSubscriptions)
     {
         _transport = transport;
         _vm = vm;
         _modelGate = BridgeModelGates.For(vm);
+        _modelTurn = BridgeModelTurn.For(vm);
+        _content = content;
+        _delivery = new(transport, name, _modelTurn);
         _name = name;
         _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
         _writeSnapshotWithFields = writeSnapshotWithFields;
@@ -198,6 +239,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         var subscribedCommands = new List<ICommand>();
         try
         {
+            if (content is not null && interactions is not null)
+                foreach (var interaction in interactions) bindings.Add(interaction.Attach(content, vm, name));
+            if (dataSubscriptions is { Length: > 0 })
+                bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, Publish));
             // Register the per-window observer before this Bridge subscribes
             // its snapshot publisher. A synchronous setter then advances the
             // field version before any emitted state can describe the value.
@@ -221,7 +266,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                     _checkedProperties = checkedProperties.Select(descriptor =>
                         new CheckedPropertyBinding(descriptor, content.FieldWrites.GetOrCreate(
                             _vm, contract, descriptor.Name,
-                            () => descriptor.Get(_vm), value => descriptor.Set(_vm, value)))).ToArray();
+                            () => descriptor.Get(_vm), value => descriptor.Set(_vm, value),
+                            snapshot: descriptor.Snapshot, equalityComparer: descriptor.Comparer))).ToArray();
                 }
             }
             _vm.PropertyChanged += OnChanged;
@@ -230,37 +276,43 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             foreach (var command in _commands)
             {
                 var value = command.Get(_vm);
-                value.CanExecuteChanged += OnCanExecuteChanged;
-                subscribedCommands.Add(value);
+                if (value is ICommand nativeCommand)
+                {
+                    nativeCommand.CanExecuteChanged += OnCanExecuteChanged;
+                    subscribedCommands.Add(nativeCommand);
+                }
+                if (command.Subscribe is { } subscribe) bindings.Add(subscribe(_vm, Publish));
             }
 
-            bindings.Add(transport.Bind($"{name}Snapshot", _ => Reply()));
+            bindings.Add(transport.Bind($"{name}Snapshot", _ => _modelTurn.Run(Reply)));
             foreach (var property in properties.Where(property => property.CanWrite))
             {
                 var captured = property;
-                bindings.Add(transport.Bind($"{name}Set{property.Name}", e => Set(captured, e)));
+                bindings.Add(transport.Bind($"{name}Set{property.Name}", e => _modelTurn.Run(() => Set(captured, e))));
             }
             foreach (var property in _checkedProperties)
             {
                 var captured = property;
-                bindings.Add(transport.Bind($"{name}Write{captured.Descriptor.Name}", e => Write(captured, e)));
+                bindings.Add(transport.Bind($"{name}Write{captured.Descriptor.Name}", e => _modelTurn.Run(() => Write(captured, e))));
             }
             foreach (var command in commands)
             {
                 var captured = command;
-                bindings.Add(command.ExecuteAsync is null
-                    ? transport.Bind($"{name}{command.Name}", e => Execute(captured, e))
+                bindings.Add(command.ExecuteAsync is null && command.ExecuteResultAsync is null && command.ExecuteStreamAsync is null
+                    ? transport.Bind($"{name}{command.Name}", e => _modelTurn.Run(() => Execute(captured, e)))
                     : transport.BindAsync($"{name}{command.Name}", (e, token) => ExecuteAsync(captured, e, token)));
                 // The familiar awaited command route stays the default. A
-                // zero-argument asynchronous descriptor gains an internal
+                // asynchronous descriptor gains an internal
                 // admission route only when it is attached to a window-owned
                 // content session with a generated contract fingerprint.
                 if (content is not null && contractFingerprint is not null
-                    && captured.ExecuteAsync is not null && captured.ReadArgument is null)
+                    && (captured.ExecuteAsync is not null || captured.ExecuteResultAsync is not null || captured.ExecuteStreamAsync is not null))
                     bindings.Add(transport.Bind($"{name}Start{captured.Name}",
-                        e => StartOperation(content, captured, e)));
+                        e => _modelTurn.Run(() => StartOperation(content, captured, e))));
+                bindings.Add(transport.Bind($"{name}Can{command.Name}", e => _modelTurn.Run(() => QueryAvailability(captured, e))));
             }
             _bindings = [.. bindings];
+            _subscribedCommands = [.. subscribedCommands];
             RunicBridgeHotReload.Track(this);
         }
         catch
@@ -325,8 +377,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 if (!root.GetProperty("expectedVersion").TryGetInt64(out var expectedVersion)
                     || expectedVersion < 0)
                     throw new FormatException("A non-negative field version is required.");
-                var expectedValue = ReadCheckedValue(root.GetProperty("expectedValue"), property.Descriptor.ValueKind);
-                var value = ReadCheckedValue(root.GetProperty("value"), property.Descriptor.ValueKind);
+                var expectedValue = ReadCheckedValue(root.GetProperty("expectedValue"), property.Descriptor);
+                var value = ReadCheckedValue(root.GetProperty("value"), property.Descriptor);
                 request = new BridgeFieldWriteRequest<object?>(requestId, expectedVersion, expectedValue, value);
             }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
@@ -347,7 +399,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    private static object? ReadCheckedValue(JsonElement value, CheckedFieldValueKind valueKind) => valueKind switch
+    private static object? ReadCheckedValue(JsonElement value, CheckedPropertyDescriptor<T> descriptor) => descriptor.ValueKind switch
     {
         CheckedFieldValueKind.String when value.ValueKind is JsonValueKind.String => value.GetString(),
         CheckedFieldValueKind.NullableString when value.ValueKind is JsonValueKind.String => value.GetString(),
@@ -355,12 +407,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         CheckedFieldValueKind.Int32 when value.ValueKind is JsonValueKind.Number && value.TryGetInt32(out var integer) => integer,
         CheckedFieldValueKind.Boolean when value.ValueKind is JsonValueKind.True => true,
         CheckedFieldValueKind.Boolean when value.ValueKind is JsonValueKind.False => false,
+        CheckedFieldValueKind.Json => descriptor.Read!(value),
         _ => throw new FormatException("The checked field value does not match its generated type."),
     };
 
-    private static void WriteCheckedValue(Utf8JsonWriter writer, object? value, CheckedFieldValueKind valueKind)
+    private static void WriteCheckedValue(Utf8JsonWriter writer, object? value, CheckedPropertyDescriptor<T> descriptor)
     {
-        switch (valueKind)
+        switch (descriptor.ValueKind)
         {
             case CheckedFieldValueKind.String:
                 writer.WriteStringValue((string)value!);
@@ -374,6 +427,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 return;
             case CheckedFieldValueKind.Boolean:
                 writer.WriteBooleanValue((bool)value!);
+                return;
+            case CheckedFieldValueKind.Json:
+                descriptor.Write!(writer, value);
                 return;
             default:
                 throw new InvalidOperationException("The checked field type is unsupported.");
@@ -389,8 +445,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             {
                 var argument = descriptor.ReadArgument?.Invoke(arguments);
                 var command = descriptor.Get(_vm);
-                if (!command.CanExecute(argument)) return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
-                command.Execute(argument);
+                if (!IsAvailable(descriptor, argument)) return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
+                using var invocation = EnterInvocation(descriptor, arguments, CancellationToken.None);
+                ((ICommand)command).Execute(argument);
                 return EncodeTerminal();
             }
             catch (OperationCanceledException)
@@ -411,42 +468,60 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private async ValueTask<string> ExecuteAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
     {
-        object? argument;
-        lock (_modelGate)
-        {
-            if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
-            try
-            {
-                argument = descriptor.ReadArgument?.Invoke(arguments);
-                if (!descriptor.Get(_vm).CanExecute(argument))
-                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
-            }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-            {
-                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."));
-            }
-        }
+        Task<BridgeOperationResult>? execution = null;
         try
         {
-            await descriptor.ExecuteAsync!(_vm, token, argument).ConfigureAwait(false);
-            // A request to cancel does not change a command that completed
-            // successfully into a cancelled outcome, even if the request was
-            // made just before the task returned.
-            lock (_modelGate) return EncodeTerminal();
+            var rejection = _modelTurn.Run(() =>
+            {
+                if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+                var argument = descriptor.ReadArgument?.Invoke(arguments);
+                if (!IsAvailable(descriptor, argument))
+                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
+                using var invocation = EnterInvocation(descriptor, arguments, token);
+                execution = InvokeCommandAsync(descriptor, token, argument);
+                return null;
+            });
+            if (rejection is not null) return rejection;
+            await execution!.ConfigureAwait(false);
+            return _modelTurn.Run(() => EncodeTerminal());
         }
         catch (OperationCanceledException)
-        {
-            lock (_modelGate) return EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."));
-        }
+        { return _modelTurn.Run(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."))); }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-        {
-            lock (_modelGate) return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."));
-        }
+        { return _modelTurn.Run(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."))); }
         catch (Exception error)
         {
             Trace.TraceError($"Bridge command {descriptor.Name} failed: {error}");
-            lock (_modelGate) return EncodeTerminal(new("failed", $"{descriptor.Name} failed."));
+            return _modelTurn.Run(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.")));
         }
+    }
+
+    private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
+        _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, arguments, token, descriptor.Name);
+
+    private bool IsAvailable(CommandDescriptor<T> descriptor, object? argument) =>
+        descriptor.CanExecute?.Invoke(_vm, argument)
+        ?? (descriptor.Get(_vm) is ICommand command && command.CanExecute(argument));
+
+    private string QueryAvailability(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
+    {
+        lock (_modelGate)
+        {
+            if (IsInactive) return "false";
+            try { return IsAvailable(descriptor, descriptor.ReadArgument?.Invoke(arguments)) ? "true" : "false"; }
+            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
+            { return "false"; }
+        }
+    }
+
+    private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, CancellationToken token, object? argument)
+    {
+        if (descriptor.ExecuteStreamAsync is { } executeStream)
+            return await executeStream(_vm, new BridgeOperationExecution(descriptor.CreateStream!()), token, argument).ConfigureAwait(false);
+        if (descriptor.ExecuteResultAsync is { } executeResult)
+            return await executeResult(_vm, token, argument).ConfigureAwait(false);
+        await descriptor.ExecuteAsync!(_vm, token, argument).ConfigureAwait(false);
+        return BridgeOperationResult.Empty;
     }
 
     private string StartOperation(WindowContentSession content, CommandDescriptor<T> descriptor, IBridgeArguments arguments)
@@ -454,47 +529,67 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return EncodeOperationStartFailure("disconnected", "The Bridge is closed.");
-
-            string requestId;
             try
             {
-                requestId = arguments.GetString();
-                // Validate before command admission so malformed external
-                // input never reaches a window operation registry.
+                string requestId;
+                object? argument = null;
+                if (descriptor.ReadArgument is null) requestId = arguments.GetString();
+                else
+                {
+                    var payload = arguments.GetString();
+                    if (payload.Length > MaximumFieldWritePayloadLength) throw new FormatException("The command input is too large.");
+                    using var document = JsonDocument.Parse(payload);
+                    requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
+                    argument = descriptor.ReadArgument(new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
+                }
                 _ = BridgeOperationIdentity.Create(OperationContract(), requestId);
-            }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
-            {
-                return EncodeOperationStartFailure("invalid-request", "The operation request is invalid.");
-            }
-
-            try
-            {
-                var command = descriptor.Get(_vm);
-                if (!command.CanExecute(null))
-                    return EncodeOperationStartFailure("rejected", $"{descriptor.Name} is unavailable.");
-
-                // Registry admission records the request before this delegate
-                // runs. Its synchronous prefix executes in the model turn,
-                // allowing the MVVM command to capture state before async I/O.
-                var admission = content.Operations.Accept(OperationContract(), requestId,
-                    cancellation => descriptor.ExecuteAsync!(_vm, cancellation, null));
+                var canonicalInput = descriptor.EncodeArgument?.Invoke(argument) ?? WriteJson(writer =>
+                {
+                    switch (argument)
+                    {
+                        case null: writer.WriteNullValue(); break;
+                        case string value: writer.WriteStringValue(value); break;
+                        case int value: writer.WriteNumberValue(value); break;
+                        case bool value: writer.WriteBooleanValue(value); break;
+                        default: throw new FormatException("The command needs a generated input codec.");
+                    }
+                });
+                var request = new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
+                var admission = descriptor.ExecuteStreamAsync is { } executeStream
+                    ? content.Operations.Accept(request, () => IsAvailable(descriptor, argument), descriptor.CreateStream!(),
+                        (execution, cancellation) =>
+                        {
+                            using var invocation = EnterInvocation(descriptor, arguments, cancellation);
+                            return executeStream(_vm, execution, cancellation, argument);
+                        })
+                    : content.Operations.Accept(request,
+                    () => IsAvailable(descriptor, argument),
+                    cancellation =>
+                    {
+                        using var invocation = EnterInvocation(descriptor, arguments, cancellation);
+                        return InvokeCommandAsync(descriptor, cancellation, argument);
+                    });
                 return BridgeOperationRouter.EncodeAdmission(admission);
             }
             catch (OperationCanceledException)
-            {
-                return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled.");
-            }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-            {
-                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.");
-            }
+            { return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled."); }
+            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
+            { return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument."); }
             catch (Exception error)
             {
                 Trace.TraceError($"Bridge operation admission {descriptor.Name} failed: {error}");
                 return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.");
             }
         }
+    }
+
+    private sealed class JsonBridgeArguments(string json, IBridgeArguments source) : IBridgeArguments
+    {
+        public string GetString() => json;
+        public long GetInt64() { using var document = JsonDocument.Parse(json); return document.RootElement.GetInt64(); }
+        public bool GetBoolean() { using var document = JsonDocument.Parse(json); return document.RootElement.GetBoolean(); }
+        public string? ClientKey => source.ClientKey;
+        public string? ConnectionKey => source.ConnectionKey;
     }
 
     // A ViewModel type and generated fingerprint describe its wire shape, but
@@ -574,17 +669,17 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 {
                     case BridgeFieldWriteReceiptKind.Applied:
                         writer.WriteString("kind", "applied");
-                        WriteFieldSnapshot(writer, "snapshot", receipt.Current, property.Descriptor.ValueKind);
+                        WriteFieldSnapshot(writer, "snapshot", receipt.Current, property.Descriptor);
                         if (receipt.Validation is not null) writer.WriteString("validation", receipt.Validation);
                         break;
                     case BridgeFieldWriteReceiptKind.PostApplyValidationFailed:
                         writer.WriteString("kind", "committed-with-error");
-                        WriteFieldSnapshot(writer, "snapshot", receipt.Current, property.Descriptor.ValueKind);
+                        WriteFieldSnapshot(writer, "snapshot", receipt.Current, property.Descriptor);
                         writer.WriteString("message", receipt.Message ?? "The field changed but its validation did not complete.");
                         break;
                     case BridgeFieldWriteReceiptKind.Conflict:
                         writer.WriteString("kind", "conflict");
-                        WriteFieldSnapshot(writer, "incoming", receipt.Current, property.Descriptor.ValueKind);
+                        WriteFieldSnapshot(writer, "incoming", receipt.Current, property.Descriptor);
                         writer.WriteString("message", receipt.Message ?? "The field baseline no longer matches.");
                         break;
                     default:
@@ -603,12 +698,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     }
 
     private static void WriteFieldSnapshot(Utf8JsonWriter writer, string name, BridgeFieldSnapshot<object?> snapshot,
-        CheckedFieldValueKind valueKind)
+        CheckedPropertyDescriptor<T> descriptor)
     {
         writer.WritePropertyName(name);
         writer.WriteStartObject();
         writer.WritePropertyName("value");
-        WriteCheckedValue(writer, snapshot.Value, valueKind);
+        WriteCheckedValue(writer, snapshot.Value, descriptor);
         writer.WriteNumber("version", snapshot.Version);
         writer.WriteEndObject();
     }
@@ -643,7 +738,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
     }
 
-    private void OnChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.Run(() => OnChangedCore(sender, e));
+
+    private void OnChangedCore(object? sender, PropertyChangedEventArgs e)
     {
         lock (_modelGate)
         {
@@ -656,7 +753,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => Publish();
     private void OnCanExecuteChanged(object? sender, EventArgs e) => Publish();
 
-    private void Publish()
+    private void Publish() => _modelTurn.Run(PublishCore);
+
+    private void PublishCore()
     {
         lock (_modelGate)
         {
@@ -665,7 +764,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             try
             {
                 var state = WriteSnapshot();
-                if (!IsInactive) _transport.Publish(_name, state);
+                if (!IsInactive) _delivery.Enqueue(state);
             }
             catch (BridgeSnapshotDetachedException)
             {
@@ -706,17 +805,21 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    public virtual void Dispose()
+    public virtual void Dispose() => _modelTurn.Run(DisposeCore);
+
+    private void DisposeCore()
     {
         lock (_modelGate)
         {
             if (_disposed) return;
             _disposed = true;
+            _delivery.Dispose();
             _vm.PropertyChanged -= OnChanged;
             foreach (var collection in _collections.Values) collection.CollectionChanged -= OnCollectionChanged;
             _collections.Clear();
             if (_errors is not null) _errors.ErrorsChanged -= OnErrorsChanged;
-            foreach (var command in _commands) command.Get(_vm).CanExecuteChanged -= OnCanExecuteChanged;
+            foreach (var command in _subscribedCommands)
+                command.CanExecuteChanged -= OnCanExecuteChanged;
             foreach (var binding in _bindings) binding.Dispose();
         }
     }
