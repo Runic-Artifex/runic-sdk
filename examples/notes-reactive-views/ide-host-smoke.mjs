@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
 import { fileURLToPath } from "node:url";
 
@@ -48,14 +48,16 @@ async function verify(framework, stopWithSignal = false) {
   try {
     let frontend, backend, angularOrigin;
     await retry(() => {
-      if (host.exitCode !== null) throw new Error(`Host exited:\n${output}`);
+      if (host.exitCode !== null || host.signalCode !== null) throw new Error(`Host exited:\n${output}`);
       const ready = output.match(/RUNIC_IDE_READY\|(http:\/\/127\.0\.0\.1:\d+\/)\|backend=(http:\/\/[^|\r\n]+)\|framework=/);
       frontend = ready?.[1];
       backend = ready?.[2];
       const angularPort = output.match(/RUNIC_IDE_ANGULAR_MAP_PROXY\|visible=\d+\|angular=(\d+)/)?.[1];
       if (angularPort) angularOrigin = `http://127.0.0.1:${angularPort}/`;
       return frontend && backend;
-    }, 90_000);
+    }, 90_000).catch(error => {
+      throw new Error(`${error.message}\nHost output:\n${output.slice(-16_384)}`, { cause: error });
+    });
     if (!(await responds(frontend)).ok || !(await responds(new URL("/runic-cswebui.js", frontend))).ok)
       throw new Error(`Frontend did not become ready: ${output}`);
     // This serve-only probe may take WebUI's single client slot once; the Debug host never does.
@@ -78,9 +80,16 @@ async function verify(framework, stopWithSignal = false) {
     console.log(`REACTIVE_NOTES_IDE_HOST_OK|${framework}|${stopWithSignal ? "signal" : "normal"}|ports-closed`);
   } finally {
     if (host.exitCode === null && host.signalCode === null) {
-      try { process.kill(-host.pid, "SIGTERM"); } catch { /* Already stopped. */ }
-      await pause(300);
-      try { process.kill(-host.pid, "SIGKILL"); } catch { /* Already stopped. */ }
+      if (process.platform === "win32") {
+        // Negative-PID process groups are POSIX-only. Reap the owned Windows
+        // process tree before launching the next frontend probe.
+        spawnSync("taskkill.exe", ["/PID", String(host.pid), "/T", "/F"], { timeout: 5000 });
+      } else {
+        try { process.kill(-host.pid, "SIGTERM"); } catch { /* Already stopped. */ }
+        await pause(300);
+        try { process.kill(-host.pid, "SIGKILL"); } catch { /* Already stopped. */ }
+      }
+      await retry(() => host.exitCode !== null || host.signalCode !== null, 5000);
     }
   }
 }

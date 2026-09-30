@@ -17,8 +17,8 @@ const bridgeWire = {
   array<T>(value: unknown, decode: (item: unknown) => T): readonly T[] { if (!Array.isArray(value)) throw new TypeError("Expected an array."); return value.map(decode); },
   stringRecord<T>(value: unknown, decode: (item: unknown) => T): Readonly<Record<string, T>> { const object = this.object(value, item => item); const result = Object.create(null) as Record<string, T>; for (const [key, item] of Object.entries(object)) result[key] = decode(item); return result; },
   object<T>(value: unknown, decode: (item: Record<string, unknown>) => T): T { if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Expected an object."); return decode(value as Record<string, unknown>); },
-  union(value: unknown): any { const object = this.object(value, item => item); if (typeof object.$case !== "string") throw new TypeError("Expected a union discriminator."); return object; },
-  encodeUnion(value: unknown): Record<string, unknown> { const object = this.object(value, item => item); if (typeof object.$case !== "string") throw new TypeError("Expected a union discriminator."); return object; },
+  union(value: unknown): any { const object = this.object(value, item => item); if (typeof object["$case"] !== "string") throw new TypeError("Expected a union discriminator."); return object; },
+  encodeUnion(value: unknown): Record<string, unknown> { const object = this.object(value, item => item); if (typeof object["$case"] !== "string") throw new TypeError("Expected a union discriminator."); return object; },
 };
 
 export interface EditorState {
@@ -355,14 +355,14 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
     try {
       const receipt = bridgeWire.object(reply.receipt, value => value);
       const baseline = (value: unknown): FieldBaseline<T> => bridgeWire.object(value, field => ({
-        value: decode(field.value), version: bridgeWire.integer(field.version, 0, Number.MAX_SAFE_INTEGER),
+        value: decode(field["value"]), version: bridgeWire.integer(field["version"], 0, Number.MAX_SAFE_INTEGER),
       }));
-      switch (receipt.kind) {
-        case "applied": return { kind: "applied", snapshot: baseline(receipt.snapshot),
-          ...(receipt.validation === undefined ? {} : { validation: bridgeWire.string(receipt.validation) }) };
-        case "committed-with-error": return { kind: "committed-with-error", snapshot: baseline(receipt.snapshot), message: bridgeWire.string(receipt.message) };
-        case "conflict": return { kind: "conflict", incoming: baseline(receipt.incoming), message: bridgeWire.string(receipt.message) };
-        case "rejected": return { kind: "rejected", message: bridgeWire.string(receipt.message) };
+      switch (receipt["kind"]) {
+        case "applied": return { kind: "applied", snapshot: baseline(receipt["snapshot"]),
+          ...(receipt["validation"] === undefined ? {} : { validation: bridgeWire.string(receipt["validation"]) }) };
+        case "committed-with-error": return { kind: "committed-with-error", snapshot: baseline(receipt["snapshot"]), message: bridgeWire.string(receipt["message"]) };
+        case "conflict": return { kind: "conflict", incoming: baseline(receipt["incoming"]), message: bridgeWire.string(receipt["message"]) };
+        case "rejected": return { kind: "rejected", message: bridgeWire.string(receipt["message"]) };
         default: throw new TypeError("Unknown checked write receipt kind.");
       }
     } catch { throw new BridgeError("failed", "The Bridge returned an invalid checked write receipt."); }
@@ -467,8 +467,8 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
     return json;
   }
   async function replyInteraction(request: { readonly requestId: string; readonly route: string; readonly presentationId: string; readonly ownerEpoch: number; readonly name: string; readonly contract: string }, kind: "answered" | "cancelled" | "failed", output?: unknown): Promise<void> {
-    const payload: Record<string, unknown> = { kind, requestId: request.requestId, route: request.route, presentationId: request.presentationId, ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract };
-    if (kind === "answered") payload.output = output;
+    const payload: Record<string, unknown> = { kind, requestId: request["requestId"], route: request["route"], presentationId: request["presentationId"], ownerEpoch: request["ownerEpoch"], name: request["name"], contract: request["contract"] };
+    if (kind === "answered") payload["output"] = output;
     try { await bridge.call("__runicInteractionReply", jsonForInteraction(payload)); } catch { /* The request will be cancelled by its presentation lifecycle. */ }
   }
   function abortActiveInteractions(): void {
@@ -518,13 +518,13 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
     }
   }
   async function handleInteractionRequest(request: Record<string, unknown>): Promise<void> {
-    if (typeof request.requestId !== "string" || typeof request.route !== "string" || typeof request.presentationId !== "string" || typeof request.ownerEpoch !== "number" || !Number.isSafeInteger(request.ownerEpoch) || typeof request.name !== "string" || typeof request.contract !== "string") return;
-    const identity = { requestId: request.requestId, route: request.route, presentationId: request.presentationId, ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract };
-    const key = interactionIdentity(request.name, request.contract);
+    if (typeof request["requestId"] !== "string" || typeof request["route"] !== "string" || typeof request["presentationId"] !== "string" || typeof request["ownerEpoch"] !== "number" || !Number.isSafeInteger(request["ownerEpoch"]) || typeof request["name"] !== "string" || typeof request["contract"] !== "string") return;
+    const identity = { requestId: request["requestId"], route: request["route"], presentationId: request["presentationId"], ownerEpoch: request["ownerEpoch"], name: request["name"], contract: request["contract"] };
+    const key = interactionIdentity(request["name"], request["contract"]);
     const handler = interactionHandlers.get(key);
-    if (!handler || request.route !== route || request.presentationId !== interactionPresentationId) { await replyInteraction(identity, "cancelled"); return; }
+    if (!handler || request["route"] !== route || request["presentationId"] !== interactionPresentationId) { await replyInteraction(identity, "cancelled"); return; }
     const controller = new AbortController();
-    const expiresAt = typeof request.expiresAt === "string" ? Date.parse(request.expiresAt) : Number.NaN;
+    const expiresAt = typeof request["expiresAt"] === "string" ? Date.parse(request["expiresAt"]) : Number.NaN;
     const deadline = Number.isFinite(expiresAt) && expiresAt > Date.now() ? setTimeout(() => controller.abort(), Math.min(expiresAt - Date.now(), 600_000)) : undefined;
     const abortFromHandler = () => controller.abort();
     handler.controller.signal.addEventListener("abort", abortFromHandler, { once: true });
@@ -533,10 +533,10 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
     const cancelledBeforeDelivery = cancelledInteractionRequests.get(identity.requestId);
     if (cancelledBeforeDelivery) { clearTimeout(cancelledBeforeDelivery); cancelledInteractionRequests.delete(identity.requestId); controller.abort(); }
     try {
-      const input = decodeInteractionInput(request.name, request.input);
+      const input = decodeInteractionInput(request["name"], request["input"]);
       const output = await handler.handle(input, { signal: controller.signal });
       if (interactionDisposed || lease.disposed || !isLive() || controller.signal.aborted || interactionHandlers.get(key) !== handler) await replyInteraction(identity, "cancelled");
-      else await replyInteraction(identity, "answered", encodeInteractionOutput(request.name, output));
+      else await replyInteraction(identity, "answered", encodeInteractionOutput(request["name"], output));
     } catch {
       await replyInteraction(identity, controller.signal.aborted ? "cancelled" : "failed");
     } finally {
@@ -558,8 +558,8 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
       interactionRetryDelay = 25;
       if (envelope === null || typeof envelope !== "object") continue;
       const request = envelope as Record<string, unknown>;
-      if (request.kind === "disconnected" || request.kind === "ignored" || request.kind === "unsupported" || request.kind === "invalid-request" || request.kind === "cancelled") { stopInteractionLoops(); return; }
-      if (request.kind === "request") void handleInteractionRequest(request);
+      if (request["kind"] === "disconnected" || request["kind"] === "ignored" || request["kind"] === "unsupported" || request["kind"] === "invalid-request" || request["kind"] === "cancelled") { stopInteractionLoops(); return; }
+      if (request["kind"] === "request") void handleInteractionRequest(request);
     }
   }
   async function runInteractionControlLoop(): Promise<void> {
@@ -572,8 +572,8 @@ async function connectEditorAt(route: string, needsMount = false): Promise<Edito
       interactionRetryDelay = 25;
       if (envelope === null || typeof envelope !== "object") continue;
       const control = envelope as Record<string, unknown>;
-      if (control.kind === "disconnected" || control.kind === "ignored" || control.kind === "invalid-request" || (control.kind === "cancelled" && typeof control.requestId !== "string")) { stopInteractionLoops(); return; }
-      if (control.kind === "cancelled" && typeof control.requestId === "string") cancelInteractionRequest(control.requestId);
+      if (control["kind"] === "disconnected" || control["kind"] === "ignored" || control["kind"] === "invalid-request" || (control["kind"] === "cancelled" && typeof control["requestId"] !== "string")) { stopInteractionLoops(); return; }
+      if (control["kind"] === "cancelled" && typeof control["requestId"] === "string") cancelInteractionRequest(control["requestId"]);
     }
   }
   function ensureInteractionLoop(): void {

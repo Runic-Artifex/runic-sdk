@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { REPOSITORY, VERSION, sha256 } from './artifacts.mjs';
 const [packages, output] = process.argv.slice(2);
@@ -23,9 +23,11 @@ if (release && !release.isDraft) {
   // A pre-existing tag must agree with this run even if no release exists yet.
   const tagged = spawnSync('gh', ['api', `repos/${REPOSITORY}/commits/${tag}`, '--jq', '.sha'], {encoding: 'utf8'});
   if (tagged.status === 0) assert.equal(tagged.stdout.trim(), source, 'Tag belongs to different source');
+  const notes = resolve('eng', 'release', 'notes', `${VERSION}.md`);
+  const noteArguments = existsSync(notes) ? ['--notes-file', notes]
+    : ['--notes', `Install matching ${VERSION} packages from NuGet and npm. See the repository README for getting started.`];
   if (!release) gh(['release', 'create', tag, '--repo', REPOSITORY, '--target', source, '--title', `Runic SDK ${VERSION}`,
-    '--generate-notes', '--notes', `Install matching ${VERSION} packages from NuGet and npm. See the repository README for getting started.`,
-    '--prerelease', '--draft']);
+    '--generate-notes', ...noteArguments, '--prerelease', '--draft']);
   // Upload while still a draft, so retries can finish an interrupted upload
   // before GitHub makes an immutable public release.
   gh(['release', 'upload', tag, '--repo', REPOSITORY, '--clobber', join(directory, archive), join(directory, 'SHA256SUMS')]);

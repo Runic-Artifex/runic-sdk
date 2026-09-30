@@ -75,7 +75,7 @@
     },
     "packages/web/angular": {
       "name": "@runic-artifex/angular",
-      "version": "0.5.0-preview.2",
+      "version": "0.5.0-preview.3",
       "devDependencies": {
         "@angular/compiler": "22.1.5",
         "@angular/compiler-cli": "22.1.5",
@@ -88,7 +88,7 @@
     },
     "packages/web/svelte": {
       "name": "@runic-artifex/svelte",
-      "version": "0.5.0-preview.2",
+      "version": "0.5.0-preview.3",
       "devDependencies": {
         "@sveltejs/adapter-static": "3.0.10",
         "@sveltejs/kit": "2.70.3",
@@ -108,7 +108,7 @@
     },
     "packages/web/sveltekit": {
       "name": "@runic-artifex/sveltekit",
-      "version": "0.5.0-preview.2",
+      "version": "0.5.0-preview.3",
       "dependencies": {
         "@types/cookie": "0.6.0",
       },
@@ -144,7 +144,7 @@
     },
     "packages/web/vite-plugin-runic": {
       "name": "@runic-artifex/vite-plugin-runic",
-      "version": "0.5.0-preview.2",
+      "version": "0.5.0-preview.3",
       "devDependencies": {
         "@types/node": "24.13.3",
         "@vitejs/devtools": "0.5.2",
@@ -162,7 +162,7 @@
     },
     "packages/web/vite-plugin-runic-translations": {
       "name": "@runic-artifex/vite-plugin-runic-translations",
-      "version": "0.5.0-preview.2",
+      "version": "0.5.0-preview.3",
       "devDependencies": {
         "typescript": "^6.0.3",
         "vite": "^8.2.2",

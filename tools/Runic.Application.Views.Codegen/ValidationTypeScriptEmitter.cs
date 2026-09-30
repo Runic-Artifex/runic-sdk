@@ -16,13 +16,13 @@ export interface BridgeValidationState {
 }
 function decodeBridgeValidation(value: unknown): BridgeValidationState {
   return bridgeWire.object(value, state => ({
-    hasErrors: bridgeWire.boolean(state.hasErrors),
-    truncated: bridgeWire.boolean(state.truncated),
-    errors: bridgeWire.array(state.errors, value => bridgeWire.object(value, error => ({
-      path: bridgeWire.array(error.path, part => typeof part === "string" ? part : bridgeWire.integer(part, 0, Number.MAX_SAFE_INTEGER)),
-      message: bridgeWire.string(error.message),
-      ...(error.code === undefined ? {} : { code: bridgeWire.string(error.code) }),
-      ...(error.severity === undefined ? {} : { severity: bridgeWire.string(error.severity) }),
+    hasErrors: bridgeWire.boolean(state["hasErrors"]),
+    truncated: bridgeWire.boolean(state["truncated"]),
+    errors: bridgeWire.array(state["errors"], value => bridgeWire.object(value, error => ({
+      path: bridgeWire.array(error["path"], part => typeof part === "string" ? part : bridgeWire.integer(part, 0, Number.MAX_SAFE_INTEGER)),
+      message: bridgeWire.string(error["message"]),
+      ...(error["code"] === undefined ? {} : { code: bridgeWire.string(error["code"]) }),
+      ...(error["severity"] === undefined ? {} : { severity: bridgeWire.string(error["severity"]) }),
     }))),
   }));
 }

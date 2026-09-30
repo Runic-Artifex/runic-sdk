@@ -19,14 +19,14 @@ internal static class CheckedWriteTypeScriptEmitter
     try {
       const receipt = bridgeWire.object(reply.receipt, value => value);
       const baseline = (value: unknown): FieldBaseline<T> => bridgeWire.object(value, field => ({
-        value: decode(field.value), version: bridgeWire.integer(field.version, 0, Number.MAX_SAFE_INTEGER),
+        value: decode(field["value"]), version: bridgeWire.integer(field["version"], 0, Number.MAX_SAFE_INTEGER),
       }));
-      switch (receipt.kind) {
-        case "applied": return { kind: "applied", snapshot: baseline(receipt.snapshot),
-          ...(receipt.validation === undefined ? {} : { validation: bridgeWire.string(receipt.validation) }) };
-        case "committed-with-error": return { kind: "committed-with-error", snapshot: baseline(receipt.snapshot), message: bridgeWire.string(receipt.message) };
-        case "conflict": return { kind: "conflict", incoming: baseline(receipt.incoming), message: bridgeWire.string(receipt.message) };
-        case "rejected": return { kind: "rejected", message: bridgeWire.string(receipt.message) };
+      switch (receipt["kind"]) {
+        case "applied": return { kind: "applied", snapshot: baseline(receipt["snapshot"]),
+          ...(receipt["validation"] === undefined ? {} : { validation: bridgeWire.string(receipt["validation"]) }) };
+        case "committed-with-error": return { kind: "committed-with-error", snapshot: baseline(receipt["snapshot"]), message: bridgeWire.string(receipt["message"]) };
+        case "conflict": return { kind: "conflict", incoming: baseline(receipt["incoming"]), message: bridgeWire.string(receipt["message"]) };
+        case "rejected": return { kind: "rejected", message: bridgeWire.string(receipt["message"]) };
         default: throw new TypeError("Unknown checked write receipt kind.");
       }
     } catch { throw new BridgeError("failed", "The Bridge returned an invalid checked write receipt."); }
