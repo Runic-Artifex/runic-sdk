@@ -3,10 +3,19 @@
   import { EditorWrites } from "../../Frontend/src/editor-writes.js";
   import { pageState } from "./bridge-state.js";
 
-  let { page }: { page: EditorPageReference } = $props();
+  let { page, handleInteractions = true }: { page: EditorPageReference; handleInteractions?: boolean } = $props();
   const editor = pageState(() => page);
   let error = $state<string | undefined>();
   const writes = new EditorWrites(cause => { error = cause === undefined ? undefined : String(cause); });
+  const connectedEditor = $derived(editor.view);
+
+  $effect(() => {
+    if (!connectedEditor || !handleInteractions) return;
+    return connectedEditor.interactions.confirmDiscard.handle(async (request, { signal }) => {
+      if (signal.aborted) throw signal.reason;
+      return window.confirm(`Discard the ${request.bodyLength} unsaved characters in “${request.title}”?`);
+    });
+  });
 
   async function run(command: (view: EditorView) => Promise<unknown>) {
     const view = editor.view;
@@ -25,6 +34,7 @@
   <label>Title<input data-title value={editor.state.title} onchange={event => { const value = event.currentTarget.value; write(view => view.setTitle(value)); }}></label>
   <label>Body<textarea data-body value={editor.state.body} onchange={event => { const value = event.currentTarget.value; write(view => view.setBody(value)); }}></textarea></label>
   <button data-save disabled={!editor.state.canSave} onclick={() => run(view => writes.run(() => view.save()))}>Save</button>
+  <button data-discard disabled={!editor.state.canDiscard} onclick={() => run(view => writes.run(() => view.discard()))}>Discard changes</button>
   <p data-message role="status">{editor.state.savedMessage}</p>
   <p data-activation class="muted">Activated {editor.state.activationCount} × · deactivated {editor.state.deactivationCount} ×</p>
 {:else}

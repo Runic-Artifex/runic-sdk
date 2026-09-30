@@ -73,7 +73,18 @@ try {
     return response.result.result.value;
   }
   const query = expression => evaluate(expression);
-  const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const click = async selector => {
+    try {
+      await retry(() => evaluate(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        if (!element || element.matches(":disabled")) return false;
+        element.click();
+        return true;
+      })()`));
+    } catch (cause) {
+      throw new Error(`The Reactive Notes control did not become clickable: ${selector}`, { cause });
+    }
+  };
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
   const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
 
@@ -266,15 +277,19 @@ try {
   if (cancel.kind !== "not-running") throw new Error(`Terminal operation accepted cancellation: ${JSON.stringify(cancel)}`);
   const invalid = await evaluate('(async () => JSON.parse(await window.__runicBridge.call("__runicOperationStatus", "invalid-json")))()');
   if (invalid.kind !== "invalid-request") throw new Error(`Malformed operation identity was accepted: ${JSON.stringify(invalid)}`);
-  await evaluate("window.confirm = () => false");
+  await evaluate("window.__runicDiscardPromptCount = 0; window.confirm = () => { window.__runicDiscardPromptCount++; return false; }");
   await click("[data-discard]");
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Kept current changes.");
+  if (await query("window.__runicDiscardPromptCount") !== 1)
+    throw new Error("The declined discard bypassed the mounted browser interaction handler.");
   if ((await snapshot(editorRoute)).state?.body !== "Both Views see this text.")
     throw new Error("A declined discard changed the shared note.");
-  await evaluate("window.confirm = () => true");
+  await evaluate("window.confirm = () => { window.__runicDiscardPromptCount++; return true; }");
   await click("[data-discard]");
   await retry(async () => (await snapshot(editorRoute)).state?.body === "");
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Discarded Operation roundtrip");
+  if (await query("window.__runicDiscardPromptCount") !== 2)
+    throw new Error("The approved discard did not reach the mounted browser interaction handler exactly once.");
   console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation");
   }
 } finally {

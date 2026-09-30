@@ -167,6 +167,12 @@ trusted bridge command/operation scope. Background .NET work has no implicit
 "last mounted window" target: use a normal .NET handler or explicitly enter a
 `RunicInteractionInvocation` scope with the intended session and route.
 
+If a browser mounts multiple presentations of the same route, designate one
+presentation to register each interaction handler. Multiple eligible handlers
+on that connection make the destination ambiguous and preserve the normal
+.NET fallback. The Reactive Notes Svelte and Angular demos keep a mirrored
+editor mounted while the main editor owns confirmation.
+
 Browser handler capabilities are registered independently of the request pull,
 so an active handler remains eligible across a short polling gap. Each mounted
 presentation has a bounded pending queue. A request that is no longer eligible

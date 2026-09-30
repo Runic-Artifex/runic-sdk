@@ -1,12 +1,13 @@
 import { Component, input, signal } from "@angular/core";
 import type { DocumentPageReference, DocumentState, DocumentView } from "../../../Frontend/src/generated/document.js";
 import { pageSignal } from "./bridge-signal";
-import { EditorComponent } from "./editor";
+import { EditorComponent, MirrorEditorComponent } from "./editor";
 import { CompactComponent } from "./compact";
 import { PreviewComponent } from "./preview";
 import { RunicViewOutlet, type ViewRegistry } from "../../../../../packages/web/angular/src/view-outlet";
 
 const paneViews = { editor: EditorComponent, preview: PreviewComponent } satisfies ViewRegistry<DocumentState["currentPane"]>;
+const mirrorViews = { ...paneViews, editor: MirrorEditorComponent } satisfies ViewRegistry<DocumentState["currentPane"]>;
 const compactViews = { editorCompact: CompactComponent } satisfies ViewRegistry<DocumentState["compactNote"]>;
 
 @Component({
@@ -25,7 +26,7 @@ const compactViews = { editorCompact: CompactComponent } satisfies ViewRegistry<
           <section id="document-pane" class="card"><runic-view-outlet [content]="state.currentPane" [registry]="paneViews" /></section>
         </div>
         @if (state.currentPane.kind === "editor") {
-          <aside id="same-reference-editor" class="card"><runic-view-outlet [content]="state.currentPane" [registry]="paneViews" /></aside>
+          <aside id="same-reference-editor" class="card"><runic-view-outlet [content]="state.currentPane" [registry]="mirrorViews" /></aside>
         }
         <aside id="compact-pane" class="card"><runic-view-outlet [content]="state.compactNote" [registry]="compactViews" /></aside>
       </div>
@@ -37,6 +38,7 @@ export class DocumentComponent {
   readonly page = input.required<DocumentPageReference>();
   readonly document = pageSignal(this.page);
   readonly paneViews = paneViews;
+  readonly mirrorViews = mirrorViews;
   readonly compactViews = compactViews;
   readonly error = signal<string | undefined>(undefined);
 
