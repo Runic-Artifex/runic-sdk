@@ -5,5 +5,7 @@
   <PropertyGroup>
     <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
     <BaseOutputPath>$(MSBuildThisFileDirectory)bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <!-- Exclude sibling project outputs and the bridge's shared bootstrap output. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildThisFileDirectory)obj/**;$(MSBuildThisFileDirectory)bin/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

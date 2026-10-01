@@ -23,8 +23,8 @@ contracts, and activation lifetimes.
 
 ## ReactiveUI 25
 
-This package targets ReactiveUI **25.0.1**, Binding **8.6.0**, and
-SourceGenerators **4.2.0**. ReactiveUI 25 moved `IViewFor<T>` and
+This package targets ReactiveUI **25.1.1**, Binding **8.8.1**, Primitives
+**8.4.0**, and SourceGenerators **4.2.0**. ReactiveUI 25 moved `IViewFor<T>` and
 `IViewLocator` to `ReactiveUI.Binding`, so upgrade the Runic adapter, app, and
 generated web client together. An adapter binary compiled against ReactiveUI
 24 can fail at runtime against ReactiveUI 25 even if a dependency override

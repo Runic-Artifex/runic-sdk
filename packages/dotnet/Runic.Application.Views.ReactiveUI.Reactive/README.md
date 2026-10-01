@@ -36,8 +36,9 @@ process-global ReactiveUI scheduler. Generated command and interaction
 contracts use this flavor's adapters, with the same typed data, operation
 results, cancellation, and browser interaction support as the default flavor.
 
-The package targets ReactiveUI.Reactive 25.0.1, which brings
-ReactiveUI.Binding.Reactive 8.6.0 and System.Reactive 7.0.0 transitively.
+The package targets ReactiveUI.Reactive 25.1.1 with
+ReactiveUI.Binding.Reactive pinned to 8.8.1. It brings
+ReactiveUI.Primitives.Reactive 8.4.0 and System.Reactive 7.0.0 transitively.
 It also brings the shared ReactiveUI.SourceGenerators 4.2.0 package; use the
 normal `ReactiveUI.SourceGenerators` attributes with
 `ReactiveUI.Reactive.ReactiveObject`. There is no separate Reactive-flavor

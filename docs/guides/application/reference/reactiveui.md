@@ -1,8 +1,8 @@
 # ReactiveUI 25 support
 
-Runic supports **ReactiveUI 25.0.1**, Binding **8.6.0**, and SourceGenerators
-**4.2.0**. The default integration uses `ReactiveUI.Primitives`; applications
-using the System.Reactive distribution select
+Runic supports **ReactiveUI 25.1.1**, Binding **8.8.1**, Primitives **8.4.0**,
+and SourceGenerators **4.2.0**. The default integration uses
+`ReactiveUI.Primitives`; applications using the System.Reactive distribution select
 `Runic.Application.ReactiveUI.Reactive`. Select one flavor for an application,
 then rebuild the application and its generated clients together when moving
 from ReactiveUI 24. The [adapter migration notes](../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#reactiveui-25)
@@ -269,4 +269,6 @@ interaction paths.
 
 Upstream: [ReactiveUI 25.0.0](https://github.com/reactiveui/ReactiveUI/releases/tag/25.0.0),
 [25.0.1](https://github.com/reactiveui/ReactiveUI/releases/tag/25.0.1),
+[25.1.1](https://github.com/reactiveui/ReactiveUI/releases/tag/25.1.1),
+[Binding 8.8.1](https://github.com/reactiveui/ReactiveUI.Binding.SourceGenerators/releases/tag/v8.8.1),
 and the [Binding migration guide](https://www.reactiveui.net/documentation/reactiveui/upgrading/reactiveui-binding-migration/).
