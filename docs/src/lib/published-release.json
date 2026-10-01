@@ -1,6 +1,6 @@
 {
-  "version": "0.5.0-preview.2",
-  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.5.0-preview.2",
+  "version": "0.5.0-preview.3",
+  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.5.0-preview.3",
   "packages": [
     {
       "identity": "Runic.Platform.Administration.Windows",
@@ -70,6 +70,12 @@
     },
     {
       "identity": "Runic.Application.ReactiveUI",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.ReactiveUI.Reactive",
       "ecosystem": "nuget",
       "product": "application",
       "installKind": "nuget-package"
