@@ -14,5 +14,7 @@
     The current application model uses explicit .NET Windows and Views with
     generated TypeScript clients.
   </p>
-  <a class="text-link" href={resolve('/views')}>Read the Windows and Views guide</a>
+  <a class="text-link" href={resolve('/views')}
+    >Read the Windows and Views guide</a
+  >
 </div>

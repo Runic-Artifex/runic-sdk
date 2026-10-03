@@ -104,8 +104,8 @@
       </p>
       <p>
         Application Views defines explicit Window and View contracts and emits
-        ordinary TypeScript clients. Frontend frameworks render their components;
-        .NET owns logical Views and ViewModel scopes.
+        ordinary TypeScript clients. Frontend frameworks render their
+        components; .NET owns logical Views and ViewModel scopes.
       </p>
       <ActionLink href={resolve('/architecture')} variant="outline"
         >Read the architecture guide</ActionLink
