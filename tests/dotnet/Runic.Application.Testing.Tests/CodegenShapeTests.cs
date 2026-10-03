@@ -47,6 +47,42 @@ internal static class CodegenShapeTests
         Require(model.Editable.Count == 2, "An IList<T> codec produced a fixed-size collection.");
     }
 
+    internal static async Task RunNullableReactiveAsync()
+    {
+        var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "nullableReactive.ts"));
+        foreach (var expected in new[]
+        {
+            "echo(argument: string | null): Promise<NullableReactiveState>;",
+            "export interface NullableReactiveEchoOperation {",
+            "status(): Promise<BridgeOperationStatus<string | null>>;",
+            "handle(handler: (input: string, context: NullableReactiveInteractionContext) => string | null | Promise<string | null>): () => void;",
+        })
+            Require(client.Contains(expected, StringComparison.Ordinal),
+                $"The generated client lost a nullable ReactiveUI type argument: missing '{expected}'.");
+
+        using var model = new NullableReactiveViewModel();
+        using var host = new RunicWindowTestHost<NullableReactiveViewModel>(model, "nullableReactive",
+            (transport, content, vm) => new NullableReactiveBridge(transport, vm, content: content), new TestViewLocator());
+        using var accepted = JsonDocument.Parse(host.Transport.Call("nullableReactiveStartEcho",
+            new(StringValue: "{\"requestId\":\"echo-null\",\"input\":null}")));
+        Require(accepted.RootElement.GetProperty("kind").GetString() is "accepted" or "duplicate",
+            $"A null ReactiveUI command input was rejected: {accepted.RootElement}");
+        var contract = accepted.RootElement.GetProperty("contract").GetString();
+        using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
+            new(StringValue: JsonSerializer.Serialize(new { contract, requestId = "echo-null" }))));
+        Require(completion.RootElement.GetProperty("kind").GetString() == "succeeded"
+            && completion.RootElement.GetProperty("result").ValueKind == JsonValueKind.Null,
+            $"A null ReactiveUI command result was not encoded: {completion.RootElement}");
+    }
+
+    private static string GeneratedTypeScriptDirectory()
+    {
+        for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx")))
+                return Path.Combine(directory.FullName, "tests", "dotnet", "Runic.Application.Testing.Tests", "obj", "bridge-frontend", "generated");
+        throw new InvalidOperationException("Could not locate the Runic SDK workspace root.");
+    }
+
     private static void Set(RunicWindowTestHost<CodegenShapeViewModel> host, string property, string json)
     {
         using var reply = JsonDocument.Parse(host.Transport.Call($"codegenShapeSet{property}", new(StringValue: json)));

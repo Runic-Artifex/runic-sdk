@@ -354,12 +354,16 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var plan = toolkit is { } existing
             ? new GeneratedCommandPlan(false, existing.IsAsync, ToolkitContract: existing,
                 InputGraph: existing.Input is { } toolkitInput ? BridgeTypeGraph.Discover(toolkitInput,
-                    command.PropertyType.IsGenericType ? nullability.Create(command).GenericTypeArguments.FirstOrDefault() : null,
+                    ContractNullability.Argument(command, nullability, [toolkitInput], 0),
                     $"{model.Name}.{command.Name}.input") : null)
             : reactive is { } contract
                 ? GeneratedCommandPlan.Reactive(contract,
-                    contract.HasInput ? BridgeTypeGraph.Discover(contract.Input, rootPath: $"{model.Name}.{command.Name}.input") : null,
-                    contract.HasResult ? BridgeTypeGraph.Discover(contract.Result, rootPath: $"{model.Name}.{command.Name}.result") : null)
+                    contract.HasInput ? BridgeTypeGraph.Discover(contract.Input,
+                        ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 0),
+                        $"{model.Name}.{command.Name}.input") : null,
+                    contract.HasResult ? BridgeTypeGraph.Discover(contract.Result,
+                        ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 1),
+                        $"{model.Name}.{command.Name}.result") : null)
                 : plainInput is not null
                     ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
                         rootPath: $"{model.Name}.{command.Name}.input"))
@@ -441,7 +445,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("        [");
         foreach (var property in checkedProperties)
         {
-            var type = BridgeTypeGraph.CSharpType(property.PropertyType);
+            var type = valueProperties[property].RootCSharpType();
             cs.AppendLine($"            new CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, ReadValue: element => {property.Name}ValueCodec.Read(element), WriteValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)),");
         }
         cs.AppendLine("        ],");
@@ -618,7 +622,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var name = command.Name[..^"Command".Length];
         if (plan.ReactiveContract is { } contract)
         {
-            var commandType = $"global::ReactiveUI.IReactiveCommand<{BridgeTypeGraph.CSharpType(contract.Input)}, {BridgeTypeGraph.CSharpType(contract.Result)}>";
+            var commandType = $"global::ReactiveUI.IReactiveCommand<{BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
             var helper = contract.Flavor is ReactiveUiFlavor.SystemReactive
                 ? "global::Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution"
                 : "global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution";
@@ -1289,7 +1293,7 @@ sealed record GeneratedCommandPlan(
         if (LegacyDescriptor is not null) return LegacyDescriptor;
         if (ToolkitContract is { } toolkit)
         {
-            var toolkitType = toolkit.Input is null ? null : BridgeTypeGraph.CSharpType(toolkit.Input);
+            var toolkitType = toolkit.Input is null ? null : InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(toolkit.Input);
             var readArgument = toolkit.HasInput
                 ? $"ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}" : null;
             var encodeArgument = toolkit.HasInput
@@ -1299,13 +1303,13 @@ sealed record GeneratedCommandPlan(
         if (IsPlainICommand)
         {
             var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");
-            var plainInputType = BridgeTypeGraph.CSharpType(plainGraph.Root.Type);
+            var plainInputType = plainGraph.RootCSharpType();
             var name = property.Name[..^"Command".Length];
             return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
         }
         var contract = ReactiveContract ?? throw new InvalidOperationException("Command plan has no descriptor.");
-        var inputType = BridgeTypeGraph.CSharpType(contract.Input);
-        var resultType = BridgeTypeGraph.CSharpType(contract.Result);
+        var inputType = InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input);
+        var resultType = ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result);
         var commandType = $"global::ReactiveUI.IReactiveCommand<{inputType}, {resultType}>";
         var typed = $"({commandType})vm.{property.Name}";
         var helper = contract.Flavor is ReactiveUiFlavor.SystemReactive

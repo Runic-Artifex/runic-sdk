@@ -33,6 +33,9 @@ internal sealed class BridgeTypeGraph
 
     internal string TypeScriptType() => TypeScriptType(Root);
 
+    /// <summary>The root's declared C# type, including nullable annotations.</summary>
+    internal string RootCSharpType() => CSharpNodeType(Root);
+
     internal string EmitTypeScriptDecoder(string expression) => EmitTypeScriptDecoder(Root, expression);
 
     /// <summary>Emits the JSON-wire expression for a public TypeScript value.</summary>
@@ -716,6 +719,25 @@ internal sealed record CustomCodecDescription(Type CodecType, string TypeScriptT
 internal sealed class BridgeTypeGraphException(string path, string message) : NotSupportedException($"{path}: {message}")
 {
     internal string Path { get; } = path;
+}
+
+internal static class ContractNullability
+{
+    /// <summary>
+    /// Returns the nullable annotation of a command or interaction type
+    /// argument. The declared property type normally closes the contract
+    /// directly (<c>ReactiveCommand&lt;string?, Unit&gt;</c>,
+    /// <c>Interaction&lt;Unit, string?&gt;</c>); otherwise the annotation is
+    /// unavailable and the argument is treated as non-nullable.
+    /// </summary>
+    internal static NullabilityInfo? Argument(PropertyInfo property, NullabilityInfoContext context,
+        IReadOnlyList<Type> contractArguments, int index)
+    {
+        var declared = property.PropertyType;
+        if (!declared.IsGenericType || !declared.GenericTypeArguments.SequenceEqual(contractArguments)) return null;
+        var arguments = context.Create(property).GenericTypeArguments;
+        return arguments.Length > index ? arguments[index] : null;
+    }
 }
 
 internal static class TypeExtensions

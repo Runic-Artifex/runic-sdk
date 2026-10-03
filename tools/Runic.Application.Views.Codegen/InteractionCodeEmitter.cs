@@ -18,6 +18,7 @@ internal static class InteractionCodeEmitter
 
         var plans = new List<GeneratedInteractionPlan>();
         var names = new HashSet<string>(StringComparer.Ordinal);
+        var nullability = new NullabilityInfoContext();
         foreach (var property in members)
         {
             var interaction = ReactiveInteractionInspector.InspectContract(property);
@@ -31,8 +32,12 @@ internal static class InteractionCodeEmitter
             if (!names.Add(publicName))
                 throw new NotSupportedException($"{modelName}.{property.Name}: duplicate generated interaction name '{publicName}'.");
             plans.Add(new GeneratedInteractionPlan(property, interaction,
-                BridgeTypeGraph.Discover(interaction.Input, rootPath: $"{modelName}.{property.Name}.input"),
-                BridgeTypeGraph.Discover(interaction.Output, rootPath: $"{modelName}.{property.Name}.output"),
+                BridgeTypeGraph.Discover(interaction.Input,
+                    ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 0),
+                    $"{modelName}.{property.Name}.input"),
+                BridgeTypeGraph.Discover(interaction.Output,
+                    ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 1),
+                    $"{modelName}.{property.Name}.output"),
                 $"{contractFingerprint}:interaction:{property.Name}"));
         }
         return [.. plans];
@@ -119,8 +124,8 @@ internal static class InteractionCodeEmitter
     {
         foreach (var plan in plans)
         {
-            var input = BridgeTypeGraph.CSharpType(plan.Contract.Input);
-            var output = BridgeTypeGraph.CSharpType(plan.Contract.Output);
+            var input = plan.Input.RootCSharpType();
+            var output = plan.Output.RootCSharpType();
             var inputCodec = plan.Property.Name + "InteractionInputCodec";
             var outputCodec = plan.Property.Name + "InteractionOutputCodec";
             var adapterNamespace = plan.Contract.Flavor is ReactiveUiFlavor.SystemReactive

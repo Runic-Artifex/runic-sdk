@@ -37,3 +37,18 @@ public sealed class CodegenShapeViewModel : INotifyPropertyChanged
 }
 
 public sealed partial class CodegenShapeWindow(CodegenShapeViewModel model) : RunicWindow<CodegenShapeViewModel>(model);
+
+// Nullable ReactiveUI command and interaction type arguments must survive
+// into the generated codecs and TypeScript client.
+public sealed class NullableReactiveViewModel : ReactiveUI.ReactiveObject, IDisposable
+{
+    public NullableReactiveViewModel() => EchoCommand = ReactiveUI.ReactiveCommand.Create<string?, string?>(value => value);
+
+    public ReactiveUI.ReactiveCommand<string?, string?> EchoCommand { get; }
+    public ReactiveUI.Binding.Interaction<string, string?> AskName { get; } = new();
+    public string Label { get; } = "nullable";
+
+    public void Dispose() => EchoCommand.Dispose();
+}
+
+public sealed partial class NullableReactiveWindow(NullableReactiveViewModel model) : RunicWindow<NullableReactiveViewModel>(model);
