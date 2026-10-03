@@ -2,6 +2,7 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
+// ResourceBusy means the clipboard could not be opened and nothing changed.
 internal interface IWindowsClipboard
 {
     PlatformResult<string?> Read(nint owner, int maximumCharacters);
@@ -10,6 +11,8 @@ internal interface IWindowsClipboard
 
 internal sealed class WindowsTextClipboard(INativePickerOwner owner, IWindowsClipboard native) : ITextClipboard
 {
+    internal const int BusyAttempts = 10;
+
     public ValueTask<PlatformResult<string?>> ReadTextAsync(int maximumCharacters, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumCharacters);
@@ -28,17 +31,23 @@ internal sealed class WindowsTextClipboard(INativePickerOwner owner, IWindowsCli
         cancellationToken.ThrowIfCancellationRequested();
         if (!owner.IsAvailable) return new PlatformResult<T>.Unavailable(UnavailableReason.OwnerUnavailable);
         var generation = owner.Generation;
-        PlatformResult<T> result = new PlatformResult<T>.Unavailable(UnavailableReason.OwnerUnavailable);
         try
         {
-            await owner.InvokeAsync(handle =>
+            for (int attempt = 1; ; attempt++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (handle == 0 || !owner.IsAvailable || owner.Generation != generation) return;
-                // Once native execution begins it must finish and report the actual outcome.
-                result = action(handle);
-            }, cancellationToken).ConfigureAwait(false);
-            return result;
+                PlatformResult<T> result = new PlatformResult<T>.Unavailable(UnavailableReason.OwnerUnavailable);
+                await owner.InvokeAsync(handle =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (handle == 0 || !owner.IsAvailable || owner.Generation != generation) return;
+                    // Once native execution begins it must finish and report the actual outcome.
+                    result = action(handle);
+                }, cancellationToken).ConfigureAwait(false);
+                // Another process may hold the clipboard briefly. A busy result changed
+                // nothing, so wait off the UI thread and retry a bounded number of times.
+                if (result is not PlatformResult<T>.Failed { Code: FailureCode.ResourceBusy } || attempt == BusyAttempts) return result;
+                await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(10 << attempt, 100)), cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (OwnerClosedException) { return new PlatformResult<T>.Unavailable(UnavailableReason.OwnerClosed); }
         catch (ObjectDisposedException) { return new PlatformResult<T>.Unavailable(UnavailableReason.OwnerClosed); }
