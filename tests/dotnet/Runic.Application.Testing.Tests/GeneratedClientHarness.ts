@@ -1,3 +1,4 @@
+import { BridgeError } from "@runic-artifex/views";
 import { runToolkitGeneratedClient, type ToolkitGeneratedClientTranscript } from "./ToolkitGeneratedClientHarness.ts";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -150,7 +151,11 @@ const previousReporter = hostWithReporter.reportError;
 hostWithReporter.reportError = error => { reported.push(error); };
 const pushState = (host.window as Record<string, unknown>)["__dataShapeChanged"] as (state: unknown) => unknown;
 const wireState = JSON.parse(fixture.dataShape.snapshot).state as Record<string, unknown>;
-const baseRevision = data.snapshot.revision as number;
+// The revision is internal to the client: start above every reply it accepted.
+expect(!("revision" in data.snapshot), "The public state exposed the internal revision.");
+const baseRevision = Math.max(...[fixture.dataShape.snapshot, fixture.dataShape.durationReply, fixture.dataShape.amountReply,
+  fixture.dataShape.wholeReply, fixture.dataShape.exactIdWriteReply, fixture.dataShape.conflictReply,
+  fixture.dataShape.failedReply, fixture.dataShape.unionReply].map(json => Number(JSON.parse(json).state?.revision ?? 0)));
 let initialDelivered = false;
 const stopThrowing = data.subscribe(() => { if (initialDelivered) throw new Error("listener failure"); initialDelivered = true; });
 const delivered: bigint[] = [];
@@ -169,6 +174,21 @@ stopRecording();
 hostWithReporter.reportError = previousReporter;
 
 data.dispose();
+// A disposed client keeps its last state and accepts late subscribers, as
+// framework stores (for example React's useSyncExternalStore) expect.
+const lastState = data.snapshot;
+expect(lastState["exact-id"] === 13n, "A disposed client lost its last snapshot.");
+let lateDelivery: unknown;
+const stopLate = data.subscribe((state: unknown) => { lateDelivery = state; });
+stopLate();
+expect(lateDelivery === lastState, "A subscriber after dispose did not receive the last snapshot.");
+try {
+  await data.setAmount("1");
+  throw new Error("A disposed client accepted a call.");
+} catch (error) {
+  expect(error instanceof BridgeError && error.kind === "disconnected",
+    "A disposed client did not reject with the shared BridgeError.");
+}
 typed.dispose();
 await runToolkitGeneratedClient(fixture.toolkitTyped, generatedDirectory);
 host.window!.__runicBridge = { isConnected: () => true, async call(route: string) {

@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 const [generatedDirectory] = Bun.argv.slice(2);
 if (!generatedDirectory) throw new Error("Usage: GeneratedInteractionClientHarness.ts <generated-dir>");
 const source = await Bun.file(resolve(generatedDirectory, "generatedInteraction.ts")).text();
-const contract = /case "confirm": return "([^"]+)"/.exec(source)?.[1];
+const contract = /confirm: { contract: "([^"]+)"/.exec(source)?.[1];
 if (!contract) throw new Error("Generated interaction contract was not emitted.");
 const host = globalThis as typeof globalThis & { window?: Record<string, unknown> };
 host.window = host as unknown as Record<string, unknown>;

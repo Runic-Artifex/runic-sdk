@@ -65,8 +65,8 @@ internal static class CodegenShapeTests
         foreach (var expected in new[]
         {
             "echo(argument: string | null): Promise<NullableReactiveState>;",
-            "export interface NullableReactiveEchoOperation {",
-            "status(): Promise<BridgeOperationStatus<string | null>>;",
+            "export interface NullableReactiveEchoOperation extends BridgeOperation<string | null> {}",
+            "view.recoverOperation<string | null>(\"Echo\", requestId,",
             "handle(handler: (input: string, context: NullableReactiveInteractionContext) => string | null | Promise<string | null>): () => void;",
         })
             Require(client.Contains(expected, StringComparison.Ordinal),

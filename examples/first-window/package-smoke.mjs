@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,17 @@ function run(command, args, cwd = root, env = process.env) {
   });
 }
 
+// The generated client imports @runic-artifex/views. Use the packed archive
+// when CI produced one, otherwise the built workspace package.
+async function viewsRuntimeConsumer(manifestPath) {
+  const { version } = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8"));
+  const archive = join(root, "artifacts/packages/npm", `runic-artifex-views-${version}.tgz`);
+  const runtime = await access(archive).then(() => archive, () => join(root, "packages/web/views"));
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.dependencies = { ...manifest.dependencies, "@runic-artifex/views": `file:${runtime}` };
+  return JSON.stringify(manifest, null, 2);
+}
+
 try {
   const versions = await readFile(join(root, "eng/Versions.props"), "utf8");
   const packages = await readFile(join(root, "Directory.Packages.props"), "utf8");
@@ -47,9 +58,10 @@ try {
   await mkdir(join(consumer, "Frontend/src"), { recursive: true });
   for (const file of ["Program.cs", "CounterWindow.cs", "CounterViewModel.cs"])
     await copyFile(join(example, file), join(consumer, file));
-  for (const file of ["package.json", "bun.lock", "tsconfig.json", "index.html", "copy-static.mjs"])
+  for (const file of ["tsconfig.json", "index.html", "build.mjs"])
     await copyFile(join(example, "Frontend", file), join(consumer, "Frontend", file));
   await copyFile(join(example, "Frontend/src/app.ts"), join(consumer, "Frontend/src/app.ts"));
+  await writeFile(join(consumer, "Frontend/package.json"), await viewsRuntimeConsumer(join(example, "Frontend/package.json")));
   await writeFile(join(consumer, "ConsumerFirstWindow.csproj"), `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -69,7 +81,7 @@ try {
   <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><Compile Remove="Program.cs" /></ItemGroup>
 </Project>
 `);
-  await run("bun", ["install", "--frozen-lockfile"], join(consumer, "Frontend"));
+  await run("bun", ["install"], join(consumer, "Frontend"));
   const build = await run("dotnet", ["build", "ConsumerFirstWindow.csproj", "-c", "Release"], consumer);
   if (!build.includes("Generated Counter bridge") || !build.includes("0 Error(s)"))
     throw new Error(`The package consumer did not generate its contract cleanly:\n${build}`);
