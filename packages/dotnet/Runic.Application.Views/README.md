@@ -72,6 +72,15 @@ counter.subscribe(state => { document.querySelector("#count")!.textContent = Str
 document.querySelector("#increment")!.addEventListener("click", () => void counter.increment());
 ```
 
+Generated modules import the shared browser runtime, so the frontend installs
+`@runic-artifex/views` (`npm install @runic-artifex/views@preview`) and bundles
+its entry. `connectCounter()` returns a `CounterClient`; `subscribe` delivers
+the current state first, calls reject with the runtime's `BridgeError`, and
+`dispose()` releases the connection. `@runic-artifex/react`,
+`@runic-artifex/vue`, `@runic-artifex/svelte` (`useView`) and
+`@runic-artifex/angular` (`injectView()`) bind clients to component
+lifetimes.
+
 `Frontend/index.html` loads `webui.js` and the host's client script
 (`runic-cswebui.js` or `runic-desktop-views.js`) before the module. The
 [First Window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window)

@@ -20,7 +20,9 @@ NotesWindow<ShellViewModel>
 
 The browser owns the component tree; the plain TypeScript (`Frontend`),
 `Svelte`, and `Angular` frontends in this folder use the same generated
-clients. A .NET View is a logical presentation object whose lifetime follows
+clients and the shared `@runic-artifex/views` runtime; the Svelte and Angular
+pages connect them with `useView` and `injectView()` from the workspace
+packages. A .NET View is a logical presentation object whose lifetime follows
 the browser outlet that mounts it. Microsoft DI owns one scope per window, and
 [`NotesApplication`](NotesApplication.cs) calls `AddRunicViews()` to register
 the Views and the default View locator. The `--splat` variant locates Views
