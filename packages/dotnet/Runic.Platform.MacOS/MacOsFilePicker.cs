@@ -8,6 +8,9 @@ namespace Runic.Platform.MacOS;
 internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativeFilePicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static readonly Lazy<bool> Sandboxed = new(IsSandboxed);
+    // A sandbox grants the selected URL only, never sibling staging.
+    public bool SupportsAtomicReplace => !Sandboxed.Value;
 
     public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
     {
@@ -49,7 +52,7 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
                                 ?? throw new IOException("AppKit returned no local path.");
                             // A sandbox's user-selected grant authorizes the selected URL,
                             // not arbitrary sibling staging files. Never invent that access.
-                            bool sandboxed = IsSandboxed();
+                            bool sandboxed = Sandboxed.Value;
                             if (!result.TrySetResult(new(path, access, !sandboxed && !access.Started)))
                                 access.DisposeAsync().AsTask().GetAwaiter().GetResult();
                         }

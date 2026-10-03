@@ -44,6 +44,7 @@ try
     string path = Path.Combine(saveDirectory, "original.txt");
     await File.WriteAllTextAsync(path, "original");
     var backend = new NativePickerBackend(owner, new PortalFilePicker(owner, new FakeTransport(new(0, [new Uri(path).AbsoluteUri]))));
+    Check(!backend.SupportsAtomicReplace && !PortalPlatformProvider.CreateFileDialogs(owner).SupportsAtomicReplace, "portal dialogs do not report atomic save support");
     var selected = await backend.SaveFileAsync(new SaveFileOptions("original.txt"));
     Check(selected is PickerResult<ISaveFileLease>.Selected, "portal save destination selected");
     await using var lease = ((PickerResult<ISaveFileLease>.Selected)selected).Value;
@@ -74,6 +75,10 @@ foreach (bool oldHandle in new[] { false, true })
     Check(result.Code == 0 && result.Uris.Single() == "file:///tmp/saved.txt", "real D-Bus early response and returned handle");
     Check(fake.Parent == "x11:1234" && fake.CurrentName == "saved.txt", "parent and filename encoded");
 }
+fake.MalformedUris = true;
+try { await new PortalFilePicker(owner, realTransport).SelectAsync(true, "saved.txt", default); throw new InvalidOperationException("malformed portal URIs accepted"); }
+catch (IOException) { }
+fake.MalformedUris = false;
 var uriResult = await realTransport.RequestAsync("x11:1234", "OpenURI", "https://example.org/", default);
 Check(uriResult.Code == 0 && fake.Argument == "https://example.org/", "OpenURI request encoding");
 fake.AutoRespond = false;
@@ -103,16 +108,25 @@ sealed class Owner : IPortalWindowOwner
     public string Identifier { get; set; } = "x11:1234";
     public int Released;
     public bool ChangeGenerationOnExport;
+    // Models GTK3's single Wayland export per window: a retained parent blocks later requests.
+    private int _exported;
     public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public ValueTask<PortalParentLease> ExportParentAsync(CancellationToken cancellationToken = default)
     {
+        if (Interlocked.Exchange(ref _exported, 1) != 0)
+            throw new InvalidOperationException("A previous request retained the exported parent.");
         if (ChangeGenerationOnExport) Generation = Guid.NewGuid();
         return ValueTask.FromResult<PortalParentLease>(new Parent(this));
     }
     private sealed class Parent(Owner owner) : PortalParentLease
     {
+        private int _disposed;
         public override string Identifier => owner.Identifier;
-        public override ValueTask DisposeAsync() { owner.Released++; return ValueTask.CompletedTask; }
+        public override ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) { owner.Released++; Volatile.Write(ref owner._exported, 0); }
+            return ValueTask.CompletedTask;
+        }
     }
 }
 sealed class FakeTransport(PortalResponse? result) : IPortalTransport
@@ -135,6 +149,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public bool HandlesChildPaths => true;
     public bool AutoRespond = true;
     public bool OldHandle;
+    public bool MalformedUris;
     public string? Parent;
     public string? Argument;
     public string? CurrentName;
@@ -168,7 +183,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
             signal.WriteSignalHeader(path: path, @interface: "org.freedesktop.portal.Request", member: "Response", signature: "ua{sv}");
             signal.WriteUInt32(0);
             var dict = signal.WriteDictionaryStart();
-            signal.WriteDictionaryEntryStart(); signal.WriteString("uris"); signal.WriteVariant(VariantValue.Array(ResponseUris));
+            signal.WriteDictionaryEntryStart(); signal.WriteString("uris"); signal.WriteVariant(MalformedUris ? VariantValue.String(ResponseUris[0]) : VariantValue.Array(ResponseUris));
             signal.WriteDictionaryEnd(dict);
             connection.TrySendMessage(signal.CreateMessage());
         }

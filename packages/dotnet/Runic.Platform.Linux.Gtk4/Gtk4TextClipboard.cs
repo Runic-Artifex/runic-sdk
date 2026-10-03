@@ -136,16 +136,15 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                         {
                             _ = SetContent(ownership.Clipboard, 0);
                         }
+                        Unref(ownership.Provider);
                     }, CancellationToken.None).ConfigureAwait(false);
                 }
+                // GObjects are released only on the GTK thread. Without a live owner,
+                // keep this one provider reference rather than finalizing it elsewhere.
                 catch (OwnerClosedException) { }
                 catch (ObjectDisposedException) when (!owner.IsAvailable) { }
             }
             _ownership = null;
-            if (ownership is not null)
-            {
-                Unref(ownership.Provider);
-            }
             _disposed = true;
         }
         finally
@@ -237,7 +236,10 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
             text = ReadTextFinish(clipboard, asyncResult, out error);
             if (error != 0)
             {
-                request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.IoError));
+                // GDK reports an empty or non-text clipboard as an unavailable format.
+                request.Result.TrySetResult(IsMissingFormat(error)
+                    ? new PlatformResult<string?>.Success(null)
+                    : new PlatformResult<string?>.Failed(FailureCode.IoError));
                 return;
             }
             if (text == 0)
@@ -275,6 +277,12 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
             handle.Free();
         }
     }
+
+    // GError begins with its GQuark domain and integer code. GDK uses NOT_SUPPORTED when
+    // no offered format converts to text, and X11 uses NOT_FOUND when the owner refuses it.
+    private static bool IsMissingFormat(nint error) =>
+        (uint)Marshal.ReadInt32(error) == IoErrorQuark()
+        && Marshal.ReadInt32(error, sizeof(uint)) is 15 or 1; // G_IO_ERROR_NOT_SUPPORTED, G_IO_ERROR_NOT_FOUND
 
     private static unsafe ReadOnlySpan<byte> BoundedUtf8(nint text, int maximumCharacters)
     {
@@ -320,6 +328,8 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
     private static partial void Unref(nint instance);
     [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_error_free")]
     private static partial void ErrorFree(nint error);
+    [LibraryImport("libgio-2.0.so.0", EntryPoint = "g_io_error_quark")]
+    private static partial uint IoErrorQuark();
     [LibraryImport("libgio-2.0.so.0", EntryPoint = "g_cancellable_new")]
     private static partial nint CancellableNew();
     [LibraryImport("libgio-2.0.so.0", EntryPoint = "g_cancellable_cancel")]

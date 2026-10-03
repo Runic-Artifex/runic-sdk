@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace Runic.Platform.Runtime;
@@ -53,21 +54,49 @@ internal interface IAtomicFileReplacement
 
 // Only compose for a provider that grants same-directory create and local rename.
 // A picked URI/document-portal target alone does not imply these permissions.
-internal sealed class LocalAtomicFileReplacement : IAtomicFileReplacement
+internal sealed partial class LocalAtomicFileReplacement : IAtomicFileReplacement
 {
     public bool IsSupported => true;
     public ValueTask<FileCommitResult> ReplaceAsync(string stagingPath, string targetPath, bool existed)
     {
         try
         {
-            File.Move(stagingPath, targetPath, overwrite: existed);
-            return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.Committed());
+            // ReplaceFile keeps the destination's ACL, attributes and alternate streams.
+            if (existed && OperatingSystem.IsWindows()) File.Replace(stagingPath, targetPath, null);
+            else File.Move(stagingPath, targetPath, overwrite: existed);
         }
         catch (UnauthorizedAccessException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(FailureCode.PermissionDenied)); }
+        // A no-overwrite move refuses a destination created since selection.
+        catch (IOException error) when (!existed && IsAlreadyExists(error))
+        { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(FailureCode.Conflict)); }
         // An IO error can be reported after the filesystem accepted a rename.
         // Never delete the target or automatically retry an uncertain outcome.
         catch (IOException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.CommitUnknown(FailureCode.IoError)); }
+        SyncDirectory(Path.GetDirectoryName(targetPath)!);
+        return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.Committed());
     }
+
+    private static bool IsAlreadyExists(IOException error) => OperatingSystem.IsWindows()
+        ? error.HResult is unchecked((int)0x80070050) or unchecked((int)0x800700B7) // ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS
+        : error.HResult == 17; // EEXIST
+
+    // Persist the renamed directory entry. Best effort: the replacement is already
+    // visible, and some filesystems do not support synchronizing a directory.
+    private static void SyncDirectory(string directory)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        try
+        {
+            int descriptor = Open(directory, OperatingSystem.IsMacOS() ? 0x1000000 : 0x80000); // O_RDONLY | O_CLOEXEC
+            if (descriptor < 0) return;
+            _ = Sync(descriptor);
+            _ = Close(descriptor);
+        }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { }
+    }
+    [LibraryImport("libc", EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8)] private static partial int Open(string path, int flags);
+    [LibraryImport("libc", EntryPoint = "fsync")] private static partial int Sync(int descriptor);
+    [LibraryImport("libc", EntryPoint = "close")] private static partial int Close(int descriptor);
 }
 
 internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
@@ -141,13 +170,47 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
                 new PlatformResult<IFileWriteTransaction>.Failed(FailureCode.ResourceBusy));
             try
             {
-                string staging = Path.Combine(Path.GetDirectoryName(_path)!, $".runic-{Guid.NewGuid():N}.tmp");
-                var content = new FileStream(staging, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous);
-                _transaction = new(staging, _path, _original, content, _replacement);
+                // Replace a symlink's final target rather than the link itself, staging
+                // beside that target so the rename stays within one directory.
+                string target = new FileInfo(_path).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? _path;
+                string staging = Path.Combine(Path.GetDirectoryName(target)!, $".runic-{Guid.NewGuid():N}.tmp");
+                var content = CreateStaging(staging, target);
+                _transaction = new(staging, target, _original, content, _replacement);
                 return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Success(_transaction));
             }
             catch (UnauthorizedAccessException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(FailureCode.PermissionDenied)); }
             catch (IOException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(FailureCode.IoError)); }
+        }
+    }
+
+    // On Unix the staging file takes the replaced file's permissions, so the rename
+    // neither widens nor narrows access. Set-ID bits are not carried to new content.
+    private static FileStream CreateStaging(string staging, string target)
+    {
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None,
+            BufferSize = 4096, Options = FileOptions.Asynchronous,
+        };
+        UnixFileMode? mode = null;
+        if (!OperatingSystem.IsWindows())
+        {
+            try { mode = File.GetUnixFileMode(target) & (UnixFileMode)0x1FF; } // rwxrwxrwx
+            catch (FileNotFoundException) { }
+            if (mode is { } permissions) options.UnixCreateMode = permissions;
+        }
+        var content = new FileStream(staging, options);
+        try
+        {
+            // Creation applies the umask, which could narrow shared permissions.
+            if (mode is { } permissions && !OperatingSystem.IsWindows()) File.SetUnixFileMode(content.SafeFileHandle, permissions);
+            return content;
+        }
+        catch
+        {
+            content.Dispose();
+            File.Delete(staging);
+            throw;
         }
     }
 
@@ -205,6 +268,8 @@ internal sealed class FileWriteTransaction(string staging, string target, byte[]
             var token = linked.Token;
             token.ThrowIfCancellationRequested();
             await content.FlushAsync(token).ConfigureAwait(false);
+            // Make the staged bytes durable before the rename can publish them.
+            content.Flush(flushToDisk: true);
             await content.DisposeAsync().ConfigureAwait(false);
             var current = await SaveFileLease.FingerprintAsync(target, token).ConfigureAwait(false);
             if ((original is null) != (current is null) || (original is not null && !original.AsSpan().SequenceEqual(current)))

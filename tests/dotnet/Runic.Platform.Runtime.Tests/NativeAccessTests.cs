@@ -22,6 +22,18 @@ internal static class NativeAccessTests
             Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Failed { Code: FailureCode.IoError },
                 "A file removed after selection must produce a stable failure.");
             Check(access.Releases == 1, "Disappeared selection leaked access.");
+            if (!OperatingSystem.IsWindows())
+            {
+                // A FIFO without a writer would block a normal open indefinitely.
+                string fifo = Path.Combine(directory, "selected.fifo");
+                using (var mkfifo = System.Diagnostics.Process.Start("mkfifo", [fifo])) await mkfifo.WaitForExitAsync();
+                access = new Access();
+                selected.Result = new(fifo, access, false);
+                Check(await backend.OpenFileAsync(new()).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is PickerResult<IReadFileLease>.Failed { Code: FailureCode.IoError },
+                    "A special file must be refused without blocking.");
+                Check(access.Releases == 1, "Refused special file leaked access.");
+                File.Delete(fifo);
+            }
             access = new Access();
             selected.Result = new(Path.Combine(directory, "new.txt"), access, false);
             var save = (PickerResult<ISaveFileLease>.Selected)await backend.SaveFileAsync(new("new.txt"));

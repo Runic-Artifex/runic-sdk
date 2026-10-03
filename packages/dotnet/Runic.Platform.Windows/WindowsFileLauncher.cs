@@ -8,6 +8,7 @@ internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : ID
     public async ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.FilePath(path, operation);
+        if (operation == DesktopFileOperation.Open && StartsProgram(path)) return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
         PlatformResult<Unit> result = new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed);
         try
         {
@@ -49,6 +50,31 @@ internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : ID
         }
         catch (OwnerClosedException) { }
         return result;
+    }
+    // The shell's default verb runs programs, scripts, installers and shortcuts, which can
+    // target a program themselves. Opening a document must never execute code.
+    private static readonly HashSet<string> ProgramExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".com", ".scr", ".pif", ".cpl", ".msc", ".bat", ".cmd", ".ps1", ".psm1", ".psd1", ".vbs", ".vbe", ".js", ".jse",
+        ".wsf", ".wsh", ".wsc", ".hta", ".jar", ".py", ".pyw", ".msi", ".msp", ".mst", ".appx", ".appxbundle", ".msix", ".msixbundle",
+        ".appinstaller", ".application", ".appref-ms", ".lnk", ".url", ".website", ".scf", ".reg", ".inf", ".chm", ".diagcab",
+        ".settingcontent-ms", ".library-ms", ".search-ms", ".searchconnector-ms",
+    };
+    internal static bool StartsProgram(string path)
+    {
+        path = Path.TrimEndingDirectorySeparator(path);
+        if (Directory.Exists(path)) return false;
+        // A symbolic link can give a program a document's name; classify both names.
+        string target;
+        try { target = new FileInfo(path).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? path; }
+        catch (IOException) { return true; } // An unresolvable link cannot be classified.
+        string[] executable = (Environment.GetEnvironmentVariable("PATHEXT") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return IsProgram(path) || IsProgram(target);
+        bool IsProgram(string name)
+        {
+            string extension = Path.GetExtension(name);
+            return extension.Length != 0 && (ProgramExtensions.Contains(extension) || executable.Contains(extension, StringComparer.OrdinalIgnoreCase));
+        }
     }
     private static PlatformResult<Unit> Success() => new PlatformResult<Unit>.Success(new Unit());
     private static PlatformResult<Unit> FromHResult(int result) => result >= 0 ? Success() :

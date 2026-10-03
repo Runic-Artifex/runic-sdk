@@ -17,12 +17,15 @@ internal static class InhibitionTests
             service.Legacy = legacy;
             int before = owner.Released;
             var result = await provider.AcquireAsync(DesktopInhibitionEffects.SystemSleep | DesktopInhibitionEffects.DisplaySleep, "Export documents");
-            if (result is not PlatformResult<IDesktopInhibitionLease>.Success success || service.Flags != 12 || service.Reason != "Export documents" || owner.Released != before)
-                throw new InvalidOperationException("Inhibition did not retain an owned parent and accepted request.");
+            if (result is not PlatformResult<IDesktopInhibitionLease>.Success success || service.Flags != 12 || service.Reason != "Export documents" || owner.Released != before + 1)
+                throw new InvalidOperationException("Inhibition did not release its parent after the accepted request.");
+            // The owner models an exclusive export: a held inhibition must not block another parented request.
             var second = (PlatformResult<IDesktopInhibitionLease>.Success)await provider.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "Independent operation");
+            if (await new PortalFilePicker(owner, new FakeTransport(new(1, []))).SelectAsync(false, null, default) is not null)
+                throw new InvalidOperationException("A held inhibition blocked a file dialog on the same window.");
             int closes = service.Closes;
             await Task.WhenAll(success.Value.DisposeAsync().AsTask(), success.Value.DisposeAsync().AsTask());
-            if (service.Closes != closes + 1 || owner.Released != before + 1) throw new InvalidOperationException("Inhibition release was not idempotent and independent.");
+            if (service.Closes != closes + 1 || owner.Released != before + 3) throw new InvalidOperationException("Inhibition release was not idempotent and independent.");
             await second.Value.DisposeAsync();
             if (service.Closes != closes + 2) throw new InvalidOperationException("Second lease lost independent ownership.");
         }
@@ -67,7 +70,7 @@ internal static class InhibitionTests
         await held.Value.DisposeAsync();
         if (replacement.Called.Task.IsCompleted || replacement.Closes != 0) throw new InvalidOperationException("Old inhibition was replayed or closed on a replacement portal.");
         await using var recovered = ((PlatformResult<IDesktopInhibitionLease>.Success)await namedProvider.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "After restart")).Value;
-        Console.WriteLine("PASS inhibition: early/legacy replies, flags/reason, parent retention, independent/idempotent release, denial, cancellation, owner replacement and portal restart without replay.");
+        Console.WriteLine("PASS inhibition: early/legacy replies, flags/reason, parent release, independent/idempotent release, denial, cancellation, owner replacement and portal restart without replay.");
     }
 
     private sealed class Service(DBusConnection connection) : IPathMethodHandler

@@ -27,7 +27,8 @@ Existing static factories remain available for desktop-inferred identity.
 Calls are bound to a specific portal service owner. An interrupted operation
 returns unavailable; it is never replayed automatically. Notifications detect
 portal replacement and recreate/register their connection before the next call.
-File operations and settings reads open a fresh identified connection per request.
+File operations open a fresh identified connection per request. Settings keep one
+connection and watch `SettingChanged` signals, reconnecting after portal replacement.
 Only the notification service owns the application's activation bus name.
 
 Presentation-bound requests require a valid exported X11/Wayland parent. Failure
@@ -41,7 +42,8 @@ the user may keep a healthy chooser open until cancellation or owner closure.
 Only one local `file://` selection is accepted. The portal owns persistent document
 grants; disposing a file lease does not revoke the user's permission store.
 Selections do not grant sibling creation/replacement. Consequently an atomic save
-transaction reports `AtomicReplaceUnavailable` before changing the selected file.
+transaction reports `AtomicReplaceUnavailable` before changing the selected file,
+and the `platform.files.save` capability reports the same reason.
 An unsandboxed application needing the existing sibling-staging save path can
 explicitly use `LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner)` with GTK3.
 There is no automatic fallback to toolkit dialogs, including when a portal fails.

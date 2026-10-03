@@ -33,6 +33,8 @@ public sealed record DesktopNotification(string Id, string Title, string Body)
     /// <summary>Up to four actions with distinct application-owned identifiers.</summary>
     public ImmutableArray<DesktopNotificationAction> Actions { get; init; } = [];
     /// <summary>Optional registered application URI for activation after process exit.</summary>
+    /// <remarks>On Windows the shell launches this URI, with notification and action query parameters,
+    /// through its registered protocol handler instead of raising Activated, including while the process runs.</remarks>
     public Uri? ActivationUri { get; init; }
 }
 /// <summary>A user action on a notification. Treat activation as untrusted input at the application boundary.</summary>
@@ -93,7 +95,9 @@ public interface IDesktopFileLauncher
     /// <summary>The caller must retain any sandbox/security-scoped access until the operation completes.</summary>
     /// <remarks>Success acknowledges native handling, not that another application opened the file.
     /// Windows Open With can report success even when dismissed; UserDismissed is returned only
-    /// when the native API distinguishes dismissal.</remarks>
+    /// when the native API distinguishes dismissal. Windows and macOS Open returns PermissionDenied
+    /// for programs, scripts, installers and shortcuts instead of running them; Linux applies the
+    /// desktop portal's policy. Windows rejects UNC, device and alternate-stream paths.</remarks>
     ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
         CancellationToken cancellationToken = default);
 }

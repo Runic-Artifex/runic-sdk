@@ -4,6 +4,7 @@
     <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
     <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>Runic.Platform.Runtime</AssemblyName>
     <RootNamespace>Runic.Platform.Runtime</RootNamespace>
     <PackageId>Runic.Platform.Runtime</PackageId>

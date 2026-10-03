@@ -12,6 +12,9 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, Toast> _toasts = new(StringComparer.Ordinal);
+    // Activation handlers stay registered for the most recently shown toasts; older ones are evicted.
+    private readonly List<string> _recent = [];
+    private const int RecentCapacity = 64;
     private volatile bool _disposed;
     public event EventHandler<DesktopNotificationActivation>? Activated;
     public ValueTask<PlatformResult<Unit>> RequestPermissionAsync(CancellationToken cancellationToken = default) => RunAsync(notifier =>
@@ -31,7 +34,6 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
                 var permission = ReadSetting(notifier);
                 if (permission is not PlatformResult<Unit>.Success) return permission;
             }
-            if (_toasts.Count >= 64 && !_toasts.ContainsKey(notification.Id)) return new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy);
             nint document = 0, io = 0, factory = 0, toast = 0, properties = 0, handler = 0; long token = 0;
             try
             {
@@ -48,6 +50,12 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
                 Call(notifier, 6, toast);
                 if (_toasts.Remove(notification.Id, out var previous)) previous.Dispose();
                 _toasts[notification.Id] = new Toast(toast, token); toast = 0;
+                _recent.Remove(notification.Id); _recent.Add(notification.Id);
+                while (_recent.Count > RecentCapacity)
+                {
+                    if (_toasts.Remove(_recent[0], out var oldest)) oldest.Dispose();
+                    _recent.RemoveAt(0);
+                }
                 return Success();
             }
             finally { if (toast != 0 && token != 0) { unsafe { _ = ((delegate* unmanaged[Stdcall]<nint, long, int>)Slot(toast, 12))(toast, token); } } Release(handler); Release(properties); Release(toast); Release(factory); Release(io); Release(document); }
@@ -64,7 +72,8 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
                 manager = Factory("Windows.UI.Notifications.ToastNotificationManager", "7ab93c52-0e48-4750-ba9d-1a4113981847"); history = Get(manager, 6);
                 using var tag = new HString(Tag(id)); using var group = new HString("runic"); using var app = new HString(applicationId);
                 unsafe { Check(((delegate* unmanaged[Stdcall]<nint, nint, nint, nint, int>)Slot(history, 8))(history, tag.Handle, group.Handle, app.Handle)); }
-                if (_toasts.Remove(id, out var toast)) toast.Dispose(); return Success();
+                if (_toasts.Remove(id, out var toast)) toast.Dispose();
+                _recent.Remove(id); return Success();
             }
             finally { Release(history); Release(manager); }
         }, cancellationToken);
@@ -147,7 +156,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
         try
         {
             if (_disposed) return; _disposed = true; Activated = null;
-            await Task.Run(() => { int initialized = RoInitialize(1); Check(initialized); try { foreach (var toast in _toasts.Values) toast.Dispose(); _toasts.Clear(); } finally { RoUninitialize(); } }).ConfigureAwait(false);
+            await Task.Run(() => { int initialized = RoInitialize(1); Check(initialized); try { foreach (var toast in _toasts.Values) toast.Dispose(); _toasts.Clear(); _recent.Clear(); } finally { RoUninitialize(); } }).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
     }

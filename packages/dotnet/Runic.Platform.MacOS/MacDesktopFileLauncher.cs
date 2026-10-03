@@ -8,6 +8,7 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
     public async ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.FilePath(path, operation);
+        if (operation == DesktopFileOperation.Open && StartsProgram(path)) return Failed(FailureCode.PermissionDenied);
         nint panel = 0, applicationUrl = 0;
         var generation = owner.Generation;
         Task cancellationTask = Task.CompletedTask;
@@ -71,6 +72,28 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellationTask.ConfigureAwait(false);
             if (panel != 0 || applicationUrl != 0) await MacOsMainQueue.InvokeAsync(() => { Release(panel); Release(applicationUrl); }).ConfigureAwait(false);
+        }
+    }
+    // LaunchServices runs applications, Terminal scripts, workflows, installers and
+    // extensionless executables, and follows location files. Opening a document must never execute code.
+    private static readonly HashSet<string> ProgramExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".app", ".command", ".tool", ".terminal", ".workflow", ".action", ".jar", ".pkg", ".mpkg",
+        ".prefpane", ".saver", ".mobileconfig", ".webloc", ".inetloc", ".fileloc",
+    };
+    internal static bool StartsProgram(string path)
+    {
+        path = Path.TrimEndingDirectorySeparator(path);
+        // LaunchServices opens a symlink's target, so classify both names.
+        string target;
+        try { target = new FileInfo(path).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? path; }
+        catch (IOException) { return true; } // An unresolvable link cannot be classified.
+        return IsProgram(path) || IsProgram(target);
+        static bool IsProgram(string path)
+        {
+            if (ProgramExtensions.Contains(Path.GetExtension(path))) return true;
+            if (OperatingSystem.IsWindows() || Path.GetExtension(path).Length != 0 || !File.Exists(path)) return false;
+            return (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
         }
     }
     private static PlatformResult<Unit> Success() => new PlatformResult<Unit>.Success(new Unit());

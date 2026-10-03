@@ -14,6 +14,28 @@ internal static class DesktopPortalTests
         await using var settings = new PortalDesktopSettings(destination: connection.UniqueName!);
         var result = await settings.ReadAsync();
         Check(result is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark, Value.HighContrast: true, Value.ReducedMotion: null, Value.AccentColor.Red: 0.25 }, "native preference variants and unknown optional values");
+        using (var watching = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+        {
+            await using var watch = settings.WatchAsync(watching.Token).GetAsyncEnumerator(watching.Token);
+            Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark }, "initial watched preference");
+            // Wait past the polling interval: a subscribed watcher must not read again until a change.
+            await Task.Delay(1500);
+            int reads = service.Calls.Count(call => call == "ReadAll");
+            await Task.Delay(1500);
+            Check(service.Calls.Count(call => call == "ReadAll") == reads, "subscribed settings watch does not poll");
+            service.ColorScheme = 2;
+            using (var signal = connection.GetMessageWriter())
+            {
+                signal.WriteSignalHeader(path: "/org/freedesktop/portal/desktop", @interface: "org.freedesktop.portal.Settings", member: "SettingChanged", signature: "ssv");
+                signal.WriteString("org.freedesktop.appearance"); signal.WriteString("color-scheme"); signal.WriteVariant(VariantValue.UInt32(2));
+                connection.TrySendMessage(signal.CreateMessage());
+            }
+            var changed = watch.MoveNextAsync().AsTask();
+            Check(await changed.WaitAsync(TimeSpan.FromMilliseconds(900)) && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Light },
+                "SettingChanged wakes the watcher before a polling interval");
+            Check(service.ReadAllSenders.Count == 1, "settings reads and watch share one portal connection");
+            service.ColorScheme = 1;
+        }
         await using var notifications = new PortalNotifications(destination: connection.UniqueName!);
         var activated = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         notifications.Activated += (_, activation) => activated.TrySetResult(activation);
@@ -21,6 +43,12 @@ internal static class DesktopPortalTests
         Check(await notifications.ShowAsync(new("saved", "Saved", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<Unit>.Success, "notification submission");
         Check((await activated.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "action arriving before method reply is routed");
         Check(await notifications.RemoveAsync("saved") is PlatformResult<Unit>.Success && service.Removed == "saved", "notification removal");
+        for (int i = 0; i < 80; i++)
+            Check(await notifications.ShowAsync(new($"bulk-{i}", "Bulk", "Body")) is PlatformResult<Unit>.Success, "unremoved notifications evict the oldest routing entry");
+        var latest = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
+        notifications.Activated += (_, activation) => { if (activation.NotificationId == "latest") latest.TrySetResult(activation); };
+        Check(await notifications.ShowAsync(new("latest", "Latest", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<Unit>.Success, "submission after eviction");
+        Check((await latest.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "recent notification actions still route after eviction");
         service.Deny = true;
         Check(await notifications.ShowAsync(new("denied", "Title", "Body")) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }, "portal permission denial remains distinct");
         service.Deny = false;
@@ -107,6 +135,8 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
     internal string? RequiredIdentity;
     internal Dictionary<string, string> RegisteredPeers = [];
     internal int UnidentifiedCalls;
+    internal uint ColorScheme = 1;
+    internal HashSet<string> ReadAllSenders = [];
     internal bool HoldNotification;
     internal TaskCompletionSource NotificationHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource ReleaseNotification = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -137,7 +167,8 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
             var namespaces = writer.WriteDictionaryStart();
             writer.WriteDictionaryEntryStart(); writer.WriteString("org.freedesktop.appearance");
             var values = writer.WriteDictionaryStart();
-            foreach (var (key, value) in new[] { ("color-scheme", VariantValue.UInt32(1)), ("contrast", VariantValue.UInt32(1)),
+            ReadAllSenders.Add(context.Request.SenderAsString!);
+            foreach (var (key, value) in new[] { ("color-scheme", VariantValue.UInt32(ColorScheme)), ("contrast", VariantValue.UInt32(1)),
                 ("reduced-motion", VariantValue.UInt32(999)), ("accent-color", VariantValue.Struct(VariantValue.Double(0.25), VariantValue.Double(0.5), VariantValue.Double(1))) })
             { writer.WriteDictionaryEntryStart(); writer.WriteString(key); writer.WriteVariant(value); }
             writer.WriteDictionaryEnd(values); writer.WriteDictionaryEnd(namespaces); context.Reply(writer.CreateMessage());

@@ -41,12 +41,25 @@ Check(await clipboard.WriteTextAsync("committed", late.Token) is PlatformResult<
 Check(native.Text == "committed" && native.Writes == 1);
 Check(await clipboard.WriteTextAsync("invalid\0text") is PlatformResult<Unit>.Failed { Code: FailureCode.InvalidData });
 Check(native.Writes == 1);
+native.Reads = 0;
 foreach (var code in new[] { FailureCode.PermissionDenied, FailureCode.ResourceBusy, FailureCode.IoError })
 {
     native.Failure = code;
     Check(await clipboard.ReadTextAsync(10) is PlatformResult<string?>.Failed failed && failed.Code == code);
 }
 native.Failure = null;
+Check(native.Reads == 2 + WindowsTextClipboard.BusyAttempts);
+native.BusyReads = 2;
+native.Text = "after contention";
+Check(await clipboard.ReadTextAsync(30) is PlatformResult<string?>.Success { Value: "after contention" } && native.BusyReads == 0);
+using (var waiting = new CancellationTokenSource())
+{
+    native.BusyReads = int.MaxValue;
+    native.OnBusy = waiting.Cancel;
+    try { await clipboard.ReadTextAsync(30, waiting.Token); throw new InvalidOperationException("Busy retry ignored cancellation"); }
+    catch (OperationCanceledException) { }
+    native.BusyReads = 0; native.OnBusy = null;
+}
 owner.BeforeInvoke = () => owner.Generation = Guid.NewGuid();
 Check(await clipboard.WriteTextAsync("stale") is PlatformResult<Unit>.Unavailable);
 Check(native.Writes == 1);
@@ -78,10 +91,16 @@ internal sealed class FakeClipboard : IWindowsClipboard
     internal int Writes;
     internal Action? OnWrite;
     internal FailureCode? Failure;
-    public PlatformResult<string?> Read(nint owner, int maximumCharacters) => Failure is { } failure
-        ? new PlatformResult<string?>.Failed(failure)
-        : Text?.Length > maximumCharacters ? new PlatformResult<string?>.Failed(FailureCode.TooLarge)
-        : new PlatformResult<string?>.Success(Text);
+    internal int Reads, BusyReads;
+    internal Action? OnBusy;
+    public PlatformResult<string?> Read(nint owner, int maximumCharacters)
+    {
+        Reads++;
+        if (BusyReads > 0) { BusyReads--; OnBusy?.Invoke(); return new PlatformResult<string?>.Failed(FailureCode.ResourceBusy); }
+        return Failure is { } failure ? new PlatformResult<string?>.Failed(failure)
+            : Text?.Length > maximumCharacters ? new PlatformResult<string?>.Failed(FailureCode.TooLarge)
+            : new PlatformResult<string?>.Success(Text);
+    }
     public PlatformResult<Unit> Write(nint owner, string text)
     { Writes++; Text = text; OnWrite?.Invoke(); return new PlatformResult<Unit>.Success(new()); }
 }

@@ -36,22 +36,32 @@ public sealed partial class Gtk3PortalWindowOwner(INativePickerOwner owner) : IP
     /// <inheritdoc />
     public async ValueTask<PortalParentLease> ExportParentAsync(CancellationToken cancellationToken = default)
     {
+        var generation = owner.Generation;
+        string? x11 = null;
+        await owner.InvokeAsync(window =>
+        {
+            nint native = GetWindow(window);
+            if (native == 0) throw new NativeBackendUnavailableException();
+            if (IsWayland(native)) return;
+            if (!IsX11(native)) throw new NativeBackendUnavailableException();
+            x11 = "x11:" + Xid(native).ToString("x", System.Globalization.CultureInfo.InvariantCulture);
+        }, cancellationToken).ConfigureAwait(false);
+        if (x11 is not null)
+        {
+            if (!owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+            return new X11Lease(x11);
+        }
+        // Only the Wayland export is exclusive; an X11 parent holds no native state.
         await ExportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var state = new ExportState { Generation = owner.Generation };
+        var state = new ExportState { Generation = generation };
         bool transferred = false;
         try
         {
             await owner.InvokeAsync(window =>
             {
                 nint native = GetWindow(window);
-                if (native == 0) throw new NativeBackendUnavailableException();
+                if (native == 0 || !IsWayland(native)) throw new NativeBackendUnavailableException();
                 state.NativeWindow = native;
-                if (IsType(native, X11Type()) != 0)
-                {
-                    state.Result.TrySetResult("x11:" + Xid(native).ToString("x", System.Globalization.CultureInfo.InvariantCulture));
-                    return;
-                }
-                if (IsType(native, WaylandType()) == 0) throw new NativeBackendUnavailableException();
                 var handle = GCHandle.Alloc(state);
                 if (Export(native, ExportPointer, GCHandle.ToIntPtr(handle), DestroyPointer) == 0)
                 {
@@ -66,6 +76,18 @@ public sealed partial class Gtk3PortalWindowOwner(INativePickerOwner owner) : IP
             return new Lease(this, state, identifier);
         }
         finally { if (!transferred) await ReleaseAsync(state).ConfigureAwait(false); }
+    }
+
+    // GDK built without one backend lacks its entry points; probe each independently.
+    private static bool IsWayland(nint native)
+    {
+        try { return IsType(native, WaylandType()) != 0; }
+        catch (EntryPointNotFoundException) { return false; }
+    }
+    private static bool IsX11(nint native)
+    {
+        try { return IsType(native, X11Type()) != 0; }
+        catch (EntryPointNotFoundException) { return false; }
     }
 
     private async ValueTask ReleaseAsync(ExportState state)
@@ -88,6 +110,11 @@ public sealed partial class Gtk3PortalWindowOwner(INativePickerOwner owner) : IP
         private int _disposed;
         public override string Identifier => identifier;
         public override ValueTask DisposeAsync() => Interlocked.Exchange(ref _disposed, 1) == 0 ? owner.ReleaseAsync(state) : ValueTask.CompletedTask;
+    }
+    private sealed class X11Lease(string identifier) : PortalParentLease
+    {
+        public override string Identifier => identifier;
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
     private sealed class ExportState
     {
@@ -113,9 +140,13 @@ public sealed partial class Gtk3PortalWindowOwner(INativePickerOwner owner) : IP
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void Destroyed(nint context)
     {
-        var handle = GCHandle.FromIntPtr(context);
-        ((ExportState)handle.Target!).Result.TrySetException(new OwnerClosedException());
-        handle.Free();
+        try
+        {
+            var handle = GCHandle.FromIntPtr(context);
+            ((ExportState)handle.Target!).Result.TrySetException(new OwnerClosedException());
+            handle.Free();
+        }
+        catch { /* Native callbacks cannot unwind through GDK. */ }
     }
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_get_window")] private static partial nint GetWindow(nint widget);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_type_check_instance_is_a")] private static partial int IsType(nint instance, nuint type);

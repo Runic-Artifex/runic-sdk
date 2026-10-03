@@ -62,6 +62,8 @@ public static class PortalPlatformProvider
 
 internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTransport transport, Action<PortalDiagnostic>? diagnosticSink = null) : INativeFilePicker
 {
+    // Portal selections grant the chosen file only, never sibling staging.
+    public bool SupportsAtomicReplace => false;
     public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
     {
         var result = await PortalRequest.RunAsync(owner, transport, save ? "SaveFile" : "OpenFile", suggestedName ?? "Untitled", cancellationToken, diagnosticSink).ConfigureAwait(false);

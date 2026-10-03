@@ -123,19 +123,29 @@ internal sealed class PortalTransport(string? address = null, string destination
         return writer.CreateMessage();
     }
 
+    // A malformed response fails only its own request; a reader exception would
+    // instead end the subscription. Wrongly typed URIs are no selection at all.
     private static (string, PortalResponse) ReadResponse(Message message)
     {
-        var reader = message.GetBodyReader();
-        uint code = reader.ReadUInt32();
-        string[] uris = [];
-        var dictionary = reader.ReadDictionaryStart();
-        while (reader.HasNext(dictionary))
+        string path = message.PathAsString!;
+        try
         {
-            string key = reader.ReadString();
-            var value = reader.ReadVariantValue();
-            if (key == "uris") uris = value.GetArray<string>();
+            var reader = message.GetBodyReader();
+            uint code = reader.ReadUInt32();
+            string[] uris = [];
+            var dictionary = reader.ReadDictionaryStart();
+            while (reader.HasNext(dictionary))
+            {
+                string key = reader.ReadString();
+                var value = reader.ReadVariantValue();
+                if (key != "uris") continue;
+                try { uris = value.GetArray<string>(); }
+                catch (InvalidOperationException) { uris = []; }
+            }
+            return (path, new PortalResponse(code, uris));
         }
-        return (message.PathAsString!, new PortalResponse(code, uris));
+        catch (Exception error) when (error is InvalidOperationException or DBusExceptionBase or IndexOutOfRangeException)
+        { return (path, new PortalResponse(2, [])); } // The portal's "other error" response code.
     }
     // Tmds takes ownership of the wrapper. Retain, but never close, the caller's file handle.
     private sealed class BorrowedHandle : SafeHandle

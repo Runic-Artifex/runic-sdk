@@ -67,6 +67,34 @@ internal static class FileLeaseTests
             await closed; await pendingSave.DisposeAsync();
             Check(grant.Releases == 1 && Directory.GetFiles(directory).Length == 1, "Access or staging leaked after unknown commit.");
 
+            // A target created after the conflict check is refused, not reported as uncertain.
+            string appeared = Path.Combine(directory, "appeared.txt");
+            string staged = Path.Combine(directory, ".staged.tmp");
+            await File.WriteAllTextAsync(staged, "staged");
+            await File.WriteAllTextAsync(appeared, "concurrent");
+            Check(await new LocalAtomicFileReplacement().ReplaceAsync(staged, appeared, existed: false) is FileCommitResult.NotCommitted { Code: FailureCode.Conflict },
+                "A newly appeared target must be a conflict.");
+            Check(await File.ReadAllTextAsync(appeared) == "concurrent", "A conflicting new target was replaced.");
+            File.Delete(staged); File.Delete(appeared);
+
+            if (!OperatingSystem.IsWindows())
+            {
+                // Group write must survive the process umask; set-ID bits are not carried over.
+                var shared = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite;
+                File.SetUnixFileMode(path, shared | UnixFileMode.SetGroup);
+                await Commit(path, "shared");
+                Check(File.GetUnixFileMode(path) == shared && await File.ReadAllTextAsync(path) == "shared", "Replacement changed the target's permissions.");
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+                string link = Path.Combine(directory, "link.txt");
+                File.CreateSymbolicLink(link, path);
+                await Commit(link, "through link");
+                Check(new FileInfo(link).LinkTarget == path && await File.ReadAllTextAsync(path) == "through link",
+                    "Replacement must update the link's target and keep the link.");
+                File.Delete(link);
+            }
+            Check(Directory.GetFiles(directory).Length == 1, "Replacement checks leaked files.");
+
             replacement = new Replacement { IsSupported = false };
             await using (var unsupported = await SaveFileLease.CreateAsync(path, replacement))
                 Check(await unsupported.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is PlatformResult<IFileWriteTransaction>.Unavailable,
@@ -78,6 +106,13 @@ internal static class FileLeaseTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
+    private static async Task Commit(string path, string text)
+    {
+        await using var save = await SaveFileLease.CreateAsync(path, new LocalAtomicFileReplacement());
+        var write = await Begin(save);
+        await write.Content.WriteAsync(System.Text.Encoding.UTF8.GetBytes(text));
+        Check(await write.CommitAsync() is FileCommitResult.Committed, "Commit failed.");
+    }
     private static async Task<IFileWriteTransaction> Begin(SaveFileLease save) =>
         (await save.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) as PlatformResult<IFileWriteTransaction>.Success)?.Value
         ?? throw new InvalidOperationException("Staging unavailable.");

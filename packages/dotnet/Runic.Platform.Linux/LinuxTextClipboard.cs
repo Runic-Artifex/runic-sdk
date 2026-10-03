@@ -200,10 +200,13 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void Cleared(nint clipboard, nint context)
     {
-        var handle = GCHandle.FromIntPtr(context);
-        var ownership = (Ownership)handle.Target!;
-        ownership.Handle.Free();
-        ownership.Bytes = [];
+        try
+        {
+            var ownership = (Ownership)GCHandle.FromIntPtr(context).Target!;
+            ownership.Handle.Free();
+            ownership.Bytes = [];
+        }
+        catch { /* Never unwind across a native callback. */ }
     }
     [LibraryImport("libgdk-3.so.0", EntryPoint = "gdk_display_get_default")] private static partial nint DefaultDisplay();
     [LibraryImport("libgdk-3.so.0", EntryPoint = "gdk_atom_intern", StringMarshalling = StringMarshalling.Utf8)] private static partial nint Atom(string name, int onlyIfExists);
