@@ -31,6 +31,11 @@ public abstract class DesktopSettingsSource : IDesktopSettings
     }
     /// <summary>Reads one native snapshot and drains any submitted native callback before returning.</summary>
     protected abstract ValueTask<PlatformResult<DesktopAppearance>> ReadCoreAsync(CancellationToken cancellationToken);
+    /// <summary>Returns a task that completes after the next native change, or null to poll once per second.</summary>
+    /// <remarks>Called before each watched read, so a change during that read completes the returned task.</remarks>
+    protected virtual Task? NextChange() => null;
+    /// <summary>Releases native observation after disposal has drained every read.</summary>
+    protected virtual ValueTask CloseCoreAsync() => ValueTask.CompletedTask;
     /// <inheritdoc />
     public async IAsyncEnumerable<PlatformResult<DesktopAppearance>> WatchAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -46,12 +51,14 @@ public abstract class DesktopSettingsSource : IDesktopSettings
             while (true)
             {
                 linked.Token.ThrowIfCancellationRequested();
+                var changed = NextChange();
                 PlatformResult<DesktopAppearance> current;
                 try { current = await ReadAsync(linked.Token).ConfigureAwait(false); }
                 catch (ObjectDisposedException) when (linked.IsCancellationRequested)
                 { throw new OperationCanceledException(linked.Token); }
                 if (current != previous) { previous = current; yield return current; }
-                await Task.Delay(TimeSpan.FromSeconds(1), linked.Token).ConfigureAwait(false);
+                if (changed is null) await Task.Delay(TimeSpan.FromSeconds(1), linked.Token).ConfigureAwait(false);
+                else await changed.WaitAsync(linked.Token).ConfigureAwait(false);
             }
         }
     }
@@ -75,6 +82,7 @@ public abstract class DesktopSettingsSource : IDesktopSettings
         Exception? failure = null;
         try { await _closed.CancelAsync().ConfigureAwait(false); } catch (Exception error) { failure = error; }
         await _drained.Task.ConfigureAwait(false);
+        try { await CloseCoreAsync().ConfigureAwait(false); } catch (Exception error) { failure ??= error; }
         _closed.Dispose();
         if (failure is null) completion.TrySetResult();
         else completion.TrySetException(failure);

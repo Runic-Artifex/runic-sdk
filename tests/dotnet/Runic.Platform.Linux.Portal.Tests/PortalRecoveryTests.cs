@@ -71,6 +71,19 @@ internal static class PortalRecoveryTests
         }
         Check(replacement.RegisteredPeers.Count == 5 && replacement.RegisteredPeers.Values.All(x => x == appId), "five owned connections share one application identity");
         Check(replacement.UnidentifiedCalls == 0, "no unidentified portal calls crossed the backend boundary");
+
+        // The retained settings connection follows a replaced portal owner.
+        using var fourth = new DBusConnection(DBusAddress.Session!);
+        await fourth.ConnectAsync();
+        var settingsReplacement = new DesktopPortalService(fourth) { RequiredIdentity = appId };
+        fourth.AddMethodHandler(settingsReplacement);
+        Check(await fourth.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting), "settings portal replacement");
+        using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+        {
+            while (await settings.ReadAsync(deadline.Token) is not PlatformResult<DesktopAppearance>.Success || settingsReplacement.ReadAllSenders.Count == 0)
+                await Task.Delay(10, deadline.Token);
+        }
+        Check(settingsReplacement.Calls is ["Register", "ReadAll"], "settings re-register with the replacement before reading");
         Console.WriteLine("PASS portal restart: owner-bound in-flight failure, no replay, re-registration, and identity across notifications/settings/FD handoff.");
     }
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }

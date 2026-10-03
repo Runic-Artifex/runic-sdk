@@ -27,7 +27,8 @@ Existing static factories remain available for desktop-inferred identity.
 Calls are bound to a specific portal service owner. An interrupted operation
 returns unavailable; it is never replayed automatically. Notifications detect
 portal replacement and recreate/register their connection before the next call.
-File operations and settings reads open a fresh identified connection per request.
+File operations open a fresh identified connection per request. Settings keep one
+connection and watch `SettingChanged` signals, reconnecting after portal replacement.
 Only the notification service owns the application's activation bus name.
 
 Presentation-bound requests require a valid exported X11/Wayland parent. Failure
