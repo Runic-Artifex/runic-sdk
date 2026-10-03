@@ -77,6 +77,7 @@ public sealed class ServiceProviderViewLocator(IServiceProvider services) : IRun
 {
     private readonly IServiceProvider _services = services ?? throw new ArgumentNullException(nameof(services));
 
+    /// <inheritdoc/>
     public TView Locate<TView, TViewModel>()
         where TView : class, IRunicView
         where TViewModel : class =>
@@ -84,6 +85,7 @@ public sealed class ServiceProviderViewLocator(IServiceProvider services) : IRun
             ?? throw new InvalidOperationException(
                 $"{typeof(TView).FullName} is not registered. Call AddRunicViews() or register the View as transient.");
 
+    /// <inheritdoc/>
     public TView Locate<TView, TViewModel>(string? contract)
         where TView : class, IRunicView
         where TViewModel : class => Locate<TView, TViewModel>();

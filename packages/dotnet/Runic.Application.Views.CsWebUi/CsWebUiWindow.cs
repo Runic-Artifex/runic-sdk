@@ -16,6 +16,7 @@ namespace Runic.Application.Views.CsWebUi;
 public abstract class CsWebUiWindow<TViewModel> : RunicWindow<TViewModel>, IDisposable, IAsyncDisposable
     where TViewModel : class
 {
+    /// <summary>Creates a Window that presents <paramref name="host"/>'s ViewModel.</summary>
     protected CsWebUiWindow(CsWebUiBridgeWindow<TViewModel> host)
         : base((host ?? throw new ArgumentNullException(nameof(host))).ViewModel) => Host = host;
 
