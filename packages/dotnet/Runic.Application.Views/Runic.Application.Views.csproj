@@ -1,12 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application</PackageId>
-    <Authors>RunicArtifex</Authors>
     <Description>Host-neutral Window and View runtime with generated typed TypeScript clients.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Published enum members name wire value kinds (String, Int32, Single). -->
+    <NoWarn>$(NoWarn);CA1720</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />
@@ -22,4 +24,5 @@
     <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll')"
            Text="Build BridgeCodegen for $(Configuration) before packing Runic.Application.Views." />
   </Target>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

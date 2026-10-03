@@ -69,8 +69,8 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         if (string.IsNullOrWhiteSpace(fieldName)) throw new ArgumentException("A field name is required.", nameof(fieldName));
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(apply);
-        if (maximumRetainedWrites < 1) throw new ArgumentOutOfRangeException(nameof(maximumRetainedWrites));
-        if (maximumRetainedReceiptBytes < 0) throw new ArgumentOutOfRangeException(nameof(maximumRetainedReceiptBytes));
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumRetainedWrites, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumRetainedReceiptBytes);
 
         OwnerId = ownerId;
         FieldName = fieldName;
@@ -352,7 +352,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(BridgeFieldWriteRegistry<T>));
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     private sealed record RetainedReceipt(RequestIdentity Identity, BridgeFieldWriteReceipt<T> Receipt, int Bytes);

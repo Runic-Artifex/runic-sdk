@@ -21,5 +21,6 @@ public enum BridgeCommandResultCardinality
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
 public sealed class RunicCommandResultAttribute(BridgeCommandResultCardinality cardinality) : Attribute
 {
+    /// <summary>How the command's observable results are retained.</summary>
     public BridgeCommandResultCardinality Cardinality { get; } = cardinality;
 }

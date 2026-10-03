@@ -22,10 +22,10 @@ internal sealed class BridgeOperationRouter : IDisposable
     internal BridgeOperationRouter(
         IBridgeTransport transport,
         string ownerId,
-        CancellationToken ownerShutdown = default,
         int maximumOperations = 64,
         int maximumRetainedTerminals = 32,
-        int maximumRetainedExpiredIds = 128)
+        int maximumRetainedExpiredIds = 128,
+        CancellationToken ownerShutdown = default)
     {
         ArgumentNullException.ThrowIfNull(transport);
         _operations = new BridgeOperationRegistry(
@@ -193,7 +193,7 @@ internal sealed class BridgeOperationRouter : IDisposable
         var member = root.TryGetProperty("member", out var memberElement)
             ? memberElement.ValueKind is JsonValueKind.String
                 ? memberElement.GetString()
-                : throw new ArgumentException("The command member is invalid.", "member")
+                : throw new ArgumentException("The command member is invalid.", nameof(root))
             : null;
         ValidateOptionalMember(member);
         return new(

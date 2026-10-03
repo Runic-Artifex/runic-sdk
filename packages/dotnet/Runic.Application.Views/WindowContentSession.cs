@@ -62,6 +62,8 @@ public sealed class WindowContentSession : IDisposable
     /// context is rejected. When omitted, the root's existing context is reused or the
     /// session creates and owns one.
     /// </param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
+        Justification = "Published constructor; reordering its optional parameters would break callers.")]
     public WindowContentSession(IBridgeTransport transport, IRunicViewLocator? viewLocator = null,
         CancellationToken operationShutdown = default, object? rootModel = null,
         IRunicModelContext? modelContext = null)
@@ -83,7 +85,7 @@ public sealed class WindowContentSession : IDisposable
         BridgeFieldWriteRegistryProvider? fieldWrites = null;
         try
         {
-            operations = new BridgeOperationRouter(_transport, Guid.NewGuid().ToString("N"), operationShutdown);
+            operations = new BridgeOperationRouter(_transport, Guid.NewGuid().ToString("N"), ownerShutdown: operationShutdown);
             interactions = new BridgeInteractionRouter(this, _transport);
             fieldWrites = new BridgeFieldWriteRegistryProvider(Guid.NewGuid().ToString("N"));
             _operations = operations;
@@ -422,6 +424,7 @@ public sealed class WindowContentSession : IDisposable
 
     private static string CollectionSlot(string property, string id) => property + "\0" + id;
 
+    /// <summary>Clears the content presented for <paramref name="property"/> of <paramref name="owner"/>.</summary>
     public void Clear(object owner, string property)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -506,7 +509,7 @@ public sealed class WindowContentSession : IDisposable
             forgetFields = viewModel is INotifyPropertyChanged;
             foreach (var (owner, properties) in _slots.ToArray())
             {
-                foreach (var property in properties.Where(pair => variants.Values.Contains(pair.Value))
+                foreach (var property in properties.Where(pair => variants.ContainsValue(pair.Value))
                     .Select(pair => pair.Key).ToArray()) properties.Remove(property);
                 if (properties.Count == 0) _slots.Remove(owner);
             }
@@ -537,6 +540,7 @@ public sealed class WindowContentSession : IDisposable
         }
     }
 
+    /// <summary>Detaches all presented content, removes the window's routes and releases its model-context leases.</summary>
     public void Dispose()
     {
         IDisposable[] attachments;
@@ -601,7 +605,7 @@ public sealed class WindowContentSession : IDisposable
         catch (Exception error) { errors.Add(error); }
     }
 
-    private IDisposable? SuspendCore(Entry entry)
+    private DetachingAttachment? SuspendCore(Entry entry)
     {
         while (entry.Attaching)
         {
@@ -686,7 +690,7 @@ public sealed class WindowContentSession : IDisposable
         return false;
     }
 
-    private IDisposable EnterDetachment(Entry entry)
+    private DetachmentScope EnterDetachment(Entry entry)
     {
         var previous = _detachingOnCurrentFlow.Value;
         _detachingOnCurrentFlow.Value = new DetachmentFrame(entry, previous);
@@ -758,7 +762,7 @@ public sealed class WindowContentSession : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(WindowContentSession));
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     // Holds no reference to its model: the identity table is weakly keyed.
@@ -1361,7 +1365,7 @@ public sealed class WindowContentSession : IDisposable
 
         private void ThrowIfDisposed()
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(ViewPresentationAttachment));
+            ObjectDisposedException.ThrowIf(_disposed, this);
         }
     }
 }

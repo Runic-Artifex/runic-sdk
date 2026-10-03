@@ -8,8 +8,17 @@ namespace Runic.Application.Views;
 // Generated bridge metadata describes the reachable DTO graph with delegates.
 // Keeping the shape in generated code means subscriptions require neither
 // reflection nor runtime type discovery (and therefore remain AOT-safe).
+/// <summary>Describes one observable member of a bridged data graph. Created by generated bridges.</summary>
 public sealed class BridgeDataSubscriptionMember
 {
+    /// <summary>Describes a member and, optionally, its observable children.</summary>
+    /// <param name="name">The member's wire name.</param>
+    /// <param name="read">Reads the member value from its owner.</param>
+    /// <param name="children">Members of the value's own data type.</param>
+    /// <param name="enumerateChildren">Enumerates collection elements that have generated data metadata.</param>
+    /// <param name="propertyName">The .NET property name, when it differs from <paramref name="name"/>.</param>
+    /// <param name="enumerateValidationChildren">Enumerates children whose validation errors are reported.</param>
+    /// <param name="isPathTransparent">Whether the member adds no segment to validation paths.</param>
     public BridgeDataSubscriptionMember(
         string name,
         Func<object, object?> read,
@@ -58,7 +67,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable
     private readonly object _root;
     private readonly IReadOnlyList<BridgeDataSubscriptionMember> _members;
     private readonly Action _changed;
-    private readonly IBridgeModelTurn _modelTurn;
+    private readonly BridgeModelTurn _modelTurn;
     private readonly Dictionary<NodeKey, Node> _nodes = new(NodeKeyComparer.Instance);
     private readonly Dictionary<object, PropertyWatch> _propertyWatches =
         new(ReferenceEqualityComparer.Instance);

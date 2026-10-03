@@ -3,11 +3,14 @@ namespace Runic.Application.Views;
 // The application refers to this stable entry point. Generated adapters
 // register themselves when the final assembly loads, so ordinary C# source
 // does not depend on a generated type during a clean IDE design-time build.
+/// <summary>Attaches generated bridges to ViewModels by type.</summary>
 public static class Bridge
 {
     private static readonly Dictionary<Type, Func<IBridgeTransport, object, IDisposable>> Factories = new();
     private static readonly object Gate = new();
 
+    /// <summary>Registers the generated bridge factory for <typeparamref name="T"/>. Called by generated code.</summary>
+    /// <exception cref="InvalidOperationException">A bridge for <typeparamref name="T"/> is already registered.</exception>
     public static void Register<T>(Func<IBridgeTransport, T, IDisposable> factory) where T : class
     {
         lock (Gate)
@@ -17,6 +20,9 @@ public static class Bridge
         }
     }
 
+    /// <summary>Attaches the generated bridge for <typeparamref name="T"/> to <paramref name="transport"/>.</summary>
+    /// <returns>A lease that detaches the bridge.</returns>
+    /// <exception cref="InvalidOperationException">No generated bridge is registered for <typeparamref name="T"/>.</exception>
     public static IDisposable Attach<T>(IBridgeTransport transport, T viewModel) where T : class
     {
         Func<IBridgeTransport, object, IDisposable> factory;

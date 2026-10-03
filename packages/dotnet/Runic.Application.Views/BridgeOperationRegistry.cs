@@ -38,15 +38,12 @@ internal sealed class BridgeOperationRegistry : IDisposable
         CancellationToken ownerShutdown = default)
     {
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("An owner identity is required.", nameof(ownerId));
-        if (maximumOperations < 1) throw new ArgumentOutOfRangeException(nameof(maximumOperations));
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumOperations, 1);
         if (maximumRetainedTerminals < 0 || maximumRetainedTerminals > maximumOperations)
             throw new ArgumentOutOfRangeException(nameof(maximumRetainedTerminals));
-        if (maximumRetainedExpiredIds < 0)
-            throw new ArgumentOutOfRangeException(nameof(maximumRetainedExpiredIds));
-        if (maximumRetainedResultBytes < 0)
-            throw new ArgumentOutOfRangeException(nameof(maximumRetainedResultBytes));
-        if (maximumRunningStreamBytes < 0)
-            throw new ArgumentOutOfRangeException(nameof(maximumRunningStreamBytes));
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumRetainedExpiredIds);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumRetainedResultBytes);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumRunningStreamBytes);
 
         OwnerId = ownerId;
         _maximumOperations = maximumOperations;
@@ -148,8 +145,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
                  _reservedRunningStreamBytes > _maximumRunningStreamBytes - stream.MaximumBytes))
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "stream-capacity");
 
-            accepted = new Entry(requestId, request, stream, _ownerShutdown.Token,
-                stream?.MaximumBytes ?? 0);
+            accepted = new Entry(requestId, request, stream,
+                stream?.MaximumBytes ?? 0, _ownerShutdown.Token);
             _reservedRunningStreamBytes += accepted.ReservedRunningStreamBytes;
             _operations.Add(requestId, accepted);
         }
@@ -494,7 +491,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         private int _cancellationDisposed;
 
         public Entry(string requestId, BridgeOperationRequest? request, BridgeOperationStream? stream,
-            CancellationToken ownerShutdown, int reservedRunningStreamBytes)
+            int reservedRunningStreamBytes, CancellationToken ownerShutdown)
         {
             RequestId = requestId;
             Request = request;
@@ -559,7 +556,10 @@ internal sealed record BridgeOperationStreamLookup(BridgeOperationStatus Status,
 // Supplied only to the streaming admission overload. Command descriptors can
 // publish each encoded item as work progresses, while the registry retains the
 // bounded cursor/replay history under the operation identity.
+/// <summary>The execution context of a streaming operation.</summary>
+/// <param name="stream">The stream that receives the operation's results.</param>
 public sealed class BridgeOperationExecution(BridgeOperationStream? stream)
 {
+    /// <summary>The stream that receives the operation's results, if any.</summary>
     public BridgeOperationStream? Stream { get; } = stream;
 }
