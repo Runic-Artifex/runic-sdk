@@ -49,6 +49,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private readonly TaskCompletionSource _ready = NewCompletionSource();
     private readonly TaskCompletionSource _closed = NewCompletionSource();
     private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _dispatchQueue = new();
+    private readonly ConcurrentQueue<NativeDispatchWork> _nativeWork = new();
     private WindowsWebView2Controller? _controller;
     private WebUiEmbeddedHostOptions? _options;
     private Thread? _thread;
@@ -113,6 +114,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             return;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         _options = options;
         _selfHandle = GCHandle.Alloc(this);
         _thread = new Thread(() => Run(url))
@@ -122,8 +124,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
-        cancellationToken.ThrowIfCancellationRequested();
-        await _ready.Task.ConfigureAwait(false);
+        // Initialization still settles on the window thread. A window that becomes
+        // ready after cancellation destroys itself instead of remaining orphaned.
+        using (cancellationToken.UnsafeRegister(static (state, token) => ((TaskCompletionSource)state!).TrySetCanceled(token), _ready))
+        {
+            await _ready.Task.ConfigureAwait(false);
+        }
     }
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default)
@@ -215,9 +221,21 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         cancellationToken.ThrowIfCancellationRequested();
         if (CheckNativeAccess()) { action(); return ValueTask.CompletedTask; }
         var work = new NativeDispatchWork(action, cancellationToken);
-        _dispatchQueue.Enqueue((static state => ((NativeDispatchWork)state!).Run(), work));
-        Native.PostMessage(_window, WmAppDispatch, 0, 0);
+        _nativeWork.Enqueue(work);
+        // A window destroyed after the open check never drains this queue again.
+        if (!Native.PostMessage(_window, WmAppDispatch, 0, 0) || !IsOpen)
+        {
+            FailNativeWork();
+        }
         return new ValueTask(work.WaitAsync());
+    }
+
+    private void FailNativeWork()
+    {
+        while (_nativeWork.TryDequeue(out var work))
+        {
+            work.Fail(new InvalidOperationException("The embedded WebView window closed before the operation ran."));
+        }
     }
 
     private static int ScaleForWindow(uint value, nint window)
@@ -358,12 +376,17 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             }
             Native.UpdateWindow(_window);
             Volatile.Write(ref _isOpen, 1);
-            _ready.TrySetResult();
+            if (!_ready.TrySetResult())
+            {
+                // The caller cancelled and no longer owns this window.
+                Native.DestroyWindow(_window);
+            }
         }
         catch (Exception exception)
         {
             _ready.TrySetException(exception);
-            Native.PostMessage(_window, WmClose, 0, 0);
+            // WM_CLOSE would ask the application's close confirmation about a window it never received.
+            Native.DestroyWindow(_window);
         }
     }
 
@@ -379,6 +402,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         {
             work.Callback(work.State);
         }
+        while (_nativeWork.TryDequeue(out var work))
+        {
+            work.Run();
+        }
     }
 
     private void HandleClosed()
@@ -389,6 +416,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         }
         _window = 0;
         _nativeShutdown.Cancel();
+        FailNativeWork();
+        // The message loop ends with the window; pending initialization never resumes.
+        _ready.TrySetException(new InvalidOperationException("The embedded WebView window closed before it was ready."));
         _closed.TrySetResult();
         Closed?.Invoke(this, EventArgs.Empty);
     }
