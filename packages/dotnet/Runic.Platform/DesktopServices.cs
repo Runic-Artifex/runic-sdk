@@ -93,7 +93,9 @@ public interface IDesktopFileLauncher
     /// <summary>The caller must retain any sandbox/security-scoped access until the operation completes.</summary>
     /// <remarks>Success acknowledges native handling, not that another application opened the file.
     /// Windows Open With can report success even when dismissed; UserDismissed is returned only
-    /// when the native API distinguishes dismissal.</remarks>
+    /// when the native API distinguishes dismissal. Windows and macOS Open returns PermissionDenied
+    /// for programs, scripts, installers and shortcuts instead of running them; Linux applies the
+    /// desktop portal's policy. Windows rejects UNC, device and alternate-stream paths.</remarks>
     ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
         CancellationToken cancellationToken = default);
 }

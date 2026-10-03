@@ -98,7 +98,11 @@ public static class DesktopServiceValidation
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (!Enum.IsDefined(operation)) throw new ArgumentOutOfRangeException(nameof(operation));
         if (path.Contains('\0') || !Path.IsPathFullyQualified(path)) throw new ArgumentException("Supply a fully qualified local path.", nameof(path));
-        return Path.GetFullPath(path);
+        path = Path.GetFullPath(path);
+        // UNC and \\?\ or \\.\ device paths reach shares and devices; a later colon names an alternate stream.
+        if (OperatingSystem.IsWindows() && (path.StartsWith(@"\\", StringComparison.Ordinal) || path.IndexOf(':', 2) >= 0))
+            throw new ArgumentException("Supply a local drive path, not a UNC, device or alternate stream path.", nameof(path));
+        return path;
     }
     /// <summary>Validates bounded notification content and routing identifiers.</summary>
     public static void Notification(DesktopNotification notification)
