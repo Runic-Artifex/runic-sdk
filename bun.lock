@@ -5,6 +5,7 @@
     "": {
       "name": "@runic-artifex/sdk-workspace",
       "devDependencies": {
+        "@runic-artifex/views": "workspace:*",
         "effect": "4.0.0-rc.112",
         "esbuild": "0.28.2",
         "playwright-core": "1.63.0",
@@ -129,8 +130,8 @@
         "vitest": "5.0.0",
       },
       "peerDependencies": {
-        "@runic-artifex/svelte": "0.5.0-preview.2",
-        "@runic-artifex/vite-plugin-runic": "0.5.0-preview.2",
+        "@runic-artifex/svelte": "0.5.0-preview.3",
+        "@runic-artifex/vite-plugin-runic": "0.5.0-preview.3",
         "@sveltejs/adapter-static": ">=3 <4",
         "@sveltejs/kit": ">=2.53.0 <3",
         "@sveltejs/vite-plugin-svelte": ">=7 <8",
@@ -141,6 +142,14 @@
         "@runic-artifex/svelte",
         "@runic-artifex/vite-plugin-runic",
       ],
+    },
+    "packages/web/views": {
+      "name": "@runic-artifex/views",
+      "version": "0.5.0-preview.3",
+      "devDependencies": {
+        "@types/node": "24.13.3",
+        "typescript": "6.0.3",
+      },
     },
     "packages/web/vite-plugin-runic": {
       "name": "@runic-artifex/vite-plugin-runic",
@@ -397,6 +406,8 @@
     "@runic-artifex/sveltekit": ["@runic-artifex/sveltekit@workspace:packages/web/sveltekit"],
 
     "@runic-artifex/translations-editor-frontend": ["@runic-artifex/translations-editor-frontend@workspace:apps/translations-editor/Frontend"],
+
+    "@runic-artifex/views": ["@runic-artifex/views@workspace:packages/web/views"],
 
     "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@workspace:packages/web/vite-plugin-runic"],
 

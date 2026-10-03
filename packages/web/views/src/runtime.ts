@@ -1,0 +1,142 @@
+import { hostCallbacks, reportBridgeError, type RunicBridgeClient } from "./transport.js";
+
+// The page-wide runtime lives on the window under a registered symbol. Every
+// generated module, every copy of this package, and a runtime created by an
+// earlier generated client (which inlined this code) share one instance, so a
+// route has one callback and one revision no matter how many modules load.
+// Field names are part of that compatibility: keep them stable.
+
+export interface SharedLease {
+  disposed: boolean;
+  current: unknown | undefined;
+  readonly listeners: Set<(state: unknown) => void>;
+  mounted: boolean;
+  readonly mountToken: string | undefined;
+}
+
+export interface SharedEntry {
+  readonly contract: string;
+  readonly route: string;
+  readonly bridge: RunicBridgeClient;
+  readonly routeEntry: SharedRoute;
+  readonly leases: Set<SharedLease>;
+  readonly hydrate: (wire: unknown) => unknown;
+  readonly accept: (wire: unknown) => unknown;
+  current: unknown | undefined;
+  wire: unknown | undefined;
+  revision: number | undefined;
+  initializing: Promise<void> | undefined;
+  active: boolean;
+}
+
+export interface SharedRoute {
+  readonly route: string;
+  readonly callbackName: string;
+  readonly bridge: RunicBridgeClient;
+  readonly generation: symbol;
+  readonly entries: Map<string, SharedEntry>;
+  readonly callback: (state: unknown) => unknown;
+  readonly previousCallback: unknown;
+  active: boolean;
+}
+
+export interface SharedRuntime {
+  bridge: RunicBridgeClient | undefined;
+  generation: symbol;
+  mountSession: string;
+  readonly routes: Map<string, SharedRoute>;
+  readonly operations: Map<string, unknown>;
+  reconnect?: (() => void) | undefined;
+}
+
+const sharedRuntimeKey = Symbol.for("runic.views.generated-client-runtime");
+
+/** Returns the page runtime for a Bridge, resetting routes when the Bridge was replaced. */
+export function sharedRuntimeFor(bridge: RunicBridgeClient): SharedRuntime {
+  const host = hostCallbacks();
+  let runtime = host[sharedRuntimeKey] as SharedRuntime | undefined;
+  if (!runtime) {
+    runtime = { bridge, generation: Symbol(), mountSession: globalThis.crypto.randomUUID(), routes: new Map(), operations: new Map() };
+    host[sharedRuntimeKey] = runtime;
+    watchReconnect(runtime, bridge);
+    return runtime;
+  }
+  if (runtime.bridge === bridge) {
+    // HMR can retain a runtime created by an earlier generated client.
+    const legacy = runtime as SharedRuntime & { operations?: Map<string, unknown> };
+    legacy.operations ??= new Map();
+    watchReconnect(runtime, bridge);
+    return runtime;
+  }
+  runtime.reconnect?.();
+  runtime.reconnect = undefined;
+  for (const route of runtime.routes.values()) {
+    route.active = false;
+    if (host[route.callbackName] === route.callback) host[route.callbackName] = route.previousCallback;
+  }
+  runtime.routes.clear();
+  runtime.operations.clear();
+  runtime.bridge = bridge;
+  runtime.generation = Symbol();
+  runtime.mountSession = globalThis.crypto.randomUUID();
+  watchReconnect(runtime, bridge);
+  return runtime;
+}
+
+// A transport reconnect keeps this page, while .NET released the former
+// connection's View mounts and its publications were lost. Re-read each
+// live route and re-acknowledge each mounted presentation.
+function watchReconnect(runtime: SharedRuntime, bridge: RunicBridgeClient): void {
+  runtime.reconnect ??= bridge.onReconnect?.(() => resumeAfterReconnect(runtime, bridge));
+}
+
+function resumeAfterReconnect(runtime: SharedRuntime, bridge: RunicBridgeClient): void {
+  if (runtime.bridge !== bridge) return;
+  for (const route of runtime.routes.values()) {
+    if (!route.active || route.bridge !== bridge) continue;
+    for (const entry of route.entries.values()) {
+      if (!entry.active) continue;
+      void bridge.call(`${route.route}Snapshot`).then(json => {
+        const reply = JSON.parse(json) as { readonly state?: unknown };
+        if (entry.active && reply.state !== null && reply.state !== undefined) entry.accept(reply.state);
+      }).catch(() => {});
+      for (const lease of entry.leases)
+        if (lease.mounted && lease.mountToken && !lease.disposed) void remountLease(bridge, route.route, lease, lease.mountToken);
+    }
+  }
+}
+
+async function remountLease(bridge: RunicBridgeClient, route: string, lease: SharedLease, token: string): Promise<void> {
+  // .NET answers "ignored" while the former connection still owns the token.
+  for (let attempt = 0; attempt < 20 && !lease.disposed; attempt++) {
+    let reply: string;
+    try { reply = await bridge.call(`${route}Mount`, token); } catch { return; }
+    if (reply !== "ignored") return;
+    await new Promise<void>(resolve => setTimeout(resolve, 250));
+  }
+}
+
+/** Returns the live route of this runtime generation and installs its push callback. */
+export function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route: string): SharedRoute {
+  const callbackName = `__${route}Changed`;
+  const callbacks = hostCallbacks();
+  const existing = runtime.routes.get(route);
+  if (existing?.active && existing.bridge === bridge && existing.generation === runtime.generation) {
+    callbacks[callbackName] = existing.callback;
+    return existing;
+  }
+  const sharedRoute: SharedRoute = {
+    route, callbackName, bridge, generation: runtime.generation, entries: new Map(), previousCallback: callbacks[callbackName], active: true,
+    callback(state) {
+      let accepted: unknown;
+      for (const entry of sharedRoute.entries.values()) {
+        try { accepted = entry.accept(state); }
+        catch (error) { reportBridgeError(error); }
+      }
+      return accepted;
+    },
+  };
+  runtime.routes.set(route, sharedRoute);
+  callbacks[callbackName] = sharedRoute.callback;
+  return sharedRoute;
+}

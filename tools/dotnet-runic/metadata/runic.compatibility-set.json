@@ -189,6 +189,11 @@
       "ecosystem": "npm",
       "identity": "@runic-artifex/sveltekit",
       "version": "0.5.0-preview.3"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/views",
+      "version": "0.5.0-preview.3"
     }
   ]
 }

@@ -63,7 +63,13 @@ function web(command) {
   // compiled entry files exist. Refresh links before building consuming apps.
   if (command === "build") run("bun", ["install", "--frozen-lockfile"]);
 }
+// Examples and test projects bundle or type-check generated Views clients,
+// which import the shared runtime package. Build it before managed projects.
+export function viewsRuntime() {
+  run("bun", ["run", "--bun", "build"], resolve(root, "packages/web/views"));
+}
 function core() {
+  viewsRuntime();
   run("dotnet", [
     "build",
     "RunicSdk.Core.slnx",

@@ -21,6 +21,10 @@
     {
       "name": "@runic-artifex/sveltekit",
       "path": "packages/web/sveltekit"
+    },
+    {
+      "name": "@runic-artifex/views",
+      "path": "packages/web/views"
     }
   ],
   "nuget": [
@@ -283,7 +287,8 @@
         "eng/branding/application",
         "specs/application",
         "tests/templates",
-        "packages/web/angular"
+        "packages/web/angular",
+        "packages/web/views"
       ]
     },
     "vite": {

@@ -13,6 +13,7 @@
     "packages/web/vite-plugin-runic",
     "packages/web/svelte",
     "packages/web/sveltekit",
+    "packages/web/views",
     "apps/translations-editor/Frontend",
     "docs"
   ],
@@ -34,6 +35,7 @@
     "docs:release": "bun docs/scripts/update-release.mjs"
   },
   "devDependencies": {
+    "@runic-artifex/views": "workspace:*",
     "typescript": "6.0.3",
     "effect": "4.0.0-rc.112",
     "esbuild": "0.28.2",
