@@ -84,10 +84,55 @@ public sealed class SessionRevocationTests
         Assert.Equal(1, Volatile.Read(ref disconnectCount));
     }
 
+    [Fact]
+    public async Task CapabilityCanDisposeItsOwnSurfaceWithoutDeadlockingDisconnectedEvent()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var host = await DesktopHost.StartAsync();
+        var surface = await host.CreateSurfaceAsync();
+        var surfaceUrl = surface.Url;
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = surface.RegisterCapability("dispose", async (invocation, _) =>
+        {
+            await invocation.Surface.DisposeAsync();
+            disposed.TrySetResult();
+            return PresentationResult.None;
+        });
+        using var client = new HttpClient();
+        var bridge = await client.GetStringAsync(new Uri(surfaceUrl, "webui.js"), deadline.Token);
+        var token = ReadToken(bridge);
+        const string credentialPrefix = "const SESSION_CREDENTIAL = \"";
+        var credentialStart = bridge.IndexOf(credentialPrefix, StringComparison.Ordinal) + credentialPrefix.Length;
+        var credential = bridge[credentialStart..bridge.IndexOf('"', credentialStart)];
+        using var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("Origin", $"{surfaceUrl.Scheme}://{surfaceUrl.Authority}");
+        socket.Options.AddSubProtocol($"runic-desktop.{credential}");
+        await socket.ConnectAsync(
+            new UriBuilder(surfaceUrl) { Scheme = "ws", Path = $"{surfaceUrl.AbsolutePath}_webui_ws_connect" }.Uri,
+            deadline.Token);
+        await SendAsync(socket, Packet(token, 0, 0xF5, [0]), deadline.Token);
+        _ = await ReceiveAsync(socket, deadline.Token);
+
+        await SendCallAsync(socket, token, 1, "dispose", deadline.Token);
+
+        await disposed.Task.WaitAsync(deadline.Token);
+        // The detached teardown completes once the callback has released its session.
+        while (true)
+        {
+            using var response = await client.GetAsync(surfaceUrl, deadline.Token);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) break;
+            await Task.Delay(20, deadline.Token);
+        }
+    }
+
     private static async Task<uint> GetTokenAsync(Uri url, CancellationToken cancellationToken)
     {
         using var client = new HttpClient();
-        var bridge = await client.GetStringAsync(new Uri(url, "webui.js"), cancellationToken);
+        return ReadToken(await client.GetStringAsync(new Uri(url, "webui.js"), cancellationToken));
+    }
+
+    private static uint ReadToken(string bridge)
+    {
         const string prefix = "const TOKEN = ";
         var start = bridge.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
         return uint.Parse(bridge[start..bridge.IndexOf(';', start)], NumberStyles.None, CultureInfo.InvariantCulture);
