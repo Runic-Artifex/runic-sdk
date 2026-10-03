@@ -1644,8 +1644,39 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await SendNotFoundAsync(context).ConfigureAwait(false);
     }
 
+    // Any page can embed a loopback script, and a classic script needs no CORS
+    // grant to run. Fetch metadata identifies a cross-site embedding. Clients that
+    // send none are not browser subresource loads and still need the WebSocket
+    // origin and credential checks to open a session.
+    private bool AdmitsBootstrapRequest(HttpContext context)
+    {
+        var headers = context.Request.Headers;
+        var destination = headers["Sec-Fetch-Dest"].ToString();
+        var site = headers["Sec-Fetch-Site"].ToString();
+        var admitted = destination.Length == 0 || destination.Equals("script", StringComparison.OrdinalIgnoreCase);
+        admitted &= site.Length == 0 ||
+            site.Equals("same-origin", StringComparison.OrdinalIgnoreCase) ||
+            site.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+            _securityPolicy?.AllowsAdditionalOrigin(headers.Referer.ToString()) == true;
+        if (!admitted)
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.OriginDenied,
+                "bootstrap-origin-not-allowed",
+                "The bootstrap script was requested by a document whose origin is not allowed.",
+                Retryable: false));
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        }
+        return admitted;
+    }
+
     private async Task ServeBridgeAsync(HttpContext context)
     {
+        if (!AdmitsBootstrapRequest(context))
+        {
+            return;
+        }
+
         context.Response.ContentType = "text/javascript; charset=utf-8";
         var script = WebUiBridge.Script
             .Replace("__TOKEN__", _token.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
@@ -1662,6 +1693,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private async Task ServeDesktopBootstrapAsync(HttpContext context)
     {
+        if (!AdmitsBootstrapRequest(context))
+        {
+            return;
+        }
+
         context.Response.ContentType = "text/javascript; charset=utf-8";
         var webSocketPath = $"{_surface?.PathBase ?? string.Empty}{WebSocketPath}";
         var script = $$"""

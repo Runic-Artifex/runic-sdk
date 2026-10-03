@@ -176,6 +176,12 @@ internal sealed class PresentationHostCore : IAsyncDisposable
 
     private async Task DispatchAsync(HttpContext context)
     {
+        if (!AcceptsHost(context.Request.Host))
+        {
+            context.Response.StatusCode = StatusCodes.Status421MisdirectedRequest;
+            return;
+        }
+
         var registration = FindSurface(context.Request.Path, out var remainingPath);
         if (registration is null)
         {
@@ -196,6 +202,27 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         context.Items[typeof(PresentationRequestCancellation)] = requestCancellation;
         context.RequestAborted = requestCancellation.Token;
         await registration.HandleAsync(context).ConfigureAwait(false);
+    }
+
+    // A DNS-rebinding page reaches the loopback listener under its own host name
+    // and would otherwise read credential-bearing bootstrap scripts same-origin.
+    // A non-loopback listener is reachable by any network peer and is protected
+    // only by its explicit origin and credential policy.
+    private bool AcceptsHost(HostString host)
+    {
+        if (IsPublic)
+        {
+            return true;
+        }
+
+        if (host.Port != Port)
+        {
+            return false;
+        }
+
+        var name = host.Host;
+        return name.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+            (IPAddress.TryParse(name, out var address) && IPAddress.IsLoopback(address));
     }
 
     private PresentationSurfaceRegistration? FindSurface(PathString requestPath, out PathString remainingPath)

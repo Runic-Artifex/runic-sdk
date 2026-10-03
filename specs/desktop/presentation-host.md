@@ -209,6 +209,17 @@ or relaxed content access require explicit policy. Loopback location alone
 must not be treated as authentication. Credentials must not appear in URLs,
 public errors, or retained diagnostics.
 
+A loopback listener rejects every HTTP request whose `Host` is not a loopback
+address or `localhost` at the bound port, so a DNS-rebinding page cannot read
+its responses as same-origin content. Credential-bearing bootstrap scripts are
+refused to browser loads whose fetch metadata names another destination than
+`script`, or a site other than `same-origin` or `none`. A cross-site load is
+admitted only when its referrer is an explicitly additional origin. Requests
+without fetch metadata are served; they still need origin and credential
+admission to open a session. A non-loopback listener cannot distinguish a
+rebinding name from a legitimate network name and exposes its bootstrap
+credentials to every peer that can reach it.
+
 A credential is scoped to one surface and one host lifetime. It must not admit
 a session on another surface, remains invalid after its surface or host closes,
 and is replaced when policy requests rotation. Rotation prevents new use of the
