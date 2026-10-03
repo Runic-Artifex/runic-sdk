@@ -481,6 +481,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             else
             {
+                await ReleaseClosedEmbeddedHostAsync().ConfigureAwait(false);
                 host = CreateEmbeddedHost();
                 host.Closed += EmbeddedHostClosed;
                 _embeddedHost = host;
@@ -554,6 +555,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             else
             {
+                ReleaseClosedEmbeddedHostAsync().GetAwaiter().GetResult();
                 host = CreateEmbeddedHost();
                 host.Closed += EmbeddedHostClosed;
                 _embeddedHost = host;
@@ -1336,6 +1338,33 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host))
         {
             _ = HandleEmbeddedHostClosedAsync(host);
+        }
+    }
+
+    // A host can report closed before its Closed callback acquires the lifecycle gate.
+    // Replacing it must still release its native owner, such as a dispatcher lease;
+    // the late callback then finds a different host and does nothing.
+    private async Task ReleaseClosedEmbeddedHostAsync()
+    {
+        if (_embeddedHost is null)
+        {
+            return;
+        }
+
+        await _presentationGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (Interlocked.Exchange(ref _embeddedHost, null) is { } closed)
+            {
+                StopCloseConfirmation();
+                closed.Closed -= EmbeddedHostClosed;
+                _currentBrowser = WebUiBrowser.NoBrowser;
+                await closed.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _presentationGate.Release();
         }
     }
 

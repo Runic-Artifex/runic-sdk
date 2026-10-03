@@ -112,6 +112,31 @@ public sealed class EmbeddedHostTests
         }
     }
 
+    [Fact]
+    public async Task ReopeningReleasesAClosedHostWhoseCallbackHasNotRun()
+    {
+        var factory = new RecordingHostFactory();
+        WebUiApplication.SetEmbeddedHostFactory(factory);
+        WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, false);
+        try
+        {
+            await using var window = new WebUiWindow();
+            await window.ShowWebViewAsync("first");
+            var first = Assert.IsType<RecordingHost>(factory.Host);
+            first.CloseWithoutNotification();
+
+            await window.ShowWebViewAsync("second");
+
+            Assert.NotSame(first, factory.Host);
+            Assert.Equal(1, first.DisposalCount);
+        }
+        finally
+        {
+            WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, true);
+            WebUiApplication.SetEmbeddedHostFactory(null);
+        }
+    }
+
     private sealed class RecordingHostFactory : IWebUiEmbeddedHostFactory
     {
         internal IWebUiEmbeddedHost? Host { get; private set; }
@@ -232,6 +257,9 @@ public sealed class EmbeddedHostTests
             DisposalEntered.TrySetResult();
             if (ReleaseDisposal is { } release) await release.Task;
         }
+
+        // A native window that has closed before its Closed callback was delivered.
+        internal void CloseWithoutNotification() => IsOpen = false;
 
         internal void CloseFromPlatform()
         {
