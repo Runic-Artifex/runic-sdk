@@ -4,15 +4,15 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/esm/view-outlet.d.ts",
-      "import": "./dist/esm/view-outlet.js"
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js"
     },
     "./package.json": "./package.json"
   },
   "peerDependencies": {
     "@angular/core": ">=20.3.26 <23"
   },
-  "description": "Angular outlet for Runic Views",
+  "description": "Angular outlet and signals for Runic Views",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -37,17 +37,22 @@
   },
   "packageManager": "bun@1.4.2",
   "sideEffects": false,
-  "main": "./dist/esm/view-outlet.js",
-  "types": "./dist/esm/view-outlet.d.ts",
+  "main": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
   "scripts": {
     "build": "ngc -p tsconfig.json",
     "check": "ngc -p tsconfig.json --noEmit",
+    "test": "bun run --bun build && vitest run",
     "pack:check": "bun pm pack --dry-run"
   },
   "devDependencies": {
+    "@angular/common": "22.1.5",
     "@angular/compiler": "22.1.5",
     "@angular/compiler-cli": "22.1.5",
     "@angular/core": "22.1.5",
-    "typescript": "6.0.3"
+    "@angular/platform-browser": "22.1.5",
+    "happy-dom": "20.14.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
   }
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DocumentPageReference, DocumentState } from "../../Frontend/src/generated/document.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   import Editor from "./Editor.svelte";
   import MirrorEditor from "./MirrorEditor.svelte";
   import Compact from "./Compact.svelte";
@@ -12,7 +12,7 @@
   const mirrorViews = { ...paneViews, editor: MirrorEditor } satisfies ViewRegistry<DocumentState["currentPane"]>;
   const compactViews = { editorCompact: Compact } satisfies ViewRegistry<DocumentState["compactNote"]>;
   let { page }: { page: DocumentPageReference } = $props();
-  const document = pageState(() => page);
+  const document = useView(() => page);
   let error = $state<string | undefined>();
 
   async function run(command: () => Promise<unknown>) {
@@ -21,14 +21,14 @@
   }
 </script>
 
-{#if document.state && document.view}
+{#if document.state && document.client}
   <h1>Document</h1>
   <p class="muted">The nested route swaps Editor and Preview. The compact View stays mounted.</p>
   <div class="document">
     <div>
       <div class="tabs">
-        <button data-pane="editor" aria-current={document.state.activePane === "Editor" ? "page" : "false"} onclick={() => run(() => document.view!.showEditor())}>Editor</button>
-        <button data-pane="preview" aria-current={document.state.activePane === "Preview" ? "page" : "false"} onclick={() => run(() => document.view!.showPreview())}>Preview</button>
+        <button data-pane="editor" aria-current={document.state.activePane === "Editor" ? "page" : "false"} onclick={() => run(() => document.client!.showEditor())}>Editor</button>
+        <button data-pane="preview" aria-current={document.state.activePane === "Preview" ? "page" : "false"} onclick={() => run(() => document.client!.showPreview())}>Preview</button>
       </div>
       <section id="document-pane" class="card"><ViewOutlet content={document.state.currentPane} registry={paneViews} /></section>
     </div>

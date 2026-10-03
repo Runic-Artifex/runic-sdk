@@ -1,13 +1,13 @@
 <script lang="ts">
-  import type { EditorPageReference, EditorView } from "../../Frontend/src/generated/editor.js";
+  import type { EditorPageReference, EditorClient } from "../../Frontend/src/generated/editor.js";
   import { EditorWrites } from "../../Frontend/src/editor-writes.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
 
   let { page, handleInteractions = true }: { page: EditorPageReference; handleInteractions?: boolean } = $props();
-  const editor = pageState(() => page);
+  const editor = useView(() => page);
   let error = $state<string | undefined>();
   const writes = new EditorWrites(cause => { error = cause === undefined ? undefined : String(cause); });
-  const connectedEditor = $derived(editor.view);
+  const connectedEditor = $derived(editor.client);
 
   $effect(() => {
     if (!connectedEditor || !handleInteractions) return;
@@ -17,14 +17,14 @@
     });
   });
 
-  async function run(command: (view: EditorView) => Promise<unknown>) {
-    const view = editor.view;
+  async function run(command: (view: EditorClient) => Promise<unknown>) {
+    const view = editor.client;
     if (!view) return;
     try { await command(view); error = undefined; }
     catch (cause) { error = String(cause); }
   }
-  function write(command: (view: EditorView) => Promise<unknown>) {
-    const view = editor.view;
+  function write(command: (view: EditorClient) => Promise<unknown>) {
+    const view = editor.client;
     if (view) writes.enqueue(() => command(view));
   }
 </script>

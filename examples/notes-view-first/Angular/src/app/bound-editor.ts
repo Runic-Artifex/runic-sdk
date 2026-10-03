@@ -1,10 +1,9 @@
 import { Component, inject, input, signal } from "@angular/core";
 import { ReactiveFormsModule } from "@angular/forms";
 import type { EditorPageReference } from "../../../Frontend/src/generated/editor.js";
-import { pageSignal } from "./bridge-signal";
 import { bridgeTextForm } from "./bridge-text-form";
 import { editorFields } from "./editor-fields";
-import { WindowOperations } from "./window-operations";
+import { injectPage, WindowOperations } from "./window-operations";
 
 @Component({
   selector: "notes-bound-editor",
@@ -25,15 +24,15 @@ import { WindowOperations } from "./window-operations";
 })
 export class BoundEditorComponent {
   readonly page = input.required<EditorPageReference>();
-  readonly editor = pageSignal(this.page);
+  readonly editor = injectPage(this.page);
   private readonly operations = inject(WindowOperations);
-  readonly binding = bridgeTextForm(this.editor.view, editorFields, this.operations);
+  readonly binding = bridgeTextForm(this.editor.client, editorFields, this.operations);
   readonly error = signal<string | undefined>(undefined);
 
   save(): void {
     void this.binding.flush().then(() => this.operations.dispatchProbe
-      ? this.operations.runDispatched(this.editor.view(), view => view.save())
-      : this.operations.run(this.editor.view(), view => view.save()))
+      ? this.operations.runDispatched(this.editor.client(), view => view.save())
+      : this.operations.run(this.editor.client(), view => view.save()))
       .then(() => this.error.set(undefined))
       .catch(cause => this.error.set(String(cause)));
   }

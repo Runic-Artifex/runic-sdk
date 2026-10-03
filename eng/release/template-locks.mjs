@@ -3,6 +3,14 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 
+// Every template frontend installs the shared Views runtime and its framework binding.
+export const templateRunicPackages = Object.freeze({
+  react: ['@runic-artifex/react', '@runic-artifex/views'],
+  vue: ['@runic-artifex/vue', '@runic-artifex/views'],
+  svelte: ['@runic-artifex/svelte', '@runic-artifex/views'],
+  angular: ['@runic-artifex/angular', '@runic-artifex/views'],
+});
+
 export function readNpmCandidates(archives) {
   return new Map(archives.map(archive => {
     const manifest = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], {encoding: 'utf8'}));
@@ -13,7 +21,7 @@ export function readNpmCandidates(archives) {
 // Validate the immutable customer lock before acceptance redirects a download URL.
 // These deliberately narrow parsers match our committed npm/pnpm/Bun lock formats;
 // an unsupported layout fails closed instead of silently skipping Runic entries.
-export function verifyTemplateLock(text, filename, candidates, { requireRunic = true, expectedPackage } = {}) {
+export function verifyTemplateLock(text, filename, candidates, { requireRunic = true, expectedPackages = [] } = {}) {
   let count = 0;
   const seen = new Set();
   function entry(name, version, integrity) {
@@ -61,7 +69,7 @@ export function verifyTemplateLock(text, filename, candidates, { requireRunic = 
     for (const match of text.matchAll(/^        "(@runic-artifex\/[^"/]+)": "([^"]+)"/gm)) declarations({[match[1]]: match[2]});
   } else throw new Error(`Unsupported template lock: ${filename}`);
   if (requireRunic) assert.ok(count > 0, `${filename}: no Runic resolutions verified`);
-  if (expectedPackage) assert.ok(seen.has(expectedPackage), `${filename}: missing ${expectedPackage} resolution`);
+  for (const name of expectedPackages) assert.ok(seen.has(name), `${filename}: missing ${name} resolution`);
   return count;
 }
 
@@ -72,10 +80,7 @@ export function verifyPackagedTemplateLocks(nupkg, archives) {
   assert.deepEqual(Object.keys(files).sort(), expected.sort(), 'Packaged template lock inventory differs');
   const entries = Object.entries(files).reduce((total, [filename, text]) => {
     const framework = filename.match(/content\/content\/(react|vue|svelte|angular)\/Frontend\//)?.[1];
-    const expectedPackage = framework === 'svelte' ? '@runic-artifex/svelte'
-      : framework === 'angular' ? '@runic-artifex/angular' : undefined;
-    return total + verifyTemplateLock(text, filename, candidates,
-      { requireRunic: Boolean(expectedPackage), expectedPackage });
+    return total + verifyTemplateLock(text, filename, candidates, { expectedPackages: templateRunicPackages[framework] });
   }, 0);
   return {locks: expected.length, entries};
 }

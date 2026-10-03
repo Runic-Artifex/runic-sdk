@@ -1,7 +1,7 @@
-import type { EditorView } from "./generated/editor.js";
+import type { EditorClient } from "./generated/editor.js";
 import { EditorWrites } from "./editor-writes.js";
 
-export function mountEditor(host: HTMLElement, editor: EditorView): () => void {
+export function mountEditor(host: HTMLElement, editor: EditorClient): () => void {
   host.innerHTML = `<h2>Editor</h2><label>Title <input></label><label>Body <textarea></textarea></label><button data-save>Save</button><p data-message role="status"></p><p data-error role="alert" hidden></p>`;
   const title = host.querySelector("input")!;
   const body = host.querySelector("textarea")!;

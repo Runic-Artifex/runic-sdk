@@ -31,9 +31,9 @@ project layout and settings.
 
 ## Test a local candidate
 
-Install the template from a local NuGet feed. Svelte and Angular projects also
-need the matching candidate npm archive through a local `@runic-artifex`
-registry before their first restore:
+Install the template from a local NuGet feed. Every project also needs the
+matching candidate npm archives (`@runic-artifex/views` and the framework
+binding) through a local `@runic-artifex` registry before its first restore:
 
 ```bash
 dotnet new install Runic.Application.Templates::<CANDIDATE> --nuget-source /path/to/nuget-feed

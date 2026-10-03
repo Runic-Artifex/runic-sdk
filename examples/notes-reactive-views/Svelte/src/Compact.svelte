@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { EditorCompactPageReference } from "../../Frontend/src/generated/editor.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   let { page }: { page: EditorCompactPageReference } = $props();
-  const editor = pageState(() => page);
+  const editor = useView(() => page);
 </script>
 
 {#if editor.state}

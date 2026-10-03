@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { SidebarPageReference } from "../../Frontend/src/generated/sidebar.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
 
   let { page }: { page: SidebarPageReference } = $props();
-  const sidebar = pageState(() => page);
+  const sidebar = useView(() => page);
   let error = $state<string | undefined>();
   async function run(command: () => Promise<unknown>) {
     try { await command(); error = undefined; }
@@ -12,12 +12,12 @@
 </script>
 
 <h2>Workspace</h2>
-{#if sidebar.state && sidebar.view}
+{#if sidebar.state && sidebar.client}
   <nav aria-label="Workspace navigation">
     <button data-go="home" aria-current={sidebar.state.selected === "Home" ? "page" : "false"}
-      disabled={!sidebar.state.canOpenHome} onclick={() => run(() => sidebar.view!.openHome())}>Home</button>
+      disabled={!sidebar.state.canOpenHome} onclick={() => run(() => sidebar.client!.openHome())}>Home</button>
     <button data-go="notes" aria-current={sidebar.state.selected === "Notes" ? "page" : "false"}
-      disabled={!sidebar.state.canOpenNotes} onclick={() => run(() => sidebar.view!.openNotes())}>Notes</button>
+      disabled={!sidebar.state.canOpenNotes} onclick={() => run(() => sidebar.client!.openNotes())}>Notes</button>
   </nav>
 {:else}
   <p>Connecting…</p>

@@ -1,7 +1,7 @@
 {
   "name": "@runic-artifex/svelte",
   "version": "0.5.0-preview.3",
-  "description": "Svelte 5 localization and inline content helpers for Runic",
+  "description": "Svelte 5 localization, inline content and Views helpers for Runic",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
@@ -50,7 +50,7 @@
   "scripts": {
     "build": "svelte-package -i src -o dist",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun run --bun build && vitest run test/locale.svelte.test.ts test/locale-hydration.svelte.test.ts test/localization-stress.test.ts && node test/verify-inline-ssr.mjs",
+    "test": "bun run --bun build && vitest run test/locale.svelte.test.ts test/locale-hydration.svelte.test.ts test/localization-stress.test.ts test/use-view.svelte.test.ts && node test/verify-inline-ssr.mjs",
     "pack:check": "bun pm pack --dry-run",
     "test:inline-browser": "node test/verify-inline-ssr.mjs && node test/verify-inline-hydration.mjs"
   },

@@ -1,7 +1,6 @@
 import { Component, inject, input, signal } from "@angular/core";
-import type { SidebarPageReference, SidebarView } from "../../../Frontend/src/generated/sidebar.js";
-import { pageSignal } from "./bridge-signal";
-import { WindowOperations } from "./window-operations";
+import type { SidebarPageReference, SidebarClient } from "../../../Frontend/src/generated/sidebar.js";
+import { injectPage, WindowOperations } from "./window-operations";
 
 @Component({
   selector: "notes-sidebar",
@@ -21,15 +20,15 @@ import { WindowOperations } from "./window-operations";
 })
 export class SidebarComponent {
   readonly page = input.required<SidebarPageReference>();
-  readonly sidebar = pageSignal(this.page);
+  readonly sidebar = injectPage(this.page);
   readonly error = signal<string | undefined>(undefined);
   private readonly operations = inject(WindowOperations);
 
   openHome(): void { this.run(view => view.openHome()); }
   openNotes(): void { this.run(view => view.openNotes()); }
 
-  private run(action: (view: SidebarView) => Promise<unknown>): void {
-    void this.operations.run(this.sidebar.view(), action)
+  private run(action: (view: SidebarClient) => Promise<unknown>): void {
+    void this.operations.run(this.sidebar.client(), action)
       .then(() => this.error.set(undefined))
       .catch(cause => this.error.set(String(cause)));
   }

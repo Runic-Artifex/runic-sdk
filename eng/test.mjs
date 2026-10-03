@@ -1,8 +1,8 @@
 // Focused local checks. GitHub CI owns the complete cross-platform workflow.
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { root, run, configuration, workspace } from './run.mjs';
+import { root, run, configuration, workspace, viewsRuntime } from './run.mjs';
 import { managedGroups, managedTests } from './ci/plan.mjs';
 export function selection(scope) {
   if (managedGroups.includes(scope)) return {kind: 'managed', paths: managedTests().filter(p => p.group === scope).map(p => p.path)};
@@ -36,9 +36,13 @@ function main() {
   else if (selected.kind === 'web') {
     run('bun', ['eng/run.mjs', 'build-web']);
     run('bun', ['run', 'test', ...extra], resolve(root, selected.paths[0]));
-  } else for (const path of selected.paths) {
-    if (selected.kind === 'managed') run('dotnet', ['run', '--project', path, '-c', configuration, ...(extra.length ? ['--', ...extra] : [])]);
-    else run('dotnet', ['test', path, '-c', configuration, ...extra]);
+  } else {
+    // Generated-client checks import the built Views runtime package.
+    if (!existsSync(resolve(root, 'packages/web/views/dist/index.js'))) viewsRuntime();
+    for (const path of selected.paths) {
+      if (selected.kind === 'managed') run('dotnet', ['run', '--project', path, '-c', configuration, ...(extra.length ? ['--', ...extra] : [])]);
+      else run('dotnet', ['test', path, '-c', configuration, ...extra]);
+    }
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

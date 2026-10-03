@@ -17,6 +17,7 @@
     "@angular/core": "22.1.5",
     "@angular/platform-browser": "22.1.5",
     "@runic-artifex/angular": "__VIEWS_ANGULAR_NPM_VERSION__",
+    "@runic-artifex/views": "__VIEWS_RUNTIME_NPM_VERSION__",
     "rxjs": "7.8.2"
   },
   "devDependencies": {

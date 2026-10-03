@@ -13,6 +13,8 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@runic-artifex/views": "__VIEWS_RUNTIME_NPM_VERSION__",
+    "@runic-artifex/vue": "__VIEWS_VUE_NPM_VERSION__",
     "vue": "3.5.42"
   },
   "devDependencies": {

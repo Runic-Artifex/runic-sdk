@@ -1,6 +1,6 @@
 import { Component, input, signal } from "@angular/core";
-import type { DocumentPageReference, DocumentState, DocumentView } from "../../../Frontend/src/generated/document.js";
-import { pageSignal } from "./bridge-signal";
+import type { DocumentPageReference, DocumentState, DocumentClient } from "../../../Frontend/src/generated/document.js";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 import { EditorComponent, MirrorEditorComponent } from "./editor";
 import { CompactComponent } from "./compact";
 import { PreviewComponent } from "./preview";
@@ -36,7 +36,7 @@ const compactViews = { editorCompact: CompactComponent } satisfies ViewRegistry<
 })
 export class DocumentComponent {
   readonly page = input.required<DocumentPageReference>();
-  readonly document = pageSignal(this.page);
+  readonly document = injectView(this.page);
   readonly paneViews = paneViews;
   readonly mirrorViews = mirrorViews;
   readonly compactViews = compactViews;
@@ -44,8 +44,8 @@ export class DocumentComponent {
 
   showEditor(): void { this.run(view => view.showEditor()); }
   showPreview(): void { this.run(view => view.showPreview()); }
-  private run(action: (view: DocumentView) => Promise<unknown>): void {
-    const view = this.document.view();
+  private run(action: (view: DocumentClient) => Promise<unknown>): void {
+    const view = this.document.client();
     if (!view) return;
     void action(view).then(() => this.error.set(undefined)).catch(cause => this.error.set(String(cause)));
   }

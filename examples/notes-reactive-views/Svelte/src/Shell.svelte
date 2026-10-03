@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ShellView, ShellState } from "../../Frontend/src/generated/shell.js";
-  import { bridgeState } from "./bridge-state.js";
+  import type { ShellClient, ShellState } from "../../Frontend/src/generated/shell.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   import Home from "./Home.svelte";
   import Document from "./Document.svelte";
   import PinnedNote from "./PinnedNote.svelte";
@@ -10,9 +10,9 @@
 
   const mainViews = { home: Home, document: Document } satisfies ViewRegistry<ShellState["main"]>;
   const pinnedViews = { pinnedNote: PinnedNote, pinnedTask: PinnedTask } satisfies ViewRegistry<ShellState["pinned"][number]>;
-  let { shell }: { shell: ShellView } = $props();
-  let source = $derived(bridgeState(shell));
-  let shellState = $derived(source.current);
+  let { shell }: { shell: ShellClient } = $props();
+  const source = useView(() => shell);
+  let shellState = $derived(source.state!);
   let error = $state<string | undefined>();
 
   async function run(command: () => Promise<unknown>) {

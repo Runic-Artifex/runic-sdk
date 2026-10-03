@@ -10,7 +10,14 @@ The browser framework owns the visual tree. .NET owns ViewModel scopes, View
 construction, typed commands, property writes, and operation lifetimes. A View
 mount is acknowledged by the browser, so a content session can create and release
 its logical View as frontend routes change. Generated clients are framework-neutral;
-React, Vue, Svelte, Angular, and plain TypeScript use the same contract.
+React, Vue, Svelte, Angular, and plain TypeScript use the same contract. They
+share one browser runtime, [`@runic-artifex/views`](../../../packages/web/views/README.md),
+which also provides a mock Bridge for development without .NET. The
+[React](../../../packages/web/react/README.md) and
+[Vue](../../../packages/web/vue/README.md) packages, `useView` in
+[`@runic-artifex/svelte/views`](../../../packages/web/svelte/README.md) and
+`injectView()` in [`@runic-artifex/angular`](../../../packages/web/angular/README.md)
+connect and dispose clients with component lifetimes.
 
 Start with [getting started](getting-started/README.md) or the
 [first Window](../../../examples/first-window/README.md), then read the

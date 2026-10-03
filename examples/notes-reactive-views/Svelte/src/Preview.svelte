@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { PreviewPageReference } from "../../Frontend/src/generated/preview.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   let { page }: { page: PreviewPageReference } = $props();
-  const preview = pageState(() => page);
+  const preview = useView(() => page);
 </script>
 
 {#if preview.state}

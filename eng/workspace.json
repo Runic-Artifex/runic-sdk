@@ -21,6 +21,18 @@
     {
       "name": "@runic-artifex/sveltekit",
       "path": "packages/web/sveltekit"
+    },
+    {
+      "name": "@runic-artifex/views",
+      "path": "packages/web/views"
+    },
+    {
+      "name": "@runic-artifex/react",
+      "path": "packages/web/react"
+    },
+    {
+      "name": "@runic-artifex/vue",
+      "path": "packages/web/vue"
     }
   ],
   "nuget": [
@@ -283,7 +295,10 @@
         "eng/branding/application",
         "specs/application",
         "tests/templates",
-        "packages/web/angular"
+        "packages/web/angular",
+        "packages/web/views",
+        "packages/web/react",
+        "packages/web/vue"
       ]
     },
     "vite": {

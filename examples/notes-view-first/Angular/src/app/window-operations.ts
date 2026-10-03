@@ -1,6 +1,13 @@
-import { Injectable } from "@angular/core";
+import { inject, Injectable, type Signal } from "@angular/core";
+import { injectView, type ViewClient } from "../../../../../packages/web/angular/src/inject-view";
 
 interface DisposableView { dispose(): void; }
+
+/** Connects a page whose disposal waits for its queued window operations. */
+export function injectPage<C extends ViewClient>(page: Signal<{ connect(): Promise<C> }>) {
+  const operations = inject(WindowOperations);
+  return injectView(page, { release: client => operations.release(client) });
+}
 interface Lease { pending: number; releaseRequested: boolean; disposed: boolean; }
 
 /** App-local experiment. One instance belongs to this browser window. */

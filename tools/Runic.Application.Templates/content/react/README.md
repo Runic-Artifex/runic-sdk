@@ -45,8 +45,8 @@ can use the Runic Desktop host; see the
 | `WorkspaceViewModel.cs` | CommunityToolkit.Mvvm ViewModels: the workspace, its Welcome page, and a Counter. |
 | `Views.cs` | The `WorkspaceWindow` and the Views. The build generates a typed client for each. |
 | `Program.cs` | Registers the ViewModels, calls `AddRunicViews()`, and opens the Window. |
-| `Frontend/src/App.tsx` | Connects to the Window's generated client and renders the page that `WorkspaceViewModel.Main` selects. |
-| `Frontend/src/generated` | Typed clients generated from the ViewModels. |
+| `Frontend/src/App.tsx`, `Frontend/src/pages` | Connect generated clients with `useView` from `@runic-artifex/react` and render the page that `WorkspaceViewModel.Main` selects. |
+| `Frontend/src/generated` | Typed clients generated from the ViewModels. They import the shared `@runic-artifex/views` runtime. |
 
 The generated clients are not committed: `.gitignore` excludes
 `Frontend/src/generated`, and `dotnet build` or `dotnet runic dev` writes

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 4 ]]; then
-  echo "Usage: $0 <package-version> <package-directory> <views-angular.tgz> <views-svelte.tgz>" >&2
+if [[ $# -lt 3 ]]; then
+  echo "Usage: $0 <package-version> <package-directory> <runic-npm-archive.tgz>..." >&2
   exit 2
 fi
 
 package_version="$1"
 package_directory="$(cd "$2" && pwd)"
-angular_archive="$(realpath "$3")"
-svelte_archive="$(realpath "$4")"
+npm_archives=()
+for archive in "${@:3}"; do npm_archives+=("$(realpath "$archive")"); done
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "$script_directory/../.." && pwd)"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
@@ -39,7 +39,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for required in "$template_package" "$angular_archive" "$svelte_archive"; do
+for required in "$template_package" "${npm_archives[@]}"; do
   if [[ ! -f "$required" ]]; then
     echo "Required template acceptance input is missing: $required" >&2
     exit 1
@@ -107,11 +107,11 @@ npm_archive_version() {
   ' "$1"
 }
 
-views_angular_version="$(npm_archive_version "$angular_archive")"
-views_svelte_version="$(npm_archive_version "$svelte_archive")"
+# Runic npm packages share one release-train version.
+views_npm_version="$(npm_archive_version "${npm_archives[0]}")"
 registry_ready="$template_tmp/template-npm-registry.url"
 bun "$script_directory/template-npm-registry.mjs" \
-  "$registry_ready" "$angular_archive" "$svelte_archive" &
+  "$registry_ready" "${npm_archives[@]}" &
 registry_pid=$!
 for _ in $(seq 1 100); do
   [[ -s "$registry_ready" ]] && break
@@ -120,22 +120,14 @@ done
 [[ -s "$registry_ready" ]]
 registry_url="$(<"$registry_ready")"
 
+# Every template installs the Views runtime and its framework binding.
 configure_candidate_registry() {
-  local framework="$1"
-  local manager="$2"
-  local output="$3"
-  if [[ "$framework" == svelte ]]; then
-    (cd "$output/Frontend" && npm config set --location=project @runic-artifex:registry "$registry_url")
-    if [[ "$manager" == npm ]]; then
-      RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
-        "$output/Frontend/package-lock.json" "$svelte_archive"
-    fi
-  elif [[ "$framework" == angular ]]; then
-    (cd "$output/Frontend" && npm config set --location=project @runic-artifex:registry "$registry_url")
-    if [[ "$manager" == npm ]]; then
-      RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
-        "$output/Frontend/package-lock.json" "$angular_archive"
-    fi
+  local manager="$1"
+  local output="$2"
+  (cd "$output/Frontend" && npm config set --location=project @runic-artifex:registry "$registry_url")
+  if [[ "$manager" == npm ]]; then
+    RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
+      "$output/Frontend/package-lock.json" "${npm_archives[@]}"
   fi
 }
 
@@ -209,10 +201,13 @@ verify_template() {
     --packageManager "$manager"
     --runicViewsVersion "$package_version"
     --dotnetRunicVersion "$package_version"
+    --viewsRuntimeVersion "$views_npm_version"
   )
   case "$framework" in
-    angular) template_options+=(--viewsAngularVersion "$views_angular_version") ;;
-    svelte) template_options+=(--viewsSvelteVersion "$views_svelte_version") ;;
+    react) template_options+=(--viewsReactVersion "$views_npm_version") ;;
+    vue) template_options+=(--viewsVueVersion "$views_npm_version") ;;
+    angular) template_options+=(--viewsAngularVersion "$views_npm_version") ;;
+    svelte) template_options+=(--viewsSvelteVersion "$views_npm_version") ;;
   esac
   dotnet new "runic-app-$framework" "${template_options[@]}"
 
@@ -234,7 +229,7 @@ verify_template() {
     echo "The generated $framework template contains a removed Bridge or Desktop package." >&2
     exit 1
   fi
-  configure_candidate_registry "$framework" "$manager" "$output"
+  configure_candidate_registry "$manager" "$output"
 
   # The documented first run, verbatim: dotnet tool restore, then
   # dotnet runic dev. doctor must already work before anything is restored.

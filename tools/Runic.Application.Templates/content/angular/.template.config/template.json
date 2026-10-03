@@ -131,6 +131,12 @@
       "datatype": "text",
       "defaultValue": "__VIEWS_ANGULAR_NPM_VERSION_DEFAULT__",
       "replaces": "__VIEWS_ANGULAR_NPM_VERSION__"
+    },
+    "viewsRuntimeVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__VIEWS_RUNTIME_NPM_VERSION_DEFAULT__",
+      "replaces": "__VIEWS_RUNTIME_NPM_VERSION__"
     }
   },
   "forms": {

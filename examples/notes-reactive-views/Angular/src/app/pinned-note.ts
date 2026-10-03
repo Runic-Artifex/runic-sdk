@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import type { PinnedNotePageReference } from "../../../Frontend/src/generated/pinnedNote.js";
-import { pageSignal } from "./bridge-signal";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 
 @Component({
   selector: "notes-pinned-note",
@@ -8,5 +8,5 @@ import { pageSignal } from "./bridge-signal";
 })
 export class PinnedNoteComponent {
   readonly page = input.required<PinnedNotePageReference>();
-  readonly note = pageSignal(this.page);
+  readonly note = injectView(this.page);
 }

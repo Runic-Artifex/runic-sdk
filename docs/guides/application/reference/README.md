@@ -14,7 +14,8 @@ keep the older `Views` name.
 - [ReactiveUI 25 capabilities and Avalonia comparison](reactiveui.md)
 - [Views build targets](../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets), shipped in the `Runic.Application` package
 - [`dotnet runic`](../../../../tools/dotnet-runic/README.md) development and doctor commands
-- [Svelte package](../../../../packages/web/svelte/README.md) and [Angular package](../../../../packages/web/angular/README.md)
+- [`@runic-artifex/views`](../../../../packages/web/views/README.md): the shared browser runtime and mock Bridge for generated clients
+- [React package](../../../../packages/web/react/README.md), [Vue package](../../../../packages/web/vue/README.md), [Svelte package](../../../../packages/web/svelte/README.md) and [Angular package](../../../../packages/web/angular/README.md)
 
 The examples show complete Window composition, generated client use, browser
 mount lifecycle, and frontend integration.

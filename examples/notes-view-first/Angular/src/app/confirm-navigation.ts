@@ -1,7 +1,6 @@
 import { Component, DestroyRef, ElementRef, ViewChild, afterRenderEffect, inject, input, signal } from "@angular/core";
-import type { ConfirmNavigationPageReference, ConfirmNavigationView } from "../../../Frontend/src/generated/confirmNavigation.js";
-import { pageSignal } from "./bridge-signal";
-import { WindowOperations } from "./window-operations";
+import type { ConfirmNavigationPageReference, ConfirmNavigationClient } from "../../../Frontend/src/generated/confirmNavigation.js";
+import { injectPage, WindowOperations } from "./window-operations";
 
 @Component({
   selector: "notes-confirm-navigation",
@@ -22,7 +21,7 @@ import { WindowOperations } from "./window-operations";
 })
 export class ConfirmNavigationComponent {
   readonly page = input.required<ConfirmNavigationPageReference>();
-  readonly dialog = pageSignal(this.page);
+  readonly dialog = injectPage(this.page);
   readonly error = signal<string | undefined>(undefined);
   private readonly operations = inject(WindowOperations);
   private readonly destroyRef = inject(DestroyRef);
@@ -64,8 +63,8 @@ export class ConfirmNavigationComponent {
     }
   }
 
-  private run(action: (view: ConfirmNavigationView) => Promise<unknown>): void {
-    void this.operations.run(this.dialog.view(), action)
+  private run(action: (view: ConfirmNavigationClient) => Promise<unknown>): void {
+    void this.operations.run(this.dialog.client(), action)
       .then(() => this.error.set(undefined))
       .catch(cause => this.error.set(String(cause)));
   }

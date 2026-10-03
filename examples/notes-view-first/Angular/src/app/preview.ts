@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import type { PreviewPageReference } from "../../../Frontend/src/generated/preview.js";
-import { pageSignal } from "./bridge-signal";
+import { injectPage } from "./window-operations";
 
 @Component({
   selector: "notes-preview",
@@ -17,5 +17,5 @@ import { pageSignal } from "./bridge-signal";
 })
 export class PreviewComponent {
   readonly page = input.required<PreviewPageReference>();
-  readonly preview = pageSignal(this.page);
+  readonly preview = injectPage(this.page);
 }

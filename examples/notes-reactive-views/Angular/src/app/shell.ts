@@ -1,6 +1,6 @@
 import { Component, input, signal } from "@angular/core";
-import type { ShellView, ShellState } from "../../../Frontend/src/generated/shell.js";
-import { bridgeSignal } from "./bridge-signal";
+import type { ShellClient, ShellState } from "../../../Frontend/src/generated/shell.js";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 import { HomeComponent } from "./home";
 import { DocumentComponent } from "./document";
 import { PinnedNoteComponent } from "./pinned-note";
@@ -38,8 +38,8 @@ const pinnedViews = { pinnedNote: PinnedNoteComponent, pinnedTask: PinnedTaskCom
   `,
 })
 export class ShellComponent {
-  readonly shell = input.required<ShellView>();
-  readonly state = bridgeSignal(this.shell);
+  readonly shell = input.required<ShellClient>();
+  readonly state = injectView(this.shell).state;
   readonly mainViews = mainViews;
   readonly pinnedViews = pinnedViews;
   readonly error = signal<string | undefined>(undefined);

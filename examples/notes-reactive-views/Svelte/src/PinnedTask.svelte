@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { PinnedTaskPageReference } from "../../Frontend/src/generated/pinnedTask.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
 
   let { page }: { page: PinnedTaskPageReference } = $props();
-  const task = pageState(() => page);
+  const task = useView(() => page);
 </script>
 
 {#if task.state}<span>Task: {task.state.priority}</span>{:else}<span>Connecting…</span>{/if}

@@ -20,7 +20,9 @@ The shell routes Home or Document. Document routes Editor or Preview. It also
 presents the same Editor ViewModel in a `compact` View contract. Full and compact
 Views can be mounted together; leaving one does not deactivate the ViewModel
 while the other remains. The frontend has plain TypeScript, Svelte, and Angular
-variants, all using the same generated modules. The `WhenActivated` counters
+variants, all using the same generated modules and the shared
+`@runic-artifex/views` runtime; Svelte and Angular connect pages with
+`useView` and `injectView()`. The `WhenActivated` counters
 are observable in the browser check.
 
 ```csharp

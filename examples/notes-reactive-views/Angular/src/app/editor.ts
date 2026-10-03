@@ -1,7 +1,7 @@
 import { Component, effect, input, signal } from "@angular/core";
-import type { EditorPageReference, EditorView } from "../../../Frontend/src/generated/editor.js";
+import type { EditorPageReference, EditorClient } from "../../../Frontend/src/generated/editor.js";
 import { EditorWrites } from "../../../Frontend/src/editor-writes.js";
-import { pageSignal } from "./bridge-signal";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 
 @Component({
   selector: "notes-editor",
@@ -21,13 +21,13 @@ import { pageSignal } from "./bridge-signal";
 export class EditorComponent {
   readonly page = input.required<EditorPageReference>();
   readonly handleInteractions = input(true);
-  readonly editor = pageSignal(this.page);
+  readonly editor = injectView(this.page);
   readonly error = signal<string | undefined>(undefined);
   private readonly writes = new EditorWrites(cause => this.error.set(cause === undefined ? undefined : String(cause)));
 
   constructor() {
     effect(onCleanup => {
-      const view = this.editor.view();
+      const view = this.editor.client();
       if (!view || !this.handleInteractions()) return;
       onCleanup(view.interactions.confirmDiscard.handle(async (request, { signal }) => {
         if (signal.aborted) throw signal.reason;
@@ -40,12 +40,12 @@ export class EditorComponent {
   setBody(event: Event): void { const value = (event.target as HTMLTextAreaElement).value; this.write(view => view.setBody(value)); }
   save(): void { this.run(view => this.writes.run(() => view.save())); }
   discard(): void { this.run(view => this.writes.run(() => view.discard())); }
-  private write(action: (view: EditorView) => Promise<unknown>): void {
-    const view = this.editor.view();
+  private write(action: (view: EditorClient) => Promise<unknown>): void {
+    const view = this.editor.client();
     if (view) this.writes.enqueue(() => action(view));
   }
-  private run(action: (view: EditorView) => Promise<unknown>): void {
-    const view = this.editor.view();
+  private run(action: (view: EditorClient) => Promise<unknown>): void {
+    const view = this.editor.client();
     if (!view) return;
     void action(view).then(() => this.error.set(undefined)).catch(cause => this.error.set(String(cause)));
   }

@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@runic-artifex/react": "__VIEWS_REACT_NPM_VERSION__",
+    "@runic-artifex/views": "__VIEWS_RUNTIME_NPM_VERSION__",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
