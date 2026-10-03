@@ -40,6 +40,7 @@ const [fixturePath, generatedDirectory] = Bun.argv.slice(2);
 if (!fixturePath || !generatedDirectory) throw new Error("Usage: GeneratedClientHarness.ts <fixture.json> <generated-dir>");
 const fixture = await Bun.file(fixturePath).json() as Transcript;
 const calls: Call[] = [];
+let failNextWait = false;
 
 const host = globalThis as typeof globalThis & { window?: Record<string, unknown> };
 host.window = host as unknown as Record<string, unknown>;
@@ -62,7 +63,9 @@ const bridge: Bridge = {
       }
       case "typedReactiveSnapshot": return fixture.typedReactive.snapshot;
       case "typedReactiveStartSave": expectArgs(route, args, fixture.typedReactive.startRequest); return fixture.typedReactive.admission;
-      case "__runicOperationWait": expectArgs(route, args, fixture.typedReactive.waitRequest); return fixture.typedReactive.completion;
+      case "__runicOperationWait":
+        if (failNextWait) { failNextWait = false; throw new Error("The transport dropped the wait."); }
+        expectArgs(route, args, fixture.typedReactive.waitRequest); return fixture.typedReactive.completion;
       case "__runicOperationStatus": expectArgs(route, args, fixture.typedReactive.wrongMemberStatusRequest); return fixture.typedReactive.wrongMemberStatus;
       default: throw new Error(`Unexpected generated-client route ${route}.`);
     }
@@ -124,7 +127,11 @@ const operation = await typed.startSaveWithRequestId(fixture.typedReactive.reque
   { documentId: "document-1", content: "from-client", expectedVersion: 7 });
 expect(!calls.some(call => call.route === "__runicOperationWait"),
   "Operation admission eagerly started a terminal wait.");
+failNextWait = true;
+await expectThrows(() => operation.wait(), "A dropped operation wait did not reject.");
 const completion = await operation.completion;
+expect(calls.filter(call => call.route === "__runicOperationWait").length === 2,
+  "A failed operation wait was cached instead of retried.");
 expect(completion.kind === "succeeded" && completion.result?.documentId === "document-1"
   && completion.result.savedVersion === 8 && completion.result.contentLength === "from-client".length,
   "Typed operation result did not decode from the C# terminal payload.");
@@ -134,6 +141,32 @@ expect(calls.some(call => call.route === "typedReactiveStartSave")
 await expectThrows(() => typed.recoverLastResultWithRequestId(fixture.typedReactive.requestId),
   "A recovery request for a different operation member was accepted.");
 
+// A throwing subscriber must not stop delivery to other subscribers, and an
+// undecodable pushed state must neither escape into the .NET callback nor
+// advance the accepted revision.
+const reported: unknown[] = [];
+const hostWithReporter = globalThis as { reportError?: (error: unknown) => void };
+const previousReporter = hostWithReporter.reportError;
+hostWithReporter.reportError = error => { reported.push(error); };
+const pushState = (host.window as Record<string, unknown>)["__dataShapeChanged"] as (state: unknown) => unknown;
+const wireState = JSON.parse(fixture.dataShape.snapshot).state as Record<string, unknown>;
+const baseRevision = data.snapshot.revision as number;
+let initialDelivered = false;
+const stopThrowing = data.subscribe(() => { if (initialDelivered) throw new Error("listener failure"); initialDelivered = true; });
+const delivered: bigint[] = [];
+const stopRecording = data.subscribe((state: { readonly "exact-id": bigint }) => { delivered.push(state["exact-id"]); });
+pushState({ ...wireState, revision: baseRevision + 1, "exact-id": "11" });
+expect(delivered.at(-1) === 11n && reported.length === 1,
+  "A throwing subscriber stopped delivery to later subscribers or was not reported.");
+pushState({ ...wireState, revision: baseRevision + 2, "exact-id": 12 });
+expect(reported.length === 2 && data.snapshot["exact-id"] === 11n && delivered.at(-1) === 11n,
+  "An undecodable pushed state replaced the current state or escaped the push callback.");
+pushState({ ...wireState, revision: baseRevision + 1, "exact-id": "13" });
+expect(data.snapshot["exact-id"] === 13n && delivered.at(-1) === 13n,
+  "An undecodable pushed state advanced the accepted revision.");
+stopThrowing();
+stopRecording();
+hostWithReporter.reportError = previousReporter;
 
 data.dispose();
 typed.dispose();

@@ -945,6 +945,12 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("  runtime.mountSession = globalThis.crypto.randomUUID();");
     ts.AppendLine("  return runtime;");
     ts.AppendLine("}");
+    // A throwing subscriber or an undecodable push must not stop delivery to
+    // other subscribers or unwind into the .NET callback that pushed state.
+    ts.AppendLine("function reportBridgeError(error: unknown): void {");
+    ts.AppendLine("  const report = (globalThis as { reportError?: (error: unknown) => void }).reportError;");
+    ts.AppendLine("  if (typeof report === \"function\") report(error); else console.error(error);");
+    ts.AppendLine("}");
     ts.AppendLine("function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route: string): SharedRoute {");
     ts.AppendLine("  const callbackName = `__${route}Changed`;");
     ts.AppendLine("  const callbacks = window as unknown as Record<string, unknown>;");
@@ -958,7 +964,10 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    route, callbackName, bridge, generation: runtime.generation, entries: new Map(), previousCallback: callbacks[callbackName], active: true,");
     ts.AppendLine("    callback(state) {");
     ts.AppendLine("      let accepted: unknown;");
-    ts.AppendLine("      for (const entry of sharedRoute.entries.values()) accepted = entry.accept(state);");
+    ts.AppendLine("      for (const entry of sharedRoute.entries.values()) {");
+    ts.AppendLine("        try { accepted = entry.accept(state); }");
+    ts.AppendLine("        catch (error) { reportBridgeError(error); }");
+    ts.AppendLine("      }");
     ts.AppendLine("      return accepted;");
     ts.AppendLine("    },");
     ts.AppendLine("  };");
@@ -985,12 +994,17 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("        const next = wire as WireState;");
     ts.AppendLine("        if (!created.active || !routeEntry.active) return created.current ?? created.hydrate(next);");
     ts.AppendLine("        if (created.current === undefined || created.revision === undefined || next.revision >= created.revision) {");
+    ts.AppendLine("          // Decode first: a state that fails validation must not advance the revision.");
+    ts.AppendLine("          const current = created.hydrate(next);");
     ts.AppendLine("          created.revision = next.revision;");
     ts.AppendLine("          created.wire = next;");
-    ts.AppendLine("          created.current = created.hydrate(next);");
+    ts.AppendLine("          created.current = current;");
     ts.AppendLine("          for (const lease of created.leases) if (!lease.disposed) {");
-    ts.AppendLine("            lease.current = created.current;");
-    ts.AppendLine("            for (const listener of lease.listeners) listener(created.current);");
+    ts.AppendLine("            lease.current = current;");
+    ts.AppendLine("            for (const listener of lease.listeners) {");
+    ts.AppendLine("              try { listener(current); }");
+    ts.AppendLine("              catch (error) { reportBridgeError(error); }");
+    ts.AppendLine("            }");
     ts.AppendLine("          }");
     ts.AppendLine("        }");
     ts.AppendLine("        return created.current;");
@@ -1021,7 +1035,10 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    let reply: BridgeReply;");
     ts.AppendLine("    try { reply = JSON.parse(json) as BridgeReply; }");
     ts.AppendLine("    catch { throw new BridgeError(\"failed\", \"The Bridge returned an invalid response.\"); }");
-    ts.AppendLine("    const state = reply.state === null ? undefined : target.accept(reply.state);");
+    ts.AppendLine("    if (reply === null || typeof reply !== \"object\") throw new BridgeError(\"failed\", \"The Bridge returned an invalid response.\");");
+    ts.AppendLine("    let state: unknown;");
+    ts.AppendLine("    try { state = reply.state === null ? undefined : target.accept(reply.state); }");
+    ts.AppendLine("    catch { throw new BridgeError(\"failed\", \"The Bridge returned an invalid state.\"); }");
     ts.AppendLine("    if (!reply.ok) throw new BridgeError(reply.error?.kind ?? \"failed\", reply.error?.message ?? \"The call failed.\");");
     ts.AppendLine("    if (state === undefined) throw new BridgeError(\"failed\", \"The Bridge returned no state.\");");
     ts.AppendLine($"    return state as {shortName}State;");
@@ -1113,7 +1130,9 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("      if (lease.disposed || !isLive() || lease.current === undefined) throw new BridgeError(\"disconnected\", \"ViewModel is not connected.\");");
     ts.AppendLine($"      const typed = listener as (state: unknown) => void;");
     ts.AppendLine("      lease.listeners.add(typed);");
-    ts.AppendLine("      typed(lease.current);");
+    ts.AppendLine("      // The caller sees a failing initial delivery and gets no unsubscribe, so do not retain it.");
+    ts.AppendLine("      try { typed(lease.current); }");
+    ts.AppendLine("      catch (error) { lease.listeners.delete(typed); throw error; }");
     ts.AppendLine("      return () => lease.listeners.delete(typed);");
     ts.AppendLine("    },");
     ts.AppendLine("    dispose,");
