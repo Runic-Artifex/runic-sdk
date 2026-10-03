@@ -176,6 +176,10 @@ internal sealed class BridgeTypeGraph
             // generated clients otherwise accept malformed values until the route
             // rejects them, while snapshots are validated on the way in.
             BridgeWireKind.TimeSpan => $"bridgeWire.duration({value})",
+            BridgeWireKind.DateOnly => $"bridgeWire.dateOnly({value})",
+            BridgeWireKind.TimeOnly => $"bridgeWire.timeOnly({value})",
+            BridgeWireKind.DateTime => $"bridgeWire.dateTime({value})",
+            BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({value})",
             BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => {EncodeTypeScript(node.Element!, "item")})",
             BridgeWireKind.StringDictionary => $"Object.fromEntries(Object.entries({value}).map(([key, item]) => [key, {EncodeTypeScript(node.Value!, "item")}]))",
             BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeTypeScript(member.Type, value + "[" + Quote(member.WireName) + "]"))) + " }",

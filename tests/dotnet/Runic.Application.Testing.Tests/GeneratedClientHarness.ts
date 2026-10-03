@@ -91,6 +91,8 @@ expect(Object.getPrototypeOf(data.snapshot.lookup) === null
   && data.snapshot.lookup["__proto__"]?.["__proto__"] === "prototype-safe",
   "A __proto__ dictionary entry changed the generated record prototype.");
 
+await expectThrows(() => data.setWhen("yesterday"), "Generated DateTime encode accepted a non-ISO value.");
+expect(!calls.some(call => call.route === "dataShapeSetWhen"), "Generated DateTime encode sent a non-ISO value to .NET.");
 await expectThrows(() => data.setDuration("24:00:00"), "Generated TimeSpan encode accepted an invalid hour.");
 await expectThrows(() => data.setDuration("10675199.02:48:05.4775808"), "Generated TimeSpan encode accepted overflow.");
 await data.setDuration(fixture.dataShape.duration);
