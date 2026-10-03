@@ -141,10 +141,8 @@ On the disposable VM, run the rebuilt executable from an elevated terminal:
 
 Keep both report.json and report.txt. A failed firewall Add now includes native
 protocol/port/profile details, and cleanup checks whether the attempted rule exists.
-Share tests use two independent fixtures: `shares.default-security` allows an
-absent stored descriptor; `shares.explicit-security` requires the supplied ACL.
-Both verify metadata preservation, ACL updates and cleanup. A failure in one
-fixture does not prevent the other from running. These mutation checks must still run on the VM;
+The `shares.explicit-security` fixture creates a share with the required explicit
+ACL and verifies it, metadata preservation, ACL updates and cleanup. These mutation checks must still run on the VM;
 a successful NativeAOT build or read-only local run does not validate them.
 
 ## Build from the SDK checkout

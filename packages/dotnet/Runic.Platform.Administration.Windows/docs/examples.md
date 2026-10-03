@@ -151,7 +151,8 @@ if (snapshot is not null)
     Console.WriteLine($"{snapshot.Path}: stored security: {snapshot.SecurityDescriptor?.Length.ToString() ?? "absent"}");
 ~~~
 
-On a disposable server, Create accepts ShareSpecification. Update can replace
+On a disposable server, Create accepts ShareSpecification, which requires an
+explicit self-relative share security descriptor. Update can replace
 description, maximum uses or the complete self-relative security descriptor.
 On reads, a null SecurityDescriptor means Windows returned no stored descriptor;
 it is not an empty (deny-all) DACL and does not describe filesystem permissions.

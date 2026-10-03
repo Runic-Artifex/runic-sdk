@@ -926,14 +926,14 @@ type Runic.Platform.Administration.Windows.Shares.ShareSnapshot : System.Object 
   property System.UInt32 NativeType { get; init; }
 type Runic.Platform.Administration.Windows.Shares.ShareSpecification : System.Object abstract=False sealed=True
   interface System.IEquatable`1[Runic.Platform.Administration.Windows.Shares.ShareSpecification]
-  ctor (System.String Name, System.String Path)
+  ctor (System.String Name, System.String Path, System.Collections.Immutable.ImmutableArray`1[System.Byte] SecurityDescriptor)
   method Runic.Platform.Administration.Windows.Shares.ShareSpecification <Clone>$()
   method System.Boolean Equals(Runic.Platform.Administration.Windows.Shares.ShareSpecification other)
   method System.Boolean Equals(System.Object obj)
   method System.Int32 GetHashCode()
   method System.String ToString()
-  method System.Void Deconstruct(out System.String& Name, out System.String& Path)
-  property System.Nullable`1[System.Collections.Immutable.ImmutableArray`1[System.Byte]] SecurityDescriptor { get; init; }
+  method System.Void Deconstruct(out System.String& Name, out System.String& Path, out System.Collections.Immutable.ImmutableArray`1[System.Byte]& SecurityDescriptor)
+  property System.Collections.Immutable.ImmutableArray`1[System.Byte] SecurityDescriptor { get; init; }
   property System.String Description { get; init; }
   property System.String Name { get; init; }
   property System.String Path { get; init; }
