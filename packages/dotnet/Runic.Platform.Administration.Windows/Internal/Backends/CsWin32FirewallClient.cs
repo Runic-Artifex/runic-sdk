@@ -39,6 +39,7 @@ internal sealed unsafe class CsWin32FirewallClient : IWindowsFirewallClient
     {
         ArgumentNullException.ThrowIfNull(specification);
         Validate(specification);
+        RequireInboundAllowScope(specification);
         return Execute((policy, rules) => { Create(policy, rules, specification); return true; }, cancellationToken);
     }
 

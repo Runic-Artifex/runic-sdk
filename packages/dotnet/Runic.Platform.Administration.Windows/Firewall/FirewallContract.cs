@@ -20,6 +20,15 @@ internal static class FirewallContract
         foreach (var name in value.Interfaces) NativeError.Text(name, nameof(value));
     }
 
+    // Without a program, service, local port or ICMP protocol, a new inbound allow rule admits all traffic to the host.
+    internal static void RequireInboundAllowScope(FirewallRuleSpecification value)
+    {
+        if (value.Direction != FirewallDirection.Inbound || value.Action != FirewallAction.Allow) return;
+        if (value.ApplicationPath.Length != 0 || value.ServiceName is not ("" or "*") || value.LocalPorts is not ("" or "*") ||
+            value.Protocol is 1 or 58) return;
+        throw new ArgumentException("A new inbound allow rule requires a program, service, local port or ICMP protocol.", nameof(value));
+    }
+
     internal static void VerifyIdentity(FirewallRuleIdentity expected, FirewallRuleIdentity actual)
     {
         if (expected != actual) throw NativeError.Win32("Match firewall rule identity", 183);
