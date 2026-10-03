@@ -41,6 +41,16 @@ internal static class CommandRunner
                 $"Could not start '{executable}'. Ensure it is installed and available on PATH.");
         }
 
+        // Captured commands are non-interactive: a prompt (npx install, git credentials) must see
+        // end-of-input instead of waiting on a pipe nobody writes.
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+        }
+
         Task<string> standardOutput = ReadBoundedAsync(
             process.StandardOutput,
             MaximumCapturedCharacters,
@@ -79,8 +89,9 @@ internal static class CommandRunner
             RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            StandardOutputEncoding = new UTF8Encoding(false, true),
-            StandardErrorEncoding = new UTF8Encoding(false, true),
+            // Tool output is diagnostic text; invalid bytes become U+FFFD instead of faulting the drain.
+            StandardOutputEncoding = new UTF8Encoding(false, false),
+            StandardErrorEncoding = new UTF8Encoding(false, false),
         };
         foreach (string argument in arguments)
         {
