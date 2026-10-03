@@ -1,3 +1,6 @@
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
 namespace Runic.Platform.Runtime;
 
 /// <summary>The selected native backend cannot serve this environment.</summary>
@@ -18,7 +21,7 @@ public interface INativeFilePicker
 }
 
 /// <summary>Converts acquired native selections to safe, single-use file leases.</summary>
-public sealed class NativePickerBackend(INativePickerOwner owner, INativeFilePicker picker) : IPickerBackend
+public sealed partial class NativePickerBackend(INativePickerOwner owner, INativeFilePicker picker) : IPickerBackend
 {
     private readonly Guid _generation = owner.Generation;
 
@@ -42,8 +45,7 @@ public sealed class NativePickerBackend(INativePickerOwner owner, INativeFilePic
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsAvailable) return new PickerResult<IReadFileLease>.Unavailable(UnavailableReason.OwnerClosed);
             if (selection is null) return new PickerResult<IReadFileLease>.Dismissed();
-            var stream = new FileStream(selection.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
-                4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var stream = OpenSelected(selection.Path);
             var lease = new ReadFileLease(Path.GetFileName(selection.Path), stream, selection.Access);
             selection = null;
             return new PickerResult<IReadFileLease>.Selected(lease);
@@ -94,6 +96,38 @@ public sealed class NativePickerBackend(INativePickerOwner owner, INativeFilePic
         catch (UnauthorizedAccessException) { return new PickerResult<ISaveFileLease>.Failed(FailureCode.PermissionDenied); }
         catch (IOException) { return new PickerResult<ISaveFileLease>.Failed(FailureCode.IoError); }
     }
+
+    // Opening a FIFO blocks until a writer appears, and special files may never end.
+    // On Unix, open without blocking and accept only a seekable non-directory file.
+    private static FileStream OpenSelected(string path)
+    {
+        if (OperatingSystem.IsWindows())
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
+                4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var handle = new SafeFileHandle(Open(path, OperatingSystem.IsMacOS() ? 0x1000004 : 0x80800), ownsHandle: true); // O_RDONLY | O_NONBLOCK | O_CLOEXEC
+        if (handle.IsInvalid)
+        {
+            int error = Marshal.GetLastPInvokeError();
+            handle.Dispose();
+            throw error switch
+            {
+                1 or 13 => new UnauthorizedAccessException("The selected file cannot be read."), // EPERM, EACCES
+                2 => new FileNotFoundException("The selected file no longer exists."), // ENOENT
+                _ => new IOException("The selected file cannot be opened."),
+            };
+        }
+        try
+        {
+            if (File.GetAttributes(handle).HasFlag(FileAttributes.Directory)) throw new UnauthorizedAccessException("A directory is not a readable file.");
+            var stream = new FileStream(handle, FileAccess.Read, 4096);
+            if (stream.CanSeek) return stream;
+            stream.Dispose();
+            throw new IOException("The selection is not a regular file.");
+        }
+        catch { handle.Dispose(); throw; }
+    }
+    [LibraryImport("libc", EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int Open(string path, int flags);
 
     private sealed class NoAtomicReplacement : IAtomicFileReplacement
     {
