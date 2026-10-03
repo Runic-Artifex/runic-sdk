@@ -75,6 +75,10 @@ public sealed class RunicInteractionCancelledException(string message) : Operati
 /// <summary>Raised when a browser interaction exceeded its configured lifetime.</summary>
 public sealed class RunicInteractionTimeoutException(string message) : TimeoutException(message);
 
+/// <summary>Raised when a browser answered an interaction with output its contract cannot decode.</summary>
+public sealed class RunicInteractionOutputException(string message, Exception innerException)
+    : InvalidOperationException(message, innerException);
+
 /// <summary>
 /// Window-owned request/reply broker for typed interaction adapters. Browser
 /// delivery is pull-based: a mounted endpoint receives input only as the reply
@@ -307,29 +311,39 @@ public sealed class BridgeInteractionRouter : IDisposable
         catch (Exception error) when (error is JsonException or ArgumentException or FormatException or InvalidOperationException or KeyNotFoundException)
         { return EncodeKind("invalid-request"); }
 
+        PendingRequest request;
         lock (_gate)
         {
             if (_disposed) return EncodeKind("disconnected");
-            if (!_pending.TryGetValue(reply.RequestId, out var request))
+            if (!_pending.TryGetValue(reply.RequestId, out var pending))
             {
                 return _receipts.TryGetValue(reply.RequestId, out var receipt) && receipt.Matches(reply, arguments)
                     ? EncodeKind("already-completed") : EncodeKind("stale");
             }
-            if (!request.Matches(reply, arguments)) return EncodeKind("stale");
-
-            if (reply.Kind == "answered")
-            {
-                try { request.CompleteOutput(reply.Output!.Value); }
-                catch (Exception error) when (error is JsonException or ArgumentException or FormatException or InvalidOperationException)
-                { return EncodeKind("invalid-output"); }
-            }
-            else if (reply.Kind == "cancelled") request.CompleteException(
-                new RunicInteractionCancelledException("The browser cancelled the interaction."));
-            else request.CompleteException(new InvalidOperationException("The browser interaction handler failed."));
-
+            if (!pending.Matches(reply, arguments)) return EncodeKind("stale");
+            request = pending;
+            // The reply settles this request whatever its output decodes to.
             CompleteRequest(request, reply);
-            return EncodeKind("ok");
         }
+
+        if (reply.Kind == "cancelled")
+            request.CompleteException(new RunicInteractionCancelledException("The browser cancelled the interaction."));
+        else if (reply.Kind == "failed")
+            request.CompleteException(new InvalidOperationException("The browser interaction handler failed."));
+        else
+        {
+            // The generated decoder is application code: run it outside the
+            // router gate, and fail the waiting interaction with a typed
+            // error instead of leaving it pending until its timeout.
+            try { request.CompleteOutput(request.Decode(reply.Output!.Value)); }
+            catch (Exception error)
+            {
+                request.CompleteException(new RunicInteractionOutputException(
+                    "The browser interaction output did not match its contract.", error));
+                return EncodeKind("invalid-output");
+            }
+        }
+        return EncodeKind("ok");
     }
 
     private Presentation? SelectPresentation(DefinitionKey key, RunicInteractionInvocation invocation)
@@ -676,12 +690,13 @@ public sealed class BridgeInteractionRouter : IDisposable
     private sealed class PendingRequest
     {
         private readonly TaskCompletionSource<object?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly Action<JsonElement> _completeOutput;
+        private readonly Func<JsonElement, object?> _decodeOutput;
         public PendingRequest(string requestId, DefinitionKey key, string presentationId, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout)
-        { RequestId = requestId; Key = key; PresentationId = presentationId; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = DateTimeOffset.UtcNow.Add(timeout); _completeOutput = value => _completion.TrySetResult(decodeOutput(value)); }
+        { RequestId = requestId; Key = key; PresentationId = presentationId; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = DateTimeOffset.UtcNow.Add(timeout); _decodeOutput = decodeOutput; }
+        public object? Decode(JsonElement value) => _decodeOutput(value);
         public string RequestId { get; } public DefinitionKey Key { get; } public string PresentationId { get; } public string? ConnectionKey { get; } public string? ClientKey { get; } public long OwnerEpoch { get; set; } public string InputJson { get; } public TimeSpan Timeout { get; } public DateTimeOffset ExpiresAt { get; } public IDisposable? Cancellation { get; set; }
         public Task<T> AsTask<T>() => _completion.Task.ContinueWith(task => (T)task.GetAwaiter().GetResult()!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        public void CompleteOutput(JsonElement value) => _completeOutput(value); public void CompleteException(Exception error) => _completion.TrySetException(error); public bool Matches(InteractionReply reply, IBridgeArguments args) => reply.RequestId == RequestId && reply.Route == Key.Route && reply.PresentationId == PresentationId && reply.OwnerEpoch == OwnerEpoch && reply.Name == Key.Name && reply.Contract == Key.Contract && string.Equals(ConnectionKey,args.ConnectionKey,StringComparison.Ordinal) && string.Equals(ClientKey,args.ClientKey,StringComparison.Ordinal); public void Dispose() => Cancellation?.Dispose();
+        public void CompleteOutput(object? value) => _completion.TrySetResult(value); public void CompleteException(Exception error) => _completion.TrySetException(error); public bool Matches(InteractionReply reply, IBridgeArguments args) => reply.RequestId == RequestId && reply.Route == Key.Route && reply.PresentationId == PresentationId && reply.OwnerEpoch == OwnerEpoch && reply.Name == Key.Name && reply.Contract == Key.Contract && string.Equals(ConnectionKey,args.ConnectionKey,StringComparison.Ordinal) && string.Equals(ClientKey,args.ClientKey,StringComparison.Ordinal); public void Dispose() => Cancellation?.Dispose();
     }
     private sealed class CancellationLease(CancellationTokenRegistration registration, CancellationTokenSource linked,
         CancellationTokenSource timeout) : IDisposable
