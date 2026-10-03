@@ -12,24 +12,39 @@ namespace Runic.CommandLine.Processes;
 public sealed class ProcessRunner : IProcessRunner
 {
     private const int BufferSize = 81920;
-    private static readonly ProcessOutput EmptyOutput = new(string.Empty, 0, false);
+    private static readonly ProcessOutput EmptyOutput = new(string.Empty, 0, false, false);
+    private static readonly SearchValues<char> BatchArgumentMetacharacters =
+        SearchValues.Create("%!^&|<>\"()\r\n");
+    private static readonly SearchValues<char> BatchPathMetacharacters = SearchValues.Create("%!\"\r\n");
     private readonly IExecutablePolicy executablePolicy;
     private readonly IProcessObserver? observer;
     private readonly TimeProvider timeProvider;
+    private readonly ProcessPlatform platform;
 
     /// <summary>Initializes a process runner.</summary>
     /// <param name="executablePolicy">Policy evaluated before every start.</param>
     /// <param name="observer">Optional metadata-only observer.</param>
-    /// <param name="timeProvider">Time source used for result timestamps.</param>
+    /// <param name="timeProvider">Time source used for result timestamps, timeouts and drain grace periods.</param>
     public ProcessRunner(
         IExecutablePolicy executablePolicy,
         IProcessObserver? observer = null,
         TimeProvider? timeProvider = null)
+        : this(executablePolicy, observer, timeProvider, ProcessPlatform.Current)
+    {
+    }
+
+    internal ProcessRunner(
+        IExecutablePolicy executablePolicy,
+        IProcessObserver? observer,
+        TimeProvider? timeProvider,
+        ProcessPlatform platform)
     {
         ArgumentNullException.ThrowIfNull(executablePolicy);
+        ArgumentNullException.ThrowIfNull(platform);
         this.executablePolicy = executablePolicy;
         this.observer = observer;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.platform = platform;
     }
 
     /// <inheritdoc />
@@ -60,6 +75,19 @@ public sealed class ProcessRunner : IProcessRunner
         catch (Exception exception) when (!IsFatal(exception))
         {
             return StartFailed(ProcessStartFailureCategory.InvalidRequest, startedAt);
+        }
+
+        CommandFault? batchFault = ValidateBatchFile(effectiveRequest);
+        if (batchFault is not null)
+        {
+            return Complete(
+                ProcessState.Rejected,
+                null,
+                EmptyOutput,
+                EmptyOutput,
+                null,
+                batchFault,
+                startedAt);
         }
 
         ExecutablePolicyDecision decision;
@@ -154,7 +182,7 @@ public sealed class ProcessRunner : IProcessRunner
 
         ProcessState state = ProcessState.Exited;
         var termination = new TerminationRequest(process);
-        using var timeout = CreateTimeout(effectiveRequest.Options.Timeout);
+        using CancellationTokenSource? timeout = CreateTimeout(effectiveRequest.Options.Timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeout?.Token ?? CancellationToken.None);
@@ -183,25 +211,20 @@ public sealed class ProcessRunner : IProcessRunner
             termination.Request();
         }
 
-        if (state is ProcessState.Cancelled or ProcessState.TimedOut or ProcessState.ExecutionFailed)
-        {
-            await AwaitTerminationAndDrainAsync(
+        DrainOutcome drain = state is ProcessState.Cancelled or ProcessState.TimedOut or ProcessState.ExecutionFailed
+            ? await AwaitTerminationAndDrainAsync(
+                process,
+                stdoutTask,
+                stderrTask,
+                effectiveRequest.Options.DrainGracePeriod).ConfigureAwait(false)
+            : await AwaitDrainAsync(
                 process,
                 stdoutTask,
                 stderrTask,
                 effectiveRequest.Options.DrainGracePeriod).ConfigureAwait(false);
-        }
-        else
-        {
-            await AwaitDrainAsync(
-                process,
-                stdoutTask,
-                stderrTask,
-                effectiveRequest.Options.DrainGracePeriod).ConfigureAwait(false);
-        }
 
-        ProcessOutput standardOutput = GetOutput(stdoutTask);
-        ProcessOutput standardError = GetOutput(stderrTask);
+        ProcessOutput standardOutput = GetOutput(stdoutTask, drain.StandardOutputTimedOut);
+        ProcessOutput standardError = GetOutput(stderrTask, drain.StandardErrorTimedOut);
         int? exitCode = state == ProcessState.Exited ? TryGetExitCode(process) : null;
         ProcessStartFailureCategory? failureCategory = null;
         CommandFault? fault = state == ProcessState.ExecutionFailed
@@ -259,7 +282,7 @@ public sealed class ProcessRunner : IProcessRunner
         return startInfo;
     }
 
-    private static ProcessRequest ResolveRequest(ProcessRequest request)
+    private ProcessRequest ResolveRequest(ProcessRequest request)
     {
         string resolvedFileName = ResolveExecutable(request);
         if (string.Equals(resolvedFileName, request.FileName, StringComparison.Ordinal))
@@ -275,7 +298,7 @@ public sealed class ProcessRunner : IProcessRunner
             request.Options);
     }
 
-    private static string ResolveExecutable(ProcessRequest request)
+    private string ResolveExecutable(ProcessRequest request)
     {
         if (Path.IsPathFullyQualified(request.FileName))
         {
@@ -296,7 +319,7 @@ public sealed class ProcessRunner : IProcessRunner
 
         string[] extensions = GetExecutableExtensions(request.FileName, request);
         string[] directories = pathValue.Split(
-            Path.PathSeparator,
+            platform.PathListSeparator,
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         for (int directoryIndex = 0; directoryIndex < directories.Length; directoryIndex++)
         {
@@ -304,7 +327,7 @@ public sealed class ProcessRunner : IProcessRunner
             {
                 string candidate = Path.GetFullPath(
                     Path.Combine(directories[directoryIndex], request.FileName + extensions[extensionIndex]));
-                if (File.Exists(candidate))
+                if (platform.FileExists(candidate))
                 {
                     return candidate;
                 }
@@ -314,9 +337,9 @@ public sealed class ProcessRunner : IProcessRunner
         return request.FileName;
     }
 
-    private static string[] GetExecutableExtensions(string fileName, ProcessRequest request)
+    private string[] GetExecutableExtensions(string fileName, ProcessRequest request)
     {
-        if (!OperatingSystem.IsWindows() || Path.HasExtension(fileName))
+        if (!platform.IsWindows || Path.HasExtension(fileName))
         {
             return [string.Empty];
         }
@@ -325,13 +348,13 @@ public sealed class ProcessRunner : IProcessRunner
         return string.IsNullOrWhiteSpace(pathExtensions)
             ? [".COM", ".EXE", ".BAT", ".CMD"]
             : pathExtensions.Split(
-                Path.PathSeparator,
+                platform.PathListSeparator,
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    private static string? GetEffectiveEnvironmentValue(ProcessRequest request, string name)
+    private string? GetEffectiveEnvironmentValue(ProcessRequest request, string name)
     {
-        StringComparison comparison = OperatingSystem.IsWindows()
+        StringComparison comparison = platform.IsWindows
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
         foreach (System.Collections.Generic.KeyValuePair<string, string?> pair in request.Environment)
@@ -342,7 +365,55 @@ public sealed class ProcessRunner : IProcessRunner
             }
         }
 
-        return Environment.GetEnvironmentVariable(name);
+        return platform.GetEnvironmentVariable(name);
+    }
+
+    // Windows starts .bat and .cmd files through cmd.exe, which re-parses the command line and
+    // interprets metacharacters even inside the quotes ArgumentList adds around a token.
+    private CommandFault? ValidateBatchFile(ProcessRequest request)
+    {
+        if (!platform.IsWindows || !IsBatchFile(request.FileName))
+        {
+            return null;
+        }
+
+        if (!request.Options.AllowWindowsBatchFiles)
+        {
+            return new CommandFault(
+                ProcessFaultCodes.BatchFileRejected,
+                "Windows batch files run through cmd.exe and require AllowWindowsBatchFiles.");
+        }
+
+        if (request.FileName.AsSpan().ContainsAny(BatchPathMetacharacters))
+        {
+            return new CommandFault(
+                ProcessFaultCodes.BatchFileArgumentRejected,
+                "The batch file path contains characters that cmd.exe would interpret.");
+        }
+
+        for (int index = 0; index < request.Arguments.Count; index++)
+        {
+            if (request.Arguments[index].AsSpan().ContainsAny(BatchArgumentMetacharacters))
+            {
+                return new CommandFault(
+                    ProcessFaultCodes.BatchFileArgumentRejected,
+                    "A batch file argument contains characters that cmd.exe would interpret.",
+                    new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["argumentIndex"] = index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    });
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsBatchFile(string fileName)
+    {
+        // Windows ignores trailing dots and spaces, so "tool.cmd." starts tool.cmd.
+        string extension = Path.GetExtension(fileName.TrimEnd('.', ' '));
+        return string.Equals(extension, ".bat", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".cmd", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<CapturedOutput> DrainAsync(Stream stream, int limit, Encoding encoding)
@@ -393,7 +464,7 @@ public sealed class ProcessRunner : IProcessRunner
         return new CapturedOutput(text, observed, observed > limit);
     }
 
-    private static async Task AwaitTerminationAndDrainAsync(
+    private async Task<DrainOutcome> AwaitTerminationAndDrainAsync(
         Process process,
         Task<CapturedOutput> stdoutTask,
         Task<CapturedOutput> stderrTask,
@@ -405,15 +476,16 @@ public sealed class ProcessRunner : IProcessRunner
             IgnoreFailureAsync(stderrTask));
         try
         {
-            await all.WaitAsync(gracePeriod).ConfigureAwait(false);
+            await all.WaitAsync(gracePeriod, timeProvider).ConfigureAwait(false);
+            return default;
         }
         catch (TimeoutException)
         {
-            await ClosePipesAsync(process, stdoutTask, stderrTask).ConfigureAwait(false);
+            return await ClosePipesAsync(process, stdoutTask, stderrTask).ConfigureAwait(false);
         }
     }
 
-    private static async Task AwaitDrainAsync(
+    private async Task<DrainOutcome> AwaitDrainAsync(
         Process process,
         Task<CapturedOutput> stdoutTask,
         Task<CapturedOutput> stderrTask,
@@ -422,24 +494,28 @@ public sealed class ProcessRunner : IProcessRunner
         Task drains = Task.WhenAll(stdoutTask, stderrTask);
         try
         {
-            await drains.WaitAsync(gracePeriod).ConfigureAwait(false);
+            await drains.WaitAsync(gracePeriod, timeProvider).ConfigureAwait(false);
+            return default;
         }
         catch (TimeoutException)
         {
-            await ClosePipesAsync(process, stdoutTask, stderrTask).ConfigureAwait(false);
+            // A descendant that inherited a pipe can hold it open after the child exits.
+            return await ClosePipesAsync(process, stdoutTask, stderrTask).ConfigureAwait(false);
         }
     }
 
-    private static async Task ClosePipesAsync(
+    private async Task<DrainOutcome> ClosePipesAsync(
         Process process,
         Task<CapturedOutput> stdoutTask,
         Task<CapturedOutput> stderrTask)
     {
+        var outcome = new DrainOutcome(!stdoutTask.IsCompleted, !stderrTask.IsCompleted);
         TryClose(process.StandardOutput.BaseStream);
         TryClose(process.StandardError.BaseStream);
 
         Task drains = Task.WhenAll(stdoutTask, stderrTask);
-        await Task.WhenAny(drains, Task.Delay(TimeSpan.FromMilliseconds(100))).ConfigureAwait(false);
+        await Task.WhenAny(drains, Task.Delay(TimeSpan.FromMilliseconds(100), timeProvider)).ConfigureAwait(false);
+        return outcome;
     }
 
     private static void TryClose(Stream stream)
@@ -464,28 +540,19 @@ public sealed class ProcessRunner : IProcessRunner
         }
     }
 
-    private static ProcessOutput GetOutput(Task<CapturedOutput> task)
+    private static ProcessOutput GetOutput(Task<CapturedOutput> task, bool drainTimedOut)
     {
         if (task.Status != TaskStatus.RanToCompletion)
         {
-            return EmptyOutput;
+            return drainTimedOut ? new ProcessOutput(string.Empty, 0, false, true) : EmptyOutput;
         }
 
         CapturedOutput capture = task.Result;
-        return new ProcessOutput(capture.Text, capture.ObservedBytes, capture.IsTruncated);
+        return new ProcessOutput(capture.Text, capture.ObservedBytes, capture.IsTruncated, drainTimedOut);
     }
 
-    private static CancellationTokenSource? CreateTimeout(TimeSpan timeout)
-    {
-        if (timeout == Timeout.InfiniteTimeSpan)
-        {
-            return null;
-        }
-
-        var source = new CancellationTokenSource();
-        source.CancelAfter(timeout);
-        return source;
-    }
+    private CancellationTokenSource? CreateTimeout(TimeSpan timeout) =>
+        timeout == Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource(timeout, timeProvider);
 
     private ProcessResult StartFailed(ProcessStartFailureCategory category, DateTimeOffset startedAt) =>
         Complete(
@@ -605,6 +672,8 @@ public sealed class ProcessRunner : IProcessRunner
 
     private readonly record struct CapturedOutput(string Text, long ObservedBytes, bool IsTruncated);
 
+    private readonly record struct DrainOutcome(bool StandardOutputTimedOut, bool StandardErrorTimedOut);
+
     private sealed class TerminationRequest
     {
         private readonly Process process;
@@ -650,4 +719,30 @@ public sealed class ProcessRunner : IProcessRunner
             }
         }
     }
+}
+
+internal sealed class ProcessPlatform
+{
+    internal static readonly ProcessPlatform Current = new(
+        OperatingSystem.IsWindows(),
+        File.Exists,
+        Environment.GetEnvironmentVariable);
+
+    internal ProcessPlatform(
+        bool isWindows,
+        Func<string, bool> fileExists,
+        Func<string, string?> getEnvironmentVariable)
+    {
+        IsWindows = isWindows;
+        FileExists = fileExists;
+        GetEnvironmentVariable = getEnvironmentVariable;
+    }
+
+    internal bool IsWindows { get; }
+
+    internal Func<string, bool> FileExists { get; }
+
+    internal Func<string, string?> GetEnvironmentVariable { get; }
+
+    internal char PathListSeparator => IsWindows ? ';' : ':';
 }

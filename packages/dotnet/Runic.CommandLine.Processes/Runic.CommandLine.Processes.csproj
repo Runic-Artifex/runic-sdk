@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Runic.CommandLine\Runic.CommandLine.csproj" />
+    <InternalsVisibleTo Include="Runic.CommandLine.Processes.Tests" />
   </ItemGroup>
 
   <ItemGroup>

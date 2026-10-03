@@ -47,7 +47,8 @@ namespace Runic.CommandLine.Processes
     {
         public const int DefaultOutputLimitBytes = 1048576;
         public const int MaximumOutputLimitBytes = 16777216;
-        public ProcessExecutionOptions(System.TimeSpan? timeout = null, int standardOutputLimitBytes = 1048576, int standardErrorLimitBytes = 1048576, System.TimeSpan? drainGracePeriod = null, System.Text.Encoding? standardOutputEncoding = null, System.Text.Encoding? standardErrorEncoding = null);
+        public ProcessExecutionOptions(System.TimeSpan? timeout = null, int standardOutputLimitBytes = 1048576, int standardErrorLimitBytes = 1048576, System.TimeSpan? drainGracePeriod = null, System.Text.Encoding? standardOutputEncoding = null, System.Text.Encoding? standardErrorEncoding = null, bool allowWindowsBatchFiles = false);
+        public bool AllowWindowsBatchFiles { get; }
         public int StandardErrorLimitBytes { get; }
         public System.Text.Encoding StandardErrorEncoding { get; }
         public int StandardOutputLimitBytes { get; }
@@ -59,6 +60,8 @@ namespace Runic.CommandLine.Processes
     }
     public static class ProcessFaultCodes
     {
+        public const string BatchFileArgumentRejected = "RCLI6008";
+        public const string BatchFileRejected = "RCLI6007";
         public const string ExecutableRejected = "RCLI6001";
         public const string ExecutionFailed = "RCLI6006";
         public const string InvalidPolicyDecision = "RCLI6003";
@@ -68,6 +71,7 @@ namespace Runic.CommandLine.Processes
     }
     public sealed class ProcessOutput
     {
+        public bool DrainTimedOut { get; }
         public bool IsTruncated { get; }
         public long ObservedByteCount { get; }
         public string Text { get; }

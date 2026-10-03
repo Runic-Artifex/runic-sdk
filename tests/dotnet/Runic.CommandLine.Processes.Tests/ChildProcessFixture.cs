@@ -26,6 +26,7 @@ internal static class ChildProcessFixture
             "sleep" => await SleepAsync(args).ConfigureAwait(false),
             "tree-parent" => await RunTreeParentAsync(args).ConfigureAwait(false),
             "tree-leaf" => await RunTreeLeafAsync(args).ConfigureAwait(false),
+            "orphan-pipe-holder" => await StartPipeHolderAsync(args).ConfigureAwait(false),
             _ => 97,
         };
     }
@@ -102,6 +103,33 @@ internal static class ChildProcessFixture
         Console.WriteLine("READY");
         await process.WaitForExitAsync().ConfigureAwait(false);
         return process.ExitCode;
+    }
+
+    // Starts a descendant that inherits stdout/stderr and exits while the descendant keeps them open.
+    private static async Task<int> StartPipeHolderAsync(string[] args)
+    {
+        string markerPath = args[2];
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = ExecutablePath,
+            UseShellExecute = false,
+        };
+        process.StartInfo.ArgumentList.Add(ChildSwitch);
+        process.StartInfo.ArgumentList.Add("sleep");
+        process.StartInfo.ArgumentList.Add("30000");
+
+        if (!process.Start())
+        {
+            return 96;
+        }
+
+        await File.WriteAllTextAsync(
+            markerPath,
+            process.Id.ToString(CultureInfo.InvariantCulture),
+            Encoding.UTF8).ConfigureAwait(false);
+        Console.WriteLine("READY");
+        return 0;
     }
 
     private static async Task<int> RunTreeLeafAsync(string[] args)

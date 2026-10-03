@@ -43,7 +43,16 @@ internal static class Program
         ("observer notifications are ordered and exactly once", ObserverIsOrderedAndExactlyOnceAsync),
         ("terminal-only paths notify completion exactly once", TerminalOnlyPathsNotifyExactlyOnceAsync),
         ("observer exceptions do not corrupt process completion", ObserverExceptionsAreContainedAsync),
+        ("windows batch files resolved through PATHEXT are rejected", WindowsBatchFilesAreRejectedAsync),
+        ("windows batch opt-in rejects cmd.exe metacharacters", WindowsBatchOptInRejectsMetacharactersAsync),
+        ("windows batch opt-in admits plain arguments", WindowsBatchOptInAdmitsPlainArgumentsAsync),
+        ("batch extensions are ordinary files outside windows", BatchExtensionsAreOrdinaryOutsideWindowsAsync),
+        ("descendant-held pipes report a drain timeout", DescendantHeldPipeReportsDrainTimeoutAsync),
+        ("timeout uses the injected time provider", TimeoutUsesInjectedTimeProviderAsync),
     ];
+
+    private static readonly string[] BatchMetacharacterArguments =
+        ["x&calc", "%PATH%", "!x!", "a^b", "a|b", "a<b", "a>b", "a\"b", "(a)", "a\nb", "a\rb"];
 
     public static async Task<int> Main(string[] args)
     {
@@ -444,6 +453,144 @@ internal static class Program
         TestAssert.Equal(1, observer.CompletedCount);
     }
 
+    private static async Task WindowsBatchFilesAreRejectedAsync()
+    {
+        var policy = new CountingAllowPolicy();
+        var observer = new RecordingObserver();
+        var runner = new ProcessRunner(policy, observer, null, CreateWindowsPlatform("npm.cmd"));
+
+        ProcessResult resolved = await runner.RunAsync(
+            new ProcessRequest("npm", ["view", "x&calc"], environment: FakePath)).ConfigureAwait(false);
+        ProcessResult explicitPath = await runner.RunAsync(
+            new ProcessRequest(Path.Combine(FakeBinDirectory, "build.BAT. "))).ConfigureAwait(false);
+
+        foreach (ProcessResult result in new[] { resolved, explicitPath })
+        {
+            TestAssert.Equal(ProcessState.Rejected, result.State);
+            TestAssert.Equal(ProcessFaultCodes.BatchFileRejected, result.Fault!.Code);
+        }
+
+        TestAssert.Equal(0, policy.EvaluationCount);
+        TestAssert.Equal(0, observer.StartedCount);
+    }
+
+    private static async Task WindowsBatchOptInRejectsMetacharactersAsync()
+    {
+        var runner = new ProcessRunner(new CountingAllowPolicy(), null, null, CreateWindowsPlatform("npm.cmd"));
+        var options = new ProcessExecutionOptions(allowWindowsBatchFiles: true);
+
+        foreach (string argument in BatchMetacharacterArguments)
+        {
+            ProcessResult result = await runner.RunAsync(
+                new ProcessRequest("npm", ["view", argument], environment: FakePath, options: options))
+                .ConfigureAwait(false);
+
+            TestAssert.Equal(ProcessState.Rejected, result.State);
+            TestAssert.Equal(ProcessFaultCodes.BatchFileArgumentRejected, result.Fault!.Code);
+            TestAssert.Equal("1", result.Fault.Details["argumentIndex"]);
+        }
+
+        ProcessResult path = await runner.RunAsync(
+            new ProcessRequest(Path.Combine(FakeBinDirectory, "100%", "tool.cmd"), options: options))
+            .ConfigureAwait(false);
+        TestAssert.Equal(ProcessFaultCodes.BatchFileArgumentRejected, path.Fault!.Code);
+    }
+
+    private static async Task WindowsBatchOptInAdmitsPlainArgumentsAsync()
+    {
+        var policy = new CountingAllowPolicy();
+        var runner = new ProcessRunner(policy, null, null, CreateWindowsPlatform("npm.cmd"));
+        var options = new ProcessExecutionOptions(allowWindowsBatchFiles: true);
+
+        ProcessResult result = await runner.RunAsync(
+            new ProcessRequest("npm", ["view", "left pad", "@scope/name@1.0.0"], environment: FakePath, options: options))
+            .ConfigureAwait(false);
+
+        // The fake resolved path does not exist, so admission ends in a real start failure.
+        TestAssert.Equal(1, policy.EvaluationCount);
+        TestAssert.Equal(ProcessState.StartFailed, result.State);
+        TestAssert.Equal(Path.GetFullPath(Path.Combine(FakeBinDirectory, "npm.CMD")), policy.LastFileName);
+    }
+
+    private static async Task BatchExtensionsAreOrdinaryOutsideWindowsAsync()
+    {
+        var policy = new CountingAllowPolicy();
+        var platform = new ProcessPlatform(false, static _ => false, static _ => null);
+        var runner = new ProcessRunner(policy, null, null, platform);
+
+        ProcessResult result = await runner.RunAsync(
+            new ProcessRequest(Path.Combine(FakeBinDirectory, "tool.cmd"), ["x&calc"])).ConfigureAwait(false);
+
+        TestAssert.Equal(1, policy.EvaluationCount);
+        TestAssert.Equal(ProcessState.StartFailed, result.State);
+    }
+
+    private static async Task DescendantHeldPipeReportsDrainTimeoutAsync()
+    {
+        string markerPath = Path.Combine(Path.GetTempPath(), $"wut-cli-holder-{Guid.NewGuid():N}.txt");
+        var options = new ProcessExecutionOptions(
+            timeout: TimeSpan.FromSeconds(20),
+            drainGracePeriod: TimeSpan.FromMilliseconds(300));
+        try
+        {
+            ProcessResult result = await RunChildAsync(options, "orphan-pipe-holder", markerPath).ConfigureAwait(false);
+
+            AssertExited(result, 0);
+            TestAssert.True(result.StandardOutput.Text.StartsWith("READY", StringComparison.Ordinal));
+            TestAssert.True(result.StandardOutput.DrainTimedOut, "A descendant-held stdout did not report a drain timeout.");
+            TestAssert.True(result.StandardError.DrainTimedOut, "A descendant-held stderr did not report a drain timeout.");
+            TestAssert.True(result.Duration < TimeSpan.FromSeconds(10), "Drain grace did not bound completion.");
+
+            ProcessResult normal = await RunChildAsync("pressure", "1", "1", "0").ConfigureAwait(false);
+            TestAssert.False(normal.StandardOutput.DrainTimedOut);
+            TestAssert.False(normal.StandardError.DrainTimedOut);
+        }
+        finally
+        {
+            if (File.Exists(markerPath))
+            {
+                TryKillProcess(int.Parse(
+                    await File.ReadAllTextAsync(markerPath).ConfigureAwait(false),
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture));
+                File.Delete(markerPath);
+            }
+        }
+    }
+
+    private static async Task TimeoutUsesInjectedTimeProviderAsync()
+    {
+        TimeSpan timeout = TimeSpan.FromHours(1);
+        var time = new ManualTimeProvider();
+        var runner = new ProcessRunner(new LocalExecutablePolicy(), null, time);
+        Task<ProcessResult> run = runner.RunAsync(
+            CreateChildRequest(new ProcessExecutionOptions(timeout: timeout), "sleep", "30000")).AsTask();
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        while (!time.Fire(timeout))
+        {
+            TestAssert.True(DateTimeOffset.UtcNow < deadline, "The runner did not create its timeout timer.");
+            await Task.Delay(10).ConfigureAwait(false);
+        }
+
+        ProcessResult result = await run.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        AssertTerminated(result, ProcessState.TimedOut);
+    }
+
+    private const string FakeBinDirectory = "/runic-fake-bin";
+
+    private static readonly Dictionary<string, string?> FakePath = new(StringComparer.Ordinal)
+    {
+        ["PATH"] = FakeBinDirectory,
+        ["PATHEXT"] = null,
+    };
+
+    private static ProcessPlatform CreateWindowsPlatform(string existingFileName) =>
+        new(
+            true,
+            path => path.EndsWith(Path.DirectorySeparatorChar + existingFileName, StringComparison.OrdinalIgnoreCase),
+            static _ => null);
+
     private static ProcessRunner CreateRunner(IProcessObserver? observer = null) =>
         new(new LocalExecutablePolicy(), observer);
 
@@ -591,6 +738,82 @@ internal static class Program
             return ExecutablePolicyDecision.Reject(
                 "secret-policy-code",
                 "secret\u001b[31m\r\npolicy detail");
+        }
+    }
+
+    private sealed class CountingAllowPolicy : IExecutablePolicy
+    {
+        public int EvaluationCount { get; private set; }
+
+        public string? LastFileName { get; private set; }
+
+        public ExecutablePolicyDecision Evaluate(ProcessRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            EvaluationCount++;
+            LastFileName = request.FileName;
+            return ExecutablePolicyDecision.Allow();
+        }
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private readonly List<ManualTimer> timers = [];
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new ManualTimer(callback, state, dueTime);
+            lock (timers)
+            {
+                timers.Add(timer);
+            }
+
+            return timer;
+        }
+
+        public bool Fire(TimeSpan dueTime)
+        {
+            ManualTimer[] due;
+            lock (timers)
+            {
+                due = timers.Where(timer => timer.DueTime == dueTime).ToArray();
+            }
+
+            foreach (ManualTimer timer in due)
+            {
+                timer.Fire();
+            }
+
+            return due.Length != 0;
+        }
+    }
+
+    private sealed class ManualTimer(TimerCallback callback, object? state, TimeSpan dueTime) : ITimer
+    {
+        private bool disposed;
+
+        public TimeSpan DueTime { get; private set; } = dueTime;
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            DueTime = dueTime;
+            return true;
+        }
+
+        public void Fire()
+        {
+            if (!disposed)
+            {
+                callback(state);
+            }
+        }
+
+        public void Dispose() => disposed = true;
+
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
+            return ValueTask.CompletedTask;
         }
     }
 
