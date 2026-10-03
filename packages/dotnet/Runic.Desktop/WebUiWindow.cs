@@ -19,6 +19,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private const string DesktopBootstrapPath = "/runic-desktop.js";
     private const string WebSocketPath = "/_webui_ws_connect";
     private const string AuthCookieName = "webui_auth";
+    private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
     private const string NoCache = "no-cache, no-store, must-revalidate, private, max-age=0";
     private const string AccessDenied = "<html><head><title>Access Denied</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Access Denied</h2><p>This content is already in use and multi-client mode is disabled.</p></body></html>";
     private const string ResourceUnavailable = "<html><head><title>Resource Not Available</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Resource Not Available</h2><p>The requested resource is not available.</p></body></html>";
@@ -480,6 +481,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             else
             {
+                await ReleaseClosedEmbeddedHostAsync().ConfigureAwait(false);
                 host = CreateEmbeddedHost();
                 host.Closed += EmbeddedHostClosed;
                 _embeddedHost = host;
@@ -553,6 +555,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             else
             {
+                ReleaseClosedEmbeddedHostAsync().GetAwaiter().GetResult();
                 host = CreateEmbeddedHost();
                 host.Closed += EmbeddedHostClosed;
                 _embeddedHost = host;
@@ -1326,6 +1329,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ProfilePath = profilePath,
             CustomParameters = _customBrowserParameters,
             AllowedPermissions = _allowedPermissions,
+            DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
         };
     }
 
@@ -1334,6 +1338,33 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host))
         {
             _ = HandleEmbeddedHostClosedAsync(host);
+        }
+    }
+
+    // A host can report closed before its Closed callback acquires the lifecycle gate.
+    // Replacing it must still release its native owner, such as a dispatcher lease;
+    // the late callback then finds a different host and does nothing.
+    private async Task ReleaseClosedEmbeddedHostAsync()
+    {
+        if (_embeddedHost is null)
+        {
+            return;
+        }
+
+        await _presentationGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (Interlocked.Exchange(ref _embeddedHost, null) is { } closed)
+            {
+                StopCloseConfirmation();
+                closed.Closed -= EmbeddedHostClosed;
+                _currentBrowser = WebUiBrowser.NoBrowser;
+                await closed.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _presentationGate.Release();
         }
     }
 
@@ -1395,12 +1426,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return _generatedProfilePath;
         }
 
-        var basePath = Path.Combine(Path.GetTempPath(), "runic-desktop");
-        Directory.CreateDirectory(basePath);
-        _generatedProfilePath = Path.Combine(
-            basePath,
-            $"{browser.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_generatedProfilePath);
+        // A fresh owner-only directory: a shared temporary parent could be pre-created
+        // by another local user, who could then substitute or read the profile.
+        _generatedProfilePath = Directory.CreateTempSubdirectory(
+            $"runic-desktop-{browser.ToString().ToLowerInvariant()}-").FullName;
         if (_runtimeOptions is null)
         {
             WebUiApplication.RegisterGeneratedProfile(_generatedProfilePath);
@@ -1644,14 +1673,46 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await SendNotFoundAsync(context).ConfigureAwait(false);
     }
 
+    // Any page can embed a loopback script, and a classic script needs no CORS
+    // grant to run. Fetch metadata identifies a cross-site embedding. Clients that
+    // send none are not browser subresource loads and still need the WebSocket
+    // origin and credential checks to open a session.
+    private bool AdmitsBootstrapRequest(HttpContext context)
+    {
+        var headers = context.Request.Headers;
+        var destination = headers["Sec-Fetch-Dest"].ToString();
+        var site = headers["Sec-Fetch-Site"].ToString();
+        var admitted = destination.Length == 0 || destination.Equals("script", StringComparison.OrdinalIgnoreCase);
+        admitted &= site.Length == 0 ||
+            site.Equals("same-origin", StringComparison.OrdinalIgnoreCase) ||
+            site.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+            _securityPolicy?.AllowsAdditionalOrigin(headers.Referer.ToString()) == true;
+        if (!admitted)
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.OriginDenied,
+                "bootstrap-origin-not-allowed",
+                "The bootstrap script was requested by a document whose origin is not allowed.",
+                Retryable: false));
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        }
+        return admitted;
+    }
+
     private async Task ServeBridgeAsync(HttpContext context)
     {
+        if (!AdmitsBootstrapRequest(context))
+        {
+            return;
+        }
+
         context.Response.ContentType = "text/javascript; charset=utf-8";
+        var (token, sessionCredential) = GetBootstrapCredentialExpressions();
         var script = WebUiBridge.Script
-            .Replace("__TOKEN__", _token.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("__TOKEN__", token, StringComparison.Ordinal)
             .Replace("__PORT__", Url?.Port.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0", StringComparison.Ordinal)
             .Replace("__BASE_PATH__", _surface?.PathBase ?? string.Empty, StringComparison.Ordinal)
-            .Replace("__SESSION_CREDENTIAL__", _sessionCredential, StringComparison.Ordinal)
+            .Replace("__SESSION_CREDENTIAL__", sessionCredential, StringComparison.Ordinal)
             .Replace("__CUSTOM_WINDOW_DRAG__", _embeddedHost is not null && _frameless ? "true" : "false", StringComparison.Ordinal);
         context.Response.ContentLength = Encoding.UTF8.GetByteCount(script);
         if (!HttpMethods.IsHead(context.Request.Method))
@@ -1662,8 +1723,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private async Task ServeDesktopBootstrapAsync(HttpContext context)
     {
+        if (!AdmitsBootstrapRequest(context))
+        {
+            return;
+        }
+
         context.Response.ContentType = "text/javascript; charset=utf-8";
         var webSocketPath = $"{_surface?.PathBase ?? string.Empty}{WebSocketPath}";
+        var (token, sessionCredential) = GetBootstrapCredentialExpressions();
         var script = $$"""
             (() => {
               "use strict";
@@ -1677,8 +1744,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                   product: "Runic Desktop",
                   profile: "webui-compat/52f9e75",
                   endpoint: endpoint.href,
-                  token: {{_token.ToString(System.Globalization.CultureInfo.InvariantCulture)}},
-                  sessionCredential: {{EncodeJavaScriptString(_sessionCredential)}}
+                  token: {{token}},
+                  sessionCredential: {{sessionCredential}}
                 })
               });
             })();
@@ -1692,6 +1759,39 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private static string EncodeJavaScriptString(string value) =>
         $"\"{JavaScriptEncoder.Default.Encode(value)}\"";
+
+    // A host that runs a document-start script hands the credentials only to
+    // documents from admitted origins. Fetchable scripts then read them from the
+    // document instead of carrying them to every requester.
+    private (string Token, string SessionCredential) GetBootstrapCredentialExpressions() =>
+        _embeddedHost?.SupportsDocumentStartScript == true
+            ? ($"({DocumentBootstrapProperty}?.token ?? 0)", $"({DocumentBootstrapProperty}?.sessionCredential ?? \"\")")
+            : (_token.ToString(System.Globalization.CultureInfo.InvariantCulture), EncodeJavaScriptString(_sessionCredential));
+
+    private string CreateDocumentStartScript()
+    {
+        var url = Url ?? throw new InvalidOperationException("The surface must be started before opening a presentation.");
+        var origins = (_securityPolicy?.AdditionalOrigins ?? Enumerable.Empty<string>())
+            .Select(static origin => new Uri(origin, UriKind.Absolute))
+            .Prepend(url)
+            .Select(static origin => origin.IsDefaultPort
+                ? $"{origin.Scheme}://{origin.IdnHost}"
+                : $"{origin.Scheme}://{origin.IdnHost}:{origin.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
+            .Distinct(StringComparer.Ordinal)
+            .Select(EncodeJavaScriptString);
+        return $$"""
+            (() => {
+              "use strict";
+              if (![{{string.Join(", ", origins)}}].includes(globalThis.location.origin)) return;
+              Object.defineProperty(globalThis, Symbol.for("runic-desktop.bootstrap"), {
+                value: Object.freeze({
+                  token: {{_token.ToString(System.Globalization.CultureInfo.InvariantCulture)}},
+                  sessionCredential: {{EncodeJavaScriptString(_sessionCredential)}}
+                })
+              });
+            })();
+            """;
+    }
 
     private async Task AcceptWebSocketAsync(HttpContext context)
     {

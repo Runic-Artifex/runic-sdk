@@ -15,6 +15,7 @@ public sealed partial class WindowsWebView2InteropTests
         {
             ("ICoreWebView2", "Navigate", WindowsWebView2Interop.NavigateSlot),
             ("ICoreWebView2", "add_PermissionRequested", WindowsWebView2Interop.PermissionRequestedSlot),
+            ("ICoreWebView2", "AddScriptToExecuteOnDocumentCreated", WindowsWebView2Interop.AddScriptToExecuteOnDocumentCreatedSlot),
             ("ICoreWebView2", "add_DocumentTitleChanged", WindowsWebView2Interop.DocumentTitleChangedSlot),
             ("ICoreWebView2", "get_DocumentTitle", WindowsWebView2Interop.DocumentTitleSlot),
             ("ICoreWebView2", "add_WindowCloseRequested", WindowsWebView2Interop.WindowCloseRequestedSlot),
@@ -25,6 +26,7 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2Controller", "get_CoreWebView2", WindowsWebView2Interop.ControllerWebViewSlot),
             ("ICoreWebView2Controller2", "put_DefaultBackgroundColor", WindowsWebView2Interop.ControllerBackgroundSlot),
             ("ICoreWebView2Environment", "CreateCoreWebView2Controller", WindowsWebView2Interop.EnvironmentCreateControllerSlot),
+            ("ICoreWebView2PermissionRequestedEventArgs", "get_Uri", WindowsWebView2Interop.PermissionUriSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "get_PermissionKind", WindowsWebView2Interop.PermissionKindSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "put_State", WindowsWebView2Interop.PermissionStateSlot),
             ("ICoreWebView2PermissionRequestedEventArgs2", "put_Handled", WindowsWebView2Interop.PermissionHandledSlot),
@@ -104,6 +106,32 @@ public sealed partial class WindowsWebView2InteropTests
         WindowsWebView2Interop.Release(expected);
         Assert.Equal(1, result.References);
         return (completion.Task, expected);
+    }
+
+    [Fact]
+    public async Task DocumentScriptCompletionIgnoresTheBorrowedIdentifierAndReportsFailures()
+    {
+        var handlerGuid = new Regex(@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler\b")
+            .Match(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h")));
+        Assert.Equal(new Guid(handlerGuid.Groups[1].Value), typeof(IWebViewScriptAdded).GUID);
+
+        var added = new WebViewScriptCompletion();
+        using (var handler = new WebViewComReference<IWebViewScriptAdded>(added))
+        {
+            var invoke = ExerciseScriptHandler(handler.Pointer);
+            Assert.Equal(0, invoke);
+        }
+        await added.Task;
+
+        var rejected = new WebViewScriptCompletion();
+        rejected.Invoke(unchecked((int)0x80070057), 0);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rejected.Task);
+    }
+
+    private static unsafe int ExerciseScriptHandler(nint handler)
+    {
+        fixed (char* id = "{script}")
+            return ((delegate* unmanaged[Stdcall]<nint, int, nint, int>)WindowsWebView2Interop.Slot(handler, 3))(handler, 0, (nint)id);
     }
 
     [Fact]

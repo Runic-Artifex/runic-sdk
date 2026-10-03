@@ -171,10 +171,15 @@ public sealed class DesktopSurface : IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    /// <remarks>
+    /// From a capability or event callback, disposal continues after the callback returns:
+    /// teardown waits for that callback's session to finish its disconnection event.
+    /// </remarks>
+    public ValueTask DisposeAsync()
     {
-        await DisposeCoreAsync(detach: true, CancellationToken.None).ConfigureAwait(false);
+        var dispose = DisposeCoreAsync(detach: true, CancellationToken.None);
         GC.SuppressFinalize(this);
+        return _engine.IsExecutingCallback ? ValueTask.CompletedTask : new ValueTask(dispose);
     }
 
     internal ValueTask DisposeFromHostAsync() => new(DisposeCoreAsync(detach: false, CancellationToken.None));

@@ -257,16 +257,20 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     private Gtk.ApplicationWindow? _window;
     private WebView? _webView;
     private DesktopWindowHostOptions? _options;
+    private Uri? _presentedUrl;
     private int _isOpen;
     private int _disposed;
     private int _forceClose;
     private int _dispatcherLease;
     private int _cleanupQueued;
+    private int _createStarted;
     private NativeObjectFinalizationProbe? _finalization;
 
     public event EventHandler? Closed;
 
     public bool SupportsCloseConfirmation => true;
+
+    public bool SupportsDocumentStartScript => true;
 
     public DesktopWindowCapabilities Capabilities => SupportedCapabilities;
 
@@ -300,6 +304,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         }
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk4WebKit6);
         _options = options;
+        _presentedUrl = url;
         await Gtk4Dispatcher.Instance.AcquireAsync(cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _dispatcherLease, 1);
         try
@@ -308,7 +313,12 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         }
         catch
         {
-            await _closed.Task.ConfigureAwait(false);
+            // Cancellation can withdraw the queued creation before it runs. Only a
+            // started creation has native objects whose release completes _closed.
+            if (Volatile.Read(ref _createStarted) != 0)
+            {
+                await _closed.Task.ConfigureAwait(false);
+            }
             await ReleaseDispatcherAsync().ConfigureAwait(false);
             throw;
         }
@@ -417,25 +427,28 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
 
     private void Create(Uri url)
     {
-        var options = _options ?? throw new InvalidOperationException("The GTK 4 host has no window options.");
-        var application = Gtk4Dispatcher.Instance.Application;
-        var window = Gtk.ApplicationWindow.New(application);
-        // Gtk.Application initializes GTK's module graph, but WebKit is an
-        // independent GirCore module and must register its native resolver
-        // before WebView.New reaches a generated P/Invoke.
-        WebKit.Module.Initialize();
-        // Do not bind the view to WebKit's process-global default context. Its
-        // process cache is released during libc shutdown, after the managed
-        // window lifetime has ended. A per-view context is reference-counted by
-        // the WebView and is disposed on the GTK dispatcher with that view.
-        using var webContext = WebContext.New();
-        using var contextValue = new GObject.Value(webContext);
-        var webView = WebView.NewWithProperties(
-            [new GObject.ConstructArgument("web-context", contextValue)]);
+        Volatile.Write(ref _createStarted, 1);
+        Gtk.ApplicationWindow? window = null;
+        WebView? webView = null;
         NativeObjectFinalizationProbe? finalization = null;
         var registered = false;
         try
         {
+            var options = _options ?? throw new InvalidOperationException("The GTK 4 host has no window options.");
+            var application = Gtk4Dispatcher.Instance.Application;
+            window = Gtk.ApplicationWindow.New(application);
+            // Gtk.Application initializes GTK's module graph, but WebKit is an
+            // independent GirCore module and must register its native resolver
+            // before WebView.New reaches a generated P/Invoke.
+            WebKit.Module.Initialize();
+            // Do not bind the view to WebKit's process-global default context. Its
+            // process cache is released during libc shutdown, after the managed
+            // window lifetime has ended. A per-view context is reference-counted by
+            // the WebView and is disposed on the GTK dispatcher with that view.
+            using var webContext = WebContext.New();
+            using var contextValue = new GObject.Value(webContext);
+            webView = WebView.NewWithProperties(
+                [new GObject.ConstructArgument("web-context", contextValue)]);
             window.Title = "Runic Desktop";
             window.SetDefaultSize(checked((int)options.Width), checked((int)options.Height));
             window.SetResizable(options.Resizable);
@@ -445,6 +458,17 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
                 webView.SetSizeRequest(
                     options.MinimumWidth is { } minimumWidth ? checked((int)minimumWidth) : -1,
                     options.MinimumHeight is { } minimumHeight ? checked((int)minimumHeight) : -1);
+            }
+            if (options.DocumentStartScript is { } documentStartScript)
+            {
+                // The script compares complete origins, including the listener port, itself.
+                using var script = UserScript.New(
+                    documentStartScript,
+                    UserContentInjectedFrames.AllFrames,
+                    UserScriptInjectionTime.Start,
+                    null,
+                    null);
+                webView.GetUserContentManager().AddScript(script);
             }
             window.SetChild(webView);
             // Hidden windows still need a native surface for portal ownership
@@ -482,12 +506,18 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             {
                 Gtk4Application.Unregister(this);
             }
-            webView.OnPermissionRequest -= OnPermissionRequest;
-            window.OnCloseRequest -= OnCloseRequest;
-            window.OnDestroy -= OnDestroyed;
-            window.Destroy();
-            webView.Dispose();
-            window.Dispose();
+            if (webView is not null)
+            {
+                webView.OnPermissionRequest -= OnPermissionRequest;
+            }
+            if (window is not null)
+            {
+                window.OnCloseRequest -= OnCloseRequest;
+                window.OnDestroy -= OnDestroyed;
+                window.Destroy();
+            }
+            webView?.Dispose();
+            window?.Dispose();
             _window = null;
             _webView = null;
             Volatile.Write(ref _isOpen, 0);
@@ -549,18 +579,33 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         return false;
     }
 
-    private bool OnPermissionRequest(WebView _, WebView.PermissionRequestSignalArgs request)
+    // An unhandled request is denied by WebKit, so a grant must allow explicitly.
+    private bool OnPermissionRequest(WebView webView, WebView.PermissionRequestSignalArgs request)
     {
-        if ((_options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0)
+        if (AllowsMediaCapture(webView, request.Request))
         {
-            // Returning false asks WebKit to continue with its normal, user-visible
-            // permission flow. It deliberately does not grant every request.
-            return false;
+            request.Request.Allow();
         }
-
-        request.Request.Deny();
+        else
+        {
+            request.Request.Deny();
+        }
         return true;
     }
+
+    // WebKitGTK does not identify the requesting frame; the top-level document must
+    // still have the presented origin. Screen capture is not part of the grant.
+    private bool AllowsMediaCapture(WebView webView, PermissionRequest request) =>
+        (_options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0 &&
+        _presentedUrl is { } presented &&
+        request switch
+        {
+            UserMediaPermissionRequest media => !WebKit.Functions.UserMediaPermissionIsForDisplayDevice(media),
+            DeviceInfoPermissionRequest => true,
+            _ => false,
+        } &&
+        Uri.TryCreate(webView.GetUri(), UriKind.Absolute, out var current) &&
+        Uri.Compare(presented, current, UriComponents.SchemeAndServer, UriFormat.UriEscaped, StringComparison.OrdinalIgnoreCase) == 0;
 
     private void OnDestroyed(Gtk.Widget _, EventArgs __)
     {

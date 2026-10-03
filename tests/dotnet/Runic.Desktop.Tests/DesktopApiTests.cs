@@ -107,6 +107,14 @@ public sealed class DesktopApiTests
             }));
 
         Assert.Contains("explicit security policy", error.Message, StringComparison.Ordinal);
+
+        var copied = new DesktopHostOptions { Port = 1 } with { NetworkExposure = DesktopNetworkExposure.AllInterfaces };
+        await Assert.ThrowsAsync<ArgumentException>(async () => await DesktopHost.StartAsync(copied));
+        await using var chosen = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            NetworkExposure = DesktopNetworkExposure.AllInterfaces,
+            Security = DesktopSecurityPolicy.Default,
+        });
     }
 
     [Fact]
@@ -483,6 +491,17 @@ public sealed class DesktopApiTests
         Assert.Equal(1, Volatile.Read(ref factoryCalls));
     }
 
+    [Theory]
+    [InlineData("http://127.0.0.1:4100/entry/index.html", true)]
+    [InlineData("HTTP://127.0.0.1:4100/", true)]
+    [InlineData("http://127.0.0.1:4101/", false)]
+    [InlineData("http://localhost:4100/", false)]
+    [InlineData("https://127.0.0.1:4100/", false)]
+    [InlineData("about:blank", false)]
+    [InlineData(null, false)]
+    public void MediaCaptureGrantIsBoundToThePresentedOrigin(string? requester, bool expected) =>
+        Assert.Equal(expected, Internal.PresentationSecurityPolicy.IsSameOrigin(new Uri("http://127.0.0.1:4100/surface/"), requester));
+
     [Fact]
     public async Task LocalContentDeniesMediaCaptureByDefault()
     {
@@ -689,6 +708,39 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task DocumentStartHostReceivesCredentialsWithheldFromFetchableScripts()
+    {
+        var factory = new RecordingWindowHostFactory { SupportsDocumentStartScript = true };
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory, WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        using var client = new HttpClient();
+        var fetched = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
+        var token = ExtractUnsigned(fetched, "const TOKEN = ");
+        var credential = ExtractQuoted(fetched, "const SESSION_CREDENTIAL = \"");
+
+        await using (var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded }))
+        {
+            var injected = Assert.IsType<string>(factory.Host?.Options?.DocumentStartScript);
+            Assert.Contains($"[\"http://127.0.0.1:{surface.Url.Port}\"].includes(globalThis.location.origin)", injected, StringComparison.Ordinal);
+            Assert.Contains($"token: {token},", injected, StringComparison.Ordinal);
+            Assert.Contains($"sessionCredential: \"{credential}\"", injected, StringComparison.Ordinal);
+            foreach (var path in new[] { "webui.js", "runic-desktop.js" })
+            {
+                var script = await client.GetStringAsync(new Uri(surface.Url, path));
+                Assert.DoesNotContain(credential, script, StringComparison.Ordinal);
+                Assert.DoesNotContain(token.ToString(System.Globalization.CultureInfo.InvariantCulture), script, StringComparison.Ordinal);
+                Assert.Contains("globalThis[Symbol.for(\"runic-desktop.bootstrap\")]?.sessionCredential", script, StringComparison.Ordinal);
+            }
+            await window.CloseAsync();
+        }
+
+        Assert.Contains(credential, await client.GetStringAsync(new Uri(surface.Url, "webui.js")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ClosedNativeWindowDoesNotRemainOpenBecauseItsSocketIsStillAuthenticated()
     {
         var factory = new RecordingWindowHostFactory { SupportsCloseConfirmation = true };
@@ -790,12 +842,18 @@ public sealed class DesktopApiTests
         internal RecordingWindowHost? Host { get; private set; }
         public bool IsSupported => true;
         public bool SupportsCloseConfirmation { get; init; }
-        public IDesktopWindowHost Create() => Host = new RecordingWindowHost { SupportsCloseConfirmation = SupportsCloseConfirmation };
+        public bool SupportsDocumentStartScript { get; init; }
+        public IDesktopWindowHost Create() => Host = new RecordingWindowHost
+        {
+            SupportsCloseConfirmation = SupportsCloseConfirmation,
+            SupportsDocumentStartScript = SupportsDocumentStartScript,
+        };
     }
 
     private sealed class RecordingWindowHost : IDesktopWindowHost
     {
         public bool SupportsCloseConfirmation { get; init; }
+        public bool SupportsDocumentStartScript { get; init; }
         public event EventHandler? Closed;
         public bool IsOpen { get; private set; }
         public nint NativeHandle => IsOpen ? 1 : 0;

@@ -26,7 +26,7 @@ internal static class WebUiBridge
           const TOKEN = __TOKEN__;
           const PORT = __PORT__;
           const BASE_PATH = "__BASE_PATH__";
-          const SESSION_CREDENTIAL = "__SESSION_CREDENTIAL__";
+          const SESSION_CREDENTIAL = __SESSION_CREDENTIAL__;
           const CUSTOM_WINDOW_DRAG = __CUSTOM_WINDOW_DRAG__;
           const encoder = new TextEncoder();
           const decoder = new TextDecoder();

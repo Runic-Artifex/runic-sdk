@@ -297,6 +297,20 @@ public sealed class ManagedWindowTests
     }
 
     [Fact]
+    public async Task UnauthenticatedPeerCannotOpenAMultiPacketBuffer()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+
+        // Were the declared 64 MB reserved, the following handshake would be swallowed as its first part.
+        await SendBinaryAsync(socket, CreateTextPacket(0, 0, Multi, "64000000"), timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__"], timeout.Token);
+    }
+
+    [Fact]
     public async Task AcceptsAReconnectedBridgeAndRaisesNewConnectionEvents()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

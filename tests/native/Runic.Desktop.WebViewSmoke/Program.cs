@@ -289,6 +289,11 @@ static async Task ExerciseFirstWindowAsync(DesktopSurface surface, DesktopWindow
     {
         throw new InvalidOperationException("The embedded WebView bridge did not execute JavaScript.");
     }
+    // The native host hands the session credential to the document; fetchable scripts no longer carry it.
+    if (await surface.ExecuteJavaScriptAsync("return typeof globalThis[Symbol.for('runic-desktop.bootstrap')];") != "object")
+    {
+        throw new InvalidOperationException("The embedded WebView did not receive its document-start bootstrap script.");
+    }
 
     await window.ResizeAsync(700, 500);
     await window.MoveAsync(20, 30);

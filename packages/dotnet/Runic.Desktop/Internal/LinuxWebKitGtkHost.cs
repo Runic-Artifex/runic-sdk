@@ -15,12 +15,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private nint _window;
     private nint _webView;
     private WebUiEmbeddedHostOptions? _options;
+    private Uri? _presentedUrl;
     private int _dispatcherLease;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+    public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
     public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
@@ -34,7 +36,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     internal static bool IsSupported => OperatingSystem.IsLinux()
         && LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk3WebKit41)
         && LinuxDesktopRuntime.IsLibraryAvailable("libgtk-3.so.0")
-        && LinuxDesktopRuntime.IsLibraryAvailable("libwebkit2gtk-4.1.so.0");
+        && LinuxDesktopRuntime.IsLibraryAvailable("libwebkit2gtk-4.1.so.0")
+        // A library without every required export leaves the function pointers unset.
+        && Api.IsAvailable;
 
     public bool IsOpen => Volatile.Read(ref _isOpen) != 0;
 
@@ -61,6 +65,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk3WebKit41);
         _options = options;
+        _presentedUrl = url;
         try
         {
             await Dispatcher.AcquireAsync(cancellationToken).ConfigureAwait(false);
@@ -207,6 +212,10 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             Api.GtkWindowMove(_window, checked((int)x), checked((int)y));
         }
+        if (options.DocumentStartScript is { } documentStartScript)
+        {
+            Api.AddDocumentStartScript(_webView, documentStartScript);
+        }
         if (options.Transparent)
         {
             Api.MakeTransparent(_window, _webView);
@@ -301,17 +310,27 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static int OnPermissionRequest(nint _, nint request, nint context)
+    private static int OnPermissionRequest(nint webView, nint request, nint context)
     {
-        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost host ||
-            (host._options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0)
+        // An unhandled request is denied by WebKit, so a grant must allow explicitly.
+        if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost host && host.AllowsMediaCapture(webView, request))
         {
-            return 0;
+            Api.AllowPermission(request);
         }
-
-        Api.DenyPermission(request);
+        else
+        {
+            Api.DenyPermission(request);
+        }
         return 1;
     }
+
+    // WebKitGTK does not identify the requesting frame; the top-level document must
+    // still have the presented origin. Screen capture is not part of the grant.
+    private bool AllowsMediaCapture(nint webView, nint request) =>
+        _options is { } options && (options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0 &&
+        _presentedUrl is { } presented &&
+        Api.IsCameraOrMicrophoneRequest(request) &&
+        PresentationSecurityPolicy.IsSameOrigin(presented, Api.WebKitWebViewGetUri(webView));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void ReleaseSignalContext(nint context, nint _)
@@ -537,6 +556,16 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 WebKitWebViewLoadUriPointer = Required(_webkit, "webkit_web_view_load_uri");
                 WebKitWebViewGetTitlePointer = Required(_webkit, "webkit_web_view_get_title");
                 WebKitPermissionRequestDenyPointer = Required(_webkit, "webkit_permission_request_deny");
+                WebKitPermissionRequestAllowPointer = Required(_webkit, "webkit_permission_request_allow");
+                WebKitUserMediaPermissionRequestGetTypePointer = Required(_webkit, "webkit_user_media_permission_request_get_type");
+                WebKitDeviceInfoPermissionRequestGetTypePointer = Required(_webkit, "webkit_device_info_permission_request_get_type");
+                WebKitUserMediaPermissionIsForDisplayDevicePointer = Optional(_webkit, "webkit_user_media_permission_is_for_display_device");
+                WebKitWebViewGetUriPointer = Required(_webkit, "webkit_web_view_get_uri");
+                GTypeCheckInstanceIsAPointer = Required(_gObject, "g_type_check_instance_is_a");
+                WebKitWebViewGetUserContentManagerPointer = Required(_webkit, "webkit_web_view_get_user_content_manager");
+                WebKitUserScriptNewPointer = Required(_webkit, "webkit_user_script_new");
+                WebKitUserScriptUnrefPointer = Required(_webkit, "webkit_user_script_unref");
+                WebKitUserContentManagerAddScriptPointer = Required(_webkit, "webkit_user_content_manager_add_script");
                 WebKitWebViewSetBackgroundColorPointer = Optional(_webkit, "webkit_web_view_set_background_color");
                 IsAvailable = true;
             }
@@ -594,6 +623,16 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint WebKitWebViewLoadUriPointer { get; }
         private nint WebKitWebViewGetTitlePointer { get; }
         private nint WebKitPermissionRequestDenyPointer { get; }
+        private nint WebKitPermissionRequestAllowPointer { get; }
+        private nint WebKitUserMediaPermissionRequestGetTypePointer { get; }
+        private nint WebKitDeviceInfoPermissionRequestGetTypePointer { get; }
+        private nint WebKitUserMediaPermissionIsForDisplayDevicePointer { get; }
+        private nint WebKitWebViewGetUriPointer { get; }
+        private nint GTypeCheckInstanceIsAPointer { get; }
+        private nint WebKitWebViewGetUserContentManagerPointer { get; }
+        private nint WebKitUserScriptNewPointer { get; }
+        private nint WebKitUserScriptUnrefPointer { get; }
+        private nint WebKitUserContentManagerAddScriptPointer { get; }
         private nint WebKitWebViewSetBackgroundColorPointer { get; }
 
         internal bool GtkInitCheck() => ((delegate* unmanaged[Cdecl]<nint, nint, int>)GtkInitCheckPointer)(0, 0) != 0;
@@ -697,8 +736,56 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             return value == 0 ? null : Marshal.PtrToStringUTF8(value);
         }
 
+        // All frames, at document start, without URL patterns: the script compares
+        // complete origins, including the listener port, itself.
+        internal void AddDocumentStartScript(nint webView, string source)
+        {
+            var manager = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetUserContentManagerPointer)(webView);
+            if (manager == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK did not provide a user content manager.");
+            }
+
+            using var value = Utf8String.Create(source);
+            var script = ((delegate* unmanaged[Cdecl]<byte*, int, int, nint, nint, nint>)WebKitUserScriptNewPointer)(
+                value.Pointer, 0, 0, 0, 0);
+            if (script == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK could not create the document-start script.");
+            }
+
+            try
+            {
+                ((delegate* unmanaged[Cdecl]<nint, nint, void>)WebKitUserContentManagerAddScriptPointer)(manager, script);
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)WebKitUserScriptUnrefPointer)(script);
+            }
+        }
+
         internal void DenyPermission(nint request) =>
             ((delegate* unmanaged[Cdecl]<nint, void>)WebKitPermissionRequestDenyPointer)(request);
+
+        internal void AllowPermission(nint request) =>
+            ((delegate* unmanaged[Cdecl]<nint, void>)WebKitPermissionRequestAllowPointer)(request);
+
+        // Device enumeration accompanies camera and microphone access; display capture does not.
+        internal bool IsCameraOrMicrophoneRequest(nint request) =>
+            IsInstanceOf(request, WebKitDeviceInfoPermissionRequestGetTypePointer) ||
+            (IsInstanceOf(request, WebKitUserMediaPermissionRequestGetTypePointer) &&
+                (WebKitUserMediaPermissionIsForDisplayDevicePointer == 0 ||
+                    ((delegate* unmanaged[Cdecl]<nint, int>)WebKitUserMediaPermissionIsForDisplayDevicePointer)(request) == 0));
+
+        private bool IsInstanceOf(nint instance, nint getType) =>
+            ((delegate* unmanaged[Cdecl]<nint, nuint, int>)GTypeCheckInstanceIsAPointer)(
+                instance, ((delegate* unmanaged[Cdecl]<nuint>)getType)()) != 0;
+
+        internal string? WebKitWebViewGetUri(nint webView)
+        {
+            var value = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetUriPointer)(webView);
+            return value == 0 ? null : Marshal.PtrToStringUTF8(value);
+        }
 
         internal void BeginMove(nint window)
         {

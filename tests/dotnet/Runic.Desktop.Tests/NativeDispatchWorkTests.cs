@@ -33,6 +33,24 @@ public sealed class NativeDispatchWorkTests
     }
 
     [Fact]
+    public async Task ClosedOwnerFailsQueuedCallbackWithoutRunningIt()
+    {
+        int calls = 0;
+        var work = new NativeDispatchWork(() => calls++, default);
+        var waiting = work.WaitAsync();
+        work.Fail(new InvalidOperationException("Owner closed."));
+        work.Run();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => waiting);
+        Assert.Equal(0, calls);
+
+        var completed = new NativeDispatchWork(() => calls++, default);
+        completed.Run();
+        completed.Fail(new InvalidOperationException("Late close."));
+        await completed.WaitAsync();
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task NativeCallbackFailureIsObservedOnce()
     {
         int calls = 0;

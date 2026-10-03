@@ -18,6 +18,12 @@ internal sealed class NativeDispatchWork(Action action, CancellationToken cancel
         if (Interlocked.CompareExchange(ref _claimed, 1, 0) == 0) Completion.TrySetCanceled(cancellationToken);
     }
 
+    // An owner that can no longer run queued work fails it instead of abandoning the caller.
+    internal void Fail(Exception error)
+    {
+        if (Interlocked.CompareExchange(ref _claimed, 1, 0) == 0) Completion.TrySetException(error);
+    }
+
     internal void Run()
     {
         if (cancellationToken.IsCancellationRequested) Cancel();

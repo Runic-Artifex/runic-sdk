@@ -29,6 +29,12 @@ public interface IDesktopWindowHost : IAsyncDisposable
     /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
     bool SupportsCloseConfirmation => false;
 
+    /// <summary>
+    /// Whether the host runs <see cref="DesktopWindowHostOptions.DocumentStartScript"/> in every frame's
+    /// document before its page scripts. The surface then withholds session credentials from fetchable scripts.
+    /// </summary>
+    bool SupportsDocumentStartScript => false;
+
     /// <summary>Gets operations supported by the native window.</summary>
     DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
@@ -72,6 +78,12 @@ public sealed record DesktopWindowHostOptions
     public string? ProfilePath { get; init; }
     public string? CustomArguments { get; init; }
     public DesktopPermissionGrant AllowedPermissions { get; init; }
+
+    /// <summary>
+    /// Gets the script a host reporting <see cref="IDesktopWindowHost.SupportsDocumentStartScript"/> must add before
+    /// its first navigation. It carries session credentials: do not log, persist, or expose it to page content.
+    /// </summary>
+    public string? DocumentStartScript { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -96,6 +108,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     public bool IsOpen => _host.IsOpen;
 
     public bool SupportsCloseConfirmation => _host.SupportsCloseConfirmation;
+    public bool SupportsDocumentStartScript => _host.SupportsDocumentStartScript;
     public DesktopWindowCapabilities Capabilities => _host.Capabilities;
     public bool SupportsNativeDispatch => _host is IDesktopNativeDispatchWindowHost { SupportsNativeDispatch: true };
     public bool CheckNativeAccess() => _host is IDesktopNativeDispatchWindowHost native && native.CheckNativeAccess();
@@ -130,6 +143,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             ProfilePath = options.ProfilePath,
             CustomArguments = options.CustomParameters,
             AllowedPermissions = options.AllowedPermissions,
+            DocumentStartScript = options.DocumentStartScript,
         }, cancellationToken);
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>

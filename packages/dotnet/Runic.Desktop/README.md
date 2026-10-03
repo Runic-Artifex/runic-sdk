@@ -18,7 +18,10 @@ and release the body exactly once. Multiple surfaces share one listener by
 default, while `UseIsolatedListener` is available for policy boundaries.
 
 Installed browsers and the built-in WebView2, WKWebView, and WebKitGTK adapters
-remain replaceable through `IDesktopWindowHostFactory`. The internal
+remain replaceable through `IDesktopWindowHostFactory`. A host reporting
+`SupportsDocumentStartScript` must run `DesktopWindowHostOptions.DocumentStartScript`
+in every frame before page scripts; the surface then withholds session
+credentials from its fetchable bootstrap scripts. The internal
 `webui-compat/52f9e75` implementation is retained only as protocol and
 differential evidence; no public `WebUi*` identity is exported.
 

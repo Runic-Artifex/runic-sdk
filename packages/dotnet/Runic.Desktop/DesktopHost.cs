@@ -265,8 +265,8 @@ public sealed class DesktopHost : IAsyncDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(options), "ConnectionTimeout must be positive.");
         }
-        if (options.NetworkExposure == DesktopNetworkExposure.AllInterfaces &&
-            ReferenceEquals(options.Security, DesktopSecurityPolicy.Default))
+        // The application must choose a policy; which instance it chose is irrelevant.
+        if (options.NetworkExposure == DesktopNetworkExposure.AllInterfaces && !options.HasExplicitSecurity)
         {
             throw new ArgumentException(
                 "Non-loopback binding requires an explicit security policy.",

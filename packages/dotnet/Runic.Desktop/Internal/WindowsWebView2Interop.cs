@@ -11,6 +11,7 @@ internal static partial class WindowsWebView2Interop
 {
     internal const int NavigateSlot = 5;
     internal const int PermissionRequestedSlot = 23;
+    internal const int AddScriptToExecuteOnDocumentCreatedSlot = 27;
     internal const int DocumentTitleChangedSlot = 46;
     internal const int DocumentTitleSlot = 48;
     internal const int WindowCloseRequestedSlot = 59;
@@ -21,6 +22,7 @@ internal static partial class WindowsWebView2Interop
     internal const int ControllerWebViewSlot = 25;
     internal const int ControllerBackgroundSlot = 27;
     internal const int EnvironmentCreateControllerSlot = 3;
+    internal const int PermissionUriSlot = 3;
     internal const int PermissionKindSlot = 4;
     internal const int PermissionStateSlot = 7;
     internal const int PermissionHandledSlot = 10;
@@ -103,6 +105,13 @@ internal static partial class WindowsWebView2Interop
             Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, int>)Slot(webView, NavigateSlot))(webView, value));
     }
 
+    internal static unsafe void AddScriptToExecuteOnDocumentCreated(nint webView, string script, nint callback)
+    {
+        fixed (char* value = script)
+            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, nint, int>)Slot(webView, AddScriptToExecuteOnDocumentCreatedSlot))(
+                webView, value, callback));
+    }
+
     internal static unsafe void SetBounds(nint controller, Rectangle bounds)
     {
         var rect = new NativeRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
@@ -178,6 +187,16 @@ internal sealed class WindowsWebView2Controller : IDisposable
     internal bool IsVisible { set => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerVisibleSlot, value ? 1 : 0); }
     internal void MoveFocus() => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerFocusSlot, 0);
     internal void Navigate(string url) => WindowsWebView2Interop.Navigate(_webView, url);
+
+    // WebView2 injects the script only once this asynchronous registration completes,
+    // so the first navigation must wait for it.
+    internal async Task AddDocumentStartScriptAsync(string script)
+    {
+        var completion = new WebViewScriptCompletion();
+        using var handler = new WebViewComReference<IWebViewScriptAdded>(completion);
+        WindowsWebView2Interop.AddScriptToExecuteOnDocumentCreated(_webView, script, handler.Pointer);
+        await completion.Task;
+    }
     internal void SetTransparent()
     {
         var controller2 = WindowsWebView2Interop.Query(_controller, new Guid("c979903e-d4ca-4228-92eb-47ee3fa96eab"));
@@ -186,7 +205,11 @@ internal sealed class WindowsWebView2Controller : IDisposable
         finally { WindowsWebView2Interop.Release(controller2); }
     }
 
-    internal void RegisterEvents(Action<string> titleChanged, Action closeRequested, DesktopPermissionGrant permissions)
+    internal void RegisterEvents(
+        Action<string> titleChanged,
+        Action closeRequested,
+        DesktopPermissionGrant permissions,
+        Uri presentedUrl)
     {
         AddEvent<IWebViewTitleChanged>(WindowsWebView2Interop.DocumentTitleChangedSlot, new WebViewEvent(_ =>
         {
@@ -197,13 +220,22 @@ internal sealed class WindowsWebView2Controller : IDisposable
         AddEvent<IWebViewCloseRequested>(WindowsWebView2Interop.WindowCloseRequestedSlot, new WebViewEvent(_ => closeRequested()));
         AddEvent<IWebViewPermissionRequested>(WindowsWebView2Interop.PermissionRequestedSlot, new WebViewEvent(args =>
         {
+            // Microphone (1) and camera (2), only for the presented origin; the URI names the requesting frame.
             var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.PermissionKindSlot);
-            var allowed = kind is 1 or 2 && (permissions & DesktopPermissionGrant.MediaCapture) != 0;
+            var allowed = kind is 1 or 2 && (permissions & DesktopPermissionGrant.MediaCapture) != 0 &&
+                PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.PermissionUriSlot));
             WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.PermissionStateSlot, allowed ? 1 : 2);
             var args2 = WindowsWebView2Interop.Query(args, new Guid("74d7127f-9de6-4200-8734-42d6fb4ff741"));
             try { WindowsWebView2Interop.SetInteger(args2, WindowsWebView2Interop.PermissionHandledSlot, 1); }
             finally { WindowsWebView2Interop.Release(args2); }
         }));
+    }
+
+    private static string? GetString(nint instance, int slot)
+    {
+        var value = WindowsWebView2Interop.GetPointer(instance, slot);
+        try { return Marshal.PtrToStringUni(value); }
+        finally { Marshal.FreeCoTaskMem(value); }
     }
 
     private void AddEvent<T>(int slot, T handler) where T : class
@@ -273,6 +305,25 @@ internal sealed partial class WebViewCompletion : IWebViewEnvironmentCompleted, 
             WindowsWebView2Interop.AddRef(result);
             if (!_completion.TrySetResult(result)) WindowsWebView2Interop.Release(result);
         }
+        return 0;
+    }
+}
+
+[GeneratedComInterface, Guid("b99369f3-9b11-47b5-bc6f-8e7895fcea17")]
+internal partial interface IWebViewScriptAdded { [PreserveSig] int Invoke(int errorCode, nint id); }
+
+[GeneratedComClass]
+internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
+{
+    private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task Task => _completion.Task;
+    // The identifier is a borrowed string that this host never removes by ID.
+    public int Invoke(int errorCode, nint id)
+    {
+        if (errorCode < 0)
+            _completion.TrySetException(new InvalidOperationException("WebView2 rejected the document-start script.", Marshal.GetExceptionForHR(errorCode)));
+        else
+            _completion.TrySetResult();
         return 0;
     }
 }

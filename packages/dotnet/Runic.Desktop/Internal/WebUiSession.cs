@@ -88,9 +88,14 @@ internal sealed class WebUiSession : IAsyncDisposable
                     continue;
                 }
 
+                // An unauthenticated peer must not reserve a large reassembly buffer;
+                // the bridge sends multi-part packets only after token admission.
                 if (TryGetMultiPacketLength(message.Span, out multiExpected))
                 {
-                    multiPacket = new ArrayBufferWriter<byte>(multiExpected);
+                    if (IsAuthenticated)
+                    {
+                        multiPacket = new ArrayBufferWriter<byte>(Math.Min(multiExpected, ReceiveBufferSize));
+                    }
                     continue;
                 }
 
@@ -601,7 +606,7 @@ internal sealed class WebUiSession : IAsyncDisposable
         for (var index = 0; index < lengthParts.Length; index++)
         {
             if (!int.TryParse(lengthParts[index], NumberStyles.None, CultureInfo.InvariantCulture, out var length) ||
-                length < 0 || payload.Length < length + 1 || payload[length] != 0)
+                length < 0 || length >= payload.Length || payload[length] != 0)
             {
                 arguments = [];
                 return false;

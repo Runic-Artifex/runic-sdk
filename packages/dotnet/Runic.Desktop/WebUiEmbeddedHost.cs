@@ -19,6 +19,9 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move;
 
+    /// <summary>Whether the host runs <see cref="WebUiEmbeddedHostOptions.DocumentStartScript"/> in every document.</summary>
+    bool SupportsDocumentStartScript => false;
+
     bool SupportsNativeDispatch => false;
     bool CheckNativeAccess() => false;
     ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>
@@ -103,4 +106,7 @@ internal sealed record WebUiEmbeddedHostOptions
     public string? CustomParameters { get; init; }
 
     public DesktopPermissionGrant AllowedPermissions { get; init; }
+
+    /// <summary>Credential-bearing script run in every frame before page scripts, when the host supports it.</summary>
+    public string? DocumentStartScript { get; init; }
 }

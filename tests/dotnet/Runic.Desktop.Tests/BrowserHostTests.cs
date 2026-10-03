@@ -155,6 +155,10 @@ public sealed class BrowserHostTests
             Assert.True(firstProcessId > 0);
             Assert.NotNull(firstProfile);
             Assert.True(Directory.Exists(firstProfile));
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(firstProfile));
+            }
             Assert.True(window.IsShown);
 
             await window.ShowInBrowserAsync(Page("updated"), browser.Value, timeout.Token);
