@@ -389,6 +389,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
                         rootPath: $"{model.Name}.{command.Name}.input"))
                 : throw new NotSupportedException($"{command.Name}: unsupported CommunityToolkit or ReactiveUI command shape.");
+        if (plan.ReactiveContract is null && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
+            throw new NotSupportedException($"{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; CommunityToolkit and plain commands have no result value.");
         commandPlans.Add(command, plan);
     }
     var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
@@ -508,6 +510,22 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (plan.ResultGraph is { } result) { result.AppendCSharpCodec(cs, command.Name + "ResultCodec"); cs.AppendLine(); }
     }
     InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
+    if (commandPlans.Values.Any(plan => plan.ToolkitContract is { IsAsync: true }))
+    {
+        cs.AppendLine("    private sealed class ToolkitRunningSubscription : global::System.IDisposable");
+        cs.AppendLine("    {");
+        cs.AppendLine("        private readonly global::System.ComponentModel.INotifyPropertyChanged _command;");
+        cs.AppendLine("        private readonly global::System.ComponentModel.PropertyChangedEventHandler _handler;");
+        cs.AppendLine("        internal ToolkitRunningSubscription(object command, global::System.Action changed)");
+        cs.AppendLine("        {");
+        cs.AppendLine("            _command = (global::System.ComponentModel.INotifyPropertyChanged)command;");
+        cs.AppendLine("            _handler = (_, e) => { if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == \"IsRunning\") changed(); };");
+        cs.AppendLine("            _command.PropertyChanged += _handler;");
+        cs.AppendLine("        }");
+        cs.AppendLine("        public void Dispose() => _command.PropertyChanged -= _handler;");
+        cs.AppendLine("    }");
+        cs.AppendLine();
+    }
     if (hasContent || needsCheckedWriter)
     {
         cs.AppendLine(needsCheckedWriter
@@ -636,24 +654,31 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("        writer.WritePropertyName(\"validation\");");
         cs.AppendLine("        global::Runic.Application.Views.BridgeValidation.Write(writer, vm, DataMetadata);");
     }
+    // Availability without an argument is state; a command with an argument
+    // is queried through can<Name>(argument). Execution state needs no
+    // argument and is written for every asynchronous command that has it.
     foreach (var command in commands)
     {
         var plan = commandPlans[command];
-        if (plan.HasArgument) continue;
         var name = command.Name[..^"Command".Length];
         if (plan.ReactiveContract is { } contract)
         {
-            var commandType = $"global::ReactiveUI.IReactiveCommand<{BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
+            var commandType = $"global::ReactiveUI.IReactiveCommand<{plan.InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
             var helper = contract.Flavor is ReactiveUiFlavor.SystemReactive
                 ? "global::Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution"
                 : "global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution";
             var input = contract.Input.FullName == "System.Reactive.Unit"
                 ? "default(global::System.Reactive.Unit)"
                 : "global::ReactiveUI.Primitives.RxVoid.Default";
-            cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", {helper}.CanExecute(({commandType})vm.{command.Name}, {input}));");
+            if (!plan.HasArgument)
+                cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", {helper}.CanExecute(({commandType})vm.{command.Name}, {input}));");
             cs.AppendLine($"        writer.WriteBoolean(\"is{name}Executing\", {helper}.IsExecuting(({commandType})vm.{command.Name}));");
+            continue;
         }
-        else cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", ((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null));");
+        if (!plan.HasArgument)
+            cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", ((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null));");
+        if (plan.ToolkitContract is { IsAsync: true })
+            cs.AppendLine($"        writer.WriteBoolean(\"is{name}Executing\", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.{command.Name}).IsRunning);");
     }
     if (needsCheckedWriter) cs.AppendLine("        writeFieldMetadata(writer);");
     cs.AppendLine("        writer.WriteEndObject();");
@@ -716,7 +741,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var plan = commandPlans[command];
         if (!plan.HasArgument)
             ts.AppendLine($"  readonly can{command.Name[..^"Command".Length]}: boolean;");
-        if (plan.ReactiveContract is not null)
+        if (plan.HasExecutionState)
             ts.AppendLine($"  readonly is{command.Name[..^"Command".Length]}Executing: boolean;");
     }
     ts.AppendLine("}");
@@ -1358,6 +1383,8 @@ sealed record GeneratedCommandPlan(
     ToolkitCommandContract? ToolkitContract = null)
 {
     internal bool HasArgument => InputGraph is not null || HasStringArgument;
+    /// <summary>True when the snapshot carries is&lt;Name&gt;Executing.</summary>
+    internal bool HasExecutionState => ReactiveContract is not null || ToolkitContract is { IsAsync: true };
     internal static GeneratedCommandPlan Reactive(ReactiveCommandContract contract,
         BridgeTypeGraph? input, BridgeTypeGraph? result) =>
         new(contract.HasInput && contract.Input == typeof(string),
@@ -1376,7 +1403,11 @@ sealed record GeneratedCommandPlan(
                 ? $"ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}" : null;
             var encodeArgument = toolkit.HasInput
                 ? $"EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({toolkitType})argument!))" : null;
-            return ToolkitCommandInspector.DescriptorFor(property, modelType, toolkit, toolkitType, readArgument, encodeArgument);
+            // IsRunning can change without CanExecuteChanged (for example with
+            // concurrent executions), so publish on the command's own change.
+            var subscribeRunning = toolkit.IsAsync
+                ? $"Subscribe: (vm, changed) => new ToolkitRunningSubscription(vm.{property.Name}, changed)" : null;
+            return ToolkitCommandInspector.DescriptorFor(property, modelType, toolkit, toolkitType, readArgument, encodeArgument, subscribeRunning);
         }
         if (IsPlainICommand)
         {

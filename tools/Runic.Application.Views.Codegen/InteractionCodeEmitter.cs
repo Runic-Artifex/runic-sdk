@@ -80,7 +80,7 @@ internal static class InteractionCodeEmitter
             var plan = commandPlans[command];
             var name = command.Name[..^"Command".Length];
             if (!plan.HasArgument) state.Add("can" + name, command.Name + " availability");
-            if (plan.ReactiveContract is not null) state.Add("is" + name + "Executing", command.Name + " execution state");
+            if (plan.HasExecutionState) state.Add("is" + name + "Executing", command.Name + " execution state");
         }
 
         var view = new MemberNames(modelName, "view");

@@ -85,6 +85,8 @@ internal static class ToolkitTypedTests
             "The cancellable Toolkit command was not admitted.");
         var contract = admitted.RootElement.GetProperty("contract").GetString()
             ?? throw new InvalidOperationException("The cancellable Toolkit command did not return its contract.");
+        Require(await PublishedAsync(host.Transport, state => state.GetProperty("isCancelExecuting").GetBoolean()),
+            "A running asynchronous Toolkit command did not publish isCancelExecuting.");
         using var cancellation = JsonDocument.Parse(host.Transport.Call("__runicOperationCancel", new(StringValue: (
             Encode(new { contract, member = "Cancel", requestId })))));
         Require(cancellation.RootElement.GetProperty("kind").GetString() == "cancellation-requested",
@@ -93,6 +95,24 @@ internal static class ToolkitTypedTests
             Encode(new { contract, member = "Cancel", requestId })))));
         Require(terminal.RootElement.GetProperty("kind").GetString() == "cancelled" && model.CancelledCount == 1,
             "A cancelled Toolkit command did not observe command-level cancellation.");
+        using var idle = host.Snapshot();
+        Require(!idle.RootElement.GetProperty("state").GetProperty("isCancelExecuting").GetBoolean(),
+            "A finished asynchronous Toolkit command still reported isCancelExecuting.");
+    }
+
+    private static async Task<bool> PublishedAsync(InMemoryViewTransport transport, Func<JsonElement, bool> predicate)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            foreach (var publication in transport.DrainPublications().Where(publication => publication.Route == "toolkitTyped"))
+            {
+                using var state = JsonDocument.Parse(publication.StateJson);
+                if (predicate(state.RootElement)) return true;
+            }
+            await Task.Delay(10);
+        }
+        return false;
     }
 
     private static async Task StartAndCompleteAsync(RunicWindowTestHost<ToolkitTypedViewModel> host,

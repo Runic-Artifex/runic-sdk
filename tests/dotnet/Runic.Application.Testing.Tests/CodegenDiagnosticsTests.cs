@@ -131,6 +131,16 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class AvailabilityWindow(AvailabilityViewModel model) : RunicWindow<AvailabilityViewModel>(model);
                 """, "generated route name 'CanSave' conflicts between SaveCommand availability query and CanSaveCommand").ConfigureAwait(false);
 
+            // Toolkit commands have no result, so a result cardinality is a mistake.
+            await Reject("ToolkitResult", """
+                public sealed class ResultViewModel : FixtureModel
+                {
+                    [RunicCommandResult(BridgeCommandResultCardinality.Last)]
+                    public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                }
+                public sealed partial class ResultWindow(ResultViewModel model) : RunicWindow<ResultViewModel>(model);
+                """, "LoadCommand: RunicCommandResult selects a ReactiveUI command's result cardinality").ConfigureAwait(false);
+
             // A file that is not a .NET assembly is a diagnostic, not a crash.
             var invalidDirectory = Path.Combine(temporaryRoot, "InvalidImage");
             Directory.CreateDirectory(invalidDirectory);

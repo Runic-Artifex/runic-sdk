@@ -69,7 +69,7 @@ public static class ToolkitCommandInspector
     /// </summary>
     public static string DescriptorFor(PropertyInfo command, string modelType,
         ToolkitCommandContract contract, string? inputType = null,
-        string? readArgument = null, string? encodeArgument = null)
+        string? readArgument = null, string? encodeArgument = null, string? subscribe = null)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelType);
@@ -80,7 +80,7 @@ public static class ToolkitCommandInspector
         var name = contract.Name.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("\"", "\\\"", StringComparison.Ordinal);
         var prefix = $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{command.Name}";
-        var extras = JoinNamedArguments(readArgument, encodeArgument);
+        var extras = JoinNamedArguments(readArgument, encodeArgument, subscribe);
         if (!contract.IsAsync) return prefix + extras + ")";
 
         var commandType = contract.HasInput

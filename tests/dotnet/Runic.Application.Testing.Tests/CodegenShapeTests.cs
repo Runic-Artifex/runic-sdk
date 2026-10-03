@@ -75,6 +75,10 @@ internal static class CodegenShapeTests
         using var model = new NullableReactiveViewModel();
         using var host = new RunicWindowTestHost<NullableReactiveViewModel>(model, "nullableReactive",
             (transport, content, vm) => new NullableReactiveBridge(transport, vm, content: content), new TestViewLocator());
+        using (var snapshot = host.Snapshot())
+            Require(snapshot.RootElement.GetProperty("state").TryGetProperty("isEchoExecuting", out var executing)
+                && executing.ValueKind == JsonValueKind.False,
+                "A ReactiveUI command with an argument did not write the isEchoExecuting field its client declares.");
         using var accepted = JsonDocument.Parse(host.Transport.Call("nullableReactiveStartEcho",
             new(StringValue: "{\"requestId\":\"echo-null\",\"input\":null}")));
         Require(accepted.RootElement.GetProperty("kind").GetString() is "accepted" or "duplicate",
