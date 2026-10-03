@@ -21,6 +21,8 @@ public static class ReactiveCommandInspector
             && candidate.GetGenericTypeDefinition().FullName is "ReactiveUI.IReactiveCommand`2"
                 or "ReactiveUI.Reactive.IReactiveCommand`2");
         if (contract is null) return null;
+        if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
+            throw new NotSupportedException($"{command.Name}: Bridge commands must end with Command.");
         var arguments = contract.GenericTypeArguments;
         var flavor = contract.GetGenericTypeDefinition().FullName == "ReactiveUI.Reactive.IReactiveCommand`2"
             ? ReactiveUiFlavor.SystemReactive : declaredFlavor;

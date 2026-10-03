@@ -28,7 +28,10 @@ release runtime serialization does not reflect over ViewModel members. The
 first-window package is exercised through Native AOT and Chromium in CI.
 `RUNICBRIDGE002` rejects a
 selected CommunityToolkit `ObservableValidator` ViewModel in Native AOT until
-its validation behavior is verified.
+its validation behavior is verified. The generator reports every ViewModel's
+first problem in one build: `RUNICBRIDGE003` is an unsupported value type,
+`RUNICBRIDGE004` a generated name collision, `RUNICBRIDGE005` an assembly that
+could not be loaded, and `RUNICBRIDGE001` any other unsupported shape.
 
 The [first-window](../../../examples/first-window/README.md),
 [Toolkit Notes](../../../examples/notes-view-first/README.md), and

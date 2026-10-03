@@ -49,7 +49,7 @@ internal static class CodegenDiagnosticsTests
             await Reject("HashSetValue", """
                 public sealed class SetViewModel : FixtureModel { public HashSet<string> Tags { get; } = []; }
                 public sealed partial class SetWindow(SetViewModel model) : RunicWindow<SetViewModel>(model);
-                """, "System.Collections.Generic.HashSet`1", "is not a supported bridge collection").ConfigureAwait(false);
+                """, "error RUNICBRIDGE003:", "System.Collections.Generic.HashSet`1", "is not a supported bridge collection").ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
                 public sealed partial class ObjectWindow(ObjectViewModel model) : RunicWindow<ObjectViewModel>(model);
@@ -81,7 +81,20 @@ internal static class CodegenDiagnosticsTests
                     public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
                 }
                 public sealed partial class AliasWindow(AliasViewModel model) : RunicWindow<AliasViewModel>(model);
-                """, "generated state name 'canSave' conflicts between Ready and SaveCommand availability").ConfigureAwait(false);
+                """, "error RUNICBRIDGE004:", "generated state name 'canSave' conflicts between Ready and SaveCommand availability").ConfigureAwait(false);
+
+            // Every ViewModel's problem is reported in one run.
+            await Reject("SeveralErrors", """
+                public sealed class FirstViewModel : FixtureModel { public HashSet<int> Values { get; } = []; }
+                public sealed class SecondViewModel : FixtureModel { public object Value { get; } = new(); }
+                public sealed partial class FirstWindow(FirstViewModel model) : RunicWindow<FirstViewModel>(model);
+                public sealed partial class SecondWindow(SecondViewModel model) : RunicWindow<SecondViewModel>(model);
+                """, "FirstViewModel.Values", "SecondViewModel.Value").ConfigureAwait(false);
+            // A short ReactiveUI command name was sliced before its suffix check.
+            await Reject("ShortReactiveCommand", """
+                public sealed class GoViewModel : FixtureModel { public ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, ReactiveUI.Primitives.RxVoid> Go { get; } = null!; }
+                public sealed partial class GoWindow(GoViewModel model) : RunicWindow<GoViewModel>(model);
+                """, "Go: Bridge commands must end with Command.").ConfigureAwait(false);
             await Reject("ErrorsCollision", """
                 public sealed class ErrorsViewModel : FixtureModel, INotifyDataErrorInfo
                 {
@@ -117,6 +130,15 @@ internal static class CodegenDiagnosticsTests
                 }
                 public sealed partial class AvailabilityWindow(AvailabilityViewModel model) : RunicWindow<AvailabilityViewModel>(model);
                 """, "generated route name 'CanSave' conflicts between SaveCommand availability query and CanSaveCommand").ConfigureAwait(false);
+
+            // A file that is not a .NET assembly is a diagnostic, not a crash.
+            var invalidDirectory = Path.Combine(temporaryRoot, "InvalidImage");
+            Directory.CreateDirectory(invalidDirectory);
+            var invalidAssembly = Path.Combine(invalidDirectory, "NotAnAssembly.dll");
+            File.WriteAllText(invalidAssembly, "not a portable executable");
+            var (invalidExit, invalidOutput) = await RunProcessAsync(generator, invalidAssembly, invalidDirectory).ConfigureAwait(false);
+            Require(invalidExit != 0 && invalidOutput.Contains("error RUNICBRIDGE005:", StringComparison.Ordinal),
+                $"An unloadable model assembly was not reported as RUNICBRIDGE005.\n{invalidOutput}");
 
             // A ViewModel with interactions but no content still needs a
             // content session, so DI must not offer a transport-only factory.
@@ -176,7 +198,13 @@ internal static class CodegenDiagnosticsTests
         foreach (var reference in compilation.GetUsedAssemblyReferences().OfType<PortableExecutableReference>())
             if (reference.FilePath is { } path && Path.GetDirectoryName(path) == Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory))
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)), overwrite: true);
+        var (exitCode, text) = await RunProcessAsync(generator, assembly, directory, options).ConfigureAwait(false);
+        return (exitCode, text, directory);
+    }
 
+    private static async Task<(int ExitCode, string Output)> RunProcessAsync(string generator, string assembly,
+        string directory, params string[] options)
+    {
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo("dotnet")
@@ -195,12 +223,12 @@ internal static class CodegenDiagnosticsTests
         catch (OperationCanceledException)
         {
             process.Kill(entireProcessTree: true);
-            throw new InvalidOperationException($"{name}: the generator did not exit within 30 seconds.");
+            throw new InvalidOperationException($"{assembly}: the generator did not exit within 30 seconds.");
         }
         var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
         Require(!text.Contains("Unhandled exception", StringComparison.Ordinal),
-            $"{name}: the generator crashed instead of reporting a diagnostic.\n{text}");
-        return (process.ExitCode, text, directory);
+            $"{assembly}: the generator crashed instead of reporting a diagnostic.\n{text}");
+        return (process.ExitCode, text);
     }
 
     private static string FindWorkspaceRoot()

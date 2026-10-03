@@ -57,28 +57,36 @@ try
         var viewTypes = new Dictionary<Type, List<Type>>();
         foreach (var type in assembly.GetTypes())
         {
-            if (type.IsAbstract) continue;
-            var model = ViewModelFor(type);
-            if (model is null) continue;
-            if (!type.IsClass || !type.IsPublic || type.IsNested)
-                throw new InvalidOperationException($"{type.FullName}: a Runic Window or View must be a public, top-level concrete class.");
-            if (!viewTypes.TryGetValue(model, out var variants))
-                viewTypes.Add(model, variants = []);
-            var contract = ContractFor(type);
-            if (variants.Any(existing => string.Equals(ContractFor(existing), contract, StringComparison.OrdinalIgnoreCase)))
-                throw new InvalidOperationException($"{model.FullName}: duplicate Runic View contract '{contract ?? "default"}'.");
-            variants.Add(type);
+            try
+            {
+                if (type.IsAbstract) continue;
+                var model = ViewModelFor(type);
+                if (model is null) continue;
+                if (!type.IsClass || !type.IsPublic || type.IsNested)
+                    throw new InvalidOperationException($"{type.FullName}: a Runic Window or View must be a public, top-level concrete class.");
+                if (!viewTypes.TryGetValue(model, out var variants))
+                    viewTypes.Add(model, variants = []);
+                var contract = ContractFor(type);
+                if (variants.Any(existing => string.Equals(ContractFor(existing), contract, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException($"{model.FullName}: duplicate Runic View contract '{contract ?? "default"}'.");
+                variants.Add(type);
+            }
+            catch (Exception error) when (Diagnostics.IsReportable(error))
+            {
+                Diagnostics.Report(error);
+            }
         }
+        if (Diagnostics.HasErrors) return;
         var models = viewTypes.Keys.Select(type => (Model: type, Name: PublicName(type))).ToArray();
         if (models.Length == 0)
             throw new InvalidOperationException($"{assembly.GetName().Name}: no Runic Window/View classes found.");
-        if (models.Select(entry => entry.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != models.Length)
-            throw new InvalidOperationException("Bridge ViewModel names must be unique within an application.");
+        foreach (var group in models.GroupBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+            throw new BridgeNameCollisionException($"Bridge ViewModel names must be unique within an application: {string.Join(" and ", group.Select(entry => entry.Model.FullName))} both use '{group.Key}'.");
         var presentationKinds = models.SelectMany(entry => viewTypes.TryGetValue(entry.Model, out var variants)
             ? variants.Select(view => PageKind(entry.Name, ContractFor(view)))
             : [PageKind(entry.Name, null)]).ToArray();
-        if (presentationKinds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != presentationKinds.Length)
-            throw new InvalidOperationException("Bridge presentation kinds must be unique across ViewModels and View contracts.");
+        foreach (var group in presentationKinds.GroupBy(kind => kind, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+            throw new BridgeNameCollisionException($"Bridge presentation kinds must be unique across ViewModels and View contracts: '{group.Key}' is used more than once.");
         if (aot)
         {
             var unsupported = models.FirstOrDefault(entry => ToolkitCommandInspector.HasUnsupportedAotValidation(entry.Model));
@@ -112,13 +120,23 @@ try
         var contentRequired = new HashSet<Type>();
         foreach (var entry in models)
         {
-            if (GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
-                Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, registerGlobally, models, viewTypes))
-                contentRequired.Add(entry.Model);
-            if (viewTypes.TryGetValue(entry.Model, out var views))
-                foreach (var view in views)
-                    GenerateViewPartial(Path.Combine(positional[2], ViewFileName(view)), view, entry.Model, entry.Name);
+            // Report every ViewModel's problem in one build rather than one
+            // ViewModel per build.
+            try
+            {
+                if (GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
+                    Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, registerGlobally, models, viewTypes))
+                    contentRequired.Add(entry.Model);
+                if (viewTypes.TryGetValue(entry.Model, out var views))
+                    foreach (var view in views)
+                        GenerateViewPartial(Path.Combine(positional[2], ViewFileName(view)), view, entry.Model, entry.Name);
+            }
+            catch (Exception error) when (Diagnostics.IsReportable(error))
+            {
+                Diagnostics.Report(error, entry.Model);
+            }
         }
+        if (Diagnostics.HasErrors) return;
         var compositionPath = Path.Combine(positional[2], "RunicBridgeComposition.g.cs");
         if (compositionType is null)
         {
@@ -135,15 +153,9 @@ try
         GenerateOne(model, args[2], args[3], args.Length == 5 ? args[4] : PublicName(model));
     }
 }
-catch (AotValidationException error)
+catch (Exception error) when (Diagnostics.IsReportable(error))
 {
-    Console.Error.WriteLine($"error RUNICBRIDGE002: {error.Message}");
-    Environment.ExitCode = 1;
-}
-catch (Exception error) when (error is ArgumentException or InvalidOperationException or NotSupportedException or FileNotFoundException or TypeLoadException)
-{
-    Console.Error.WriteLine($"error RUNICBRIDGE001: {error.Message}");
-    Environment.ExitCode = 1;
+    Diagnostics.Report(error);
 }
 
 static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal)
@@ -152,6 +164,16 @@ static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringC
 static string BridgeFileName(Type model) => $"{model.FullName}.Bridge.g.cs";
 
 static string ViewFileName(Type view) => $"{view.FullName}.View.g.cs";
+
+// The generated bridge is a sibling of its ViewModel, which may be in the
+// global namespace.
+static string BridgeTypeName(Type model, string shortName) =>
+    $"global::{(model.Namespace is null ? "" : model.Namespace + ".")}{shortName}Bridge";
+
+static void AppendNamespace(StringBuilder source, string? ns)
+{
+    if (ns is not null) source.AppendLine($"namespace {ns};");
+}
 
 static Type? ViewModelFor(Type view)
 {
@@ -185,18 +207,18 @@ static int InheritanceDepth(Type type)
 
 static void GenerateViewPartial(string path, Type view, Type model, string shortName)
 {
-    if (view.ContainsGenericParameters || view.Namespace is null || model.Namespace is null)
+    if (view.ContainsGenericParameters)
         throw new InvalidOperationException($"{view.FullName}: a Runic View must be a closed, named class.");
     var cs = new StringBuilder();
     cs.AppendLine("// <auto-generated />");
     cs.AppendLine("#nullable enable");
-    cs.AppendLine($"namespace {view.Namespace};");
+    AppendNamespace(cs, view.Namespace);
     cs.AppendLine($"public {(view.IsSealed ? "sealed " : "")}partial class {view.Name}");
     cs.AppendLine("{");
     cs.AppendLine("    internal global::System.IDisposable AttachRunicBridge(");
     cs.AppendLine("        global::Runic.Application.Views.IBridgeTransport transport, string route,");
     cs.AppendLine("        global::Runic.Application.Views.WindowContentSession content) =>");
-    cs.AppendLine($"        new global::{model.Namespace}.{shortName}Bridge(transport,");
+    cs.AppendLine($"        new {BridgeTypeName(model, shortName)}(transport,");
     cs.AppendLine($"            DataContext ?? throw new global::System.InvalidOperationException(\"{view.Name} has no DataContext.\"),");
     cs.AppendLine("            route, content);");
     cs.AppendLine("}");
@@ -218,11 +240,11 @@ static void GenerateCompositionRegistration(string path, string compositionType,
     cs.AppendLine("{");
     cs.AppendLine("    public static IServiceCollection AddRunicBridges(this IServiceCollection services)");
     cs.AppendLine("    {");
-    cs.AppendLine("        ArgumentNullException.ThrowIfNull(services);");
+    cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(services);");
     foreach (var (model, name) in models)
     {
         var modelType = $"global::{model.FullName}";
-        var bridgeType = $"global::{model.Namespace}.{name}Bridge";
+        var bridgeType = BridgeTypeName(model, name);
         // GenerateOne decided whether the bridge constructor requires a content
         // session (ViewModel content or interactions). Only offer the
         // transport-only factory when it can actually construct the bridge.
@@ -404,7 +426,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("// <auto-generated />");
     cs.AppendLine("#nullable enable");
     cs.AppendLine("using Runic.Application.Views;");
-    cs.AppendLine($"namespace {model.Namespace};");
+    AppendNamespace(cs, model.Namespace);
     cs.AppendLine($"internal sealed class {shortName}Bridge : ViewModelBridge<{fullType}>");
     cs.AppendLine("{");
     if (interactions.Length > 0)
@@ -519,7 +541,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             foreach (var (pageModel, pageName) in pageModels)
             {
                 var pageType = $"global::{pageModel.FullName}";
-                var bridgeType = $"global::{pageModel.Namespace}.{pageName}Bridge";
+                var bridgeType = BridgeTypeName(pageModel, pageName);
                 Type? selectedView = null;
                 var contract = ContractFor(property);
                 if (viewTypes is not null && viewTypes.TryGetValue(pageModel, out var variants))
@@ -566,7 +588,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             foreach (var (pageModel, pageName) in collectionModels)
             {
                 var pageType = $"global::{pageModel.FullName}";
-                var bridgeType = $"global::{pageModel.Namespace}.{pageName}Bridge";
+                var bridgeType = BridgeTypeName(pageModel, pageName);
                 var contract = ContractFor(property);
                 Type? selectedView = null;
                 if (viewTypes is not null && viewTypes.TryGetValue(pageModel, out var variants))
@@ -1268,6 +1290,43 @@ static void WriteIfChanged(string path, string content)
 sealed class AotValidationException(string message) : Exception(message);
 
 sealed class BridgeNameCollisionException(string message) : NotSupportedException(message);
+
+/// <summary>
+/// Writes MSBuild-recognised errors. Codes: RUNICBRIDGE001 unsupported model
+/// or option, 002 Native AOT validation, 003 unsupported bridge value type,
+/// 004 generated name collision, 005 the model assembly could not be loaded.
+/// </summary>
+static class Diagnostics
+{
+    internal static bool HasErrors { get; private set; }
+
+    internal static bool IsReportable(Exception error) => error is ArgumentException or InvalidOperationException
+        or NotSupportedException or IOException or UnauthorizedAccessException or BadImageFormatException
+        or TypeLoadException or ReflectionTypeLoadException;
+
+    internal static void Report(Exception error, Type? model = null)
+    {
+        HasErrors = true;
+        Environment.ExitCode = 1;
+        var code = error switch
+        {
+            AotValidationException => "RUNICBRIDGE002",
+            BridgeTypeGraphException => "RUNICBRIDGE003",
+            BridgeNameCollisionException => "RUNICBRIDGE004",
+            ReflectionTypeLoadException or FileNotFoundException or FileLoadException or BadImageFormatException
+                or TypeLoadException => "RUNICBRIDGE005",
+            _ => "RUNICBRIDGE001",
+        };
+        var message = error is ReflectionTypeLoadException load
+            ? $"{error.Message} {string.Join(" ", load.LoaderExceptions.OfType<Exception>().Select(inner => inner.Message).Distinct())}"
+            : error.Message;
+        // Reflection has no source location; name the ViewModel instead.
+        if (model is not null && !message.StartsWith(model.Name, StringComparison.Ordinal)
+            && !message.StartsWith(model.FullName ?? model.Name, StringComparison.Ordinal))
+            message = $"{model.FullName}: {message}";
+        Console.Error.WriteLine($"error {code}: {message}");
+    }
+}
 
 static class GeneratedOutput
 {
