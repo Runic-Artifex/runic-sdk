@@ -81,6 +81,28 @@ internal static class OperationResultTests
         await registry.WaitForTerminalAsync(live.RequestId);
 
         await AssertStreamRetentionBudgetsAsync();
+        await AssertDefaultStreamsShareTheWindowBudgetAsync();
+    }
+
+    // A generated stream command uses the default bound. One running command
+    // must not reserve the whole window's running-stream budget.
+    private static async Task AssertDefaultStreamsShareTheWindowBudgetAsync()
+    {
+        using var window = new BridgeOperationRegistry("default-stream-budget");
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var admissions = Enumerable.Range(0, 5).Select(index => window.Accept(
+            new BridgeOperationRequest("contract", "Progress", $"default-stream-{index}", "default"), () => true,
+            new BridgeOperationStream(), async (_, _) =>
+            {
+                await release.Task.ConfigureAwait(false);
+                return BridgeOperationResult.None;
+            })).ToArray();
+        Require(admissions.Take(4).All(admission => admission.Kind is BridgeOperationAdmissionKind.Accepted),
+            "Concurrent default streams exhausted the window's running-stream budget.");
+        Require(admissions[4].Kind is BridgeOperationAdmissionKind.Rejected && admissions[4].Reason == "stream-capacity",
+            "The running-stream budget did not bound concurrent default streams.");
+        release.SetResult();
+        foreach (var admission in admissions.Take(4)) await window.WaitForTerminalAsync(admission.RequestId);
     }
 
     private static async Task AssertStreamRetentionBudgetsAsync()
