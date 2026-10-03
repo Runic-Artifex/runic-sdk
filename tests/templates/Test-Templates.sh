@@ -15,8 +15,19 @@ repository_root="$(cd "$script_directory/../.." && pwd)"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
 template_tmp="$(mktemp -d /tmp/runic-views-templates.XXXXXXXXXX)"
 registry_pid=""
+# Process group of a running serve-only application or dotnet runic dev.
+served_group=""
+
+stop_served() {
+  if [[ -n "$served_group" ]]; then
+    kill -TERM -- "-$served_group" 2>/dev/null || true
+    wait "$served_group" 2>/dev/null || true
+    served_group=""
+  fi
+}
 
 cleanup() {
+  stop_served
   if [[ -n "$registry_pid" ]]; then
     kill "$registry_pid" 2>/dev/null || true
     wait "$registry_pid" 2>/dev/null || true
@@ -48,6 +59,27 @@ if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
   tool_source_options=()
 elif [[ -n "${RUNIC_VERIFICATION_FEED:-}" ]]; then
   restore_sources=(--source "$RUNIC_VERIFICATION_FEED" "${restore_sources[@]}")
+fi
+
+# The documented commands take no source options. A NuGet.config above the
+# generated projects supplies the candidate feed to dotnet tool restore,
+# dotnet runic dev, and dotnet build exactly as a user's configuration would.
+if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
+  cp -- "$NUGET_CONFIG_FILE" "$template_tmp/NuGet.config"
+else
+  {
+    echo '<?xml version="1.0" encoding="utf-8"?>'
+    echo '<configuration>'
+    echo '  <packageSources>'
+    echo '    <clear />'
+    if [[ -n "${RUNIC_VERIFICATION_FEED:-}" && "$(realpath "$RUNIC_VERIFICATION_FEED")" != "$package_directory" ]]; then
+      echo "    <add key=\"runic-verification\" value=\"$RUNIC_VERIFICATION_FEED\" />"
+    fi
+    echo "    <add key=\"runic-candidate\" value=\"$package_directory\" />"
+    echo '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />'
+    echo '  </packageSources>'
+    echo '</configuration>'
+  } > "$template_tmp/NuGet.config"
 fi
 
 dotnet new install "$template_package" --force
@@ -107,16 +139,6 @@ configure_candidate_registry() {
   fi
 }
 
-frontend_install() {
-  local manager="$1"
-  local frontend="$2"
-  case "$manager" in
-    npm) (cd "$frontend" && npm ci --no-audit --no-fund) ;;
-    pnpm) (cd "$frontend" && pnpm install --frozen-lockfile --ignore-scripts) ;;
-    bun) (cd "$frontend" && bun install --frozen-lockfile) ;;
-  esac
-}
-
 frontend_script() {
   local manager="$1"
   local frontend="$2"
@@ -126,6 +148,46 @@ frontend_script() {
     pnpm) (cd "$frontend" && pnpm run "$script") ;;
     bun) (cd "$frontend" && bun run --bun "$script") ;;
   esac
+}
+
+# Starts a command in its own process group with RUNIC_APPLICATION_SERVE_ONLY,
+# waits for the application's URL, and fetches the served document. The
+# development document points at the frontend development server; a production
+# document does not.
+serve_and_fetch() {
+  local directory="$1"
+  local log="$2"
+  local document="$3"
+  local expect_development="$4"
+  shift 4
+  setsid env -C "$directory" RUNIC_APPLICATION_SERVE_ONLY=1 "$@" > "$log" 2>&1 < /dev/null &
+  served_group=$!
+  local url=""
+  for _ in $(seq 1 600); do
+    url="$(grep -o 'RUNIC_APPLICATION_URL=[^[:space:]]*' "$log" | head -n 1 | cut -d= -f2- || true)"
+    [[ -n "$url" ]] && break
+    if ! kill -0 "$served_group" 2>/dev/null; then break; fi
+    sleep 0.5
+  done
+  if [[ -z "$url" ]]; then
+    echo "The application did not report its URL: $*" >&2
+    tail -n 80 "$log" >&2
+    exit 1
+  fi
+  # WebUI admits one client and identifies it by the cookie set on the first
+  # response, so later requests must send it back.
+  local cookies="$document.cookies"
+  curl -fsS -c "$cookies" -b "$cookies" "$url/index.html" > "$document"
+  curl -fsS -c "$cookies" -b "$cookies" "$url/runic-cswebui.js" > /dev/null
+  if [[ "$expect_development" == true ]]; then
+    grep -Fq 'http://127.0.0.1:' "$document"
+  else
+    if grep -Fq 'http://127.0.0.1:' "$document"; then
+      echo "The production build served a development document." >&2
+      exit 1
+    fi
+  fi
+  stop_served
 }
 
 verify_template() {
@@ -159,39 +221,55 @@ verify_template() {
     [[ "$other_lock" == "$selected_lock" ]] || test ! -f "$output/Frontend/$other_lock"
   done
   grep -Fq "\"packageManager\": \"$manager@$expected_manager_version\"" "$output/Frontend/package.json"
+  local package_name
+  package_name="$(sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
+  grep -Fq "\"name\": \"$package_name\"" "$output/Frontend/package.json"
   grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
   grep -Fq 'Runic.Application.CsWebUi' "$output/$project_name.csproj"
+  if grep -Eq 'RunicBridgeBootstrap|RunicApplicationFrontend|RunicBridgeComposition' "$output/$project_name.csproj"; then
+    echo "The generated $framework project declares settings the Runic packages default." >&2
+    exit 1
+  fi
   if rg -ni 'Runic\.Application\.Bridge|Runic\.Desktop|application-bridge|@runic-artifex/(views-angular|views-svelte|desktop)' "$output"; then
     echo "The generated $framework template contains a removed Bridge or Desktop package." >&2
     exit 1
   fi
-
-  dotnet tool restore \
-    --tool-manifest "$output/.config/dotnet-tools.json" \
-    "${tool_source_options[@]}" \
-    "${tool_restore_options[@]}"
   configure_candidate_registry "$framework" "$manager" "$output"
-  frontend_install "$manager" "$output/Frontend"
-  dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
 
+  # The documented first run, verbatim: dotnet tool restore, then
+  # dotnet runic dev. doctor must already work before anything is restored.
+  (cd "$output" && dotnet tool restore)
+  if ! (cd "$output" && dotnet runic doctor) > "$output/doctor-unrestored.txt"; then
+    cat "$output/doctor-unrestored.txt" >&2
+    exit 1
+  fi
+  grep -Fq 'WARN compatibility-set: The project has not been restored yet' "$output/doctor-unrestored.txt"
+  if [[ "$manager" == npm ]]; then
+    serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
+      dotnet runic dev
+  fi
+
+  dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
   "$tool_directory/dotnet-runic" dev \
     --project "$output/$project_name.csproj" \
     --dry-run > "$output/dotnet-runic-dev-plan.txt"
   grep -Fq 'Runic Views Window project' "$output/dotnet-runic-dev-plan.txt"
 
-  if ! (cd "$output" && dotnet runic doctor --project "$output/$project_name.csproj") > "$output/doctor.txt"; then
+  if ! (cd "$output" && dotnet runic doctor) > "$output/doctor.txt"; then
     cat "$output/doctor.txt" >&2
     exit 1
   fi
   grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
+  grep -Fq "PASS compatibility-set:" "$output/doctor.txt"
 
+  # A plain build installs the frontend packages with the selected manager.
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
+  test -d "$output/Frontend/node_modules"
   test -f "$output/Frontend/dist/index.html"
+  test -f "$output/Frontend/src/generated/workspace.ts"
   frontend_script "$manager" "$output/Frontend" typecheck
-  if [[ "$manager" == npm ]]; then
-    dotnet run --project "$output/$project_name.csproj" \
-      --configuration Release --no-build -- --smoke-test | grep -Fq 'RUNIC_VIEWS_TEMPLATE_OK|window|view|command'
-  fi
+  serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
+    dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   printf 'TEMPLATE_OK|%s|%s\n' "$framework" "$manager"
 }
 
