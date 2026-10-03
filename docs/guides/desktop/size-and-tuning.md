@@ -92,11 +92,11 @@ A Linux x64 package-consumer measurement (2026-09-07, .NET SDK 10.0.302) publish
 the same customer editor under all three profiles; each passed the same browser
 and lifecycle checks:
 
-| Host / profile | Executable | Executable + required native libraries | Complete distribution | ZIP |
-| --- | ---: | ---: | ---: | ---: |
-| desktop / default | 10.42 MiB | 10.42 MiB | 11.16 MiB | 5.03 MiB |
-| desktop / minimal | 9.42 MiB | 9.42 MiB | 10.16 MiB | 4.57 MiB |
-| cswebui / default | 5.16 MiB | 5.47 MiB | 5.47 MiB | 2.64 MiB |
+| Host / profile    | Executable | Executable + required native libraries | Complete distribution |      ZIP |
+| ----------------- | ---------: | -------------------------------------: | --------------------: | -------: |
+| desktop / default |  10.42 MiB |                              10.42 MiB |             11.16 MiB | 5.03 MiB |
+| desktop / minimal |   9.42 MiB |                               9.42 MiB |             10.16 MiB | 4.57 MiB |
+| cswebui / default |   5.16 MiB |                               5.47 MiB |              5.47 MiB | 2.64 MiB |
 
 Minimal Desktop reduced its executable by about 9.6%. These application-specific
 results are separate from the older minimal sample's 8.25 MiB Desktop measurement.
