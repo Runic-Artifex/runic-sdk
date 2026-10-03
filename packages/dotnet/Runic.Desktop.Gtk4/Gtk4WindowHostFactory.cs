@@ -262,6 +262,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     private int _forceClose;
     private int _dispatcherLease;
     private int _cleanupQueued;
+    private int _createStarted;
     private NativeObjectFinalizationProbe? _finalization;
 
     public event EventHandler? Closed;
@@ -310,7 +311,12 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         }
         catch
         {
-            await _closed.Task.ConfigureAwait(false);
+            // Cancellation can withdraw the queued creation before it runs. Only a
+            // started creation has native objects whose release completes _closed.
+            if (Volatile.Read(ref _createStarted) != 0)
+            {
+                await _closed.Task.ConfigureAwait(false);
+            }
             await ReleaseDispatcherAsync().ConfigureAwait(false);
             throw;
         }
@@ -419,25 +425,28 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
 
     private void Create(Uri url)
     {
-        var options = _options ?? throw new InvalidOperationException("The GTK 4 host has no window options.");
-        var application = Gtk4Dispatcher.Instance.Application;
-        var window = Gtk.ApplicationWindow.New(application);
-        // Gtk.Application initializes GTK's module graph, but WebKit is an
-        // independent GirCore module and must register its native resolver
-        // before WebView.New reaches a generated P/Invoke.
-        WebKit.Module.Initialize();
-        // Do not bind the view to WebKit's process-global default context. Its
-        // process cache is released during libc shutdown, after the managed
-        // window lifetime has ended. A per-view context is reference-counted by
-        // the WebView and is disposed on the GTK dispatcher with that view.
-        using var webContext = WebContext.New();
-        using var contextValue = new GObject.Value(webContext);
-        var webView = WebView.NewWithProperties(
-            [new GObject.ConstructArgument("web-context", contextValue)]);
+        Volatile.Write(ref _createStarted, 1);
+        Gtk.ApplicationWindow? window = null;
+        WebView? webView = null;
         NativeObjectFinalizationProbe? finalization = null;
         var registered = false;
         try
         {
+            var options = _options ?? throw new InvalidOperationException("The GTK 4 host has no window options.");
+            var application = Gtk4Dispatcher.Instance.Application;
+            window = Gtk.ApplicationWindow.New(application);
+            // Gtk.Application initializes GTK's module graph, but WebKit is an
+            // independent GirCore module and must register its native resolver
+            // before WebView.New reaches a generated P/Invoke.
+            WebKit.Module.Initialize();
+            // Do not bind the view to WebKit's process-global default context. Its
+            // process cache is released during libc shutdown, after the managed
+            // window lifetime has ended. A per-view context is reference-counted by
+            // the WebView and is disposed on the GTK dispatcher with that view.
+            using var webContext = WebContext.New();
+            using var contextValue = new GObject.Value(webContext);
+            webView = WebView.NewWithProperties(
+                [new GObject.ConstructArgument("web-context", contextValue)]);
             window.Title = "Runic Desktop";
             window.SetDefaultSize(checked((int)options.Width), checked((int)options.Height));
             window.SetResizable(options.Resizable);
@@ -495,12 +504,18 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             {
                 Gtk4Application.Unregister(this);
             }
-            webView.OnPermissionRequest -= OnPermissionRequest;
-            window.OnCloseRequest -= OnCloseRequest;
-            window.OnDestroy -= OnDestroyed;
-            window.Destroy();
-            webView.Dispose();
-            window.Dispose();
+            if (webView is not null)
+            {
+                webView.OnPermissionRequest -= OnPermissionRequest;
+            }
+            if (window is not null)
+            {
+                window.OnCloseRequest -= OnCloseRequest;
+                window.OnDestroy -= OnDestroyed;
+                window.Destroy();
+            }
+            webView?.Dispose();
+            window?.Dispose();
             _window = null;
             _webView = null;
             Volatile.Write(ref _isOpen, 0);

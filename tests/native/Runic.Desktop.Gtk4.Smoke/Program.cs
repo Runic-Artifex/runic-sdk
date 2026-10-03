@@ -173,6 +173,7 @@ static async Task RunAsync()
     await host.ToggleMaximizedAsync();
     await host.SetVisibleAsync(false);
     await host.NavigateAsync(new Uri("about:blank#reloaded"));
+    await ExerciseCancelledQueuedOpenAsync(factory, (IDesktopNativeDispatchWindowHost)host);
     Console.WriteLine("GTK4 smoke: closing window.");
     await host.CloseAsync();
     if (host.IsOpen || host.NativeHandle != 0)
@@ -181,6 +182,44 @@ static async Task RunAsync()
     }
 
     await ExerciseDesktopHostAsync(factory);
+}
+
+[SupportedOSPlatform("linux")]
+static async Task ExerciseCancelledQueuedOpenAsync(Gtk4WindowHostFactory factory, IDesktopNativeDispatchWindowHost owner)
+{
+    Console.WriteLine("GTK4 smoke: cancelling a queued window creation.");
+    using var release = new ManualResetEventSlim();
+    var blocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var busy = owner.DispatchNativeAsync(() =>
+    {
+        blocked.SetResult();
+        release.Wait();
+    }, CancellationToken.None).AsTask();
+    await blocked.Task;
+    try
+    {
+        await using var queued = factory.Create();
+        using var cancellation = new CancellationTokenSource();
+        var open = queued.OpenAsync(new Uri("about:blank"), new DesktopWindowHostOptions(), cancellation.Token).AsTask();
+        cancellation.Cancel();
+        try
+        {
+            await open.WaitAsync(TimeSpan.FromSeconds(5));
+            throw new InvalidOperationException("A cancelled GTK 4 window creation opened a window.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        if (queued.IsOpen)
+        {
+            throw new InvalidOperationException("A cancelled GTK 4 window creation left a window open.");
+        }
+    }
+    finally
+    {
+        release.Set();
+        await busy;
+    }
 }
 
 [SupportedOSPlatform("linux")]
