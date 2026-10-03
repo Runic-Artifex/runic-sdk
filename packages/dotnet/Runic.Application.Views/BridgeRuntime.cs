@@ -838,13 +838,16 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     Type IHotReloadableBridge.ContractModelType => typeof(T);
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2087",
+        Justification = "Hot Reload is unavailable in trimmed applications; MetadataUpdater.IsSupported guards the reflection.")]
     string? IHotReloadableBridge.ContractMismatch()
     {
-#if DEBUG
+        // The SDK ships as a Release library, so this follows whether the
+        // application process can apply edits rather than how the SDK was built.
+        if (!System.Reflection.Metadata.MetadataUpdater.IsSupported) return null;
         if (_contractFingerprint is not null &&
             !string.Equals(_contractFingerprint, BridgeContractShape.Compute(typeof(T)), StringComparison.Ordinal))
             return $"{typeof(T).FullName} changed its generated Bridge contract. Rebuild and restart the .NET app.";
-#endif
         return null;
     }
 
