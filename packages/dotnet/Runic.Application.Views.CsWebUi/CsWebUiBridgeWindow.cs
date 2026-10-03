@@ -222,7 +222,8 @@ public static class CsWebUiBridgeWindowExtensions
             window = new WebUiWindow();
             transport = window.CreateBridgeSession();
             content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel);
+                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
+                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>());
             connectionBinding = window.Bind("", e =>
             {
                 if (e.EventType == WebUiEventType.Disconnected)

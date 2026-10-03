@@ -836,7 +836,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    public virtual void Dispose() => _modelTurn.Run(DisposeCore);
+    public virtual void Dispose() => _modelTurn.RunForTeardown(DisposeCore);
 
     private void DisposeCore()
     {

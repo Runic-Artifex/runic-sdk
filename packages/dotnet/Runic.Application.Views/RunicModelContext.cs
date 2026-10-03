@@ -4,12 +4,30 @@ namespace Runic.Application.Views;
 /// Owns short, serialized mutations and reads for one mutable application-model graph.
 /// </summary>
 /// <remarks>
+/// <para>
 /// A turn is deliberately synchronous. Do asynchronous I/O and interactions outside a
 /// turn, then use a new turn to commit their result. A presentation lease never owns
 /// this context; the composition root or an explicit context lease does.
+/// </para>
+/// <para>
+/// Generated bridges and content sessions serve synchronous transport routes. They run
+/// work inline when <see cref="IsExecuting"/> is true and otherwise block the calling
+/// thread until <see cref="InvokeAsync(Action, CancellationToken)"/> completes. An
+/// implementation must therefore report <see langword="true"/> for code running inside
+/// one of its turns, and a turn must not need a blocked caller's thread to make progress.
+/// </para>
 /// </remarks>
 public interface IRunicModelContext : IAsyncDisposable
 {
+    /// <summary>Gets whether the calling code is executing one of this context's turns.</summary>
+    bool IsExecuting { get; }
+
+    /// <summary>
+    /// Receives exceptions thrown by turns queued with <see cref="TryPost"/>, and an
+    /// <see cref="ObjectDisposedException"/> for each posted turn dropped by disposal.
+    /// </summary>
+    event Action<Exception>? UnhandledTurnException;
+
     /// <summary>Queues a short synchronous turn when the context is still accepting work.</summary>
     bool TryPost(Action turn);
 
@@ -20,19 +38,47 @@ public interface IRunicModelContext : IAsyncDisposable
     ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default);
 }
 
-// This is intentionally internal. BridgeModelTurn needs a synchronous entry point for
-// existing synchronous transport routes; public callers use InvokeAsync instead.
-internal interface IRunicSynchronousModelContext : IRunicModelContext
+// Synchronous entry points for transport routes. They follow the blocking
+// contract documented on IRunicModelContext.
+internal static class RunicModelTurns
 {
-    bool IsExecuting { get; }
-    void Run(Action turn);
-    T Run<T>(Func<T> turn);
+    public static void Run(IRunicModelContext context, Action work)
+    {
+        if (context.IsExecuting) work();
+        else context.InvokeAsync(work).AsTask().GetAwaiter().GetResult();
+    }
+
+    public static T Run<T>(IRunicModelContext context, Func<T> work) =>
+        context.IsExecuting ? work() : context.InvokeAsync(work).AsTask().GetAwaiter().GetResult();
+
+    // Teardown must still release subscriptions and lifetimes when an
+    // application-owned context was disposed first. If the context rejected
+    // the turn before it started, run it inline under the supplied gate.
+    public static void RunForTeardown(IRunicModelContext? context, Action work, object? gate = null)
+    {
+        if (context is not null)
+        {
+            var started = 0;
+            try
+            {
+                Run(context, () =>
+                {
+                    Volatile.Write(ref started, 1);
+                    work();
+                });
+                return;
+            }
+            catch (ObjectDisposedException) when (Volatile.Read(ref started) == 0) { }
+        }
+        if (gate is null) work();
+        else lock (gate) work();
+    }
 }
 
 /// <summary>
 /// A host-neutral serial execution context for a ViewModel graph.
 /// </summary>
-public sealed class RunicModelContext : IRunicSynchronousModelContext
+public sealed class RunicModelContext : IRunicModelContext
 {
     [ThreadStatic]
     private static RunicModelContext? Current;
@@ -42,17 +88,17 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
     private bool _draining;
     private bool _disposed;
 
-    /// <summary>Receives exceptions from fire-and-forget turns after they have been isolated from the queue drain.</summary>
+    /// <inheritdoc />
     public event Action<Exception>? UnhandledTurnException;
 
-    /// <summary>Gets whether the calling code is executing one of this context's turns.</summary>
+    /// <inheritdoc />
     public bool IsExecuting => ReferenceEquals(Current, this);
 
     /// <inheritdoc />
     public bool TryPost(Action turn)
     {
         ArgumentNullException.ThrowIfNull(turn);
-        return Enqueue(new PostedWorkItem(turn, ReportUnhandled));
+        return Enqueue(new PostedWorkItem(turn, this));
     }
 
     /// <inheritdoc />
@@ -88,22 +134,11 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
         return new(item.Completion);
     }
 
-    void IRunicSynchronousModelContext.Run(Action turn)
-    {
-        ArgumentNullException.ThrowIfNull(turn);
-        if (IsExecuting) turn();
-        else InvokeAsync(turn).AsTask().GetAwaiter().GetResult();
-    }
-
-    T IRunicSynchronousModelContext.Run<T>(Func<T> turn)
-    {
-        ArgumentNullException.ThrowIfNull(turn);
-        return IsExecuting ? turn() : InvokeAsync(turn).AsTask().GetAwaiter().GetResult();
-    }
-
     /// <summary>
     /// Rejects queued work and completes after a currently executing synchronous turn returns.
-    /// A running turn cannot be interrupted.
+    /// A running turn cannot be interrupted. Rejected invocations fault with
+    /// <see cref="ObjectDisposedException"/>; rejected posted turns are reported through
+    /// <see cref="UnhandledTurnException"/>.
     /// </summary>
     public ValueTask DisposeAsync()
     {
@@ -200,7 +235,9 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
         public void RejectDisposed() => inner.RejectDisposed();
     }
 
-    private void ReportUnhandled(Exception error)
+    private void ReportUnhandled(Exception error) => Report(error, dropped: false);
+
+    private void Report(Exception error, bool dropped)
     {
         try
         {
@@ -210,18 +247,22 @@ public sealed class RunicModelContext : IRunicSynchronousModelContext
         {
             System.Diagnostics.Trace.TraceError(reportError.ToString());
         }
-        System.Diagnostics.Trace.TraceError(error.ToString());
+        if (dropped) System.Diagnostics.Trace.TraceWarning(error.Message);
+        else System.Diagnostics.Trace.TraceError(error.ToString());
     }
 
-    private sealed class PostedWorkItem(Action turn, Action<Exception> report) : IWorkItem
+    // A posted turn has no completion to fault. Dropping it at shutdown is
+    // still observable: the owner may have expected the turn to release work.
+    private sealed class PostedWorkItem(Action turn, RunicModelContext owner) : IWorkItem
     {
         public void Execute(ExecutionContext? baselineExecutionContext)
         {
             try { turn(); }
-            catch (Exception error) { report(error); }
+            catch (Exception error) { owner.ReportUnhandled(error); }
         }
 
-        public void RejectDisposed() { }
+        public void RejectDisposed() => owner.Report(new ObjectDisposedException(nameof(RunicModelContext),
+            "A posted model turn was dropped because its context was disposed."), dropped: true);
     }
 
     private sealed class InvokeWorkItem : IWorkItem
@@ -341,7 +382,7 @@ internal static class RunicModelContextDisposal
         ArgumentNullException.ThrowIfNull(context);
         var shutdown = context.DisposeAsync();
         if (shutdown.IsCompletedSuccessfully) return;
-        if (context is IRunicSynchronousModelContext synchronous && synchronous.IsExecuting)
+        if (context.IsExecuting)
         {
             _ = ObserveAsync(shutdown);
             return;

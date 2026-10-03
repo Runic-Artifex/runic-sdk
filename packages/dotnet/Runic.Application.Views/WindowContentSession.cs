@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.ComponentModel;
 
 namespace Runic.Application.Views;
@@ -26,7 +27,8 @@ public sealed class WindowContentSession : IDisposable
     // Sessions constructed for a standalone content host still need one graph
     // lane before their first Expose. It has no registry identity of its own;
     // every exposed model receives an ordinary, releasable binding lease.
-    private IRunicModelContext? _sessionOwnedModelContext;
+    private IRunicModelContext? _sessionModelContext;
+    private readonly bool _ownsSessionModelContext;
     private readonly HashSet<IRunicModelContextLease> _contentModelLeases = [];
     private ConditionalWeakTable<object, Dictionary<string, Entry>> _entries = new();
     private readonly HashSet<Entry> _activeEntries = [];
@@ -43,16 +45,33 @@ public sealed class WindowContentSession : IDisposable
     private readonly ThreadLocal<DetachmentFrame?> _detachingOnCurrentFlow = new();
     private bool _disposed;
 
+    /// <summary>Creates the content session for one window.</summary>
+    /// <param name="transport">The window's host transport.</param>
+    /// <param name="viewLocator">Resolves .NET Views for presented content.</param>
+    /// <param name="operationShutdown">Cancels window-owned operations when signalled.</param>
+    /// <param name="rootModel">The window's root ViewModel, if any.</param>
+    /// <param name="modelContext">
+    /// An application-owned context, such as the scoped DI context, that the window graph
+    /// must share. The root model is bound to it; a root already owned by a different
+    /// context is rejected. When omitted, the root's existing context is reused or the
+    /// session creates and owns one.
+    /// </param>
     public WindowContentSession(IBridgeTransport transport, IRunicViewLocator? viewLocator = null,
-        CancellationToken operationShutdown = default, object? rootModel = null)
+        CancellationToken operationShutdown = default, object? rootModel = null,
+        IRunicModelContext? modelContext = null)
     {
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _viewLocator = viewLocator;
         _modelContexts = RunicModelContextRegistry.Shared;
         if (rootModel is not null)
-            _rootModelLease = _modelContexts.Acquire(static () => new RunicModelContext(), rootModel);
+            _rootModelLease = modelContext is null
+                ? _modelContexts.Acquire(static () => new RunicModelContext(), rootModel)
+                : _modelContexts.Bind(modelContext, rootModel);
         else
-            _sessionOwnedModelContext = new RunicModelContext();
+        {
+            _sessionModelContext = modelContext ?? new RunicModelContext();
+            _ownsSessionModelContext = modelContext is null;
+        }
         BridgeOperationRouter? operations = null;
         BridgeInteractionRouter? interactions = null;
         BridgeFieldWriteRegistryProvider? fieldWrites = null;
@@ -79,7 +98,7 @@ public sealed class WindowContentSession : IDisposable
                         try { _rootModelLease?.Dispose(); }
                         finally
                         {
-                            if (_sessionOwnedModelContext is { } context)
+                            if (_ownsSessionModelContext && _sessionModelContext is { } context)
                                 RunicModelContextDisposal.DisposeSynchronously(context);
                         }
                     }
@@ -94,7 +113,7 @@ public sealed class WindowContentSession : IDisposable
     /// owned by an application-wide graph keeps that existing context when another window
     /// attaches to it.
     /// </summary>
-    public IRunicModelContext? ModelContext => _rootModelLease?.Context ?? _sessionOwnedModelContext;
+    public IRunicModelContext? ModelContext => _rootModelLease?.Context ?? _sessionModelContext;
 
     // Generated Bridges remain in this assembly through their host-neutral
     // base class. The router is intentionally internal: applications do not
@@ -216,13 +235,9 @@ public sealed class WindowContentSession : IDisposable
         // Bridge construction itself creates field/data subscriptions which run model
         // turns. Reserve and construct content on that same owner so one thread cannot
         // wait for an Attaching entry while its construction waits behind that thread.
-        if (ModelContext is IRunicSynchronousModelContext synchronous)
-            return synchronous.IsExecuting
-                ? ExposeCore(kind, viewModel, attach)
-                : synchronous.Run(() => ExposeCore(kind, viewModel, attach));
-        if (ModelContext is { } context)
-            return context.InvokeAsync(() => ExposeCore(kind, viewModel, attach)).AsTask().GetAwaiter().GetResult();
-        return ExposeCore(kind, viewModel, attach);
+        return ModelContext is { } context
+            ? RunicModelTurns.Run(context, () => ExposeCore(kind, viewModel, attach))
+            : ExposeCore(kind, viewModel, attach);
     }
 
     private PageReference ExposeCore<T>(string kind, T viewModel,
@@ -390,13 +405,18 @@ public sealed class WindowContentSession : IDisposable
         attachment?.Dispose();
     }
 
+    /// <summary>
+    /// Releases every content slot of a parent. Generated parent bridges call this from
+    /// their own disposal, including while the window disposes, so it is a no-op after the
+    /// session was disposed.
+    /// </summary>
     public void ClearOwner(object owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         List<IDisposable> attachments = [];
         lock (_gate)
         {
-            ThrowIfDisposed();
+            if (_disposed) return;
             if (!_slots.Remove(owner, out var properties)) return;
             foreach (var previous in properties.Values.Distinct())
                 if (!IsPresented(previous) && SuspendCore(previous) is { } attachment)
@@ -481,9 +501,6 @@ public sealed class WindowContentSession : IDisposable
     {
         IDisposable[] attachments;
         InteractionMountAttachment[] rootMounts;
-        IRunicModelContextLease[] modelLeases;
-        IRunicModelContextLease? rootModelLease;
-        IRunicModelContext? sessionOwnedModelContext;
         lock (_gate)
         {
             if (_disposed) return;
@@ -492,12 +509,6 @@ public sealed class WindowContentSession : IDisposable
             _activeEntries.Clear();
             _entries = new();
             _slots.Clear();
-            modelLeases = _contentModelLeases.ToArray();
-            _contentModelLeases.Clear();
-            rootModelLease = _rootModelLease;
-            _rootModelLease = null;
-            sessionOwnedModelContext = _sessionOwnedModelContext;
-            _sessionOwnedModelContext = null;
             rootMounts = _rootInteractionMounts.ToArray();
             _rootInteractionMounts.Clear();
             // A re-exposure can be waiting for a concurrently suspended
@@ -507,36 +518,45 @@ public sealed class WindowContentSession : IDisposable
             // needs.
             Monitor.PulseAll(_gate);
         }
-        try
+
+        // Every release is independent: one failing nested bridge must not
+        // keep the remaining attachments, routes or context leases alive.
+        // Attachments release Views on the graph's context, so the context
+        // leases are released only after every attachment has been disposed.
+        var errors = new List<Exception>();
+        foreach (var attachment in attachments) Capture(attachment.Dispose, errors);
+        foreach (var attachment in rootMounts) Capture(attachment.Dispose, errors);
+        // The operation router is window-owned, rather than presentation-owned:
+        // a suspended page can still observe a save, while closing the window
+        // removes all fixed operation endpoints.
+        Capture(_operations.Dispose, errors);
+        Capture(_interactions.Dispose, errors);
+        Capture(_fieldWrites.Dispose, errors);
+
+        IRunicModelContextLease[] modelLeases;
+        IRunicModelContextLease? rootModelLease;
+        IRunicModelContext? sessionModelContext;
+        lock (_gate)
         {
-            foreach (var attachment in attachments) attachment.Dispose();
-            foreach (var attachment in rootMounts) attachment.Dispose();
+            modelLeases = _contentModelLeases.ToArray();
+            _contentModelLeases.Clear();
+            rootModelLease = _rootModelLease;
+            _rootModelLease = null;
+            sessionModelContext = _sessionModelContext;
+            _sessionModelContext = null;
         }
-        finally
-        {
-            // The operation router is window-owned, rather than presentation-owned:
-            // a suspended page can still observe a save, while closing the window
-            // removes all three fixed operation endpoints.
-            try { _operations.Dispose(); }
-            finally
-            {
-                try { _interactions.Dispose(); }
-                finally
-                {
-                    try { _fieldWrites.Dispose(); }
-                    finally
-                    {
-                        foreach (var lease in modelLeases) lease.Dispose();
-                        try { rootModelLease?.Dispose(); }
-                        finally
-                        {
-                            if (sessionOwnedModelContext is { } context)
-                                RunicModelContextDisposal.DisposeSynchronously(context);
-                        }
-                    }
-                }
-            }
-        }
+        foreach (var lease in modelLeases) Capture(lease.Dispose, errors);
+        if (rootModelLease is not null) Capture(rootModelLease.Dispose, errors);
+        if (_ownsSessionModelContext && sessionModelContext is not null)
+            Capture(() => RunicModelContextDisposal.DisposeSynchronously(sessionModelContext), errors);
+        if (errors.Count == 1) ExceptionDispatchInfo.Capture(errors[0]).Throw();
+        if (errors.Count > 1) throw new AggregateException(errors);
+    }
+
+    private static void Capture(Action action, List<Exception> errors)
+    {
+        try { action(); }
+        catch (Exception error) { errors.Add(error); }
     }
 
     private IDisposable? SuspendCore(Entry entry)
@@ -633,8 +653,7 @@ public sealed class WindowContentSession : IDisposable
         modelLease?.Dispose();
     }
 
-    private bool IsExecutingOnModelContext() =>
-        ModelContext is IRunicSynchronousModelContext synchronous && synchronous.IsExecuting;
+    private bool IsExecutingOnModelContext() => ModelContext?.IsExecuting == true;
 
     private bool IsPresented(Entry entry) =>
         _slots.Values.Any(properties => properties.Values.Any(value => ReferenceEquals(value, entry)));
@@ -1011,7 +1030,9 @@ public sealed class WindowContentSession : IDisposable
 
         private void CompleteRelease(MountRelease release)
         {
-            RunLifecycle(() =>
+            // Releasing a View must still run when an application-owned context
+            // was disposed before the window closed.
+            RunicModelTurns.RunForTeardown(_session.ModelContext, () =>
             {
                 if (release.NotifyInteractionUnmount)
                     _session._interactions.OnPresentationUnmounted(release.Token, release.Reason);
@@ -1031,8 +1052,7 @@ public sealed class WindowContentSession : IDisposable
         // graph owner, but never while the attachment gate is held.
         private void RunLifecycle(Action callback)
         {
-            if (_session.ModelContext is IRunicSynchronousModelContext synchronous) synchronous.Run(callback);
-            else if (_session.ModelContext is { } context) context.InvokeAsync(callback).AsTask().GetAwaiter().GetResult();
+            if (_session.ModelContext is { } context) RunicModelTurns.Run(context, callback);
             else callback();
         }
 
