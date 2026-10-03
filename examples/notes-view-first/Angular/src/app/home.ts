@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import type { HomePageReference } from "../../../Frontend/src/generated/home.js";
-import { pageSignal } from "./bridge-signal";
+import { injectPage } from "./window-operations";
 
 @Component({
   selector: "notes-home",
@@ -17,5 +17,5 @@ import { pageSignal } from "./bridge-signal";
 })
 export class HomeComponent {
   readonly page = input.required<HomePageReference>();
-  readonly home = pageSignal(this.page);
+  readonly home = injectPage(this.page);
 }

@@ -1,6 +1,6 @@
-import type { PreviewView } from "./generated/preview.js";
+import type { PreviewClient } from "./generated/preview.js";
 
-export function mountPreview(host: HTMLElement, view: PreviewView): () => void {
+export function mountPreview(host: HTMLElement, view: PreviewClient): () => void {
   host.innerHTML = `<h2 data-heading></h2><p data-body></p>`;
   const heading = host.querySelector<HTMLElement>("[data-heading]")!;
   const body = host.querySelector<HTMLElement>("[data-body]")!;

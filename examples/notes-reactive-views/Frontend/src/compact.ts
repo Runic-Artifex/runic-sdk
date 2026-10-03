@@ -1,6 +1,6 @@
-import type { EditorView } from "./generated/editor.js";
+import type { EditorClient } from "./generated/editor.js";
 
-export function mountCompact(host: HTMLElement, view: EditorView): () => void {
+export function mountCompact(host: HTMLElement, view: EditorClient): () => void {
   host.innerHTML = `<h2>Compact View</h2><p class="muted">Contract: compact</p><strong data-title></strong><p data-body></p><p data-activation class="muted"></p>`;
   const title = host.querySelector<HTMLElement>("[data-title]")!;
   const body = host.querySelector<HTMLElement>("[data-body]")!;

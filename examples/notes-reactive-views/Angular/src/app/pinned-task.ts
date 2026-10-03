@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import type { PinnedTaskPageReference } from "../../../Frontend/src/generated/pinnedTask.js";
-import { pageSignal } from "./bridge-signal";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 
 @Component({
   selector: "notes-pinned-task",
@@ -8,5 +8,5 @@ import { pageSignal } from "./bridge-signal";
 })
 export class PinnedTaskComponent {
   readonly page = input.required<PinnedTaskPageReference>();
-  readonly task = pageSignal(this.page);
+  readonly task = injectView(this.page);
 }

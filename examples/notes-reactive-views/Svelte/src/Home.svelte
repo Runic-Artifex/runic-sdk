@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { HomePageReference } from "../../Frontend/src/generated/home.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   let { page }: { page: HomePageReference } = $props();
-  const home = pageState(() => page);
+  const home = useView(() => page);
 </script>
 
 {#if home.state}

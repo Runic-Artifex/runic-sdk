@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { ShellView } from "../../Frontend/src/generated/shell.js";
-  import { bridgeState } from "./bridge-state.js";
+  import type { ShellClient } from "../../Frontend/src/generated/shell.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   import Sidebar from "./Sidebar.svelte";
   import Home from "./Home.svelte";
   import Document from "./Document.svelte";
   import ConfirmNavigation from "./ConfirmNavigation.svelte";
 
-  let { shell }: { shell: ShellView } = $props();
-  let source = $derived(bridgeState(shell));
-  let state = $derived(source.current);
+  let { shell }: { shell: ShellClient } = $props();
+  const source = useView(() => shell);
+  let state = $derived(source.state!);
 </script>
 
 <header><strong>Composed Notes</strong><span>Plain web component · no ViewModel</span></header>

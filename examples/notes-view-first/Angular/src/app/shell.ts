@@ -1,6 +1,6 @@
 import { Component, input, inject } from "@angular/core";
-import type { ShellView } from "../../../Frontend/src/generated/shell.js";
-import { bridgeSignal } from "./bridge-signal";
+import type { ShellClient } from "../../../Frontend/src/generated/shell.js";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 import { WindowOperations } from "./window-operations";
 import { SidebarComponent } from "./sidebar";
 import { HomeComponent } from "./home";
@@ -33,7 +33,7 @@ import { ConfirmNavigationComponent } from "./confirm-navigation";
   `,
 })
 export class ShellComponent {
-  readonly shell = input.required<ShellView>();
-  readonly state = bridgeSignal(this.shell);
+  readonly shell = input.required<ShellClient>();
+  readonly state = injectView(this.shell).state;
   readonly operations = inject(WindowOperations);
 }

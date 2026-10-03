@@ -1,6 +1,6 @@
-import type { SidebarView } from "./generated/sidebar.js";
+import type { SidebarClient } from "./generated/sidebar.js";
 
-export function mountSidebar(host: HTMLElement, sidebar: SidebarView): () => void {
+export function mountSidebar(host: HTMLElement, sidebar: SidebarClient): () => void {
   host.innerHTML = `<h2>Workspace</h2><nav aria-label="Notes navigation"><button data-go="home">Home</button><button data-go="notes">Notes</button></nav><p class="muted">This sidebar owns a separate .NET ViewModel.</p>`;
   const home = host.querySelector<HTMLButtonElement>("[data-go=home]")!;
   const notes = host.querySelector<HTMLButtonElement>("[data-go=notes]")!;

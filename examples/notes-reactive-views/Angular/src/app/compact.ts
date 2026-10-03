@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import type { EditorCompactPageReference } from "../../../Frontend/src/generated/editor.js";
-import { pageSignal } from "./bridge-signal";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 
 @Component({
   selector: "notes-compact",
@@ -15,5 +15,5 @@ import { pageSignal } from "./bridge-signal";
 })
 export class CompactComponent {
   readonly page = input.required<EditorCompactPageReference>();
-  readonly editor = pageSignal(this.page);
+  readonly editor = injectView(this.page);
 }

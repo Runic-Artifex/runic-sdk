@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { PinnedNotePageReference } from "../../Frontend/src/generated/pinnedNote.js";
-  import { pageState } from "./bridge-state.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
 
   let { page }: { page: PinnedNotePageReference } = $props();
-  const note = pageState(() => page);
+  const note = useView(() => page);
 </script>
 
 {#if note.state}<span>{note.state.label}</span>{:else}<span>Connecting…</span>{/if}

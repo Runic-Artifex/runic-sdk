@@ -1,7 +1,6 @@
 import { Component, inject, input, signal } from "@angular/core";
-import type { DocumentPageReference, DocumentView } from "../../../Frontend/src/generated/document.js";
-import { pageSignal } from "./bridge-signal";
-import { WindowOperations } from "./window-operations";
+import type { DocumentPageReference, DocumentClient } from "../../../Frontend/src/generated/document.js";
+import { injectPage, WindowOperations } from "./window-operations";
 import { BaselineEditorComponent } from "./baseline-editor";
 import { BoundEditorComponent } from "./bound-editor";
 import { PreviewComponent } from "./preview";
@@ -39,15 +38,15 @@ import { PreviewComponent } from "./preview";
 })
 export class DocumentComponent {
   readonly page = input.required<DocumentPageReference>();
-  readonly document = pageSignal(this.page);
+  readonly document = injectPage(this.page);
   readonly operations = inject(WindowOperations);
   readonly error = signal<string | undefined>(undefined);
 
   showEditor(): void { this.run(view => view.showEditor()); }
   showPreview(): void { this.run(view => view.showPreview()); }
 
-  private run(action: (view: DocumentView) => Promise<unknown>): void {
-    void this.operations.run(this.document.view(), action)
+  private run(action: (view: DocumentClient) => Promise<unknown>): void {
+    void this.operations.run(this.document.client(), action)
       .then(() => this.error.set(undefined))
       .catch(cause => this.error.set(String(cause)));
   }

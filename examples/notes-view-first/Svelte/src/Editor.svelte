@@ -1,19 +1,19 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import type { EditorPageReference, EditorView, EditorState } from "../../Frontend/src/generated/editor.js";
-  import { pageState } from "./bridge-state.js";
+  import type { EditorPageReference, EditorClient, EditorState } from "../../Frontend/src/generated/editor.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   import { bridgeForm } from "./bridge-form.js";
 
   let { page }: { page: EditorPageReference } = $props();
-  const editor = pageState(() => page);
+  const editor = useView(() => page);
   let error = $state<string | undefined>();
-  const form = bridgeForm<EditorView, EditorState>(editor, cause => { error = cause === undefined ? undefined : String(cause); });
+  const form = bridgeForm<EditorClient, EditorState>(editor, cause => { error = cause === undefined ? undefined : String(cause); });
   const title = form.field("title", (view, value) => view.setTitle(value));
   const body = form.field("body", (view, value) => view.setBody(value));
   onDestroy(() => form.dispose());
 </script>
 
-{#if editor.state && editor.view}
+{#if editor.state && editor.client}
   <h2>Editor</h2>
   <label>Title <input bind:value={title.get, title.set}></label>
   <label>Body <textarea bind:value={body.get, body.set}></textarea></label>

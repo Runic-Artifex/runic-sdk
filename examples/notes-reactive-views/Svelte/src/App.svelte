@@ -1,25 +1,13 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { connectShell, type ShellView } from "../../Frontend/src/generated/shell.js";
+  import { connectShell } from "../../Frontend/src/generated/shell.js";
+  import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   import Shell from "./Shell.svelte";
 
-  let shell = $state.raw<ShellView | undefined>();
-  let error = $state<string | undefined>();
-
-  onMount(() => {
-    let active = true;
-    let connected: ShellView | undefined;
-    void connectShell().then(view => {
-      if (!active) { view.dispose(); return; }
-      connected = view;
-      shell = view;
-    }).catch(cause => { if (active) error = String(cause); });
-    return () => { active = false; connected?.dispose(); };
-  });
+  const shell = useView(() => ({ connect: connectShell }));
 </script>
 
-{#if shell}
-  <Shell {shell} />
+{#if shell.client}
+  <Shell shell={shell.client} />
 {:else}
-  <p id="status" role="status">{error ?? "Connecting…"}</p>
+  <p id="status" role="status">{shell.error === undefined ? "Connecting…" : String(shell.error)}</p>
 {/if}

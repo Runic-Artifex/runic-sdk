@@ -1,5 +1,5 @@
 import { mountContent, type ViewTemplates } from "./content.js";
-import type { DocumentState, DocumentView } from "./generated/document.js";
+import type { DocumentState, DocumentClient } from "./generated/document.js";
 import { mountEditor } from "./editor.js";
 import { mountPreview } from "./preview.js";
 
@@ -8,7 +8,7 @@ const paneViews = {
   preview: mountPreview,
 } satisfies ViewTemplates<DocumentState["currentPane"]>;
 
-export function mountDocument(host: HTMLElement, documentView: DocumentView): () => void {
+export function mountDocument(host: HTMLElement, documentView: DocumentClient): () => void {
   host.innerHTML = `<h1>Document</h1><p class="muted">This area has its own ViewModel and a nested Editor/Preview outlet.</p><div class="tabs"><button data-pane="editor">Editor</button><button data-pane="preview">Preview</button></div><section id="document-pane" class="card"></section>`;
   const editor = host.querySelector<HTMLButtonElement>("[data-pane=editor]")!;
   const preview = host.querySelector<HTMLButtonElement>("[data-pane=preview]")!;
