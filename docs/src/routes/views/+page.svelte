@@ -66,6 +66,15 @@
         transport layer.
       </p>
     </ContentCard>
+    <ContentCard eyebrow="Bindings" title="Connect Views to components">
+      <p>
+        Generated clients share one runtime, <code>@runic-artifex/views</code>,
+        which includes a mock Bridge for frontend work without .NET.
+        <code>useView</code> in the React, Vue and Svelte packages and
+        <code>injectView()</code> in the Angular package connect and dispose a
+        client with the component that renders it.
+      </p>
+    </ContentCard>
     <ContentCard eyebrow="Calls" title="Use typed commands and writes">
       <p>
         Generated clients expose snapshots, subscriptions, commands, property

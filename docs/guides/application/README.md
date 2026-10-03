@@ -28,3 +28,24 @@ package API and build properties are in the
 The package is built from `packages/dotnet/Runic.Application.Views`, and its
 types are in the `Runic.Application.Views` namespace; the
 [reference](reference/README.md) lists every package with its source folder.
+
+## Upgrading generated clients
+
+Rebuild after upgrading so the C# bridges and TypeScript clients regenerate
+together, and add `@runic-artifex/views` to the frontend's dependencies.
+
+- Connected client types are named `<Name>Client`. The former `<Name>View`
+  name remains as a deprecated alias.
+- Import `BridgeError`, `BridgeOperation*` and `FieldBaseline*` from
+  `@runic-artifex/views`. Generated modules no longer export them, so
+  `instanceof BridgeError` holds across modules.
+- Generated state types no longer contain `revision`.
+- `snapshot` returns the last state after disposal, and `subscribe` after
+  disposal delivers that state once and returns a no-op unsubscribe.
+- Generated C# files are named `<FullName>.Bridge.g.cs` and
+  `<FullName>.View.g.cs`. The build removes the former files automatically.
+- `DateTimeOffset` values keep their offset on the wire, and outbound date values
+  must be ISO 8601 strings.
+- Toolkit asynchronous commands and ReactiveUI commands with an argument publish
+  `is<Name>Executing`; nullable ReactiveUI command and interaction types are
+  `T | null`.
