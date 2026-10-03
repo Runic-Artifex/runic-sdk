@@ -94,6 +94,17 @@ public sealed record CommandDescriptor<T>(
 
 internal sealed record BridgeFailure(string Kind, string Message);
 
+/// <summary>The Views wire protocol described in specs/application/README.md.</summary>
+public static class BridgeProtocol
+{
+    /// <summary>
+    /// The protocol version reported as <c>protocol</c> in every snapshot-route reply.
+    /// It changes only when a generated client built for the previous version could
+    /// misread a reply.
+    /// </summary>
+    public const int Version = 1;
+}
+
 internal interface IHotReloadableBridge
 {
     Type ContractModelType { get; }
@@ -347,7 +358,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         lock (_modelGate) return IsInactive
             ? EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."))
-            : Encode();
+            : Encode(protocol: true);
     }
 
     private string Set(PropertyDescriptor<T> property, IBridgeArguments e)
@@ -646,13 +657,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private string EncodeWithoutSnapshot(BridgeFailure? error = null) =>
         Encode(error, includeSnapshot: false);
 
-    private string Encode(BridgeFailure? error = null, bool includeSnapshot = true)
+    private string Encode(BridgeFailure? error = null, bool includeSnapshot = true, bool protocol = false)
     {
         if (!includeSnapshot) return EncodeReply(error, snapshot: null);
         try
         {
             var snapshot = WriteSnapshot();
-            return IsInactive ? EncodeWithoutSnapshot(error) : EncodeReply(error, snapshot);
+            return IsInactive ? EncodeWithoutSnapshot(error) : EncodeReply(error, snapshot, protocol);
         }
         catch (BridgeSnapshotDetachedException)
         {
@@ -743,7 +754,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         writer.WriteEndObject();
     }
 
-    private string EncodeReply(BridgeFailure? error, string? snapshot) => WriteJson(writer =>
+    // The snapshot route, which a client reads first, states the wire protocol
+    // version. Clients ignore envelope members they do not know.
+    private string EncodeReply(BridgeFailure? error, string? snapshot, bool protocol = false) => WriteJson(writer =>
     {
         writer.WriteStartObject();
         writer.WriteBoolean("ok", error is null);
@@ -763,6 +776,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             writer.WriteString("message", error.Message);
             writer.WriteEndObject();
         }
+        if (protocol) writer.WriteNumber("protocol", BridgeProtocol.Version);
         writer.WriteEndObject();
     });
 

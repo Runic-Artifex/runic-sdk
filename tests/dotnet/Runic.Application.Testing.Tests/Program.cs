@@ -17,6 +17,8 @@ using (var host = new RunicWindowTestHost<RootViewModel>(model, "root",
     using var initial = host.Snapshot();
     Require(initial.RootElement.GetProperty("state").GetProperty("count").GetInt32() == 0,
         "The generated root snapshot did not include the initial count.");
+    Require(initial.RootElement.GetProperty("protocol").GetInt32() == BridgeProtocol.Version,
+        "The snapshot route did not report its wire protocol version.");
     var child = Reference(initial);
     Require(host.Mount(child, "first:child", "first", "connection-one") == "ok",
         "The first View mount failed.");
