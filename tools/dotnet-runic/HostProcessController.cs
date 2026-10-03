@@ -140,6 +140,9 @@ internal sealed class HostProcessController : IAsyncDisposable
             "--property:DebugType=portable",
             "--property:DebugSymbols=true",
             "--property:Optimize=false",
+        ]);
+        arguments.AddRange(DevApplication.CreateDevelopmentServerProperties(configuration, options, "--property:"));
+        arguments.AddRange([
             "--no-restore",
             "--non-interactive",
             "run",
@@ -182,6 +185,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             options.Configuration,
             "--no-restore",
         };
+        arguments.AddRange(DevApplication.CreateDevelopmentServerProperties(configuration, options, "-property:"));
         return arguments;
     }
 
