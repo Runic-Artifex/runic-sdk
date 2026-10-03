@@ -59,7 +59,6 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
-    private int _maximized;
 
     public bool SupportsCloseConfirmation => true;
     public bool SupportsDocumentStartScript => true;
@@ -159,12 +158,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Native.ShowWindow(_window, SwMinimize), cancellationToken);
 
+    // Ask the window: the user can also maximize or restore it from its frame.
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
-        => InvokeAsync(() =>
-        {
-            var maximized = Interlocked.Exchange(ref _maximized, _maximized == 0 ? 1 : 0) != 0;
-            Native.ShowWindow(_window, maximized ? SwRestore : SwMaximize);
-        }, cancellationToken);
+        => InvokeAsync(() => Native.ShowWindow(_window, Native.IsZoomed(_window) ? SwRestore : SwMaximize), cancellationToken);
 
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
         => InvokeAsync(() => Native.SetWindowPos(
@@ -658,6 +654,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static partial bool ShowWindow(nint window, int command);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool IsZoomed(nint window);
 
         [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
