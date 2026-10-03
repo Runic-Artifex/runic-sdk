@@ -17,7 +17,7 @@ CommunityToolkit dependency. It provides:
 One browser presentation gets one logical Runic View and activation lease. A
 shared ViewModel stays activated while any presentation remains mounted.
 `WindowContentSession.AttachPresentation` creates those logical views for
-generated content routes. The [Reactive Notes](../../../examples/notes-reactive-views/README.md)
+generated content routes. The [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-reactive-views/README.md)
 example covers multiple views over one ViewModel, routed content, explicit view
 contracts, and activation lifetimes.
 
@@ -118,7 +118,7 @@ owned context. Each queued context/scheduler item captures its own
 `ExecutionContext`, so a trusted interaction scope follows its own deferred
 work without leaking to another queued operation.
 
-The [ReactiveUI reference guide](../../../docs/guides/application/reference/reactiveui.md)
+The [ReactiveUI reference guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/reference/reactiveui.md)
 defines the supported data shapes, operation semantics, interaction targeting,
 and model-context ownership.
 
@@ -126,7 +126,7 @@ and model-context ownership.
 
 Applications using `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`,
 `System.Reactive.Unit`, or `IScheduler` should instead reference
-[`Runic.Application.ReactiveUI.Reactive`](../Runic.Application.Views.ReactiveUI.Reactive/README.md).
+[`Runic.Application.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/README.md).
 The two packages expose distinct ReactiveUI namespaces and must not be mixed in
 one application. If a generic interface command does not reveal its flavor to
 the compiled-model generator, set

@@ -48,7 +48,8 @@ GTK4 also requires the main-thread entry point in
 `Gtk4WebKit6` and `Gtk4WindowHostFactory`. Follow that provider's complete
 startup example before introducing a top-level `await`.
 
-Runic applications pass the same options through `DesktopApplicationHostOptions.Host`.
+Runic Windows and Views pass the same `DesktopHostOptions` to `DesktopHost.StartAsync`
+before `OpenDesktopWindowAsync` from `Runic.Application.Desktop`.
 No Linux toolkit is selected by default. Browser-only applications need no GTK
 selection. `DesktopPlatform.GetLinuxEmbeddedBackends()` inspects both library sets
 without loading either toolkit; `host.GetPresentationPreflight(...)` evaluates the

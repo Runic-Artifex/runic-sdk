@@ -87,34 +87,42 @@ public static class BridgeWire
         _ => throw Invalid("Expected a string or null."),
     };
 
+    /// <summary>Reads a JSON Boolean.</summary>
     public static bool ReadBoolean(JsonElement value) => value.ValueKind is JsonValueKind.True or JsonValueKind.False
         ? value.GetBoolean()
         : throw Invalid("Expected a boolean.");
 
+    /// <summary>Reads a JSON number as a 32-bit integer.</summary>
     public static int ReadInt32(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var result)
         ? result
         : throw Invalid("Expected a 32-bit integer.");
 
+    /// <summary>Reads a JSON number as a signed 8-bit integer.</summary>
     public static sbyte ReadInt8(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetSByte(out var result)
         ? result
         : throw Invalid("Expected an 8-bit integer.");
 
+    /// <summary>Reads a JSON number as an unsigned 8-bit integer.</summary>
     public static byte ReadUInt8(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetByte(out var result)
         ? result
         : throw Invalid("Expected an unsigned 8-bit integer.");
 
+    /// <summary>Reads a JSON number as a 16-bit integer.</summary>
     public static short ReadInt16(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetInt16(out var result)
         ? result
         : throw Invalid("Expected a 16-bit integer.");
 
+    /// <summary>Reads a JSON number as an unsigned 16-bit integer.</summary>
     public static ushort ReadUInt16(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetUInt16(out var result)
         ? result
         : throw Invalid("Expected an unsigned 16-bit integer.");
 
+    /// <summary>Reads a JSON number as an unsigned 32-bit integer.</summary>
     public static uint ReadUInt32(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetUInt32(out var result)
         ? result
         : throw Invalid("Expected an unsigned 32-bit integer.");
 
+    /// <summary>Reads a finite JSON number as a single-precision value.</summary>
     public static float ReadSingle(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetSingle(out var result) || !float.IsFinite(result))
@@ -128,6 +136,7 @@ public static class BridgeWire
         ? result
         : throw Invalid("Expected a 64-bit integer string.");
 
+    /// <summary>The same as <see cref="ReadInt64(JsonElement)"/>.</summary>
     public static long ReadInt64String(JsonElement value) => ReadInt64(value);
 
     /// <summary>Reads an exact unsigned 64-bit integer represented as an invariant string.</summary>
@@ -136,6 +145,7 @@ public static class BridgeWire
         ? result
         : throw Invalid("Expected an unsigned 64-bit integer string.");
 
+    /// <summary>The same as <see cref="ReadUInt64(JsonElement)"/>.</summary>
     public static ulong ReadUInt64String(JsonElement value) => ReadUInt64(value);
 
     /// <summary>Reads an exact arbitrary-precision integer represented as an invariant string.</summary>
@@ -144,6 +154,7 @@ public static class BridgeWire
         ? result
         : throw Invalid("Expected an arbitrary-precision integer string.");
 
+    /// <summary>Reads a finite JSON number as a double-precision value.</summary>
     public static double ReadDouble(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var result) || !double.IsFinite(result))
@@ -157,10 +168,12 @@ public static class BridgeWire
         ? result
         : throw Invalid("Expected a decimal string.");
 
+    /// <summary>Reads a GUID string in <c>D</c> format.</summary>
     public static Guid ReadGuid(JsonElement value) => Guid.TryParseExact(ReadRequiredString(value), "D", out var result)
         ? result
         : throw Invalid("Expected a GUID in D format.");
 
+    /// <summary>Reads an ISO <c>yyyy-MM-dd</c> date string.</summary>
     public static DateOnly ReadDateOnly(JsonElement value) => DateOnly.TryParseExact(ReadRequiredString(value), "yyyy-MM-dd",
         CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
         ? result
@@ -173,6 +186,7 @@ public static class BridgeWire
     private const string IsoDateTime = "yyyy'-'MM'-'dd'T'" + IsoTime;
     private static readonly string[] IsoDateTimeOffset = [IsoDateTime + "zzz", IsoDateTime + "'Z'"];
 
+    /// <summary>Reads an ISO time string with zero to seven fractional digits.</summary>
     public static TimeOnly ReadTimeOnly(JsonElement value) => TimeOnly.TryParseExact(ReadRequiredString(value), IsoTime,
         CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
         ? result
@@ -190,20 +204,23 @@ public static class BridgeWire
         ? result
         : throw Invalid("Expected an ISO date-time.");
 
+    /// <summary>Reads an invariant <c>c</c>-format time span string.</summary>
     public static TimeSpan ReadTimeSpan(JsonElement value) => TimeSpan.TryParseExact(ReadRequiredString(value), "c",
         CultureInfo.InvariantCulture, out var result)
         ? result
         : throw Invalid("Expected an invariant time span.");
 
+    /// <summary>Reads a declared enum name.</summary>
     public static TEnum ReadEnum<TEnum>(JsonElement value) where TEnum : struct, Enum
     {
         var name = ReadRequiredString(value);
         if (!Enum.TryParse<TEnum>(name, ignoreCase: false, out var result)
-            || Enum.GetName(typeof(TEnum), result) is null)
+            || Enum.GetName(result) is null)
             throw Invalid($"Expected a declared {typeof(TEnum).Name} name.");
         return result;
     }
 
+    /// <summary>Writes a JSON string or <c>null</c>.</summary>
     public static void WriteNullableString(Utf8JsonWriter writer, string? value)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -211,13 +228,16 @@ public static class BridgeWire
         else writer.WriteStringValue(value);
     }
 
+    /// <summary>Writes a 64-bit integer as an invariant JSON string.</summary>
     public static void WriteInt64(Utf8JsonWriter writer, long value)
     {
         WriteIntegerString(writer, value);
     }
 
+    /// <summary>Writes an unsigned 64-bit integer as an invariant JSON string.</summary>
     public static void WriteUInt64(Utf8JsonWriter writer, ulong value) => WriteIntegerString(writer, value);
 
+    /// <summary>Writes an arbitrary-precision integer as an invariant JSON string.</summary>
     public static void WriteBigInteger(Utf8JsonWriter writer, BigInteger value) => WriteIntegerString(writer, value);
 
     /// <summary>Writes an exact integer as an invariant JSON string.</summary>
@@ -228,11 +248,13 @@ public static class BridgeWire
         writer.WriteStringValue(value.ToString(null, CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Writes a finite double-precision JSON number.</summary>
     public static void WriteDouble(Utf8JsonWriter writer, double value)
     {
         WriteFiniteNumber(writer, value);
     }
 
+    /// <summary>Writes a finite single-precision JSON number.</summary>
     public static void WriteSingle(Utf8JsonWriter writer, float value)
     {
         WriteFiniteNumber(writer, value);
@@ -254,30 +276,35 @@ public static class BridgeWire
         writer.WriteNumberValue(value);
     }
 
+    /// <summary>Writes a decimal as an invariant JSON string.</summary>
     public static void WriteDecimal(Utf8JsonWriter writer, decimal value)
     {
         ArgumentNullException.ThrowIfNull(writer);
         writer.WriteStringValue(value.ToString(CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Writes a GUID string in <c>D</c> format.</summary>
     public static void WriteGuid(Utf8JsonWriter writer, Guid value)
     {
         ArgumentNullException.ThrowIfNull(writer);
         writer.WriteStringValue(value.ToString("D"));
     }
 
+    /// <summary>Writes an ISO <c>yyyy-MM-dd</c> date string.</summary>
     public static void WriteDateOnly(Utf8JsonWriter writer, DateOnly value)
     {
         ArgumentNullException.ThrowIfNull(writer);
         writer.WriteStringValue(value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Writes an ISO round-trip time string.</summary>
     public static void WriteTimeOnly(Utf8JsonWriter writer, TimeOnly value)
     {
         ArgumentNullException.ThrowIfNull(writer);
         writer.WriteStringValue(value.ToString("O", CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Writes an ISO round-trip date-time string that keeps the offset.</summary>
     public static void WriteDateTimeOffset(Utf8JsonWriter writer, DateTimeOffset value)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -292,16 +319,18 @@ public static class BridgeWire
         writer.WriteStringValue(value.ToString("O", CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Writes an invariant <c>c</c>-format time span string.</summary>
     public static void WriteTimeSpan(Utf8JsonWriter writer, TimeSpan value)
     {
         ArgumentNullException.ThrowIfNull(writer);
         writer.WriteStringValue(value.ToString("c", CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Writes a declared enum name.</summary>
     public static void WriteEnum<TEnum>(Utf8JsonWriter writer, TEnum value) where TEnum : struct, Enum
     {
         ArgumentNullException.ThrowIfNull(writer);
-        var name = Enum.GetName(typeof(TEnum), value);
+        var name = Enum.GetName(value);
         if (name is null) throw new ArgumentOutOfRangeException(nameof(value), "A bridge enum value must be a declared name.");
         writer.WriteStringValue(name);
     }
@@ -406,6 +435,7 @@ public sealed class RunicIncludeAttribute : Attribute;
     AllowMultiple = false, Inherited = false)]
 public sealed class RunicAliasAttribute(string name) : Attribute
 {
+    /// <summary>The stable wire name.</summary>
     public string Name { get; } = !string.IsNullOrWhiteSpace(name)
         ? name
         : throw new ArgumentException("A Runic wire alias is required.", nameof(name));
@@ -415,6 +445,7 @@ public sealed class RunicAliasAttribute(string name) : Attribute
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
 public sealed class RunicUnionAttribute(params Type[] cases) : Attribute
 {
+    /// <summary>The concrete case types.</summary>
     public Type[] Cases { get; } = cases is { Length: > 0 } && cases.All(type => type is not null)
         ? [.. cases]
         : throw new ArgumentException("A Runic union needs at least one concrete case.", nameof(cases));
@@ -424,6 +455,7 @@ public sealed class RunicUnionAttribute(params Type[] cases) : Attribute
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = false)]
 public sealed class RunicUnionCaseAttribute(string name) : Attribute
 {
+    /// <summary>The stable wire name.</summary>
     public string Name { get; } = !string.IsNullOrWhiteSpace(name)
         ? name
         : throw new ArgumentException("A Runic union case name is required.", nameof(name));
@@ -433,6 +465,7 @@ public sealed class RunicUnionCaseAttribute(string name) : Attribute
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
 public sealed class RunicBridgeCodecAttribute(Type codecType) : Attribute
 {
+    /// <summary>The codec type, which implements <see cref="IRunicBridgeCodec{T}"/>.</summary>
     public Type CodecType { get; } = codecType ?? throw new ArgumentNullException(nameof(codecType));
 }
 
@@ -444,10 +477,12 @@ public sealed class RunicBridgeCodecAttribute(Type codecType) : Attribute
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = false)]
 public sealed class RunicCodecShapeAttribute(string typeScriptType, string decoderExpression, string encoderExpression = "$value") : Attribute
 {
+    /// <summary>The public TypeScript type of the value.</summary>
     public string TypeScriptType { get; } = !string.IsNullOrWhiteSpace(typeScriptType)
         ? typeScriptType
         : throw new ArgumentException("A TypeScript codec shape is required.", nameof(typeScriptType));
 
+    /// <summary>Frontend conversion from the JSON wire value; <c>$value</c> is replaced with the JSON value.</summary>
     public string DecoderExpression { get; } = !string.IsNullOrWhiteSpace(decoderExpression)
         && decoderExpression.Contains("$value", StringComparison.Ordinal)
         ? decoderExpression
@@ -471,6 +506,8 @@ public sealed class RunicCodecShapeAttribute(string typeScriptType, string decod
 /// </summary>
 public interface IRunicBridgeCodec<T>
 {
+    /// <summary>Decodes one JSON value.</summary>
     static abstract T Read(JsonElement value);
+    /// <summary>Writes one JSON value.</summary>
     static abstract void Write(Utf8JsonWriter writer, T value);
 }

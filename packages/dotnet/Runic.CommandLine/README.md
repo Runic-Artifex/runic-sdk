@@ -46,7 +46,7 @@ greet Ada` emits one versioned response. An application without a default comman
 shows help for an empty invocation; the lower-level parser retains its existing
 empty-input classification for hosted UI launch decisions.
 
-See the runnable [command-line example](../../../examples/command-line/README.md).
+See the runnable [command-line example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/command-line/README.md).
 
 ## Method-first inputs and results
 
@@ -260,7 +260,7 @@ stay out of public faults. If you customize exit codes, supply the same policy t
 `CommandExecutor` and `Presentation.ExitCodePolicy`. An explicit empty-input UI
 policy wins even when the catalog declares a default command.
 
-See the runnable [hosted example](../../../examples/command-line/HostedExample.cs)
+See the runnable [hosted example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/command-line/HostedExample.cs)
 for service injection and the complete launch flow. The example's UI branch is a
 console placeholder for an application's existing UI launcher.
 
@@ -342,4 +342,4 @@ and aliases, including directory-only hints. Bash and PowerShell also handle
 not a context-aware CLI parser embedded in each shell. Install scripts explicitly
 in your shell's completion setup (Zsh requires `compinit`); Runic never modifies
 shell profiles. The shell's ordinary filename fallback serves positional paths.
-See the [complete examples](../../../examples/command-line/README.md).
+See the [complete examples](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/command-line/README.md).

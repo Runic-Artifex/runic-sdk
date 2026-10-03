@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Desktop</PackageId>
-    <Authors>RunicArtifex</Authors>
     <Description>Runic Window and View host adapter for Runic Desktop.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -14,7 +14,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <InternalsVisibleTo Include="Runic.Application.Desktop.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="build/Runic.Application.Desktop.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Desktop.props" />
     <None Include="build/Runic.Application.Desktop.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Desktop.targets" />
     <None Include="www/runic-desktop-views.js" Pack="true" PackagePath="www/runic-desktop-views.js" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

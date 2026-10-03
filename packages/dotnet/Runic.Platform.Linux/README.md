@@ -13,7 +13,7 @@ window, and a missing portal never triggers an implicit toolkit fallback.
 `CreateGtkNativeFileDialogs(owner)` explicitly selects the previous GTK-native
 chooser for an unsandboxed compatibility application. Flatpak and Snap must use
 the portal path. Portal selections reject sibling staging before an atomic save
-transaction changes a file; see [portal behavior](../Runic.Platform.Linux.Portal/README.md).
+transaction changes a file; see [portal behavior](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md).
 A session bus, GTK3, a display and the appropriate portal backend must be installed.
 
 `CreateTextClipboard(owner)` serves UTF-8 text with GTK selection ownership.

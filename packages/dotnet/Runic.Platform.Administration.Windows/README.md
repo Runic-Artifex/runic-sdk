@@ -8,7 +8,7 @@ automatic elevation or helper process is required.
 
 This is a local implementation under native validation. **Administrative write and
 domain scenarios have not been accepted on disposable fixtures.** See
-[verification](docs/verification.md) for the distinction between implementation,
+[verification](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md) for the distinction between implementation,
 executed checks and remaining acceptance work. Do not infer production readiness
 from a successful pack or NativeAOT publish.
 
@@ -93,7 +93,7 @@ Selected updates must not be used to recreate an object from a partial snapshot.
 
 ## Console examples
 
-[Examples](docs/examples.md) cover each capability. The repository's
+[Examples](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Administration.Windows/docs/examples.md) cover each capability. The repository's
 examples/dotnet/Runic.Administration.Console is a package-only consumer with
 read-only commands. It can be copied outside this repository and restored from a
 local package; it has no source-tree or desktop-host references.

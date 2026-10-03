@@ -19,10 +19,17 @@ internal static class BridgeModelGates
 }
 
 // Generated descriptors and snapshot writers avoid runtime reflection.
+/// <summary>Describes one bridged ViewModel property. Created by generated bridges.</summary>
+/// <param name="name">The .NET property name.</param>
+/// <param name="getter">Reads the property value.</param>
+/// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
 public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter)
 {
+    /// <summary>The .NET property name.</summary>
     public string Name { get; } = name;
+    /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => setter is not null;
+    /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
     public object? Get(T vm) => getter(vm);
 
     internal void Set(T vm, IBridgeArguments e)
@@ -36,8 +43,29 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
 // setter descriptor. Their registry belongs to a WindowContentSession, so a
 // second presentation of the same model receives the same baseline, receipt
 // history, and PropertyChanged observer.
-public enum CheckedFieldValueKind { String, NullableString, Int32, Boolean, Json }
+/// <summary>The wire value type of an acknowledged field write.</summary>
+public enum CheckedFieldValueKind
+{
+    /// <summary>A non-null string.</summary>
+    String,
+    /// <summary>A nullable string.</summary>
+    NullableString,
+    /// <summary>A 32-bit integer.</summary>
+    Int32,
+    /// <summary>A Boolean.</summary>
+    Boolean,
+    /// <summary>A value encoded by generated JSON codecs.</summary>
+    Json,
+}
 
+/// <summary>Describes one property that accepts acknowledged field writes. Created by generated bridges.</summary>
+/// <param name="name">The .NET property name.</param>
+/// <param name="wireName">The property name on the wire.</param>
+/// <param name="valueKind">The wire value type.</param>
+/// <param name="getter">Reads the property value.</param>
+/// <param name="setter">Writes the decoded property value.</param>
+/// <param name="ReadValue">Decodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
+/// <param name="WriteValue">Encodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
 public sealed class CheckedPropertyDescriptor<T>(
     string name,
     string wireName,
@@ -47,8 +75,11 @@ public sealed class CheckedPropertyDescriptor<T>(
     Func<JsonElement, object?>? ReadValue = null,
     Action<Utf8JsonWriter, object?>? WriteValue = null)
 {
+    /// <summary>The .NET property name.</summary>
     public string Name { get; } = name;
+    /// <summary>The property name on the wire.</summary>
     public string WireName { get; } = wireName;
+    /// <summary>The wire value type.</summary>
     public CheckedFieldValueKind ValueKind { get; } = valueKind;
     internal Func<T, object?> Get { get; } = getter;
     internal Action<T, object?> Set { get; } = setter;
@@ -77,9 +108,25 @@ public sealed class CheckedPropertyDescriptor<T>(
 // Generated snapshot writers call the supplied callback while their JSON
 // object is still open. The base Bridge uses it for hidden per-field versions;
 // generated public State interfaces never expose those versions.
+/// <summary>Writes a ViewModel snapshot. Implemented by generated bridges.</summary>
+/// <param name="writer">The JSON writer.</param>
+/// <param name="viewModel">The ViewModel to write.</param>
+/// <param name="revision">The snapshot revision.</param>
+/// <param name="writeFieldMetadata">Writes field-write metadata while the snapshot object is open.</param>
 public delegate void BridgeSnapshotWriter<T>(Utf8JsonWriter writer, T viewModel,
     long revision, Action<Utf8JsonWriter> writeFieldMetadata);
 
+/// <summary>Describes one bridged command. Created by generated bridges.</summary>
+/// <param name="Name">The command property name.</param>
+/// <param name="Get">Reads the command object from the ViewModel.</param>
+/// <param name="ExecuteAsync">Executes a command without a result.</param>
+/// <param name="ReadArgument">Decodes the browser argument.</param>
+/// <param name="ExecuteResultAsync">Executes a command that produces a result.</param>
+/// <param name="EncodeArgument">Encodes the argument for diagnostics and replay checks.</param>
+/// <param name="CanExecute">Evaluates whether the command can run with an argument.</param>
+/// <param name="Subscribe">Observes changes of the command's executability.</param>
+/// <param name="CreateStream">Creates the result stream of a streaming command.</param>
+/// <param name="ExecuteStreamAsync">Executes a streaming command.</param>
 public sealed record CommandDescriptor<T>(
     string Name,
     Func<T, object> Get,
@@ -159,6 +206,7 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 {
 }
 
+/// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
 public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
     IBridgeSnapshotBatchParticipant where T : INotifyPropertyChanged
 {
@@ -185,6 +233,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private bool _disposed;
     private int _detaching;
 
+    /// <summary>Creates a bridge whose snapshot writer does not emit field-write metadata.</summary>
     protected ViewModelBridge(
         IBridgeTransport transport,
         T vm,
@@ -201,6 +250,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
     }
 
+    /// <summary>Creates a bridge with acknowledged field writes.</summary>
     protected ViewModelBridge(
         IBridgeTransport transport,
         T vm,
@@ -515,7 +565,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 if (!IsAvailable(descriptor, argument))
                     return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
                 using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                execution = InvokeCommandAsync(descriptor, cancellation, argument);
+                execution = InvokeCommandAsync(descriptor, argument, cancellation);
                 return null;
             });
             if (rejection is not null) return rejection;
@@ -560,7 +610,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, CancellationToken token, object? argument)
+    private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, object? argument, CancellationToken token)
     {
         if (descriptor.ExecuteStreamAsync is { } executeStream)
             return await executeStream(_vm, new BridgeOperationExecution(descriptor.CreateStream!()), token, argument).ConfigureAwait(false);
@@ -613,7 +663,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                     cancellation =>
                     {
                         using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                        return InvokeCommandAsync(descriptor, cancellation, argument);
+                        return InvokeCommandAsync(descriptor, argument, cancellation);
                     });
                 return BridgeOperationRouter.EncodeAdmission(admission);
             }
@@ -756,7 +806,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     // The snapshot route, which a client reads first, states the wire protocol
     // version. Clients ignore envelope members they do not know.
-    private string EncodeReply(BridgeFailure? error, string? snapshot, bool protocol = false) => WriteJson(writer =>
+    private static string EncodeReply(BridgeFailure? error, string? snapshot, bool protocol = false) => WriteJson(writer =>
     {
         writer.WriteStartObject();
         writer.WriteBoolean("ok", error is null);
@@ -854,6 +904,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2087",
         Justification = "Hot Reload is unavailable in trimmed applications; MetadataUpdater.IsSupported guards the reflection.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = "Hot Reload is unavailable in trimmed applications; MetadataUpdater.IsSupported guards the reflection.")]
     string? IHotReloadableBridge.ContractMismatch()
     {
         // The SDK ships as a Release library, so this follows whether the
@@ -884,7 +936,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    public virtual void Dispose() => _modelTurn.RunForTeardown(DisposeCore);
+    /// <summary>Unbinds the bridge's routes and stops observing the ViewModel.</summary>
+    public virtual void Dispose()
+    {
+        _modelTurn.RunForTeardown(DisposeCore);
+        GC.SuppressFinalize(this);
+    }
 
     private void DisposeCore()
     {
@@ -911,11 +968,16 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         BridgeFieldWriteRegistry<object?> Registry);
 }
 
+/// <summary>JSON helpers called by generated bridges.</summary>
 public static class BridgeJson
 {
+    /// <summary>Decodes a JSON string value.</summary>
+    /// <exception cref="FormatException"><paramref name="json"/> is not a JSON string.</exception>
     public static string ReadRequiredString(string json) =>
         ReadNullableString(json) ?? throw new FormatException("Expected a string.");
 
+    /// <summary>Decodes a JSON string or <c>null</c> value.</summary>
+    /// <exception cref="FormatException"><paramref name="json"/> is neither a string nor <c>null</c>.</exception>
     public static string? ReadNullableString(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -927,6 +989,7 @@ public static class BridgeJson
         };
     }
 
+    /// <summary>Writes the validation errors of <paramref name="propertyName"/> as a JSON string array named <paramref name="jsonName"/>.</summary>
     public static void WriteErrors(Utf8JsonWriter writer, INotifyDataErrorInfo viewModel,
         string propertyName, string jsonName)
     {

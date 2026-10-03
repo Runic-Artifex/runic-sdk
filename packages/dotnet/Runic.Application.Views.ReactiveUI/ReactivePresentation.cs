@@ -27,6 +27,7 @@ public abstract class ReactiveRunicView<TViewModel> : RunicView<TViewModel>,
 {
     private readonly ReactiveMount<TViewModel> _mount = new();
 
+    /// <summary>The typed ViewModel; assigning it rebinds ReactiveUI activation.</summary>
     public override TViewModel? DataContext
     {
         get => base.DataContext;
@@ -37,6 +38,7 @@ public abstract class ReactiveRunicView<TViewModel> : RunicView<TViewModel>,
         }
     }
 
+    /// <summary>The same as <see cref="DataContext"/>, as required by <see cref="IViewFor{T}"/>.</summary>
     public TViewModel? ViewModel { get => DataContext; set => DataContext = value; }
     object? IViewFor.ViewModel
     {
@@ -45,9 +47,13 @@ public abstract class ReactiveRunicView<TViewModel> : RunicView<TViewModel>,
             ?? throw new ArgumentException($"Expected {typeof(TViewModel).FullName}.", nameof(value));
     }
 
+    /// <inheritdoc />
     public virtual void OnAttached() { }
+    /// <summary>Called when the view stops being presented; deactivates the ViewModel.</summary>
     public virtual void OnDetached() => _mount.Unmount();
+    /// <summary>Activates an <see cref="IActivatableViewModel"/> when the web component mounts.</summary>
     public void OnWebMounted() => _mount.Mount();
+    /// <summary>Deactivates the ViewModel when the web component unmounts.</summary>
     public void OnWebUnmounted() => _mount.Unmount();
 }
 
@@ -61,8 +67,10 @@ public abstract class ReactiveRunicWindow<TViewModel> : RunicWindow<TViewModel>,
 {
     private readonly ReactiveMount<TViewModel> _mount = new();
 
+    /// <summary>Creates a window for its root ViewModel.</summary>
     protected ReactiveRunicWindow(TViewModel dataContext) : base(dataContext) => _mount.Bind(dataContext);
 
+    /// <summary>The typed ViewModel; assigning it rebinds ReactiveUI activation.</summary>
     public override TViewModel? DataContext
     {
         get => base.DataContext;
@@ -73,6 +81,7 @@ public abstract class ReactiveRunicWindow<TViewModel> : RunicWindow<TViewModel>,
         }
     }
 
+    /// <summary>The same as <see cref="DataContext"/>, as required by <see cref="IViewFor{T}"/>.</summary>
     public TViewModel? ViewModel { get => DataContext; set => DataContext = value; }
     object? IViewFor.ViewModel
     {
@@ -81,9 +90,13 @@ public abstract class ReactiveRunicWindow<TViewModel> : RunicWindow<TViewModel>,
             ?? throw new ArgumentException($"Expected {typeof(TViewModel).FullName}.", nameof(value));
     }
 
+    /// <inheritdoc />
     public virtual void OnAttached() { }
+    /// <summary>Called when the view stops being presented; deactivates the ViewModel.</summary>
     public virtual void OnDetached() => _mount.Unmount();
+    /// <summary>Activates an <see cref="IActivatableViewModel"/> when the web component mounts.</summary>
     public void OnWebMounted() => _mount.Mount();
+    /// <summary>Deactivates the ViewModel when the web component unmounts.</summary>
     public void OnWebUnmounted() => _mount.Unmount();
 }
 
@@ -133,6 +146,7 @@ public sealed class ReactiveRoutedRegion<TViewModel> : INotifyPropertyChanged, I
     private readonly IDisposable _subscription;
     private TViewModel? _current;
 
+    /// <summary>Observes <paramref name="router"/>'s current ViewModel.</summary>
     public ReactiveRoutedRegion(RoutingState router)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -158,18 +172,24 @@ public sealed class ReactiveRoutedRegion<TViewModel> : INotifyPropertyChanged, I
         public void OnNext(IRoutableViewModel? value) => owner.OnRoute(value);
     }
 
+    /// <summary>The routed ViewModel, or <see langword="null"/> when the route is empty or incompatible.</summary>
     public TViewModel? Current => _current;
+    /// <inheritdoc />
     public event PropertyChangedEventHandler? PropertyChanged;
+    /// <summary>Stops observing the router.</summary>
     public void Dispose() => _subscription.Dispose();
 }
 
 /// <summary>Adapts ReactiveUI's AOT-safe typed view lookup to Runic presentation.</summary>
 public sealed class ReactiveRunicViewLocator(IViewLocator locator) : IRunicViewLocator
 {
+    /// <inheritdoc />
     public TView Locate<TView, TViewModel>()
         where TView : class, IRunicView
         where TViewModel : class => Locate<TView, TViewModel>(null);
 
+    /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">No matching view is registered.</exception>
     public TView Locate<TView, TViewModel>(string? contract)
         where TView : class, IRunicView
         where TViewModel : class =>

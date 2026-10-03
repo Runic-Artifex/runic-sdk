@@ -107,6 +107,13 @@
         ]
       }
     },
+    "frontendPackageName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "npmPackageName",
+      "replaces": "@runic-artifex/runic-views-starter-svelte",
+      "description": "The frontend package.json name, derived from the project name."
+    },
     "runicViewsVersion": {
       "type": "parameter",
       "datatype": "text",
@@ -130,6 +137,11 @@
       "datatype": "text",
       "defaultValue": "__VIEWS_RUNTIME_NPM_VERSION_DEFAULT__",
       "replaces": "__VIEWS_RUNTIME_NPM_VERSION__"
+    }
+  },
+  "forms": {
+    "npmPackageName": {
+      "identifier": "kebabCase"
     }
   },
   "primaryOutputs": [

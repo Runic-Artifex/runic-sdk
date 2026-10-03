@@ -9,8 +9,12 @@ using System.Windows.Input;
 namespace Runic.Application.Views;
 
 /// <summary>Build-time/Debug reconstruction of the generated Bridge wire shape.</summary>
+[RequiresUnreferencedCode("Reflects over arbitrary model, DTO and view types; used only by code generation and Hot Reload.")]
 public static class BridgeContractShape
 {
+    /// <summary>Computes the contract fingerprint of <paramref name="model"/> and the views in its assembly.</summary>
+    /// <param name="model">The root view-model type.</param>
+    /// <returns>An uppercase hexadecimal SHA-256 fingerprint.</returns>
     public static string Compute([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type model)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -64,7 +68,7 @@ public static class BridgeContractShape
                 continue;
             }
             if (kind != "state") continue;
-            if (ContentModels(property, model, models).Count > 0)
+            if (ContentModels(property, model, models).Length > 0)
             {
                 parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}");
                 continue;
@@ -172,8 +176,8 @@ public static class BridgeContractShape
     private static NullabilityInfo? GenericAnnotation(NullabilityInfo? value, int index) => value is { GenericTypeArguments.Length: > 0 } && value.GenericTypeArguments.Length > index ? value.GenericTypeArguments[index] : null;
     private static string WireName(PropertyInfo property) => property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
     private static Type? GenericContract(Type type, params string[] names) => type.GetInterfaces().Append(type).FirstOrDefault(candidate => candidate.IsGenericType && names.Contains(candidate.GetGenericTypeDefinition().FullName, StringComparer.Ordinal));
-    private static IReadOnlyList<Type> ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
-    private static IReadOnlyList<PresentationView> DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
+    private static Type[] ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
+    private static PresentationView[] DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
     private static Type? ViewModelFor(Type view) { for (var current = view.BaseType; current is not null; current = current.BaseType) if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>)) return current.GenericTypeArguments[0]; return null; }
     private static string? ContractFor(MemberInfo member) => member.GetCustomAttribute<RunicViewContractAttribute>(true)?.Contract;
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Build-time and Debug-only contract inspection.")]

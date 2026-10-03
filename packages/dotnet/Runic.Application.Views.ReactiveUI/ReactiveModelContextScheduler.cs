@@ -7,6 +7,9 @@ namespace Runic.Application.Views.ReactiveUI;
 /// <summary>Provides ReactiveUI schedulers bound to Runic model contexts.</summary>
 public interface IRunicReactiveSchedulerProvider
 {
+    /// <summary>Returns a sequencer that runs work on <paramref name="context"/>.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
+        Justification = "Published member name shared with Runic.Application.ReactiveUI.Reactive.")]
     ISequencer For(IRunicModelContext context);
 }
 
@@ -16,6 +19,7 @@ public interface IRunicReactiveSchedulerProvider
 /// </summary>
 public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProvider
 {
+    /// <inheritdoc />
     public ISequencer For(IRunicModelContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

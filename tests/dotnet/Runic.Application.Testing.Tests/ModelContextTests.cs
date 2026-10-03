@@ -64,7 +64,7 @@ public static class ModelContextTests
                 "The session did not bind its root to the supplied application context.");
             using var conflicting = new InMemoryViewTransport();
             Require(Throws<InvalidOperationException>(() =>
-                new WindowContentSession(conflicting, rootModel: model, modelContext: otherContext)),
+                _ = new WindowContentSession(conflicting, rootModel: model, modelContext: otherContext)),
                 "A session silently split a root model between two contexts.");
         }
         Require(!RunicModelContextRegistry.Shared.TryGet(model, out _),
@@ -528,7 +528,7 @@ public static class ModelContextTests
             {
                 try { completion.SetResult(turn()); }
                 catch (Exception error) { completion.SetException(error); }
-            });
+            }, CancellationToken.None);
             return new(completion.Task);
         }
 

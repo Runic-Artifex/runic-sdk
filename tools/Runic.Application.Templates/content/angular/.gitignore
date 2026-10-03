@@ -2,3 +2,6 @@ bin/
 obj/
 node_modules/
 Frontend/dist/
+Frontend/.angular/
+# Typed View clients; dotnet build and dotnet runic dev regenerate them.
+Frontend/src/generated/

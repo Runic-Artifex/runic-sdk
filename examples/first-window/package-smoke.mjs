@@ -9,6 +9,7 @@ const example = join(root, "examples/first-window");
 const temporary = await mkdtemp(join(tmpdir(), "runic-views-package-"));
 const feed = join(temporary, "feed");
 const consumer = join(temporary, "consumer");
+const probes = join(temporary, "probes");
 const packageProjects = [
   ["Runic.Application", "Runic.Application.Views"],
   ["Runic.Application.CsWebUi", "Runic.Application.Views.CsWebUi"]
@@ -68,31 +69,46 @@ try {
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
     <RunicBridgeCompositionType>FirstWindow.RunicBridgeComposition</RunicBridgeCompositionType>
-    <RunicBridgeFrontendBuildCommand>bun run --bun build</RunicBridgeFrontendBuildCommand>
     <RestoreAdditionalProjectSources>${feed}</RestoreAdditionalProjectSources>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="${toolkit}" />
     <PackageReference Include="Runic.Application.CsWebUi" Version="${testVersion}" />
   </ItemGroup>
-  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><Compile Remove="Program.cs" /></ItemGroup>
 </Project>
 `);
   await run("bun", ["install"], join(consumer, "Frontend"));
   const build = await run("dotnet", ["build", "ConsumerFirstWindow.csproj", "-c", "Release"], consumer);
   if (!build.includes("Generated Counter bridge") || !build.includes("0 Error(s)"))
     throw new Error(`The package consumer did not generate its contract cleanly:\n${build}`);
-  const failedConstruction = await run("dotnet", [
-    join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll"), "--probe-factory-failure"
-  ], consumer);
+
+  // The Window lifetime probes live outside the example; build them against
+  // the same packages.
+  await mkdir(probes);
+  await copyFile(join(root, "tests/fixtures/application/cswebui-window-probes/Program.cs"), join(probes, "Program.cs"));
+  await writeFile(join(probes, "CsWebUiWindowProbes.csproj"), `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicBridgeBuildFrontend>false</RunicBridgeBuildFrontend>
+    <RunicBridgeTypescriptDir>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicBridgeTypescriptDir>
+    <RestoreAdditionalProjectSources>${feed}</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="${toolkit}" />
+    <PackageReference Include="Runic.Application.CsWebUi" Version="${testVersion}" />
+  </ItemGroup>
+</Project>
+`);
+  await run("dotnet", ["build", "CsWebUiWindowProbes.csproj", "-c", "Release"], probes);
+  const probe = join(probes, "bin/Release/net10.0/CsWebUiWindowProbes.dll");
+  const failedConstruction = await run("dotnet", [probe, "--probe-factory-failure"], probes);
   if (!failedConstruction.includes("FIRST_WINDOW_FACTORY_FAILURE_OK"))
     throw new Error(`The packaged Window factory did not release its failed construction scope:\n${failedConstruction}`);
-  const closedWindow = await run("dotnet", [
-    join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll"), "--probe-window-close"
-  ], consumer);
+  const closedWindow = await run("dotnet", [probe, "--probe-window-close"], probes);
   if (!closedWindow.includes("FIRST_WINDOW_CLOSE_OK"))
     throw new Error(`The packaged Window did not close its host cleanly:\n${closedWindow}`);
   const browser = await run("node", [join(example, "browser-smoke.mjs")], root, {

@@ -5,6 +5,7 @@ namespace Runic.Application.Views;
 /// <summary>Represents one ownership claim over a model graph's execution context.</summary>
 public interface IRunicModelContextLease : IDisposable, IAsyncDisposable
 {
+    /// <summary>The context that owns the claimed model graph.</summary>
     IRunicModelContext Context { get; }
 }
 
@@ -116,7 +117,7 @@ public sealed class RunicModelContextRegistry
         ? context!
         : throw new InvalidOperationException("The model has no registered Runic model context.");
 
-    private IRunicModelContextLease BindCore(IRunicModelContext context, bool ownsContext, object[] models)
+    private Lease BindCore(IRunicModelContext context, bool ownsContext, object[] models)
     {
         lock (_gate)
         {
@@ -151,7 +152,7 @@ public sealed class RunicModelContextRegistry
         return registration;
     }
 
-    private IRunicModelContextLease AddLease(Registration registration, object[] models)
+    private Lease AddLease(Registration registration, object[] models)
     {
         foreach (var model in models)
         {

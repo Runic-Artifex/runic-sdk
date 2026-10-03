@@ -10,8 +10,11 @@ public sealed record ViewTestArguments(
     string? ClientKey = null,
     string? ConnectionKey = null) : IBridgeArguments
 {
+    /// <inheritdoc />
     public long GetInt64() => Int64Value ?? throw new InvalidOperationException("No integer argument was supplied.");
+    /// <inheritdoc />
     public bool GetBoolean() => BooleanValue ?? throw new InvalidOperationException("No Boolean argument was supplied.");
+    /// <inheritdoc />
     public string GetString() => StringValue ?? throw new InvalidOperationException("No string argument was supplied.");
 }
 
@@ -35,18 +38,21 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
         get { lock (_gate) return _bindings.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray(); }
     }
 
+    /// <inheritdoc />
     public IDisposable Bind(string name, Func<IBridgeArguments, string> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
         return Add(name, new Binding(this, name, handler, null));
     }
 
+    /// <inheritdoc />
     public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
         return Add(name, new Binding(this, name, null, handler));
     }
 
+    /// <summary>Records a state publication for <see cref="DrainPublications"/>.</summary>
     public void Publish(string name, string stateJson)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -87,6 +93,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
         }
     }
 
+    /// <summary>Removes all routes and recorded publications.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -98,7 +105,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
         }
     }
 
-    private IDisposable Add(string name, Binding binding)
+    private Binding Add(string name, Binding binding)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         lock (_gate)
@@ -123,7 +130,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(InMemoryViewTransport));
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     private sealed class Binding(

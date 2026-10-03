@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text.Json;
+using System.Text.Encodings.Web;
 using Runic.Application.Views;
 using Runic.Desktop;
 
@@ -21,6 +21,7 @@ public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
     private readonly Dictionary<string, Delivery> _deliveries = new(StringComparer.Ordinal);
     private bool _disposed;
 
+    /// <summary>Creates a transport for <paramref name="surface"/>.</summary>
     public DesktopBridgeTransport(DesktopSurface surface)
         : this(surface ?? throw new ArgumentNullException(nameof(surface)), script => surface.RunJavaScriptAsync(script))
     {
@@ -38,6 +39,7 @@ public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
         get { lock (_gate) return _registrations.Count; }
     }
 
+    /// <inheritdoc />
     public IDisposable Bind(string name, Func<IBridgeArguments, string> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -45,6 +47,7 @@ public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
             ValueTask.FromResult(PresentationResult.FromString(handler(new DesktopBridgeArguments(invocation)))));
     }
 
+    /// <inheritdoc />
     public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -74,6 +77,7 @@ public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
         _ = DeliverAsync(name, stateJson);
     }
 
+    /// <summary>Removes every registered capability and stops state delivery; the surface stays open.</summary>
     public void Dispose()
     {
         Registration[] registrations;
@@ -88,7 +92,7 @@ public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
         foreach (var registration in registrations) registration.Release();
     }
 
-    private IDisposable Register(string name, PresentationCapabilityHandler handler)
+    private Registration Register(string name, PresentationCapabilityHandler handler)
     {
         lock (_gate)
         {
@@ -103,7 +107,8 @@ public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
 
     private async Task DeliverAsync(string name, string stateJson)
     {
-        var callback = JsonSerializer.Serialize($"__{name}Changed");
+        // A JSON string literal, encoded without reflection-based serialization.
+        var callback = $"\"{JavaScriptEncoder.Default.Encode($"__{name}Changed")}\"";
         while (true)
         {
             try { await _runJavaScript($"globalThis[{callback}]?.({stateJson});").ConfigureAwait(false); }
