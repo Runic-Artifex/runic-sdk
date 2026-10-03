@@ -33,6 +33,8 @@ public sealed record DesktopNotification(string Id, string Title, string Body)
     /// <summary>Up to four actions with distinct application-owned identifiers.</summary>
     public ImmutableArray<DesktopNotificationAction> Actions { get; init; } = [];
     /// <summary>Optional registered application URI for activation after process exit.</summary>
+    /// <remarks>On Windows the shell launches this URI, with notification and action query parameters,
+    /// through its registered protocol handler instead of raising Activated, including while the process runs.</remarks>
     public Uri? ActivationUri { get; init; }
 }
 /// <summary>A user action on a notification. Treat activation as untrusted input at the application boundary.</summary>
