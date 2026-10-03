@@ -4,10 +4,12 @@ The root `Directory.Build.props` supplies workspace identity and `RunicSdkRoot`.
 Managed projects explicitly import their policy from this directory, so moving a
 project does not silently change its language, analyzer or package settings.
 
-- `application`: View runtime, host adapters, code generation and CLI.
+- `application`: View runtime (`Runic.Application`), CS-WebUI, Desktop, ReactiveUI and
+  testing adapters, the BridgeCodegen tools, `dotnet-runic`, templates, the
+  `Runic.Platform*` native-service packages and their tests.
 - `assets`: archive/runtime adapters and asset packer.
 - `command-line`: command catalogs, generators and process APIs.
-- `desktop`: native window/transport runtime and platform checks.
+- `desktop`: `Runic.Desktop`/`Runic.Desktop.Gtk4`, their tests and native smoke checks.
 - `translations`: translation runtime, compiler, generators, tooling and the editor.
 
 `application`, `assets`, `command-line` and `translations` are thin wrappers over
@@ -15,7 +17,9 @@ project does not silently change its language, analyzer or package settings.
 of their build-mode switch (`RunicToolkitBuildMode`, `RunicAssetsBuildMode`,
 `RunicCommandLineBuildMode`, `RunicTranslationsBuildMode`). `Development` is the
 default; CI selects `Verification`, which treats warnings as errors and enables
-NuGet audit and trim/AOT analyzers for shipping projects. Package versions come
+NuGet audit and trim/AOT analyzers for shipping projects. A shipping project sets
+`Runic<Component>ShippingProject`, which also marks it trimmable and AOT-compatible;
+build-time tools such as BridgeCodegen leave it unset. Package versions come
 from `eng/Versions.props`. Desktop keeps its separate policy.
 
 Props are imported before a project's property groups. Matching targets are imported
