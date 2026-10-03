@@ -127,6 +127,7 @@ await ToolkitTypedTests.RunAsync();
 await ValidationTests.RunAsync();
 await SnapshotDeliveryTests.RunAsync();
 await SnapshotBatchTests.RunAsync();
+await ContentLifecycleTests.RunAsync();
 await InteractionFixture.VerifyAsync();
 await GeneratedInteractionTests.RunAsync();
 await CodegenCacheTests.RunAsync();

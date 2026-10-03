@@ -29,9 +29,15 @@ public sealed class WindowContentSession : IDisposable
     // every exposed model receives an ordinary, releasable binding lease.
     private IRunicModelContext? _sessionModelContext;
     private readonly bool _ownsSessionModelContext;
+    // A content model is bound to the graph's context only while it is
+    // attached. A suspended Entry keeps just its weakly keyed identity.
     private readonly HashSet<IRunicModelContextLease> _contentModelLeases = [];
     private ConditionalWeakTable<object, Dictionary<string, Entry>> _entries = new();
     private readonly HashSet<Entry> _activeEntries = [];
+    // Suspended content whose browser presentations have not unmounted yet.
+    // See ContentAttachment.Suspend.
+    private readonly HashSet<ContentAttachment> _dormantAttachments = [];
+    private long _revision;
     private readonly Dictionary<object, Dictionary<string, Entry>> _slots = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<InteractionMountAttachment> _rootInteractionMounts = [];
     // A logical View instance has one mounted presentation owner at a time.
@@ -145,6 +151,21 @@ public sealed class WindowContentSession : IDisposable
     // a shared field registry.
     internal BridgeFieldWriteRegistryProvider FieldWrites => _fieldWrites;
 
+    // Snapshot revisions are window-monotonic, so a route re-attached to a new
+    // bridge never publishes an older revision than its predecessor did.
+    internal long NextRevision() => Interlocked.Increment(ref _revision);
+
+    // Diagnostic counts used by headless lifecycle tests.
+    internal int RetainedContentModelLeaseCount
+    {
+        get { lock (_gate) return _contentModelLeases.Count; }
+    }
+
+    internal int DormantAttachmentCount
+    {
+        get { lock (_gate) return _dormantAttachments.Count; }
+    }
+
     /// <summary>
     /// Stops new window-owned operation admission and waits for accepted work
     /// to reach a terminal result. It leaves content, fields, and routes owned
@@ -244,6 +265,7 @@ public sealed class WindowContentSession : IDisposable
         Func<IBridgeTransport, T, string, IDisposable> attach) where T : class
     {
         Entry entry;
+        ContentAttachment? dormant;
         var created = false;
         lock (_gate)
         {
@@ -272,6 +294,7 @@ public sealed class WindowContentSession : IDisposable
                         continue;
                     }
                     BridgeSnapshotPublication.ThrowIfInactive();
+                    existing.ContextLease ??= AcquireContentModelLease(viewModel);
                     existing.Attaching = true;
                     entry = existing;
                     break;
@@ -279,26 +302,33 @@ public sealed class WindowContentSession : IDisposable
 
                 var reference = new PageReference(kind, Guid.NewGuid().ToString("N"));
                 BridgeSnapshotPublication.ThrowIfInactive();
-                entry = new Entry(reference, AcquireContentModelLease(viewModel));
-                entry.Attaching = true;
+                entry = new Entry(reference) { ContextLease = AcquireContentModelLease(viewModel), Attaching = true };
                 if (variants is null) _entries.Add(viewModel, variants = new Dictionary<string, Entry>(StringComparer.Ordinal));
                 variants.Add(kind, entry);
                 created = true;
                 break;
             }
+            // A browser may still show the suspended presentation of this
+            // reference: the snapshot that removed it can be superseded by
+            // one that presents it again. Its mounts resume on the new bridge.
+            dormant = entry.Dormant;
+            entry.Dormant = null;
+            if (dormant is not null) _dormantAttachments.Remove(dormant);
         }
 
-        IDisposable? attachment = null;
+        ContentAttachment? attachment = null;
         try
         {
-            attachment = AttachContent(viewModel, Prefix(entry.Reference), attach);
+            attachment = AttachContent(entry, viewModel, Prefix(entry.Reference), attach, dormant);
         }
         catch
         {
             CompleteFailedAttachment(viewModel, kind, entry, created);
+            dormant?.Dispose();
             throw;
         }
 
+        IRunicModelContextLease? lease;
         lock (_gate)
         {
             entry.Attaching = false;
@@ -310,10 +340,11 @@ public sealed class WindowContentSession : IDisposable
                 Monitor.PulseAll(_gate);
                 return entry.Reference;
             }
+            lease = TakeContextLease(entry);
             Monitor.PulseAll(_gate);
         }
         attachment.Dispose();
-        entry.ContextLease?.Dispose();
+        lease?.Dispose();
         throw new ObjectDisposedException(nameof(WindowContentSession));
     }
 
@@ -450,7 +481,7 @@ public sealed class WindowContentSession : IDisposable
         {
             if (_disposed) return;
             attachments = _activeEntries.Select(entry => entry.Attachment)
-                .OfType<ContentAttachment>().ToArray();
+                .OfType<ContentAttachment>().Concat(_dormantAttachments).ToArray();
             rootMounts = _rootInteractionMounts.ToArray();
         }
         _interactions.ReleaseConnection(connectionKey);
@@ -479,8 +510,15 @@ public sealed class WindowContentSession : IDisposable
             }
             foreach (var entry in variants.Values)
             {
+                entry.Forgotten = true;
                 if (SuspendCore(entry) is { } attachment) attachments.Add(attachment);
-                if (entry.ContextLease is { } lease && _contentModelLeases.Remove(lease)) modelLeases.Add(lease);
+                if (TakeContextLease(entry) is { } lease) modelLeases.Add(lease);
+                if (entry.Dormant is { } dormant)
+                {
+                    entry.Dormant = null;
+                    _dormantAttachments.Remove(dormant);
+                    attachments.Add(dormant);
+                }
             }
         }
         foreach (var attachment in attachments) attachment.Dispose();
@@ -505,8 +543,10 @@ public sealed class WindowContentSession : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
-            attachments = _activeEntries.Select(entry => entry.Attachment).OfType<IDisposable>().ToArray();
+            attachments = _activeEntries.Select(entry => entry.Attachment).OfType<IDisposable>()
+                .Concat(_dormantAttachments).ToArray();
             _activeEntries.Clear();
+            _dormantAttachments.Clear();
             _entries = new();
             _slots.Clear();
             rootMounts = _rootInteractionMounts.ToArray();
@@ -592,13 +632,49 @@ public sealed class WindowContentSession : IDisposable
         }
     }
 
-    private void CompleteDetachment(Entry entry)
+    // A suspended Entry releases its context binding. Its weakly keyed identity
+    // remains so a later Expose returns the same reference; a still-mounted
+    // browser presentation is retained as a dormant attachment.
+    private void CompleteDetachment(Entry entry, ContentAttachment? dormant)
     {
+        IRunicModelContextLease? lease;
+        var disposeDormant = false;
         lock (_gate)
         {
             entry.Detaching = false;
+            if (dormant is not null)
+            {
+                if (_disposed || entry.Forgotten) disposeDormant = true;
+                else
+                {
+                    entry.Dormant = dormant;
+                    _dormantAttachments.Add(dormant);
+                }
+            }
+            lease = entry.Attachment is null && !entry.Attaching ? TakeContextLease(entry) : null;
             Monitor.PulseAll(_gate);
         }
+        try { lease?.Dispose(); }
+        finally { if (disposeDormant) dormant!.Dispose(); }
+    }
+
+    // Called by a dormant attachment after its final browser presentation
+    // unmounted or disconnected.
+    private void ReleaseDormant(Entry entry, ContentAttachment dormant)
+    {
+        lock (_gate)
+        {
+            if (ReferenceEquals(entry.Dormant, dormant)) entry.Dormant = null;
+            _dormantAttachments.Remove(dormant);
+        }
+    }
+
+    // Must run under the session gate.
+    private IRunicModelContextLease? TakeContextLease(Entry entry)
+    {
+        var lease = entry.ContextLease;
+        entry.ContextLease = null;
+        return lease is not null && _contentModelLeases.Remove(lease) ? lease : null;
     }
 
     private bool IsDetachingOnCurrentFlow(Entry entry)
@@ -617,17 +693,21 @@ public sealed class WindowContentSession : IDisposable
 
     private static string Prefix(PageReference reference) => $"content{reference.Id}";
 
-    private IDisposable AttachContent<T>(T viewModel, string route,
-        Func<IBridgeTransport, T, string, IDisposable> attach) where T : class
+    private ContentAttachment AttachContent<T>(Entry entry, T viewModel, string route,
+        Func<IBridgeTransport, T, string, IDisposable> attach, ContentAttachment? dormant) where T : class
     {
         var inner = attach(_transport, viewModel, route);
-        try { return new ContentAttachment(this, inner, _transport, route); }
+        try
+        {
+            if (dormant is not null && dormant.TryResume(inner)) return dormant;
+            return new ContentAttachment(this, entry, inner, _transport, route);
+        }
         catch { inner.Dispose(); throw; }
     }
 
     // Must run under the session gate. Content can be independently exposed later than
     // its root, but it still joins the session graph's one execution owner.
-    private IRunicModelContextLease? AcquireContentModelLease(object viewModel)
+    private IRunicModelContextLease AcquireContentModelLease(object viewModel)
     {
         var context = ModelContext ?? throw new ObjectDisposedException(nameof(WindowContentSession));
         var lease = _modelContexts.Bind(context, viewModel);
@@ -637,7 +717,7 @@ public sealed class WindowContentSession : IDisposable
 
     private void CompleteFailedAttachment(object viewModel, string kind, Entry entry, bool created)
     {
-        IRunicModelContextLease? modelLease = null;
+        IRunicModelContextLease? modelLease;
         lock (_gate)
         {
             entry.Attaching = false;
@@ -646,8 +726,8 @@ public sealed class WindowContentSession : IDisposable
             {
                 variants.Remove(kind);
                 if (variants.Count == 0) _entries.Remove(viewModel);
-                if (entry.ContextLease is { } lease && _contentModelLeases.Remove(lease)) modelLease = lease;
             }
+            modelLease = TakeContextLease(entry);
             Monitor.PulseAll(_gate);
         }
         modelLease?.Dispose();
@@ -679,26 +759,30 @@ public sealed class WindowContentSession : IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(WindowContentSession));
     }
 
-    private sealed class Entry(PageReference reference, IRunicModelContextLease? contextLease)
+    // Holds no reference to its model: the identity table is weakly keyed.
+    private sealed class Entry(PageReference reference)
     {
         public PageReference Reference { get; } = reference;
-        public IRunicModelContextLease? ContextLease { get; } = contextLease;
-        public IDisposable? Attachment { get; set; }
+        public IRunicModelContextLease? ContextLease { get; set; }
+        public ContentAttachment? Attachment { get; set; }
+        public ContentAttachment? Dormant { get; set; }
         public bool Attaching { get; set; }
         public bool Detaching { get; set; }
+        public bool Forgotten { get; set; }
     }
 
-    private sealed class DetachingAttachment(WindowContentSession session, Entry entry, IDisposable attachment) : IDisposable
+    private sealed class DetachingAttachment(WindowContentSession session, Entry entry, ContentAttachment attachment) : IDisposable
     {
-        private IDisposable? _attachment = attachment;
+        private ContentAttachment? _attachment = attachment;
 
         public void Dispose()
         {
             var attachment = Interlocked.Exchange(ref _attachment, null);
             if (attachment is null) return;
             using var detachment = session.EnterDetachment(entry);
-            try { attachment.Dispose(); }
-            finally { session.CompleteDetachment(entry); }
+            var dormant = false;
+            try { dormant = attachment.Suspend(); }
+            finally { session.CompleteDetachment(entry, dormant ? attachment : null); }
         }
     }
 
@@ -814,31 +898,49 @@ public sealed class WindowContentSession : IDisposable
         }
     }
 
+    // Owns one content route's Mount and Unmount endpoints and the browser
+    // presentations acknowledged through them, around the generated bridge
+    // (`inner`) that currently serves the route.
+    //
+    // A snapshot that removes a reference can be superseded by one that
+    // presents it again before the browser observes the removal (A -> B -> A
+    // within one turn, or coalesced delivery). Such a browser never unmounts.
+    // Suspend therefore releases the Views and the bridge but, while browser
+    // mount tokens remain, keeps the tokens and both endpoints as a dormant
+    // attachment. A browser unmount or disconnect retires them; a re-exposure
+    // resumes them on its new bridge and recreates their Views.
     private sealed class ContentAttachment : IDisposable, IBridgeDetachmentSignal
     {
+        // A WebUI connection identifier can be reused after a reload, so a
+        // closed connection rejects only its former browser session. Retain a
+        // bounded history: older entries only matter for a late duplicate.
+        private const int MaximumClosedSessions = 64;
         private readonly WindowContentSession _session;
+        private readonly Entry _entry;
         private readonly string _route;
         private readonly object _gate = new();
-        private readonly IDisposable _inner;
+        private IDisposable? _inner;
         private readonly IDisposable _mountBinding;
         private readonly IDisposable _unmountBinding;
         private readonly Dictionary<string, MountOwner> _mounts = new(StringComparer.Ordinal);
         private readonly Dictionary<string, string> _sessions = new(StringComparer.Ordinal);
-        // WebUI may reuse a connection identifier after reload. A closed
-        // connection therefore rejects only its former browser session.
         private readonly Dictionary<string, string> _connectionSessions = new(StringComparer.Ordinal);
         private readonly HashSet<(string Connection, string Session)> _closedSessions = [];
+        private readonly Queue<(string Connection, string Session)> _closedSessionOrder = new();
         // A transport mount can be removed before its serialized model turn gets
         // to create the View. Keep acknowledgement separate from the transport
         // table so an unmount cannot be followed by a late mounted callback.
         private readonly HashSet<string> _activatedMounts = new(StringComparer.Ordinal);
         private string? _browserSession;
         private bool _viewModelLifetimeActive;
+        private bool _bindingsReleased;
         private bool _disposed;
 
-        public ContentAttachment(WindowContentSession session, IDisposable inner, IBridgeTransport transport, string route)
+        public ContentAttachment(WindowContentSession session, Entry entry, IDisposable inner,
+            IBridgeTransport transport, string route)
         {
             _session = session;
+            _entry = entry;
             _route = route;
             _inner = inner;
             _mountBinding = transport.Bind($"{route}Mount", Mount);
@@ -856,7 +958,8 @@ public sealed class WindowContentSession : IDisposable
             MountOwner owner;
             lock (_gate)
             {
-                if (_disposed) return "disconnected";
+                // A suspended route has no bridge to present.
+                if (_disposed || _inner is null) return "disconnected";
                 var session = token[..separator];
                 var clientKey = arguments.ClientKey;
                 if (arguments.ConnectionKey is { } connectionKey)
@@ -909,82 +1012,169 @@ public sealed class WindowContentSession : IDisposable
         {
             var token = arguments.GetString();
             MountRelease? release;
+            bool closed;
             lock (_gate)
             {
                 if (_disposed) return "disconnected";
                 if (_mounts.TryGetValue(token, out var owner) && !owner.Matches(arguments))
                     return "ignored";
                 release = ReleaseMountCore(token, "The browser presentation was unmounted.");
+                closed = CloseIfDormantAndUnmountedCore();
             }
             if (release is { } value) CompleteRelease(value);
+            if (closed) _session.ReleaseDormant(_entry, this);
             return "ok";
         }
 
         public void ReleaseConnection(string connectionKey)
         {
             List<MountRelease> releases = [];
+            bool closed;
             lock (_gate)
             {
                 if (_disposed) return;
                 if (_connectionSessions.Remove(connectionKey, out var session))
-                    _closedSessions.Add((connectionKey, session));
+                    RecordClosedSessionCore(connectionKey, session);
                 foreach (var token in _mounts.Where(pair => pair.Value.ConnectionKey == connectionKey)
                     .Select(pair => pair.Key).ToArray())
                     if (ReleaseMountCore(token, "The browser connection was disconnected.") is { } release)
                         releases.Add(release);
                 foreach (var client in _sessions.Keys.Where(client =>
                     !_mounts.Values.Any(owner => owner.ClientKey == client)).ToArray()) _sessions.Remove(client);
+                closed = CloseIfDormantAndUnmountedCore();
             }
             foreach (var release in releases) CompleteRelease(release);
+            if (closed) _session.ReleaseDormant(_entry, this);
         }
 
-        public void BeginDetaching() => (_inner as IBridgeDetachmentSignal)?.BeginDetaching();
+        public void BeginDetaching() => (Volatile.Read(ref _inner) as IBridgeDetachmentSignal)?.BeginDetaching();
+
+        // Releases the Views and the bridge. Returns true when browser mount
+        // tokens remain, in which case this attachment stays dormant and keeps
+        // its endpoints; otherwise it is fully disposed.
+        public bool Suspend()
+        {
+            IDisposable inner;
+            List<MountRelease> releases = [];
+            bool dormant;
+            lock (_gate)
+            {
+                if (_disposed || _inner is null) return false;
+                inner = _inner;
+                foreach (var token in _activatedMounts)
+                    releases.Add(new(token, NotifyInteractionUnmount: true,
+                        NotifyViewUnmount: inner is IRunicWebPresentationLifetime,
+                        "The browser presentation was suspended.", inner));
+                _activatedMounts.Clear();
+                if (_viewModelLifetimeActive && inner is not IRunicWebPresentationLifetime && _mounts.Count != 0)
+                    releases.Add(new(_mounts.Keys.First(), NotifyInteractionUnmount: false, NotifyViewUnmount: true,
+                        "The browser presentation was suspended.", inner));
+                _viewModelLifetimeActive = false;
+                _inner = null;
+                dormant = _mounts.Count != 0;
+                if (!dormant) CloseCore();
+            }
+            try
+            {
+                foreach (var release in releases) CompleteRelease(release);
+            }
+            finally { inner.Dispose(); }
+            return dormant;
+        }
+
+        // Installs the bridge of a re-exposure. Views for retained tokens are
+        // recreated in a later model turn: the exposure itself runs inside a
+        // parent's snapshot writer.
+        public bool TryResume(IDisposable inner)
+        {
+            KeyValuePair<string, MountOwner>[] mounts;
+            lock (_gate)
+            {
+                if (_disposed || _inner is not null) return false;
+                _inner = inner;
+                mounts = [.. _mounts];
+            }
+            if (mounts.Length != 0 && _session.ModelContext is { } context)
+                context.TryPost(() =>
+                {
+                    foreach (var (token, owner) in mounts)
+                    {
+                        try { CompleteMount(token, owner); }
+                        catch (Exception exception)
+                        {
+                            MountRelease? release;
+                            lock (_gate) release = ReleaseMountCore(token, "The browser presentation could not be mounted.");
+                            if (release is { } value) CompleteRelease(value);
+                            System.Diagnostics.Trace.TraceError($"Runic View remount failed: {exception}");
+                        }
+                    }
+                });
+            return true;
+        }
 
         public void Dispose()
         {
-            var shouldDispose = false;
             List<MountRelease> releases = [];
+            IDisposable? inner;
+            lock (_gate)
+            {
+                if (_disposed) return;
+                foreach (var token in _mounts.Keys.ToArray())
+                    if (ReleaseMountCore(token, "The browser presentation was disposed.") is { } release)
+                        releases.Add(release);
+                inner = _inner;
+                _inner = null;
+                CloseCore();
+            }
             try
             {
-                lock (_gate)
-                {
-                    if (_disposed) return;
-                    _disposed = true;
-                    shouldDispose = true;
-                    foreach (var token in _mounts.Keys.ToArray())
-                        if (ReleaseMountCore(token, "The browser presentation was disposed.") is { } release)
-                            releases.Add(release);
-                    _sessions.Clear();
-                    _connectionSessions.Clear();
-                    _closedSessions.Clear();
-                }
+                foreach (var release in releases) CompleteRelease(release);
             }
-            finally
-            {
-                if (shouldDispose)
-                {
-                    try { _mountBinding.Dispose(); }
-                    finally
-                    {
-                        try { _unmountBinding.Dispose(); }
-                        finally
-                        {
-                            foreach (var release in releases) CompleteRelease(release);
-                            _inner.Dispose();
-                        }
-                    }
-                }
-            }
+            finally { inner?.Dispose(); }
+        }
+
+        // Must run under _gate. Endpoints are released while holding it, so a
+        // re-exposure that observes a closed dormant attachment can bind them.
+        private void CloseCore()
+        {
+            _disposed = true;
+            _mounts.Clear();
+            _activatedMounts.Clear();
+            _sessions.Clear();
+            _connectionSessions.Clear();
+            _closedSessions.Clear();
+            _closedSessionOrder.Clear();
+            if (_bindingsReleased) return;
+            _bindingsReleased = true;
+            try { _mountBinding.Dispose(); }
+            finally { _unmountBinding.Dispose(); }
+        }
+
+        private bool CloseIfDormantAndUnmountedCore()
+        {
+            if (_disposed || _inner is not null || _mounts.Count != 0) return false;
+            CloseCore();
+            return true;
+        }
+
+        private void RecordClosedSessionCore(string connectionKey, string session)
+        {
+            if (!_closedSessions.Add((connectionKey, session))) return;
+            _closedSessionOrder.Enqueue((connectionKey, session));
+            while (_closedSessionOrder.Count > MaximumClosedSessions)
+                _closedSessions.Remove(_closedSessionOrder.Dequeue());
         }
 
         private void CompleteMount(string token, MountOwner owner)
         {
+            IDisposable inner;
             var notifyView = false;
             lock (_gate)
             {
-                if (_disposed || !_mounts.TryGetValue(token, out var current) || !ReferenceEquals(current, owner)
-                    || !_activatedMounts.Add(token)) return;
-                if (_inner is IRunicWebPresentationLifetime)
+                if (_disposed || _inner is null || !_mounts.TryGetValue(token, out var current)
+                    || !ReferenceEquals(current, owner) || !_activatedMounts.Add(token)) return;
+                inner = _inner;
+                if (inner is IRunicWebPresentationLifetime)
                     notifyView = true;
                 else if (!_viewModelLifetimeActive)
                 {
@@ -994,15 +1184,15 @@ public sealed class WindowContentSession : IDisposable
             }
 
             _session._interactions.OnPresentationMounted(_route, token, owner.ClientKey, owner.ConnectionKey);
-            if (notifyView) NotifyMounted(token);
+            if (notifyView) NotifyMounted(inner, token);
         }
 
-        private void NotifyMounted(string token)
+        private static void NotifyMounted(IDisposable inner, string token)
         {
-            if (_inner is IRunicWebPresentationLifetime presentation)
+            if (inner is IRunicWebPresentationLifetime presentation)
                 presentation.OnWebMounted(token);
             else
-                (_inner as IRunicWebMountLifetime)?.OnWebMounted();
+                (inner as IRunicWebMountLifetime)?.OnWebMounted();
         }
 
         private MountRelease? ReleaseMountCore(string token, string reason)
@@ -1014,7 +1204,7 @@ public sealed class WindowContentSession : IDisposable
                 : _mounts.Count == 0 && _viewModelLifetimeActive;
             if (notifyView && _inner is not IRunicWebPresentationLifetime)
                 _viewModelLifetimeActive = false;
-            return new(token, notifyInteraction, notifyView, reason);
+            return new(token, notifyInteraction, notifyView, reason, _inner);
         }
 
         private MountRelease? SupersedeMountCore(string token)
@@ -1025,7 +1215,7 @@ public sealed class WindowContentSession : IDisposable
             var notifyInteraction = _activatedMounts.Remove(token);
             return new(token, notifyInteraction,
                 _inner is IRunicWebPresentationLifetime && notifyInteraction,
-                "The browser presentation was superseded.");
+                "The browser presentation was superseded.", _inner);
         }
 
         private void CompleteRelease(MountRelease release)
@@ -1036,16 +1226,16 @@ public sealed class WindowContentSession : IDisposable
             {
                 if (release.NotifyInteractionUnmount)
                     _session._interactions.OnPresentationUnmounted(release.Token, release.Reason);
-                if (release.NotifyViewUnmount) NotifyUnmounted(release.Token);
+                if (release.NotifyViewUnmount && release.Inner is { } inner) NotifyUnmounted(inner, release.Token);
             });
         }
 
-        private void NotifyUnmounted(string token)
+        private static void NotifyUnmounted(IDisposable inner, string token)
         {
-            if (_inner is IRunicWebPresentationLifetime presentation)
+            if (inner is IRunicWebPresentationLifetime presentation)
                 presentation.OnWebUnmounted(token);
             else
-                (_inner as IRunicWebMountLifetime)?.OnWebUnmounted();
+                (inner as IRunicWebMountLifetime)?.OnWebUnmounted();
         }
 
         // User presentation lifetimes can mutate a ReactiveObject. Run them on the
@@ -1060,7 +1250,8 @@ public sealed class WindowContentSession : IDisposable
             string Token,
             bool NotifyInteractionUnmount,
             bool NotifyViewUnmount,
-            string Reason);
+            string Reason,
+            IDisposable? Inner);
 
         private sealed record MountOwner(string? ClientKey, string? ConnectionKey)
         {

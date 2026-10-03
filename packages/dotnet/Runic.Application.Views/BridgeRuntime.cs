@@ -226,6 +226,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         _modelGate = BridgeModelGates.For(vm);
         _modelTurn = BridgeModelTurn.For(vm);
         _content = content;
+        // A window can detach a content route and attach a new bridge to the
+        // same route while a browser still holds the former state. Drawing
+        // revisions from the window keeps that route's order monotonic.
+        _revision = content?.NextRevision() ?? 0;
         _delivery = new(transport, name, _modelTurn);
         _name = name;
         _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
@@ -264,13 +268,22 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 else
                 {
                     var contract = $"{typeof(T).FullName}:{contractFingerprint}";
-                    _checkedProperties = checkedProperties.Select(descriptor =>
-                        new CheckedPropertyBinding(descriptor, content.FieldWrites.GetOrCreate(
+                    var checkedBindings = new List<CheckedPropertyBinding>(checkedProperties.Length);
+                    foreach (var descriptor in checkedProperties)
+                    {
+                        // The lease shares the window's registry with other
+                        // presentations of this model and releases it with
+                        // the last one.
+                        var field = content.FieldWrites.Acquire(
                             _vm, contract, descriptor.Name,
                             () => descriptor.Get(_vm), value => descriptor.Set(_vm, value),
                             snapshot: descriptor.Snapshot, equalityComparer: descriptor.Comparer,
                             canonicalize: value => EncodeCheckedValue(value, descriptor),
-                            retainedValueByteCount: value => Encoding.UTF8.GetByteCount(EncodeCheckedValue(value, descriptor))))).ToArray();
+                            retainedValueByteCount: value => Encoding.UTF8.GetByteCount(EncodeCheckedValue(value, descriptor)));
+                        bindings.Add(field.Lease);
+                        checkedBindings.Add(new CheckedPropertyBinding(descriptor, field.Registry));
+                    }
+                    _checkedProperties = [.. checkedBindings];
                 }
             }
             _vm.PropertyChanged += OnChanged;
@@ -771,7 +784,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return;
-            _revision++;
+            _revision = NextRevision();
             // Capture is more expensive than queue delivery. A batch defers
             // only capture, never the revision: route replies that serialize
             // state during the batch must remain newer than their predecessor.
@@ -779,6 +792,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             PublishSnapshotCore();
         }
     }
+
+    private long NextRevision() => _content?.NextRevision() ?? _revision + 1;
 
     private void PublishBatchedSnapshotCore()
     {

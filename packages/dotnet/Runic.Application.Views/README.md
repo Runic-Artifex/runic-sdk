@@ -14,6 +14,15 @@ when the outlet changes. The ViewModel belongs to its application or window DI
 scope and may survive View changes. Window-local routes and operation admission
 are host-neutral; native window creation belongs to a host adapter.
 
+Presented content is bound to the window's model context, and keeps its
+checked-field registries, only while it is attached. Replacing, clearing, or
+pruning it releases both; the window keeps a weak identity so presenting the same
+object again returns the same reference. When the browser still shows a suspended
+reference, as after `Main = b; Main = a;` in one command, its mount resumes on the
+re-attached bridge with a fresh View. Snapshot revisions increase across the whole
+window, so a re-attached route never publishes an older revision. The
+[wire protocol](../../../specs/application/README.md) describes these rules.
+
 Generated clients expose a snapshot, subscriptions, typed property setters,
 commands, and disposal. Calls reject with typed errors. Accepted operations
 remain owned by .NET across a browser reload; a reconnect gets a new snapshot.

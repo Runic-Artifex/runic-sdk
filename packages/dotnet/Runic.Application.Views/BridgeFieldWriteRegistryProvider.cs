@@ -8,6 +8,11 @@ namespace Runic.Application.Views;
 // Window/session-owned field registry provider. It intentionally has no
 // global instance: receipt history and request IDs belong to one window owner,
 // while BridgeModelTurn supplies the shared per-model synchronous turn.
+//
+// Each attached bridge holds a lease on the registries it uses. A field's
+// registry, its PropertyChanged observer, and the provider's strong model
+// reference are released when the last bridge presenting that model in this
+// window detaches, so churning content does not accumulate retained models.
 internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
 {
     private readonly object _gate = new();
@@ -24,11 +29,18 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         _maximumRetainedReceiptBytes = maximumRetainedReceiptBytes;
     }
 
+    // Number of models with at least one live field registry.
+    internal int RetainedModelCount
+    {
+        get { lock (_gate) return _models.Count; }
+    }
+
     // The first registration for a (model identity, contract, property) key
     // owns its read, apply, validation, and receipt-retention semantics.
     // Later callers receive that same registry; delegate compatibility is not
-    // inferred from closures or method bodies.
-    internal BridgeFieldWriteRegistry<T> GetOrCreate<T>(
+    // inferred from closures or method bodies. Dispose the returned lease when
+    // the caller no longer presents the field.
+    internal BridgeFieldWriteLease<T> Acquire<T>(
         INotifyPropertyChanged model,
         string contract,
         string property,
@@ -52,11 +64,11 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         // a snapshot callback that exposes checked fields cannot invert
         // model-turn -> provider ownership.
         var turn = BridgeModelTurn.For(model);
-        return turn.Run(() => GetOrCreateCore(model, contract, property, read, apply,
+        return turn.Run(() => AcquireCore(model, contract, property, read, apply,
             maximumRetainedWrites, validate, snapshot, equalityComparer, canonicalize, retainedValueByteCount, turn));
     }
 
-    private BridgeFieldWriteRegistry<T> GetOrCreateCore<T>(
+    private BridgeFieldWriteLease<T> AcquireCore<T>(
         INotifyPropertyChanged model,
         string contract,
         string property,
@@ -84,7 +96,8 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
             {
                 if (existing.ValueType != typeof(T))
                     throw new InvalidOperationException($"{contract}.{property} was requested with incompatible field types.");
-                return (BridgeFieldWriteRegistry<T>)existing.Registry;
+                existing.References++;
+                return new((BridgeFieldWriteRegistry<T>)existing.Registry, new Lease(this, model, key, existing));
             }
 
             var registry = new BridgeFieldWriteRegistry<T>(
@@ -102,19 +115,18 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
                 catch (ObjectDisposedException) { }
             };
             model.PropertyChanged += observer;
-            entries.Fields.Add(key, new(typeof(T), registry, () =>
+            var entry = new Entry(typeof(T), registry, () =>
             {
                 model.PropertyChanged -= observer;
                 registry.Dispose();
-            }));
-            return registry;
+            }) { References = 1 };
+            entries.Fields.Add(key, entry);
+            return new(registry, new Lease(this, model, key, entry));
         }
     }
 
-    // Releases the provider's strong model reference and its single observer
-    // when a dynamic view model leaves this window. This is intentionally a
-    // separate seam from WindowContentSession.Forget until their ownership
-    // lifetimes are integrated.
+    // Releases the provider's strong model reference and its observers
+    // regardless of outstanding leases.
     internal void Forget(INotifyPropertyChanged model)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -127,6 +139,19 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
             entries = modelEntries.Fields.Values.ToArray();
         }
         foreach (var entry in entries) entry.Dispose();
+    }
+
+    private void Release(object model, FieldKey key, Entry entry)
+    {
+        lock (_gate)
+        {
+            if (_disposed || !_models.TryGetValue(model, out var entries)
+                || !entries.Fields.TryGetValue(key, out var current) || !ReferenceEquals(current, entry)) return;
+            if (--entry.References != 0) return;
+            entries.Fields.Remove(key);
+            if (entries.Fields.Count == 0) _models.Remove(model);
+        }
+        entry.Dispose();
     }
 
     public void Dispose()
@@ -154,10 +179,24 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
 
     private sealed class Entry(Type valueType, object registry, Action dispose) : IDisposable
     {
+        private Action? _dispose = dispose;
         public Type ValueType { get; } = valueType;
         public object Registry { get; } = registry;
-        public void Dispose() => dispose();
+        public int References { get; set; }
+        public void Dispose() => Interlocked.Exchange(ref _dispose, null)?.Invoke();
+    }
+
+    private sealed class Lease(BridgeFieldWriteRegistryProvider owner, object model, FieldKey key, Entry entry) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) owner.Release(model, key, entry);
+        }
     }
 
     private readonly record struct FieldKey(string Contract, string Property);
 }
+
+internal readonly record struct BridgeFieldWriteLease<T>(BridgeFieldWriteRegistry<T> Registry, IDisposable Lease);
