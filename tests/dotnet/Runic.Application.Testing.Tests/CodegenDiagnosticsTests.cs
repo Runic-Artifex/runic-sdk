@@ -72,6 +72,20 @@ internal static class CodegenDiagnosticsTests
                 public sealed class NamesViewModel : FixtureModel { public Names Values { get; } = []; }
                 public sealed partial class NamesWindow(NamesViewModel model) : RunicWindow<NamesViewModel>(model);
                 """, "Fixture.Names is not a supported bridge collection").ConfigureAwait(false);
+
+            // A ViewModel with interactions but no content still needs a
+            // content session, so DI must not offer a transport-only factory.
+            var composition = await GenerateValidAsync(generator, temporaryRoot, "InteractionComposition", Preamble + """
+                public sealed class AskViewModel : FixtureModel { public ReactiveUI.Binding.Interaction<string, bool> Confirm { get; } = new(); }
+                public sealed class PlainViewModel : FixtureModel { public string Title { get; } = ""; }
+                public sealed partial class AskWindow(AskViewModel model) : RunicWindow<AskViewModel>(model);
+                public sealed partial class PlainWindow(PlainViewModel model) : RunicWindow<PlainViewModel>(model);
+                """, "--di-composition", "Fixture.Composition").ConfigureAwait(false);
+            var registration = File.ReadAllText(Path.Combine(composition, "RunicBridgeComposition.g.cs"));
+            Require(!registration.Contains("Func<IBridgeTransport, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
+                && registration.Contains("Func<IBridgeTransport, WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
+                && registration.Contains("Func<IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),
+                $"DI composition registered a transport-only factory for an interaction ViewModel.\n{registration}");
         }
         finally
         {
@@ -81,6 +95,23 @@ internal static class CodegenDiagnosticsTests
 
     /// <summary>Compiles one fixture assembly and returns the failed generator's output.</summary>
     private static async Task<string> GenerateAsync(string generator, string temporaryRoot, string name, string source)
+    {
+        var (exitCode, text, _) = await RunGeneratorAsync(generator, temporaryRoot, name, source).ConfigureAwait(false);
+        Require(exitCode != 0, $"{name}: the generator accepted an invalid ViewModel.\n{text}");
+        return text;
+    }
+
+    /// <summary>Compiles one fixture assembly and returns the successful generator's C# output directory.</summary>
+    private static async Task<string> GenerateValidAsync(string generator, string temporaryRoot, string name, string source,
+        params string[] options)
+    {
+        var (exitCode, text, directory) = await RunGeneratorAsync(generator, temporaryRoot, name, source, options).ConfigureAwait(false);
+        Require(exitCode == 0, $"{name}: the generator rejected a valid ViewModel.\n{text}");
+        return Path.Combine(directory, "cs");
+    }
+
+    private static async Task<(int ExitCode, string Output, string Directory)> RunGeneratorAsync(string generator,
+        string temporaryRoot, string name, string source, params string[] options)
     {
         var directory = Path.Combine(temporaryRoot, name);
         Directory.CreateDirectory(directory);
@@ -95,6 +126,11 @@ internal static class CodegenDiagnosticsTests
         if (!emitted.Success)
             throw new InvalidOperationException($"{name}: the fixture did not compile.\n"
                 + string.Join('\n', emitted.Diagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)));
+        // Like a bootstrap output directory, place application dependencies
+        // (for example ReactiveUI.Binding) beside the inspected assembly.
+        foreach (var reference in compilation.GetUsedAssemblyReferences().OfType<PortableExecutableReference>())
+            if (reference.FilePath is { } path && Path.GetDirectoryName(path) == Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory))
+                File.Copy(path, Path.Combine(directory, Path.GetFileName(path)), overwrite: true);
 
         using var process = new Process
         {
@@ -104,6 +140,7 @@ internal static class CodegenDiagnosticsTests
                 ArgumentList = { generator, "--generate", assembly, Path.Combine(directory, "cs"), Path.Combine(directory, "ts"), "--no-registry" },
             },
         };
+        foreach (var option in options) process.StartInfo.ArgumentList.Add(option);
         process.StartInfo.Environment["RUNIC_BRIDGE_CODEGEN_CACHE"] = "0";
         process.Start();
         var output = process.StandardOutput.ReadToEndAsync();
@@ -116,10 +153,9 @@ internal static class CodegenDiagnosticsTests
             throw new InvalidOperationException($"{name}: the generator did not exit within 30 seconds.");
         }
         var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
-        Require(process.ExitCode != 0, $"{name}: the generator accepted an invalid ViewModel.\n{text}");
         Require(!text.Contains("Unhandled exception", StringComparison.Ordinal),
             $"{name}: the generator crashed instead of reporting a diagnostic.\n{text}");
-        return text;
+        return (process.ExitCode, text, directory);
     }
 
     private static string FindWorkspaceRoot()

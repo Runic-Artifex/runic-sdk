@@ -109,10 +109,12 @@ try
                 && !expectedCsharp.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
         foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
             if (!expectedTypescript.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
+        var contentRequired = new HashSet<Type>();
         foreach (var entry in models)
         {
-            GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
-                Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, registerGlobally, models, viewTypes);
+            if (GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
+                Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, registerGlobally, models, viewTypes))
+                contentRequired.Add(entry.Model);
             if (viewTypes.TryGetValue(entry.Model, out var views))
                 foreach (var view in views)
                     GenerateViewPartial(Path.Combine(positional[2], ViewFileName(view)), view, entry.Model, entry.Name);
@@ -122,7 +124,7 @@ try
         {
             if (File.Exists(compositionPath)) File.Delete(compositionPath);
         }
-        else GenerateCompositionRegistration(compositionPath, compositionType, models);
+        else GenerateCompositionRegistration(compositionPath, compositionType, models, contentRequired);
         BridgeGenerationCache.Save(positional[1], positional[2], positional[3], cacheArguments);
     }
     else
@@ -201,7 +203,8 @@ static void GenerateViewPartial(string path, Type view, Type model, string short
     WriteIfChanged(path, cs.ToString());
 }
 
-static void GenerateCompositionRegistration(string path, string compositionType, (Type Model, string Name)[] models)
+static void GenerateCompositionRegistration(string path, string compositionType, (Type Model, string Name)[] models,
+    IReadOnlySet<Type> contentRequired)
 {
     var parts = CompositionParts(compositionType);
 
@@ -220,15 +223,10 @@ static void GenerateCompositionRegistration(string path, string compositionType,
     {
         var modelType = $"global::{model.FullName}";
         var bridgeType = $"global::{model.Namespace}.{name}Bridge";
-        var hasContent = model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
-            .Any(property => !property.CustomAttributes.Any(attribute =>
-                    attribute.AttributeType.FullName == "Runic.Application.Views.RunicIgnoreAttribute")
-                && (property.PropertyType.IsGenericType
-                    && property.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)
-                        ? property.PropertyType.GenericTypeArguments[0] : property.PropertyType) is { } candidate
-                && candidate != typeof(object) && models.Any(entry =>
-                    entry.Model != model && candidate.IsAssignableFrom(entry.Model)));
-        if (!hasContent)
+        // GenerateOne decided whether the bridge constructor requires a content
+        // session (ViewModel content or interactions). Only offer the
+        // transport-only factory when it can actually construct the bridge.
+        if (!contentRequired.Contains(model))
         {
             cs.AppendLine($"        services.AddScoped<global::System.Func<IBridgeTransport, {modelType}, global::System.IDisposable>>(");
             cs.AppendLine($"            _ => (transport, vm) => new {bridgeType}(transport, vm));");
@@ -266,7 +264,8 @@ static string[] CompositionParts(string compositionType)
     return parts;
 }
 
-static void GenerateOne(Type model, string csharpPath, string typescriptPath, string shortName,
+// Returns true when the generated bridge requires a WindowContentSession.
+static bool GenerateOne(Type model, string csharpPath, string typescriptPath, string shortName,
     bool registerGlobally = true, (Type Model, string Name)[]? knownModels = null,
     IReadOnlyDictionary<Type, List<Type>>? viewTypes = null)
 {
@@ -1208,6 +1207,7 @@ static void GenerateOne(Type model, string csharpPath, string typescriptPath, st
     WriteIfChanged(csharpPath, cs.ToString());
     WriteIfChanged(typescriptPath, ts.ToString());
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
+    return hasContent || interactions.Length > 0;
 
     string TsPropertyType(PropertyInfo property) => valueProperties.TryGetValue(property, out var graph)
         ? graph.TypeScriptType()
