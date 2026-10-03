@@ -1,12 +1,7 @@
-using System.Runtime.CompilerServices;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-
-[assembly: InternalsVisibleTo("BridgeOperationRouterProbe")]
-[assembly: InternalsVisibleTo("WindowOperationRouterProbe")]
-[assembly: InternalsVisibleTo("CsWebUiGracefulCloseProbe")]
 
 namespace Runic.Application.Views;
 

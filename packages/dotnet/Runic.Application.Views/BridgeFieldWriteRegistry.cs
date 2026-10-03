@@ -2,9 +2,6 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 
-[assembly: InternalsVisibleTo("EditScopeHostProbe")]
-[assembly: InternalsVisibleTo("OperationAcceptanceProbe")]
-[assembly: InternalsVisibleTo("SourceBackedIndependentDraftProbe")]
 [assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
 
 namespace Runic.Application.Views;

@@ -1,7 +1,5 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("BridgeOperationRegistryProbe")]
-[assembly: InternalsVisibleTo("OperationAcceptanceProbe")]
 [assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
 
 namespace Runic.Application.Views;

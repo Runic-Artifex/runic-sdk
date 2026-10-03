@@ -1,10 +1,3 @@
-using System.Runtime.CompilerServices;
-
-[assembly: InternalsVisibleTo("FieldWriteTurnProbe")]
-[assembly: InternalsVisibleTo("FieldRegistryProviderProbe")]
-[assembly: InternalsVisibleTo("OperationAcceptanceProbe")]
-[assembly: InternalsVisibleTo("SourceBackedIndependentDraftProbe")]
-
 namespace Runic.Application.Views;
 
 // A short, re-entrant synchronous turn over one actual ViewModel. It shares
