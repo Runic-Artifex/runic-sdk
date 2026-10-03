@@ -21,6 +21,12 @@ internal static class DesktopPortalTests
         Check(await notifications.ShowAsync(new("saved", "Saved", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<Unit>.Success, "notification submission");
         Check((await activated.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "action arriving before method reply is routed");
         Check(await notifications.RemoveAsync("saved") is PlatformResult<Unit>.Success && service.Removed == "saved", "notification removal");
+        for (int i = 0; i < 80; i++)
+            Check(await notifications.ShowAsync(new($"bulk-{i}", "Bulk", "Body")) is PlatformResult<Unit>.Success, "unremoved notifications evict the oldest routing entry");
+        var latest = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
+        notifications.Activated += (_, activation) => { if (activation.NotificationId == "latest") latest.TrySetResult(activation); };
+        Check(await notifications.ShowAsync(new("latest", "Latest", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<Unit>.Success, "submission after eviction");
+        Check((await latest.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "recent notification actions still route after eviction");
         service.Deny = true;
         Check(await notifications.ShowAsync(new("denied", "Title", "Body")) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }, "portal permission denial remains distinct");
         service.Deny = false;

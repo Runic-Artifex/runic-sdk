@@ -12,6 +12,9 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
     private static readonly Lazy<nint> DelegateClass = new(CreateDelegateClass);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, nint> _categories = new(StringComparer.Ordinal);
+    // Action categories stay registered for the most recently shown notifications; older ones are evicted.
+    private readonly List<string> _recent = [];
+    private const int RecentCapacity = 64;
     private nint _center, _delegate;
     private volatile bool _disposed;
     public event EventHandler<DesktopNotificationActivation>? Activated;
@@ -27,7 +30,6 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
         DesktopServiceValidation.Notification(notification);
         return ExecuteAsync(completion =>
         {
-            if (_categories.Count >= 64 && !_categories.ContainsKey(notification.Id)) { completion.TrySetResult(Failed(FailureCode.ResourceBusy)); return; }
             var content = Send(Send(Class("UNMutableNotificationContent"), Sel("alloc")), Sel("init"));
             try
             {
@@ -39,6 +41,12 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
                 Send(category, Sel("retain"));
                 if (_categories.Remove(notification.Id, out var old)) Release(old);
                 _categories[notification.Id] = category;
+                _recent.Remove(notification.Id); _recent.Add(notification.Id);
+                while (_recent.Count > RecentCapacity)
+                {
+                    if (_categories.Remove(_recent[0], out var oldest)) Release(oldest);
+                    _recent.RemoveAt(0);
+                }
                 var categories = Send(Class("NSMutableSet"), Sel("set"));
                 foreach (var value in _categories.Values) Arg(categories, Sel("addObject:"), value);
                 Arg(_center, Sel("setNotificationCategories:"), categories);
@@ -61,6 +69,7 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
             var ids = Array(String(id)); Arg(_center, Sel("removePendingNotificationRequestsWithIdentifiers:"), ids);
             Arg(_center, Sel("removeDeliveredNotificationsWithIdentifiers:"), ids);
             if (_categories.Remove(id, out var category)) Release(category);
+            _recent.Remove(id);
             completion.TrySetResult(Success());
         }, cancellationToken);
     }
@@ -146,7 +155,7 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
                 using var pool = new Pool();
                 if (Send(_center, Sel("delegate")) == _delegate) Arg(_center, Sel("setDelegate:"), 0);
                 Owners.TryRemove(_delegate, out _); Release(_delegate); Release(_center); _delegate = _center = 0;
-                foreach (var value in _categories.Values) Release(value); _categories.Clear();
+                foreach (var value in _categories.Values) Release(value); _categories.Clear(); _recent.Clear();
             }).ConfigureAwait(false);
         }
         finally { _gate.Release(); }

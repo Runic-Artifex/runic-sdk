@@ -12,6 +12,9 @@ internal sealed class PortalNotifications(string? address = null, string destina
     private PortalConnection? _session;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, DesktopNotification> _sent = new(StringComparer.Ordinal);
+    // Routes actions for the most recently shown notifications; older ones are evicted.
+    private readonly List<string> _recent = [];
+    private const int RecentCapacity = 64;
     private DBusConnection? _connection;
     private IDisposable? _actions;
     private volatile bool _disposed;
@@ -67,7 +70,6 @@ internal sealed class PortalNotifications(string? address = null, string destina
             if (request is not null)
             {
                 // Observe the actual reply after a native submission; cancellation only prevents queued work.
-                if (notification is not null && _sent.Count >= 64 && !_sent.ContainsKey(notification.Id)) throw new NotificationCapacityException();
                 DesktopNotification? previous = null;
                 if (notification is not null) { _sent.TryGetValue(notification.Id, out previous); _sent[notification.Id] = notification; }
                 try
@@ -86,7 +88,12 @@ internal sealed class PortalNotifications(string? address = null, string destina
                     }
                     throw;
                 }
-                if (remove is not null) _sent.TryRemove(remove, out _);
+                if (notification is not null)
+                {
+                    _recent.Remove(notification.Id); _recent.Add(notification.Id);
+                    while (_recent.Count > RecentCapacity) { _sent.TryRemove(_recent[0], out _); _recent.RemoveAt(0); }
+                }
+                if (remove is not null) { _sent.TryRemove(remove, out _); _recent.Remove(remove); }
                 Diagnose("portal-notification-request-accepted", "The portal accepted the notification request.", "Acceptance does not confirm popup delivery, history retention or action activation.");
             }
             else
@@ -160,7 +167,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
     public async ValueTask DisposeAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);
-        try { if (_disposed) return; _disposed = true; ResetConnection(); _sent.Clear(); Activated = null; }
+        try { if (_disposed) return; _disposed = true; ResetConnection(); _sent.Clear(); _recent.Clear(); Activated = null; }
         finally { _gate.Release(); }
     }
     private static string Target(DesktopNotification notification, string action) =>
