@@ -64,6 +64,14 @@ internal static class NativeTests
             throw new InvalidOperationException("Invalid firewall specification reached native creation.");
         }
         catch (ArgumentException) { }
+        try
+        {
+            await firewall.CreateAsync(new(missing, FirewallDirection.Inbound, FirewallAction.Allow) { RemoteAddresses = "10.0.0.1" });
+            throw new InvalidOperationException("Unscoped inbound allow rule reached native creation.");
+        }
+        catch (ArgumentException) { }
+        Check((new FirewallRuleSpecification(missing, FirewallDirection.Inbound, FirewallAction.Block).Profiles & FirewallProfiles.Public) == 0,
+            "Firewall rules must not default to the Public profile.");
         var shares = new WindowsShareClient();
         _ = shares.Enumerate();
         Check(shares.Find(missing) is null, "Missing share must remain absent.");
@@ -270,6 +278,7 @@ internal static class NativeTests
         Check(WindowsGroupPolicyClient.ReorderLinks(low + high, [second, first], [first, second]) == high + low, "GPO reordering lost direction or flags.");
         try { _ = WindowsGroupPolicyClient.ReorderLinks(low + high, [second, first], [first]); throw new InvalidOperationException("Incomplete order accepted."); }
         catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.Conflict, "Expected link-order conflict."); }
+        Check(WindowsGroupPolicyClient.ReorderLinks(" ", [], []) == " ", "Whitespace-only gPLink must be an empty link list.");
         Console.WriteLine("PASS GPO link ordering preserves raw flags and rejects incomplete replacements; no directory write performed.");
     }
     private static void CheckProcesses()
@@ -286,6 +295,11 @@ internal static class NativeTests
         var client = new WindowsServiceClient();
         var missing = "RunicMissing-" + Guid.NewGuid().ToString("N");
         Check(client.Find(missing) is null && client.FindStatus(missing) is null, "Missing service must return null.");
+        foreach (var command in new[] { @"C:\Program Files\Runic\service.exe", @"C:\Runic\service.exe --name x", "\"C:\\Runic\\service.exe\"--name" })
+        {
+            try { client.Create(new(missing, command, @"NT AUTHORITY\LocalService")); throw new InvalidOperationException("Unquoted service path accepted: " + command); }
+            catch (ArgumentException) { }
+        }
         var rows = client.Enumerate();
         Check(rows.Length > 0, "No services returned.");
         // EventLog is queried only; this test never changes a service or machine configuration.
