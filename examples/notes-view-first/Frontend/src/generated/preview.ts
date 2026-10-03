@@ -163,6 +163,10 @@ function sharedRuntimeFor(bridge: RunicBridgeClient): SharedRuntime {
   runtime.mountSession = globalThis.crypto.randomUUID();
   return runtime;
 }
+function reportBridgeError(error: unknown): void {
+  const report = (globalThis as { reportError?: (error: unknown) => void }).reportError;
+  if (typeof report === "function") report(error); else console.error(error);
+}
 function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route: string): SharedRoute {
   const callbackName = `__${route}Changed`;
   const callbacks = window as unknown as Record<string, unknown>;
@@ -176,7 +180,10 @@ function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route
     route, callbackName, bridge, generation: runtime.generation, entries: new Map(), previousCallback: callbacks[callbackName], active: true,
     callback(state) {
       let accepted: unknown;
-      for (const entry of sharedRoute.entries.values()) accepted = entry.accept(state);
+      for (const entry of sharedRoute.entries.values()) {
+        try { accepted = entry.accept(state); }
+        catch (error) { reportBridgeError(error); }
+      }
       return accepted;
     },
   };
@@ -203,12 +210,17 @@ async function connectPreviewAt(route: string, needsMount = false): Promise<Prev
         const next = wire as WireState;
         if (!created.active || !routeEntry.active) return created.current ?? created.hydrate(next);
         if (created.current === undefined || created.revision === undefined || next.revision >= created.revision) {
+          // Decode first: a state that fails validation must not advance the revision.
+          const current = created.hydrate(next);
           created.revision = next.revision;
           created.wire = next;
-          created.current = created.hydrate(next);
+          created.current = current;
           for (const lease of created.leases) if (!lease.disposed) {
-            lease.current = created.current;
-            for (const listener of lease.listeners) listener(created.current);
+            lease.current = current;
+            for (const listener of lease.listeners) {
+              try { listener(current); }
+              catch (error) { reportBridgeError(error); }
+            }
           }
         }
         return created.current;
@@ -239,7 +251,10 @@ async function connectPreviewAt(route: string, needsMount = false): Promise<Prev
     let reply: BridgeReply;
     try { reply = JSON.parse(json) as BridgeReply; }
     catch { throw new BridgeError("failed", "The Bridge returned an invalid response."); }
-    const state = reply.state === null ? undefined : target.accept(reply.state);
+    if (reply === null || typeof reply !== "object") throw new BridgeError("failed", "The Bridge returned an invalid response.");
+    let state: unknown;
+    try { state = reply.state === null ? undefined : target.accept(reply.state); }
+    catch { throw new BridgeError("failed", "The Bridge returned an invalid state."); }
     if (!reply.ok) throw new BridgeError(reply.error?.kind ?? "failed", reply.error?.message ?? "The call failed.");
     if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.");
     return state as PreviewState;
@@ -307,7 +322,9 @@ async function connectPreviewAt(route: string, needsMount = false): Promise<Prev
       if (lease.disposed || !isLive() || lease.current === undefined) throw new BridgeError("disconnected", "ViewModel is not connected.");
       const typed = listener as (state: unknown) => void;
       lease.listeners.add(typed);
-      typed(lease.current);
+      // The caller sees a failing initial delivery and gets no unsubscribe, so do not retain it.
+      try { typed(lease.current); }
+      catch (error) { lease.listeners.delete(typed); throw error; }
       return () => lease.listeners.delete(typed);
     },
     dispose,
