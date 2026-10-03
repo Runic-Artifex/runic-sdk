@@ -11,6 +11,8 @@ namespace Runic.Platform.Linux;
 internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativeFilePicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Sandboxed choosers return portal documents, which never permit sibling staging.
+    public bool SupportsAtomicReplace => !RequiresPortal;
 
     public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
     {

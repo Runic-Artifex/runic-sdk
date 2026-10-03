@@ -44,6 +44,7 @@ try
     string path = Path.Combine(saveDirectory, "original.txt");
     await File.WriteAllTextAsync(path, "original");
     var backend = new NativePickerBackend(owner, new PortalFilePicker(owner, new FakeTransport(new(0, [new Uri(path).AbsoluteUri]))));
+    Check(!backend.SupportsAtomicReplace && !PortalPlatformProvider.CreateFileDialogs(owner).SupportsAtomicReplace, "portal dialogs do not report atomic save support");
     var selected = await backend.SaveFileAsync(new SaveFileOptions("original.txt"));
     Check(selected is PickerResult<ISaveFileLease>.Selected, "portal save destination selected");
     await using var lease = ((PickerResult<ISaveFileLease>.Selected)selected).Value;

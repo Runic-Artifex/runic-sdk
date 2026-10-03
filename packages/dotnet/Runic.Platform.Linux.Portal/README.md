@@ -41,7 +41,8 @@ the user may keep a healthy chooser open until cancellation or owner closure.
 Only one local `file://` selection is accepted. The portal owns persistent document
 grants; disposing a file lease does not revoke the user's permission store.
 Selections do not grant sibling creation/replacement. Consequently an atomic save
-transaction reports `AtomicReplaceUnavailable` before changing the selected file.
+transaction reports `AtomicReplaceUnavailable` before changing the selected file,
+and the `platform.files.save` capability reports the same reason.
 An unsandboxed application needing the existing sibling-staging save path can
 explicitly use `LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner)` with GTK3.
 There is no automatic fallback to toolkit dialogs, including when a portal fails.

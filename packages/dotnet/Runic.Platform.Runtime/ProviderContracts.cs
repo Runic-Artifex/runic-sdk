@@ -5,6 +5,8 @@ public interface IPickerBackend : IFileDialogs
 {
     /// <summary>Whether the provider can currently show dialogs.</summary>
     bool IsAvailable { get; }
+    /// <summary>Whether selected save destinations can be staged and atomically replaced.</summary>
+    bool SupportsAtomicReplace => true;
 }
 
 /// <summary>A verified presentation owner. Native handles stay in C# and are usable only during dispatch.</summary>

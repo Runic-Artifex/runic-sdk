@@ -13,6 +13,8 @@ public interface INativeFilePicker
 {
     /// <summary>Shows one owned dialog; null means dismissal. Cancellation must release acquired access.</summary>
     ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken);
+    /// <summary>Whether this environment's save selections permit sibling staging and replacement.</summary>
+    bool SupportsAtomicReplace => true;
 }
 
 /// <summary>Converts acquired native selections to safe, single-use file leases.</summary>
@@ -22,6 +24,9 @@ public sealed class NativePickerBackend(INativePickerOwner owner, INativeFilePic
 
     /// <inheritdoc />
     public bool IsAvailable => owner.IsAvailable && owner.Generation == _generation;
+
+    /// <inheritdoc />
+    public bool SupportsAtomicReplace => picker.SupportsAtomicReplace;
 
     /// <inheritdoc />
     public async ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default)

@@ -11,8 +11,11 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
     {
         CapabilityStatus files = Reason(OwnerPolicy.RequireOwner) is { } reason
             ? new CapabilityStatus.Unavailable(reason) : new CapabilityStatus.Available();
+        // A destination that can never be written atomically is not a usable save.
+        CapabilityStatus save = files is CapabilityStatus.Available && backend?.SupportsAtomicReplace == false
+            ? new CapabilityStatus.Unavailable(UnavailableReason.AtomicReplaceUnavailable) : files;
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
-            .Add("platform.files.open", files).Add("platform.files.save", files)
+            .Add("platform.files.open", files).Add("platform.files.save", save)
             .Add("platform.dialogs.owned", files));
     }
 

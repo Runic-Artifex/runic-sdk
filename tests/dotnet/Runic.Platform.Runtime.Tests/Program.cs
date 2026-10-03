@@ -177,6 +177,11 @@ internal static class Conformance
         Check(files.GetSnapshot().Statuses["platform.dialogs.owned"] is CapabilityStatus.Unavailable);
         lifetime.AttachTestOwner();
         Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Available);
+        Check(files.GetSnapshot().Statuses["platform.files.save"] is CapabilityStatus.Available);
+        backend.SupportsAtomicReplace = false;
+        Check(files.GetSnapshot().Statuses["platform.files.save"] is CapabilityStatus.Unavailable { Reason: UnavailableReason.AtomicReplaceUnavailable });
+        Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Available);
+        backend.SupportsAtomicReplace = true;
         Check(before.Statuses["platform.files.open"] is CapabilityStatus.Unavailable);
         backend.IsAvailable = false;
         Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.BackendUnavailable });
@@ -349,6 +354,7 @@ internal static class Conformance
     private sealed class ControlledBackend : IPickerBackend
     {
         public bool IsAvailable { get; set; } = true;
+        public bool SupportsAtomicReplace { get; set; } = true;
         internal int OpenCalls, SaveCalls;
         internal CancellationToken Token;
         internal TaskCompletionSource<PickerResult<IReadFileLease>> OpenResult { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
