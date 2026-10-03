@@ -88,23 +88,34 @@ try
 
         Directory.CreateDirectory(positional[2]);
         Directory.CreateDirectory(positional[3]);
-        var expectedCsharp = models.Select(entry => Path.GetFullPath(Path.Combine(positional[2], $"{entry.Name}Bridge.g.cs")))
+        // View partials and ViewModel bridges use distinct suffixes and full
+        // type names: MainWindow and MainWindowViewModel, or two ItemViews in
+        // different namespaces, must not overwrite each other's file.
+        var csharpOutputs = models.Select(entry => (Path: BridgeFileName(entry.Model), Owner: entry.Model.FullName!))
+            .Concat(viewTypes.Values.SelectMany(variants => variants).Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
+            .ToArray();
+        var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!)).ToArray();
+        foreach (var group in csharpOutputs.Concat(typescriptOutputs)
+            .GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+            throw new BridgeNameCollisionException($"generated file '{group.Key}' would be written by {string.Join(" and ", group.Select(output => output.Owner))}. Rename one type.");
+        var expectedCsharp = csharpOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[2], output.Path)))
             .ToHashSet(StringComparer.Ordinal);
-        foreach (var view in viewTypes.Values.SelectMany(variants => variants))
-            expectedCsharp.Add(Path.GetFullPath(Path.Combine(positional[2], $"{view.Name}Bridge.g.cs")));
-        var expectedTypescript = models.Select(entry => Path.GetFullPath(Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts")))
+        var expectedTypescript = typescriptOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[3], output.Path)))
             .ToHashSet(StringComparer.Ordinal);
-        foreach (var path in Directory.GetFiles(positional[2], "*Bridge.g.cs"))
-            if (!expectedCsharp.Contains(Path.GetFullPath(path))) File.Delete(path);
+        // Remove only stale generator output. The TypeScript directory may be
+        // an application source directory with hand-written modules.
+        foreach (var path in Directory.GetFiles(positional[2], "*.g.cs"))
+            if (!Path.GetFileName(path).StartsWith("RunicBridgeComposition", StringComparison.Ordinal)
+                && !expectedCsharp.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
         foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
-            if (!expectedTypescript.Contains(Path.GetFullPath(path))) File.Delete(path);
+            if (!expectedTypescript.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
         foreach (var entry in models)
         {
-            GenerateOne(entry.Model, Path.Combine(positional[2], $"{entry.Name}Bridge.g.cs"),
+            GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
                 Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, registerGlobally, models, viewTypes);
             if (viewTypes.TryGetValue(entry.Model, out var views))
                 foreach (var view in views)
-                    GenerateViewPartial(Path.Combine(positional[2], $"{view.Name}Bridge.g.cs"), view, entry.Model, entry.Name);
+                    GenerateViewPartial(Path.Combine(positional[2], ViewFileName(view)), view, entry.Model, entry.Name);
         }
         var compositionPath = Path.Combine(positional[2], "RunicBridgeComposition.g.cs");
         if (compositionType is null)
@@ -135,6 +146,10 @@ catch (Exception error) when (error is ArgumentException or InvalidOperationExce
 
 static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal)
     ? model.Name[..^"ViewModel".Length] : model.Name;
+
+static string BridgeFileName(Type model) => $"{model.FullName}.Bridge.g.cs";
+
+static string ViewFileName(Type view) => $"{view.FullName}.View.g.cs";
 
 static Type? ViewModelFor(Type view)
 {
@@ -1213,10 +1228,35 @@ static void WriteIfChanged(string path, string content)
     var fullPath = Path.GetFullPath(path);
     Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
     if (File.Exists(fullPath) && File.ReadAllText(fullPath) == content) return;
-    File.WriteAllText(fullPath, content);
+    // Frontend watchers (Vite, tsc --watch) must never observe a truncated
+    // module, so replace the file in one rename.
+    var temporary = Path.Combine(Path.GetDirectoryName(fullPath)!, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+    try
+    {
+        File.WriteAllText(temporary, content);
+        File.Move(temporary, fullPath, overwrite: true);
+    }
+    finally
+    {
+        if (File.Exists(temporary)) File.Delete(temporary);
+    }
 }
 
 sealed class AotValidationException(string message) : Exception(message);
+
+sealed class BridgeNameCollisionException(string message) : NotSupportedException(message);
+
+static class GeneratedOutput
+{
+    internal const string Header = "// <auto-generated />";
+
+    /// <summary>True when a file starts with the header every generator output carries.</summary>
+    internal static bool IsGenerated(string path)
+    {
+        using var reader = new StreamReader(path);
+        return reader.ReadLine()?.TrimEnd() == Header;
+    }
+}
 
 static class CodegenOptions
 {

@@ -43,7 +43,7 @@
     <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicBridgeCompositionType)&quot; &quot;$(RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs&quot;"
           Condition="'$(RunicBridgeCompositionType)' != ''" />
     <ItemGroup>
-      <Compile Include="$(RunicBridgeGeneratedDir)*Bridge.g.cs" />
+      <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs"
                Condition="'$(RunicBridgeCompositionType)' != ''" />
     </ItemGroup>
@@ -71,7 +71,7 @@
     </PropertyGroup>
     <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeRegistrationArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument)" />
     <ItemGroup>
-      <Compile Include="$(RunicBridgeGeneratedDir)*Bridge.g.cs" />
+      <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />
     </ItemGroup>
     <Exec Command="$(RunicBridgeFrontendBuildCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
