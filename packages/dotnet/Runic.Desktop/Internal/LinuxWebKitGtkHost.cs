@@ -36,7 +36,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     internal static bool IsSupported => OperatingSystem.IsLinux()
         && LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk3WebKit41)
         && LinuxDesktopRuntime.IsLibraryAvailable("libgtk-3.so.0")
-        && LinuxDesktopRuntime.IsLibraryAvailable("libwebkit2gtk-4.1.so.0");
+        && LinuxDesktopRuntime.IsLibraryAvailable("libwebkit2gtk-4.1.so.0")
+        // A library without every required export leaves the function pointers unset.
+        && Api.IsAvailable;
 
     public bool IsOpen => Volatile.Read(ref _isOpen) != 0;
 
