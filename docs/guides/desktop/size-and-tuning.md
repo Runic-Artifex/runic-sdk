@@ -88,11 +88,18 @@ This property has no role in CS-WebUI, which has no ASP.NET Core dependency.
   An assembly list cannot attribute NativeAOT bytes. Startup time and process-tree
   memory need separate measurements; neither is inferred from file size.
 
-The [verified Linux x64 package-consumer measurement](../../../eng/host-footprint/linux-x64-2026-09-07/README.md)
-records the same customer editor under all three profiles, with exact settings,
-package hashes, file inventories and successful browser/lifecycle checks. Minimal
-Desktop reduced its executable by about 9.6%. These application-specific results
-are separate from the older minimal sample's 8.25 MiB Desktop measurement.
+A Linux x64 package-consumer measurement (2026-09-07, .NET SDK 10.0.302) published
+the same customer editor under all three profiles; each passed the same browser
+and lifecycle checks:
+
+| Host / profile | Executable | Executable + required native libraries | Complete distribution | ZIP |
+| --- | ---: | ---: | ---: | ---: |
+| desktop / default | 10.42 MiB | 10.42 MiB | 11.16 MiB | 5.03 MiB |
+| desktop / minimal | 9.42 MiB | 9.42 MiB | 10.16 MiB | 4.57 MiB |
+| cswebui / default | 5.16 MiB | 5.47 MiB | 5.47 MiB | 2.64 MiB |
+
+Minimal Desktop reduced its executable by about 9.6%. These application-specific
+results are separate from the older minimal sample's 8.25 MiB Desktop measurement.
 
 ## Reproduce the package comparison
 
