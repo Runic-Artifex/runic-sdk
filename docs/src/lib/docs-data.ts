@@ -72,7 +72,7 @@ export const products: Product[] = [
     ],
   },
   {
-    slug: 'runic-toolkit',
+    slug: 'runic-application',
     name: 'Runic Application',
     shortName: 'Application',
     icon: '/products/runic-toolkit.png',
@@ -86,7 +86,7 @@ export const products: Product[] = [
       'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views',
     bestFor: [
       'Composing typed Windows and Views over .NET ViewModels',
-      'Using generated TypeScript clients from plain TypeScript, Svelte, or Angular',
+      'Using generated TypeScript clients from React, Vue, Svelte, Angular, or plain TypeScript',
       'Keeping browser rendering and .NET application lifetimes explicit',
     ],
     boundaries: [

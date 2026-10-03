@@ -26,7 +26,7 @@
     catalogRows.filter((entry) => entry.productId === product.releaseProduct),
   );
   let displayPackages = $derived(
-    product.slug === 'runic-toolkit'
+    product.slug === 'runic-application'
       ? catalogRows.filter(
           (entry) =>
             entry.productId === product.releaseProduct ||
@@ -38,7 +38,7 @@
   let hasPublishedVersion = $derived(productVersion.state === 'published');
   let availabilityVersion = $derived(productVersion);
   let packageSectionTitle = $derived(
-    product.slug === 'runic-toolkit'
+    product.slug === 'runic-application'
       ? 'Application and framework packages'
       : isApplication
         ? 'Source application'
@@ -85,7 +85,7 @@
     </div>
     <p class="lede">{product.description}</p>
     <div class="actions">
-      {#if product.slug === 'runic-toolkit'}
+      {#if product.slug === 'runic-application'}
         <ActionLink href={resolve('/views')}
           >Explore Windows and Views</ActionLink
         >
@@ -114,7 +114,7 @@
           variant="outline">Release status</ActionLink
         >
       {/if}
-      {#if product.slug !== 'runic-toolkit' && !isArchived && hasPublishedVersion}
+      {#if product.slug !== 'runic-application' && !isArchived && hasPublishedVersion}
         <ActionLink href={product.source} variant="outline"
           >View source</ActionLink
         >
@@ -181,7 +181,7 @@
             ? 'Retired project'
             : isIndependent
               ? 'External WebUI binding'
-              : product.slug === 'runic-toolkit'
+              : product.slug === 'runic-application'
                 ? `Runic Application · SDK ${currentRelease.version}`
                 : isApplication
                   ? 'Source application'
@@ -190,14 +190,16 @@
           <p>
             {#if isArchived}
               Runic Flow is no longer an active product. Start with
-              <a href={resolve('/products/[slug]', { slug: 'runic-toolkit' })}
-                >Runic Application</a
+              <a
+                href={resolve('/products/[slug]', {
+                  slug: 'runic-application',
+                })}>Runic Application</a
               >
               for the current Window and View application model.
             {:else if isIndependent}
               CS-WebUI is maintained separately. Runic Application provides a
               separate adapter for application Windows and ViewModels.
-            {:else if product.slug === 'runic-toolkit'}
+            {:else if product.slug === 'runic-application'}
               The published SDK catalog includes the current Window and View
               packages. Keep the runtime, host adapter, templates, and frontend
               packages on the same SDK version.

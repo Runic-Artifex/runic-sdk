@@ -61,8 +61,9 @@
     <ContentCard eyebrow="Frontend" title="Keep rendering in the framework">
       <p>
         The build emits normal TypeScript modules from the compiled .NET
-        application. Use them from plain TypeScript, Svelte, Angular, or another
-        frontend without adding a framework-owned transport layer.
+        application. Use them from React, Vue, Svelte, Angular, plain
+        TypeScript, or another frontend without adding a framework-owned
+        transport layer.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Calls" title="Use typed commands and writes">
@@ -79,13 +80,14 @@
     >
       <p>
         The first Window introduces a single ViewModel and generated client.
-        Toolkit Notes exercises nested content and scoped Views. Reactive Notes
-        shows routed ViewModels and multiple logical Views for one model.
+        CommunityToolkit Notes exercises nested content and scoped Views.
+        Reactive Notes shows routed ViewModels and multiple logical Views for
+        one model.
       </p>
       <div class="actions">
         <ActionLink
           href="https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first"
-          >Toolkit Notes</ActionLink
+          >CommunityToolkit Notes</ActionLink
         >
         <ActionLink
           variant="outline"
