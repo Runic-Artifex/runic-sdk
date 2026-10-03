@@ -10,6 +10,8 @@ internal static class CatalogTests
         new("catalog/aliases-resolve-to-canonical-descriptors", AliasesResolve),
         new("catalog/combine-preserves-order-and-rejects-duplicates", CombineCatalogs),
         new("catalog/default-command-receives-unprefixed-tokens", DefaultCommand),
+        new("catalog/environment-flags-accept-common-spellings", EnvironmentFlagSpellings),
+        new("catalog/choices-bind-the-declared-spelling", ChoicesUseDeclaredSpelling),
         new("catalog/reserved-command-names-rejected", ReservedCommandNames),
         new("catalog/reserved-option-names-rejected", ReservedOptionNames),
         new("catalog/application-output-and-configured-transport-coexist", ConfiguredTransportOutput),
@@ -70,6 +72,49 @@ internal static class CatalogTests
         AssertEx.Equal(ParseOutcomeKind.Invocation, outcome.Kind);
         AssertEx.Equal("pack", outcome.Invocation!.Command.Name);
         AssertEx.Equal("artifact.bin", outcome.Invocation.Arguments[0].Values[0]);
+
+        // `help` is reserved at the root; `--` passes it to the default command as data.
+        AssertEx.Equal(ParseOutcomeKind.Help, PortableCommandSyntaxAdapter.Instance.Parse(catalog, ["help"], ParseSettings.Default).Kind);
+        ParseOutcome escaped = PortableCommandSyntaxAdapter.Instance.Parse(catalog, ["--", "help"], ParseSettings.Default);
+        AssertEx.Equal(ParseOutcomeKind.Invocation, escaped.Kind);
+        AssertEx.Equal("help", escaped.Invocation!.Arguments[0].Values[0]);
+        return ValueTask.CompletedTask;
+    }
+
+    private static ValueTask EnvironmentFlagSpellings()
+    {
+        var builder = new CommandCatalogBuilder();
+        ValidCommand(builder, "build").Option("verbose", "--verbose", CommandArity.Zero)
+            .ParameterHelp("verbose", new CommandHelp(environmentVariable: "APP_VERBOSE"));
+        CommandCatalog catalog = builder.Build();
+        foreach ((string value, bool present) in new[] { ("true", true), ("TRUE", true), ("1", true), ("yes", true), ("Yes", true), ("false", false), ("0", false), ("no", false), ("NO", false) })
+        {
+            ParseOutcome outcome = PortableCommandSyntaxAdapter.Instance.Parse(catalog, ["build"], new ParseSettings { GetEnvironmentVariable = _ => value });
+            AssertEx.Equal(ParseOutcomeKind.Invocation, outcome.Kind, value);
+            AssertEx.Equal(present, outcome.Invocation!.Options.Any(static option => option.Id == "verbose"), value);
+        }
+
+        ParseOutcome invalid = PortableCommandSyntaxAdapter.Instance.Parse(catalog, ["build"], new ParseSettings { GetEnvironmentVariable = _ => "maybe" });
+        AssertEx.Equal(ParseOutcomeKind.Error, invalid.Kind);
+        AssertEx.Equal("RCLI1014", invalid.Diagnostics[0].Code);
+        return ValueTask.CompletedTask;
+    }
+
+    private static ValueTask ChoicesUseDeclaredSpelling()
+    {
+        var builder = new CommandCatalogBuilder();
+        ValidCommand(builder, "build")
+            .Option("configuration", "--configuration", CommandArity.ExactlyOne)
+            .Argument("target", "target", CommandArity.ZeroOrMore)
+            .ParameterHelp("configuration", new CommandHelp(choices: ["Debug", "Release"]))
+            .ParameterHelp("target", new CommandHelp(choices: ["linux-x64", "Win-X64", "win-x64"]));
+        CommandCatalog catalog = builder.Build();
+
+        ParseOutcome outcome = PortableCommandSyntaxAdapter.Instance.Parse(catalog, ["build", "--configuration", "release", "LINUX-X64", "win-x64"], ParseSettings.Default);
+        AssertEx.Equal(ParseOutcomeKind.Invocation, outcome.Kind);
+        AssertEx.Equal("Release", outcome.Invocation!.Options.Single().Values[0]);
+        AssertEx.SequenceEqual(["linux-x64", "win-x64"], outcome.Invocation.Arguments.Single().Values);
+        AssertEx.Equal(ParseOutcomeKind.Error, PortableCommandSyntaxAdapter.Instance.Parse(catalog, ["build", "--configuration", "retail"], ParseSettings.Default).Kind);
         return ValueTask.CompletedTask;
     }
 
