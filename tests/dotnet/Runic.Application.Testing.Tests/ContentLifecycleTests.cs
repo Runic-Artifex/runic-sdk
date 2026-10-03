@@ -14,7 +14,32 @@ public static class ContentLifecycleTests
     {
         await ReexposedReferenceKeepsItsBrowserMount();
         await UnmountedSuspendedReferenceReleasesItsEndpoints();
+        ReconnectedBrowserRemountsWithItsToken();
         CollectionChurnReleasesItemState();
+    }
+
+    // A transport reconnect keeps the page, so the generated client re-sends
+    // its existing mount token from the new connection. Until .NET observes
+    // the former connection's disconnect that token is still owned by it.
+    private static void ReconnectedBrowserRemountsWithItsToken()
+    {
+        var root = new Item();
+        var views = new ViewCounter();
+        using var transport = new InMemoryViewTransport();
+        using var session = new WindowContentSession(transport, rootModel: root);
+        var route = $"content{Present(session, root, new Item(), views).Id}";
+        ViewTestArguments From(string connection) =>
+            new(StringValue: "browser:page", ClientKey: "client", ConnectionKey: connection);
+        Require(transport.Call($"{route}Mount", From("connection-one")) == "ok" && views.Attached == 1,
+            "The presentation did not mount.");
+        Require(transport.Call($"{route}Mount", From("connection-two")) == "ignored",
+            "A new connection took over a token its former connection still owns.");
+        session.ReleaseConnection("connection-one");
+        Require(views.Detached == 1, "Releasing the former connection did not release its View.");
+        Require(transport.Call($"{route}Mount", From("connection-two")) == "ok" && views.Attached == 2,
+            "The reconnected browser could not remount its presentation.");
+        Require(transport.Call($"{route}Mount", From("connection-one")) == "disconnected",
+            "The closed connection could remount its former browser session.");
     }
 
     // A command doing `Main = b; Main = a;` can publish a parent snapshot whose
