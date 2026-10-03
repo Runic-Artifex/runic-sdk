@@ -36,6 +36,10 @@ internal sealed record PresentationSecurityPolicy(
         (candidate.Scheme == Uri.UriSchemeHttp || candidate.Scheme == Uri.UriSchemeHttps) &&
         AdditionalOrigins.Contains(CanonicalOrigin(candidate));
 
+    internal static bool IsSameOrigin(Uri origin, string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var candidate) &&
+        Uri.Compare(origin, candidate, UriComponents.SchemeAndServer, UriFormat.UriEscaped, StringComparison.OrdinalIgnoreCase) == 0;
+
     internal static string CanonicalOrigin(Uri origin)
     {
         if (origin.Scheme != Uri.UriSchemeHttp && origin.Scheme != Uri.UriSchemeHttps)

@@ -351,7 +351,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             _controller.RegisterEvents(
                 title => Native.SetWindowText(_window, title),
                 () => Native.PostMessage(_window, WmClose, 0, 0),
-                options.AllowedPermissions);
+                options.AllowedPermissions,
+                url);
             if (options.DocumentStartScript is { } documentStartScript)
             {
                 await _controller.AddDocumentStartScriptAsync(documentStartScript);

@@ -257,6 +257,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     private Gtk.ApplicationWindow? _window;
     private WebView? _webView;
     private DesktopWindowHostOptions? _options;
+    private Uri? _presentedUrl;
     private int _isOpen;
     private int _disposed;
     private int _forceClose;
@@ -303,6 +304,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         }
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk4WebKit6);
         _options = options;
+        _presentedUrl = url;
         await Gtk4Dispatcher.Instance.AcquireAsync(cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _dispatcherLease, 1);
         try
@@ -577,18 +579,33 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         return false;
     }
 
-    private bool OnPermissionRequest(WebView _, WebView.PermissionRequestSignalArgs request)
+    // An unhandled request is denied by WebKit, so a grant must allow explicitly.
+    private bool OnPermissionRequest(WebView webView, WebView.PermissionRequestSignalArgs request)
     {
-        if ((_options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0)
+        if (AllowsMediaCapture(webView, request.Request))
         {
-            // Returning false asks WebKit to continue with its normal, user-visible
-            // permission flow. It deliberately does not grant every request.
-            return false;
+            request.Request.Allow();
         }
-
-        request.Request.Deny();
+        else
+        {
+            request.Request.Deny();
+        }
         return true;
     }
+
+    // WebKitGTK does not identify the requesting frame; the top-level document must
+    // still have the presented origin. Screen capture is not part of the grant.
+    private bool AllowsMediaCapture(WebView webView, PermissionRequest request) =>
+        (_options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0 &&
+        _presentedUrl is { } presented &&
+        request switch
+        {
+            UserMediaPermissionRequest media => !WebKit.Functions.UserMediaPermissionIsForDisplayDevice(media),
+            DeviceInfoPermissionRequest => true,
+            _ => false,
+        } &&
+        Uri.TryCreate(webView.GetUri(), UriKind.Absolute, out var current) &&
+        Uri.Compare(presented, current, UriComponents.SchemeAndServer, UriFormat.UriEscaped, StringComparison.OrdinalIgnoreCase) == 0;
 
     private void OnDestroyed(Gtk.Widget _, EventArgs __)
     {

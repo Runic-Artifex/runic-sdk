@@ -91,6 +91,8 @@ observable. The typed preflight reports the preferred host, the policy's only
 permitted fallback, capability limits, and safe prerequisite remediation without
 starting a presentation. Camera and microphone access remains denied unless
 `DesktopPermissionGrant.MediaCapture` is explicitly selected for the window.
+WebView2 and WebKitGTK windows grant it only to the presented origin; WKWebView
+windows do not implement the grant.
 
 The retained `webui-compat/52f9e75` direct-capability profile cannot carry a
 structured invocation failure on its legacy wire response. It reports only the

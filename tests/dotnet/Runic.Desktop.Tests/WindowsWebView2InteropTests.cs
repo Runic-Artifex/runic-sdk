@@ -26,6 +26,7 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2Controller", "get_CoreWebView2", WindowsWebView2Interop.ControllerWebViewSlot),
             ("ICoreWebView2Controller2", "put_DefaultBackgroundColor", WindowsWebView2Interop.ControllerBackgroundSlot),
             ("ICoreWebView2Environment", "CreateCoreWebView2Controller", WindowsWebView2Interop.EnvironmentCreateControllerSlot),
+            ("ICoreWebView2PermissionRequestedEventArgs", "get_Uri", WindowsWebView2Interop.PermissionUriSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "get_PermissionKind", WindowsWebView2Interop.PermissionKindSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "put_State", WindowsWebView2Interop.PermissionStateSlot),
             ("ICoreWebView2PermissionRequestedEventArgs2", "put_Handled", WindowsWebView2Interop.PermissionHandledSlot),

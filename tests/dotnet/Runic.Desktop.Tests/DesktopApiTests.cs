@@ -483,6 +483,17 @@ public sealed class DesktopApiTests
         Assert.Equal(1, Volatile.Read(ref factoryCalls));
     }
 
+    [Theory]
+    [InlineData("http://127.0.0.1:4100/entry/index.html", true)]
+    [InlineData("HTTP://127.0.0.1:4100/", true)]
+    [InlineData("http://127.0.0.1:4101/", false)]
+    [InlineData("http://localhost:4100/", false)]
+    [InlineData("https://127.0.0.1:4100/", false)]
+    [InlineData("about:blank", false)]
+    [InlineData(null, false)]
+    public void MediaCaptureGrantIsBoundToThePresentedOrigin(string? requester, bool expected) =>
+        Assert.Equal(expected, Internal.PresentationSecurityPolicy.IsSameOrigin(new Uri("http://127.0.0.1:4100/surface/"), requester));
+
     [Fact]
     public async Task LocalContentDeniesMediaCaptureByDefault()
     {

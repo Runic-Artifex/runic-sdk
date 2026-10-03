@@ -22,6 +22,7 @@ internal static partial class WindowsWebView2Interop
     internal const int ControllerWebViewSlot = 25;
     internal const int ControllerBackgroundSlot = 27;
     internal const int EnvironmentCreateControllerSlot = 3;
+    internal const int PermissionUriSlot = 3;
     internal const int PermissionKindSlot = 4;
     internal const int PermissionStateSlot = 7;
     internal const int PermissionHandledSlot = 10;
@@ -204,7 +205,11 @@ internal sealed class WindowsWebView2Controller : IDisposable
         finally { WindowsWebView2Interop.Release(controller2); }
     }
 
-    internal void RegisterEvents(Action<string> titleChanged, Action closeRequested, DesktopPermissionGrant permissions)
+    internal void RegisterEvents(
+        Action<string> titleChanged,
+        Action closeRequested,
+        DesktopPermissionGrant permissions,
+        Uri presentedUrl)
     {
         AddEvent<IWebViewTitleChanged>(WindowsWebView2Interop.DocumentTitleChangedSlot, new WebViewEvent(_ =>
         {
@@ -215,13 +220,22 @@ internal sealed class WindowsWebView2Controller : IDisposable
         AddEvent<IWebViewCloseRequested>(WindowsWebView2Interop.WindowCloseRequestedSlot, new WebViewEvent(_ => closeRequested()));
         AddEvent<IWebViewPermissionRequested>(WindowsWebView2Interop.PermissionRequestedSlot, new WebViewEvent(args =>
         {
+            // Microphone (1) and camera (2), only for the presented origin; the URI names the requesting frame.
             var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.PermissionKindSlot);
-            var allowed = kind is 1 or 2 && (permissions & DesktopPermissionGrant.MediaCapture) != 0;
+            var allowed = kind is 1 or 2 && (permissions & DesktopPermissionGrant.MediaCapture) != 0 &&
+                PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.PermissionUriSlot));
             WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.PermissionStateSlot, allowed ? 1 : 2);
             var args2 = WindowsWebView2Interop.Query(args, new Guid("74d7127f-9de6-4200-8734-42d6fb4ff741"));
             try { WindowsWebView2Interop.SetInteger(args2, WindowsWebView2Interop.PermissionHandledSlot, 1); }
             finally { WindowsWebView2Interop.Release(args2); }
         }));
+    }
+
+    private static string? GetString(nint instance, int slot)
+    {
+        var value = WindowsWebView2Interop.GetPointer(instance, slot);
+        try { return Marshal.PtrToStringUni(value); }
+        finally { Marshal.FreeCoTaskMem(value); }
     }
 
     private void AddEvent<T>(int slot, T handler) where T : class

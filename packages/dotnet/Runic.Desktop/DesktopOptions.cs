@@ -133,6 +133,10 @@ public enum DesktopPermissionGrant
     None = 0,
 
     /// <summary>Allow camera and microphone capture for the presentation.</summary>
+    /// <remarks>
+    /// WebView2 and WebKitGTK windows grant it only to the origin of the presented URL, never screen capture.
+    /// WKWebView windows do not implement the grant; WebKit's default handling applies on macOS.
+    /// </remarks>
     MediaCapture = 1 << 0,
 }
 
