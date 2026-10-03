@@ -487,6 +487,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private async ValueTask<string> ExecuteAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
     {
+        // The awaited route is window work like an admitted operation: closing
+        // the window waits for it before the host disposes its scope, and
+        // cancels it after the close timeout.
+        using var admission = _content?.Operations.TryBeginAwaited(token);
+        if (_content is not null && admission is null)
+            return EncodeWithoutSnapshot(new("disconnected", "The window is closing."));
+        var cancellation = admission?.Token ?? token;
         Task<BridgeOperationResult>? execution = null;
         try
         {
@@ -496,23 +503,32 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 var argument = descriptor.ReadArgument?.Invoke(arguments);
                 if (!IsAvailable(descriptor, argument))
                     return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
-                using var invocation = EnterInvocation(descriptor, arguments, token);
-                execution = InvokeCommandAsync(descriptor, token, argument);
+                using var invocation = EnterInvocation(descriptor, arguments, cancellation);
+                execution = InvokeCommandAsync(descriptor, cancellation, argument);
                 return null;
             });
             if (rejection is not null) return rejection;
             await execution!.ConfigureAwait(false);
-            return _modelTurn.Run(() => EncodeTerminal());
+            return ReplyAfterCommand(() => EncodeTerminal());
         }
         catch (OperationCanceledException)
-        { return _modelTurn.Run(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."))); }
+        { return ReplyAfterCommand(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."))); }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-        { return _modelTurn.Run(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."))); }
+        { return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."))); }
         catch (Exception error)
         {
             Trace.TraceError($"Bridge command {descriptor.Name} failed: {error}");
-            return _modelTurn.Run(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.")));
+            return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.")));
         }
+    }
+
+    // The model context can be gone when an awaited command completes after
+    // its window was finalized. There is no state left to capture.
+    private string ReplyAfterCommand(Func<string> encode)
+    {
+        try { return _modelTurn.Run(encode); }
+        catch (ObjectDisposedException)
+        { return EncodeWithoutSnapshot(new("disconnected", "The window closed before the command replied.")); }
     }
 
     private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>

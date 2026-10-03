@@ -167,9 +167,11 @@ public sealed class WindowContentSession : IDisposable
     }
 
     /// <summary>
-    /// Stops new window-owned operation admission and waits for accepted work
-    /// to reach a terminal result. It leaves content, fields, and routes owned
-    /// by this session intact until the owner later disposes the session.
+    /// Stops new window-owned operation admission, including awaited command
+    /// routes, and waits up to <paramref name="timeout"/> for accepted work to
+    /// reach a terminal result. Work still running at the timeout is asked to
+    /// cancel; call again to wait for it. Content, fields, and routes owned by
+    /// this session stay intact until the owner later disposes the session.
     /// </summary>
     public async ValueTask<WindowContentSessionCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
