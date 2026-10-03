@@ -113,11 +113,11 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         try
         {
             var command = "\"" + Executable + "\" --service " + name;
-            client.Create(new(name, command) { Description = "Runic disposable verification service" });
+            client.Create(new(name, command, "LocalSystem") { Description = "Runic disposable verification service" });
             created = true;
             var service = client.Find(name) ?? throw new InvalidOperationException("Created service missing.");
             Require(service.Status.State == ServiceState.Stopped && service.BinaryCommandLine == command, "New service state/configuration mismatch.");
-            await Conflict(() => { client.Create(new(name, command)); return Task.CompletedTask; });
+            await Conflict(() => { client.Create(new(name, command, "LocalSystem")); return Task.CompletedTask; });
             client.Update(name, new() { Description = "updated", FailurePolicy = new(TimeSpan.FromDays(1), [new(ServiceFailureActionKind.None, TimeSpan.Zero)]) });
             Require(client.Find(name)?.Description == "updated", "Service description update missing.");
             client.Start(name);

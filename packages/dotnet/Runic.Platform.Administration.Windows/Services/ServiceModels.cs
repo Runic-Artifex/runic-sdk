@@ -70,14 +70,14 @@ public sealed record ServiceSnapshot(string Name, string DisplayName, string Bin
     bool DelayedAutomaticStart, ServiceFailurePolicy FailurePolicy, ServiceStatus Status);
 
 /// <summary>Creates a Win32 own-process service. Credentials are passed separately and are never part of this model.</summary>
-public sealed record ServiceSpecification(string Name, string BinaryCommandLine)
+/// <remarks>BinaryCommandLine must quote the executable path when the command line contains whitespace. AccountName is
+/// an explicit identity such as <c>NT SERVICE\Name</c>, <c>NT AUTHORITY\LocalService</c>, a domain account or <c>LocalSystem</c>.</remarks>
+public sealed record ServiceSpecification(string Name, string BinaryCommandLine, string AccountName)
 {
     /// <summary>Display name; null uses Name.</summary>
     public string? DisplayName { get; init; }
     /// <summary>Start mode; driver modes are not supported for new own-process services.</summary>
     public ServiceStartMode StartMode { get; init; } = ServiceStartMode.Manual;
-    /// <summary>Service identity; null selects LocalSystem.</summary>
-    public string? AccountName { get; init; }
     /// <summary>Dependency names, including '+' prefixed load-order groups where needed.</summary>
     public ImmutableArray<string> Dependencies { get; init; } = [];
     /// <summary>Service description.</summary>
@@ -91,7 +91,7 @@ public sealed record ServiceSpecification(string Name, string BinaryCommandLine)
 /// <summary>Selected service edits. Null leaves a field unchanged. Multi-field native changes are not transactional.</summary>
 public sealed record ServiceUpdate
 {
-    /// <summary>Replacement executable command line.</summary>
+    /// <summary>Replacement executable command line; the executable path must be quoted if the command line contains whitespace.</summary>
     public string? BinaryCommandLine { get; init; }
     /// <summary>Replacement display name.</summary>
     public string? DisplayName { get; init; }
