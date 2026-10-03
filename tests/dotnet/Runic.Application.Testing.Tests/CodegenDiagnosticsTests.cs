@@ -73,6 +73,51 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class NamesWindow(NamesViewModel model) : RunicWindow<NamesViewModel>(model);
                 """, "Fixture.Names is not a supported bridge collection").ConfigureAwait(false);
 
+            // Generated wire, member and route names are checked at build time.
+            await Reject("AliasCollision", """
+                public sealed class AliasViewModel : FixtureModel
+                {
+                    [RunicAlias("canSave")] public bool Ready { get; }
+                    public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class AliasWindow(AliasViewModel model) : RunicWindow<AliasViewModel>(model);
+                """, "generated state name 'canSave' conflicts between Ready and SaveCommand availability").ConfigureAwait(false);
+            await Reject("ErrorsCollision", """
+                public sealed class ErrorsViewModel : FixtureModel, INotifyDataErrorInfo
+                {
+                    public string Name { get; } = "";
+                    public string[] NameErrors { get; } = [];
+                    public bool HasErrors => false;
+                    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
+                    public System.Collections.IEnumerable GetErrors(string? propertyName) => Array.Empty<string>();
+                }
+                public sealed partial class ErrorsWindow(ErrorsViewModel model) : RunicWindow<ErrorsViewModel>(model);
+                """, "generated state name 'nameErrors' conflicts").ConfigureAwait(false);
+            await Reject("MountRoute", """
+                public sealed class MountViewModel : FixtureModel { public IRelayCommand MountCommand { get; } = new RelayCommand(() => { }); }
+                public sealed partial class MountWindow(MountViewModel model) : RunicWindow<MountViewModel>(model);
+                """, "generated route name 'Mount' conflicts between the View mount route and MountCommand").ConfigureAwait(false);
+            await Reject("SnapshotRoute", """
+                public sealed class SnapshotViewModel : FixtureModel { public IRelayCommand SnapshotCommand { get; } = new RelayCommand(() => { }); }
+                public sealed partial class SnapshotWindow(SnapshotViewModel model) : RunicWindow<SnapshotViewModel>(model);
+                """, "name 'snapshot' conflicts between the generated snapshot property and SnapshotCommand").ConfigureAwait(false);
+            await Reject("UnmountRoute", """
+                public sealed class UnmountViewModel : FixtureModel { public IRelayCommand<string> UnmountCommand { get; } = new RelayCommand<string>(_ => { }); }
+                public sealed partial class UnmountWindow(UnmountViewModel model) : RunicWindow<UnmountViewModel>(model);
+                """, "generated route name 'Unmount' conflicts between the View unmount route and UnmountCommand").ConfigureAwait(false);
+            await Reject("ThenableView", """
+                public sealed class ThenViewModel : FixtureModel { public IRelayCommand ThenCommand { get; } = new RelayCommand(() => { }); }
+                public sealed partial class ThenWindow(ThenViewModel model) : RunicWindow<ThenViewModel>(model);
+                """, "generated view name 'then' conflicts", "thenable").ConfigureAwait(false);
+            await Reject("AvailabilityRoute", """
+                public sealed class AvailabilityViewModel : FixtureModel
+                {
+                    public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
+                    public IRelayCommand CanSaveCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class AvailabilityWindow(AvailabilityViewModel model) : RunicWindow<AvailabilityViewModel>(model);
+                """, "generated route name 'CanSave' conflicts between SaveCommand availability query and CanSaveCommand").ConfigureAwait(false);
+
             // A ViewModel with interactions but no content still needs a
             // content session, so DI must not offer a transport-only factory.
             var composition = await GenerateValidAsync(generator, temporaryRoot, "InteractionComposition", Preamble + """

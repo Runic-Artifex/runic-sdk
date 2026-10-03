@@ -44,13 +44,16 @@ internal static class InteractionCodeEmitter
     }
 
     /// <summary>
-    /// Checks generated TypeScript member names before emitting any files. A
-    /// collision is otherwise a surprisingly easy way to ship a client whose
-    /// declaration looks valid but whose object literal overwrites a method.
+    /// Checks every generated TypeScript state/view member and every .NET
+    /// route suffix before emitting any files. A collision is otherwise a
+    /// surprisingly easy way to ship a client whose declaration looks valid
+    /// but whose object literal overwrites a method, whose JSON snapshot has
+    /// duplicate keys, or whose route binding fails only at runtime.
     /// </summary>
     internal static void ValidatePublicSurface(string modelName, IEnumerable<PropertyInfo> properties,
         IEnumerable<PropertyInfo> commands, IReadOnlyDictionary<PropertyInfo, GeneratedCommandPlan> commandPlans,
-        IEnumerable<GeneratedInteractionPlan> interactions, IEnumerable<PropertyInfo> checkedProperties)
+        IEnumerable<GeneratedInteractionPlan> interactions, IEnumerable<PropertyInfo> checkedProperties,
+        Func<PropertyInfo, string> wireName, bool hasErrors, bool hasValidation)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
         ArgumentNullException.ThrowIfNull(properties);
@@ -58,11 +61,21 @@ internal static class InteractionCodeEmitter
         ArgumentNullException.ThrowIfNull(commandPlans);
         ArgumentNullException.ThrowIfNull(interactions);
         ArgumentNullException.ThrowIfNull(checkedProperties);
+        ArgumentNullException.ThrowIfNull(wireName);
 
+        var stateProperties = properties.ToArray();
+        var commandProperties = commands.ToArray();
+        var checkedMembers = checkedProperties.ToArray();
         var state = new MemberNames(modelName, "state");
         state.Add("revision", "the generated revision field");
-        foreach (var property in properties) state.Add(LowerFirst(property.Name), property.Name);
-        foreach (var command in commands)
+        if (hasValidation) state.Add("validation", "the generated validation state");
+        if (checkedMembers.Length > 0) state.Add("__runicFields", "the generated checked-field metadata");
+        foreach (var property in stateProperties)
+        {
+            state.Add(wireName(property), property.Name);
+            if (hasErrors) state.Add(wireName(property) + "Errors", property.Name + " errors");
+        }
+        foreach (var command in commandProperties)
         {
             var plan = commandPlans[command];
             var name = command.Name[..^"Command".Length];
@@ -74,14 +87,16 @@ internal static class InteractionCodeEmitter
         view.Add("snapshot", "the generated snapshot property");
         view.Add("subscribe", "the generated subscribe method");
         view.Add("dispose", "the generated dispose method");
+        // A view with a then() method is thenable: `await connectX()` would
+        // call it instead of resolving to the view.
+        view.Add("then", "Promise resolution (a then() member makes the connected view thenable)");
         var interactionPlans = interactions.ToArray();
         if (interactionPlans.Length > 0) view.Add("interactions", "the generated interactions property");
-        foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
+        foreach (var property in stateProperties.Where(property => property.SetMethod?.IsPublic == true))
             view.Add("set" + property.Name, property.Name + " setter");
-        var checkedMembers = checkedProperties.ToArray();
         foreach (var property in checkedMembers) view.Add("write" + property.Name, property.Name + " checked writer");
         if (checkedMembers.Length > 0) view.Add("fieldBaseline", "the generated checked-field baseline method");
-        foreach (var command in commands)
+        foreach (var command in commandProperties)
         {
             var plan = commandPlans[command];
             var name = command.Name[..^"Command".Length];
@@ -100,6 +115,22 @@ internal static class InteractionCodeEmitter
         var interactionSurface = new MemberNames(modelName, "interactions");
         foreach (var interaction in interactionPlans)
             interactionSurface.Add(LowerFirst(interaction.Property.Name), interaction.Property.Name);
+
+        // .NET binds these suffixes under the bridge's route prefix.
+        var routes = new MemberNames(modelName, "route");
+        routes.Add("Snapshot", "the generated snapshot route");
+        routes.Add("Mount", "the View mount route");
+        routes.Add("Unmount", "the View unmount route");
+        foreach (var property in stateProperties.Where(property => property.SetMethod?.IsPublic == true))
+            routes.Add("Set" + property.Name, property.Name + " setter");
+        foreach (var property in checkedMembers) routes.Add("Write" + property.Name, property.Name + " checked writer");
+        foreach (var command in commandProperties)
+        {
+            var name = command.Name[..^"Command".Length];
+            routes.Add(name, command.Name);
+            routes.Add("Can" + name, command.Name + " availability query");
+            if (commandPlans[command].IsAsync) routes.Add("Start" + name, command.Name + " operation starter");
+        }
     }
 
     /// <summary>Appends direct AOT-safe codecs used by the generated descriptor.</summary>
@@ -355,7 +386,7 @@ internal static class InteractionCodeEmitter
         public void Add(string name, string owner)
         {
             if (_owners.TryGetValue(name, out var previous))
-                throw new NotSupportedException($"{modelName}: generated {surface} member '{name}' conflicts between {previous} and {owner}. Rename one member or add an explicit bridge alias.");
+                throw new BridgeNameCollisionException($"{modelName}: generated {surface} name '{name}' conflicts between {previous} and {owner}. Rename one member or add an explicit bridge alias.");
             _owners.Add(name, owner);
         }
     }
