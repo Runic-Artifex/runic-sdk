@@ -133,7 +133,15 @@ internal sealed record DevProjectConfiguration(
         }
 
         string packageDirectory = NormalizeOptional(Value("RunicApplicationFrontendPackageDirectory"), frontend);
-        string outputDirectory = NormalizeOptional(Value("RunicApplicationFrontendOutputDirectory"), Path.Combine(frontend, "dist"));
+        if (packageDirectory.Length == 0)
+        {
+            packageDirectory = frontend;
+        }
+        string outputDirectory = NormalizeOptional(Value("RunicApplicationFrontendOutputDirectory"), frontend);
+        if (outputDirectory.Length == 0)
+        {
+            outputDirectory = Path.Combine(frontend, "dist");
+        }
         string targetDirectory = NormalizeOptional(Value("TargetDir"), evaluatedDirectory);
         if (targetDirectory.Length == 0)
         {
