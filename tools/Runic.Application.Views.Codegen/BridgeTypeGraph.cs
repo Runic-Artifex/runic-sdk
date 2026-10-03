@@ -224,7 +224,10 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Enum:
                 source.AppendLine($"        switch ({value})");
                 source.AppendLine("        {");
-                foreach (var @case in node.EnumCases)
+                // Aliases such as None = 0, Default = 0 share one value. The
+                // first declared name is written; every name remains readable.
+                var writtenValues = new HashSet<object>();
+                foreach (var @case in node.EnumCases.Where(@case => writtenValues.Add(@case.Field.GetRawConstantValue()!)))
                     source.AppendLine($"            case {CSharpType(node.NonNullableType)}.{@case.Field.Name}: writer.WriteStringValue({Quote(@case.WireName)}); break;");
                 source.AppendLine("            default: throw new global::System.ArgumentOutOfRangeException(nameof(value), \"A bridge enum value must be declared.\");");
                 source.AppendLine("        }");
@@ -237,7 +240,7 @@ internal sealed class BridgeTypeGraph
                 break;
             case BridgeWireKind.StringDictionary:
                 source.AppendLine("        writer.WriteStartObject();");
-                source.AppendLine("        foreach (var entry in " + value + ".OrderBy(entry => entry.Key, global::System.StringComparer.Ordinal))");
+                source.AppendLine("        foreach (var entry in global::System.Linq.Enumerable.OrderBy(" + value + ", entry => entry.Key, global::System.StringComparer.Ordinal))");
                 source.AppendLine("        { writer.WritePropertyName(entry.Key); Write" + node.Value!.Id + "(writer, entry.Value); }");
                 source.AppendLine("        writer.WriteEndObject();");
                 break;
@@ -312,9 +315,8 @@ internal sealed class BridgeTypeGraph
                 source.AppendLine("        };");
                 break;
             case BridgeWireKind.Array:
-                AppendArrayReader(source, node, "ToArray()"); break;
             case BridgeWireKind.List:
-                AppendArrayReader(source, node, node.Type.IsInterface ? "ToArray()" : "ToList()"); break;
+                AppendArrayReader(source, node); break;
             case BridgeWireKind.StringDictionary:
                 AppendDictionaryReader(source, node); break;
             case BridgeWireKind.Dto:
@@ -336,33 +338,30 @@ internal sealed class BridgeTypeGraph
         source.AppendLine("    }");
     }
 
-    private static void AppendArrayReader(StringBuilder source, BridgeTypeNode node, string materialize)
+    // Builds the declared collection type itself, so a codec's signature and
+    // its reader agree for every collection that Builder accepts.
+    private static void AppendArrayReader(StringBuilder source, BridgeTypeNode node)
     {
+        var element = node.Element ?? throw new InvalidOperationException("A collection needs an element type.");
+        var elementType = CSharpNodeType(element);
         source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Array) throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected an array.\");");
-        if (node.NonNullableType.IsGenericType && node.NonNullableType.GetGenericTypeDefinition() == typeof(ImmutableArray<>))
-        {
-            source.AppendLine($"        return global::System.Collections.Immutable.ImmutableArray.CreateRange(element.EnumerateArray().Select(Read{node.Element!.Id}));");
-            return;
-        }
-        var genericName = node.NonNullableType.IsGenericType ? node.NonNullableType.GetGenericTypeDefinition().FullName : null;
-        if (genericName == "System.Collections.Immutable.ImmutableList`1")
-        {
-            source.AppendLine($"        return global::System.Collections.Immutable.ImmutableList.CreateRange(element.EnumerateArray().Select(Read{node.Element!.Id}));");
-            return;
-        }
-        if (genericName == "System.Collections.ObjectModel.ObservableCollection`1")
-        {
-            var element = node.Element ?? throw new InvalidOperationException("An observable collection needs an element type.");
-            source.AppendLine($"        return new global::System.Collections.ObjectModel.ObservableCollection<{CSharpNodeType(element)}>(element.EnumerateArray().Select(Read{element.Id}).ToList());");
-            return;
-        }
-        if (genericName == "System.Collections.ObjectModel.ReadOnlyObservableCollection`1")
-        {
-            var element = node.Element ?? throw new InvalidOperationException("A read-only observable collection needs an element type.");
-            source.AppendLine($"        return new global::System.Collections.ObjectModel.ReadOnlyObservableCollection<{CSharpNodeType(element)}>(new global::System.Collections.ObjectModel.ObservableCollection<{CSharpNodeType(element)}>(element.EnumerateArray().Select(Read{element.Id}).ToList()));");
-            return;
-        }
-        source.AppendLine($"        return element.EnumerateArray().Select(Read{node.Element!.Id}).{materialize};");
+        source.AppendLine($"        var items = new global::System.Collections.Generic.List<{elementType}>(element.GetArrayLength());");
+        source.AppendLine($"        foreach (var item in element.EnumerateArray()) items.Add(Read{element.Id}(item));");
+        var generic = node.NonNullableType.GetGenericTypeDefinitionOrNull();
+        var result = node.Kind is BridgeWireKind.Array ? "items.ToArray()"
+            : generic == typeof(ImmutableArray<>) ? "global::System.Collections.Immutable.ImmutableArray.CreateRange(items)"
+            : generic == typeof(ImmutableList<>) ? "global::System.Collections.Immutable.ImmutableList.CreateRange(items)"
+            : generic == typeof(System.Collections.ObjectModel.ObservableCollection<>)
+                ? $"new global::System.Collections.ObjectModel.ObservableCollection<{elementType}>(items)"
+            : generic == typeof(System.Collections.ObjectModel.ReadOnlyObservableCollection<>)
+                ? $"new global::System.Collections.ObjectModel.ReadOnlyObservableCollection<{elementType}>(new global::System.Collections.ObjectModel.ObservableCollection<{elementType}>(items))"
+            : generic == typeof(System.Collections.ObjectModel.ReadOnlyCollection<>)
+                ? $"new global::System.Collections.ObjectModel.ReadOnlyCollection<{elementType}>(items)"
+            // Mutable list contracts get a mutable list; read-only contracts
+            // and IEnumerable<T> get an array.
+            : generic == typeof(List<>) || generic == typeof(IList<>) || generic == typeof(ICollection<>) ? "items"
+            : "items.ToArray()";
+        source.AppendLine($"        return {result};");
     }
 
     private static void AppendDictionaryReader(StringBuilder source, BridgeTypeNode node)
@@ -386,11 +385,11 @@ internal sealed class BridgeTypeGraph
                 var member = node.Members.Single(candidate => string.Equals(candidate.Property.Name, parameter.Name, StringComparison.OrdinalIgnoreCase));
                 return $"Read{member.Type.Id}({Local(member)})";
             });
-            source.AppendLine($"        return new {CSharpType(node.Type)}({string.Join(", ", arguments)});");
+            source.AppendLine($"        return new {CSharpType(node.NonNullableType)}({string.Join(", ", arguments)});");
         }
         else
         {
-            source.AppendLine($"        return new {CSharpType(node.Type)} {{");
+            source.AppendLine($"        return new {CSharpType(node.NonNullableType)} {{");
             foreach (var member in node.Members)
                 source.AppendLine($"            {member.Property.Name} = Read{member.Type.Id}({Local(member)}),");
             source.AppendLine("        };");
@@ -410,27 +409,25 @@ internal sealed class BridgeTypeGraph
         return "global::" + name + "<" + string.Join(", ", type.GetGenericArguments().Select(CSharpType)) + ">";
     }
 
+    // The declared C# type with its nullable annotations, e.g.
+    // ImmutableArray<string?>? or Point?. Codecs use it for signatures.
     private static string CSharpNodeType(BridgeTypeNode node)
     {
-        string type;
-        if (node.Kind == BridgeWireKind.Array)
-            type = CSharpNodeType(node.Element!) + "[]";
-        else if (node.Kind == BridgeWireKind.List)
+        var type = node.Kind switch
         {
-            var generic = node.NonNullableType.GetGenericTypeDefinition().FullName
-                ?? throw new InvalidOperationException("A collection needs a generic type name.");
-            type = "global::" + generic[..generic.IndexOf('`')].Replace('+', '.')
-                + "<" + CSharpNodeType(node.Element!) + ">";
-        }
-        else if (node.Kind == BridgeWireKind.StringDictionary)
-        {
-            var generic = node.NonNullableType.GetGenericTypeDefinition().FullName
-                ?? throw new InvalidOperationException("A dictionary needs a generic type name.");
-            type = "global::" + generic[..generic.IndexOf('`')].Replace('+', '.')
-                + "<string, " + CSharpNodeType(node.Value!) + ">";
-        }
-        else type = CSharpType(node.Type);
-        return type + (node.IsNullable && !node.NonNullableType.IsValueType ? "?" : string.Empty);
+            BridgeWireKind.Array => CSharpNodeType(node.Element!) + "[]",
+            BridgeWireKind.List => GenericName(node.NonNullableType) + "<" + CSharpNodeType(node.Element!) + ">",
+            BridgeWireKind.StringDictionary => GenericName(node.NonNullableType) + "<string, " + CSharpNodeType(node.Value!) + ">",
+            _ => CSharpType(node.NonNullableType),
+        };
+        return node.IsNullable ? type + "?" : type;
+    }
+
+    private static string GenericName(Type type)
+    {
+        var generic = type.GetGenericTypeDefinition().FullName
+            ?? throw new InvalidOperationException("A collection needs a generic type name.");
+        return "global::" + generic[..generic.IndexOf('`')].Replace('+', '.');
     }
 
     private sealed class Builder
@@ -440,7 +437,7 @@ internal sealed class BridgeTypeGraph
         internal List<BridgeTypeNode> Nodes { get; } = [];
 
         internal BridgeTypeNode Build(Type declared, NullabilityInfo? nullability, string path, HashSet<Type> stack,
-            RunicBridgeCodecAttribute? memberCodec)
+            RunicBridgeCodecAttribute? memberCodec, bool unionCase = false)
         {
             var nullable = !declared.IsValueType
                 ? nullability?.ReadState == NullabilityState.Nullable
@@ -479,11 +476,14 @@ internal sealed class BridgeTypeGraph
                 node.CustomCodec = CustomCodecDescription.Create(type, custom.CodecType, path);
                 return node;
             }
-            if (TryCollection(type, out var collection, out var element))
+            if (TryCollection(type, path, out var collection, out var element))
             {
                 node.Kind = collection;
                 stack.Add(type);
-                node.Element = Build(element!, GenericNullability(nullability, 0), path + "[]", stack, null);
+                // Array element annotations live in ElementType, not in
+                // GenericTypeArguments: string?[] must keep its nullable items.
+                node.Element = Build(element!, type.IsArray ? nullability?.ElementType : GenericNullability(nullability, 0),
+                    path + "[]", stack, null);
                 stack.Remove(type);
                 return node;
             }
@@ -495,10 +495,17 @@ internal sealed class BridgeTypeGraph
                 stack.Remove(type);
                 return node;
             }
-            if (!IsDto(type)) throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not an explicitly supported bridge value.");
+            // A concrete collection outside the supported list would
+            // otherwise be treated as a DTO and silently serialize as {}.
+            if (UnsupportedCollection(type) is { } collectionError) throw new BridgeTypeGraphException(path, collectionError);
+            if (!IsDto(type)) throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not an explicitly supported bridge value. Use a supported scalar, collection, public DTO, RunicUnion, or RunicBridgeCodec.");
             node.Kind = BridgeWireKind.Dto;
             stack.Add(type);
             var members = DataProperties(type, path).ToArray();
+            // An empty union case is a valid tag-only case. Any other DTO
+            // without readable properties would always cross the bridge as {}.
+            if (members.Length == 0 && !unionCase)
+                throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} has no public readable properties, so it would always serialize as {{}}. Add properties or a RunicBridgeCodec.");
             foreach (var property in members)
             {
                 var info = _nullability.Create(property);
@@ -529,7 +536,7 @@ internal sealed class BridgeTypeGraph
                 if (string.IsNullOrWhiteSpace(tag) || tag.Length > 128 || tag.Any(char.IsControl) || !seenTags.Add(tag))
                     throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} needs a unique RunicUnionCase discriminator of at most 128 printable characters.");
                 // A case can contain a member whose declared type references the union root; this is a real cycle.
-                var caseNode = Build(type, null, path + "." + tag, stack, null);
+                var caseNode = Build(type, null, path + "." + tag, stack, null, unionCase: true);
                 if (caseNode.Members.Any(member => member.WireName == "$case"))
                     throw new BridgeTypeGraphException(path + "." + tag, "A union case cannot export the reserved $case field.");
                 node.Cases.Add(new(tag, caseNode));
@@ -567,26 +574,42 @@ internal sealed class BridgeTypeGraph
             parent is { GenericTypeArguments.Length: > 0 } && parent.GenericTypeArguments.Length > index
                 ? parent.GenericTypeArguments[index] : null;
 
-        private static bool TryCollection(Type type, out BridgeWireKind kind, out Type? element)
+        // Every collection the generated reader can construct. Derived or
+        // custom collection classes are rejected rather than read as a List<T>.
+        private static readonly HashSet<Type> SupportedCollections =
+        [
+            typeof(List<>), typeof(IReadOnlyList<>), typeof(IReadOnlyCollection<>), typeof(IList<>), typeof(ICollection<>),
+            typeof(IEnumerable<>), typeof(ImmutableArray<>), typeof(ImmutableList<>),
+            typeof(System.Collections.ObjectModel.ObservableCollection<>),
+            typeof(System.Collections.ObjectModel.ReadOnlyObservableCollection<>),
+            typeof(System.Collections.ObjectModel.ReadOnlyCollection<>),
+        ];
+
+        private static bool TryCollection(Type type, string path, out BridgeWireKind kind, out Type? element)
         {
-            if (type.IsArray) { kind = BridgeWireKind.Array; element = type.GetElementType(); return true; }
-            if (type == typeof(string)) { kind = BridgeWireKind.None; element = null; return false; }
-            var generic = type.IsGenericType ? type.GetGenericTypeDefinition() : null;
-            var collectionName = generic?.FullName;
-            var supported = type.IsGenericType && (generic == typeof(List<>) ||
-                type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>) || type.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>) ||
-                type.GetGenericTypeDefinition() == typeof(IList<>) || type.GetGenericTypeDefinition() == typeof(ICollection<>) ||
-                type.GetGenericTypeDefinition() == typeof(IEnumerable<>) || type.GetGenericTypeDefinition() == typeof(ImmutableArray<>) ||
-                collectionName is "System.Collections.Immutable.ImmutableList`1" or "System.Collections.ObjectModel.ObservableCollection`1" or "System.Collections.ObjectModel.ReadOnlyObservableCollection`1");
-            if (!supported)
+            if (type.IsArray)
             {
-                var interfaceType = type.GetInterfaces().Append(type).FirstOrDefault(candidate => candidate.IsGenericType &&
-                    candidate.GetGenericTypeDefinition() == typeof(IReadOnlyList<>));
-                if (interfaceType is null) { kind = BridgeWireKind.None; element = null; return false; }
-                element = interfaceType.GenericTypeArguments[0]; kind = BridgeWireKind.List; return true;
+                if (type.GetArrayRank() != 1)
+                    throw new BridgeTypeGraphException(path, "Multi-dimensional arrays are not a bridge contract; use a jagged array or a list.");
+                kind = BridgeWireKind.Array; element = type.GetElementType(); return true;
             }
-            element = type.GenericTypeArguments[0]; kind = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ImmutableArray<>) ? BridgeWireKind.Array : BridgeWireKind.List;
-            return true;
+            if (type.GetGenericTypeDefinitionOrNull() is { } generic && SupportedCollections.Contains(generic))
+            {
+                kind = BridgeWireKind.List; element = type.GenericTypeArguments[0]; return true;
+            }
+            kind = BridgeWireKind.None; element = null;
+            return false;
+        }
+
+        private static string? UnsupportedCollection(Type type)
+        {
+            if (type == typeof(string)) return null;
+            if (type.GetInterfaces().Append(type).Any(candidate => candidate.IsGenericType
+                    && (candidate.GetGenericTypeDefinition() == typeof(IDictionary<,>) || candidate.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>))))
+                return $"{TypeIdentity(type)} is not a supported bridge dictionary. Use Dictionary<string, T>, IDictionary<string, T>, or IReadOnlyDictionary<string, T>.";
+            return typeof(IEnumerable).IsAssignableFrom(type)
+                ? $"{TypeIdentity(type)} is not a supported bridge collection. Use T[], List<T>, IReadOnlyList<T>, IReadOnlyCollection<T>, IList<T>, ICollection<T>, IEnumerable<T>, ImmutableArray<T>, ImmutableList<T>, ObservableCollection<T>, ReadOnlyObservableCollection<T>, or ReadOnlyCollection<T>."
+                : null;
         }
 
         private static bool TryStringDictionary(Type type, out Type? value)
@@ -598,7 +621,11 @@ internal sealed class BridgeTypeGraph
             return value is not null && (type.IsInterface || type.GetGenericTypeDefinitionOrNull() == typeof(Dictionary<,>));
         }
 
-        private static bool IsDto(Type type) => type.IsPublic && (type.IsClass || type.IsValueType) && !type.IsAbstract && !typeof(Delegate).IsAssignableFrom(type);
+        // Framework types (object, StringBuilder, Uri, tuples, ...) have no
+        // application-owned shape; DataProperties also stops at System types.
+        private static bool IsDto(Type type) => type.IsPublic && (type.IsClass || type.IsValueType) && !type.IsAbstract
+            && !typeof(Delegate).IsAssignableFrom(type)
+            && type.Namespace != "System" && type.Namespace?.StartsWith("System.", StringComparison.Ordinal) != true;
 
         private static IEnumerable<PropertyInfo> DataProperties(Type type, string path)
         {
