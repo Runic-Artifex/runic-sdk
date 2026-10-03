@@ -303,6 +303,9 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           svelte: "5.57.0",
           vite: "8.2.2",
           "@angular/core": "22.1.5",
+          react: "19.2.8",
+          "@types/react": "19.2.18",
+          vue: "3.5.42",
           "@sveltejs/kit": "2.70.2",
           "@sveltejs/adapter-static": "3.0.10",
           "@sveltejs/vite-plugin-svelte": "7.3.0",
@@ -349,8 +352,19 @@ import assert from 'node:assert/strict';
 import * as vite from '@runic-artifex/vite-plugin-runic';
 import * as translations from '@runic-artifex/vite-plugin-runic-translations';
 import { runicToolkitSpaPageOptions } from '@runic-artifex/sveltekit/page-options';
+import { BridgeError, bridgeWire, connectView } from '@runic-artifex/views';
+import { installMockBridge } from '@runic-artifex/views/mock';
+import { useView as useReactView } from '@runic-artifex/react';
+import { useView as useVueView } from '@runic-artifex/vue';
 assert.equal(runicToolkitSpaPageOptions.ssr, false);
 for (const module of [vite, translations]) assert.ok(Object.keys(module).length);
+installMockBridge().view('consumer', { state: { value: 1 } });
+const client = await connectView({ contract: 'Consumer:fingerprint', route: 'consumer', mount: false,
+  hydrate: wire => ({ value: bridgeWire.integer(wire.value, 0, 9) }) });
+assert.equal(client.snapshot.value, 1);
+client.dispose();
+await assert.rejects(client.invoke('consumerSetValue', 2), error => error instanceof BridgeError && error.kind === 'disconnected');
+for (const hook of [useReactView, useVueView]) assert.equal(typeof hook, 'function');
 console.log('Packed npm consumers passed.');
 `,
   );

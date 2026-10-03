@@ -194,6 +194,16 @@
       "ecosystem": "npm",
       "identity": "@runic-artifex/views",
       "version": "0.5.0-preview.3"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/react",
+      "version": "0.5.0-preview.3"
+    },
+    {
+      "ecosystem": "npm",
+      "identity": "@runic-artifex/vue",
+      "version": "0.5.0-preview.3"
     }
   ]
 }
