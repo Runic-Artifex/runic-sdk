@@ -55,7 +55,12 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellation.ConfigureAwait(false);
             if (dialog != 0)
-                await owner.InvokeAsync(_ => { Destroy(dialog); Unref(dialog); if (handle.IsAllocated) handle.Free(); }, CancellationToken.None).ConfigureAwait(false);
+            {
+                try { await owner.InvokeAsync(_ => { Destroy(dialog); Unref(dialog); if (handle.IsAllocated) handle.Free(); }, CancellationToken.None).ConfigureAwait(false); }
+                // A closed owner cannot destroy the chooser on its GTK thread. Keep the dialog
+                // and its callback context alive, and preserve the operation's own outcome.
+                catch (Exception error) when (error is OwnerClosedException or ObjectDisposedException) { }
+            }
         }
     }
 

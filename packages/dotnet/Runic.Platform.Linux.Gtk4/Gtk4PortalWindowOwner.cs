@@ -72,8 +72,12 @@ public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IP
                 throw new NativeBackendUnavailableException();
             }
 
-            if (IsInstanceOf(display, X11DisplayType()) != 0)
+            if (!IsWaylandDisplay(display))
             {
+                if (!IsX11Display(display))
+                {
+                    throw new NativeBackendUnavailableException();
+                }
                 var xid = X11SurfaceGetXid(surface);
                 if (xid == 0)
                 {
@@ -81,11 +85,6 @@ public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IP
                 }
                 exported = new X11PortalParentLease($"x11:{xid:x}");
                 return;
-            }
-
-            if (IsInstanceOf(display, WaylandDisplayType()) == 0)
-            {
-                throw new NativeBackendUnavailableException();
             }
 
             wayland = new WaylandExport(owner, exportTimeout.Token);
@@ -117,6 +116,31 @@ public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IP
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             throw new NativeBackendUnavailableException();
+        }
+    }
+
+    // GTK built without one backend lacks its entry points; probe each independently.
+    private static bool IsWaylandDisplay(nint display)
+    {
+        try
+        {
+            return IsInstanceOf(display, WaylandDisplayType()) != 0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsX11Display(nint display)
+    {
+        try
+        {
+            return IsInstanceOf(display, X11DisplayType()) != 0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return false;
         }
     }
 
@@ -157,14 +181,21 @@ public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IP
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void WaylandExportDestroyed(nint context)
     {
-        var handle = GCHandle.FromIntPtr(context);
-        if (handle.Target is WaylandExport export)
+        try
         {
-            export.DisposeHandle();
+            var handle = GCHandle.FromIntPtr(context);
+            if (handle.Target is WaylandExport export)
+            {
+                export.DisposeHandle();
+            }
+            else
+            {
+                handle.Free();
+            }
         }
-        else
+        catch
         {
-            handle.Free();
+            // Native callbacks cannot unwind through GDK.
         }
     }
 

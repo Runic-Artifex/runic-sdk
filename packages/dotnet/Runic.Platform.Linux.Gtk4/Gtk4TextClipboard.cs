@@ -136,16 +136,15 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                         {
                             _ = SetContent(ownership.Clipboard, 0);
                         }
+                        Unref(ownership.Provider);
                     }, CancellationToken.None).ConfigureAwait(false);
                 }
+                // GObjects are released only on the GTK thread. Without a live owner,
+                // keep this one provider reference rather than finalizing it elsewhere.
                 catch (OwnerClosedException) { }
                 catch (ObjectDisposedException) when (!owner.IsAvailable) { }
             }
             _ownership = null;
-            if (ownership is not null)
-            {
-                Unref(ownership.Provider);
-            }
             _disposed = true;
         }
         finally
