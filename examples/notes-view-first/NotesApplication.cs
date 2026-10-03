@@ -26,10 +26,10 @@ public sealed class NotesApplication : IDisposable
         services.AddScoped<WorkspaceNavigation>();
         services.AddScoped<SidebarViewModel>();
         services.AddScoped<ShellViewModel>();
-        services.AddRunicBridges();
 
         if (useSplat)
         {
+            services.AddRunicBridges();
             RegisterSplatViews();
             services.AddScoped<IRunicViewLocator, SplatViewLocator>();
             if (AppLocator.Current.GetService<IViewFor<EditorViewModel>>() is not EditorView)
@@ -37,13 +37,9 @@ public sealed class NotesApplication : IDisposable
         }
         else
         {
-            services.AddTransient<SidebarView>();
-            services.AddTransient<HomeView>();
-            services.AddTransient<DocumentView>();
-            services.AddTransient<EditorView>();
-            services.AddTransient<PreviewView>();
-            services.AddTransient<ConfirmNavigationView>();
-            services.AddScoped<IRunicViewLocator, MicrosoftViewLocator>();
+            // Registers the Bridges, every View as transient, and the
+            // service-provider View locator.
+            services.AddRunicViews();
         }
 
         return new NotesApplication(services.BuildServiceProvider(
@@ -79,13 +75,6 @@ public sealed class NotesApplication : IDisposable
     {
         AppLocator.CurrentMutable.Register(() => new TView(), typeof(IViewFor<TViewModel>));
     }
-}
-
-public sealed class MicrosoftViewLocator(IServiceProvider services) : IRunicViewLocator
-{
-    public TView Locate<TView, TViewModel>()
-        where TView : class, IRunicView
-        where TViewModel : class => services.GetRequiredService<TView>();
 }
 
 public sealed class SplatViewLocator : IRunicViewLocator

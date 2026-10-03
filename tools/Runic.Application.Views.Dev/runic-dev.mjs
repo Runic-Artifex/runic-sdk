@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SDK-internal runner for the repository's multi-frontend Views examples
+// (plain TypeScript, Svelte, and Angular variants of one .NET project). It is
+// not shipped. Applications and generated projects use `dotnet runic dev`.
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, readdirSync, watch } from "node:fs";

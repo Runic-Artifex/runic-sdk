@@ -52,11 +52,56 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
     /// <inheritdoc cref="WebUiWindow.SetPort(nuint)"/>
     public void SetPort(nuint port) => _window.SetPort(port);
 
-    /// <inheritdoc cref="WebUiWindow.Show(string)"/>
-    public void Show(string content) => _window.Show(content);
+    /// <summary>
+    /// Shows <paramref name="content"/> with WebUI's recommended presentation:
+    /// an installed browser in app mode (Chromium-based browsers first), then
+    /// the system default browser, then the platform WebView.
+    /// </summary>
+    /// <remarks>
+    /// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is
+    /// <c>1</c>, no browser is launched. The window starts its local server,
+    /// writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
+    /// keeps serving until a line is read from standard input or the process
+    /// ends. Test harnesses and remote browsers use this without changing
+    /// application code.
+    /// </remarks>
+    public void Show(string content)
+    {
+        if (!TryServeOnly(content)) _window.Show(content);
+    }
+
+    /// <summary>
+    /// Shows <paramref name="content"/> in the platform WebView (WebView2,
+    /// WebKitGTK or WKWebView) instead of a browser. The serve-only
+    /// environment variable described on <see cref="Show"/> also applies.
+    /// </summary>
+    public void ShowWebView(string content)
+    {
+        if (!TryServeOnly(content)) _window.ShowWebView(content);
+    }
 
     /// <inheritdoc cref="WebUiWindow.StartServer(string)"/>
     public string StartServer(string content) => _window.StartServer(content);
+
+    internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
+
+    private bool TryServeOnly(string content)
+    {
+        if (Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) != "1") return false;
+        // Zero waits for WebUiApplication.Exit rather than for a first browser
+        // connection, so the server outlives connecting and closing clients.
+        WebUiApplication.SetConnectionTimeout(0);
+        var url = _window.StartServer(content);
+        Console.Out.WriteLine($"RUNIC_APPLICATION_URL={url}");
+        Console.Out.Flush();
+        // End of input (for example </dev/null) is not a stop request.
+        new Thread(static () =>
+        {
+            if (Console.In.ReadLine() is not null) WebUiApplication.Exit();
+        })
+        { IsBackground = true, Name = "Runic serve-only input" }.Start();
+        return true;
+    }
 
     internal void Attach(IDisposable attachment)
     {

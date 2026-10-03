@@ -40,8 +40,10 @@ async function retry(action, label) {
 const dll = process.env.RUNIC_FIRST_WINDOW_DLL
   ?? fileURLToPath(new URL("./bin/Release/net10.0/FirstWindow.dll", import.meta.url));
 const native = process.env.RUNIC_FIRST_WINDOW_EXECUTABLE;
-const host = spawn(native ?? "dotnet", native ? ["--serve-only"] : [dll, "--serve-only"],
-  { stdio: ["pipe", "pipe", "pipe"] });
+// RUNIC_APPLICATION_SERVE_ONLY makes the unchanged example start its server
+// without launching a browser and print RUNIC_APPLICATION_URL=<url>.
+const host = spawn(native ?? "dotnet", native ? [] : [dll],
+  { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1" } });
 let output = "", errors = "", chrome, socket, profile;
 host.stdout.on("data", chunk => { output += chunk; });
 host.stderr.on("data", chunk => { errors += chunk; });

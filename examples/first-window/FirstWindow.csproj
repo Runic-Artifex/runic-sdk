@@ -4,20 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
-    <RunicBridgeCompositionType>FirstWindow.RunicBridgeComposition</RunicBridgeCompositionType>
-    <RunicBridgeFrontendBuildCommand>bun run --bun build</RunicBridgeFrontendBuildCommand>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
-    <OutputType>Library</OutputType>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
-    <ProjectReference Include="../../packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj" />
   </ItemGroup>
-  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
-    <Compile Remove="Program.cs" />
+  <!-- Inside the SDK repository the example builds the packages from source.
+       A copied-out project replaces these lines with
+       <PackageReference Include="Runic.Application.CsWebUi" Version="..." />. -->
+  <Import Project="../../packages/dotnet/Runic.Application.Views.CsWebUi/build/Runic.Application.CsWebUi.props" />
+  <ItemGroup>
+    <ProjectReference Include="../../packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj" />
   </ItemGroup>
   <Import Project="../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../packages/dotnet/Runic.Application.Views.CsWebUi/build/Runic.Application.Views.CsWebUi.targets" />

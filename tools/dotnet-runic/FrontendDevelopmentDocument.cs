@@ -28,10 +28,14 @@ internal static partial class FrontendDevelopmentDocument
         document = DevelopmentAssetAttribute().Replace(document, match =>
         {
             string path = match.Groups["path"].Value;
+            // The document is served from the web root, so "webui.js",
+            // "./webui.js" and "/webui.js" name the same file.
             string normalized = path.StartsWith("./", StringComparison.Ordinal)
                 ? path[1..]
-                : path;
-            if (normalized == "/webui.js")
+                : path.StartsWith('/') ? path : "/" + path;
+            // The native host serves webui.js, and the Runic host packages copy
+            // their client scripts into the runtime web root.
+            if (normalized is "/webui.js" or "/runic-cswebui.js" or "/runic-desktop-views.js")
             {
                 return match.Value;
             }

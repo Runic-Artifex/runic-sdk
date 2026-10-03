@@ -1,7 +1,7 @@
 # Runic.Platform.Windows
 
-Explicit Windows x64 file dialog and Unicode text clipboard provider for Runic SDK
-`0.2.0-preview.1`. Select `WindowsPlatformProvider.CreateFileDialogs(owner)` and
+Explicit Windows x64 file dialog and Unicode text clipboard provider for the Runic
+SDK. Select `WindowsPlatformProvider.CreateFileDialogs(owner)` and
 `CreateTextClipboard(owner)` with the presentation's verified native owner.
 The owner dispatches file dialogs on the window's STA and drains native callbacks
 before disposal. This package does not discover providers or depend on Desktop.
@@ -22,6 +22,6 @@ conformance alone does not certify the Windows environment.
 
 Application-scoped appearance and notification providers, and owned file opening,
 application choice and reveal, are described in the
-[desktop services guide](../../../docs/guides/desktop-services.md). It includes
+[desktop services guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop-services.md). It includes
 composition, native API choices, installation/activation requirements, retained
 file access and the per-platform verification status.

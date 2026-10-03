@@ -6,13 +6,25 @@ the SDK's NuGet and npm packages release together.
 
 ## Start building an application
 
-Follow the [getting-started guide](https://docs.runic-artifex.eu/getting-started/)
-to install the published templates and run an app. For an existing project, copy
+Create and run an app from the published templates:
+
+```sh
+dotnet new install Runic.Application.Templates::<VERSION>
+dotnet new runic-app-react -n MyApp
+cd MyApp
+dotnet tool restore
+dotnet runic dev
+```
+
+Replace `react` with `vue`, `svelte` or `angular`, and add
+`--packageManager pnpm` or `--packageManager bun` to use another package
+manager. The [getting-started guide](https://docs.runic-artifex.eu/getting-started/)
+lists the prerequisites and the current version. For an existing project, copy
 the install command for the capability you need from the
 [package catalog](https://docs.runic-artifex.eu/packages/).
 
 Explore the [first Window](examples/first-window/README.md),
-[Toolkit Notes](examples/notes-view-first/README.md), and
+[CommunityToolkit Notes](examples/notes-view-first/README.md), and
 [Reactive Notes](examples/notes-reactive-views/README.md) for the current
 Window and View model. The instructions below are for contributing to the SDK itself.
 
@@ -66,7 +78,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership, development and verificati
 ## Migrating existing applications
 
 Start with the [first Window](examples/first-window/README.md), then compare the
-[Toolkit Notes](examples/notes-view-first/README.md) and
+[CommunityToolkit Notes](examples/notes-view-first/README.md) and
 [Reactive Notes](examples/notes-reactive-views/README.md) examples. They use
 explicit .NET Window and View types, generated TypeScript clients, and ordinary
 frontend components. See the [Views guide](docs/guides/application/README.md)

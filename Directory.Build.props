@@ -4,5 +4,9 @@
     <RunicSdkRoot>$(MSBuildThisFileDirectory)</RunicSdkRoot>
     <RepositoryUrl>https://github.com/Runic-Artifex/runic-sdk</RepositoryUrl>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
+    <!-- bun run bootstrap owns repository frontend installs. Generated and
+         copied-out applications install missing frontend dependencies during
+         their first build. -->
+    <RunicBridgeInstallFrontend Condition="'$(RunicBridgeInstallFrontend)' == ''">false</RunicBridgeInstallFrontend>
   </PropertyGroup>
 </Project>

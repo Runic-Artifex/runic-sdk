@@ -21,7 +21,7 @@ WebView. It does not load the native WebUI library.
 - Structured browser/WebView preflight with actionable prerequisite diagnostics
 - Sensitive permissions denied by default and explicit, typed presentation opt-in
 - Window geometry, framing, transparency, visibility, focus, and native handles
-- [Asynchronous native close confirmation](../../../../docs/guides/desktop/window-close-lifecycle.md) for unsaved work
+- [Asynchronous native close confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/window-close-lifecycle.md) for unsaved work
 - Trimming and NativeAOT-compatible managed core
 
 ## Example
@@ -97,8 +97,8 @@ windows do not implement the grant.
 The retained `webui-compat/52f9e75` direct-capability profile cannot carry a
 structured invocation failure on its legacy wire response. It reports only the
 stable empty compatibility result while the host emits a redacted,
-correlation-bearing diagnostic. The `@runic-artifex/desktop` Application Bridge
-transport exposes its own typed, redacted, correlation-bearing errors.
+correlation-bearing diagnostic. Runic Application Views hosted through
+`Runic.Application.Desktop` report their own typed, redacted, correlation-bearing errors.
 
 ## Relationship to WebUI and CS-WebUI
 
@@ -112,17 +112,17 @@ production dependency on CS-WebUI or the WebUI native library.
 
 The internal WebUI-profile engine remains differential evidence; it is not part
 of the public API. Existing source-preview consumers can use the
-[migration guide](../../../../docs/guides/desktop/migrations/webui-compat-to-desktop.md).
-The [wire profile](../../../../specs/desktop/wire-profile.md) documents the
+[migration guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/migrations/webui-compat-to-desktop.md).
+The [wire profile](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/wire-profile.md) documents the
 compatibility boundary.
 
 ## Product contract
 
 Runic Desktop implements the language-neutral
-[Runic Desktop presentation contract](../../../../specs/desktop/README.md). The contract defines
+[Runic Desktop presentation contract](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/README.md). The contract defines
 host, surface, window, session, request, streaming, cancellation, security, and
 error semantics independently of .NET and TypeScript APIs. Its
-[ownership map](../../../../specs/desktop/ownership.md) keeps Application Bridge, Assets,
+[ownership map](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/ownership.md) keeps Runic Application Views, Assets,
 Translations, Vite, and framework responsibilities with their existing Runic
 products.
 

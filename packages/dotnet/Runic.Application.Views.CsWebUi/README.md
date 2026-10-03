@@ -1,14 +1,63 @@
-# Runic Application CS-WebUI host adapter
+# Runic.Application.CsWebUi
 
-This adapter connects the host-neutral View bridge to a CS-WebUI window. Its
-browser script adapts `window.webui` to the generated TypeScript client's
-transport contract. A window-local `CreateBridgeSession()` retains one native
-binding for each route name and swaps the active managed handler as Views
-change; an inactive route returns `disconnected`.
+Present Runic Windows and Views with [CS-WebUI](https://github.com/Runic-Artifex/cs-webui).
+This is the host used by the `runic-app-*` project templates.
 
-CS-WebUI cannot remove a native route registration before its window closes.
-Retained page references reuse routes; new page identities still add routes.
-The Microsoft DI window factory in this package owns the content session,
-bridge attachment, and scoped ViewModel together.
-The View core remains independent of CS-WebUI. This is the selected native
-host for the current preview package graph.
+```sh
+dotnet add package Runic.Application.CsWebUi --prerelease
+```
+
+```csharp
+public sealed partial class MainWindow(CsWebUiBridgeWindow<MainViewModel> host)
+    : CsWebUiWindow<MainViewModel>(host);
+
+var services = new ServiceCollection();
+services.AddScoped<MainViewModel>();
+services.AddRunicViews(); // generated in <ProjectName>.RunicBridgeComposition
+using var provider = services.BuildServiceProvider();
+using var window = provider.OpenWindow<MainWindow, MainViewModel>(host => new MainWindow(host));
+window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
+window.Show("index.html");
+WebUiApplication.Wait();
+```
+
+`OpenWindow` creates a DI scope, resolves the Window's ViewModel, constructs
+the Window, and attaches its generated Bridge; the Window owns the native
+window, scope, and attachments until it is disposed or `CloseAsync` drains its
+accepted operations. `CsWebUiWindow<TViewModel>` forwards `SetRootFolder`,
+`SetSize`, `Show`, `ShowWebView`, `StartServer`, `CloseAsync`, and disposal to
+its `Host`, a `CsWebUiBridgeWindow<TViewModel>`; `Host.NativeWindow` exposes
+the underlying `WebUiWindow`.
+
+## What Show opens
+
+`Show` uses WebUI's recommended presentation: an installed browser in app mode
+(Chrome, Edge and other Chromium-based browsers work best; Firefox works without
+app mode), then the system default browser, then the platform WebView.
+`ShowWebView` always uses the WebView: the Edge WebView2 Runtime on Windows,
+GTK 3 with WebKitGTK 4.1 on Linux, or WKWebView on macOS. For native windows
+and platform services, use
+[Runic.Application.Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md)
+instead.
+
+Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
+anything. `Show` and `ShowWebView` then write `RUNIC_APPLICATION_URL=<url>` to
+standard output and keep serving until a line is read from standard input or
+the process ends, so a test harness or remote browser can drive the unchanged
+application.
+
+## Build output
+
+The package's build targets copy `runic-cswebui.js` into `www/` next to the
+built frontend. Load `webui.js` (served by WebUI) and `runic-cswebui.js` before
+the generated client in `index.html`. The script adapts `window.webui` to the
+generated client's transport contract.
+
+A window-local `CreateBridgeSession()` retains one native binding for each route
+name and swaps the active managed handler as Views change; an inactive route
+returns `disconnected`. CS-WebUI cannot remove a native route registration
+before its window closes. Retained page references reuse routes; new page
+identities still add routes.
+
+See the [Runic.Application package guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md)
+for Windows, Views, generated clients, and build properties.

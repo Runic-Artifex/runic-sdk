@@ -129,7 +129,7 @@ internal static class DoctorChecks
     {
         if (!project.IsViewsWindowProject)
         {
-            checks.Add(Fail("views-window", "The project does not opt into Runic Views Window.", "Set RunicViewsWindowProject=true and reference the Views CS-WebUI package."));
+            checks.Add(Fail("views-window", "The project does not opt into Runic Views Window.", "Set RunicViewsWindowProject=true and reference Runic.Application.CsWebUi or Runic.Application.Desktop."));
             return;
         }
         checks.Add(Pass("views-window", "The project uses the Runic Views Window model."));
@@ -216,7 +216,10 @@ internal static class DoctorChecks
     {
         if (!File.Exists(project.ProjectAssetsFile))
         {
-            checks.Add(Fail("compatibility-set", "NuGet restore graph is missing.", $"Run dotnet restore \"{project.ProjectPath}\" and rerun doctor."));
+            // A freshly generated project has not been restored yet. That is
+            // expected: dotnet runic dev and dotnet build restore it.
+            checks.Add(Warn("compatibility-set", "The project has not been restored yet, so Runic package versions were not checked.",
+                "Run 'dotnet runic dev' or 'dotnet restore', then rerun doctor to check package versions."));
             return;
         }
         var mismatches = new List<string>();
@@ -237,7 +240,7 @@ internal static class DoctorChecks
                 string identity = library.Name[..separator];
                 string version = library.Name[(separator + 1)..];
                 string type = library.Value.TryGetProperty("type", out JsonElement typeNode) ? typeNode.GetString() ?? string.Empty : string.Empty;
-                if (identity == "Runic.Application.CsWebUi") hasViewsHost = true;
+                if (identity is "Runic.Application.CsWebUi" or "Runic.Application.Desktop") hasViewsHost = true;
                 if (Authority.NuGetPackages.TryGetValue(identity, out CompatibilityPackage? expected))
                 {
                     selected++;
@@ -245,7 +248,7 @@ internal static class DoctorChecks
                 }
                 else if (type == "package" && IsRunicIdentity(identity)) mismatches.Add($"{identity} {version} (not selected by {Authority.Id})");
             }
-            if (!hasViewsHost) mismatches.Add("Runic Views CS-WebUI host package is missing");
+            if (!hasViewsHost) mismatches.Add("a Runic Views host package (Runic.Application.CsWebUi or Runic.Application.Desktop) is missing");
         }
         catch (JsonException error)
         {
@@ -330,7 +333,7 @@ internal static class DoctorChecks
         string? browser = candidates.Select(runtime.FindExecutable).FirstOrDefault(static path => path is not null);
         checks.Add(browser is not null
             ? Pass("browser", $"Found browser '{browser}'.")
-            : Warn("browser", "No Chromium-family browser was found on PATH.", "Install a browser before running browser-based smoke checks."));
+            : Warn("browser", "No Chromium-family browser was found on PATH.", "CS-WebUI opens the app in an installed browser, preferring Chromium-family browsers, and falls back to the platform WebView. Install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."));
     }
 
     private static bool IsRunicIdentity(string identity) =>

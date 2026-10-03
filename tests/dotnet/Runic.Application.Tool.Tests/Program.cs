@@ -30,6 +30,10 @@ internal static class Program
             ("development documents rewrite assets for the native bootstrap", DevelopmentDocumentIsNativeSafe),
             ("size inventory counts every file and preserves hashes", SizeInventoryAccountsForBytes),
             ("doctor accepts a healthy Views Window project", DoctorAcceptsViewsWindowProject),
+            ("doctor guides an unrestored project instead of failing", DoctorGuidesUnrestoredProject),
+            ("doctor accepts the Runic Desktop Views host", DoctorAcceptsDesktopHost),
+            ("development servers are inferred from the frontend", DevelopmentServersAreInferred),
+            ("a development server owns the frontend build", DevelopmentServerOwnsFrontendBuild),
             ("compatibility authority includes the public Views packages", CompatibilityAuthorityIncludesViews),
         ];
 
@@ -229,13 +233,15 @@ internal static class Program
     {
         using var workspace = new TestWorkspace();
         var configuration = CreateConfiguration(workspace, "vite");
-        string html = "<html><head><title>App</title></head><body><script type=\"module\" src=\"/src/main.ts\"></script><link href=\"/src/app.css\"></body></html>";
+        string html = "<html><head><title>App</title><script src=\"webui.js\"></script><script src=\"runic-cswebui.js\"></script></head><body><script type=\"module\" src=\"/src/main.ts\"></script><link href=\"/src/app.css\"></body></html>";
         FrontendDevelopmentDocument.Write(configuration,
             new Uri("http://127.0.0.1:5173/"), "index.html", html);
         string generated = File.ReadAllText(Path.Combine(configuration.RuntimeWebRoot, "index.html"));
         Contains(generated, "<base href=\"./\">");
         Contains(generated, "http://127.0.0.1:5173/src/main.ts");
         Contains(generated, "http://127.0.0.1:5173/src/app.css");
+        Contains(generated, "<script src=\"webui.js\">");
+        Contains(generated, "<script src=\"runic-cswebui.js\">");
         Throws<DevUsageException>(() => FrontendDevelopmentDocument.Write(configuration,
             new Uri("http://127.0.0.1:5173/"), "../escape.html", html));
     }
@@ -301,6 +307,101 @@ internal static class Program
             string.Join("; ", report.Checks.Where(check => check.Status == DoctorStatus.Failure).Select(check => check.Message)));
         Equal(DoctorStatus.Pass, report.Checks.Single(check => check.Name == "views-window").Status);
         Equal(DoctorStatus.Pass, report.Checks.Single(check => check.Name == "compatibility-set").Status);
+    }
+
+    private static DoctorProjectConfiguration CreateDoctorProject(
+        TestWorkspace workspace, string? hostPackage, out CompatibilitySetAuthority authority)
+    {
+        authority = CompatibilitySetAuthority.Current;
+        string frontendDirectory = Path.Combine(workspace.Root, "Frontend");
+        CompatibilityPackage npm = authority.NpmPackages["@runic-artifex/svelte"];
+        Write(Path.Combine(frontendDirectory, "package.json"), JsonSerializer.Serialize(new
+        {
+            packageManager = $"npm@{authority.Toolchain.Npm}",
+            dependencies = new Dictionary<string, string> { [npm.Identity] = npm.Version },
+        }));
+        Write(Path.Combine(frontendDirectory, "package-lock.json"), "{}");
+        Write(Path.Combine(frontendDirectory, "vite.config.ts"), "export default {};");
+        Write(Path.Combine(frontendDirectory, "src/main.ts"), "export {};");
+        string assets = Path.Combine(workspace.Root, "obj", "project.assets.json");
+        if (hostPackage is not null)
+        {
+            CompatibilityPackage nuget = authority.NuGetPackages[hostPackage];
+            Write(assets, JsonSerializer.Serialize(new
+            {
+                libraries = new Dictionary<string, object>
+                {
+                    [$"{nuget.Identity}/{nuget.Version}"] = new { type = "package" },
+                },
+            }));
+        }
+        return new DoctorProjectConfiguration(
+            Path.Combine(workspace.Root, "App.csproj"), workspace.Root, "net10.0", true,
+            frontendDirectory, assets, "linux-x64", "/src/main.ts",
+            Path.Combine(frontendDirectory, "vite.config.ts"), true);
+    }
+
+    private static void DoctorGuidesUnrestoredProject()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, hostPackage: null, out var authority);
+        DoctorReport report = DoctorChecks.InspectAsync(
+            project, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
+            .GetAwaiter().GetResult();
+        True(report.IsHealthy, "A freshly generated project must pass doctor before its first restore.");
+        DoctorCheck compatibility = report.Checks.Single(check => check.Name == "compatibility-set");
+        Equal(DoctorStatus.Warning, compatibility.Status);
+        Contains(compatibility.Remediation ?? string.Empty, "dotnet runic dev");
+    }
+
+    private static void DoctorAcceptsDesktopHost()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        DoctorReport report = DoctorChecks.InspectAsync(
+            project, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
+            .GetAwaiter().GetResult();
+        Equal(DoctorStatus.Pass, report.Checks.Single(check => check.Name == "compatibility-set").Status);
+    }
+
+    private static void DevelopmentServersAreInferred()
+    {
+        using var workspace = new TestWorkspace();
+        string react = Path.GetDirectoryName(workspace.Write("React/vite.config.ts", "export default {};"))!;
+        workspace.Write("React/src/main.tsx", "export {};");
+        var vite = DevProjectConfiguration.InferDevelopmentServer(react, "", false, "", "");
+        Equal("vite", vite.Kind);
+        True(vite.ViteEnabled, "A Vite configuration enables the Vite development server.");
+        Equal("/src/main.tsx", vite.ViteEntry);
+        Equal(Path.Combine(react, "vite.config.ts"), vite.ViteConfiguration);
+
+        string angular = Path.GetDirectoryName(workspace.Write("Angular/angular.json", "{}"))!;
+        var angularServer = DevProjectConfiguration.InferDevelopmentServer(angular, "", false, "", "");
+        Equal("angular", angularServer.Kind);
+        False(angularServer.ViteEnabled, "Angular uses its own development server.");
+
+        var explicitEntry = DevProjectConfiguration.InferDevelopmentServer(react, "", true, "/src/app.ts", "");
+        Equal("/src/app.ts", explicitEntry.ViteEntry);
+        string plain = Path.GetDirectoryName(workspace.Write("Plain/package.json", "{}"))!;
+        Equal(string.Empty, DevProjectConfiguration.InferDevelopmentServer(plain, "", false, "", "").Kind);
+    }
+
+    private static void DevelopmentServerOwnsFrontendBuild()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite");
+        var watching = new DevOptions(null, "Debug", true, true, true, false, []);
+        string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, watching));
+        Contains(build, "-property:RunicBridgeBuildFrontend=false");
+        Contains(build, "-property:RunicBridgeCopyFrontend=false");
+        Contains(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, watching)),
+            "--property:RunicBridgeBuildFrontend=false");
+        Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, watching)),
+            "-property:RunicBridgeCopyFrontend=false");
+
+        var staticFrontend = new DevOptions(null, "Debug", true, false, true, false, []);
+        DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, staticFrontend)),
+            "RunicBridgeBuildFrontend");
     }
 
     private sealed class FakeDoctorRuntime(CompatibilityToolchain toolchain) : IDoctorRuntime

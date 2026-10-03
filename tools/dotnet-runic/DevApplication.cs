@@ -367,6 +367,7 @@ internal static class DevApplication
             "-property:DebugSymbols=true",
             "-property:Optimize=false",
         };
+        arguments.AddRange(CreateDevelopmentServerProperties(configuration, options, "-property:"));
         if (!options.Restore)
         {
             arguments.Add("--no-restore");
@@ -374,6 +375,19 @@ internal static class DevApplication
 
         return arguments;
     }
+
+    /// <summary>
+    /// While a development server serves the frontend, MSBuild must neither run
+    /// the production frontend build nor copy dist/ over the development
+    /// document in the runtime web root. Generated TypeScript is still written.
+    /// </summary>
+    internal static IReadOnlyList<string> CreateDevelopmentServerProperties(
+        DevProjectConfiguration configuration,
+        DevOptions options,
+        string prefix) =>
+        options.WatchFrontend && configuration.HasDevelopmentServer
+            ? [$"{prefix}RunicBridgeBuildFrontend=false", $"{prefix}RunicBridgeCopyFrontend=false"]
+            : [];
 
     internal static IReadOnlyList<string> CreateRestoreArguments(
         DevProjectConfiguration configuration,

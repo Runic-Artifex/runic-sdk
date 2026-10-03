@@ -63,7 +63,7 @@ The managed KDE runner also verifies GTK X11 clients on Xwayland, including
 XIM Pinyin, Orca, 100/150/200% pointer targeting and sandboxed picker flows.
 Announcement quality, visual candidate placement, standalone Xorg sessions and
 broader distribution coverage remain follow-ups. See the
-[container automation guide](../../../docs/guides/desktop/container-automation.md)
+[container automation guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/container-automation.md)
 for reproducible commands and assertion limits. GTK3 remains supported.
 
 The isolated package consumer checks base Desktop dependency isolation, a packaged

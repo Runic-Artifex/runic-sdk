@@ -67,6 +67,28 @@ public interface IRunicViewLocator
             : throw new InvalidOperationException($"The view locator does not support contract '{contract}'.");
 }
 
+/// <summary>
+/// Resolves each presented View from the window's service provider. Generated
+/// <c>AddRunicViews()</c> registrations make this the default locator and
+/// register every non-Window View as transient. A View contract is already a
+/// distinct View type, so the contract needs no separate lookup.
+/// </summary>
+public sealed class ServiceProviderViewLocator(IServiceProvider services) : IRunicViewLocator
+{
+    private readonly IServiceProvider _services = services ?? throw new ArgumentNullException(nameof(services));
+
+    public TView Locate<TView, TViewModel>()
+        where TView : class, IRunicView
+        where TViewModel : class =>
+        _services.GetService(typeof(TView)) as TView
+            ?? throw new InvalidOperationException(
+                $"{typeof(TView).FullName} is not registered. Call AddRunicViews() or register the View as transient.");
+
+    public TView Locate<TView, TViewModel>(string? contract)
+        where TView : class, IRunicView
+        where TViewModel : class => Locate<TView, TViewModel>();
+}
+
 /// <summary>Optional hooks for the period during which a view is presented.</summary>
 public interface IRunicViewLifetime
 {

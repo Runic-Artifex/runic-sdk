@@ -1,12 +1,19 @@
 # Reference
 
-- [`Runic.Application`](../../../../packages/dotnet/Runic.Application.Views/README.md)
-- [`Runic.Application.CsWebUi`](../../../../packages/dotnet/Runic.Application.Views.CsWebUi/README.md)
-- [`Runic.Application.Desktop`](../../../../packages/dotnet/Runic.Application.Desktop/README.md)
-- [`Runic.Application.ReactiveUI`](../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md)
+Each package is named for what you install; its source folder and namespace
+keep the older `Views` name.
+
+| Package                                                                                                    | Source folder                                        | Namespace                            |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------ |
+| [`Runic.Application`](../../../../packages/dotnet/Runic.Application.Views/README.md)                       | `packages/dotnet/Runic.Application.Views`            | `Runic.Application.Views`            |
+| [`Runic.Application.CsWebUi`](../../../../packages/dotnet/Runic.Application.Views.CsWebUi/README.md)       | `packages/dotnet/Runic.Application.Views.CsWebUi`    | `Runic.Application.Views.CsWebUi`    |
+| [`Runic.Application.Desktop`](../../../../packages/dotnet/Runic.Application.Desktop/README.md)             | `packages/dotnet/Runic.Application.Desktop`          | `Runic.Application.Views.Desktop`    |
+| [`Runic.Application.ReactiveUI`](../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md) | `packages/dotnet/Runic.Application.Views.ReactiveUI` | `Runic.Application.Views.ReactiveUI` |
+| [`Runic.Application.Testing`](../../../../packages/dotnet/Runic.Application.Testing/README.md)             | `packages/dotnet/Runic.Application.Testing`          | `Runic.Application.Testing`          |
+
 - [ReactiveUI 25 capabilities and Avalonia comparison](reactiveui.md)
-- [`Runic.Application.Testing`](../../../../packages/dotnet/Runic.Application.Testing/README.md)
-- [Views build targets](../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets)
+- [Views build targets](../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets), shipped in the `Runic.Application` package
+- [`dotnet runic`](../../../../tools/dotnet-runic/README.md) development and doctor commands
 - [Svelte package](../../../../packages/web/svelte/README.md) and [Angular package](../../../../packages/web/angular/README.md)
 
 The examples show complete Window composition, generated client use, browser

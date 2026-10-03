@@ -21,7 +21,7 @@ const primaryRoutes = [
   '/packages',
   '/releases',
   '/readiness',
-  '/products/runic-toolkit',
+  '/products/runic-application',
   '/products/runic-desktop',
   '/views',
   '/products/runic-assets',
@@ -159,10 +159,34 @@ test('getting started offers a published template and runnable app commands', as
       `dotnet new install Runic.Application.Templates::${publishedRelease.version}`,
     ),
   );
-  assert.match(html, /dotnet new runic-app-svelte/);
-  assert.match(html, /dotnet tool restore/);
+  // npm is the template default, so the prerendered sequence needs no option.
+  assert.match(
+    html,
+    /dotnet new runic-app-react -n MyApp cd MyApp dotnet tool restore dotnet runic dev/,
+  );
   assert.match(html, /dotnet runic doctor/);
   assert.match(html, /dotnet publish -c Release/);
+  const markup = await render('/getting-started');
+  assert.ok(markup.includes('role="tablist"'), 'package manager tabs');
+  const tabs = [
+    ...markup.matchAll(
+      /<button\b[^>]*role="tab"[^>]*>(?:<!---->)*([^<]+)(?:<!---->)*<\/button>/g,
+    ),
+  ];
+  assert.deepEqual(
+    tabs.map((tab) => tab[1]),
+    ['npm', 'pnpm', 'Bun'],
+  );
+  assert.ok(tabs[0][0].includes('aria-selected="true"'), 'npm is preselected');
+});
+
+test('redirects the legacy Runic Application product slug', async () => {
+  const html = await render('/products/runic-toolkit');
+  assert.match(
+    html,
+    /<meta http-equiv="refresh" content="0;url=\/products\/runic-application\/"/,
+  );
+  assert.match(html, /href="[^"]*products\/runic-application\/?"/);
 });
 
 test('builds an accessible branded page for nginx 404 responses', async () => {
@@ -250,7 +274,7 @@ test('links release notes and renders published install commands', async () => {
       );
     }
   }
-  const applicationHtml = await render('/products/runic-toolkit');
+  const applicationHtml = await render('/products/runic-application');
   for (const name of [
     'Runic.Application',
     'Runic.Application.Testing',

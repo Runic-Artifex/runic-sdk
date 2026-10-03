@@ -14,6 +14,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <InternalsVisibleTo Include="Runic.Application.Desktop.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="build/Runic.Application.Desktop.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Desktop.props" />
     <None Include="build/Runic.Application.Desktop.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Desktop.targets" />
     <None Include="www/runic-desktop-views.js" Pack="true" PackagePath="www/runic-desktop-views.js" />
   </ItemGroup>

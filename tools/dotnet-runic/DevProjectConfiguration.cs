@@ -32,11 +32,7 @@ internal sealed record DevProjectConfiguration(
         "RunicBridgeFrontendBuildCommand",
         "RunicAssetsDist",
         "RunicAssetsFrontendDirectory",
-        "RunicApplicationFrontendEnabled",
-        "RunicApplicationFrontendNodeEnabled",
         "RunicApplicationFrontendCompilerEnabled",
-        "RunicApplicationFrontendWorkspaceRoot",
-        "RunicApplicationFrontendWorkspace",
         "RunicApplicationFrontendPackageDirectory",
         "RunicApplicationFrontendOutputDirectory",
         "RunicApplicationFrontendWebRoot",
@@ -137,19 +133,27 @@ internal sealed record DevProjectConfiguration(
         }
 
         string packageDirectory = NormalizeOptional(Value("RunicApplicationFrontendPackageDirectory"), frontend);
-        string outputDirectory = NormalizeOptional(Value("RunicApplicationFrontendOutputDirectory"), Path.Combine(frontend, "dist"));
+        if (packageDirectory.Length == 0)
+        {
+            packageDirectory = frontend;
+        }
+        string outputDirectory = NormalizeOptional(Value("RunicApplicationFrontendOutputDirectory"), frontend);
+        if (outputDirectory.Length == 0)
+        {
+            outputDirectory = Path.Combine(frontend, "dist");
+        }
         string targetDirectory = NormalizeOptional(Value("TargetDir"), evaluatedDirectory);
         if (targetDirectory.Length == 0)
         {
             throw new DevUsageException("RAPPDEV1005", "MSBuild did not evaluate TargetDir for the selected project.");
         }
 
-        string serverKind = Value("RunicApplicationFrontendDevServerKind").Trim().ToLowerInvariant();
-        bool viteEnabled = Flag("RunicApplicationFrontendViteDevServerEnabled");
-        if (serverKind.Length == 0)
-        {
-            serverKind = viteEnabled ? "vite" : File.Exists(Path.Combine(frontend, "angular.json")) ? "angular" : string.Empty;
-        }
+        (string serverKind, bool viteEnabled, string viteEntry, string viteConfiguration) = InferDevelopmentServer(
+            frontend,
+            Value("RunicApplicationFrontendDevServerKind"),
+            Flag("RunicApplicationFrontendViteDevServerEnabled"),
+            Value("RunicApplicationFrontendViteDevServerEntry"),
+            NormalizeOptional(Value("RunicApplicationFrontendViteConfiguration"), frontend));
 
         var evaluated = new DevProjectConfiguration(
             evaluatedProject,
@@ -165,8 +169,8 @@ internal sealed record DevProjectConfiguration(
                 : Value("RunicApplicationFrontendWebRoot"),
             FrontendWatchTarget: Value("RunicApplicationFrontendDevWatchTarget"),
             ViteDevServerEnabled: viteEnabled,
-            ViteDevServerEntry: Value("RunicApplicationFrontendViteDevServerEntry"),
-            ViteConfigurationPath: NormalizeOptional(Value("RunicApplicationFrontendViteConfiguration"), frontend),
+            ViteDevServerEntry: viteEntry,
+            ViteConfigurationPath: viteConfiguration,
             FrontendCompilerDiagnosticsPath: NormalizeOptional(Value("RunicApplicationFrontendCompilerDiagnosticsPath"), evaluatedDirectory),
             FrontendCompilerHotReloadPath: NormalizeOptional(Value("RunicApplicationFrontendCompilerHotReloadPath"), evaluatedDirectory),
             TargetDirectory: targetDirectory)
@@ -229,6 +233,57 @@ internal sealed record DevProjectConfiguration(
         {
             throw new DevUsageException("RAPPDEV1005", "The frontend output directory is required for the Views Window project.");
         }
+    }
+
+    /// <summary>
+    /// Infers the development server from the frontend directory when the
+    /// project does not set it: angular.json selects the Angular CLI, and a
+    /// Vite configuration selects Vite with the conventional src/main entry.
+    /// Explicit project properties always win.
+    /// </summary>
+    internal static (string Kind, bool ViteEnabled, string ViteEntry, string ViteConfiguration) InferDevelopmentServer(
+        string frontend, string kind, bool viteEnabled, string viteEntry, string viteConfiguration)
+    {
+        kind = kind.Trim().ToLowerInvariant();
+        if (kind.Length == 0)
+        {
+            kind = viteEnabled ? "vite"
+                : File.Exists(Path.Combine(frontend, "angular.json")) ? "angular"
+                : FindFirst(frontend, ViteConfigurationFiles) is not null ? "vite"
+                : string.Empty;
+        }
+        if (kind != "vite")
+        {
+            return (kind, viteEnabled, viteEntry, viteConfiguration);
+        }
+        if (viteConfiguration.Length == 0)
+        {
+            viteConfiguration = FindFirst(frontend, ViteConfigurationFiles) ?? string.Empty;
+        }
+        if (viteEntry.Length == 0 && FindFirst(frontend, ViteEntryFiles) is { } entry)
+        {
+            viteEntry = "/" + Path.GetRelativePath(frontend, entry).Replace(Path.DirectorySeparatorChar, '/');
+        }
+        return (kind, true, viteEntry, viteConfiguration);
+    }
+
+    private static readonly string[] ViteConfigurationFiles =
+        ["vite.config.ts", "vite.config.mts", "vite.config.js", "vite.config.mjs"];
+
+    private static readonly string[] ViteEntryFiles =
+        ["src/main.ts", "src/main.tsx", "src/main.js", "src/main.jsx"];
+
+    private static string? FindFirst(string directory, string[] candidates)
+    {
+        foreach (string candidate in candidates)
+        {
+            string path = Path.Combine(directory, candidate.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+        return null;
     }
 
     private static string Normalize(string path, string baseDirectory) =>
