@@ -5,7 +5,28 @@
     <RunicBridgeGeneratedDir>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge/</RunicBridgeGeneratedDir>
     <RunicBridgeTypescriptDir Condition="'$(RunicBridgeTypescriptDir)' == ''">$(MSBuildProjectDirectory)/Frontend/src/generated</RunicBridgeTypescriptDir>
     <RunicBridgeFrontendDir Condition="'$(RunicBridgeFrontendDir)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir>
+  </PropertyGroup>
+
+  <!-- The frontend package manager follows package.json "packageManager",
+       then the committed lock file, then npm. It selects the default build
+       and install commands; set either command explicitly to override it. -->
+  <PropertyGroup Condition="'$(RunicBridgeFrontendPackageManager)' == '' and Exists('$(RunicBridgeFrontendDir)/package.json')">
+    <RunicBridgeFrontendPackageManager>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RunicBridgeFrontendDir)/package.json')), '(?&lt;="packageManager"\s*:\s*")(npm|pnpm|bun)(?=@)'))</RunicBridgeFrontendPackageManager>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RunicBridgeFrontendPackageManager Condition="'$(RunicBridgeFrontendPackageManager)' == '' and Exists('$(RunicBridgeFrontendDir)/pnpm-lock.yaml')">pnpm</RunicBridgeFrontendPackageManager>
+    <RunicBridgeFrontendPackageManager Condition="'$(RunicBridgeFrontendPackageManager)' == '' and Exists('$(RunicBridgeFrontendDir)/bun.lock')">bun</RunicBridgeFrontendPackageManager>
+    <RunicBridgeFrontendPackageManager Condition="'$(RunicBridgeFrontendPackageManager)' == ''">npm</RunicBridgeFrontendPackageManager>
+    <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'pnpm'">pnpm run build</RunicBridgeFrontendBuildCommand>
+    <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'bun'">bun run --bun build</RunicBridgeFrontendBuildCommand>
     <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == ''">npm run build</RunicBridgeFrontendBuildCommand>
+    <RunicBridgeFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'pnpm'">pnpm install --frozen-lockfile --ignore-scripts</RunicBridgeFrontendInstallCommand>
+    <RunicBridgeFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'bun'">bun install --frozen-lockfile --ignore-scripts</RunicBridgeFrontendInstallCommand>
+    <RunicBridgeFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' == '' and Exists('$(RunicBridgeFrontendDir)/package-lock.json')">npm ci --ignore-scripts</RunicBridgeFrontendInstallCommand>
+    <RunicBridgeFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' == ''">npm install --ignore-scripts</RunicBridgeFrontendInstallCommand>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <RunicBridgeFrontendStamp>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge-frontend.stamp</RunicBridgeFrontendStamp>
     <RunicBridgeCodegenProject>$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj</RunicBridgeCodegenProject>
     <RunicBridgeCodegenDll Condition="Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
@@ -47,6 +68,22 @@
       <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs"
                Condition="'$(RunicBridgeCompositionType)' != ''" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The bootstrap pass compiles the application before its Bridges exist.
+       An empty composition lets Program.cs call AddRunicViews() or
+       AddRunicBridges() in that pass, so a starter needs no bootstrap-only
+       OutputType or Compile changes. -->
+  <Target Name="RunicViewsBootstrapComposition" BeforeTargets="CoreCompile"
+          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeCompositionType)' != '' and '$(RunicBridgeRegisterGlobally)' == 'false'">
+    <PropertyGroup>
+      <_RunicBridgeBootstrapComposition>$(IntermediateOutputPath)RunicBridgeComposition.Bootstrap.g.cs</_RunicBridgeBootstrapComposition>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicBridgeCompositionType)&quot; &quot;$(_RunicBridgeBootstrapComposition)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(_RunicBridgeBootstrapComposition)" />
     </ItemGroup>
   </Target>
 
@@ -97,6 +134,19 @@
     </ItemGroup>
   </Target>
 
+  <!-- A fresh clone or generated project has no node_modules yet. Install
+       with the selected package manager before the first frontend build, so
+       plain dotnet build and dotnet run work. Set
+       RunicBridgeInstallFrontend=false when a workspace install owns it. -->
+  <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false' and '$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json') and !Exists('$(RunicBridgeFrontendDir)/node_modules')">
+    <Message Importance="high"
+             Text="Installing frontend dependencies in $(RunicBridgeFrontendDir) with $(RunicBridgeFrontendPackageManager). Set RunicBridgeInstallFrontend=false to install them yourself." />
+    <Exec Command="$(RunicBridgeFrontendInstallCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
+    <Error Condition="!Exists('$(RunicBridgeFrontendDir)/node_modules')"
+           Text="'$(RunicBridgeFrontendInstallCommand)' did not create $(RunicBridgeFrontendDir)/node_modules. Install the frontend dependencies with $(RunicBridgeFrontendPackageManager), or run 'dotnet runic doctor' to check the package manager and lock file." />
+  </Target>
+
   <Target Name="RunicViewsBuildFrontend" AfterTargets="RunicViewsCollectFrontendInputs"
           Inputs="@(RunicBridgeFrontendInput)" Outputs="$(RunicBridgeFrontendStamp)"
           Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
@@ -104,9 +154,11 @@
     <Touch Files="$(RunicBridgeFrontendStamp)" AlwaysCreate="true" />
   </Target>
 
+  <!-- RunicBridgeCopyFrontend=false keeps a development document that
+       dotnet runic dev wrote into www/ from being replaced by dist/. -->
   <Target Name="RunicViewsCopyFrontend" AfterTargets="Build"
           DependsOnTargets="RunicViewsDetectBridgeUse"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeCopyFrontend)' != 'false'">
     <ItemGroup>
       <RunicBridgeFrontendFile Include="$(RunicBridgeFrontendDir)/dist/**/*" />
     </ItemGroup>
