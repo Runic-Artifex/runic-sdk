@@ -1,0 +1,17 @@
+<Project>
+  <!-- Wrappers map their Runic<Component>ShippingProject flag to RunicPolicyShippingProject. -->
+  <PropertyGroup Condition="'$(RunicPolicyShippingProject)' == 'true'">
+    <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == '' and ('$(RunicVerificationBuild)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true')">true</EnableTrimAnalyzer>
+    <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == ''">false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer Condition="'$(EnableAotAnalyzer)' == '' and ('$(RunicVerificationBuild)' == 'true' or '$(PublishAot)' == 'true')">true</EnableAotAnalyzer>
+    <EnableAotAnalyzer Condition="'$(EnableAotAnalyzer)' == ''">false</EnableAotAnalyzer>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <Target Name="ValidateRunicBuildMode" BeforeTargets="PrepareForBuild">
+    <Error
+      Condition="'$(RunicBuildMode)' != 'Development' and '$(RunicBuildMode)' != 'Verification'"
+      Text="$(RunicBuildModeProperty) must be either Development or Verification." />
+  </Target>
+</Project>
