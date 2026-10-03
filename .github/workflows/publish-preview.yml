@@ -19,14 +19,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
       - name: Check requested preview version
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          bun -e 'import w from "./eng/workspace.json"; if (w.version !== process.env.VERSION || !/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(w.version)) throw Error("Commit the requested preview version before publishing")'
+          committed=$(jq -r .version eng/workspace.json)
+          if [[ "$committed" != "$VERSION" || ! "$committed" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+            echo "Commit the requested preview version before publishing" >&2
+            exit 1
+          fi
   checks:
     needs: preflight
     uses: ./.github/workflows/ci.yml
@@ -41,7 +42,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
@@ -54,7 +54,7 @@ jobs:
         run: |
           mkdir -p artifacts/release
           bun eng/release/cli.mjs prepare artifacts/packages "$GITHUB_SHA" "$GITHUB_RUN_ID" artifacts/release/packages.json
-      - uses: NuGet/login@v1
+      - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: nuget
         with:
           user: ${{ vars.NUGET_USER }}

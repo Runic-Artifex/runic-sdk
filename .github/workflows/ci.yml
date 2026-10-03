@@ -9,7 +9,7 @@ permissions:
   contents: read
 concurrency:
   group: sdk-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
@@ -25,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - name: Discover web test suites
@@ -60,7 +59,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - uses: ./.github/actions/restore-build
@@ -95,7 +93,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
@@ -119,16 +116,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
           node: "true"
       - uses: ./.github/actions/restore-build
       - name: Verify workspace, runtime and CI contracts
-        run: bun test --timeout 180000 ./eng/*.test.mjs ./eng/ci/*.test.mjs ./eng/release/*.test.mjs ./eng/reliability/*.test.mjs
-      - name: Verify current engineering acceptance
-        run: bun eng/ci/test-acceptance.mjs
+        run: bun test --timeout 180000 ./eng/*.test.mjs ./eng/ci/*.test.mjs ./eng/release/*.test.mjs ./eng/reliability/*.test.mjs ./tests/engineering/*.test.mjs
       - name: Check embedded CLI compatibility metadata
         run: bun tools/dotnet-runic/metadata/generate.mjs --check
       - name: Check generated translation capability artifacts
@@ -146,7 +140,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
@@ -170,7 +163,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
@@ -220,7 +212,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - uses: ./.github/actions/restore-build
@@ -256,7 +247,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - name: Build and test the VS Code extension
@@ -283,12 +273,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - uses: microsoft/setup-msbuild@v2
+      - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2.0.0
       - name: Build the language server
         run: dotnet build tools/dotnet-runic-translations/dotnet-runic-translations.csproj -c Release
       - name: Build the native VSIX with full-framework MSBuild
@@ -307,7 +296,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
@@ -328,7 +316,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - uses: ./.github/actions/restore-build
@@ -352,7 +339,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
@@ -404,7 +390,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - uses: actions/download-artifact@v8
@@ -422,7 +407,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
@@ -458,21 +442,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-dotnet@v6
+      - uses: ./.github/actions/setup-sdk
         with:
-          global-json-file: global.json
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-      - name: Install pinned npm
-        shell: bash
-        run: npm install --global npm@12.0.2
-      - run: bun install --frozen-lockfile
+          node: "true"
       - uses: ./.github/actions/install-browser
       - name: Build managed desktop contracts
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release

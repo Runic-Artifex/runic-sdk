@@ -6,8 +6,8 @@ import { root, run, configuration, workspace } from './run.mjs';
 import { managedGroups, managedTests } from './ci/plan.mjs';
 export function selection(scope) {
   if (managedGroups.includes(scope)) return {kind: 'managed', paths: managedTests().filter(p => p.group === scope).map(p => p.path)};
-  if (scope === 'engineering') return {kind: 'bun', paths: ['', 'ci', 'release', 'reliability'].flatMap(dir =>
-    readdirSync(resolve(root, 'eng', dir)).filter(name => name.endsWith('.test.mjs')).map(name => `./eng/${dir ? dir + '/' : ''}${name}`))};
+  if (scope === 'engineering') return {kind: 'bun', paths: ['eng', 'eng/ci', 'eng/release', 'eng/reliability', 'tests/engineering'].flatMap(dir =>
+    readdirSync(resolve(root, dir)).filter(name => name.endsWith('.test.mjs')).map(name => `./${dir}/${name}`))};
   if (scope?.startsWith('web/')) {
     const item = workspace.npm.find(p => p.path === `packages/${scope}`);
     if (item && JSON.parse(readFileSync(resolve(root, item.path, 'package.json'))).scripts?.test)

@@ -25,8 +25,9 @@ for (const path of files) {
     for (const match of source.matchAll(/<(PackageVersion|PackageReference)\b[^>]*\bInclude="([^"]+)"[^>]*\bVersion(?:Override)?="([^"]+)"/g))
       declare("nuget", match[2], match[3], path, match[1]);
   } else if ((path.startsWith(".github/") || path.startsWith("eng/ci/fixtures/")) && /\.ya?ml$/.test(path)) {
-    for (const match of readFileSync(resolve(root, path), "utf8").matchAll(/uses:\s*([\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@([^\s#]+)/g))
-      declare("github-action", match[1], match[2], path, "uses");
+    // SHA-pinned actions carry their release tag in a trailing comment.
+    for (const match of readFileSync(resolve(root, path), "utf8").matchAll(/uses:\s*([\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@([^\s#]+)(?:[ \t]*#[ \t]*(\S+))?/g))
+      declare("github-action", match[1], match[3] ?? match[2], path, "uses");
   }
 }
 for (const name of ["bun", "npm", "pnpm", "devframe", "crossws"])
