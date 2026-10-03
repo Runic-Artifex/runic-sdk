@@ -75,6 +75,10 @@ foreach (bool oldHandle in new[] { false, true })
     Check(result.Code == 0 && result.Uris.Single() == "file:///tmp/saved.txt", "real D-Bus early response and returned handle");
     Check(fake.Parent == "x11:1234" && fake.CurrentName == "saved.txt", "parent and filename encoded");
 }
+fake.MalformedUris = true;
+try { await new PortalFilePicker(owner, realTransport).SelectAsync(true, "saved.txt", default); throw new InvalidOperationException("malformed portal URIs accepted"); }
+catch (IOException) { }
+fake.MalformedUris = false;
 var uriResult = await realTransport.RequestAsync("x11:1234", "OpenURI", "https://example.org/", default);
 Check(uriResult.Code == 0 && fake.Argument == "https://example.org/", "OpenURI request encoding");
 fake.AutoRespond = false;
@@ -145,6 +149,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public bool HandlesChildPaths => true;
     public bool AutoRespond = true;
     public bool OldHandle;
+    public bool MalformedUris;
     public string? Parent;
     public string? Argument;
     public string? CurrentName;
@@ -178,7 +183,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
             signal.WriteSignalHeader(path: path, @interface: "org.freedesktop.portal.Request", member: "Response", signature: "ua{sv}");
             signal.WriteUInt32(0);
             var dict = signal.WriteDictionaryStart();
-            signal.WriteDictionaryEntryStart(); signal.WriteString("uris"); signal.WriteVariant(VariantValue.Array(ResponseUris));
+            signal.WriteDictionaryEntryStart(); signal.WriteString("uris"); signal.WriteVariant(MalformedUris ? VariantValue.String(ResponseUris[0]) : VariantValue.Array(ResponseUris));
             signal.WriteDictionaryEnd(dict);
             connection.TrySendMessage(signal.CreateMessage());
         }
