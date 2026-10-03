@@ -141,6 +141,23 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class ResultWindow(ResultViewModel model) : RunicWindow<ResultViewModel>(model);
                 """, "LoadCommand: RunicCommandResult selects a ReactiveUI command's result cardinality").ConfigureAwait(false);
 
+            // The contract fingerprint follows the generated wire shape, so a
+            // nullable ReactiveUI argument is a contract change for hot reload.
+            static string Fingerprint(string name, string commandType)
+            {
+                using var image = new MemoryStream();
+                var emitted = Compile(name, Preamble + $$"""
+                    public sealed class EchoViewModel : FixtureModel { public {{commandType}} EchoCommand { get; } = null!; }
+                    public sealed partial class EchoWindow(EchoViewModel model) : RunicWindow<EchoViewModel>(model);
+                    """).Emit(image);
+                Require(emitted.Success, $"{name}: the fingerprint fixture did not compile.");
+                var model = System.Reflection.Assembly.Load(image.ToArray()).GetType("Fixture.EchoViewModel")!;
+                return Runic.Application.Views.BridgeContractShape.Compute(model);
+            }
+            Require(Fingerprint("FingerprintPlain", "ReactiveUI.ReactiveCommand<string, string>")
+                != Fingerprint("FingerprintNullable", "ReactiveUI.ReactiveCommand<string?, string>"),
+                "The contract fingerprint ignored a nullable ReactiveUI command input.");
+
             // A file that is not a .NET assembly is a diagnostic, not a crash.
             var invalidDirectory = Path.Combine(temporaryRoot, "InvalidImage");
             Directory.CreateDirectory(invalidDirectory);
@@ -193,12 +210,7 @@ internal static class CodegenDiagnosticsTests
         var directory = Path.Combine(temporaryRoot, name);
         Directory.CreateDirectory(directory);
         var assembly = Path.Combine(directory, $"Fixture{name}.dll");
-        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(path => MetadataReference.CreateFromFile(path));
-        var compilation = CSharpCompilation.Create($"Fixture{name}",
-            [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest))], references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+        var compilation = Compile(name, source);
         var emitted = compilation.Emit(assembly);
         if (!emitted.Success)
             throw new InvalidOperationException($"{name}: the fixture did not compile.\n"
@@ -210,6 +222,16 @@ internal static class CodegenDiagnosticsTests
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)), overwrite: true);
         var (exitCode, text) = await RunProcessAsync(generator, assembly, directory, options).ConfigureAwait(false);
         return (exitCode, text, directory);
+    }
+
+    private static CSharpCompilation Compile(string name, string source)
+    {
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(path => MetadataReference.CreateFromFile(path));
+        return CSharpCompilation.Create($"Fixture{name}",
+            [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest))], references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
     }
 
     private static async Task<(int ExitCode, string Output)> RunProcessAsync(string generator, string assembly,

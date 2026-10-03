@@ -39,8 +39,8 @@ public static class BridgeContractShape
             parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
             if (kind == "command" && command is not null)
             {
-                AppendType(parts, command.GenericTypeArguments[0], null, $"{model.Name}.{property.Name}.input", []);
-                AppendType(parts, command.GenericTypeArguments[1], null, $"{model.Name}.{property.Name}.result", []);
+                AppendType(parts, command.GenericTypeArguments[0], ContractAnnotation(property, command, nullability, 0), $"{model.Name}.{property.Name}.input", []);
+                AppendType(parts, command.GenericTypeArguments[1], ContractAnnotation(property, command, nullability, 1), $"{model.Name}.{property.Name}.result", []);
                 var cardinality = property.GetCustomAttribute<RunicCommandResultAttribute>(true)?.Cardinality
                     ?? BridgeCommandResultCardinality.Single;
                 parts.Add($"command-cardinality:{TypeName(model)}:{property.Name}:{cardinality.ToString().ToLowerInvariant()}");
@@ -59,8 +59,8 @@ public static class BridgeContractShape
             }
             if (kind == "interaction" && interaction is not null)
             {
-                AppendType(parts, interaction.GenericTypeArguments[0], null, $"{model.Name}.{property.Name}.input", []);
-                AppendType(parts, interaction.GenericTypeArguments[1], null, $"{model.Name}.{property.Name}.output", []);
+                AppendType(parts, interaction.GenericTypeArguments[0], ContractAnnotation(property, interaction, nullability, 0), $"{model.Name}.{property.Name}.input", []);
+                AppendType(parts, interaction.GenericTypeArguments[1], ContractAnnotation(property, interaction, nullability, 1), $"{model.Name}.{property.Name}.output", []);
                 continue;
             }
             if (kind != "state") continue;
@@ -164,6 +164,11 @@ public static class BridgeContractShape
         return hierarchy.SelectMany(current => current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)).Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod is not null);
     }
     private static bool IsFrameworkBase(Type type) => type.FullName is "ReactiveUI.ReactiveObject" or "CommunityToolkit.Mvvm.ComponentModel.ObservableObject" || type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
+    // Same rule as the generator: a ReactiveUI command or interaction argument
+    // is annotated only when the declared property type closes the contract.
+    private static NullabilityInfo? ContractAnnotation(PropertyInfo property, Type contract, NullabilityInfoContext nullability, int index) =>
+        property.PropertyType.IsGenericType && property.PropertyType.GenericTypeArguments.SequenceEqual(contract.GenericTypeArguments)
+            ? GenericAnnotation(nullability.Create(property), index) : null;
     private static NullabilityInfo? GenericAnnotation(NullabilityInfo? value, int index) => value is { GenericTypeArguments.Length: > 0 } && value.GenericTypeArguments.Length > index ? value.GenericTypeArguments[index] : null;
     private static string WireName(PropertyInfo property) => property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
     private static Type? GenericContract(Type type, params string[] names) => type.GetInterfaces().Append(type).FirstOrDefault(candidate => candidate.IsGenericType && names.Contains(candidate.GetGenericTypeDefinition().FullName, StringComparer.Ordinal));
