@@ -186,18 +186,25 @@ public sealed class WindowsDirectoryClient
 
     internal Task CompareAndReplaceTextAsync(string distinguishedName, string attributeName, string expected, string replacement, CancellationToken cancellationToken)
     {
-        var modification = new DirectoryAttributeModification { Name = attributeName, Operation = DirectoryAttributeOperation.Replace };
-        modification.Add(replacement);
-        var request = new ModifyRequest(distinguishedName, modification);
-        // RFC 4528 assertion: equalityMatch [3] AttributeValueAssertion.
-        var writer = new System.Formats.Asn1.AsnWriter(System.Formats.Asn1.AsnEncodingRules.BER);
-        var tag = new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 3, true);
-        writer.PushSequence(tag);
-        writer.WriteOctetString(System.Text.Encoding.UTF8.GetBytes(attributeName));
-        writer.WriteOctetString(System.Text.Encoding.UTF8.GetBytes(expected));
-        writer.PopSequence(tag);
-        request.Controls.Add(new DirectoryControl("1.3.6.1.1.12", writer.Encode(), true, true));
-        return Send(request, "Conditionally update directory attribute", cancellationToken);
+        NativeError.Text(expected, nameof(expected));
+        NativeError.Text(replacement, nameof(replacement));
+        // Active Directory does not support the RFC 4528 assertion control. Deleting the exact observed value and adding
+        // the replacement in one request is atomic: the server rejects the whole request if the stored value changed.
+        var delete = new DirectoryAttributeModification { Name = attributeName, Operation = DirectoryAttributeOperation.Delete };
+        delete.Add(expected);
+        var add = new DirectoryAttributeModification { Name = attributeName, Operation = DirectoryAttributeOperation.Add };
+        add.Add(replacement);
+        var request = new ModifyRequest(distinguishedName, delete, add);
+        const string operation = "Conditionally update directory attribute";
+        return Execute(connection =>
+        {
+            try { _ = connection.SendRequest(request); return true; }
+            catch (DirectoryOperationException error) when (error.Response?.ResultCode == ResultCode.NoSuchAttribute)
+            {
+                throw new WindowsAdministrationException(operation, AdministrationErrorCategory.Conflict, NativeErrorDomain.Ldap,
+                    (int)ResultCode.NoSuchAttribute, $"{operation} failed: the observed value changed (LDAP: 16).", error);
+            }
+        }, operation, cancellationToken);
     }
 
     private Task<bool> Send(DirectoryRequest request, string operation, CancellationToken cancellationToken) =>

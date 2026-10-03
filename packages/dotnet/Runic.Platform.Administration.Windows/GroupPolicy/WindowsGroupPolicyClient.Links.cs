@@ -106,7 +106,8 @@ public sealed partial class WindowsGroupPolicyClient
     internal static string ReorderLinks(string original, ImmutableArray<Guid> nativeOrder, ImmutableArray<Guid> requestedOrder)
     {
         var entries = new List<(Guid Id, string Text)>();
-        var offset = 0;
+        // Windows can leave a single space after the last link is removed; that is an empty list.
+        var offset = string.IsNullOrWhiteSpace(original) ? original.Length : 0;
         while (offset < original.Length)
         {
             if (original[offset] != '[') throw NativeError.Win32("Parse GPO link list", 13);
@@ -124,6 +125,7 @@ public sealed partial class WindowsGroupPolicyClient
             entries.Select(entry => entry.Id).Distinct().Count() != entries.Count ||
             !entries.Select(entry => entry.Id).ToHashSet().SetEquals(requestedOrder))
             throw NativeError.Win32("Match complete GPO link order", 183);
+        if (entries.Count == 0) return original;
         var storedOrder = entries.Select(entry => entry.Id).ToArray();
         var sameDirection = storedOrder.SequenceEqual(nativeOrder);
         if (!sameDirection && !storedOrder.SequenceEqual(nativeOrder.Reverse()))

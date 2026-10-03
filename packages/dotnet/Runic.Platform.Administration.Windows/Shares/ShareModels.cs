@@ -10,15 +10,14 @@ public sealed record ShareSummary(string Name, string Description, uint NativeTy
 public sealed record ShareSnapshot(string Name, string Path, string Description, uint NativeType,
     uint MaximumUses, uint CurrentUses, ImmutableArray<byte>? SecurityDescriptor);
 
-/// <summary>Creates a disk share. A null security descriptor supplies no explicit share ACL; Windows may store no descriptor. Filesystem permissions remain separate.</summary>
-public sealed record ShareSpecification(string Name, string Path)
+/// <summary>Creates a disk share with an explicit self-relative share security descriptor. Filesystem permissions remain separate.</summary>
+/// <remarks>The descriptor is required so a share never receives an implicit Windows default grant.</remarks>
+public sealed record ShareSpecification(string Name, string Path, ImmutableArray<byte> SecurityDescriptor)
 {
     /// <summary>Share description.</summary>
     public string Description { get; init; } = "";
     /// <summary>Maximum simultaneous uses; uint.MaxValue is unlimited.</summary>
     public uint MaximumUses { get; init; } = uint.MaxValue;
-    /// <summary>An optional self-relative Windows security descriptor.</summary>
-    public ImmutableArray<byte>? SecurityDescriptor { get; init; }
 }
 
 /// <summary>Selected share edits. Path/type are intentionally not rewritten by metadata/security updates.</summary>

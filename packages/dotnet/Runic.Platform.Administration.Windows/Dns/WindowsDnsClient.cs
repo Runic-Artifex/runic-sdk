@@ -166,7 +166,7 @@ public sealed class WindowsDnsClient
             "MICROSOFTDNS_ATYPE" => new[] { "IPAddress" }, "MICROSOFTDNS_AAAATYPE" => ["IPv6Address"],
             "MICROSOFTDNS_CNAMETYPE" => ["PrimaryName"], "MICROSOFTDNS_PTRTYPE" => ["PTRDomainName"],
             "MICROSOFTDNS_MXTYPE" => ["Preference", "MailExchange"], "MICROSOFTDNS_TXTTYPE" => ["DescriptiveText"],
-            "MICROSOFTDNS_SRVTYPE" => ["Priority", "Weight", "Port", "SRVDomainName"], "MICROSOFTDNS_NSTYPE" => ["NSHostName"],
+            "MICROSOFTDNS_SRVTYPE" => ["Priority", "Weight", "Port", "DomainName"], "MICROSOFTDNS_NSTYPE" => ["NSHost"],
             _ => []
         };
         if (fields.Length == 0) return new DnsRecordData.Unsupported(nativeClass, representation);
@@ -179,8 +179,8 @@ public sealed class WindowsDnsClient
             "MICROSOFTDNS_PTRTYPE" => new DnsRecordData.ReverseLookup(Text(values, "PTRDomainName")),
             "MICROSOFTDNS_MXTYPE" => new DnsRecordData.Mx(SmallNumber(values, "Preference"), Text(values, "MailExchange")),
             "MICROSOFTDNS_TXTTYPE" => new DnsRecordData.Txt(Text(values, "DescriptiveText")),
-            "MICROSOFTDNS_SRVTYPE" => new DnsRecordData.Srv(SmallNumber(values, "Priority"), SmallNumber(values, "Weight"), SmallNumber(values, "Port"), Text(values, "SRVDomainName")),
-            "MICROSOFTDNS_NSTYPE" => new DnsRecordData.Ns(Text(values, "NSHostName")),
+            "MICROSOFTDNS_SRVTYPE" => new DnsRecordData.Srv(SmallNumber(values, "Priority"), SmallNumber(values, "Weight"), SmallNumber(values, "Port"), Text(values, "DomainName")),
+            "MICROSOFTDNS_NSTYPE" => new DnsRecordData.Ns(Text(values, "NSHost")),
             _ => throw NativeError.Win32("Read DNS record type", 13)
         };
     }
@@ -214,8 +214,8 @@ public sealed class WindowsDnsClient
             DnsRecordData.ReverseLookup p => new() { ["PTRDomainName"] = p.Target },
             DnsRecordData.Mx m => new() { ["Preference"] = (uint)m.Preference, ["MailExchange"] = m.Exchange },
             DnsRecordData.Txt t => new() { ["DescriptiveText"] = t.DescriptiveText },
-            DnsRecordData.Srv s => new() { ["Priority"] = (uint)s.Priority, ["Weight"] = (uint)s.Weight, ["Port"] = (uint)s.Port, ["SRVDomainName"] = s.Target },
-            DnsRecordData.Ns n => new() { ["NSHostName"] = n.Host },
+            DnsRecordData.Srv s => new() { ["Priority"] = (uint)s.Priority, ["Weight"] = (uint)s.Weight, ["Port"] = (uint)s.Port, ["DomainName"] = s.Target },
+            DnsRecordData.Ns n => new() { ["NSHost"] = n.Host },
             _ => throw new ArgumentException("Unsupported DNS record.", nameof(data))
         };
         foreach (var value in result.Values.OfType<string>()) NativeError.Text(value, nameof(data), data is DnsRecordData.Txt);

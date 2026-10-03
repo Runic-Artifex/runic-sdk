@@ -72,12 +72,8 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         if (options.Includes("shares"))
         {
             await report.Check("shares.inspect", () => { _ = new WindowsShareClient().Enumerate(); return Task.CompletedTask; }, token);
-            foreach (var explicitSecurity in new[] { false, true })
-            {
-                var check = explicitSecurity ? "shares.explicit-security" : "shares.default-security";
-                if (options.Changes) await report.Check(check, () => Shares(explicitSecurity), token);
-                else report.Skip(check, "Requires --allow-changes.");
-            }
+            if (options.Changes) await report.Check("shares.explicit-security", Shares, token);
+            else report.Skip("shares.explicit-security", "Requires --allow-changes.");
         }
     }
     private async Task Shortcuts()
@@ -113,11 +109,11 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         try
         {
             var command = "\"" + Executable + "\" --service " + name;
-            client.Create(new(name, command) { Description = "Runic disposable verification service" });
+            client.Create(new(name, command, "LocalSystem") { Description = "Runic disposable verification service" });
             created = true;
             var service = client.Find(name) ?? throw new InvalidOperationException("Created service missing.");
             Require(service.Status.State == ServiceState.Stopped && service.BinaryCommandLine == command, "New service state/configuration mismatch.");
-            await Conflict(() => { client.Create(new(name, command)); return Task.CompletedTask; });
+            await Conflict(() => { client.Create(new(name, command, "LocalSystem")); return Task.CompletedTask; });
             client.Update(name, new() { Description = "updated", FailurePolicy = new(TimeSpan.FromDays(1), [new(ServiceFailureActionKind.None, TimeSpan.Zero)]) });
             Require(client.Find(name)?.Description == "updated", "Service description update missing.");
             client.Start(name);
@@ -222,36 +218,28 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
             });
         }
     }
-    private async Task Shares(bool explicitSecurity)
+    private async Task Shares()
     {
         var client = new WindowsShareClient();
-        var suffix = explicitSecurity ? "acl" : "default";
+        const string suffix = "acl";
         var name = report.Prefix + "-" + suffix;
         var path = Path.Combine(report.Folder, "share-" + suffix);
         var created = false;
         Directory.CreateDirectory(path);
         report.Resource("SMB share: " + name + "; directory: " + path);
         var initialSddl = "O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)";
-        var spec = new ShareSpecification(name, path)
-        {
-            SecurityDescriptor = explicitSecurity ? Descriptor(initialSddl) : null
-        };
+        var spec = new ShareSpecification(name, path, Descriptor(initialSddl));
         try
         {
             client.Create(spec); created = true;
             var before = client.Find(name) ?? throw new InvalidOperationException("Created share missing.");
-            report.Resource($"Share {name}: stored descriptor " +
-                (before.SecurityDescriptor is { } stored ? $"{stored.Length} bytes" : "absent"));
-            if (explicitSecurity) CheckDescriptor(before, initialSddl);
-            else if (before.SecurityDescriptor is { } defaults)
-                _ = new System.Security.AccessControl.RawSecurityDescriptor(defaults.ToArray(), 0);
+            CheckDescriptor(before, initialSddl);
             await Conflict(() => { client.Create(spec); return Task.CompletedTask; });
-            // A metadata-only update must preserve both absent and present descriptors.
+            // A metadata-only update must preserve the stored descriptor.
             client.Update(name, new() { Description = "updated" });
             var after = client.Find(name) ?? throw new InvalidOperationException("Updated share missing.");
             Require(after.Description == "updated" && SameDescriptor(before.SecurityDescriptor, after.SecurityDescriptor),
                 "Metadata update changed stored security.");
-            // Exercise absent/default -> explicit and explicit -> changed ACL independently.
             var changedSddl = "O:BAG:BAD:(A;;FA;;;BA)(A;;FW;;;BU)";
             client.Update(name, new() { SecurityDescriptor = Descriptor(changedSddl) });
             after = client.Find(name) ?? throw new InvalidOperationException("Share disappeared after security update.");

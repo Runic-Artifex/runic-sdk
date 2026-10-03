@@ -61,7 +61,7 @@ internal sealed unsafe class CsWin32ShareClient : IShareClient
         NativeError.Text(specification.Name, nameof(specification.Name));
         NativeError.Text(specification.Path, nameof(specification.Path));
         NativeError.Text(specification.Description, nameof(specification.Description), true);
-        var descriptor = specification.SecurityDescriptor is { } supplied ? ShareSecurity.ValidateDescriptor(supplied) : null;
+        var descriptor = ShareSecurity.ValidateDescriptor(specification.SecurityDescriptor);
         fixed (char* server = _server)
         fixed (char* name = specification.Name)
         fixed (char* path = specification.Path)

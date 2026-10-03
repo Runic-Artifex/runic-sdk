@@ -64,6 +64,9 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
   query wait bounds are not universal hard deadlines.
 - GetOperatingSystem exposes RegistryProductName verbatim; Windows can retain a Windows 10 compatibility label on Windows 11. GetOperatingSystemNameAsync reads the display name from native Windows inventory.
 - Service BinaryCommandLine is the configured command line, not an executable path.
+  Writes require a quoted executable path when the command line contains
+  whitespace, and new services require an explicit account; there is no
+  implicit LocalSystem default.
   Process observations are snapshots: a process may disappear after enumeration.
 - Task snapshots retain complete native XML; selected updates preserve untouched
   XML subtrees. Replacing actions/triggers intentionally replaces those subtrees.

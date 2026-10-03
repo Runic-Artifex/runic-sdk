@@ -16,7 +16,7 @@ public sealed partial class WindowsServiceClient
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         ArgumentNullException.ThrowIfNull(specification);
         NativeError.Text(specification.Name, nameof(specification.Name));
-        NativeError.Text(specification.BinaryCommandLine, nameof(specification.BinaryCommandLine));
+        NativeError.Text(specification.AccountName, nameof(specification.AccountName));
         var update = new ServiceUpdate
         {
             DisplayName = specification.DisplayName ?? specification.Name,
@@ -69,9 +69,23 @@ public sealed partial class WindowsServiceClient
     private static string MultiString(ImmutableArray<string> values) =>
         string.Join('\0', values) + "\0\0";
 
+    // Windows tries each whitespace-separated prefix of an unquoted path as a program, so a writable parent such as
+    // C:\Program could otherwise run in the service's security context.
+    private static void CommandLine(string value, string parameterName)
+    {
+        NativeError.Text(value, parameterName);
+        if (value[0] == '"')
+        {
+            var end = value.IndexOf('"', 1);
+            if (end > 1 && (end == value.Length - 1 || char.IsWhiteSpace(value[end + 1]))) return;
+        }
+        else if (!value.Any(char.IsWhiteSpace)) return;
+        throw new ArgumentException("Quote the executable path when the command line contains whitespace.", parameterName);
+    }
+
     private static void Validate(ServiceUpdate update, string? password)
     {
-        if (update.BinaryCommandLine is { } binary) NativeError.Text(binary, nameof(update.BinaryCommandLine));
+        if (update.BinaryCommandLine is { } binary) CommandLine(binary, nameof(update.BinaryCommandLine));
         if (update.DisplayName is { } display) NativeError.Text(display, nameof(update.DisplayName));
         if (update.AccountName is { } account) NativeError.Text(account, nameof(update.AccountName));
         if (update.Description is { } description) NativeError.Text(description, nameof(update.Description), true);
@@ -91,7 +105,8 @@ public sealed partial class WindowsServiceClient
         if (update.FailurePolicy is { } policy)
         {
             if (policy.Actions.IsDefault) throw new ArgumentException("Failure actions must be initialized.", nameof(update));
-            NativeError.Text(policy.Command, nameof(policy.Command), true);
+            if (policy.Command.Length != 0) CommandLine(policy.Command, nameof(policy.Command));
+            else NativeError.Text(policy.Command, nameof(policy.Command), true);
             NativeError.Text(policy.RebootMessage, nameof(policy.RebootMessage), true);
             if (policy.ResetPeriod is { } reset && (reset < TimeSpan.Zero || reset.TotalSeconds >= uint.MaxValue))
                 throw new ArgumentOutOfRangeException(nameof(update));

@@ -41,9 +41,9 @@ internal sealed unsafe partial class WmiConnection : IDisposable
     private void Secure(ComObject proxy)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
-        var identity = _identity?.Value ?? default;
+        // COM retains the identity pointer for the proxy's lifetime, so it is owned by this connection rather than the stack.
         NativeError.Check(PInvoke.CoSetProxyBlanket((IUnknown*)proxy.Pointer, uint.MaxValue, uint.MaxValue, new PWSTR((char*)-1), RPC_C_AUTHN_LEVEL.RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_IMP_LEVEL.RPC_C_IMP_LEVEL_IMPERSONATE,
-            _identity is null ? null : &identity, 0).Value, "Secure Windows management proxy");
+            _identity is null ? null : _identity.Value, 0).Value, "Secure Windows management proxy");
     }
 
     internal ImmutableArray<ImmutableDictionary<string, object?>> Query(string query, string[] properties, CancellationToken cancellationToken)
@@ -177,14 +177,20 @@ internal sealed unsafe partial class WmiConnection : IDisposable
     private sealed class WmiIdentity : IDisposable
     {
         private readonly BString _user, _domain, _password;
-        internal COAUTHIDENTITY Value { get; }
+        internal COAUTHIDENTITY* Value { get; private set; }
         internal WmiIdentity(NetworkCredential credential)
         {
             _user = new(credential.UserName); _domain = new(credential.Domain); _password = new(credential.Password);
-            Value = new() { User = (ushort*)_user.Pointer, UserLength = (uint)credential.UserName.Length,
+            Value = (COAUTHIDENTITY*)NativeMemory.AllocZeroed((nuint)sizeof(COAUTHIDENTITY));
+            *Value = new() { User = (ushort*)_user.Pointer, UserLength = (uint)credential.UserName.Length,
                 Domain = (ushort*)_domain.Pointer, DomainLength = (uint)credential.Domain.Length,
                 Password = (ushort*)_password.Pointer, PasswordLength = (uint)credential.Password.Length, Flags = 2 };
         }
-        public void Dispose() { _password.Dispose(); _domain.Dispose(); _user.Dispose(); }
+        public void Dispose()
+        {
+            if (Value is not null) { NativeMemory.Clear(Value, (nuint)sizeof(COAUTHIDENTITY)); NativeMemory.Free(Value); Value = null; }
+            // BString disposal zeroes each string, including the password, before freeing it.
+            _password.Dispose(); _domain.Dispose(); _user.Dispose();
+        }
     }
 }

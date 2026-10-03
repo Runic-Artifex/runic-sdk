@@ -35,6 +35,8 @@ public enum FirewallProfiles
 public sealed record FirewallRuleIdentity(string Name, string Grouping, string ApplicationPath, string ServiceName, FirewallDirection Direction);
 
 /// <summary>Creates a local firewall rule. Name is the native rule name; Description is explanatory display text.</summary>
+/// <remarks>An inbound allow rule must name a program, service, local port or ICMP protocol. Profiles default to
+/// Domain and Private; include Public explicitly.</remarks>
 public sealed record FirewallRuleSpecification(string Name, FirewallDirection Direction, FirewallAction Action)
 {
     /// <summary>Description.</summary>
@@ -63,8 +65,8 @@ public sealed record FirewallRuleSpecification(string Name, FirewallDirection Di
     public bool Enabled { get; init; } = true;
     /// <summary>Rule grouping, independently of its name.</summary>
     public string Grouping { get; init; } = "";
-    /// <summary>Applicable profiles.</summary>
-    public FirewallProfiles Profiles { get; init; } = FirewallProfiles.All;
+    /// <summary>Applicable profiles; Public is not included by default.</summary>
+    public FirewallProfiles Profiles { get; init; } = FirewallProfiles.Domain | FirewallProfiles.Private;
     /// <summary>Permit edge traversal.</summary>
     public bool EdgeTraversal { get; init; }
 }
