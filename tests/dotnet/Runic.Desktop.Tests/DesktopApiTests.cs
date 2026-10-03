@@ -107,6 +107,14 @@ public sealed class DesktopApiTests
             }));
 
         Assert.Contains("explicit security policy", error.Message, StringComparison.Ordinal);
+
+        var copied = new DesktopHostOptions { Port = 1 } with { NetworkExposure = DesktopNetworkExposure.AllInterfaces };
+        await Assert.ThrowsAsync<ArgumentException>(async () => await DesktopHost.StartAsync(copied));
+        await using var chosen = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            NetworkExposure = DesktopNetworkExposure.AllInterfaces,
+            Security = DesktopSecurityPolicy.Default,
+        });
     }
 
     [Fact]

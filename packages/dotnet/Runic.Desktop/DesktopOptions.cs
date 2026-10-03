@@ -54,7 +54,20 @@ public sealed record DesktopHostOptions
     public DesktopNetworkExposure NetworkExposure { get; init; } = DesktopNetworkExposure.Loopback;
 
     /// <summary>Gets the default security policy copied by newly created surfaces.</summary>
-    public DesktopSecurityPolicy Security { get; init; } = DesktopSecurityPolicy.Default;
+    /// <remarks><see cref="DesktopNetworkExposure.AllInterfaces"/> requires assigning this property explicitly.</remarks>
+    public DesktopSecurityPolicy Security
+    {
+        get => _security;
+        init
+        {
+            _security = value;
+            HasExplicitSecurity = true;
+        }
+    }
+
+    private readonly DesktopSecurityPolicy _security = DesktopSecurityPolicy.Default;
+
+    internal bool HasExplicitSecurity { get; private init; }
 
     /// <summary>Gets an optional service-registration callback run once while the host is built.</summary>
     public Action<IServiceCollection>? ConfigureServices { get; init; }
