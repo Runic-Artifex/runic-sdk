@@ -14,9 +14,7 @@ Props are imported before a project's property groups. Matching targets are impo
 after its items. Root `Directory.Build.targets` applies Desktop's host profile
 switch to source consumers. Desktop takes only WebView2's native loader assets;
 its COM callbacks are generated at build time for NativeAOT. NuGet dependency
-versions remain in the root
-`Directory.Packages.props`; the translation compiler's existing Roslyn pin is scoped
-there to translation projects, rather than becoming a workspace-wide downgrade.
+versions remain in the root `Directory.Packages.props`.
 
 Packing pins dependencies on shipping workspace projects to exact NuGet versions.
 The project inventory in `shipping-projects.props` is generated from
