@@ -103,16 +103,25 @@ sealed class Owner : IPortalWindowOwner
     public string Identifier { get; set; } = "x11:1234";
     public int Released;
     public bool ChangeGenerationOnExport;
+    // Models GTK3's single Wayland export per window: a retained parent blocks later requests.
+    private int _exported;
     public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public ValueTask<PortalParentLease> ExportParentAsync(CancellationToken cancellationToken = default)
     {
+        if (Interlocked.Exchange(ref _exported, 1) != 0)
+            throw new InvalidOperationException("A previous request retained the exported parent.");
         if (ChangeGenerationOnExport) Generation = Guid.NewGuid();
         return ValueTask.FromResult<PortalParentLease>(new Parent(this));
     }
     private sealed class Parent(Owner owner) : PortalParentLease
     {
+        private int _disposed;
         public override string Identifier => owner.Identifier;
-        public override ValueTask DisposeAsync() { owner.Released++; return ValueTask.CompletedTask; }
+        public override ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) { owner.Released++; Volatile.Write(ref owner._exported, 0); }
+            return ValueTask.CompletedTask;
+        }
     }
 }
 sealed class FakeTransport(PortalResponse? result) : IPortalTransport

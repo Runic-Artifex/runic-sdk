@@ -60,8 +60,10 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
             }
             deadline.Token.ThrowIfCancellationRequested();
             if (!owner.IsAvailable || owner.Generation != generation) return new PlatformResult<IDesktopInhibitionLease>.Unavailable(UnavailableReason.OwnerClosed);
-            var lease = new Lease(session, parent, handle, effects);
-            session = null; parent = null;
+            // The parent identifies the window only while the portal handles the request.
+            // Release it now: GTK3 allows one Wayland export per window at a time.
+            var lease = new Lease(session, handle, effects);
+            session = null;
             return new PlatformResult<IDesktopInhibitionLease>.Success(lease);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -80,7 +82,7 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
         }
     }
 
-    private sealed class Lease(PortalConnection session, PortalParentLease parent, string handle, DesktopInhibitionEffects effects) : IDesktopInhibitionLease
+    private sealed class Lease(PortalConnection session, string handle, DesktopInhibitionEffects effects) : IDesktopInhibitionLease
     {
         private readonly object _gate = new();
         private Task? _dispose;
@@ -102,7 +104,7 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
                 }
             }
             catch (Exception error) when (error is DBusExceptionBase or TimeoutException) { /* Disconnect also releases the request. */ }
-            finally { session.Dispose(); await parent.DisposeAsync().ConfigureAwait(false); }
+            finally { session.Dispose(); }
         }
     }
 }
