@@ -275,6 +275,7 @@
         "tools/dotnet-runic",
         "tests/dotnet/Runic.Application.Tool.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
+        "tests/dotnet/Runic.Application.Desktop.Tests",
         "tests/fixtures/application",
         "eng/build/application.props",
         "eng/build/application.targets",

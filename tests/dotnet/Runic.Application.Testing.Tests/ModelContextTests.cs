@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using ReactiveUI.Primitives.Concurrency;
 using ReactiveUI.Binding;
 using System.Text.Json;
@@ -24,6 +25,91 @@ public static class ModelContextTests
         await ReactiveSchedulerDeliversOnTheModelContext();
         await PostedTurnsRetainTheirOwnAmbientInvocation();
         await ScheduledInteractionsRetainTheirOwnAmbientInvocation();
+        await PostedTurnDroppedByDisposalIsReported();
+        await SessionBindsTheSuppliedApplicationContext();
+        await DisposedApplicationContextStillReleasesBridgesAndViews();
+        await ThirdPartyContextRunsNestedWorkInline();
+    }
+
+    private static async Task PostedTurnDroppedByDisposalIsReported()
+    {
+        var context = new RunicModelContext();
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var reported = new List<Exception>();
+        context.UnhandledTurnException += error => { lock (reported) reported.Add(error); };
+        Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The blocking turn was rejected.");
+        Require(started.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
+        var ran = false;
+        Require(context.TryPost(() => ran = true), "The queued turn was rejected before shutdown.");
+        var disposing = context.DisposeAsync().AsTask();
+        release.Set();
+        await disposing;
+        Require(!ran, "A posted turn ran after its context was disposed.");
+        lock (reported)
+            Require(reported.Count == 1 && reported[0] is ObjectDisposedException,
+                "A posted turn dropped by disposal was not reported.");
+    }
+
+    private static async Task SessionBindsTheSuppliedApplicationContext()
+    {
+        await using var applicationContext = new RunicModelContext();
+        await using var otherContext = new RunicModelContext();
+        var model = new object();
+        using var transport = new InMemoryViewTransport();
+        using (var session = new WindowContentSession(transport, rootModel: model, modelContext: applicationContext))
+        {
+            Require(ReferenceEquals(session.ModelContext, applicationContext)
+                && ReferenceEquals(RunicModelContextRegistry.Shared.GetRequired(model), applicationContext),
+                "The session did not bind its root to the supplied application context.");
+            using var conflicting = new InMemoryViewTransport();
+            Require(Throws<InvalidOperationException>(() =>
+                new WindowContentSession(conflicting, rootModel: model, modelContext: otherContext)),
+                "A session silently split a root model between two contexts.");
+        }
+        Require(!RunicModelContextRegistry.Shared.TryGet(model, out _),
+            "Closing the session retained the supplied context binding.");
+        await applicationContext.InvokeAsync(() => { }); // still owned by the application
+    }
+
+    private static async Task DisposedApplicationContextStillReleasesBridgesAndViews()
+    {
+        var applicationContext = new RunicModelContext();
+        var model = new NotifyingModel();
+        var child = new NotifyingModel();
+        using var transport = new InMemoryViewTransport();
+        var session = new WindowContentSession(transport, rootModel: model, modelContext: applicationContext);
+        var root = new ProbeBridge(transport, model, "probe", session);
+        var reference = session.Expose("child", child, (_, current, route) =>
+            session.AttachPresentation<ProbeView, NotifyingModel>(current, route,
+                (presentationTransport, presentationModel, presentationRoute) =>
+                    new ProbeBridge(presentationTransport, presentationModel, presentationRoute, session),
+                () => new ProbeView()));
+        Require(transport.Call($"content{reference.Id}Mount", new(StringValue: "browser:view",
+            ClientKey: "client", ConnectionKey: "connection")) == "ok", "The probe View did not mount.");
+        Require(ProbeView.Attached == 1 && model.Subscribers == 1 && child.Subscribers == 1,
+            "The probe bridges or View did not attach.");
+
+        await applicationContext.DisposeAsync();
+        root.Dispose();
+        session.Dispose();
+        Require(model.Subscribers == 0 && child.Subscribers == 0,
+            "Bridge teardown after application-context disposal retained PropertyChanged subscriptions.");
+        Require(ProbeView.Detached == 1, "Window teardown after context disposal did not release the mounted View.");
+        Require(transport.Routes.Count == 0, $"Window teardown retained routes: {string.Join(", ", transport.Routes)}");
+    }
+
+    private static async Task ThirdPartyContextRunsNestedWorkInline()
+    {
+        await using var context = new DedicatedThreadContext();
+        var model = new object();
+        using var transport = new InMemoryViewTransport();
+        using var session = new WindowContentSession(transport, rootModel: model, modelContext: context);
+        var exposure = context.InvokeAsync(() => session.Expose("item", new object(),
+            static (_, _, _) => new NoopAttachment())).AsTask();
+        Require(await Task.WhenAny(exposure, Task.Delay(TimeSpan.FromSeconds(5))) == exposure,
+            "Content exposed from inside a non-inlining application context deadlocked.");
+        _ = await exposure;
     }
 
     private static async Task SerialTurnsPreservePostingOrder()
@@ -373,5 +459,83 @@ public static class ModelContextTests
     private sealed class ScheduledInteractionModel
     {
         public Interaction<string, bool> Confirm { get; } = new();
+    }
+
+    private sealed class NotifyingModel : INotifyPropertyChanged
+    {
+        private PropertyChangedEventHandler? _changed;
+        public int Subscribers => _changed?.GetInvocationList().Length ?? 0;
+
+        public event PropertyChangedEventHandler? PropertyChanged
+        {
+            add => _changed += value;
+            remove => _changed -= value;
+        }
+    }
+
+    private sealed class ProbeBridge(IBridgeTransport transport, NotifyingModel model, string route,
+        WindowContentSession content)
+        : ViewModelBridge<NotifyingModel>(transport, model, route, static (writer, _, revision) =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("revision", revision);
+            writer.WriteEndObject();
+        }, [], [], content: content);
+
+    // Implements IRunicView directly so the bridge generator does not treat
+    // this private probe as an application View.
+    private sealed class ProbeView : IRunicView, IRunicViewLifetime
+    {
+        public object? DataContext { get; set; }
+        public static int Attached { get; private set; }
+        public static int Detached { get; private set; }
+        public void OnAttached() => Attached++;
+        public void OnDetached() => Detached++;
+    }
+
+    // An application-supplied context whose InvokeAsync always queues. The
+    // runtime must use IsExecuting rather than relying on InvokeAsync inlining.
+    private sealed class DedicatedThreadContext : IRunicModelContext
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<Action> _queue = new();
+        private readonly Thread _thread;
+
+        public DedicatedThreadContext()
+        {
+            _thread = new Thread(() =>
+            {
+                foreach (var work in _queue.GetConsumingEnumerable()) work();
+            }) { IsBackground = true };
+            _thread.Start();
+        }
+
+        public bool IsExecuting => Thread.CurrentThread == _thread;
+        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+
+        public bool TryPost(Action turn)
+        {
+            _queue.Add(turn);
+            return true;
+        }
+
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) =>
+            new(InvokeAsync(() => { turn(); return true; }, cancellationToken).AsTask());
+
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default)
+        {
+            var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _queue.Add(() =>
+            {
+                try { completion.SetResult(turn()); }
+                catch (Exception error) { completion.SetException(error); }
+            });
+            return new(completion.Task);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _queue.CompleteAdding();
+            return ValueTask.CompletedTask;
+        }
     }
 }

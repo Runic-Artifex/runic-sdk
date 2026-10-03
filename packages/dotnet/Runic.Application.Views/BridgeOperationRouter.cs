@@ -1,12 +1,7 @@
-using System.Runtime.CompilerServices;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-
-[assembly: InternalsVisibleTo("BridgeOperationRouterProbe")]
-[assembly: InternalsVisibleTo("WindowOperationRouterProbe")]
-[assembly: InternalsVisibleTo("CsWebUiGracefulCloseProbe")]
 
 namespace Runic.Application.Views;
 
@@ -135,6 +130,9 @@ internal sealed class BridgeOperationRouter : IDisposable
 
     internal ValueTask<BridgeOperationCloseResult> BeginCloseAsync(TimeSpan timeout) =>
         _operations.BeginCloseAsync(timeout);
+
+    internal BridgeOperationRegistry.BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation) =>
+        _operations.TryBeginAwaited(callerCancellation);
 
     private string Status(IBridgeArguments arguments) =>
         TryReadIdentity(arguments, out var routeIdentity)

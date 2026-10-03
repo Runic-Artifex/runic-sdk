@@ -93,6 +93,12 @@ public sealed record BridgeOperationDeliveryFailure(BridgeOperationDeliveryFailu
 // earlier result and calls it a last value: overflow is terminal and visible.
 public sealed class BridgeOperationStream
 {
+    /// <summary>
+    /// The default per-stream byte bound. A window reserves each running stream's bound
+    /// against a 256 KiB running-stream budget, so by default four streams can run at once.
+    /// </summary>
+    public const int DefaultMaximumBytes = 65_536;
+
     private readonly object _gate = new();
     private readonly List<BridgeOperationStreamItem> _items = [];
     private readonly int _maximumItems;
@@ -102,7 +108,8 @@ public sealed class BridgeOperationStream
     private bool _completed;
     private BridgeOperationDeliveryFailure? _failure;
 
-    public BridgeOperationStream(int maximumItems = 128, int maximumBytes = 262_144)
+    /// <summary>Creates a bounded stream. <see cref="TryPublish"/> returns false once it overflows.</summary>
+    public BridgeOperationStream(int maximumItems = 128, int maximumBytes = DefaultMaximumBytes)
     {
         if (maximumItems < 1) throw new ArgumentOutOfRangeException(nameof(maximumItems));
         if (maximumBytes < 1) throw new ArgumentOutOfRangeException(nameof(maximumBytes));

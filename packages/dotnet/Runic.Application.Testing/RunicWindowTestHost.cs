@@ -15,7 +15,8 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     public RunicWindowTestHost(TViewModel viewModel, string rootRoute,
         Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable> attach,
         IRunicViewLocator? viewLocator = null,
-        CancellationToken operationShutdown = default)
+        CancellationToken operationShutdown = default,
+        IRunicModelContext? modelContext = null)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         ArgumentException.ThrowIfNullOrWhiteSpace(rootRoute);
@@ -24,7 +25,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         Transport = new InMemoryViewTransport();
         try
         {
-            Content = new WindowContentSession(Transport, viewLocator, operationShutdown, viewModel);
+            Content = new WindowContentSession(Transport, viewLocator, operationShutdown, viewModel, modelContext);
             IDisposable? attachment = null;
             try
             {

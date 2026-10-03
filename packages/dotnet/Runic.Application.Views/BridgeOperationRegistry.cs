@@ -1,7 +1,5 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("BridgeOperationRegistryProbe")]
-[assembly: InternalsVisibleTo("OperationAcceptanceProbe")]
 [assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
 
 namespace Runic.Application.Views;
@@ -16,6 +14,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
     private readonly Queue<Entry> _terminals = new();
     private readonly Dictionary<string, BridgeOperationRequest?> _expiredIds = new(StringComparer.Ordinal);
     private readonly Queue<string> _expiredOrder = new();
+    private readonly HashSet<BridgeAwaitedExecution> _awaited = [];
     private readonly CancellationTokenSource _ownerShutdown;
     private readonly int _maximumOperations;
     private readonly int _maximumRetainedTerminals;
@@ -259,7 +258,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             terminal = BridgeOperationStatusKind.Failed;
             // Command exception details are diagnostic data, never operation
             // wire data. The public envelope stays stable and bounded.
-            _ = error;
+            System.Diagnostics.Trace.TraceError($"Bridge operation {entry.Request?.Member ?? entry.RequestId} failed: {error}");
             failure = "The operation failed.";
         }
 
@@ -377,9 +376,31 @@ internal sealed class BridgeOperationRegistry : IDisposable
             ? BridgeOperationStatus.Expired(requestId)
             : BridgeOperationStatus.Unknown(requestId);
 
+    // Awaited command routes reply with their terminal result directly rather
+    // than through a recoverable operation identity. They are still window
+    // work: close waits for them and owner cancellation reaches them. Returns
+    // null once the owner is closing.
+    internal BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _closing) return null;
+            var execution = new BridgeAwaitedExecution(this,
+                CancellationTokenSource.CreateLinkedTokenSource(_ownerShutdown.Token, callerCancellation));
+            _awaited.Add(execution);
+            return execution;
+        }
+    }
+
+    private void CompleteAwaited(BridgeAwaitedExecution execution)
+    {
+        lock (_gate) _awaited.Remove(execution);
+    }
+
     // Graceful owner shutdown is deliberately separate from Dispose. It
-    // prevents a new admission, asks all current work to cancel, and lets a
-    // host keep its DI scope alive while it awaits terminal results.
+    // prevents a new admission and waits up to the timeout for accepted work.
+    // Work still running after the timeout is asked to cancel, while the host
+    // keeps its DI scope alive until it observes the terminal results.
     internal async ValueTask<BridgeOperationCloseResult> BeginCloseAsync(
         TimeSpan timeout, CancellationToken callerCancellation = default)
     {
@@ -393,11 +414,11 @@ internal sealed class BridgeOperationRegistry : IDisposable
             _closing = true;
             terminals = _operations.Values
                 .Where(entry => entry.Status is BridgeOperationStatusKind.Running)
-                .Select(entry => entry.Terminal.Task)
+                .Select(entry => (Task)entry.Terminal.Task)
+                .Concat(_awaited.Select(execution => execution.Completion))
                 .ToArray();
         }
 
-        RequestOwnerCancellation();
         if (terminals.Length == 0) return new(Drained: true, RemainingRunningOperations: 0);
         try
         {
@@ -406,9 +427,12 @@ internal sealed class BridgeOperationRegistry : IDisposable
         }
         catch (TimeoutException)
         {
+            int remaining;
             lock (_gate)
-                return new(Drained: false, RemainingRunningOperations: _operations.Values.Count(
-                    entry => entry.Status is BridgeOperationStatusKind.Running));
+                remaining = _awaited.Count + _operations.Values.Count(
+                    entry => entry.Status is BridgeOperationStatusKind.Running);
+            RequestOwnerCancellation();
+            return new(Drained: false, RemainingRunningOperations: remaining);
         }
     }
 
@@ -434,8 +458,34 @@ internal sealed class BridgeOperationRegistry : IDisposable
         {
             // User cancellation callbacks must not stop host shutdown. The
             // linked operation token was still signalled; terminal work is
-            // observed below through each entry's task.
-            _ = error;
+            // observed through each entry's task.
+            System.Diagnostics.Trace.TraceWarning($"A bridge operation cancellation callback failed: {error}");
+        }
+    }
+
+    internal sealed class BridgeAwaitedExecution : IDisposable
+    {
+        private readonly BridgeOperationRegistry _owner;
+        private readonly CancellationTokenSource _cancellation;
+        private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _disposed;
+
+        internal BridgeAwaitedExecution(BridgeOperationRegistry owner, CancellationTokenSource cancellation)
+        {
+            _owner = owner;
+            _cancellation = cancellation;
+            Token = cancellation.Token;
+        }
+
+        public CancellationToken Token { get; }
+        internal Task Completion => _completion.Task;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _owner.CompleteAwaited(this);
+            _cancellation.Dispose();
+            _completion.TrySetResult();
         }
     }
 

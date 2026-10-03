@@ -122,6 +122,22 @@ internal static class InteractionFixture
         Require(Reply(transport, route, "session-a:present-a", secondWire, false) == "ok"
             && !await secondQueued, "A concurrent interaction fell through instead of waiting for the next poll.");
 
+        // An answer the generated decoder rejects settles the request with a
+        // typed error immediately, whichever exception the decoder throws.
+        Task<bool> undecodable;
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a"))
+            undecodable = session.Interactions.TryRequest(route, "confirmDelete", "testing.confirmDelete.v1",
+                "undecodable", static value => JsonSerializer.Serialize(value),
+                static value => value.GetProperty("confirmed").GetBoolean())!;
+        var undecodableWire = await transport.CallAsync(BridgeInteractionRouter.WaitRoute, new(StringValue: WaitJson(route,
+            "session-a:present-a", "confirmDelete", "testing.confirmDelete.v1", 1), ClientKey: "client-a",
+            ConnectionKey: "connection-a"));
+        Require(Reply(transport, route, "session-a:present-a", undecodableWire, false) == "invalid-output",
+            "An undecodable interaction answer was not reported as invalid output.");
+        Require(await ThrowsAsync<RunicInteractionOutputException>(
+            () => undecodable.WaitAsync(TimeSpan.FromSeconds(5))),
+            "An undecodable interaction answer left the request pending instead of failing it.");
+
         // The separate control stream reaches a handler already processing a
         // prompt when the command's cancellation token fires.
         var controlWait = transport.CallAsync(BridgeInteractionRouter.ControlWaitRoute, new(StringValue:

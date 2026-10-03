@@ -26,6 +26,8 @@ await CommandSemanticsAsync();
 await SchedulerSemanticsAsync();
 await DependencyInjectionSemanticsAsync();
 await InteractionSemanticsAsync();
+await SchedulerFailureAndShutdownSemanticsAsync();
+await StreamOverflowStopsExecutionAsync();
 Console.WriteLine("REACTIVEUI_BEHAVIORAL_CONFORMANCE_OK");
 
 static async Task CommandSemanticsAsync()
@@ -193,6 +195,58 @@ static async Task InteractionSemanticsAsync()
         "A typed browser reply did not complete the ReactiveUI interaction.");
 }
 
+static async Task SchedulerFailureAndShutdownSemanticsAsync()
+{
+    var context = new RunicModelContext();
+    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    var reported = new List<Exception>();
+    context.UnhandledTurnException += error => { lock (reported) reported.Add(error); };
+    _ = Schedule(scheduler, 0, _ => throw new InvalidOperationException("scheduled failure"));
+    var delivered = 0;
+    _ = Schedule(scheduler, 0, _ => Interlocked.Increment(ref delivered));
+    var deadline = DateTime.UtcNow.AddSeconds(5);
+    while (Volatile.Read(ref delivered) == 0 && DateTime.UtcNow < deadline)
+        await context.InvokeAsync(() => { });
+    Require(Volatile.Read(ref delivered) == 1, "A scheduled item following a failing item was not delivered.");
+    lock (reported)
+        Require(reported.Any(error => error is InvalidOperationException { Message: "scheduled failure" }),
+            "A failing scheduled item was not reported through the model context.");
+
+    await context.DisposeAsync();
+    var afterDispose = 0;
+    using (Schedule(scheduler, 0, _ => Interlocked.Increment(ref afterDispose))) { }
+    using (ScheduleDelayed(scheduler, TimeSpan.FromMilliseconds(20), () => Interlocked.Increment(ref afterDispose)))
+        await Task.Delay(100);
+    Require(Volatile.Read(ref afterDispose) == 0, "Work scheduled after its model context was disposed ran.");
+}
+
+static async Task StreamOverflowStopsExecutionAsync()
+{
+    await using var context = new RunicModelContext();
+    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    var producer = new OpenSequenceObservable<int>(1, 2, 3);
+    var command = ReactiveCommand.CreateFromObservable<FlavorUnit, int>(_ => producer, scheduler);
+    var stream = new BridgeOperationStream(maximumItems: 2);
+    var result = await ReactiveCommandExecution.ExecuteStream(command, UnitValue(), stream,
+        static value => value.ToString(System.Globalization.CultureInfo.InvariantCulture), CancellationToken.None)
+        .WaitAsync(TimeSpan.FromSeconds(5));
+    Require(result.Kind is BridgeOperationResultKind.Stream
+        && stream.Failure?.Kind is BridgeOperationDeliveryFailureKind.StreamOverflow,
+        "A stream command did not report its overflow.");
+    Require(producer.Disposals == 1, "An overflowing stream command kept its execution running.");
+
+    Require(Throws<ArgumentOutOfRangeException>(() => ReactiveInteractionDescriptor.Create<ConformanceInteractionModel, string, bool>(
+        "confirm", "conformance.confirm.v1", value => value.Confirm, static value => JsonSerializer.Serialize(value),
+        static value => value.GetBoolean(), TimeSpan.Zero)),
+        "An interaction descriptor accepted a non-positive timeout.");
+}
+
+static bool Throws<TException>(Action action) where TException : Exception
+{
+    try { action(); return false; }
+    catch (TException) { return true; }
+}
+
 static FlavorUnit UnitValue()
 {
 #if SYSTEM_REACTIVE
@@ -256,6 +310,18 @@ sealed class EmptyObservable<T> : IObservable<T>
     {
         observer.OnCompleted();
         return EmptyDisposable.Instance;
+    }
+}
+
+// Emits its values and stays open until its subscriber disposes it.
+sealed class OpenSequenceObservable<T>(params T[] values) : IObservable<T>
+{
+    public int Disposals { get; private set; }
+
+    public IDisposable Subscribe(IObserver<T> observer)
+    {
+        foreach (var value in values) observer.OnNext(value);
+        return new CallbackDisposable(() => Disposals++);
     }
 }
 

@@ -25,7 +25,14 @@ public sealed class RunicModelContextRegistry
     // table releases that association once the final lease removes it or its key dies.
     private readonly ConditionalWeakTable<object, Registration> _registrations = new();
 
-    /// <summary>Gets a process-wide registry for applications that do not supply one through composition.</summary>
+    // Generated bridges and content sessions resolve contexts only through
+    // Shared. A second public registry would silently split a graph between
+    // the context an application bound and the one its bridges use.
+    internal RunicModelContextRegistry() { }
+
+    /// <summary>
+    /// Gets the process-wide registry used by generated bridges and content sessions.
+    /// </summary>
     public static RunicModelContextRegistry Shared { get; } = new();
 
     /// <summary>
@@ -218,7 +225,7 @@ public sealed class RunicModelContextRegistry
             // owned context to drain. A synchronous session close may originate
             // in that context's current view callback, so it must not wait for
             // itself to leave the turn.
-            if (registration.Context is IRunicSynchronousModelContext synchronous && synchronous.IsExecuting)
+            if (registration.Context.IsExecuting)
             {
                 _ = ObserveReleaseAsync(release);
                 return;

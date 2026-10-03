@@ -1,10 +1,3 @@
-using System.Runtime.CompilerServices;
-
-[assembly: InternalsVisibleTo("FieldWriteTurnProbe")]
-[assembly: InternalsVisibleTo("FieldRegistryProviderProbe")]
-[assembly: InternalsVisibleTo("OperationAcceptanceProbe")]
-[assembly: InternalsVisibleTo("SourceBackedIndependentDraftProbe")]
-
 namespace Runic.Application.Views;
 
 // A short, re-entrant synchronous turn over one actual ViewModel. It shares
@@ -31,16 +24,22 @@ internal sealed class BridgeModelTurn : IBridgeModelTurn
     public T Run<T>(Func<T> work)
     {
         ArgumentNullException.ThrowIfNull(work);
-        if (_context is IRunicSynchronousModelContext synchronous) return synchronous.Run(work);
-        if (_context is not null) return _context.InvokeAsync(work).AsTask().GetAwaiter().GetResult();
+        if (_context is not null) return RunicModelTurns.Run(_context, work);
         lock (_gate) return work();
     }
 
     public void Run(Action work)
     {
         ArgumentNullException.ThrowIfNull(work);
-        if (_context is IRunicSynchronousModelContext synchronous) synchronous.Run(work);
-        else if (_context is not null) _context.InvokeAsync(work).AsTask().GetAwaiter().GetResult();
+        if (_context is not null) RunicModelTurns.Run(_context, work);
         else lock (_gate) work();
+    }
+
+    // Releases subscriptions even after an application-owned context was
+    // disposed before the bridge that captured it.
+    public void RunForTeardown(Action work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        RunicModelTurns.RunForTeardown(_context, work, _gate);
     }
 }

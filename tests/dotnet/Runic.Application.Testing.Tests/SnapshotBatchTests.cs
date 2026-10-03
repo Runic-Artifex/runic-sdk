@@ -116,6 +116,12 @@ internal static class SnapshotBatchTests
         using var content = new WindowContentSession(transport, rootModel: model);
         var counter = new CaptureCounter();
         using var bridge = new CheckedProbeBridge(transport, model, content, counter);
+        // Content-session revisions are window-monotonic rather than starting
+        // at zero for each bridge.
+        using var initial = JsonDocument.Parse(transport.Call("checkedSnapshot"));
+        var baseline = initial.RootElement.GetProperty("state").GetProperty("revision").GetInt64();
+        counter.Revisions.Clear();
+        counter.Count = 0;
 
         using (BridgeSnapshotBatch.Begin(model))
         {
@@ -126,7 +132,7 @@ internal static class SnapshotBatchTests
             Require(writeReply.RootElement.GetProperty("receipt").GetProperty("kind").GetString() == "applied"
                 && writeReply.RootElement.GetProperty("state").GetProperty("value").GetInt32() == 9,
                 "A checked write did not return its state and receipt while the batch was open.");
-            Require(writeReply.RootElement.GetProperty("state").GetProperty("revision").GetInt64() == 1,
+            Require(writeReply.RootElement.GetProperty("state").GetProperty("revision").GetInt64() == baseline + 1,
                 "The checked-write reply did not expose its notification revision during the batch.");
             Require(counter.Count == 1, "A checked-write reply did not capture immediately.");
 
@@ -134,14 +140,14 @@ internal static class SnapshotBatchTests
             Require(commandReply.RootElement.GetProperty("ok").GetBoolean()
                 && commandReply.RootElement.GetProperty("state").GetProperty("value").GetInt32() == 10,
                 "A command reply did not return its state while the batch was open.");
-            Require(commandReply.RootElement.GetProperty("state").GetProperty("revision").GetInt64() == 2,
+            Require(commandReply.RootElement.GetProperty("state").GetProperty("revision").GetInt64() == baseline + 2,
                 "The command reply did not advance beyond the checked-write revision during the batch.");
             Require(counter.Count == 2, "A command reply did not capture immediately.");
         }
 
         Require(counter.Count == 3,
             "Deferred notifications did not publish once after immediate route replies completed.");
-        Require(counter.Revisions.SequenceEqual([1, 2, 2]),
+        Require(counter.Revisions.SequenceEqual([baseline + 1, baseline + 2, baseline + 2]),
             "The final deferred capture did not retain the latest immediate-reply revision.");
     }
 

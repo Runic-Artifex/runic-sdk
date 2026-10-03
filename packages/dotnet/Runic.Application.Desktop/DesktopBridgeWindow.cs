@@ -11,6 +11,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
     private readonly object _closeGate = new();
     private readonly AsyncServiceScope _scope;
     private readonly DesktopSurface _surface;
+    private readonly DesktopBridgeTransport _transport;
     private readonly WindowContentSession _content;
     private readonly IDisposable _connectionBinding;
     private IDisposable? _attachment;
@@ -19,11 +20,12 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
     private Task? _completion;
     private bool _finalized;
 
-    internal DesktopBridgeWindow(AsyncServiceScope scope, DesktopSurface surface,
+    internal DesktopBridgeWindow(AsyncServiceScope scope, DesktopSurface surface, DesktopBridgeTransport transport,
         WindowContentSession content, IDisposable connectionBinding, TViewModel viewModel)
     {
         _scope = scope;
         _surface = surface;
+        _transport = transport;
         _content = content;
         _connectionBinding = connectionBinding;
         ViewModel = viewModel;
@@ -89,6 +91,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
             return new(true, 0, CompletionFor(errors));
         }
 
+        // A visible closed window must not leave command routes active. The
+        // surface stays open solely so accepted operations can finish.
+        Capture(_transport.Dispose, errors);
         // The visible presentation closes promptly, while the scope remains
         // alive until operations accepted before close reach a terminal result.
         if (_presentation is not null)
@@ -114,6 +119,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
             _finalized = true;
         }
         Capture(_content.Dispose, errors);
+        Capture(_transport.Dispose, errors);
         if (_presentation is not null)
             await CaptureAsync(_presentation.DisposeAsync, errors).ConfigureAwait(false);
         await CaptureAsync(_surface.DisposeAsync, errors).ConfigureAwait(false);
@@ -163,6 +169,7 @@ public static class DesktopBridgeWindowExtensions
 
         var scope = services.CreateAsyncScope();
         DesktopSurface? surface = null;
+        DesktopBridgeTransport? transport = null;
         WindowContentSession? content = null;
         IDisposable? connectionBinding = null;
         DesktopBridgeWindow<TViewModel>? owner = null;
@@ -173,15 +180,16 @@ public static class DesktopBridgeWindowExtensions
             var attachWithContent = scope.ServiceProvider.GetService<
                 Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>>();
             surface = await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
-            var transport = new DesktopBridgeTransport(surface);
+            transport = new DesktopBridgeTransport(surface);
             content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel);
+                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
+                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>());
             connectionBinding = surface.SubscribeConnectionEvents(invocation =>
             {
                 if (invocation.Kind == PresentationEventKind.Disconnected)
                     content.ReleaseConnection(invocation.Session.Id.ToString(CultureInfo.InvariantCulture));
             });
-            owner = new DesktopBridgeWindow<TViewModel>(scope, surface, content, connectionBinding, viewModel);
+            owner = new DesktopBridgeWindow<TViewModel>(scope, surface, transport, content, connectionBinding, viewModel);
             applicationWindow = createWindow(owner)
                 ?? throw new InvalidOperationException("The Window factory returned null.");
             if (!ReferenceEquals(applicationWindow.DataContext, viewModel))
@@ -206,6 +214,7 @@ public static class DesktopBridgeWindowExtensions
             {
                 connectionBinding?.Dispose();
                 content?.Dispose();
+                transport?.Dispose();
                 if (surface is not null) await surface.DisposeAsync().ConfigureAwait(false);
                 await scope.DisposeAsync().ConfigureAwait(false);
             }

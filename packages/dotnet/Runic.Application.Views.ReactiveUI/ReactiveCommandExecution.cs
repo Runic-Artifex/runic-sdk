@@ -1,9 +1,17 @@
+// Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
+// Runic.Application.ReactiveUI.Reactive. Both flavors expose IReactiveCommand
+// from the ReactiveUI namespace.
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Windows.Input;
 using ReactiveUI;
 using Runic.Application.Views;
 
+#if SYSTEM_REACTIVE
+namespace Runic.Application.Views.ReactiveUI.Reactive;
+#else
 namespace Runic.Application.Views.ReactiveUI;
+#endif
 
 /// <summary>
 /// Executes the ReactiveUI command contracts that are intentionally broader
@@ -25,10 +33,9 @@ public static class ReactiveCommandExecution
         var completion = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var count = 0;
         TResult? result = default;
-        IDisposable? subscription = null;
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        subscription = command.Execute(input).Subscribe(new Observer<TResult>(
+        using var subscription = command.Execute(input).Subscribe(new Observer<TResult>(
             value =>
             {
                 count++;
@@ -41,12 +48,7 @@ public static class ReactiveCommandExecution
                 else completion.TrySetException(new InvalidOperationException(
                     $"Reactive command produced {count} results; this bridge command requires exactly one."));
             }));
-        try
-        {
-            var value = await completion.Task.ConfigureAwait(false);
-            return value;
-        }
-        finally { subscription.Dispose(); }
+        return await completion.Task.ConfigureAwait(false);
     }
 
     /// <summary>
@@ -71,13 +73,12 @@ public static class ReactiveCommandExecution
                 if (count == 0) completion.TrySetException(new InvalidOperationException("Reactive command produced no result."));
                 else completion.TrySetResult(result!);
             }));
-        var value = await completion.Task.ConfigureAwait(false);
-        return value;
+        return await completion.Task.ConfigureAwait(false);
     }
 
     /// <summary>
     /// Waits for command completion when the generated contract has no output.
-    /// RxVoid commands are allowed to publish zero or more internal values;
+    /// No-result commands are allowed to publish zero or more internal values;
     /// requiring one would incorrectly turn a completed no-result effect into
     /// a cardinality failure.
     /// </summary>
@@ -98,7 +99,10 @@ public static class ReactiveCommandExecution
     /// <summary>
     /// Publishes every observable value to an admitted bounded stream. Result
     /// serialization and retention failures remain visible delivery outcomes;
-    /// they do not rewrite a successful side effect as a command failure.
+    /// they do not rewrite a successful side effect as a command failure. Once
+    /// the stream overflows or fails, the execution is stopped: disposing its
+    /// subscription cancels the command instead of producing into a stream
+    /// that can no longer accept values.
     /// </summary>
     public static async Task<BridgeOperationResult> ExecuteStream<TInput, TResult>(
         IReactiveCommand<TInput, TResult> command,
@@ -116,13 +120,16 @@ public static class ReactiveCommandExecution
         using var subscription = command.Execute(input).Subscribe(new Observer<TResult>(
             value =>
             {
-                try { _ = stream.TryPublish(encode(value)); }
+                bool published;
+                try { published = stream.TryPublish(encode(value)); }
                 catch (Exception)
                 {
                     stream.Fail(new BridgeOperationDeliveryFailure(
                         BridgeOperationDeliveryFailureKind.ResultEncodingFailed,
                         "The operation completed, but a stream result could not be encoded."));
+                    published = false;
                 }
+                if (!published) completion.TrySetResult();
             },
             error => completion.TrySetException(error),
             () => completion.TrySetResult()));
@@ -181,10 +188,19 @@ public static class ReactiveCommandExecution
         return value == true;
     }
 
+    // Subscribing through IObserver<T> keeps this source independent of each
+    // flavor's Subscribe extension methods. Without an error callback a
+    // failure is rethrown unchanged, as the Rx Subscribe overloads do.
     private sealed class Observer<T>(Action<T> next, Action<Exception>? error = null, Action? completed = null) : IObserver<T>
     {
         public void OnCompleted() => completed?.Invoke();
-        public void OnError(Exception exception) => error?.Invoke(exception);
+
+        public void OnError(Exception exception)
+        {
+            if (error is null) ExceptionDispatchInfo.Capture(exception).Throw();
+            error(exception);
+        }
+
         public void OnNext(T value) => next(value);
     }
 
@@ -201,42 +217,14 @@ public static class ReactiveCommandExecution
             get { lock (_gate) return _canExecute && !_isExecuting; }
         }
 
-        public bool IsObserved
-        {
-            get { lock (_gate) return _subscription is not null; }
-        }
-
-        private void Start(IReactiveCommand command)
-        {
-            if (_subscription is not null) return;
-            var executing = command.IsExecuting.Subscribe(new Observer<bool>(value =>
-            {
-                Action[] listeners;
-                lock (_gate)
-                {
-                    if (_isExecuting == value) return;
-                    _isExecuting = value;
-                    listeners = [.. _listeners];
-                }
-                foreach (var listener in listeners) listener();
-            }));
-            var available = command.CanExecute.Subscribe(new Observer<bool>(value =>
-            {
-                Action[] listeners;
-                lock (_gate)
-                {
-                    if (_canExecute == value) return;
-                    _canExecute = value;
-                    listeners = [.. _listeners];
-                }
-                foreach (var listener in listeners) listener();
-            }));
-            _subscription = new CompositeLease(executing, available);
-        }
-
         public bool IsExecuting
         {
             get { lock (_gate) return _isExecuting; }
+        }
+
+        public bool IsObserved
+        {
+            get { lock (_gate) return _subscription is not null; }
         }
 
         public IDisposable Observe(IReactiveCommand command, Action changed)
@@ -247,6 +235,34 @@ public static class ReactiveCommandExecution
                 _listeners.Add(changed);
             }
             return new Lease(this, changed);
+        }
+
+        private void Start(IReactiveCommand command)
+        {
+            if (_subscription is not null) return;
+            var executing = command.IsExecuting.Subscribe(new Observer<bool>(value => Update(value, isExecuting: true)));
+            var available = command.CanExecute.Subscribe(new Observer<bool>(value => Update(value, isExecuting: false)));
+            _subscription = new CompositeLease(executing, available);
+        }
+
+        private void Update(bool value, bool isExecuting)
+        {
+            Action[] listeners;
+            lock (_gate)
+            {
+                if (isExecuting)
+                {
+                    if (_isExecuting == value) return;
+                    _isExecuting = value;
+                }
+                else
+                {
+                    if (_canExecute == value) return;
+                    _canExecute = value;
+                }
+                listeners = [.. _listeners];
+            }
+            foreach (var listener in listeners) listener();
         }
 
         private sealed class Lease(State owner, Action listener) : IDisposable
@@ -277,13 +293,6 @@ public static class ReactiveCommandExecution
                 first.Dispose();
                 second.Dispose();
             }
-        }
-
-        private sealed class Observer<T>(Action<T> next, Action<Exception>? error = null, Action? completed = null) : IObserver<T>
-        {
-            public void OnCompleted() => completed?.Invoke();
-            public void OnError(Exception exception) => (error ?? throw new InvalidOperationException("The observable failed.")).Invoke(exception);
-            public void OnNext(T value) => next(value);
         }
     }
 }

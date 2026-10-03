@@ -78,9 +78,26 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         return new(admission);
     }
 
+    /// <summary>
+    /// Starts an immediate close without waiting for accepted operations. Failures are
+    /// traced; use <see cref="DisposeAsync"/> or <see cref="CloseAsync"/> to observe them.
+    /// </summary>
     public void Dispose()
     {
-        _ = CloseAsync(TimeSpan.Zero);
+        _ = ObserveCloseAsync();
+    }
+
+    private async Task ObserveCloseAsync()
+    {
+        try
+        {
+            var result = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
+            await result.Completion.ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            System.Diagnostics.Trace.TraceError($"Closing the CS-WebUI Bridge window failed: {error}");
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -222,7 +239,8 @@ public static class CsWebUiBridgeWindowExtensions
             window = new WebUiWindow();
             transport = window.CreateBridgeSession();
             content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel);
+                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
+                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>());
             connectionBinding = window.Bind("", e =>
             {
                 if (e.EventType == WebUiEventType.Disconnected)

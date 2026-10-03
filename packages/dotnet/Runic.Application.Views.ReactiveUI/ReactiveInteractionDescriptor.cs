@@ -1,9 +1,19 @@
+// Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
+// Runic.Application.ReactiveUI.Reactive.
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+#if SYSTEM_REACTIVE
+using ReactiveUI.Binding.Reactive;
+#else
 using ReactiveUI.Binding;
+#endif
 using Runic.Application.Views;
 
+#if SYSTEM_REACTIVE
+namespace Runic.Application.Views.ReactiveUI.Reactive;
+#else
 namespace Runic.Application.Views.ReactiveUI;
+#endif
 
 /// <summary>
 /// Factory used by generated ReactiveUI bridges to expose one typed interaction

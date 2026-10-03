@@ -190,11 +190,17 @@ var result = await repository.SaveAsync(request, cancellationToken);
 await context.InvokeAsync(() => viewModel.Apply(result), cancellationToken);
 ```
 
-`WindowContentSession` acquires a default context for its root model. Compose
-an app-shared graph deliberately with `RunicModelContextRegistry.Bind` or
-`.Acquire`; bind its root and independently presented children together. A
-second, different context for the same object is rejected. Mounts lease views,
-not context ownership. Snapshot delivery is ordered after its model turn so a
+`WindowContentSession` acquires a default context for its root model. The
+CS-WebUI and Desktop hosts instead bind the root to the window scope's
+`IRunicModelContext` when one is registered, so the context injected into the
+ViewModel and the one used by its bridges are the same; a root already bound to a
+different context fails window creation. Compose an app-shared graph
+deliberately with `RunicModelContextRegistry.Shared.Bind` or `.Acquire`; bind
+its root and independently presented children together. A second, different
+context for the same object is rejected. Mounts lease views, not context
+ownership. A custom `IRunicModelContext` must report `IsExecuting` for code
+inside its turns: synchronous bridge routes run nested work inline in that case
+and otherwise block until `InvokeAsync` completes. Snapshot delivery is ordered after its model turn so a
 synchronous host callback cannot run while the model gate is held.
 
 The default adapter's `RunicReactiveSchedulerProvider.For(context)` produces

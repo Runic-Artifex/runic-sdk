@@ -94,6 +94,17 @@ public sealed record CommandDescriptor<T>(
 
 internal sealed record BridgeFailure(string Kind, string Message);
 
+/// <summary>The Views wire protocol described in specs/application/README.md.</summary>
+public static class BridgeProtocol
+{
+    /// <summary>
+    /// The protocol version reported as <c>protocol</c> in every snapshot-route reply.
+    /// It changes only when a generated client built for the previous version could
+    /// misread a reply.
+    /// </summary>
+    public const int Version = 1;
+}
+
 internal interface IHotReloadableBridge
 {
     Type ContractModelType { get; }
@@ -226,6 +237,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         _modelGate = BridgeModelGates.For(vm);
         _modelTurn = BridgeModelTurn.For(vm);
         _content = content;
+        // A window can detach a content route and attach a new bridge to the
+        // same route while a browser still holds the former state. Drawing
+        // revisions from the window keeps that route's order monotonic.
+        _revision = content?.NextRevision() ?? 0;
         _delivery = new(transport, name, _modelTurn);
         _name = name;
         _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
@@ -264,13 +279,22 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 else
                 {
                     var contract = $"{typeof(T).FullName}:{contractFingerprint}";
-                    _checkedProperties = checkedProperties.Select(descriptor =>
-                        new CheckedPropertyBinding(descriptor, content.FieldWrites.GetOrCreate(
+                    var checkedBindings = new List<CheckedPropertyBinding>(checkedProperties.Length);
+                    foreach (var descriptor in checkedProperties)
+                    {
+                        // The lease shares the window's registry with other
+                        // presentations of this model and releases it with
+                        // the last one.
+                        var field = content.FieldWrites.Acquire(
                             _vm, contract, descriptor.Name,
                             () => descriptor.Get(_vm), value => descriptor.Set(_vm, value),
                             snapshot: descriptor.Snapshot, equalityComparer: descriptor.Comparer,
                             canonicalize: value => EncodeCheckedValue(value, descriptor),
-                            retainedValueByteCount: value => Encoding.UTF8.GetByteCount(EncodeCheckedValue(value, descriptor))))).ToArray();
+                            retainedValueByteCount: value => Encoding.UTF8.GetByteCount(EncodeCheckedValue(value, descriptor)));
+                        bindings.Add(field.Lease);
+                        checkedBindings.Add(new CheckedPropertyBinding(descriptor, field.Registry));
+                    }
+                    _checkedProperties = [.. checkedBindings];
                 }
             }
             _vm.PropertyChanged += OnChanged;
@@ -334,7 +358,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         lock (_modelGate) return IsInactive
             ? EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."))
-            : Encode();
+            : Encode(protocol: true);
     }
 
     private string Set(PropertyDescriptor<T> property, IBridgeArguments e)
@@ -474,6 +498,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private async ValueTask<string> ExecuteAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
     {
+        // The awaited route is window work like an admitted operation: closing
+        // the window waits for it before the host disposes its scope, and
+        // cancels it after the close timeout.
+        using var admission = _content?.Operations.TryBeginAwaited(token);
+        if (_content is not null && admission is null)
+            return EncodeWithoutSnapshot(new("disconnected", "The window is closing."));
+        var cancellation = admission?.Token ?? token;
         Task<BridgeOperationResult>? execution = null;
         try
         {
@@ -483,23 +514,32 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 var argument = descriptor.ReadArgument?.Invoke(arguments);
                 if (!IsAvailable(descriptor, argument))
                     return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
-                using var invocation = EnterInvocation(descriptor, arguments, token);
-                execution = InvokeCommandAsync(descriptor, token, argument);
+                using var invocation = EnterInvocation(descriptor, arguments, cancellation);
+                execution = InvokeCommandAsync(descriptor, cancellation, argument);
                 return null;
             });
             if (rejection is not null) return rejection;
             await execution!.ConfigureAwait(false);
-            return _modelTurn.Run(() => EncodeTerminal());
+            return ReplyAfterCommand(() => EncodeTerminal());
         }
         catch (OperationCanceledException)
-        { return _modelTurn.Run(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."))); }
+        { return ReplyAfterCommand(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."))); }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-        { return _modelTurn.Run(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."))); }
+        { return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."))); }
         catch (Exception error)
         {
             Trace.TraceError($"Bridge command {descriptor.Name} failed: {error}");
-            return _modelTurn.Run(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.")));
+            return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.")));
         }
+    }
+
+    // The model context can be gone when an awaited command completes after
+    // its window was finalized. There is no state left to capture.
+    private string ReplyAfterCommand(Func<string> encode)
+    {
+        try { return _modelTurn.Run(encode); }
+        catch (ObjectDisposedException)
+        { return EncodeWithoutSnapshot(new("disconnected", "The window closed before the command replied.")); }
     }
 
     private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
@@ -617,13 +657,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private string EncodeWithoutSnapshot(BridgeFailure? error = null) =>
         Encode(error, includeSnapshot: false);
 
-    private string Encode(BridgeFailure? error = null, bool includeSnapshot = true)
+    private string Encode(BridgeFailure? error = null, bool includeSnapshot = true, bool protocol = false)
     {
         if (!includeSnapshot) return EncodeReply(error, snapshot: null);
         try
         {
             var snapshot = WriteSnapshot();
-            return IsInactive ? EncodeWithoutSnapshot(error) : EncodeReply(error, snapshot);
+            return IsInactive ? EncodeWithoutSnapshot(error) : EncodeReply(error, snapshot, protocol);
         }
         catch (BridgeSnapshotDetachedException)
         {
@@ -714,7 +754,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         writer.WriteEndObject();
     }
 
-    private string EncodeReply(BridgeFailure? error, string? snapshot) => WriteJson(writer =>
+    // The snapshot route, which a client reads first, states the wire protocol
+    // version. Clients ignore envelope members they do not know.
+    private string EncodeReply(BridgeFailure? error, string? snapshot, bool protocol = false) => WriteJson(writer =>
     {
         writer.WriteStartObject();
         writer.WriteBoolean("ok", error is null);
@@ -734,6 +776,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             writer.WriteString("message", error.Message);
             writer.WriteEndObject();
         }
+        if (protocol) writer.WriteNumber("protocol", BridgeProtocol.Version);
         writer.WriteEndObject();
     });
 
@@ -771,7 +814,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return;
-            _revision++;
+            _revision = NextRevision();
             // Capture is more expensive than queue delivery. A batch defers
             // only capture, never the revision: route replies that serialize
             // state during the batch must remain newer than their predecessor.
@@ -779,6 +822,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             PublishSnapshotCore();
         }
     }
+
+    private long NextRevision() => _content?.NextRevision() ?? _revision + 1;
 
     private void PublishBatchedSnapshotCore()
     {
@@ -807,13 +852,16 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     Type IHotReloadableBridge.ContractModelType => typeof(T);
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2087",
+        Justification = "Hot Reload is unavailable in trimmed applications; MetadataUpdater.IsSupported guards the reflection.")]
     string? IHotReloadableBridge.ContractMismatch()
     {
-#if DEBUG
+        // The SDK ships as a Release library, so this follows whether the
+        // application process can apply edits rather than how the SDK was built.
+        if (!System.Reflection.Metadata.MetadataUpdater.IsSupported) return null;
         if (_contractFingerprint is not null &&
             !string.Equals(_contractFingerprint, BridgeContractShape.Compute(typeof(T)), StringComparison.Ordinal))
             return $"{typeof(T).FullName} changed its generated Bridge contract. Rebuild and restart the .NET app.";
-#endif
         return null;
     }
 
@@ -836,7 +884,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    public virtual void Dispose() => _modelTurn.Run(DisposeCore);
+    public virtual void Dispose() => _modelTurn.RunForTeardown(DisposeCore);
 
     private void DisposeCore()
     {
