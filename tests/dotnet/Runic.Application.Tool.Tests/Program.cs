@@ -21,6 +21,7 @@ internal static class Program
             ("project discovery accepts a directory", ProjectDiscoveryAcceptsDirectory),
             ("project discovery rejects ambiguity", ProjectDiscoveryRejectsAmbiguity),
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
+            ("commands end input and tolerate invalid UTF-8", CommandsEndInputAndTolerateInvalidUtf8),
             ("package managers use locked, portable commands", PackageManagersUseLockedCommands),
             ("MSBuild evaluation requires the Views Window opt-in", EvaluationRequiresViewsWindow),
             ("Views Window watch restarts the native process", ViewsWindowWatchRestartsNativeProcess),
@@ -76,6 +77,24 @@ internal static class Program
         Equal("a project.csproj", startInfo.ArgumentList[1]);
         Equal("-p:Value=$(not-a-shell)", startInfo.ArgumentList[2]);
         False(startInfo.UseShellExecute, "Commands unexpectedly use a shell.");
+    }
+
+    private static void CommandsEndInputAndTolerateInvalidUtf8()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // The child waits for end-of-input like an interactive prompt, then writes an invalid UTF-8 byte.
+        Task<CommandResult> run = CommandRunner.RunAsync(
+            "/bin/sh", Environment.CurrentDirectory,
+            ["-c", "cat >/dev/null; printf 'a\\377b'; printf 'c\\377' >&2"],
+            CancellationToken.None);
+        True(run.Wait(TimeSpan.FromSeconds(30)), "A command waiting on standard input did not finish.");
+        Equal(0, run.Result.ExitCode);
+        Equal("a�b", run.Result.StandardOutput);
+        Equal("c�", run.Result.StandardError);
     }
 
     private static void PackageManagersUseLockedCommands()

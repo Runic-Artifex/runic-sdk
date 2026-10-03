@@ -60,8 +60,10 @@ See the runnable [command-line example](../../../examples/command-line/README.md
   after one occurrence. A variadic positional must be last.
 - `[Option(..., Description = "...", ValueName = "PATH", Choices = ["a", "b"],
   EnvironmentVariable = "APP_VALUE", Sensitive = true)]` supplies shared metadata.
-  Explicit input wins over the environment, then C# defaults. Sensitive defaults
-  and choices are excluded from help and completion.
+  Explicit input wins over the environment, then C# defaults. A flag's
+  environment value may be `true`/`false`, `yes`/`no` or `1`/`0` in any case.
+  Choices match case-insensitively and bind the declared spelling. Sensitive
+  defaults and choices are excluded from help and completion.
 - Generated numeric metadata permits separated negative numbers. Other
   option-looking data still requires `--` or an equals value. Unknown options and
   duplicate scalar options remain errors.

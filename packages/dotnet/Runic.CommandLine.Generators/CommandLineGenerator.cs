@@ -19,31 +19,46 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor UnsupportedType = Descriptor("RCLI9003", "Unsupported generated command type", "Parameter '{0}' on command '{1}' has unsupported type '{2}'.");
     private static readonly DiagnosticDescriptor DuplicateName = Descriptor("RCLI9004", "Duplicate generated command name", "Command name '{0}' is declared more than once.");
     private static readonly DiagnosticDescriptor InvalidMetadata = Descriptor("RCLI9005", "Invalid generated command metadata", "Command '{0}' has invalid {1}: '{2}'.");
+    private static readonly DiagnosticDescriptor VariadicArgumentNotLast = Descriptor("RCLI9020", "Multi-value argument is not last", "Argument '{0}' on command '{1}' accepts multiple values; only the last argument may do so.");
+    private static readonly DiagnosticDescriptor ByReferenceParameter = Descriptor("RCLI9021", "By-reference command parameter", "Parameter '{0}' on command '{1}' cannot be passed by reference.");
+    private static readonly DiagnosticDescriptor UnboundDefaultValue = Descriptor("RCLI9022", "Default value on an unbound command parameter", "Parameter '{0}' on command '{1}' declares a default value but is not an argument or option.");
+    private static readonly DiagnosticDescriptor RequiredOptionDefault = Descriptor("RCLI9023", "Required option with a default value", "Option '{0}' on command '{1}' cannot be required and declare a default value.");
+    private static readonly DiagnosticDescriptor FlagDefaultsToTrue = Descriptor("RCLI9024", "Flag defaults to true", "Boolean option '{0}' on command '{1}' cannot default to true.");
+    private static readonly DiagnosticDescriptor ListOptionDefault = Descriptor("RCLI9025", "List option with a default value", "List option '{0}' on command '{1}' cannot declare a default value.");
+    private static readonly DiagnosticDescriptor MultipleValuesMismatch = Descriptor("RCLI9026", "AllowMultipleValues does not match the parameter type", "Parameter '{0}' on command '{1}' must set AllowMultipleValues exactly when its type is a list.");
+    private static readonly DiagnosticDescriptor ScalarOccurrencePolicy = Descriptor("RCLI9027", "Occurrence policy on a scalar option", "Option '{0}' on command '{1}' sets AllowMultipleOccurrences, which applies only to list options.");
+    private static readonly DiagnosticDescriptor InvalidResultMetadata = Descriptor("RCLI9028", "Invalid generated command result metadata", "Command '{0}' must declare [CommandResult] with a payload type and an accessible JsonSerializerContext that has metadata for its result type.");
+    private static readonly DiagnosticDescriptor MultipleDefaultCommands = Descriptor("RCLI9029", "Multiple default commands", "Command '{0}' is one of several commands marked [DefaultCommand].");
 
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        IncrementalValuesProvider<IMethodSymbol> commands = context.SyntaxProvider.ForAttributeWithMetadataName(
+        // Each command projects to strings and locations so unchanged methods stay cached and the
+        // pipeline never retains symbols or compilations.
+        IncrementalValuesProvider<CommandCandidate> commands = context.SyntaxProvider.ForAttributeWithMetadataName(
             "Runic.CommandLine.CommandAttribute",
             static (_, _) => true,
-            static (attributeContext, _) => (IMethodSymbol)attributeContext.TargetSymbol);
-        context.RegisterSourceOutput(commands.Collect(), static (productionContext, methods) => Emit(productionContext, methods));
+            static (attributeContext, _) => CreateCandidate((IMethodSymbol)attributeContext.TargetSymbol))
+            .WithTrackingName("CommandModels");
+        context.RegisterSourceOutput(
+            commands.Collect().WithTrackingName("CommandCatalog"),
+            static (productionContext, candidates) => Emit(productionContext, candidates));
     }
 
-    private static void Emit(SourceProductionContext context, ImmutableArray<IMethodSymbol> methods)
+    private static void Emit(SourceProductionContext context, ImmutableArray<CommandCandidate> candidates)
     {
         var commands = new List<CommandModel>();
-        foreach (IMethodSymbol method in methods.OrderBy(static item => item.ToDisplayString(), StringComparer.Ordinal))
+        foreach (CommandCandidate candidate in candidates.OrderBy(static item => item.SortKey, StringComparer.Ordinal))
         {
-            CommandModel? model = TryCreate(context, method);
-            if (model is not null) commands.Add(model);
+            foreach (DiagnosticInfo diagnostic in candidate.Diagnostics) context.ReportDiagnostic(diagnostic.ToDiagnostic());
+            if (candidate.Command is not null) commands.Add(candidate.Command);
         }
 
         foreach (IGrouping<string, CommandModel> group in commands.GroupBy(static command => command.Name, StringComparer.Ordinal).Where(static group => group.Count() > 1))
         {
             foreach (CommandModel command in group)
             {
-                context.ReportDiagnostic(Diagnostic.Create(DuplicateName, command.Method.Locations.FirstOrDefault(), group.Key));
+                context.ReportDiagnostic(Diagnostic.Create(DuplicateName, command.Location?.ToLocation(), group.Key));
             }
         }
 
@@ -51,11 +66,11 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
             .Where(static group => group.Count() == 1)
             .Select(static group => group.Single())
             .OrderBy(static command => command.Name, StringComparer.Ordinal)
-            .ThenBy(static command => command.Method.ToDisplayString(), StringComparer.Ordinal)
+            .ThenBy(static command => command.SortKey, StringComparer.Ordinal)
             .ToList();
         if (commands.Count(command => command.IsDefault) > 1)
         {
-            foreach (CommandModel command in commands.Where(static command => command.IsDefault)) context.ReportDiagnostic(Diagnostic.Create(InvalidCommand, command.Method.Locations.FirstOrDefault(), command.Name));
+            foreach (CommandModel command in commands.Where(static command => command.IsDefault)) context.ReportDiagnostic(Diagnostic.Create(MultipleDefaultCommands, command.Location?.ToLocation(), command.Name));
             commands.RemoveAll(static command => command.IsDefault);
         }
         if (commands.Count == 0) return;
@@ -63,20 +78,27 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
         context.AddSource("Runic.CommandLine.GeneratedCatalog.g.cs", SourceText.From(Render(commands), Encoding.UTF8));
     }
 
-    private static CommandModel? TryCreate(SourceProductionContext context, IMethodSymbol method)
+    private static CommandCandidate CreateCandidate(IMethodSymbol method)
+    {
+        var diagnostics = new List<DiagnosticInfo>();
+        CommandModel? command = TryCreate(diagnostics, method);
+        return new CommandCandidate(method.ToDisplayString(), command, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
+    }
+
+    private static CommandModel? TryCreate(List<DiagnosticInfo> diagnostics, IMethodSymbol method)
     {
         AttributeData attribute = method.GetAttributes().First(static item => item.AttributeClass?.ToDisplayString() == "Runic.CommandLine.CommandAttribute");
         string? name = attribute.ConstructorArguments.Length == 1 ? attribute.ConstructorArguments[0].Value as string : null;
         if ((string.IsNullOrEmpty(name) || name.Split(' ').Any(segment => !IsIdentifier(segment) || IsReservedCommand(segment))) || !IsAccessible(method) || !HasAccessibleNonGenericContainingTypes(method) || method.MethodKind != MethodKind.Ordinary || !method.IsStatic || method.IsGenericMethod || !TryGetResult(method.ReturnType, out ITypeSymbol? result, out ResultShape shape))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidCommand, method.Locations.FirstOrDefault(), name ?? method.Name));
+            Report(diagnostics, InvalidCommand, method, name ?? method.Name);
             return null;
         }
 
         var parameters = new List<ParameterModel>();
         foreach (IParameterSymbol parameter in method.Parameters)
         {
-            ParameterModel? parameterModel = TryCreateParameter(context, method, parameter);
+            ParameterModel? parameterModel = TryCreateParameter(diagnostics, method, parameter);
             if (parameterModel is null) return null;
             parameters.Add(parameterModel);
         }
@@ -86,63 +108,67 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
         if (variadicArguments.Length > 1 || (variadicArguments.Length == 1 && !ReferenceEquals(arguments[^1], variadicArguments[0])))
         {
             ParameterModel invalid = variadicArguments[0];
-            context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, invalid.Symbol.Locations.FirstOrDefault(), invalid.Symbol.Name, name));
+            Report(diagnostics, VariadicArgumentNotLast, invalid.Symbol, invalid.Symbol.Name, name);
             return null;
         }
 
         if (parameters.Where(static parameter => parameter.Kind is ParameterKind.Argument or ParameterKind.Option)
             .GroupBy(static parameter => parameter.Id, StringComparer.Ordinal).Any(static group => group.Count() > 1))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, method.Locations.FirstOrDefault(), name, "duplicate parameter ID", parameters.First(parameter => parameters.Count(candidate => candidate.Id == parameter.Id) > 1).Id));
+            Report(diagnostics, InvalidMetadata, method, name, "duplicate parameter ID", parameters.First(parameter => parameters.Count(candidate => candidate.Id == parameter.Id) > 1).Id);
             return null;
         }
         string[] optionSpellings = parameters.Where(static parameter => parameter.Kind == ParameterKind.Option)
             .SelectMany(static parameter => parameter.Aliases.Prepend(parameter.Spelling!)).ToArray();
         if (optionSpellings.GroupBy(static spelling => spelling, StringComparer.Ordinal).Any(static group => group.Count() > 1))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, method.Locations.FirstOrDefault(), name, "duplicate option spelling", optionSpellings.First(spelling => optionSpellings.Count(candidate => candidate == spelling) > 1)));
+            Report(diagnostics, InvalidMetadata, method, name, "duplicate option spelling", optionSpellings.First(spelling => optionSpellings.Count(candidate => candidate == spelling) > 1));
             return null;
         }
 
         if (!TryGetResultMetadata(method, result!, out string? payloadType, out INamedTypeSymbol? jsonContext) && !(FindAttribute(method, "Runic.CommandLine.CommandResultAttribute") is null && (result!.SpecialType is SpecialType.System_String or SpecialType.System_Void || shape is ResultShape.UnitTask)))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidCommand, method.Locations.FirstOrDefault(), name));
+            Report(diagnostics, InvalidResultMetadata, method, name);
             return null;
         }
 
         payloadType ??= shape is ResultShape.Unit or ResultShape.UnitTask ? "runic.unit/1" : "runic.text/1";
         if (!IsPayloadType(payloadType!))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, method.Locations.FirstOrDefault(), name, "result payload type", payloadType));
+            Report(diagnostics, InvalidMetadata, method, name, "result payload type", payloadType);
             return null;
         }
 
-        return new CommandModel(method, name!, result!, shape, parameters, payloadType!, jsonContext!, FindAttribute(method, "Runic.CommandLine.DefaultCommandAttribute") is not null);
+        return CreateModel(method, name!, result!, shape, parameters, payloadType!, jsonContext, FindAttribute(method, "Runic.CommandLine.DefaultCommandAttribute") is not null);
     }
 
-    private static ParameterModel? TryCreateParameter(SourceProductionContext context, IMethodSymbol method, IParameterSymbol parameter)
+    private static ParameterModel? TryCreateParameter(List<DiagnosticInfo> diagnostics, IMethodSymbol method, IParameterSymbol parameter)
     {
         AttributeData? argument = FindAttribute(parameter, "Runic.CommandLine.ArgumentAttribute");
         AttributeData? option = FindAttribute(parameter, "Runic.CommandLine.OptionAttribute");
         AttributeData? service = FindAttribute(parameter, "Runic.CommandLine.FromServicesAttribute");
         int count = (argument is null ? 0 : 1) + (option is null ? 0 : 1) + (service is null ? 0 : 1);
         string methodName = GetCommandName(method);
-        if (parameter.RefKind != RefKind.None || (parameter.HasExplicitDefaultValue && option is null && argument is null))
+        if (parameter.RefKind != RefKind.None)
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+            Report(diagnostics, ByReferenceParameter, parameter, parameter.Name, methodName);
+            return null;
+        }
+        if (parameter.HasExplicitDefaultValue && option is null && argument is null)
+        {
+            Report(diagnostics, UnboundDefaultValue, parameter, parameter.Name, methodName);
             return null;
         }
         if (count > 1 || (count == 0 && !IsContext(parameter.Type)))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+            Report(diagnostics, InvalidParameter, parameter, parameter.Name, methodName);
             return null;
         }
-
         if (service is not null)
         {
             if (!IsAccessibleType(parameter.Type))
             {
-                context.ReportDiagnostic(Diagnostic.Create(UnsupportedType, parameter.Locations.FirstOrDefault(), parameter.Name, methodName, parameter.Type.ToDisplayString()));
+                Report(diagnostics, UnsupportedType, parameter, parameter.Name, methodName, parameter.Type.ToDisplayString());
                 return null;
             }
             return new ParameterModel(parameter, ParameterKind.Service, parameter.Name, null, ImmutableArray<string>.Empty, null, false);
@@ -159,35 +185,35 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
         }
         if (invalidRange)
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, parameter.Locations.FirstOrDefault(), methodName, "numeric range/default", parameter.Name));
+            Report(diagnostics, InvalidMetadata, parameter, methodName, "numeric range/default", parameter.Name);
             return null;
         }
 
         if (option is not null && parameter.HasExplicitDefaultValue && GetRequired(option))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+            Report(diagnostics, RequiredOptionDefault, parameter, parameter.Name, methodName);
             return null;
         }
         if (option is not null && parameter.HasExplicitDefaultValue && IsBoolean(parameter.Type) && parameter.ExplicitDefaultValue is true)
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+            Report(diagnostics, FlagDefaultsToTrue, parameter, parameter.Name, methodName);
             return null;
         }
         if (option is not null && parameter.HasExplicitDefaultValue && IsList(parameter.Type))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+            Report(diagnostics, ListOptionDefault, parameter, parameter.Name, methodName);
             return null;
         }
         if (FindAttribute(parameter, "Runic.CommandLine.ConvertWithAttribute") is null && !IsValueType(parameter.Type) && !((option is not null || argument is not null) && IsList(parameter.Type)))
         {
-            context.ReportDiagnostic(Diagnostic.Create(UnsupportedType, parameter.Locations.FirstOrDefault(), parameter.Name, methodName, parameter.Type.ToDisplayString()));
+            Report(diagnostics, UnsupportedType, parameter, parameter.Name, methodName, parameter.Type.ToDisplayString());
             return null;
         }
 
         string id = GetId(parameter, argument);
         if (!IsIdentifier(id))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, parameter.Locations.FirstOrDefault(), methodName, "parameter ID", id));
+            Report(diagnostics, InvalidMetadata, parameter, methodName, "parameter ID", id);
             return null;
         }
         if (option is not null)
@@ -195,7 +221,7 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
             string? spelling = option.ConstructorArguments.Length > 0 ? option.ConstructorArguments[0].Value as string : null;
             if (!IsOptionSpelling(spelling!) || IsReservedOption(spelling!))
             {
-                context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, parameter.Locations.FirstOrDefault(), methodName, "option spelling", spelling ?? string.Empty));
+                Report(diagnostics, InvalidMetadata, parameter, methodName, "option spelling", spelling ?? string.Empty);
                 return null;
             }
 
@@ -204,7 +230,7 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
                 : ImmutableArray<string>.Empty;
             if (aliases.Any(alias => !IsOptionSpelling(alias) || IsReservedOption(alias)))
             {
-                context.ReportDiagnostic(Diagnostic.Create(InvalidMetadata, parameter.Locations.FirstOrDefault(), methodName, "option alias", aliases.First(alias => !IsOptionSpelling(alias) || IsReservedOption(alias))));
+                Report(diagnostics, InvalidMetadata, parameter, methodName, "option alias", aliases.First(alias => !IsOptionSpelling(alias) || IsReservedOption(alias)));
                 return null;
             }
             bool allowMultipleValues = GetAllowMultipleValues(option);
@@ -212,12 +238,12 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
             bool isRequired = GetRequired(option) || (!parameter.HasExplicitDefaultValue && !IsNullable(parameter) && !IsBoolean(parameter.Type) && !IsList(parameter.Type));
             if (allowMultipleValues && !IsList(parameter.Type))
             {
-                context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+                Report(diagnostics, MultipleValuesMismatch, parameter, parameter.Name, methodName);
                 return null;
             }
             if (!allowMultipleOccurrences && !IsList(parameter.Type))
             {
-                context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+                Report(diagnostics, ScalarOccurrencePolicy, parameter, parameter.Name, methodName);
                 return null;
             }
             return new ParameterModel(parameter, ParameterKind.Option, id, spelling, aliases, parameter.HasExplicitDefaultValue ? parameter.ExplicitDefaultValue : null, parameter.HasExplicitDefaultValue || IsNullable(parameter), allowMultipleValues, isRequired, allowMultipleOccurrences);
@@ -227,16 +253,93 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
         if ((IsList(parameter.Type) && !allowMultipleArgumentValues) ||
             (allowMultipleArgumentValues && !IsList(parameter.Type)))
         {
-            context.ReportDiagnostic(Diagnostic.Create(InvalidParameter, parameter.Locations.FirstOrDefault(), parameter.Name, methodName));
+            Report(diagnostics, MultipleValuesMismatch, parameter, parameter.Name, methodName);
             return null;
         }
 
         if (IsBoolean(parameter.Type))
         {
-            context.ReportDiagnostic(Diagnostic.Create(UnsupportedType, parameter.Locations.FirstOrDefault(), parameter.Name, methodName, parameter.Type.ToDisplayString()));
+            Report(diagnostics, UnsupportedType, parameter, parameter.Name, methodName, parameter.Type.ToDisplayString());
             return null;
         }
         return new ParameterModel(parameter, ParameterKind.Argument, id, null, ImmutableArray<string>.Empty, parameter.HasExplicitDefaultValue ? parameter.ExplicitDefaultValue : null, parameter.HasExplicitDefaultValue || IsNullable(parameter), allowMultipleArgumentValues);
+    }
+
+    private static void Report(List<DiagnosticInfo> diagnostics, DiagnosticDescriptor descriptor, ISymbol symbol, params string?[] arguments) =>
+        diagnostics.Add(new DiagnosticInfo(descriptor, LocationInfo.From(symbol), new EquatableArray<string>(arguments.Select(static argument => argument ?? string.Empty).ToArray())));
+
+    // Renders every index-independent fragment while symbols are available; Render only numbers them.
+    private static CommandModel CreateModel(IMethodSymbol method, string name, ITypeSymbol result, ResultShape shape, List<ParameterModel> parameters, string payloadType, INamedTypeSymbol? jsonContext, bool isDefault)
+    {
+        var registration = new StringBuilder();
+        foreach (ParameterModel parameter in parameters.Where(static parameter => parameter.Kind == ParameterKind.Option))
+        {
+            registration.Append(".Option(").Append(Literal(parameter.Id)).Append(", ").Append(Literal(parameter.Spelling!)).Append(", global::Runic.CommandLine.CommandArity.").Append(IsBoolean(parameter.Symbol.Type) ? "Zero" : parameter.AllowMultipleValues ? "OneOrMore" : "ExactlyOne");
+            if (IsList(parameter.Symbol.Type)) registration.Append(", global::Runic.CommandLine.CommandOptionRepeatPolicy.").Append(parameter.AllowMultipleOccurrences ? "Append" : "Error");
+            else if (parameter.IsRequired) registration.Append(", global::Runic.CommandLine.CommandOptionRepeatPolicy.Error");
+            AttributeData optionMetadata = FindAttribute(parameter.Symbol, "Runic.CommandLine.OptionAttribute")!;
+            if (optionMetadata.NamedArguments.Any(static p => p.Key == "Sensitive" && p.Value.Value is true)) registration.Append(", isSensitive: true, descriptionKey: null");
+            if (parameter.IsRequired) registration.Append(", isRequired: true");
+            if (!parameter.Aliases.IsEmpty)
+            {
+                registration.Append(", aliases: [");
+                for (int aliasIndex = 0; aliasIndex < parameter.Aliases.Length; aliasIndex++)
+                {
+                    if (aliasIndex != 0) registration.Append(", ");
+                    registration.Append(Literal(parameter.Aliases[aliasIndex]));
+                }
+                registration.Append(']');
+            }
+            registration.Append(')');
+        }
+        foreach (ParameterModel parameter in parameters.Where(static parameter => parameter.Kind == ParameterKind.Argument))
+        {
+            bool sensitive = FindAttribute(parameter.Symbol, "Runic.CommandLine.ArgumentAttribute")!.NamedArguments.Any(static p => p.Key == "Sensitive" && p.Value.Value is true);
+            registration.Append(".Argument(").Append(Literal(parameter.Id)).Append(", ").Append(Literal(parameter.Id)).Append(", global::Runic.CommandLine.CommandArity.").Append(parameter.AllowMultipleValues ? "ZeroOrMore" : parameter.HasDefault ? "ZeroOrOne" : "ExactlyOne").Append(sensitive ? ", isSensitive: true)" : ")");
+        }
+
+        AttributeData commandAttribute = FindAttribute(method, "Runic.CommandLine.CommandAttribute")!;
+        registration.Append(".WithHelp(new global::Runic.CommandLine.CommandHelp(description: ").Append(NamedString(commandAttribute, "Description")).Append(", examples: ").Append(NamedArray(commandAttribute, "Examples")).Append(") { Hidden = ").Append(NamedBool(commandAttribute, "Hidden")).Append(", LongDescription = ").Append(NamedString(commandAttribute, "LongDescription")).Append(" })");
+        foreach (ParameterModel parameter in parameters.Where(static p => p.Kind is ParameterKind.Option or ParameterKind.Argument))
+        {
+            AttributeData metadata = FindAttribute(parameter.Symbol, parameter.Kind == ParameterKind.Option ? "Runic.CommandLine.OptionAttribute" : "Runic.CommandLine.ArgumentAttribute")!;
+            ITypeSymbol scalar = ElementType(parameter.Symbol.Type) ?? parameter.Symbol.Type;
+            if (scalar is INamedTypeSymbol nullable && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T) scalar = nullable.TypeArguments[0];
+            bool numeric = scalar.SpecialType is SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_Double or SpecialType.System_Decimal;
+            string choices = NamedArray(metadata, "Choices");
+            if (choices == "[]" && scalar.TypeKind == TypeKind.Enum) choices = "[" + string.Join(", ", scalar.GetMembers().OfType<IFieldSymbol>().Where(static f => f.HasConstantValue).Select(static f => Literal(f.Name))) + "]";
+            registration.Append(".ParameterHelp(").Append(Literal(parameter.Id)).Append(", new global::Runic.CommandLine.CommandHelp(description: ").Append(NamedString(metadata, "Description"))
+                .Append(", valueName: ").Append(NamedString(metadata, "ValueName")).Append(", defaultValue: ").Append(parameter.HasDefault && parameter.DefaultValue is not null ? Literal(Convert.ToString(parameter.DefaultValue, CultureInfo.InvariantCulture)!) : "null")
+                .Append(", environmentVariable: ").Append(NamedString(metadata, "EnvironmentVariable")).Append(", choices: ").Append(choices).Append(", acceptsNegativeNumbers: ").Append(numeric ? "true" : "false").Append(") { Hidden = ").Append(NamedBool(metadata, "Hidden"))
+                .Append(", PathKind = (global::Runic.CommandLine.CommandPathKind)").Append(PathKind(metadata, scalar))
+                .Append(", MustExist = ").Append(NamedBool(metadata, "MustExist"))
+                .Append(", Minimum = ").Append(NamedBound(metadata, "Minimum")).Append(", Maximum = ").Append(NamedBound(metadata, "Maximum"))
+                .Append(", Requires = ").Append(NamedArray(metadata, "Requires")).Append(", ConflictsWith = ").Append(NamedArray(metadata, "ConflictsWith")).Append(" })");
+        }
+
+        ParameterModel[] boundParameters = parameters.Where(static p => p.Kind is ParameterKind.Argument or ParameterKind.Option).ToArray();
+        var binder = new StringBuilder();
+        foreach (ParameterModel parameter in boundParameters)
+        {
+            binder.Append("var ").Append(EscapeIdentifier(parameter.Symbol.Name)).Append(" = ").Append(ValueExpression(parameter)).Append(';');
+        }
+        string invocation = "global::" + method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", string.Empty, StringComparison.Ordinal) + "." + EscapeIdentifier(method.Name) + "(" + string.Join(", ", parameters.Select(ValueForInvocation)) + ")";
+        bool customText = jsonContext is not null && result.GetMembers("ToString").OfType<IMethodSymbol>().Any(static member => member.IsOverride && !member.IsImplicitlyDeclared && member.Parameters.Length == 0);
+        return new CommandModel(
+            method.ToDisplayString(),
+            name,
+            isDefault,
+            LocationInfo.From(method),
+            shape is ResultShape.Unit or ResultShape.UnitTask ? "global::Runic.CommandLine.CommandUnit" : Type(result),
+            shape,
+            payloadType,
+            jsonContext is null ? null : Type(jsonContext),
+            customText,
+            registration.ToString(),
+            string.Join(", ", boundParameters.Select(p => ParameterType(p.Symbol) + " " + EscapeIdentifier(p.Symbol.Name))),
+            binder.ToString(),
+            string.Join(", ", boundParameters.Select(p => EscapeIdentifier(p.Symbol.Name))),
+            invocation);
     }
 
     private static string Render(IReadOnlyList<CommandModel> commands)
@@ -246,51 +349,7 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
         for (int index = 0; index < commands.Count; index++)
         {
             CommandModel command = commands[index];
-            source.Append("        .CommandPath<__Options").Append(index).Append(", __Handler").Append(index).Append(", ").Append(ResultType(command)).Append(">(").Append(Literal(command.Name)).Append(", command => command");
-            foreach (ParameterModel parameter in command.Parameters.Where(static parameter => parameter.Kind == ParameterKind.Option))
-            {
-                source.Append(".Option(").Append(Literal(parameter.Id)).Append(", ").Append(Literal(parameter.Spelling!)).Append(", global::Runic.CommandLine.CommandArity.").Append(IsBoolean(parameter.Symbol.Type) ? "Zero" : parameter.AllowMultipleValues ? "OneOrMore" : "ExactlyOne");
-                if (IsList(parameter.Symbol.Type)) source.Append(", global::Runic.CommandLine.CommandOptionRepeatPolicy.").Append(parameter.AllowMultipleOccurrences ? "Append" : "Error");
-                else if (parameter.IsRequired) source.Append(", global::Runic.CommandLine.CommandOptionRepeatPolicy.Error");
-                AttributeData optionMetadata = FindAttribute(parameter.Symbol, "Runic.CommandLine.OptionAttribute")!;
-                if (optionMetadata.NamedArguments.Any(static p => p.Key == "Sensitive" && p.Value.Value is true)) source.Append(", isSensitive: true, descriptionKey: null");
-                if (parameter.IsRequired) source.Append(", isRequired: true");
-                if (!parameter.Aliases.IsEmpty)
-                {
-                    source.Append(", aliases: [");
-                    for (int aliasIndex = 0; aliasIndex < parameter.Aliases.Length; aliasIndex++)
-                    {
-                        if (aliasIndex != 0) source.Append(", ");
-                        source.Append(Literal(parameter.Aliases[aliasIndex]));
-                    }
-                    source.Append(']');
-                }
-                source.Append(')');
-            }
-            foreach (ParameterModel parameter in command.Parameters.Where(static parameter => parameter.Kind == ParameterKind.Argument))
-            {
-                bool sensitive = FindAttribute(parameter.Symbol, "Runic.CommandLine.ArgumentAttribute")!.NamedArguments.Any(static p => p.Key == "Sensitive" && p.Value.Value is true);
-                source.Append(".Argument(").Append(Literal(parameter.Id)).Append(", ").Append(Literal(parameter.Id)).Append(", global::Runic.CommandLine.CommandArity.").Append(parameter.AllowMultipleValues ? "ZeroOrMore" : parameter.HasDefault ? "ZeroOrOne" : "ExactlyOne").Append(sensitive ? ", isSensitive: true)" : ")");
-            }
-
-            AttributeData commandAttribute = FindAttribute(command.Method, "Runic.CommandLine.CommandAttribute")!;
-            source.Append(".WithHelp(new global::Runic.CommandLine.CommandHelp(description: ").Append(NamedString(commandAttribute, "Description")).Append(", examples: ").Append(NamedArray(commandAttribute, "Examples")).Append(") { Hidden = ").Append(NamedBool(commandAttribute, "Hidden")).Append(", LongDescription = ").Append(NamedString(commandAttribute, "LongDescription")).Append(" })");
-            foreach (ParameterModel parameter in command.Parameters.Where(static p => p.Kind is ParameterKind.Option or ParameterKind.Argument))
-            {
-                AttributeData metadata = FindAttribute(parameter.Symbol, parameter.Kind == ParameterKind.Option ? "Runic.CommandLine.OptionAttribute" : "Runic.CommandLine.ArgumentAttribute")!;
-                ITypeSymbol scalar = ElementType(parameter.Symbol.Type) ?? parameter.Symbol.Type;
-                if (scalar is INamedTypeSymbol nullable && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T) scalar = nullable.TypeArguments[0];
-                bool numeric = scalar.SpecialType is SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_Double or SpecialType.System_Decimal;
-                string choices = NamedArray(metadata, "Choices");
-                if (choices == "[]" && scalar.TypeKind == TypeKind.Enum) choices = "[" + string.Join(", ", scalar.GetMembers().OfType<IFieldSymbol>().Where(static f => f.HasConstantValue).Select(static f => Literal(f.Name))) + "]";
-                source.Append(".ParameterHelp(").Append(Literal(parameter.Id)).Append(", new global::Runic.CommandLine.CommandHelp(description: ").Append(NamedString(metadata, "Description"))
-                    .Append(", valueName: ").Append(NamedString(metadata, "ValueName")).Append(", defaultValue: ").Append(parameter.HasDefault && parameter.DefaultValue is not null ? Literal(Convert.ToString(parameter.DefaultValue, CultureInfo.InvariantCulture)!) : "null")
-                    .Append(", environmentVariable: ").Append(NamedString(metadata, "EnvironmentVariable")).Append(", choices: ").Append(choices).Append(", acceptsNegativeNumbers: ").Append(numeric ? "true" : "false").Append(") { Hidden = ").Append(NamedBool(metadata, "Hidden"))
-                    .Append(", PathKind = (global::Runic.CommandLine.CommandPathKind)").Append(PathKind(metadata, scalar))
-                    .Append(", MustExist = ").Append(NamedBool(metadata, "MustExist"))
-                    .Append(", Minimum = ").Append(NamedBound(metadata, "Minimum")).Append(", Maximum = ").Append(NamedBound(metadata, "Maximum"))
-                    .Append(", Requires = ").Append(NamedArray(metadata, "Requires")).Append(", ConflictsWith = ").Append(NamedArray(metadata, "ConflictsWith")).Append(" })");
-            }
+            source.Append("        .CommandPath<__Options").Append(index).Append(", __Handler").Append(index).Append(", ").Append(command.ResultType).Append(">(").Append(Literal(command.Name)).Append(", command => command").Append(command.Registration);
             source.Append(".BindWith(__Binder").Append(index).Append(".Instance).CreateHandlerWith(__Factory").Append(index).Append(".Instance).Produces(__Codec").Append(index).Append(".Instance))").AppendLine();
         }
         CommandModel? defaultCommand = commands.FirstOrDefault(static command => command.IsDefault);
@@ -303,19 +362,14 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
 
     private static void RenderCommand(StringBuilder source, CommandModel command, int index)
     {
-        string result = ResultType(command);
-        ParameterModel[] boundParameters = command.Parameters.Where(static p => p.Kind is ParameterKind.Argument or ParameterKind.Option).ToArray();
-        source.Append("    private sealed record __Options").Append(index).Append('(')
-            .Append(string.Join(", ", boundParameters.Select(p => ParameterType(p.Symbol) + " " + EscapeIdentifier(p.Symbol.Name)))).AppendLine(");");
+        string result = command.ResultType;
+        source.Append("    private sealed record __Options").Append(index).Append('(').Append(command.OptionsParameters).AppendLine(");");
         source.Append("    private sealed class __Binder").Append(index).Append(" : global::Runic.CommandLine.ICommandOptionsBinder<__Options").Append(index).AppendLine("> { public static __Binder" + index + " Instance { get; } = new(); public global::System.Threading.Tasks.ValueTask<global::Runic.CommandLine.CommandOutcome<__Options" + index + ">> BindAsync(global::Runic.CommandLine.ParsedInvocation invocation, global::System.Threading.CancellationToken cancellationToken) { try { cancellationToken.ThrowIfCancellationRequested();");
-        foreach (ParameterModel parameter in command.Parameters.Where(static parameter => parameter.Kind is ParameterKind.Argument or ParameterKind.Option))
-        {
-            source.Append("var ").Append(EscapeIdentifier(parameter.Symbol.Name)).Append(" = ").Append(ValueExpression(parameter)).Append(';');
-        }
-        source.Append("return global::System.Threading.Tasks.ValueTask.FromResult(global::Runic.CommandLine.CommandOutcome.Success(new __Options").Append(index).Append("(" + string.Join(", ", boundParameters.Select(p => EscapeIdentifier(p.Symbol.Name))) + "))); } catch (global::Runic.CommandLine.GeneratedCommandBindingException exception) { return global::System.Threading.Tasks.ValueTask.FromResult(global::Runic.CommandLine.CommandOutcome.Failure<__Options").Append(index).Append(">(global::Runic.CommandLine.CommandExitCategory.Usage, new global::Runic.CommandLine.CommandFault(\"RCLI2005\", exception.Message))); } } }").AppendLine();
+        source.Append(command.BinderStatements);
+        source.Append("return global::System.Threading.Tasks.ValueTask.FromResult(global::Runic.CommandLine.CommandOutcome.Success(new __Options").Append(index).Append("(" + command.BoundNames + "))); } catch (global::Runic.CommandLine.GeneratedCommandBindingException exception) { return global::System.Threading.Tasks.ValueTask.FromResult(global::Runic.CommandLine.CommandOutcome.Failure<__Options").Append(index).Append(">(global::Runic.CommandLine.CommandExitCategory.Usage, new global::Runic.CommandLine.CommandFault(\"RCLI2005\", exception.Message))); } } }").AppendLine();
         source.Append("    private sealed class __Factory").Append(index).Append(" : global::Runic.CommandLine.ICommandHandlerFactory<__Handler").Append(index).AppendLine("> { public static __Factory" + index + " Instance { get; } = new(); public __Handler" + index + " Create(global::System.IServiceProvider services) => new(services); }");
         source.Append("    private sealed class __Handler").Append(index).Append(" : global::Runic.CommandLine.ICommandHandler<__Options").Append(index).Append(", ").Append(result).AppendLine("> { private readonly global::System.IServiceProvider _services; public __Handler" + index + "(global::System.IServiceProvider services) => _services = services; public async global::System.Threading.Tasks.ValueTask<global::Runic.CommandLine.CommandOutcome<" + result + ">> ExecuteAsync(__Options" + index + " options, global::Runic.CommandLine.CommandExecutionContext context, global::System.Threading.CancellationToken cancellationToken) { ");
-        string invocation = "global::" + command.Method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", string.Empty, StringComparison.Ordinal) + "." + EscapeIdentifier(command.Method.Name) + "(" + string.Join(", ", command.Parameters.Select(ValueForInvocation)) + ")";
+        string invocation = command.Invocation;
         switch (command.Shape)
         {
             case ResultShape.Unit: source.Append(invocation).Append("; return global::Runic.CommandLine.CommandOutcome.Success(new global::Runic.CommandLine.CommandUnit());"); break;
@@ -326,17 +380,16 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
             case ResultShape.OutcomeTask: case ResultShape.OutcomeValueTask: source.Append("return await ").Append(invocation).Append(".ConfigureAwait(false);"); break;
         }
         source.Append(" } }").AppendLine();
-        if (command.JsonContext is null)
+        if (command.JsonContextType is null)
         {
             string codec = command.Shape is ResultShape.Unit or ResultShape.UnitTask ? "Unit" : "String";
             source.Append("    private static class __Codec").Append(index).Append(" { public static global::Runic.CommandLine.ICommandResultCodec<").Append(result).Append("> Instance => global::Runic.CommandLine.CommandResultCodecs.").Append(codec).AppendLine("; }");
             return;
         }
-        bool customText = command.Result.GetMembers("ToString").OfType<IMethodSymbol>().Any(static method => method.IsOverride && !method.IsImplicitlyDeclared && method.Parameters.Length == 0);
-        string humanBody = customText
+        string humanBody = command.CustomText
             ? "console.WriteOutAsync(global::System.MemoryExtensions.AsMemory(global::System.String.Concat(global::System.Convert.ToString(value, culture) ?? string.Empty, \"\\n\")), cancellationToken)"
             : "global::Runic.CommandLine.CommandResultFormatter.WriteHumanAsync(value, TypeInfo, console, cancellationToken)";
-        source.Append("    private sealed class __Codec").Append(index).Append(" : global::Runic.CommandLine.ICommandResultCodec<").Append(result).AppendLine("> { public static __Codec" + index + " Instance { get; } = new(); public string PayloadType => " + Literal(command.PayloadType) + "; public global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<" + result + "> TypeInfo => (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<" + result + ">)new " + Type(command.JsonContext) + "().GetTypeInfo(typeof(" + result + "))!; public global::System.Threading.Tasks.ValueTask WriteHumanAsync(" + result + " value, global::Runic.CommandLine.ICommandConsole console, global::System.Globalization.CultureInfo culture, global::System.Threading.CancellationToken cancellationToken) => " + humanBody + "; }");
+        source.Append("    private sealed class __Codec").Append(index).Append(" : global::Runic.CommandLine.ICommandResultCodec<").Append(result).AppendLine("> { public static __Codec" + index + " Instance { get; } = new(); public string PayloadType => " + Literal(command.PayloadType) + "; public global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<" + result + "> TypeInfo => (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<" + result + ">)new " + command.JsonContextType + "().GetTypeInfo(typeof(" + result + "))!; public global::System.Threading.Tasks.ValueTask WriteHumanAsync(" + result + " value, global::Runic.CommandLine.ICommandConsole console, global::System.Globalization.CultureInfo culture, global::System.Threading.CancellationToken cancellationToken) => " + humanBody + "; }");
     }
 
     private static string NamedBool(AttributeData metadata, string name) => metadata.NamedArguments.Any(p => p.Key == name && p.Value.Value is true) ? "true" : "false";
@@ -440,7 +493,6 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
             InheritsFrom(jsonContext, "System.Text.Json.Serialization", "JsonSerializerContext") &&
             DeclaresMetadataFor(jsonContext, result);
     }
-    private static string ResultType(CommandModel command) => command.Shape is ResultShape.Unit or ResultShape.UnitTask ? "global::Runic.CommandLine.CommandUnit" : Type(command.Result);
     private static bool IsNullable(IParameterSymbol parameter) => parameter.NullableAnnotation == NullableAnnotation.Annotated;
     private static string NamedString(AttributeData data, string name) => data.NamedArguments.FirstOrDefault(p => p.Key == name).Value.Value is string value ? Literal(value) : "null";
     private static string NamedArray(AttributeData data, string name)
@@ -545,5 +597,63 @@ public sealed class CommandLineGenerator : IIncrementalGenerator
     private static bool GetRequired(AttributeData option) =>
         option.NamedArguments.FirstOrDefault(static pair => pair.Key == "Required").Value.Value as bool? ?? false;
     private sealed record ParameterModel(IParameterSymbol Symbol, ParameterKind Kind, string Id, string? Spelling, ImmutableArray<string> Aliases, object? DefaultValue, bool HasDefault, bool AllowMultipleValues = false, bool IsRequired = false, bool AllowMultipleOccurrences = true);
-    private sealed record CommandModel(IMethodSymbol Method, string Name, ITypeSymbol Result, ResultShape Shape, IReadOnlyList<ParameterModel> Parameters, string PayloadType, INamedTypeSymbol? JsonContext, bool IsDefault);
+
+    private sealed record CommandCandidate(string SortKey, CommandModel? Command, EquatableArray<DiagnosticInfo> Diagnostics);
+
+    private sealed record CommandModel(
+        string SortKey,
+        string Name,
+        bool IsDefault,
+        LocationInfo? Location,
+        string ResultType,
+        ResultShape Shape,
+        string PayloadType,
+        string? JsonContextType,
+        bool CustomText,
+        string Registration,
+        string OptionsParameters,
+        string BinderStatements,
+        string BoundNames,
+        string Invocation);
+
+    private sealed record DiagnosticInfo(DiagnosticDescriptor Descriptor, LocationInfo? Location, EquatableArray<string> Arguments)
+    {
+        public Diagnostic ToDiagnostic() => Diagnostic.Create(Descriptor, Location?.ToLocation(), Arguments.ToArray());
+    }
+
+    private sealed record LocationInfo(string FilePath, TextSpan Span, LinePositionSpan LineSpan)
+    {
+        public Location ToLocation() => Location.Create(FilePath, Span, LineSpan);
+
+        public static LocationInfo? From(ISymbol symbol)
+        {
+            Location? location = symbol.Locations.FirstOrDefault();
+            return location?.SourceTree is null ? null : new LocationInfo(location.SourceTree.FilePath, location.SourceSpan, location.GetLineSpan().Span);
+        }
+    }
+
+    private readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnumerable<T>
+        where T : IEquatable<T>
+    {
+        private readonly T[]? items;
+
+        public EquatableArray(T[] items) => this.items = items;
+
+        public T[] ToArray() => items is null ? Array.Empty<T>() : (T[])items.Clone();
+
+        public bool Equals(EquatableArray<T> other) => (items ?? Array.Empty<T>()).AsSpan().SequenceEqual(other.items ?? Array.Empty<T>());
+
+        public override bool Equals(object? obj) => obj is EquatableArray<T> other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            foreach (T item in items ?? Array.Empty<T>()) hash.Add(item);
+            return hash.ToHashCode();
+        }
+
+        public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)(items ?? Array.Empty<T>())).GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 }

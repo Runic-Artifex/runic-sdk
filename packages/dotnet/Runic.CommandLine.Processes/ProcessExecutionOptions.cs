@@ -27,6 +27,10 @@ public sealed class ProcessExecutionOptions
     /// <param name="drainGracePeriod">Bounded wait after a termination request.</param>
     /// <param name="standardOutputEncoding">Standard-output encoding; UTF-8 without a BOM by default.</param>
     /// <param name="standardErrorEncoding">Standard-error encoding; UTF-8 without a BOM by default.</param>
+    /// <param name="allowWindowsBatchFiles">
+    /// Allows Windows <c>.bat</c> and <c>.cmd</c> files, which run through <c>cmd.exe</c>; arguments
+    /// containing <c>cmd.exe</c> metacharacters are still rejected.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">A limit or duration is outside its allowed range.</exception>
     public ProcessExecutionOptions(
         TimeSpan? timeout = null,
@@ -34,7 +38,8 @@ public sealed class ProcessExecutionOptions
         int standardErrorLimitBytes = DefaultOutputLimitBytes,
         TimeSpan? drainGracePeriod = null,
         Encoding? standardOutputEncoding = null,
-        Encoding? standardErrorEncoding = null)
+        Encoding? standardErrorEncoding = null,
+        bool allowWindowsBatchFiles = false)
     {
         Timeout = timeout ?? System.Threading.Timeout.InfiniteTimeSpan;
         DrainGracePeriod = drainGracePeriod ?? DefaultDrainGracePeriod;
@@ -70,6 +75,7 @@ public sealed class ProcessExecutionOptions
         StandardErrorLimitBytes = standardErrorLimitBytes;
         StandardOutputEncoding = standardOutputEncoding ?? new UTF8Encoding(false, false);
         StandardErrorEncoding = standardErrorEncoding ?? new UTF8Encoding(false, false);
+        AllowWindowsBatchFiles = allowWindowsBatchFiles;
     }
 
     /// <summary>Gets the maximum execution time.</summary>
@@ -89,4 +95,10 @@ public sealed class ProcessExecutionOptions
 
     /// <summary>Gets the standard-error encoding.</summary>
     public Encoding StandardErrorEncoding { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether Windows batch files may start. When enabled, arguments containing
+    /// <c>% ! ^ &amp; | &lt; &gt; " ( )</c> or line breaks are rejected because <c>cmd.exe</c> would interpret them.
+    /// </summary>
+    public bool AllowWindowsBatchFiles { get; }
 }

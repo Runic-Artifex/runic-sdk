@@ -19,6 +19,11 @@
           Outputs="$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets">
     <PropertyGroup>
       <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>
+      <!--
+        A trailing backslash before the closing quote would escape it on the Windows command line.
+        Ending with "\." keeps the same directory, including drive roots, without a backslash-quote.
+      -->
+      <_RunicAssetsDistArgument>$([MSBuild]::EnsureTrailingSlash('$(RunicAssetsDist)')).</_RunicAssetsDistArgument>
     </PropertyGroup>
 
     <Error Condition="'$(RunicAssetsEmbeddedArchive)' != ''"
@@ -29,9 +34,9 @@
            Text="The Runic Assets packer '$(RunicAssetsPackerPath)' does not exist." />
 
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicAssetsGeneratedArchive)'))" />
-    <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(RunicAssetsDist)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --trusted-generated-output"
+    <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(_RunicAssetsDistArgument)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --trusted-generated-output"
           Condition="'$(RunicAssetsDistExclude)' == ''" />
-    <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(RunicAssetsDist)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --exclude &quot;$(RunicAssetsDistExclude)&quot; --trusted-generated-output"
+    <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(_RunicAssetsDistArgument)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --exclude &quot;$(RunicAssetsDistExclude)&quot; --trusted-generated-output"
           Condition="'$(RunicAssetsDistExclude)' != ''" />
   </Target>
 

@@ -51,6 +51,23 @@ throw new InvalidOperationException(
 quote them into a shell command. Both redirected streams are drained
 concurrently even after their retention caps; `IsTruncated` and
 `ObservedByteCount` distinguish retained text from the total observed output.
+After the child exits, the runner waits at most `DrainGracePeriod` for both
+pipes to close. A descendant that inherited a pipe can hold it open; the runner
+then closes the pipe and sets `DrainTimedOut`, so the captured text may be
+incomplete even though the state is `Exited`. Timeouts and drain grace periods
+use the `TimeProvider` passed to `ProcessRunner`.
+
+## Windows batch files
+
+Windows starts `.bat` and `.cmd` files through `cmd.exe`, which parses the
+command line again and interprets `&`, `|`, `%` and other characters even inside
+quoted arguments. Because bare names such as `npm` resolve through `PATHEXT`
+to `npm.cmd`, the runner rejects batch files with `RCLI6007` after resolution.
+Set `allowWindowsBatchFiles: true` on `ProcessExecutionOptions` only for
+trusted scripts; arguments or paths that contain `% ! ^ & | < > " ( )` or line
+breaks are still rejected with `RCLI6008` rather than escaped. Prefer the
+underlying executable (for example `node` with the package's script path) when
+arguments come from users.
 
 ## Security and failure behavior
 
@@ -63,7 +80,8 @@ can expose credentials.
 
 Use `ProcessState` to handle terminal behavior and `ProcessFaultCodes` for
 stable diagnostics such as `RCLI6001` (executable rejected), `RCLI6002`
-(working directory rejected), and `RCLI6005` (start failure). Policy messages
+(working directory rejected), `RCLI6005` (start failure), `RCLI6007` (batch
+file without opt-in), and `RCLI6008` (batch file argument). Policy messages
 and details are normalized before they reach a result to avoid leaking input.
 
 ## Documentation and support

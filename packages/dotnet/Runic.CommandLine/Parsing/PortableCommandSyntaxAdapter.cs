@@ -362,9 +362,10 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
             if (!optionBindingIndexes.ContainsKey(option.Id) && option.Help.EnvironmentVariable is { } variable && settings.GetEnvironmentVariable?.Invoke(variable) is { } environmentValue)
             {
                 bool flag = option.Arity.Maximum == 0;
-                if (flag && !bool.TryParse(environmentValue, out _))
+                bool enabled = false;
+                if (flag && !TryParseEnvironmentFlag(environmentValue, out enabled))
                     return Error("RCLI1014", "invalid-environment-value", tokens.Length, resolved.Path, [option.Name], CurrentOutputClassification());
-                if (!flag || bool.Parse(environmentValue))
+                if (!flag || enabled)
                 {
                     optionBindingIndexes.Add(option.Id, optionBindings.Count);
                     optionBindings.Add(new MutableBinding(option.Id, flag ? [] : [environmentValue]));
@@ -408,14 +409,27 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         {
             CommandOptionDescriptor? descriptor = null;
             foreach (CommandOptionDescriptor candidate in resolved.Command.Options) if (candidate.Id == binding.Id) descriptor = candidate;
-            if (descriptor is not null && !ValuesAllowed(binding.Values, descriptor.Help))
+            string[]? canonical = null;
+            if (descriptor is not null && !TryCanonicalizeChoices(binding.Values, descriptor.Help, out canonical))
                 return Error("RCLI1015", "invalid-choice", tokens.Length, resolved.Path, [descriptor.Name], CurrentOutputClassification());
+            if (canonical is not null)
+            {
+                binding.Values.Clear();
+                binding.Values.AddRange(canonical);
+            }
         }
-        foreach (CommandValueBinding binding in argumentBindings!)
+        var canonicalArguments = new CommandValueBinding[argumentBindings!.Count];
+        for (int argumentIndex = 0; argumentIndex < canonicalArguments.Length; argumentIndex++)
         {
+            CommandValueBinding binding = argumentBindings[argumentIndex];
+            canonicalArguments[argumentIndex] = binding;
             foreach (CommandArgumentDescriptor descriptor in resolved.Command.Arguments)
-                if (descriptor.Id == binding.Id && !ValuesAllowed(binding.Values, descriptor.Help))
+            {
+                if (descriptor.Id != binding.Id) continue;
+                if (!TryCanonicalizeChoices(binding.Values, descriptor.Help, out string[]? canonical))
                     return Error("RCLI1015", "invalid-choice", tokens.Length, resolved.Path, [descriptor.Name], CurrentOutputClassification());
+                if (canonical is not null) canonicalArguments[argumentIndex] = new CommandValueBinding(binding.Id, canonical);
+            }
         }
         var frozenOptions = new CommandValueBinding[optionBindings.Count];
         for (int optionIndex = 0; optionIndex < optionBindings.Count; optionIndex++)
@@ -429,7 +443,7 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
                 resolved.Command,
                 resolved.Path,
                 frozenOptions,
-                argumentBindings!,
+                canonicalArguments,
                 outputClassification));
     }
 
@@ -443,16 +457,41 @@ public sealed class PortableCommandSyntaxAdapter : ICommandSyntaxAdapter
         return null;
     }
 
-    private static bool ValuesAllowed(IReadOnlyList<string> values, CommandHelp help)
+    // Choices match case-insensitively, so handlers receive the declared spelling rather than the user's casing.
+    // An exact match wins when declared choices differ only by case. canonical is null when nothing changes.
+    private static bool TryCanonicalizeChoices(IReadOnlyList<string> values, CommandHelp help, out string[]? canonical)
     {
+        canonical = null;
         if (help.Choices.Count == 0) return true;
-        foreach (string value in values)
+        for (int index = 0; index < values.Count; index++)
         {
-            bool found = false;
-            foreach (string choice in help.Choices) if (string.Equals(value, choice, StringComparison.OrdinalIgnoreCase)) found = true;
-            if (!found) return false;
+            string? match = null;
+            foreach (string choice in help.Choices)
+            {
+                if (string.Equals(values[index], choice, StringComparison.Ordinal)) { match = choice; break; }
+                if (match is null && string.Equals(values[index], choice, StringComparison.OrdinalIgnoreCase)) match = choice;
+            }
+            if (match is null) return false;
+            if (!string.Equals(match, values[index], StringComparison.Ordinal))
+            {
+                canonical ??= [.. values];
+                canonical[index] = match;
+            }
         }
         return true;
+    }
+
+    // Accepts the spellings people put in environment files for a flag.
+    private static bool TryParseEnvironmentFlag(string value, out bool enabled)
+    {
+        if (value.Equals("true", StringComparison.OrdinalIgnoreCase) || value.Equals("yes", StringComparison.OrdinalIgnoreCase) || value == "1")
+        {
+            enabled = true;
+            return true;
+        }
+
+        enabled = false;
+        return value.Equals("false", StringComparison.OrdinalIgnoreCase) || value.Equals("no", StringComparison.OrdinalIgnoreCase) || value == "0";
     }
 
     private static ParseOutcome? ConsumeOptionValues(

@@ -1,6 +1,6 @@
 # Runic.Assets.AspNetCore
 
-Serve a Runic Assets manifest through exact ASP.NET Core GET endpoints without
+Serve a Runic Assets manifest through exact ASP.NET Core GET and HEAD endpoints without
 recreating its media types, cache policy, content lengths, or entity tags.
 
 ## Install
@@ -44,7 +44,9 @@ app.MapRunicAssetSource(assets, "ui");
 ## HTTP behavior
 
 Responses preserve the manifest-owned content type, length, cache-control
-value, and strong `ETag`, and include `X-Content-Type-Options: nosniff`.
+value, and strong `ETag`, and include `X-Content-Type-Options: nosniff`. `text/*`
+content types without a charset are sent as UTF-8. `HEAD` returns the same
+headers without a body.
 Matching `If-None-Match` values receive `304 Not Modified`. Unknown or invalid
 paths return `404`; the adapter does not infer an SPA fallback or serve files
 outside the manifest.

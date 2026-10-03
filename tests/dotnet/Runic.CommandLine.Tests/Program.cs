@@ -9,4 +9,5 @@ return await TestRunner.RunAsync(
     DiagnosticBoundaryTests.All,
     DispatcherTests.All,
     OutputTests.All,
-    ProtocolCorpusTests.All);
+    ProtocolCorpusTests.All,
+    GeneratorTests.All);

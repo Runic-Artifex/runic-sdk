@@ -56,11 +56,12 @@ public sealed class ProcessResult
 /// <summary>Contains one decoded, bounded process output channel.</summary>
 public sealed class ProcessOutput
 {
-    internal ProcessOutput(string text, long observedByteCount, bool isTruncated)
+    internal ProcessOutput(string text, long observedByteCount, bool isTruncated, bool drainTimedOut)
     {
         Text = text;
         ObservedByteCount = observedByteCount;
         IsTruncated = isTruncated;
+        DrainTimedOut = drainTimedOut;
     }
 
     /// <summary>Gets retained output decoded with the request encoding.</summary>
@@ -71,4 +72,10 @@ public sealed class ProcessOutput
 
     /// <summary>Gets a value indicating whether observed bytes exceeded the retained-byte cap.</summary>
     public bool IsTruncated { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the channel was still open when the drain grace period expired,
+    /// for example because a descendant inherited the pipe. The captured text may then be incomplete.
+    /// </summary>
+    public bool DrainTimedOut { get; }
 }

@@ -20,4 +20,10 @@ public static class ProcessFaultCodes
 
     /// <summary>The started process lifecycle could not be observed safely.</summary>
     public const string ExecutionFailed = "RCLI6006";
+
+    /// <summary>A Windows batch file was requested without explicit opt-in.</summary>
+    public const string BatchFileRejected = "RCLI6007";
+
+    /// <summary>A Windows batch file path or argument contains a cmd.exe metacharacter.</summary>
+    public const string BatchFileArgumentRejected = "RCLI6008";
 }

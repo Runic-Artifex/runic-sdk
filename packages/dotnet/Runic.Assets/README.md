@@ -48,6 +48,13 @@ statistics. To use an existing canonical archive, set
 `RunicAssetsEmbeddedResourceName` if you need a resource name other than
 `Runic.Assets.StaticFiles`, and supply that name to `ReadEmbedded`.
 
+Directory archives mark a file `Immutable` (`public, max-age=31536000,
+immutable`) only when its name carries a content hash, such as Vite's
+`index-Cf3tzbYH.js`, SvelteKit's `start.D2kX0q3e.js` or webpack's
+`main.<hex>.js`. Every other file, including `.html`/`.htm` documents and
+unhashed `public/` files such as `favicon.ico`, `robots.txt` or `sw.js`, uses
+`Revalidate` with its strong entity tag.
+
 ## Small explicit bundles
 
 For a few hand-authored files, declare assembly resources in your application
@@ -75,7 +82,9 @@ var assets = new EmbeddedAssetSource(
 Use `DevelopmentDirectoryAssetSource` only for the Linux development inner loop;
 it requires Linux no-follow directory handles so root and ancestor replacement
 cannot redirect a published source. It refreshes local files and marks them
-`no-store`. Call `StartWatching` once to
+`no-store`. Entries whose names are not valid asset paths (for example
+containing `:`, `?`, `#` or a backslash) are skipped and listed in
+`SkippedEntries` instead of failing the scan. Call `StartWatching` once to
 coalesce filesystem signals into source-owned refreshes, then dispose its
 `IAssetWatch` lease (or cancel its token) to stop it. Subscribe to
 `IAssetSourceChangeNotifier.Changed` when a host needs to react to a successful
