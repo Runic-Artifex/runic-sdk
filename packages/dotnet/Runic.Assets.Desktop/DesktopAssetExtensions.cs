@@ -20,18 +20,20 @@ public static class DesktopAssetExtensions
         if (source is not IAssetSnapshotSource snapshots)
             throw new ArgumentException("Desktop delivery requires atomic descriptor-and-stream snapshots.", nameof(source));
         DesktopAssetOptions selected = options ?? new();
-        return (request, cancellationToken) => HandleAsync(
-            snapshots,
-            request,
-            selected.EnableSinglePageApplicationFallback,
-            cancellationToken);
+        return (request, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<ContentResponse?>(Handle(
+                snapshots,
+                request,
+                selected.EnableSinglePageApplicationFallback));
+        };
     }
 
-    private static async ValueTask<ContentResponse?> HandleAsync(
+    private static ContentResponse Handle(
         IAssetSnapshotSource source,
         ContentRequest request,
-        bool spaFallback,
-        CancellationToken cancellationToken)
+        bool spaFallback)
     {
         if (!StringComparer.Ordinal.Equals(request.Method, "GET") &&
             !StringComparer.Ordinal.Equals(request.Method, "HEAD"))
@@ -39,16 +41,12 @@ public static class DesktopAssetExtensions
         if (!TryResolve(source.Manifest, request.Path, spaFallback, out AssetDescriptor? descriptor))
             return Error(404);
 
-        AssetReadSnapshot? snapshot = null;
         try
         {
-            snapshot = await source.OpenSnapshotAsync(descriptor!.RelativePath, cancellationToken).ConfigureAwait(false);
-            AssetDescriptor current = snapshot.Descriptor;
+            AssetDescriptor current = descriptor!;
             IReadOnlyDictionary<string, string> headers = Headers(current);
             if (MatchesIfNoneMatch(Header(request, "If-None-Match"), current.EntityTag))
             {
-                await snapshot.DisposeAsync().ConfigureAwait(false);
-                snapshot = null;
                 return new ContentResponse(ReadOnlyMemory<byte>.Empty, current.MediaType, 304, headers);
             }
 
@@ -59,8 +57,6 @@ public static class DesktopAssetExtensions
                 : AssetRangeResult.Ignore;
             if (range == AssetRangeResult.Unsatisfiable)
             {
-                await snapshot.DisposeAsync().ConfigureAwait(false);
-                snapshot = null;
                 return new ContentResponse(
                     ReadOnlyMemory<byte>.Empty,
                     current.MediaType,
@@ -83,8 +79,6 @@ public static class DesktopAssetExtensions
 
             if (StringComparer.Ordinal.Equals(request.Method, "HEAD"))
             {
-                await snapshot.DisposeAsync().ConfigureAwait(false);
-                snapshot = null;
                 return ContentResponse.Stream(
                     static _ => ValueTask.FromResult<Stream>(Stream.Null),
                     current.MediaType,
@@ -93,25 +87,42 @@ public static class DesktopAssetExtensions
                     headers);
             }
 
-            await SkipAsync(snapshot.Content, start, cancellationToken).ConfigureAwait(false);
-            var body = new SnapshotRangeStream(snapshot, length);
-            snapshot = null;
+            // Desktop owns and disposes the stream only once it invokes the factory,
+            // so the snapshot is not opened before then.
             return ContentResponse.Stream(
-                _ => ValueTask.FromResult<Stream>(body),
+                token => OpenRangeAsync(source, current, start, length, token),
                 current.MediaType,
                 hasRange ? 206 : 200,
                 length,
                 headers);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch
         {
-            if (snapshot is not null) await snapshot.DisposeAsync().ConfigureAwait(false);
-            throw;
+            return Error(500);
+        }
+    }
+
+    private static async ValueTask<Stream> OpenRangeAsync(
+        IAssetSnapshotSource source,
+        AssetDescriptor described,
+        long start,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        AssetReadSnapshot snapshot = await source.OpenSnapshotAsync(described.RelativePath, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // The headers were already prepared from the manifest; never send other bytes under them.
+            if (!StringComparer.Ordinal.Equals(snapshot.Descriptor.EntityTag, described.EntityTag) ||
+                snapshot.Descriptor.Length != described.Length)
+                throw new InvalidDataException("The asset changed after its response was prepared.");
+            await SkipAsync(snapshot.Content, start, cancellationToken).ConfigureAwait(false);
+            return new SnapshotRangeStream(snapshot, length);
         }
         catch
         {
-            if (snapshot is not null) await snapshot.DisposeAsync().ConfigureAwait(false);
-            return Error(500);
+            await snapshot.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
     }
 

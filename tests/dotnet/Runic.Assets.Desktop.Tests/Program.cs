@@ -50,6 +50,15 @@ internal static class Program
             Equal(HttpStatusCode.OK, headResponse.StatusCode);
             Equal(5L, headResponse.Content.Headers.ContentLength);
 
+            // Only bodies that Desktop opens and owns acquire a snapshot.
+            Equal(2, source.Opened);
+            Equal(source.Opened, source.Disposed);
+
+            source.ReplaceContent = true;
+            using HttpResponseMessage replaced = await client.GetAsync(surface.Url).ConfigureAwait(false);
+            Equal(HttpStatusCode.InternalServerError, replaced.StatusCode);
+            Equal(source.Opened, source.Disposed);
+
             Console.WriteLine("ok - Desktop delivery preserves asset streams, cache metadata, ranges, and HEAD");
             return 0;
         }
@@ -81,11 +90,33 @@ internal sealed class MemorySource : IAssetSnapshotSource
     }
 
     public AssetManifest Manifest { get; }
+    internal int Opened;
+    internal int Disposed;
+    internal bool ReplaceContent { get; set; }
     public ValueTask ValidateAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult<Stream>(new MemoryStream(_content, writable: false));
     public ValueTask<AssetReadSnapshot> OpenSnapshotAsync(
         string relativePath,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(new AssetReadSnapshot(Manifest.EntryPoint, new MemoryStream(_content, writable: false)));
+        CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref Opened);
+        byte[] content = ReplaceContent ? "other"u8.ToArray() : _content;
+        AssetDescriptor descriptor = ReplaceContent
+            ? new AssetDescriptor("index.html", "text/html; charset=utf-8", content.Length,
+                Convert.ToHexStringLower(SHA256.HashData(content)), isEntryPoint: true)
+            : Manifest.EntryPoint;
+        return ValueTask.FromResult(new AssetReadSnapshot(descriptor, new TrackedStream(content, this)));
+    }
+
+    private sealed class TrackedStream(byte[] content, MemorySource owner) : MemoryStream(content, writable: false)
+    {
+        private int _disposed;
+
+        protected override void Dispose(bool disposing)
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) Interlocked.Increment(ref owner.Disposed);
+            base.Dispose(disposing);
+        }
+    }
 }
