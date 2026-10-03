@@ -24,7 +24,7 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
     internal BridgeFieldWriteRegistryProvider(string ownerId, int maximumRetainedReceiptBytes = 262_144)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
-        if (maximumRetainedReceiptBytes < 0) throw new ArgumentOutOfRangeException(nameof(maximumRetainedReceiptBytes));
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumRetainedReceiptBytes);
         _ownerId = ownerId;
         _maximumRetainedReceiptBytes = maximumRetainedReceiptBytes;
     }
@@ -169,7 +169,7 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(BridgeFieldWriteRegistryProvider));
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     private sealed class ModelEntries

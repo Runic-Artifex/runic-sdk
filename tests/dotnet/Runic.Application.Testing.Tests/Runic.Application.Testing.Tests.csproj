@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled>
     <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
     <RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand>
@@ -28,4 +29,5 @@
     <Compile Remove="ToolkitGeneratedClientFixture.cs" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

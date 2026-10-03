@@ -16,9 +16,12 @@ public sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
     private readonly Dictionary<string, Route> _routes = new(StringComparer.Ordinal);
     private bool _disposed;
 
+    /// <summary>Wraps the native transport whose routes are kept.</summary>
     public RebindableBridgeTransport(IBridgeTransport inner) =>
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
 
+    /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">The route already has an active bridge or changed between sync and async.</exception>
     public IDisposable Bind(string name, Func<IBridgeArguments, string> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -40,6 +43,8 @@ public sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
         }
     }
 
+    /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">The route already has an active bridge or changed between sync and async.</exception>
     public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -61,6 +66,7 @@ public sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
         }
     }
 
+    /// <inheritdoc />
     public void Publish(string name, string stateJson)
     {
         lock (_gate) ThrowIfDisposed();
@@ -91,6 +97,7 @@ public sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
         }
     }
 
+    /// <summary>Unbinds every native route. Dispose this transport before its window.</summary>
     public void Dispose()
     {
         List<IDisposable> native;
@@ -106,7 +113,7 @@ public sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(RebindableBridgeTransport));
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     private sealed class Route(bool isAsync)

@@ -31,8 +31,12 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
         ViewModel = viewModel;
     }
 
+    /// <summary>The window's scoped root ViewModel.</summary>
     public TViewModel ViewModel { get; }
+    /// <summary>The Desktop surface that hosts the window's web content.</summary>
     public DesktopSurface Surface => _surface;
+    /// <summary>The opened Desktop window.</summary>
+    /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
     public DesktopWindow Presentation => _presentation ??
         throw new InvalidOperationException("The Desktop presentation has not opened.");
 
@@ -64,6 +68,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
         lock (_closeGate) return new(_close ??= BeginCloseAsync(timeout));
     }
 
+    /// <summary>Closes the window immediately and waits until its resources are released.</summary>
     public async ValueTask DisposeAsync()
     {
         var result = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
@@ -149,6 +154,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
 /// <summary>Admission result for a Desktop Views window close.</summary>
 public sealed record DesktopBridgeCloseResult(bool Drained, int RemainingOperations, Task Completion);
 
+/// <summary>Opens Desktop Views windows from a service provider.</summary>
 public static class DesktopBridgeWindowExtensions
 {
     /// <summary>Creates an application Window in a new scope, then opens its Desktop presentation.</summary>

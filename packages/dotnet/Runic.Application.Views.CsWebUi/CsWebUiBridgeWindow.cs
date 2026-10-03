@@ -37,18 +37,25 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         ViewModel = viewModel;
     }
 
+    /// <summary>The window's scoped root ViewModel.</summary>
     public TViewModel ViewModel { get; }
 
+    /// <summary>The underlying CS-WebUI window.</summary>
     public WebUiWindow NativeWindow => _window;
 
+    /// <inheritdoc cref="WebUiWindow.SetRootFolder(string)"/>
     public void SetRootFolder(string path) => _window.SetRootFolder(path);
 
+    /// <inheritdoc cref="WebUiWindow.SetSize(uint, uint)"/>
     public void SetSize(uint width, uint height) => _window.SetSize(width, height);
 
+    /// <inheritdoc cref="WebUiWindow.SetPort(nuint)"/>
     public void SetPort(nuint port) => _window.SetPort(port);
 
+    /// <inheritdoc cref="WebUiWindow.Show(string)"/>
     public void Show(string content) => _window.Show(content);
 
+    /// <inheritdoc cref="WebUiWindow.StartServer(string)"/>
     public string StartServer(string content) => _window.StartServer(content);
 
     internal void Attach(IDisposable attachment)
@@ -100,6 +107,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         }
     }
 
+    /// <summary>Closes the window immediately and waits until its resources are released.</summary>
     public async ValueTask DisposeAsync()
     {
         var result = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
@@ -210,6 +218,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
 /// <summary>Admission result for a graceful CS-WebUI Bridge window close.</summary>
 public sealed record CsWebUiBridgeCloseResult(bool Drained, int RemainingOperations, Task Completion);
 
+/// <summary>Opens CS-WebUI Bridge windows from a service provider.</summary>
 public static class CsWebUiBridgeWindowExtensions
 {
     /// <summary>
@@ -228,7 +237,7 @@ public static class CsWebUiBridgeWindowExtensions
         WebUiWindow? window = null;
         RebindableBridgeTransport? transport = null;
         WindowContentSession? content = null;
-        IDisposable? connectionBinding = null;
+        WebUiBinding? connectionBinding = null;
         CsWebUiBridgeWindow<TViewModel>? host = null;
         TWindow? applicationWindow = null;
         try

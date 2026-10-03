@@ -16,7 +16,7 @@ namespace Runic.Application.Views.ReactiveUI;
 /// <summary>
 /// Executes the ReactiveUI command contracts that are intentionally broader
 /// than <see cref="ICommand"/>.  Generated bridges use this helper instead of
-/// assuming that a ViewModel exposed a concrete <see cref="ReactiveCommand{TParam, TResult}"/>.
+/// assuming that a ViewModel exposed a concrete <c>ReactiveCommand&lt;TParam, TResult&gt;</c>.
 /// </summary>
 public static class ReactiveCommandExecution
 {
@@ -204,6 +204,8 @@ public static class ReactiveCommandExecution
         public void OnNext(T value) => next(value);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+        Justification = "Weakly cached per command; the last observation lease disposes the subscription.")]
     private sealed class State
     {
         private readonly object _gate = new();

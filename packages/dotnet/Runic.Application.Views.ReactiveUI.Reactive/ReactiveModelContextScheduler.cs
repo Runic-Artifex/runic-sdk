@@ -7,6 +7,9 @@ namespace Runic.Application.Views.ReactiveUI.Reactive;
 /// <summary>Provides System.Reactive schedulers bound to Runic model contexts.</summary>
 public interface IRunicReactiveSchedulerProvider
 {
+    /// <summary>Returns a scheduler that runs work on <paramref name="context"/>.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
+        Justification = "Published member name shared with Runic.Application.ReactiveUI.")]
     IScheduler For(IRunicModelContext context);
 }
 
@@ -16,6 +19,7 @@ public interface IRunicReactiveSchedulerProvider
 /// </summary>
 public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProvider
 {
+    /// <inheritdoc />
     public IScheduler For(IRunicModelContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -38,7 +42,7 @@ internal sealed class RunicModelContextScheduler(IRunicModelContext context) : I
     public IDisposable Schedule<TState>(TState state, DateTimeOffset dueTime, Func<IScheduler, TState, IDisposable> action) =>
         ScheduleCore(state, dueTime - Now, action);
 
-    private IDisposable ScheduleCore<TState>(TState state, TimeSpan dueTime, Func<IScheduler, TState, IDisposable> action)
+    private ScheduledWork ScheduleCore<TState>(TState state, TimeSpan dueTime, Func<IScheduler, TState, IDisposable> action)
     {
         ArgumentNullException.ThrowIfNull(action);
         var work = new ScheduledWork();

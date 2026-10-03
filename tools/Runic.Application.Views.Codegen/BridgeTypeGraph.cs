@@ -660,7 +660,7 @@ internal sealed class BridgeTypeGraph
             ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(inherit: true)?.Name
             ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
 
-        private static ConstructorInfo? SelectConstructor(Type type, IReadOnlyList<BridgeTypeMember> members, string path)
+        private static ConstructorInfo? SelectConstructor(Type type, List<BridgeTypeMember> members, string path)
         {
             var names = members.Select(member => member.Property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var constructor = type.GetConstructors(BindingFlags.Instance | BindingFlags.Public)

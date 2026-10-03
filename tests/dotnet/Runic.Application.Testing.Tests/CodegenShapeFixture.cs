@@ -11,7 +11,9 @@ namespace Runic.Application.Testing.Tests;
 public enum CodegenShapeMode
 {
     None = 0,
+#pragma warning disable CA1069 // The duplicate value is the enum-alias shape under test.
     Default = 0,
+#pragma warning restore CA1069
     Active = 1,
 }
 

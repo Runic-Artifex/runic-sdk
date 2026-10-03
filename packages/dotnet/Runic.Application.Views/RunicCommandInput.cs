@@ -8,5 +8,6 @@ namespace Runic.Application.Views;
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
 public sealed class RunicCommandInputAttribute(Type input) : Attribute
 {
+    /// <summary>The CLR type of the command's browser argument.</summary>
     public Type Input { get; } = input ?? throw new ArgumentNullException(nameof(input));
 }

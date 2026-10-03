@@ -24,23 +24,34 @@ public sealed class RunicInteractionInvocation
         CancellationToken = cancellationToken;
     }
 
+    /// <summary>The window content session that owns the invocation.</summary>
     public WindowContentSession Session { get; }
+    /// <summary>The bridge route whose browser client may handle interactions.</summary>
     public string Route { get; }
+    /// <summary>The trusted browser client identity, if the invocation came from one.</summary>
     public string? ClientKey { get; }
+    /// <summary>The trusted transport connection identity, if the invocation came from one.</summary>
     public string? ConnectionKey { get; }
+    /// <summary>The generated command that started the invocation, if any.</summary>
     public string? CommandName { get; }
+    /// <summary>Cancels interactions requested by this invocation.</summary>
     public CancellationToken CancellationToken { get; }
+    /// <summary>The invocation scope on the current asynchronous flow, or <see langword="null"/>.</summary>
     public static RunicInteractionInvocation? Current => CurrentScope.Value;
 
     /// <summary>
     /// Enters a trusted bridge invocation. Callers must use identity supplied by
     /// <see cref="IBridgeArguments"/>, never values supplied inside request JSON.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
+        Justification = "Published API called by generated bridges; reordering its optional parameters would break them.")]
     public static IDisposable Enter(WindowContentSession session, string route, IBridgeArguments arguments,
         CancellationToken cancellationToken = default, string? commandName = null) =>
         Enter(session, route, arguments.ClientKey, arguments.ConnectionKey, cancellationToken, commandName);
 
     /// <summary>Enters an explicitly selected interaction scope.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
+        Justification = "Published API called by generated bridges; reordering its optional parameters would break them.")]
     public static IDisposable Enter(WindowContentSession session, string route, string? clientKey,
         string? connectionKey, CancellationToken cancellationToken = default, string? commandName = null)
     {
@@ -66,6 +77,8 @@ public sealed class RunicInteractionInvocation
 /// <summary>Neutral generated interaction descriptor. Optional adapters implement its attachment behavior.</summary>
 public abstract class BridgeInteractionDescriptor<TModel>
 {
+    /// <summary>Attaches the interaction of <paramref name="model"/> to the browser route.</summary>
+    /// <returns>A lease that detaches the interaction.</returns>
     public abstract IDisposable Attach(WindowContentSession session, TModel model, string route);
 }
 
@@ -86,9 +99,13 @@ public sealed class RunicInteractionOutputException(string message, Exception in
 /// </summary>
 public sealed class BridgeInteractionRouter : IDisposable
 {
+    /// <summary>The route on which a mounted endpoint waits for interaction input.</summary>
     public const string WaitRoute = "__runicInteractionWait";
+    /// <summary>The route on which an endpoint answers an interaction.</summary>
     public const string ReplyRoute = "__runicInteractionReply";
+    /// <summary>The route on which an endpoint reports the interaction handlers it has mounted.</summary>
     public const string ControlRoute = "__runicInteractionControl";
+    /// <summary>The route on which an endpoint waits for control events.</summary>
     public const string ControlWaitRoute = "__runicInteractionControlWait";
     private const int MaximumPending = 32;
     private const int MaximumPendingPerPresentation = 8;
@@ -194,7 +211,7 @@ public sealed class BridgeInteractionRouter : IDisposable
                 value => decodeOutput(value), lifetime);
             _pending.Add(requestId, request);
             presentation.Pending.Enqueue(requestId);
-            var cancellation = RegisterCancellation(requestId, invocation.CancellationToken, request.Timeout);
+            var cancellation = RegisterCancellation(requestId, request.Timeout, invocation.CancellationToken);
             request.Cancellation = cancellation;
             // Register invokes synchronously for an already-cancelled token.
             // Never deliver a request whose admission was cancelled that way.
@@ -475,7 +492,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         }
     }
 
-    private IDisposable RegisterCancellation(string requestId, CancellationToken cancellationToken, TimeSpan timeout)
+    private CancellationLease RegisterCancellation(string requestId, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var source = new CancellationTokenSource(timeout);
         var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, source.Token);
@@ -636,6 +653,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
     }
 
+    /// <summary>Unbinds the interaction routes and cancels pending interactions.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -664,7 +682,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         }
     }
 
-    private void ThrowIfDisposed() { if (_disposed) throw new ObjectDisposedException(nameof(BridgeInteractionRouter)); }
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
     private sealed class Registration(BridgeInteractionRouter owner, DefinitionKey key) : IDisposable
     { private BridgeInteractionRouter? _owner = owner; public void Dispose() => Interlocked.Exchange(ref _owner, null)?.RemoveRegistration(key); }
     private sealed class Presentation(string route, string id, string? clientKey, string? connectionKey)
@@ -694,7 +712,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         public PendingRequest(string requestId, DefinitionKey key, string presentationId, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout)
         { RequestId = requestId; Key = key; PresentationId = presentationId; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = DateTimeOffset.UtcNow.Add(timeout); _decodeOutput = decodeOutput; }
         public object? Decode(JsonElement value) => _decodeOutput(value);
-        public string RequestId { get; } public DefinitionKey Key { get; } public string PresentationId { get; } public string? ConnectionKey { get; } public string? ClientKey { get; } public long OwnerEpoch { get; set; } public string InputJson { get; } public TimeSpan Timeout { get; } public DateTimeOffset ExpiresAt { get; } public IDisposable? Cancellation { get; set; }
+        public string RequestId { get; } public DefinitionKey Key { get; } public string PresentationId { get; } public string? ConnectionKey { get; } public string? ClientKey { get; } public long OwnerEpoch { get; set; } public string InputJson { get; } public TimeSpan Timeout { get; } public DateTimeOffset ExpiresAt { get; } public CancellationLease? Cancellation { get; set; }
         public Task<T> AsTask<T>() => _completion.Task.ContinueWith(task => (T)task.GetAwaiter().GetResult()!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         public void CompleteOutput(object? value) => _completion.TrySetResult(value); public void CompleteException(Exception error) => _completion.TrySetException(error); public bool Matches(InteractionReply reply, IBridgeArguments args) => reply.RequestId == RequestId && reply.Route == Key.Route && reply.PresentationId == PresentationId && reply.OwnerEpoch == OwnerEpoch && reply.Name == Key.Name && reply.Contract == Key.Contract && string.Equals(ConnectionKey,args.ConnectionKey,StringComparison.Ordinal) && string.Equals(ClientKey,args.ClientKey,StringComparison.Ordinal); public void Dispose() => Cancellation?.Dispose();
     }
