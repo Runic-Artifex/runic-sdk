@@ -9,7 +9,6 @@ local checks; `.github/workflows/ci.yml` owns complete verification on GitHub.
 - `release/`: package inspection, trusted publication and public-install smoke.
 - `dependencies/`: dependency audit and template lock maintenance.
 - `toolchain.mjs`: SDK and package-manager pins.
-- `bridge/`: generated application contracts and template checks.
 - `reliability/`: optional performance measurements and lifecycle investigations.
 
 Use project and workspace references for source development. CI installs packed

@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <RunicDesktopPackageVersion Condition="'$(RunicDesktopPackageVersion)' == ''">1.0.0-preview.1</RunicDesktopPackageVersion>
+    <RunicDesktopPackageVersion Condition="'$(RunicDesktopPackageVersion)' == ''">$(RunicSdkVersion)</RunicDesktopPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

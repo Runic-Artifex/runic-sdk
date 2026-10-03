@@ -10,8 +10,6 @@ runs:
     - name: Validate and restore build outputs
       shell: bash
       run: bun eng/ci/build-artifact.mjs restore
-    - name: Restore external dependencies and workspace executable links
+    - name: Restore external NuGet dependencies
       shell: bash
-      run: |
-        dotnet restore RunicSdk.Core.slnx
-        bun install --frozen-lockfile
+      run: dotnet restore RunicSdk.Core.slnx

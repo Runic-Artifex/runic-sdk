@@ -1,0 +1,45 @@
+<Project>
+  <!--
+    Shared managed policy, imported by the component wrappers in this directory.
+    Before importing, a wrapper sets RunicBuildMode from its own build-mode
+    property (named by RunicBuildModeProperty), PackageTags and RunicPolicyIcon.
+    Development is the approachable inner loop; CI selects Verification for
+    release-grade analysis.
+  -->
+  <PropertyGroup>
+    <RunicBuildMode Condition="'$(RunicBuildMode)' == '' and '$(CI)' == 'true'">Verification</RunicBuildMode>
+    <RunicBuildMode Condition="'$(RunicBuildMode)' == ''">Development</RunicBuildMode>
+    <RunicVerificationBuild Condition="'$(RunicBuildMode)' == 'Verification'">true</RunicVerificationBuild>
+    <RunicVerificationBuild Condition="'$(RunicVerificationBuild)' == ''">false</RunicVerificationBuild>
+    <RunicTargetFramework>net10.0</RunicTargetFramework>
+
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors Condition="'$(RunicVerificationBuild)' == 'true'">true</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors Condition="'$(TreatWarningsAsErrors)' == ''">false</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <DebugType>embedded</DebugType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <RepositoryType>git</RepositoryType>
+    <Authors>RunicArtifex</Authors>
+    <Company>RunicArtifex</Company>
+    <Copyright>Copyright (c) 2026 Viktor Jannicke</Copyright>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- Libraries leave dependency resolution to their consuming applications. -->
+    <NuGetAudit Condition="'$(RunicVerificationBuild)' == 'true'">true</NuGetAudit>
+    <NuGetAudit Condition="'$(NuGetAudit)' == ''">false</NuGetAudit>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(RunicPolicyIcon)" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+</Project>

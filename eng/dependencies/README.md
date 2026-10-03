@@ -10,12 +10,10 @@ query fails. GitHub queries use the existing `gh` authentication. Review `latest
 `eng/toolchain.mjs` reads the actual maintained SDK, Node, Bun, npm and pnpm pins;
 dependency audits and template lock generation use that reader, not a release receipt.
 
-The dated JSON file records the initial 2026-09-08 audit, including declared/resolved
-versions and upstream requirements. Historical imports, benchmark receipts and
-archived source trees are excluded from updates. Native SDK headers, Nix inputs,
-runtime releases and the local container image also need the checks below.
-`2026-09-08-updated.json` records the resulting 88-package/action inventory after
-the toolchain, web and Effect migrations.
+Audit output is not committed; rerun the command for current versions. Historical
+imports, benchmark receipts and archived source trees are excluded from updates.
+Native SDK headers, Nix inputs, runtime releases and the local container image also
+need the checks below.
 
 ## September 2026 decisions
 

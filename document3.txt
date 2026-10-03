@@ -1,3 +1,0 @@
-Runic native file demo
-Unicode: é 日本語 🜁
-12345

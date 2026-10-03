@@ -6,11 +6,13 @@ import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const cli = resolve(root, `tools/dotnet-runic/bin/${process.env.CONFIGURATION ?? "Debug"}/net10.0/dotnet-runic.dll`);
 const rid = `${({ linux: "linux", darwin: "osx", win32: "win" })[process.platform]}-${process.arch}`;
 
+// Invokes the built CLI (bun run build) and publishes a temporary probe project.
 test("size preserves failed verification, publish failures and existing evidence", { timeout: 180000 }, () => {
+  assert.ok(existsSync(cli), `Build tools/dotnet-runic first: ${cli} is missing.`);
   const directory = mkdtempSync(join(tmpdir(), "runic-size-acceptance-"));
   try {
     const project = join(directory, "Probe.csproj");

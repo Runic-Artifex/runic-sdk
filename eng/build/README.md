@@ -8,15 +8,21 @@ project does not silently change its language, analyzer or package settings.
 - `assets`: archive/runtime adapters and asset packer.
 - `command-line`: command catalogs, generators and process APIs.
 - `desktop`: native window/transport runtime and platform checks.
-- `translations`: translation runtime, compiler, generators and tooling.
+- `translations`: translation runtime, compiler, generators, tooling and the editor.
+
+`application`, `assets`, `command-line` and `translations` are thin wrappers over
+`common.props`/`common.targets`. They differ only in package tags, icon and the name
+of their build-mode switch (`RunicToolkitBuildMode`, `RunicAssetsBuildMode`,
+`RunicCommandLineBuildMode`, `RunicTranslationsBuildMode`). `Development` is the
+default; CI selects `Verification`, which treats warnings as errors and enables
+NuGet audit and trim/AOT analyzers for shipping projects. Package versions come
+from `eng/Versions.props`. Desktop keeps its separate policy.
 
 Props are imported before a project's property groups. Matching targets are imported
 after its items. Root `Directory.Build.targets` applies Desktop's host profile
 switch to source consumers. Desktop takes only WebView2's native loader assets;
 its COM callbacks are generated at build time for NativeAOT. NuGet dependency
-versions remain in the root
-`Directory.Packages.props`; the translation compiler's existing Roslyn pin is scoped
-there to translation projects, rather than becoming a workspace-wide downgrade.
+versions remain in the root `Directory.Packages.props`.
 
 Packing pins dependencies on shipping workspace projects to exact NuGet versions.
 The project inventory in `shipping-projects.props` is generated from

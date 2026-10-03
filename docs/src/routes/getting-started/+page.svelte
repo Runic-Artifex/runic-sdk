@@ -65,8 +65,8 @@ dotnet run`;
         GTK 3 and WebKitGTK 4.1. For GTK 4 and WebKitGTK 6, add the optional
         GTK4 adapter and follow the
         <a
-          href="https://github.com/Runic-Artifex/runic-sdk/blob/main/eng/release/notes/gtk4-portals-follow-up.md"
-          >GTK4 and portal migration guide</a
+          href="https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop.Gtk4/README.md"
+          >GTK4 adapter guide</a
         >. Windows needs the Edge WebView2 Runtime; NativeAOT builds include the
         loader without a separate WebView2Loader.dll. macOS uses its system
         WebView; live testing of the new platform services is still pending.

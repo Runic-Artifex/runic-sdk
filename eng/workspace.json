@@ -192,7 +192,6 @@
         "tests/dotnet/Runic.Desktop.Tests",
         "tests/native/Runic.Desktop.WebViewSmoke",
         "eng/build/desktop.props",
-        "eng/build/desktop.targets",
         "docs/guides/desktop",
         "eng/branding/desktop",
         "specs/desktop",

@@ -14,7 +14,7 @@ runs:
       if: inputs.dotnet == 'true'
       with:
         global-json-file: global.json
-    - uses: oven-sh/setup-bun@v2
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         bun-version: 1.4.2
     - name: Snapshot source and lockfiles
@@ -36,7 +36,7 @@ runs:
       if: inputs.dotnet == 'true'
       with:
         path: .cache/nuget
-        key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.props', '**/*.targets', '**/*.csproj', 'global.json', 'NuGet.Config') }}
+        key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.props', '**/*.targets', '**/*.csproj', 'global.json', 'NuGet.config') }}
     - name: Install workspace dependencies
       shell: bash
       run: bun install --frozen-lockfile
