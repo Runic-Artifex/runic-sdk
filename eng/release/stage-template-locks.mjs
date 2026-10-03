@@ -3,7 +3,7 @@ import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readNpmCandidates, verifyTemplateLock } from "./template-locks.mjs";
+import { readNpmCandidates, templateRunicPackages, verifyTemplateLock } from "./template-locks.mjs";
 
 const [content, npmDirectory, output] = process.argv.slice(2);
 assert(content && npmDirectory && output,
@@ -19,13 +19,10 @@ for (const framework of ["react", "vue", "svelte", "angular"]) {
     const staged = join(output, framework, "Frontend", name);
     mkdirSync(dirname(staged), { recursive: true });
     copyFileSync(join(content, framework, "Frontend", name), staged);
-    const expectedPackage = framework === "svelte" ? "@runic-artifex/svelte"
-      : framework === "angular" ? "@runic-artifex/angular" : undefined;
-    if (expectedPackage)
-      execFileSync(process.execPath, [join(repository, "eng/release/stamp-template-lock.mjs"), staged, ...archives],
-        { stdio: "inherit" });
+    execFileSync(process.execPath, [join(repository, "eng/release/stamp-template-lock.mjs"), staged, ...archives],
+      { stdio: "inherit" });
     verifyTemplateLock(readFileSync(staged, "utf8"), name, candidates,
-      { requireRunic: Boolean(expectedPackage), expectedPackage });
+      { expectedPackages: templateRunicPackages[framework] });
   }
 }
 console.log("Staged all 12 template locks against final npm archive bytes.");

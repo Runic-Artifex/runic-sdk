@@ -109,6 +109,12 @@ importers:
 
   .:
     dependencies:
+      '@runic-artifex/views':
+        specifier: 0.5.0-preview.3
+        version: 0.5.0-preview.3
+      '@runic-artifex/vue':
+        specifier: 0.5.0-preview.3
+        version: 0.5.0-preview.3(vue@3.5.42(typescript@6.0.3))
       vue:
         specifier: 3.5.42
         version: 3.5.42(typescript@6.0.3)
@@ -249,6 +255,16 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@runic-artifex/views@0.5.0-preview.3':
+    resolution: {integrity: sha512-bXE9lv7J/Ft/DaRqHLJwwvFriTi8czuevHr6w9eKfrmSIQqsVNtRaCcL/+mc1PRlwxjTucTT3dKJICKTzYDPlA==}
+    engines: {node: '>=24.18.0 <25'}
+
+  '@runic-artifex/vue@0.5.0-preview.3':
+    resolution: {integrity: sha512-pohGrhrPNDDnMwY77hZudcRh/hF6AyViKClj2kJ2T+EK+v916dIDi9kFuP7zHQuVQfARzJvlAWOYDF9nTM7GGA==}
+    engines: {node: '>=24.18.0 <25'}
+    peerDependencies:
+      vue: '>=3.5.0 <4'
 
   '@vitejs/plugin-vue@6.0.8':
     resolution: {integrity: sha512-0ZjgOg7oO6farnNGup7yvoM/YXZV84OZxHAwtflItNa/6zzQyVb5LNxyea3FEKEX2XlagIKzrlH7wwxkKgtiew==}
@@ -583,6 +599,12 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@runic-artifex/views@0.5.0-preview.3': {}
+
+  '@runic-artifex/vue@0.5.0-preview.3(vue@3.5.42(typescript@6.0.3))':
+    dependencies:
+      vue: 3.5.42(typescript@6.0.3)
 
   '@vitejs/plugin-vue@6.0.8(vite@8.2.2)(vue@3.5.42(typescript@6.0.3))':
     dependencies:

@@ -5,6 +5,8 @@
     "": {
       "name": "@runic-artifex/runic-views-starter-react",
       "dependencies": {
+        "@runic-artifex/react": "0.5.0-preview.3",
+        "@runic-artifex/views": "0.5.0-preview.3",
         "react": "19.2.8",
         "react-dom": "19.2.8",
       },
@@ -51,6 +53,10 @@
     "@rolldown/binding-win32-x64-msvc": ["@rolldown/binding-win32-x64-msvc@1.2.11", "", { "os": "win32", "cpu": "x64" }, "sha512-/PzKqzAJ03i19oy2ItPvyvaVjOjBCNnfaJs8yvUdGBKmiESgnrJSQ2awd81QzFbbnAmu7YO9ZnJrDCb9VSJPRA=="],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
+
+    "@runic-artifex/react": ["@runic-artifex/react@0.5.0-preview.3", "", { "peerDependencies": { "react": ">=18.3.0 <20" } }, "sha512-g3TqfrlLdw4NufeZs4ZwdajRG0CtOEX3lBnsNABpsOvXR+PKy4i5UQnezxalvI8y2KISwevhYYSXOurnVmipXw=="],
+
+    "@runic-artifex/views": ["@runic-artifex/views@0.5.0-preview.3", "", {}, "sha512-bXE9lv7J/Ft/DaRqHLJwwvFriTi8czuevHr6w9eKfrmSIQqsVNtRaCcL/+mc1PRlwxjTucTT3dKJICKTzYDPlA=="],
 
     "@types/react": ["@types/react@19.2.18", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w=="],
 

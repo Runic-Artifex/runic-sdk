@@ -1,6 +1,6 @@
 import {test, expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {verifyTemplateLock} from './template-locks.mjs';
+import {templateRunicPackages, verifyTemplateLock} from './template-locks.mjs';
 
 const name = '@runic-artifex/svelte';
 const version = '0.2.0-preview.1';
@@ -37,13 +37,13 @@ for (const framework of ['react', 'vue', 'svelte', 'angular']) {
     const base = new URL(`../../tools/Runic.Application.Templates/content/${framework}/Frontend/`, import.meta.url);
     const npm = JSON.parse(readFileSync(new URL('package-lock.json', base), 'utf8'));
     const real = new Map(Object.entries(npm.packages).filter(([p]) => p.startsWith('node_modules/@runic-artifex/')).map(([p, v]) => [p.slice('node_modules/'.length), {version: v.version, integrity: v.integrity}]));
-    const expectedPackage = framework === 'svelte' ? '@runic-artifex/svelte'
-      : framework === 'angular' ? '@runic-artifex/angular' : undefined;
+    const expectedPackages = templateRunicPackages[framework];
+    expect([...real.keys()].sort()).toEqual([...expectedPackages].sort());
     for (const filename of ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock']) {
       const text = readFileSync(new URL(filename, base), 'utf8');
-      expect(verifyTemplateLock(text, filename, real, {requireRunic: Boolean(expectedPackage), expectedPackage})).toBe(real.size);
+      expect(verifyTemplateLock(text, filename, real, {expectedPackages})).toBe(real.size);
       const wrong = new Map([...real].map(([n, v]) => [n, {...v, integrity: 'sha512-final-published-artifact'}]));
-      if (real.size) expect(() => verifyTemplateLock(text, filename, wrong, {requireRunic: true})).toThrow('stale integrity');
+      expect(() => verifyTemplateLock(text, filename, wrong)).toThrow('stale integrity');
     }
   });
 }

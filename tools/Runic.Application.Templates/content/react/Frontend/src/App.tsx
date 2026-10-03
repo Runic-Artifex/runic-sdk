@@ -1,25 +1,14 @@
-import { useEffect, useState } from "react";
-import { connectWorkspace, type WorkspaceState, type WorkspaceView as WorkspaceClient } from "./generated/workspace.js";
+import { useState } from "react";
+import { useView } from "@runic-artifex/react";
+import { connectWorkspace } from "./generated/workspace.js";
 import { CounterPage } from "./pages/CounterPage";
 import { WelcomePage } from "./pages/WelcomePage";
 
-export default function App() {
-  const [workspace, setWorkspace] = useState<WorkspaceClient>();
-  const [state, setState] = useState<WorkspaceState>();
-  const [error, setError] = useState<string>();
+const workspace = { connect: connectWorkspace };
 
-  useEffect(() => {
-    let active = true;
-    let unsubscribe = () => {};
-    let client: WorkspaceClient | undefined;
-    void connectWorkspace().then(connected => {
-      if (!active) { connected.dispose(); return; }
-      client = connected;
-      setWorkspace(connected);
-      unsubscribe = connected.subscribe(next => setState(next));
-    }).catch(cause => setError(String(cause)));
-    return () => { active = false; unsubscribe(); client?.dispose(); };
-  }, []);
+export default function App() {
+  const { state, client, error: connection } = useView(workspace);
+  const [error, setError] = useState<string>();
 
   async function run(command: () => Promise<unknown>) {
     try { await command(); setError(undefined); }
@@ -30,12 +19,12 @@ export default function App() {
   return <main>
     <header><h1>Runic Views</h1><p>Window/View starter · React</p></header>
     <nav aria-label="Main navigation">
-      <button onClick={() => workspace && run(() => workspace.showWelcome())}>Welcome</button>
-      <button onClick={() => workspace && run(() => workspace.showCounter())}>Counter</button>
+      <button disabled={!client} onClick={() => client && run(() => client.showWelcome())}>Welcome</button>
+      <button disabled={!client} onClick={() => client && run(() => client.showCounter())}>Counter</button>
     </nav>
     {page?.kind === "counter" ? <CounterPage key={page.kind} page={page} />
       : page?.kind === "welcome" ? <WelcomePage key={page.kind} page={page} />
       : <p>Connecting to the Window…</p>}
-    <p role="status">{error ?? "Connected to the .NET Window."}</p>
+    <p role="status">{error ?? (connection ? String(connection) : "Connected to the .NET Window.")}</p>
   </main>;
 }

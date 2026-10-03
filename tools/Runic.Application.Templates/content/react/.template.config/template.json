@@ -118,6 +118,18 @@
       "datatype": "text",
       "defaultValue": "__DOTNET_RUNIC_VERSION_DEFAULT__",
       "replaces": "__DOTNET_RUNIC_VERSION__"
+    },
+    "viewsReactVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__VIEWS_REACT_NPM_VERSION_DEFAULT__",
+      "replaces": "__VIEWS_REACT_NPM_VERSION__"
+    },
+    "viewsRuntimeVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__VIEWS_RUNTIME_NPM_VERSION_DEFAULT__",
+      "replaces": "__VIEWS_RUNTIME_NPM_VERSION__"
     }
   },
   "primaryOutputs": [

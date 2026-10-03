@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@runic-artifex/svelte": "__VIEWS_SVELTE_NPM_VERSION__",
+    "@runic-artifex/views": "__VIEWS_RUNTIME_NPM_VERSION__",
     "svelte": "5.57.0"
   },
   "devDependencies": {
