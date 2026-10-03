@@ -263,11 +263,6 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.SendVoidNint(_window, "setDelegate:", _delegate);
         Api.SendVoidBool(_window, "setReleasedWhenClosed:", false);
         Api.SendVoidBool(_window, "setMovableByWindowBackground:", options.Frameless);
-        if (options.Transparent && Api.RespondsToSelector(_webView, "setUnderPageBackgroundColor:"))
-        {
-            Api.SendVoidBool(_window, "setOpaque:", false);
-            Api.SendVoidNint(_window, "setBackgroundColor:", Api.SendNint(Api.GetClass("NSColor"), "clearColor"));
-        }
         if (options.MinimumWidth is { } minimumWidth && options.MinimumHeight is { } minimumHeight)
         {
             Api.SendVoidSize(_window, "setContentMinSize:", new CGSize(minimumWidth, minimumHeight));
@@ -279,9 +274,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoid(_window, "close");
             throw new InvalidOperationException("WebKit could not create a WKWebView.");
         }
-        if (options.Transparent)
+        // underPageBackgroundColor requires macOS 12; ask the created view, not the unset field.
+        if (options.Transparent && Api.RespondsToSelector(_webView, "setUnderPageBackgroundColor:"))
         {
-            Api.SendVoidNint(_webView, "setUnderPageBackgroundColor:", Api.SendNint(Api.GetClass("NSColor"), "clearColor"));
+            var clear = Api.SendNint(Api.GetClass("NSColor"), "clearColor");
+            Api.SendVoidBool(_window, "setOpaque:", false);
+            Api.SendVoidNint(_window, "setBackgroundColor:", clear);
+            Api.SendVoidNint(_webView, "setUnderPageBackgroundColor:", clear);
         }
         Api.SendVoidUlong(_webView, "setAutoresizingMask:", ViewWidthSizable | ViewHeightSizable);
         var contentView = Api.SendNint(_window, "contentView");
