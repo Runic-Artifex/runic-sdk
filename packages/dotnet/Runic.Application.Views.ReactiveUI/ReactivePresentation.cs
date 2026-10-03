@@ -1,9 +1,21 @@
+// Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
+// Runic.Application.ReactiveUI.Reactive.
 using System.ComponentModel;
+using System.Diagnostics;
+#if SYSTEM_REACTIVE
+using ReactiveUI.Binding.Reactive;
+using ReactiveUI.Reactive;
+#else
 using ReactiveUI;
 using ReactiveUI.Primitives;
+#endif
 using Runic.Application.Views;
 
+#if SYSTEM_REACTIVE
+namespace Runic.Application.Views.ReactiveUI.Reactive;
+#else
 namespace Runic.Application.Views.ReactiveUI;
+#endif
 
 /// <summary>
 /// A logical Runic View with ReactiveUI's typed ViewModel and mount activation.
@@ -93,8 +105,10 @@ internal sealed class ReactiveMount<TViewModel> where TViewModel : class
     public void Mount()
     {
         if (_mounted) return;
-        _mounted = true;
+        // A failed activation leaves the View unmounted, so a later mount can
+        // retry instead of being ignored.
         Activate();
+        _mounted = true;
     }
 
     public void Unmount()
@@ -122,15 +136,26 @@ public sealed class ReactiveRoutedRegion<TViewModel> : INotifyPropertyChanged, I
     public ReactiveRoutedRegion(RoutingState router)
     {
         ArgumentNullException.ThrowIfNull(router);
-        _subscription = router.CurrentViewModel.Subscribe(viewModel =>
-        {
-            if (viewModel is not null && viewModel is not TViewModel)
-                throw new InvalidOperationException($"Route {viewModel.GetType().Name} is not a {typeof(TViewModel).Name}.");
-            var current = (TViewModel?)viewModel;
-            if (ReferenceEquals(_current, current)) return;
-            _current = current;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Current)));
-        });
+        _subscription = router.CurrentViewModel.Subscribe(new RouteObserver(this));
+    }
+
+    private void OnRoute(object? viewModel)
+    {
+        // Throwing here would tear down the router's notification for every
+        // observer. An incompatible route instead presents no content.
+        if (viewModel is not null && viewModel is not TViewModel)
+            Trace.TraceError($"Route {viewModel.GetType().Name} is not a {typeof(TViewModel).Name}; the region presents no content.");
+        var current = viewModel as TViewModel;
+        if (ReferenceEquals(_current, current)) return;
+        _current = current;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Current)));
+    }
+
+    private sealed class RouteObserver(ReactiveRoutedRegion<TViewModel> owner) : IObserver<IRoutableViewModel?>
+    {
+        public void OnCompleted() { }
+        public void OnError(Exception error) => Trace.TraceError($"A routed region's router failed: {error}");
+        public void OnNext(IRoutableViewModel? value) => owner.OnRoute(value);
     }
 
     public TViewModel? Current => _current;
