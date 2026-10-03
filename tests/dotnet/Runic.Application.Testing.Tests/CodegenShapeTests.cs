@@ -24,7 +24,19 @@ internal static class CodegenShapeTests
                 "Nullable or non-nullable struct DTO state was not written.");
             Require(state.GetProperty("labels")[1].ValueKind == JsonValueKind.Null,
                 "A nullable array element was not written as null.");
+            Require(state.GetProperty("stamp").GetString() == "2026-10-03T12:30:00.0000000+02:00",
+                "A DateTimeOffset snapshot lost its offset.");
         }
+
+        // Values produced by new Date().toISOString() and by hand in a browser.
+        Set(host, "Stamp", "\"2026-10-03T12:34:56.789Z\"");
+        Require(model.Stamp == new DateTimeOffset(2026, 10, 3, 12, 34, 56, 789, TimeSpan.Zero),
+            "A browser ISO DateTimeOffset was not accepted.");
+        Set(host, "When", "\"2026-10-03T12:34:56.789Z\"");
+        Require(model.When == new DateTime(2026, 10, 3, 12, 34, 56, 789, DateTimeKind.Utc) && model.When.Kind is DateTimeKind.Utc,
+            "A browser ISO DateTime was not accepted as UTC.");
+        Set(host, "At", "\"08:15:00\"");
+        Require(model.At == new TimeOnly(8, 15), "An ISO time without fractional seconds was not accepted.");
 
         Set(host, "Mode", "\"Default\"");
         Require(model.Mode == CodegenShapeMode.Default, "An enum alias name could not be read.");
