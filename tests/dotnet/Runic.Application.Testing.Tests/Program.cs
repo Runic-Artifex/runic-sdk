@@ -121,6 +121,8 @@ using (var generatedReactiveHost = new RunicWindowTestHost<GeneratedReactiveView
 CheckedDataTests.Run();
 CheckedWriteGuaranteeTests.Run();
 DataCodecTests.Run();
+CodegenShapeTests.Run();
+await CodegenShapeTests.RunNullableReactiveAsync();
 await DataShapeTests.RunAsync();
 await OperationResultTests.RunAsync();
 await ModelContextTests.RunAsync();
@@ -134,6 +136,7 @@ await WindowCloseTests.RunAsync();
 await InteractionFixture.VerifyAsync();
 await GeneratedInteractionTests.RunAsync();
 await CodegenCacheTests.RunAsync();
+await CodegenDiagnosticsTests.RunAsync();
 await GeneratedClientHarness.RunAsync();
 await GeneratedInteractionClientHarness.RunAsync();
 

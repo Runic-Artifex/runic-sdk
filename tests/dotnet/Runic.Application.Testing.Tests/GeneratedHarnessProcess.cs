@@ -29,7 +29,9 @@ internal static class GeneratedHarnessProcess
             while (!exit.IsCompleted)
             {
                 process.Refresh();
-                if (!process.HasExited) peakBytes = Math.Max(peakBytes, process.PeakWorkingSet64);
+                // The child can exit between HasExited and reading its memory.
+                try { if (!process.HasExited) peakBytes = Math.Max(peakBytes, process.PeakWorkingSet64); }
+                catch (InvalidOperationException) when (process.HasExited) { }
                 if (peakBytes > 512L * 1024 * 1024) { failure = "exceeded 512 MiB"; break; }
                 if (clock.Elapsed > TimeSpan.FromSeconds(30)) { failure = "exceeded 30 seconds"; break; }
                 await Task.WhenAny(exit, Task.Delay(50)).ConfigureAwait(false);

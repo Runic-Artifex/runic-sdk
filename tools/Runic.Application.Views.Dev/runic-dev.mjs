@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, readdirSync, watch } from "node:fs";
 import { createServer } from "node:http";
 import { createServer as createTcpServer } from "node:net";
@@ -84,7 +85,7 @@ let closing = false;
 let timer;
 const clients = new Set();
 const root = dirname(options.project);
-const assembly = join(root, "bin", "Release", "net10.0", `${basename(options.project, ".csproj")}.dll`);
+let assembly;
 
 const coordinator = createServer((request, response) => {
   if (request.url === "/__runic_dev/status") {
@@ -105,7 +106,28 @@ async function buildBackend() {
   build = run("dotnet", ["build", options.project, "-c", "Release", "--nologo"], root);
   const code = await exited(build);
   build = undefined;
-  return code === 0;
+  if (code !== 0) return false;
+  assembly = await targetPath();
+  return true;
+}
+
+// Ask MSBuild for the built assembly instead of guessing bin/Release/<tfm>:
+// OutputPath, AssemblyName and the target framework are project settings.
+async function msbuildProperty(name, properties = []) {
+  const { stdout } = await promisify(execFile)("dotnet",
+    ["msbuild", options.project, `-getProperty:${name}`, "-p:Configuration=Release", ...properties], { cwd: root });
+  return stdout.trim();
+}
+
+async function targetPath() {
+  let path = await msbuildProperty("TargetPath");
+  if (!path) {
+    // A multi-targeted project has no TargetPath until a framework is chosen.
+    const framework = (await msbuildProperty("TargetFrameworks")).split(";").find(Boolean);
+    if (framework) path = await msbuildProperty("TargetPath", [`-p:TargetFramework=${framework}`]);
+  }
+  if (!path || !existsSync(path)) throw new Error(`Could not locate the built assembly for ${basename(options.project)}.`);
+  return path;
 }
 
 function awaitOutput(child, pattern, timeout = 30000) {
@@ -158,19 +180,23 @@ async function startFrontend() {
 async function rebuild() {
   if (rebuilding || closing) { pending = true; return; }
   rebuilding = true;
-  do {
-    pending = false;
-    if (await buildBackend()) {
-      await stop(backend);
-      await startBackend();
-      generation++;
-      for (const client of clients) client.write(`data: ${generation}\n\n`);
-      console.log(`RUNIC_DEV_RESTARTED|generation=${generation}`);
-    } else {
-      console.error("RUNIC_DEV_BUILD_FAILED|backend remains available");
-    }
-  } while (pending && !closing);
-  rebuilding = false;
+  try {
+    do {
+      pending = false;
+      if (await buildBackend()) {
+        await stop(backend);
+        await startBackend();
+        generation++;
+        for (const client of clients) client.write(`data: ${generation}\n\n`);
+        console.log(`RUNIC_DEV_RESTARTED|generation=${generation}`);
+      } else {
+        console.error("RUNIC_DEV_BUILD_FAILED|backend remains available");
+      }
+    } while (pending && !closing);
+  } finally {
+    // A failed restart must not leave every later source change ignored.
+    rebuilding = false;
+  }
 }
 
 function sourceChanged(name) {

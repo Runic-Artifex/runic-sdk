@@ -6,6 +6,7 @@
     <RunicBridgeTypescriptDir Condition="'$(RunicBridgeTypescriptDir)' == ''">$(MSBuildProjectDirectory)/Frontend/src/generated</RunicBridgeTypescriptDir>
     <RunicBridgeFrontendDir Condition="'$(RunicBridgeFrontendDir)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir>
     <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == ''">npm run build</RunicBridgeFrontendBuildCommand>
+    <RunicBridgeFrontendStamp>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge-frontend.stamp</RunicBridgeFrontendStamp>
     <RunicBridgeCodegenProject>$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj</RunicBridgeCodegenProject>
     <RunicBridgeCodegenDll Condition="Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
     <RunicBridgeCodegenDll Condition="!Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../tools/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
@@ -43,7 +44,7 @@
     <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicBridgeCompositionType)&quot; &quot;$(RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs&quot;"
           Condition="'$(RunicBridgeCompositionType)' != ''" />
     <ItemGroup>
-      <Compile Include="$(RunicBridgeGeneratedDir)*Bridge.g.cs" />
+      <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs"
                Condition="'$(RunicBridgeCompositionType)' != ''" />
     </ItemGroup>
@@ -58,10 +59,10 @@
     <!-- In a one-project starter, first compile the ordinary C# source so MVVM
          source generators have finished before Bridge inspection. -->
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build"
-             Properties="RunicBridgeBootstrap=true;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
+             Properties="RunicBridgeBootstrap=true;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
              Condition="'$(RunicBridgeModelAssembly)' == ''" />
     <PropertyGroup>
-      <RunicBridgeInputAssembly Condition="'$(RunicBridgeModelAssembly)' == ''">$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(AssemblyName).dll</RunicBridgeInputAssembly>
+      <RunicBridgeInputAssembly Condition="'$(RunicBridgeModelAssembly)' == ''">$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/$(AssemblyName).dll</RunicBridgeInputAssembly>
       <RunicBridgeInputAssembly Condition="'$(RunicBridgeModelAssembly)' != ''">$(RunicBridgeModelAssembly)</RunicBridgeInputAssembly>
     </PropertyGroup>
     <Error Condition="!Exists('$(RunicBridgeCodegenDll)')"
@@ -71,10 +72,36 @@
     </PropertyGroup>
     <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeRegistrationArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument)" />
     <ItemGroup>
-      <Compile Include="$(RunicBridgeGeneratedDir)*Bridge.g.cs" />
+      <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />
     </ItemGroup>
+  </Target>
+
+  <!-- The frontend build runs only when one of its inputs is newer than the
+       stamp: files under the frontend directory (excluding node_modules and
+       build output), the generated TypeScript, and this project file. The
+       generator rewrites TypeScript only when its content changes, so a
+       C#-only edit does not rebuild the frontend. Add inputs outside the
+       frontend directory (for example workspace packages) as
+       RunicBridgeFrontendInput items, or set RunicBridgeBuildFrontend=false
+       when another tool owns the frontend build. -->
+  <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
+    <ItemGroup>
+      <RunicBridgeFrontendInput Include="$(RunicBridgeFrontendDir)/**/*"
+          Exclude="$(RunicBridgeFrontendDir)/node_modules/**;$(RunicBridgeFrontendDir)/dist/**;$(RunicBridgeFrontendDir)/build/**;$(RunicBridgeFrontendDir)/bin/**;$(RunicBridgeFrontendDir)/obj/**;$(RunicBridgeFrontendDir)/.*/**" />
+      <RunicBridgeFrontendInput Include="$(RunicBridgeTypescriptDir)/*.ts;$(MSBuildProjectFullPath)" />
+      <!-- Registered on every build so IncrementalClean keeps the stamp
+           when the frontend target is skipped as up to date. -->
+      <FileWrites Include="$(RunicBridgeFrontendStamp)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RunicViewsBuildFrontend" AfterTargets="RunicViewsCollectFrontendInputs"
+          Inputs="@(RunicBridgeFrontendInput)" Outputs="$(RunicBridgeFrontendStamp)"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
     <Exec Command="$(RunicBridgeFrontendBuildCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
+    <Touch Files="$(RunicBridgeFrontendStamp)" AlwaysCreate="true" />
   </Target>
 
   <Target Name="RunicViewsCopyFrontend" AfterTargets="Build"

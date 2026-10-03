@@ -17,7 +17,7 @@ using Runic.Application.Views.Codegen.Toolkit;
 internal static class BridgeGenerationCache
 {
     private const string ManifestFileName = ".runic-bridge-generation-cache.json";
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -64,7 +64,7 @@ internal static class BridgeGenerationCache
             SchemaVersion = SchemaVersion,
             Fingerprint = ComputeFingerprint(modelAssemblyPath, roots, outputAffectingArguments),
             CSharpOutputs = CaptureOutputs(roots.CSharp, IsCSharpGeneratedFile),
-            TypeScriptOutputs = CaptureOutputs(roots.TypeScript, static _ => true),
+            TypeScriptOutputs = CaptureOutputs(roots.TypeScript, IsTypeScriptGeneratedFile),
         };
         WriteAtomically(Path.Combine(roots.CSharp, ManifestFileName),
             JsonSerializer.Serialize(manifest, JsonOptions));
@@ -127,7 +127,7 @@ internal static class BridgeGenerationCache
 
     private static bool VerifyOutputs(Roots roots, Manifest manifest) =>
         VerifyOutputGroup(roots.CSharp, manifest.CSharpOutputs, IsCSharpGeneratedFile)
-        && VerifyOutputGroup(roots.TypeScript, manifest.TypeScriptOutputs, static _ => true);
+        && VerifyOutputGroup(roots.TypeScript, manifest.TypeScriptOutputs, IsTypeScriptGeneratedFile);
 
     private static bool VerifyOutputGroup(string root, IReadOnlyList<Output>? expected,
         Func<string, bool> include)
@@ -146,7 +146,7 @@ internal static class BridgeGenerationCache
     {
         if (!Directory.Exists(root)) return [];
         return Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly)
-            .Where(path => include(Path.GetFileName(path)))
+            .Where(include)
             .Select(path => new Output
             {
                 Path = Path.GetFileName(path),
@@ -156,9 +156,18 @@ internal static class BridgeGenerationCache
             .ToList();
     }
 
-    private static bool IsCSharpGeneratedFile(string fileName) =>
-        fileName.EndsWith("Bridge.g.cs", StringComparison.Ordinal)
-        || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal);
+    private static bool IsCSharpGeneratedFile(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return fileName.EndsWith(".Bridge.g.cs", StringComparison.Ordinal)
+            || fileName.EndsWith(".View.g.cs", StringComparison.Ordinal)
+            || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal);
+    }
+
+    // The TypeScript directory can be application source. Hand-written modules
+    // beside generated ones must neither invalidate nor be recorded by the cache.
+    private static bool IsTypeScriptGeneratedFile(string path) =>
+        path.EndsWith(".ts", StringComparison.Ordinal) && GeneratedOutput.IsGenerated(path);
 
     private static string HashFile(string path)
     {

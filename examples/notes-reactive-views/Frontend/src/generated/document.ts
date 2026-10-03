@@ -235,6 +235,10 @@ async function remountLease(bridge: RunicBridgeClient, route: string, lease: Sha
     await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
   }
 }
+function reportBridgeError(error: unknown): void {
+  const report = (globalThis as { reportError?: (error: unknown) => void }).reportError;
+  if (typeof report === "function") report(error); else console.error(error);
+}
 function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route: string): SharedRoute {
   const callbackName = `__${route}Changed`;
   const callbacks = window as unknown as Record<string, unknown>;
@@ -248,7 +252,10 @@ function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient, route
     route, callbackName, bridge, generation: runtime.generation, entries: new Map(), previousCallback: callbacks[callbackName], active: true,
     callback(state) {
       let accepted: unknown;
-      for (const entry of sharedRoute.entries.values()) accepted = entry.accept(state);
+      for (const entry of sharedRoute.entries.values()) {
+        try { accepted = entry.accept(state); }
+        catch (error) { reportBridgeError(error); }
+      }
       return accepted;
     },
   };
@@ -275,12 +282,17 @@ async function connectDocumentAt(route: string, needsMount = false): Promise<Doc
         const next = wire as WireState;
         if (!created.active || !routeEntry.active) return created.current ?? created.hydrate(next);
         if (created.current === undefined || created.revision === undefined || next.revision >= created.revision) {
+          // Decode first: a state that fails validation must not advance the revision.
+          const current = created.hydrate(next);
           created.revision = next.revision;
           created.wire = next;
-          created.current = created.hydrate(next);
+          created.current = current;
           for (const lease of created.leases) if (!lease.disposed) {
-            lease.current = created.current;
-            for (const listener of lease.listeners) listener(created.current);
+            lease.current = current;
+            for (const listener of lease.listeners) {
+              try { listener(current); }
+              catch (error) { reportBridgeError(error); }
+            }
           }
         }
         return created.current;
@@ -311,7 +323,10 @@ async function connectDocumentAt(route: string, needsMount = false): Promise<Doc
     let reply: BridgeReply;
     try { reply = JSON.parse(json) as BridgeReply; }
     catch { throw new BridgeError("failed", "The Bridge returned an invalid response."); }
-    const state = reply.state === null ? undefined : target.accept(reply.state);
+    if (reply === null || typeof reply !== "object") throw new BridgeError("failed", "The Bridge returned an invalid response.");
+    let state: unknown;
+    try { state = reply.state === null ? undefined : target.accept(reply.state); }
+    catch { throw new BridgeError("failed", "The Bridge returned an invalid state."); }
     if (!reply.ok) throw new BridgeError(reply.error?.kind ?? "failed", reply.error?.message ?? "The call failed.");
     if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.");
     return state as DocumentState;
@@ -341,26 +356,26 @@ async function connectDocumentAt(route: string, needsMount = false): Promise<Doc
   }
   function showEditorOperation(requestId: string, terminal?: BridgeOperationStatus<never>): DocumentShowEditorOperation {
     let completion: Promise<BridgeOperationStatus<never>> | undefined;
-    const wait = () => completion ??= terminal === undefined ? operationStatus("ShowEditor", requestId, true, value => undefined as never) : Promise.resolve(terminal);
+    const wait = () => completion ??= (terminal === undefined ? operationStatus("ShowEditor", requestId, true, value => undefined as never) : Promise.resolve(terminal)).catch(error => { completion = undefined; throw error; });
     return { requestId, status: () => terminal === undefined ? operationStatus("ShowEditor", requestId, false, value => undefined as never) : Promise.resolve(terminal), get completion() { return wait(); }, wait, cancel: () => operationCancel("ShowEditor", requestId), };
   }
   async function startShowEditorWithRequestId(requestId: string, _input?: never): Promise<DocumentShowEditorOperation> {
     if (requestId.length === 0) throw new RangeError("Operation requestId is required."); if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The Bridge is disconnected.");
     await awaitInteractionCapabilities();
     let reply: string; try { reply = await bridge.call(`${route}StartShowEditor`, requestId); } catch { const recovered = await operationStatus("ShowEditor", requestId, false, value => undefined as never); if (recovered.kind === "unknown" || recovered.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return showEditorOperation(requestId, recovered.kind === "running" ? undefined : recovered); }
-    const admission = JSON.parse(reply) as { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown }; if (admission.kind === "accepted" || admission.kind === "duplicate") { const terminal = admission.terminal === null || admission.terminal === undefined ? undefined : parseOperationStatus(JSON.stringify(admission.terminal), requestId, value => undefined as never); return showEditorOperation(requestId, terminal); } throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.");
+    let admission: { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown }; try { admission = JSON.parse(reply) as typeof admission; } catch { throw new BridgeError("failed", "The operation service returned invalid JSON."); } if (admission.kind === "accepted" || admission.kind === "duplicate") { const terminal = admission.terminal === null || admission.terminal === undefined ? undefined : parseOperationStatus(JSON.stringify(admission.terminal), requestId, value => undefined as never); return showEditorOperation(requestId, terminal); } throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.");
   }
   async function recoverShowEditorWithRequestId(requestId: string): Promise<DocumentShowEditorOperation> { const status = await operationStatus("ShowEditor", requestId, false, value => undefined as never); if (status.kind === "unknown" || status.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return showEditorOperation(requestId, status.kind === "running" ? undefined : status); }
   function showPreviewOperation(requestId: string, terminal?: BridgeOperationStatus<never>): DocumentShowPreviewOperation {
     let completion: Promise<BridgeOperationStatus<never>> | undefined;
-    const wait = () => completion ??= terminal === undefined ? operationStatus("ShowPreview", requestId, true, value => undefined as never) : Promise.resolve(terminal);
+    const wait = () => completion ??= (terminal === undefined ? operationStatus("ShowPreview", requestId, true, value => undefined as never) : Promise.resolve(terminal)).catch(error => { completion = undefined; throw error; });
     return { requestId, status: () => terminal === undefined ? operationStatus("ShowPreview", requestId, false, value => undefined as never) : Promise.resolve(terminal), get completion() { return wait(); }, wait, cancel: () => operationCancel("ShowPreview", requestId), };
   }
   async function startShowPreviewWithRequestId(requestId: string, _input?: never): Promise<DocumentShowPreviewOperation> {
     if (requestId.length === 0) throw new RangeError("Operation requestId is required."); if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The Bridge is disconnected.");
     await awaitInteractionCapabilities();
     let reply: string; try { reply = await bridge.call(`${route}StartShowPreview`, requestId); } catch { const recovered = await operationStatus("ShowPreview", requestId, false, value => undefined as never); if (recovered.kind === "unknown" || recovered.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return showPreviewOperation(requestId, recovered.kind === "running" ? undefined : recovered); }
-    const admission = JSON.parse(reply) as { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown }; if (admission.kind === "accepted" || admission.kind === "duplicate") { const terminal = admission.terminal === null || admission.terminal === undefined ? undefined : parseOperationStatus(JSON.stringify(admission.terminal), requestId, value => undefined as never); return showPreviewOperation(requestId, terminal); } throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.");
+    let admission: { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown }; try { admission = JSON.parse(reply) as typeof admission; } catch { throw new BridgeError("failed", "The operation service returned invalid JSON."); } if (admission.kind === "accepted" || admission.kind === "duplicate") { const terminal = admission.terminal === null || admission.terminal === undefined ? undefined : parseOperationStatus(JSON.stringify(admission.terminal), requestId, value => undefined as never); return showPreviewOperation(requestId, terminal); } throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.");
   }
   async function recoverShowPreviewWithRequestId(requestId: string): Promise<DocumentShowPreviewOperation> { const status = await operationStatus("ShowPreview", requestId, false, value => undefined as never); if (status.kind === "unknown" || status.kind === "expired") throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered."); return showPreviewOperation(requestId, status.kind === "running" ? undefined : status); }
   function dispose(): void {
@@ -403,7 +418,9 @@ async function connectDocumentAt(route: string, needsMount = false): Promise<Doc
       if (lease.disposed || !isLive() || lease.current === undefined) throw new BridgeError("disconnected", "ViewModel is not connected.");
       const typed = listener as (state: unknown) => void;
       lease.listeners.add(typed);
-      typed(lease.current);
+      // The caller sees a failing initial delivery and gets no unsubscribe, so do not retain it.
+      try { typed(lease.current); }
+      catch (error) { lease.listeners.delete(typed); throw error; }
       return () => lease.listeners.delete(typed);
     },
     dispose,

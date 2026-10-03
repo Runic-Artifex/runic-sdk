@@ -39,6 +39,29 @@ internal static class DataCodecTests
             && Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"1.24:00:00\"")))
             && Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"10675199.02:48:05.4775808\""))),
             "Invariant TimeSpan decoding accepted an invalid component or tick overflow.");
+
+        // JavaScript writes ISO-8601 with millisecond precision (toISOString)
+        // or none at all; .NET "O" output has seven digits. Accept all of them.
+        var browserUtc = BridgeWire.ReadDateTime(Json("\"2026-10-03T12:34:56.789Z\""));
+        Require(browserUtc == new DateTime(2026, 10, 3, 12, 34, 56, 789, DateTimeKind.Utc) && browserUtc.Kind is DateTimeKind.Utc,
+            "A browser ISO date-time with three fractional digits was not read as UTC.");
+        Require(BridgeWire.ReadDateTime(Json("\"2026-10-03T12:34:56\"")) is { Kind: DateTimeKind.Unspecified, Second: 56 }
+            && BridgeWire.ReadDateTime(Json("\"2026-10-03T12:34:56.1234567\"")).Ticks % TimeSpan.TicksPerSecond == 1234567,
+            "An ISO date-time without fraction or with seven digits was not read.");
+        Require(BridgeWire.ReadDateTimeOffset(Json("\"2026-10-03T12:34:56.789Z\"")) == new DateTimeOffset(2026, 10, 3, 12, 34, 56, 789, TimeSpan.Zero)
+            && BridgeWire.ReadDateTimeOffset(Json("\"2026-10-03T14:34:56+02:00\"")).Offset == TimeSpan.FromHours(2),
+            "A browser ISO offset date-time was not read with its offset.");
+        Require(Throws<FormatException>(() => BridgeWire.ReadDateTimeOffset(Json("\"2026-10-03T12:34:56\""))),
+            "A date-time without an offset was accepted as a DateTimeOffset.");
+        Require(BridgeWire.ReadTimeOnly(Json("\"08:15:00\"")) == new TimeOnly(8, 15)
+            && BridgeWire.ReadTimeOnly(Json("\"08:15:00.5\"")) == new TimeOnly(8, 15, 0, 500),
+            "An ISO time without seven fractional digits was not read.");
+        var offset = new DateTimeOffset(2026, 10, 3, 14, 34, 56, TimeSpan.FromHours(2));
+        var offsetCodec = new BridgeValueCodec<DateTimeOffset>(BridgeWire.ReadDateTimeOffset, BridgeWire.WriteDateTimeOffset);
+        var encodedOffset = offsetCodec.Encode(offset);
+        Require(Json(encodedOffset).GetString() == "2026-10-03T14:34:56.0000000+02:00" && offsetCodec.Decode(encodedOffset) is var decodedOffset
+            && decodedOffset == offset && decodedOffset.Offset == offset.Offset,
+            $"A DateTimeOffset did not keep its offset on the wire: {encodedOffset}.");
     }
 
     private static WireSample Read(JsonElement element) => new(

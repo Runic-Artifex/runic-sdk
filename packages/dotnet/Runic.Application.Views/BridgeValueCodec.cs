@@ -166,18 +166,26 @@ public static class BridgeWire
         ? result
         : throw Invalid("Expected an ISO date.");
 
-    public static TimeOnly ReadTimeOnly(JsonElement value) => TimeOnly.TryParseExact(ReadRequiredString(value), "O",
+    // The "O" round-trip format requires exactly seven fractional digits, but
+    // browsers write ISO-8601 with any precision (Date.toISOString uses three).
+    // These patterns accept zero to seven digits and otherwise match "O".
+    private const string IsoTime = "HH':'mm':'ss.FFFFFFF";
+    private const string IsoDateTime = "yyyy'-'MM'-'dd'T'" + IsoTime;
+    private static readonly string[] IsoDateTimeOffset = [IsoDateTime + "zzz", IsoDateTime + "'Z'"];
+
+    public static TimeOnly ReadTimeOnly(JsonElement value) => TimeOnly.TryParseExact(ReadRequiredString(value), IsoTime,
         CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
         ? result
         : throw Invalid("Expected an ISO time.");
 
-    public static DateTimeOffset ReadDateTimeOffset(JsonElement value) => DateTimeOffset.TryParseExact(ReadRequiredString(value), "O",
-        CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var result)
+    /// <summary>Reads an ISO date-time with an explicit offset or <c>Z</c>, preserving the offset.</summary>
+    public static DateTimeOffset ReadDateTimeOffset(JsonElement value) => DateTimeOffset.TryParseExact(ReadRequiredString(value), IsoDateTimeOffset,
+        CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var result)
         ? result
         : throw Invalid("Expected an ISO date-time with an offset.");
 
     /// <summary>Reads an ISO date-time while preserving its UTC/local/unspecified kind.</summary>
-    public static DateTime ReadDateTime(JsonElement value) => DateTime.TryParseExact(ReadString(value), "O",
+    public static DateTime ReadDateTime(JsonElement value) => DateTime.TryParseExact(ReadString(value), IsoDateTime + "K",
         CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var result)
         ? result
         : throw Invalid("Expected an ISO date-time.");
@@ -273,7 +281,8 @@ public static class BridgeWire
     public static void WriteDateTimeOffset(Utf8JsonWriter writer, DateTimeOffset value)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        writer.WriteStringValue(value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        // Keep the offset: it is part of a DateTimeOffset value.
+        writer.WriteStringValue(value.ToString("O", CultureInfo.InvariantCulture));
     }
 
     /// <summary>Writes an ISO date-time while preserving its UTC/local/unspecified kind.</summary>

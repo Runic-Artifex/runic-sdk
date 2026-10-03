@@ -61,7 +61,7 @@ internal static class BridgeDataSubscriptionEmitter
             return CollectionElementChildren(node.Value!);
         if (node.Kind is BridgeWireKind.Dto)
             return node.Members.Select(member => new Child(member.WireName, member.Property.Name,
-                $"static owner => (({BridgeTypeGraph.CSharpType(node.Type)})owner).{member.Property.Name}", member.Type)).ToList();
+                $"static owner => (({BridgeTypeGraph.CSharpType(node.NonNullableType)})owner).{member.Property.Name}", member.Type)).ToList();
         if (node.Kind is BridgeWireKind.Union)
             return node.Cases.SelectMany(@case => @case.Type.Members.Select(member => new Child(member.WireName, member.Property.Name,
                 $"static owner => owner is {BridgeTypeGraph.CSharpType(@case.Type.Type)} current ? current.{member.Property.Name} : null", member.Type))).ToList();
