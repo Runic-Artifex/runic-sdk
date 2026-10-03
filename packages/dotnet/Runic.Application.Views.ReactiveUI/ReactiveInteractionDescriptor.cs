@@ -23,6 +23,13 @@ namespace Runic.Application.Views.ReactiveUI;
 /// </summary>
 public static class ReactiveInteractionDescriptor
 {
+    /// <summary>Creates the descriptor for one ReactiveUI interaction of <typeparamref name="TModel"/>.</summary>
+    /// <param name="name">The interaction's member name.</param>
+    /// <param name="contract">The interaction contract that a browser handler must implement.</param>
+    /// <param name="getInteraction">Reads the interaction from the model.</param>
+    /// <param name="encodeInput">Encodes interaction input for the browser.</param>
+    /// <param name="decodeOutput">Decodes the browser's answer.</param>
+    /// <param name="timeout">How long the browser may take to answer; at most ten minutes.</param>
     public static BridgeInteractionDescriptor<TModel> Create<TModel, TInput, TOutput>(
         string name,
         string contract,

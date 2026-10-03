@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Testing</PackageId>
-    <Authors>RunicArtifex</Authors>
     <Description>Headless Window and View test host for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
@@ -13,4 +13,5 @@
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

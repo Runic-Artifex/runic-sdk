@@ -12,6 +12,15 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     private readonly IDisposable _attachment;
     private bool _disposed;
 
+    /// <summary>Creates a content session for <paramref name="viewModel"/> and attaches its generated root bridge.</summary>
+    /// <param name="viewModel">The root ViewModel; the caller keeps ownership.</param>
+    /// <param name="rootRoute">The generated root route name.</param>
+    /// <param name="attach">The generated bridge factory.</param>
+    /// <param name="viewLocator">Resolves .NET Views for presented content.</param>
+    /// <param name="operationShutdown">Cancels window-owned operations when signalled.</param>
+    /// <param name="modelContext">The model context the window graph must share, if any.</param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
+        Justification = "Published constructor that mirrors WindowContentSession; reordering would break callers.")]
     public RunicWindowTestHost(TViewModel viewModel, string rootRoute,
         Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable> attach,
         IRunicViewLocator? viewLocator = null,
@@ -45,9 +54,13 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         catch { Transport.Dispose(); throw; }
     }
 
+    /// <summary>The root ViewModel.</summary>
     public TViewModel ViewModel { get; }
+    /// <summary>The generated root route name.</summary>
     public string RootRoute { get; }
+    /// <summary>The in-memory transport that records routes and publications.</summary>
     public InMemoryViewTransport Transport { get; }
+    /// <summary>The window content session.</summary>
     public WindowContentSession Content { get; }
 
     /// <summary>Reads a generated snapshot from the root route.</summary>
@@ -73,6 +86,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     public ValueTask<WindowContentSessionCloseResult> BeginCloseAsync(TimeSpan timeout) =>
         Content.BeginCloseAsync(timeout);
 
+    /// <summary>Detaches the root bridge and disposes the content session and transport.</summary>
     public void Dispose()
     {
         if (_disposed) return;

@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.ReactiveUI.Reactive</PackageId>
-    <Authors>RunicArtifex</Authors>
     <Description>System.Reactive-flavor ReactiveUI routing, view location, activation, and scheduling for Runic Views.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Selects the System.Reactive namespaces in the source shared with
@@ -22,4 +22,5 @@
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Application.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
 </Project>
