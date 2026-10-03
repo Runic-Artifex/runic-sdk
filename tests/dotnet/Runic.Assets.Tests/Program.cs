@@ -42,6 +42,7 @@ internal static class Program
         new("development disposal closes callback admission before returning", DirectoryDisposeDispatch),
         new("development directory detects content drift", DirectoryDrift),
         new("development directory rejects symbolic links", DirectoryLinks),
+        new("development directory skips names that are not asset paths", DirectorySkipsInvalidNames),
         new("development reads reject symlink replacement races", DirectoryLinkSwap),
         new("development source pins its root across root and ancestor swaps", DirectoryRootPinning),
         new("sources honor cancellation", Cancellation),
@@ -305,8 +306,19 @@ internal static class Program
             .ConfigureAwait(false);
 
         Equal(StatusCodes.Status200OK, context.Response.StatusCode);
-        Equal(descriptor.MediaType, context.Response.ContentType);
+        Equal("text/html; charset=utf-8", context.Response.ContentType);
         Equal(descriptor.Length, context.Response.ContentLength);
+
+        var head = new DefaultHttpContext();
+        head.Request.Method = HttpMethods.Head;
+        head.Response.Body = new MemoryStream();
+        await RunicAssetEndpointExtensions
+            .WriteAssetAsync(head, source, descriptor)
+            .ConfigureAwait(false);
+        Equal(StatusCodes.Status200OK, head.Response.StatusCode);
+        Equal(descriptor.Length, head.Response.ContentLength);
+        Equal(descriptor.EntityTag, head.Response.Headers.ETag.ToString());
+        Equal(0L, head.Response.Body.Length);
         Equal(descriptor.EntityTag, context.Response.Headers.ETag.ToString());
         Equal(descriptor.CacheControl, context.Response.Headers.CacheControl.ToString());
         Equal(descriptor.Length, context.Response.Body.Length);
@@ -407,6 +419,37 @@ internal static class Program
         Equal(StatusCodes.Status200OK, context.Response.StatusCode);
         Equal(source.Manifest.EntryPoint.EntityTag, context.Response.Headers.ETag.ToString());
         Equal("two", Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray()));
+
+        // Development snapshots are seekable, so a range starts without reading the prefix.
+        directory.Write("index.html", "0123456789");
+        source.Refresh();
+        var range = new DefaultHttpContext();
+        range.Response.Body = new MemoryStream();
+        range.Request.Headers.Range = "bytes=6-8";
+        await RunicAssetEndpointExtensions.WriteAssetAsync(range, source, source.Manifest.EntryPoint).ConfigureAwait(false);
+        Equal(StatusCodes.Status206PartialContent, range.Response.StatusCode);
+        Equal("678", Encoding.UTF8.GetString(((MemoryStream)range.Response.Body).ToArray()));
+    }
+
+    private static async Task DirectorySkipsInvalidNames()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.Write("index.html", "entry");
+        directory.Write("assets/app.js", "app");
+        foreach (string name in new[] { "notes:draft.txt", "what?.txt", "back\\slash.txt", "%2e%2e.txt" })
+        {
+            await File.WriteAllTextAsync(System.IO.Path.Combine(directory.Path, name), "odd").ConfigureAwait(false);
+        }
+
+        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
+        SequenceEqual(new[] { "assets/app.js", "index.html" }, source.Manifest.Assets.Select(static asset => asset.RelativePath));
+        SequenceEqual(
+            new[] { "%2e%2e.txt", "back\\slash.txt", "notes:draft.txt", "what?.txt" },
+            source.SkippedEntries.Order(StringComparer.Ordinal));
+
+        File.Delete(System.IO.Path.Combine(directory.Path, "what?.txt"));
+        source.Refresh();
+        Equal(3, source.SkippedEntries.Count);
     }
 
     private static async Task DirectoryRefresh()

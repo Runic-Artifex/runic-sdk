@@ -13,7 +13,9 @@ namespace Runic.Assets.AspNetCore;
 /// <summary>Maps a Runic Assets source to ASP.NET Core endpoints.</summary>
 public static class RunicAssetEndpointExtensions
 {
-    /// <summary>Maps all exact manifest paths below an optional route prefix.</summary>
+    private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
+
+    /// <summary>Maps GET and HEAD for all exact manifest paths below an optional route prefix.</summary>
     public static IEndpointConventionBuilder MapRunicAssetSource(
         this IEndpointRouteBuilder endpoints,
         IAssetSource source,
@@ -31,8 +33,9 @@ public static class RunicAssetEndpointExtensions
         routePrefix = NormalizePrefix(routePrefix);
 
         string route = "/" + (routePrefix.Length == 0 ? "" : routePrefix + "/") + "{**runicAssetPath}";
-        return endpoints.MapGet(
+        return endpoints.MapMethods(
             route,
+            ReadMethods,
             async context =>
             {
                 string? requested = context.Request.RouteValues["runicAssetPath"] as string;
@@ -101,7 +104,7 @@ public static class RunicAssetEndpointExtensions
         }
 
         context.Response.StatusCode = hasRange ? StatusCodes.Status206PartialContent : StatusCodes.Status200OK;
-        context.Response.ContentType = current.MediaType;
+        context.Response.ContentType = WithUtf8Charset(current.MediaType);
         context.Response.ContentLength = length;
         if (hasRange)
         {
@@ -114,9 +117,21 @@ public static class RunicAssetEndpointExtensions
                 + current.Length.ToString(CultureInfo.InvariantCulture);
         }
 
+        if (HttpMethods.IsHead(context.Request.Method))
+        {
+            return;
+        }
+
         await CopyRangeAsync(snapshot.Content, context.Response.Body, start, length, context.RequestAborted)
             .ConfigureAwait(false);
     }
+
+    // Web build output is UTF-8; without a charset browsers may decode text/plain or text/css with a legacy code page.
+    private static string WithUtf8Charset(string mediaType) =>
+        mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+            && !mediaType.Contains("charset=", StringComparison.OrdinalIgnoreCase)
+            ? mediaType + "; charset=utf-8"
+            : mediaType;
 
     private static string NormalizePrefix(string routePrefix)
     {
@@ -251,6 +266,12 @@ public static class RunicAssetEndpointExtensions
     {
         byte[] buffer = new byte[81_920];
         long skipped = 0;
+        if (start != 0 && source.CanSeek)
+        {
+            source.Seek(start, SeekOrigin.Current);
+            skipped = start;
+        }
+
         while (skipped < start)
         {
             int request = (int)Math.Min(buffer.Length, start - skipped);

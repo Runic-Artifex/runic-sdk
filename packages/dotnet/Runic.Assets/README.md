@@ -82,7 +82,9 @@ var assets = new EmbeddedAssetSource(
 Use `DevelopmentDirectoryAssetSource` only for the Linux development inner loop;
 it requires Linux no-follow directory handles so root and ancestor replacement
 cannot redirect a published source. It refreshes local files and marks them
-`no-store`. Call `StartWatching` once to
+`no-store`. Entries whose names are not valid asset paths (for example
+containing `:`, `?`, `#` or a backslash) are skipped and listed in
+`SkippedEntries` instead of failing the scan. Call `StartWatching` once to
 coalesce filesystem signals into source-owned refreshes, then dispose its
 `IAssetWatch` lease (or cancel its token) to stop it. Subscribe to
 `IAssetSourceChangeNotifier.Changed` when a host needs to react to a successful

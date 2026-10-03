@@ -20,6 +20,7 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
     private readonly object _refreshGate = new();
     private readonly object _notificationGate = new();
     private AssetManifest _manifest;
+    private IReadOnlyList<string> _skippedEntries = Array.Empty<string>();
     private EventHandler<AssetSourceChangedEventArgs>? _changed;
     private AssetSourceChangedEventArgs? _pendingChange;
     private DevelopmentAssetWatch? _watch;
@@ -44,7 +45,7 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
         _rootHandle = new LinuxAssetRoot(_root);
         try
         {
-            _manifest = Scan(CancellationToken.None);
+            _manifest = Scan(CancellationToken.None, out _skippedEntries);
         }
         catch
         {
@@ -55,6 +56,12 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
 
     /// <inheritdoc />
     public AssetManifest Manifest => Volatile.Read(ref _manifest);
+
+    /// <summary>
+    /// Gets the directory entries the latest scan skipped because their names are not valid asset
+    /// paths, such as names containing <c>:</c>, <c>?</c>, <c>#</c>, a backslash, or a percent-encoded octet.
+    /// </summary>
+    public IReadOnlyList<string> SkippedEntries => Volatile.Read(ref _skippedEntries);
 
     /// <inheritdoc />
     public event EventHandler<AssetSourceChangedEventArgs>? Changed
@@ -129,7 +136,8 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
         lock (_refreshGate)
         {
             ThrowIfDisposed();
-            AssetManifest replacement = Scan(cancellationToken);
+            AssetManifest replacement = Scan(cancellationToken, out IReadOnlyList<string> skipped);
+            Volatile.Write(ref _skippedEntries, skipped);
             AssetManifest previous = Manifest;
             if (HasSameAssets(previous, replacement))
             {
@@ -185,29 +193,39 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
         string relativePath,
         CancellationToken cancellationToken = default)
     {
+        AssetDescriptor? descriptor;
+        FileStream input;
+        // Only the handle-relative open needs the gate that keeps the root handle alive; copying and
+        // hashing the opened file outside it keeps concurrent requests from serializing.
         lock (_refreshGate)
         {
             ThrowIfDisposed();
             cancellationToken.ThrowIfCancellationRequested();
             string path = AssetPath.Normalize(relativePath);
             AssetManifest manifest = Manifest;
-            if (!manifest.TryGetAsset(path, out AssetDescriptor? descriptor))
+            if (!manifest.TryGetAsset(path, out descriptor))
             {
                 throw new FileNotFoundException("The requested asset is not declared by the current manifest.", path);
             }
 
+            input = OpenFile(descriptor!.RelativePath);
+        }
+
+        using (input)
+        {
             return ValueTask.FromResult(new AssetReadSnapshot(
                 descriptor!,
-                OpenSnapshot(descriptor!, cancellationToken)));
+                OpenSnapshot(input, descriptor!, cancellationToken)));
         }
     }
 
     private static async ValueTask<Stream> OpenStreamAsync(ValueTask<AssetReadSnapshot> snapshot) =>
         (await snapshot.ConfigureAwait(false)).Content;
 
-    private AssetManifest Scan(CancellationToken cancellationToken)
+    private AssetManifest Scan(CancellationToken cancellationToken, out IReadOnlyList<string> skippedEntries)
     {
         var descriptors = new List<AssetDescriptor>();
+        var skipped = new List<string>();
         var pending = new Stack<string>();
         pending.Push("");
         while (pending.Count != 0)
@@ -218,7 +236,14 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 string relativePath = directory.Length == 0 ? name : directory + "/" + name;
-                relativePath = AssetPath.Normalize(relativePath);
+                if (!TryNormalizeEntry(relativePath, name, out string normalized))
+                {
+                    // A development tool can leave odd names behind; one must not break the whole scan.
+                    skipped.Add(relativePath);
+                    continue;
+                }
+
+                relativePath = normalized;
                 if (_rootHandle.IsDirectory(relativePath))
                 {
                     pending.Push(relativePath);
@@ -235,7 +260,27 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
             }
         }
 
+        skippedEntries = skipped.ToArray();
         return new AssetManifest(descriptors);
+    }
+
+    private static bool TryNormalizeEntry(string relativePath, string name, out string normalized)
+    {
+        normalized = string.Empty;
+        if (name.Contains('\\', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        try
+        {
+            normalized = AssetPath.Normalize(relativePath);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     private FileStream OpenFile(string relativePath)
@@ -243,7 +288,7 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
         return _rootHandle.OpenRead(AssetPath.Normalize(relativePath));
     }
 
-    private Stream OpenSnapshot(AssetDescriptor descriptor, CancellationToken cancellationToken)
+    private static Stream OpenSnapshot(FileStream input, AssetDescriptor descriptor, CancellationToken cancellationToken)
     {
         string temporaryPath = Path.Combine(
             Path.GetTempPath(),
@@ -258,7 +303,6 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
                 FileShare.Read,
                 bufferSize: 81_920,
                 FileOptions.DeleteOnClose | FileOptions.SequentialScan);
-            using FileStream input = OpenFile(descriptor.RelativePath);
             CopyAndVerifySnapshot(input, snapshot, descriptor, cancellationToken);
             snapshot.Position = 0;
             Stream result = new ReadOnlySnapshotStream(snapshot);
