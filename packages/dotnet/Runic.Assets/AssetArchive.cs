@@ -23,6 +23,8 @@ public static class AssetArchive
     private const string ManifestEntryName = "runic-assets.json";
     private const string ContentPrefix = "assets/";
     private static readonly DateTimeOffset StableTimestamp = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly System.Buffers.SearchValues<char> HexCharacters =
+        System.Buffers.SearchValues.Create("0123456789abcdefABCDEF");
 
     /// <summary>Writes a deterministic, portable ZIP archive from one validated source.</summary>
     public static async ValueTask WriteAsync(
@@ -303,6 +305,71 @@ public static class AssetArchive
         return stream.ToArray();
     }
 
+    // Only content-addressed file names may be cached forever. Unhashed files such as favicon.ico,
+    // robots.txt, manifest.webmanifest or sw.js keep their URL across releases and must revalidate.
+    internal static AssetCacheMode InferCacheMode(string relativePath)
+    {
+        string name = relativePath[(relativePath.LastIndexOf('/') + 1)..];
+        string extension = Path.GetExtension(name);
+        if (extension.Equals(".html", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".htm", StringComparison.OrdinalIgnoreCase))
+        {
+            return AssetCacheMode.Revalidate;
+        }
+
+        // Check "name-hash.js" and, for derived files, "name-hash.js.map".
+        string stem = name[..^extension.Length];
+        return HasHashSegment(stem) || HasHashSegment(Path.GetFileNameWithoutExtension(stem))
+            ? AssetCacheMode.Immutable
+            : AssetCacheMode.Revalidate;
+    }
+
+    // Recognizes "[name]-[hash]" and "[name].[hash]" with the eight-character base64url hashes emitted
+    // by Rollup/Vite, SvelteKit and esbuild/Angular, plus "[name].[hash]" with webpack's hex hashes.
+    private static bool HasHashSegment(string stem)
+    {
+        const int HashLength = 8;
+        int dot = stem.LastIndexOf('.');
+        if (dot > 0)
+        {
+            ReadOnlySpan<char> segment = stem.AsSpan(dot + 1);
+            if ((segment.Length == HashLength && IsHash(segment))
+                || (segment.Length >= 2 * HashLength && !segment.ContainsAnyExcept(HexCharacters) && IsHash(segment)))
+            {
+                return true;
+            }
+        }
+
+        return stem.Length > HashLength + 1
+            && stem[^(HashLength + 1)] == '-'
+            && IsHash(stem.AsSpan(stem.Length - HashLength));
+    }
+
+    // A hash contains a digit and a letter, so words such as "SemiBold" and dates such as
+    // "20240101" are not mistaken for content hashes. A missed hash only costs revalidation.
+    private static bool IsHash(ReadOnlySpan<char> segment)
+    {
+        bool digit = false;
+        bool letter = false;
+        foreach (char character in segment)
+        {
+            if (char.IsAsciiDigit(character))
+            {
+                digit = true;
+            }
+            else if (char.IsAsciiLetter(character))
+            {
+                letter = true;
+            }
+            else if (character is not ('-' or '_'))
+            {
+                return false;
+            }
+        }
+
+        return digit && letter;
+    }
+
     private static bool IsAlreadyCompressed(string path) =>
         Path.GetExtension(path).ToLowerInvariant() is
             ".7z" or ".avif" or ".br" or ".gif" or ".gz" or ".ico" or ".jpeg" or ".jpg"
@@ -485,9 +552,7 @@ public static class AssetArchive
                         stream,
                         mediaType: null,
                         StringComparer.Ordinal.Equals(relativePath, entryPoint),
-                        relativePath.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
-                            ? AssetCacheMode.Revalidate
-                            : AssetCacheMode.Immutable));
+                        InferCacheMode(relativePath)));
                 }
             }
 
@@ -600,9 +665,7 @@ public static class AssetArchive
                         stream,
                         mediaType: null,
                         StringComparer.Ordinal.Equals(relativePath, entryPoint),
-                        relativePath.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
-                            ? AssetCacheMode.Revalidate
-                            : AssetCacheMode.Immutable));
+                        InferCacheMode(relativePath)));
                     contents.Add(relativePath, content);
                 }
             }

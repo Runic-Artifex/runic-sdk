@@ -48,6 +48,13 @@ statistics. To use an existing canonical archive, set
 `RunicAssetsEmbeddedResourceName` if you need a resource name other than
 `Runic.Assets.StaticFiles`, and supply that name to `ReadEmbedded`.
 
+Directory archives mark a file `Immutable` (`public, max-age=31536000,
+immutable`) only when its name carries a content hash, such as Vite's
+`index-Cf3tzbYH.js`, SvelteKit's `start.D2kX0q3e.js` or webpack's
+`main.<hex>.js`. Every other file, including `.html`/`.htm` documents and
+unhashed `public/` files such as `favicon.ico`, `robots.txt` or `sw.js`, uses
+`Revalidate` with its strong entity tag.
+
 ## Small explicit bundles
 
 For a few hand-authored files, declare assembly resources in your application

@@ -26,6 +26,7 @@ internal static class Program
         new("portable archives round-trip deterministic metadata", ArchiveRoundTrip),
         new("archive writes reject content mutation after validation", ArchiveWriteMutation),
         new("directory compiler uses the canonical archive authority", DirectoryArchiveAuthority),
+        new("directory archives cache only content-hashed names immutably", DirectoryArchiveCacheModes),
         new("archive inspection is deterministic", ArchiveInspection),
         new("archive inspection rejects incompatible schema versions", ArchiveUnsupportedVersion),
         new("archive manifest parsing is decompression bounded", ArchiveManifestBound),
@@ -199,8 +200,47 @@ internal static class Program
         AssetArchiveSource source = AssetArchive.Read(first);
         Equal(2, source.Manifest.Assets.Count);
         Equal(AssetCacheMode.Revalidate, source.Manifest.EntryPoint.CacheMode);
-        Equal(AssetCacheMode.Immutable, source.Manifest.Assets[0].CacheMode);
+        Equal(AssetCacheMode.Revalidate, source.Manifest.Assets[0].CacheMode);
         True(!source.Manifest.TryGetAsset("excluded.txt", out _));
+    }
+
+    private static async Task DirectoryArchiveCacheModes()
+    {
+        (string Path, AssetCacheMode Expected)[] cases =
+        [
+            ("index.html", AssetCacheMode.Revalidate),
+            ("legacy.htm", AssetCacheMode.Revalidate),
+            ("favicon.ico", AssetCacheMode.Revalidate),
+            ("robots.txt", AssetCacheMode.Revalidate),
+            ("manifest.webmanifest", AssetCacheMode.Revalidate),
+            ("sw.js", AssetCacheMode.Revalidate),
+            ("config.json", AssetCacheMode.Revalidate),
+            ("assets/app.js", AssetCacheMode.Revalidate),
+            ("fonts/Roboto-SemiBold.woff2", AssetCacheMode.Revalidate),
+            ("release-20240101.json", AssetCacheMode.Revalidate),
+            ("assets/index-Cf3tzbYH.js", AssetCacheMode.Immutable),
+            ("assets/index-B-x_3kQz.css", AssetCacheMode.Immutable),
+            ("assets/index-Cf3tzbYH.js.map", AssetCacheMode.Immutable),
+            ("chunk-5INURT2O.js", AssetCacheMode.Immutable),
+            ("_app/immutable/entry/start.D2kX0q3e.js", AssetCacheMode.Immutable),
+            ("main.0123456789abcdef0123.js", AssetCacheMode.Immutable),
+            ("hashed-page-Cf3tzbYH.html", AssetCacheMode.Revalidate),
+        ];
+        using var directory = new TemporaryDirectory();
+        foreach ((string path, _) in cases)
+        {
+            directory.Write(path, path);
+        }
+
+        using var archive = new MemoryStream();
+        await AssetArchive.WriteDirectoryAsync(directory.Path, archive).ConfigureAwait(false);
+        archive.Position = 0;
+        AssetArchiveSource source = AssetArchive.Read(archive);
+        foreach ((string path, AssetCacheMode expected) in cases)
+        {
+            True(source.Manifest.TryGetAsset(path, out AssetDescriptor? descriptor));
+            Equal((path, expected), (path, descriptor!.CacheMode));
+        }
     }
 
     private static async Task ArchiveWriteMutation()
