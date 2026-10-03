@@ -1397,12 +1397,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return _generatedProfilePath;
         }
 
-        var basePath = Path.Combine(Path.GetTempPath(), "runic-desktop");
-        Directory.CreateDirectory(basePath);
-        _generatedProfilePath = Path.Combine(
-            basePath,
-            $"{browser.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_generatedProfilePath);
+        // A fresh owner-only directory: a shared temporary parent could be pre-created
+        // by another local user, who could then substitute or read the profile.
+        _generatedProfilePath = Directory.CreateTempSubdirectory(
+            $"runic-desktop-{browser.ToString().ToLowerInvariant()}-").FullName;
         if (_runtimeOptions is null)
         {
             WebUiApplication.RegisterGeneratedProfile(_generatedProfilePath);
