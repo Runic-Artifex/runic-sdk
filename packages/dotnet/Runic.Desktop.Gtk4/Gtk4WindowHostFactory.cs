@@ -268,6 +268,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
 
     public bool SupportsCloseConfirmation => true;
 
+    public bool SupportsDocumentStartScript => true;
+
     public DesktopWindowCapabilities Capabilities => SupportedCapabilities;
 
     public bool SupportsNativeDispatch => true;
@@ -445,6 +447,17 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
                 webView.SetSizeRequest(
                     options.MinimumWidth is { } minimumWidth ? checked((int)minimumWidth) : -1,
                     options.MinimumHeight is { } minimumHeight ? checked((int)minimumHeight) : -1);
+            }
+            if (options.DocumentStartScript is { } documentStartScript)
+            {
+                // The script compares complete origins, including the listener port, itself.
+                using var script = UserScript.New(
+                    documentStartScript,
+                    UserContentInjectedFrames.AllFrames,
+                    UserScriptInjectionTime.Start,
+                    null,
+                    null);
+                webView.GetUserContentManager().AddScript(script);
             }
             window.SetChild(webView);
             // Hidden windows still need a native surface for portal ownership

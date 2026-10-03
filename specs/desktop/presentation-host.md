@@ -220,6 +220,16 @@ admission to open a session. A non-loopback listener cannot distinguish a
 rebinding name from a legitimate network name and exposes its bootstrap
 credentials to every peer that can reach it.
 
+An embedded host that can run a document-start script receives the credentials
+in that script instead. The script runs in every frame before page scripts and
+exposes them only to documents whose origin is the surface origin or an
+additional origin. While such a host presents the surface, fetchable bootstrap
+scripts carry no credentials. The built-in WebView2, WKWebView, and WebKitGTK
+hosts support this. Installed browsers and custom hosts without the capability
+still fetch credential-bearing scripts, protected only by the `Host` and
+fetch-metadata checks; a browser that omits fetch metadata cannot be
+distinguished from a non-browser client.
+
 A credential is scoped to one surface and one host lifetime. It must not admit
 a session on another surface, remains invalid after its surface or host closes,
 and is replaced when policy requests rotation. Rotation prevents new use of the

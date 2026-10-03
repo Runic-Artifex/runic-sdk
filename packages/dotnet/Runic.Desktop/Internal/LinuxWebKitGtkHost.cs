@@ -21,6 +21,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+    public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
     public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
@@ -206,6 +207,10 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         else if (options.X is { } x && options.Y is { } y)
         {
             Api.GtkWindowMove(_window, checked((int)x), checked((int)y));
+        }
+        if (options.DocumentStartScript is { } documentStartScript)
+        {
+            Api.AddDocumentStartScript(_webView, documentStartScript);
         }
         if (options.Transparent)
         {
@@ -537,6 +542,10 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 WebKitWebViewLoadUriPointer = Required(_webkit, "webkit_web_view_load_uri");
                 WebKitWebViewGetTitlePointer = Required(_webkit, "webkit_web_view_get_title");
                 WebKitPermissionRequestDenyPointer = Required(_webkit, "webkit_permission_request_deny");
+                WebKitWebViewGetUserContentManagerPointer = Required(_webkit, "webkit_web_view_get_user_content_manager");
+                WebKitUserScriptNewPointer = Required(_webkit, "webkit_user_script_new");
+                WebKitUserScriptUnrefPointer = Required(_webkit, "webkit_user_script_unref");
+                WebKitUserContentManagerAddScriptPointer = Required(_webkit, "webkit_user_content_manager_add_script");
                 WebKitWebViewSetBackgroundColorPointer = Optional(_webkit, "webkit_web_view_set_background_color");
                 IsAvailable = true;
             }
@@ -594,6 +603,10 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint WebKitWebViewLoadUriPointer { get; }
         private nint WebKitWebViewGetTitlePointer { get; }
         private nint WebKitPermissionRequestDenyPointer { get; }
+        private nint WebKitWebViewGetUserContentManagerPointer { get; }
+        private nint WebKitUserScriptNewPointer { get; }
+        private nint WebKitUserScriptUnrefPointer { get; }
+        private nint WebKitUserContentManagerAddScriptPointer { get; }
         private nint WebKitWebViewSetBackgroundColorPointer { get; }
 
         internal bool GtkInitCheck() => ((delegate* unmanaged[Cdecl]<nint, nint, int>)GtkInitCheckPointer)(0, 0) != 0;
@@ -695,6 +708,34 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             var value = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetTitlePointer)(webView);
             return value == 0 ? null : Marshal.PtrToStringUTF8(value);
+        }
+
+        // All frames, at document start, without URL patterns: the script compares
+        // complete origins, including the listener port, itself.
+        internal void AddDocumentStartScript(nint webView, string source)
+        {
+            var manager = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetUserContentManagerPointer)(webView);
+            if (manager == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK did not provide a user content manager.");
+            }
+
+            using var value = Utf8String.Create(source);
+            var script = ((delegate* unmanaged[Cdecl]<byte*, int, int, nint, nint, nint>)WebKitUserScriptNewPointer)(
+                value.Pointer, 0, 0, 0, 0);
+            if (script == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK could not create the document-start script.");
+            }
+
+            try
+            {
+                ((delegate* unmanaged[Cdecl]<nint, nint, void>)WebKitUserContentManagerAddScriptPointer)(manager, script);
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)WebKitUserScriptUnrefPointer)(script);
+            }
         }
 
         internal void DenyPermission(nint request) =>

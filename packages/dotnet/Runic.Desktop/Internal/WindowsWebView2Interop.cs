@@ -11,6 +11,7 @@ internal static partial class WindowsWebView2Interop
 {
     internal const int NavigateSlot = 5;
     internal const int PermissionRequestedSlot = 23;
+    internal const int AddScriptToExecuteOnDocumentCreatedSlot = 27;
     internal const int DocumentTitleChangedSlot = 46;
     internal const int DocumentTitleSlot = 48;
     internal const int WindowCloseRequestedSlot = 59;
@@ -103,6 +104,13 @@ internal static partial class WindowsWebView2Interop
             Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, int>)Slot(webView, NavigateSlot))(webView, value));
     }
 
+    internal static unsafe void AddScriptToExecuteOnDocumentCreated(nint webView, string script, nint callback)
+    {
+        fixed (char* value = script)
+            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, nint, int>)Slot(webView, AddScriptToExecuteOnDocumentCreatedSlot))(
+                webView, value, callback));
+    }
+
     internal static unsafe void SetBounds(nint controller, Rectangle bounds)
     {
         var rect = new NativeRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
@@ -178,6 +186,16 @@ internal sealed class WindowsWebView2Controller : IDisposable
     internal bool IsVisible { set => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerVisibleSlot, value ? 1 : 0); }
     internal void MoveFocus() => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerFocusSlot, 0);
     internal void Navigate(string url) => WindowsWebView2Interop.Navigate(_webView, url);
+
+    // WebView2 injects the script only once this asynchronous registration completes,
+    // so the first navigation must wait for it.
+    internal async Task AddDocumentStartScriptAsync(string script)
+    {
+        var completion = new WebViewScriptCompletion();
+        using var handler = new WebViewComReference<IWebViewScriptAdded>(completion);
+        WindowsWebView2Interop.AddScriptToExecuteOnDocumentCreated(_webView, script, handler.Pointer);
+        await completion.Task;
+    }
     internal void SetTransparent()
     {
         var controller2 = WindowsWebView2Interop.Query(_controller, new Guid("c979903e-d4ca-4228-92eb-47ee3fa96eab"));
@@ -273,6 +291,25 @@ internal sealed partial class WebViewCompletion : IWebViewEnvironmentCompleted, 
             WindowsWebView2Interop.AddRef(result);
             if (!_completion.TrySetResult(result)) WindowsWebView2Interop.Release(result);
         }
+        return 0;
+    }
+}
+
+[GeneratedComInterface, Guid("b99369f3-9b11-47b5-bc6f-8e7895fcea17")]
+internal partial interface IWebViewScriptAdded { [PreserveSig] int Invoke(int errorCode, nint id); }
+
+[GeneratedComClass]
+internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
+{
+    private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task Task => _completion.Task;
+    // The identifier is a borrowed string that this host never removes by ID.
+    public int Invoke(int errorCode, nint id)
+    {
+        if (errorCode < 0)
+            _completion.TrySetException(new InvalidOperationException("WebView2 rejected the document-start script.", Marshal.GetExceptionForHR(errorCode)));
+        else
+            _completion.TrySetResult();
         return 0;
     }
 }

@@ -33,6 +33,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+    public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => IsMainThread;
     public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
@@ -272,7 +273,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidSize(_window, "setContentMinSize:", new CGSize(minimumWidth, minimumHeight));
         }
 
-        _webView = Api.AllocInitView(Api.GetClass("WKWebView"), frame);
+        _webView = Api.AllocInitWebView(frame, options.DocumentStartScript);
         if (_webView == 0)
         {
             Api.SendVoid(_window, "close");
@@ -503,10 +504,49 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         internal void SendVoidPoint(nint receiver, string selector, CGPoint value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, CGPoint, void>)_messageSend)(receiver, Selector(selector), value);
 
-        internal nint AllocInitView(nint type, CGRect frame)
+        // The script runs at document start in every frame (WKUserScriptInjectionTimeAtDocumentStart = 0).
+        internal nint AllocInitWebView(CGRect frame, string? documentStartScript)
         {
-            var instance = SendNint(type, "alloc");
-            return ((delegate* unmanaged[Cdecl]<nint, nint, CGRect, nint>)_messageSend)(instance, Selector("initWithFrame:"), frame);
+            var configuration = SendNint(SendNint(GetClass("WKWebViewConfiguration"), "alloc"), "init");
+            if (configuration == 0)
+            {
+                return 0;
+            }
+
+            try
+            {
+                if (documentStartScript is not null)
+                {
+                    var source = CreateString(documentStartScript);
+                    try
+                    {
+                        var script = ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, byte, nint>)_messageSend)(
+                            SendNint(GetClass("WKUserScript"), "alloc"),
+                            Selector("initWithSource:injectionTime:forMainFrameOnly:"),
+                            source,
+                            0,
+                            0);
+                        if (script == 0)
+                        {
+                            return 0;
+                        }
+                        SendVoidNint(SendNint(configuration, "userContentController"), "addUserScript:", script);
+                        SendVoid(script, "release");
+                    }
+                    finally
+                    {
+                        SendVoid(source, "release");
+                    }
+                }
+
+                var instance = SendNint(GetClass("WKWebView"), "alloc");
+                return ((delegate* unmanaged[Cdecl]<nint, nint, CGRect, nint, nint>)_messageSend)(
+                    instance, Selector("initWithFrame:configuration:"), frame, configuration);
+            }
+            finally
+            {
+                SendVoid(configuration, "release");
+            }
         }
 
         internal nint AllocInitWindow(CGRect frame, ulong style, ulong backing, bool defer)

@@ -61,6 +61,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private int _maximized;
 
     public bool SupportsCloseConfirmation => true;
+    public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => ReferenceEquals(Thread.CurrentThread, _thread);
     public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
@@ -333,6 +334,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 title => Native.SetWindowText(_window, title),
                 () => Native.PostMessage(_window, WmClose, 0, 0),
                 options.AllowedPermissions);
+            if (options.DocumentStartScript is { } documentStartScript)
+            {
+                await _controller.AddDocumentStartScriptAsync(documentStartScript);
+            }
             _controller.Navigate(url.AbsoluteUri);
             if (!string.IsNullOrWhiteSpace(options.IconFile))
             {
