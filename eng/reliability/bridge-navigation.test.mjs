@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 const source=readFileSync(new URL('../../packages/dotnet/Runic.Desktop/Internal/WebUiBridge.cs',import.meta.url),'utf8');
-const script=source.split('"""')[1].replaceAll('__TOKEN__','1').replaceAll('__PORT__','8080').replaceAll('__BASE_PATH__','').replaceAll('__SESSION_CREDENTIAL__','').replaceAll('__CUSTOM_WINDOW_DRAG__','false');
+const script=source.split('"""')[1].replaceAll('__TOKEN__','1').replaceAll('__PORT__','8080').replaceAll('__BASE_PATH__','').replaceAll('__SESSION_CREDENTIAL__','""').replaceAll('__CUSTOM_WINDOW_DRAG__','false');
 for (const [advertisement,intercepted] of [['__webui_core_api__,',false],['__webui_core_api__,save,',false],['__webui_core_api__,,',true],[',',true],['',false]]) {
  test(`wire binding list ${JSON.stringify(advertisement)} ${intercepted?'intercepts':'allows'} navigation`,async()=>{
   let socket;const events={};
