@@ -133,7 +133,7 @@ an LDAP transport. Runic's public models, validation and exception contracts rem
 handwritten and unchanged by this migration.
 
 `NativeMethods.txt` lists the requested APIs. `NativeMethods.json` selects internal,
-unmanaged bindings with preserved HRESULTs. CsWin32 0.3.333 is a private build
+unmanaged bindings with preserved HRESULTs. CsWin32 0.3.346 is a private build
 dependency. Generated source stays in build output and does not expose Windows
 SDK types in the public API. Calls use named methods, native structures and safe
 handle ownership; no runtime COM wrappers or warning suppressions were added.
