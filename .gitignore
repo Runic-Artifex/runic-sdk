@@ -19,3 +19,4 @@
 *.nupkg
 *.snupkg
 **/.nuget/
+**/.claude/worktrees/
