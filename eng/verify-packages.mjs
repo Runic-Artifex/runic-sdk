@@ -139,7 +139,7 @@ export async function verifyPackages(packageName) {
   // Separate minimal consumers prevent dependencies from concealing missing
   // dependencies in standalone CommandLine, Assets, Desktop, or Translations packages.
   const allLibraries = workspace.nuget.filter(
-    (p) => !p.name.startsWith("dotnet-") && !p.name.endsWith(".Templates"),
+    (p) => !isToolPackage(p) && !p.name.endsWith(".Templates"),
   );
   const libraries = packageName
     ? allLibraries.filter(packageEntry => packageEntry.name === packageName)
@@ -397,7 +397,7 @@ console.log('Packed npm consumers passed.');
     frontend,
   );
   console.log(
-    `All ${libraries.length} NuGet library consumers, CS-WebUI/Platform composition, 2 tools, 2 template packages, and ${archives.length} npm artifacts passed.`,
+    `All ${libraries.length} NuGet library consumers, CS-WebUI/Platform composition, 3 tools, 2 template packages, and ${archives.length} npm artifacts passed.`,
   );
 }
 
@@ -560,12 +560,18 @@ console.log("RMF2 Svelte locale adapter SSR passed.");
   run("node", ["verify-ssr.mjs"], project);
 }
 
+// .NET tools install with dotnet tool, not as package references.
+function isToolPackage(packageEntry) {
+  return /<PackAsTool>true<\/PackAsTool>/.test(readFileSync(resolve(root, packageEntry.project), "utf8"));
+}
+
 export async function verifyToolAndTemplatePackages(directory, nuget, env) {
   const toolPath = join(directory, "tools");
   const config = join(directory, "NuGet.config");
   for (const [id, command] of [
     ["dotnet-runic", "dotnet-runic"],
     ["dotnet-runic-translations", "runic-translations"],
+    ["Runic.Create", "runic-create"],
   ]) {
     run(
       "dotnet",

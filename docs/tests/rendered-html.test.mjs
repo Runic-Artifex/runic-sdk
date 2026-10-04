@@ -16,6 +16,7 @@ const releaseDocs = createReleaseDocs(publishedRelease);
 const primaryRoutes = [
   '/',
   '/getting-started',
+  '/create',
   '/products',
   '/architecture',
   '/packages',
@@ -152,32 +153,67 @@ test('renders every primary documentation route with one page heading', async ()
   }
 });
 
-test('getting started offers a published template and runnable app commands', async () => {
+test('getting started offers the creator and the equivalent template commands', async () => {
   const html = stripMarkup(await render('/getting-started'));
+  const version = publishedRelease.version;
+  assert.ok(html.includes(`dnx Runic.Create@${version}`));
+  assert.match(html, /cd MyApp dotnet tool restore dotnet runic dev/);
   assert.ok(
     html.includes(
-      `dotnet new install Runic.Application.Templates::${publishedRelease.version}`,
+      `dotnet new install Runic.Application.Templates@${version} dotnet new runic-app --name MyApp --frontend react --package-manager npm --host cswebui --view-models toolkit`,
     ),
-  );
-  // npm is the template default, so the prerendered sequence needs no option.
-  assert.match(
-    html,
-    /dotnet new runic-app-react -n MyApp cd MyApp dotnet tool restore dotnet runic dev/,
   );
   assert.match(html, /dotnet runic doctor/);
   assert.match(html, /dotnet publish -c Release/);
-  const markup = await render('/getting-started');
-  assert.ok(markup.includes('role="tablist"'), 'package manager tabs');
-  const tabs = [
-    ...markup.matchAll(
-      /<button\b[^>]*role="tab"[^>]*>(?:<!---->)*([^<]+)(?:<!---->)*<\/button>/g,
+  assert.doesNotMatch(html, /runic-app-react|--packageManager/);
+});
+
+test('create page prerenders the default project and every template choice', async () => {
+  const markup = await render('/create');
+  const html = stripMarkup(markup);
+  const version = publishedRelease.version;
+  assert.ok(
+    html.includes(
+      `dnx Runic.Create@${version} -- MyApp --frontend react --package-manager npm --host cswebui --view-models toolkit`,
     ),
-  ];
-  assert.deepEqual(
-    tabs.map((tab) => tab[1]),
-    ['npm', 'pnpm', 'Bun'],
   );
-  assert.ok(tabs[0][0].includes('aria-selected="true"'), 'npm is preselected');
+  for (const [name, values] of [
+    ['frontend', ['react', 'vue', 'svelte', 'angular']],
+    ['packageManager', ['npm', 'pnpm', 'bun']],
+    ['host', ['cswebui', 'desktop']],
+    ['viewModels', ['toolkit', 'reactiveui']],
+  ]) {
+    const radios = [
+      ...markup.matchAll(new RegExp(`<input[^>]*name="${name}"[^>]*>`, 'g')),
+    ].map((match) => match[0]);
+    assert.deepEqual(
+      radios.map((radio) => radio.match(/value="([^"]+)"/)[1]),
+      values,
+      name,
+    );
+    assert.equal(
+      radios.filter((radio) => /\bchecked\b/.test(radio)).length,
+      1,
+      name,
+    );
+    assert.match(radios[0], /\bchecked\b/, `${name} preselects its default`);
+  }
+  // The preview renders the template source for the default choices.
+  assert.match(
+    html,
+    /provider\.OpenWindow(?:&lt;|<)WorkspaceWindow, WorkspaceViewModel(?:&gt;|>)/,
+  );
+  assert.doesNotMatch(html, /#if|#endif|RunicWindowApp|DesktopHost/);
+});
+
+test('home page leads with the guided creator', async () => {
+  const markup = await render('/');
+  assert.ok(
+    stripMarkup(markup).includes(
+      `dnx Runic.Create@${publishedRelease.version}`,
+    ),
+  );
+  assert.match(markup, /href="[^"]*\/create"/);
 });
 
 test('redirects the legacy Runic Application product slug', async () => {

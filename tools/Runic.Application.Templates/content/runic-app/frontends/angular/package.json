@@ -1,0 +1,30 @@
+{
+  "name": "@runic-artifex/runic-app-starter",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "__PACKAGE_MANAGER__",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "ng build frontend",
+    "dev": "ng serve frontend",
+    "typecheck": "ngc --project tsconfig.app.json --noEmit"
+  },
+  "dependencies": {
+    "@angular/common": "22.2.1",
+    "@angular/core": "22.2.1",
+    "@angular/platform-browser": "22.2.1",
+    "@runic-artifex/angular": "__RUNIC_NPM_VERSION__",
+    "@runic-artifex/views": "__RUNIC_NPM_VERSION__",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@angular/build": "22.2.1",
+    "@angular/cli": "22.2.1",
+    "@angular/compiler": "22.2.1",
+    "@angular/compiler-cli": "22.2.1",
+    "typescript": "6.0.3"
+  }
+}

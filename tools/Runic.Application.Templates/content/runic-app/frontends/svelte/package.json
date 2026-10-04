@@ -1,0 +1,26 @@
+{
+  "name": "@runic-artifex/runic-app-starter",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "__PACKAGE_MANAGER__",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "dev": "vite",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@runic-artifex/svelte": "__RUNIC_NPM_VERSION__",
+    "@runic-artifex/views": "__RUNIC_NPM_VERSION__",
+    "svelte": "5.57.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.2"
+  }
+}

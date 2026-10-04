@@ -3,7 +3,11 @@ export type ReleaseVersion = {
   readonly value: string | null;
 };
 export type InstallKind =
-  'nuget-package' | 'dotnet-template' | 'dotnet-tool' | 'npm-package';
+  | 'nuget-package'
+  | 'dotnet-template'
+  | 'dotnet-tool'
+  | 'dotnet-tool-exec'
+  | 'npm-package';
 export type PublishedRelease = {
   readonly version: string;
   readonly url: string;
@@ -31,9 +35,11 @@ export function packageInstallCommand(entry: {
     case 'nuget-package':
       return `dotnet add package ${entry.name} --version ${entry.version.value}`;
     case 'dotnet-template':
-      return `dotnet new install ${entry.name}::${entry.version.value}`;
+      return `dotnet new install ${entry.name}@${entry.version.value}`;
     case 'dotnet-tool':
       return `dotnet tool install --local ${entry.name} --version ${entry.version.value}`;
+    case 'dotnet-tool-exec':
+      return `dnx ${entry.name}@${entry.version.value}`;
     case 'npm-package':
       return `npm install --save-exact ${entry.name}@${entry.version.value}`;
   }

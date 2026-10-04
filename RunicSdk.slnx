@@ -62,6 +62,7 @@
     <Project Path="tests/dotnet/Runic.CommandLine.Tests/Runic.CommandLine.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Tool.Tests/Runic.Application.Tool.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Create.Tests/Runic.Create.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Desktop.Tests/Runic.Application.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Testing.Tests/Runic.Application.Testing.Tests.csproj" />
     <Project Path="tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.ReactiveUI.Conformance.Tests.csproj" />
@@ -91,6 +92,7 @@
     <Project Path="tools/Runic.Translations.Templates/Runic.Translations.Templates.csproj" />
     <Project Path="tools/Runic.Application.Templates/Runic.Application.Templates.csproj" />
     <Project Path="tools/dotnet-runic/Runic.Application.Tool.csproj" />
+    <Project Path="tools/Runic.Create/Runic.Create.csproj" />
     <Project Path="tools/dotnet-runic-translations/dotnet-runic-translations.csproj" />
     <Project Path="tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj" />
     <Project Path="tools/Runic.Application.Views.Codegen.Toolkit/Runic.Application.Views.Codegen.Toolkit.csproj" />

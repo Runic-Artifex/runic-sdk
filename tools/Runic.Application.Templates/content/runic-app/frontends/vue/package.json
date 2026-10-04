@@ -1,0 +1,26 @@
+{
+  "name": "@runic-artifex/runic-app-starter",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "__PACKAGE_MANAGER__",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "vue-tsc --noEmit && vite build",
+    "dev": "vite",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@runic-artifex/views": "__RUNIC_NPM_VERSION__",
+    "@runic-artifex/vue": "__RUNIC_NPM_VERSION__",
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.9",
+    "typescript": "6.0.3",
+    "vite": "8.3.2",
+    "vue-tsc": "3.3.12"
+  }
+}

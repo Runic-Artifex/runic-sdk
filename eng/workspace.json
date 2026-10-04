@@ -105,6 +105,10 @@
       "project": "tools/dotnet-runic/Runic.Application.Tool.csproj"
     },
     {
+      "name": "Runic.Create",
+      "project": "tools/Runic.Create/Runic.Create.csproj"
+    },
+    {
       "name": "Runic.Translations",
       "project": "packages/dotnet/Runic.Translations/Runic.Translations.csproj"
     },
@@ -286,6 +290,8 @@
         "tools/Runic.Application.Templates",
         "tools/dotnet-runic",
         "tests/dotnet/Runic.Application.Tool.Tests",
+        "tools/Runic.Create",
+        "tests/dotnet/Runic.Create.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
         "tests/dotnet/Runic.Application.Desktop.Tests",
         "tests/fixtures/application",

@@ -6,19 +6,22 @@ the SDK's NuGet and npm packages release together.
 
 ## Start building an application
 
-Create and run an app from the published templates:
+Create an app with the guided creator, then run it:
 
 ```sh
-dotnet new install Runic.Application.Templates::<VERSION>
-dotnet new runic-app-react -n MyApp
+dnx Runic.Create@<VERSION>
 cd MyApp
 dotnet tool restore
 dotnet runic dev
 ```
 
-Replace `react` with `vue`, `svelte` or `angular`, and add
-`--packageManager pnpm` or `--packageManager bun` to use another package
-manager. The [getting-started guide](https://docs.runic-artifex.eu/getting-started/)
+The creator asks for the frontend (React, Vue, Svelte or Angular), package
+manager (npm, pnpm or Bun), Window host (CS-WebUI or Runic Desktop) and
+ViewModel library (CommunityToolkit.Mvvm or ReactiveUI), then prints a command
+that recreates the project without questions. The
+[project creator](https://docs.runic-artifex.eu/create/) builds the same command
+in the browser, and `dotnet new runic-app --help` lists the template options.
+The [getting-started guide](https://docs.runic-artifex.eu/getting-started/)
 lists the prerequisites and the current version. For an existing project, copy
 the install command for the capability you need from the
 [package catalog](https://docs.runic-artifex.eu/packages/).

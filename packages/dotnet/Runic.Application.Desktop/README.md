@@ -9,6 +9,8 @@ platform services.
 dotnet add package Runic.Application.Desktop --prerelease
 ```
 
+New projects can start with this host: `dotnet new runic-app --host desktop`.
+
 In a project named `MyApp`:
 
 ```csharp
