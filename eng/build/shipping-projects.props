@@ -18,6 +18,7 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" PackageId="Runic.Application.Desktop" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../tools/Runic.Application.Templates/Runic.Application.Templates.csproj" PackageId="Runic.Application.Templates" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../tools/dotnet-runic/Runic.Application.Tool.csproj" PackageId="dotnet-runic" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../tools/Runic.Create/Runic.Create.csproj" PackageId="Runic.Create" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Translations/Runic.Translations.csproj" PackageId="Runic.Translations" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Translations.Build/Runic.Translations.Build.csproj" PackageId="Runic.Translations.Build" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Translations.Tooling/Runic.Translations.Tooling.csproj" PackageId="Runic.Translations.Tooling" />

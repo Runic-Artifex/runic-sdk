@@ -15,10 +15,10 @@ dotnet add package Runic.Application.Desktop --prerelease   # or: Runic Desktop 
 dotnet add package CommunityToolkit.Mvvm                     # or ReactiveUI with Runic.Application.ReactiveUI
 ```
 
-To start a new application, use the
-[project templates](https://docs.runic-artifex.eu/getting-started/):
-`dotnet new runic-app-react -n MyApp`, then `dotnet tool restore` and
-`dotnet runic dev`.
+To start a new application, run the
+[guided creator](https://docs.runic-artifex.eu/getting-started/)
+(`dnx Runic.Create@<VERSION>`) or the `dotnet new runic-app` template, then
+`dotnet tool restore` and `dotnet runic dev`.
 
 ## A minimal Window
 

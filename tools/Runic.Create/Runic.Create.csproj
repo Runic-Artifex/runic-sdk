@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../eng/build/application.props" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>runic-create</AssemblyName>
+    <RootNamespace>Runic.Create</RootNamespace>
+    <PackageId>Runic.Create</PackageId>
+    <Description>Guided creator for Runic applications. Run it with dnx Runic.Create.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>runic-create</ToolCommandName>
+    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <!-- The template's own option declarations are the creator's option model. -->
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/.template.config/template.json"
+                      LogicalName="Runic.Create.template.json" />
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/.template.config/dotnetcli.host.json"
+                      LogicalName="Runic.Create.dotnetcli.host.json" />
+    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
+    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
+                      PrivateAssets="all"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+  </ItemGroup>
+  <Import Project="../../eng/build/application.targets" />
+  <ItemGroup>
+    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
+  </ItemGroup>
+</Project>

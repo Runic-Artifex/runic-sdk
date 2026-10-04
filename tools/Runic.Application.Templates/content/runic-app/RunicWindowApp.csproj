@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicViewsWindowProject>true</RunicViewsWindowProject>
+  </PropertyGroup>
+  <ItemGroup>
+<!--#if (viewModels == "reactiveui") -->
+    <PackageReference Include="Runic.Application.ReactiveUI" Version="__RUNIC_NUGET_VERSION__" />
+<!--#else -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+<!--#endif -->
+<!--#if (host == "desktop") -->
+    <PackageReference Include="Runic.Application.Desktop" Version="__RUNIC_NUGET_VERSION__" />
+<!--#else -->
+    <PackageReference Include="Runic.Application.CsWebUi" Version="__RUNIC_NUGET_VERSION__" />
+<!--#endif -->
+  </ItemGroup>
+</Project>

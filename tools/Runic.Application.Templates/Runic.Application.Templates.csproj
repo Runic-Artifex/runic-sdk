@@ -4,8 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <PackageId>Runic.Application.Templates</PackageId>
     <PackageVersion Condition="'$(PackageVersion)' == ''">$(RunicSdkVersion)</PackageVersion>
-    <Title>Runic Application project templates</Title>
-    <Description>dotnet new runic-app-* templates for Runic Views Window applications using React, Vue, Svelte, or Angular.</Description>
+    <Title>Runic Application project template</Title>
+    <Description>The dotnet new runic-app template for Runic Views Window applications with a React, Vue, Svelte, or Angular frontend.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageType>Template</PackageType>
     <IncludeContentInPack>true</IncludeContentInPack>
@@ -15,13 +15,8 @@
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <TemplatePackContentRoot>$(MSBuildProjectDirectory)/obj/template-pack-content/</TemplatePackContentRoot>
     <RunicTemplateNpmDirectory Condition="'$(RunicTemplateNpmDirectory)' == ''">$(MSBuildProjectDirectory)/../../artifacts/packages/npm</RunicTemplateNpmDirectory>
-    <RunicViewsTemplateVersion Condition="'$(RunicViewsTemplateVersion)' == ''">$(RunicSdkVersion)</RunicViewsTemplateVersion>
-    <DotNetRunicTemplateVersion Condition="'$(DotNetRunicTemplateVersion)' == ''">$(RunicSdkVersion)</DotNetRunicTemplateVersion>
-    <ViewsAngularTemplateVersion Condition="'$(ViewsAngularTemplateVersion)' == ''">$(RunicSdkVersion)</ViewsAngularTemplateVersion>
-    <ViewsSvelteTemplateVersion Condition="'$(ViewsSvelteTemplateVersion)' == ''">$(RunicSdkVersion)</ViewsSvelteTemplateVersion>
-    <ViewsReactTemplateVersion Condition="'$(ViewsReactTemplateVersion)' == ''">$(RunicSdkVersion)</ViewsReactTemplateVersion>
-    <ViewsVueTemplateVersion Condition="'$(ViewsVueTemplateVersion)' == ''">$(RunicSdkVersion)</ViewsVueTemplateVersion>
-    <ViewsRuntimeTemplateVersion Condition="'$(ViewsRuntimeTemplateVersion)' == ''">$(RunicSdkVersion)</ViewsRuntimeTemplateVersion>
+    <RunicNuGetTemplateVersion Condition="'$(RunicNuGetTemplateVersion)' == ''">$(RunicSdkVersion)</RunicNuGetTemplateVersion>
+    <RunicNpmTemplateVersion Condition="'$(RunicNpmTemplateVersion)' == ''">$(RunicSdkVersion)</RunicNpmTemplateVersion>
     <BunTemplateVersion Condition="'$(BunTemplateVersion)' == ''">1.4.2</BunTemplateVersion>
     <NpmTemplateVersion Condition="'$(NpmTemplateVersion)' == ''">12.2.0</NpmTemplateVersion>
     <PnpmTemplateVersion Condition="'$(PnpmTemplateVersion)' == ''">12.9.1</PnpmTemplateVersion>
@@ -36,49 +31,28 @@
 
   <Target Name="PrepareTemplatePackContent" BeforeTargets="_GetPackageFiles">
     <RemoveDir Directories="$(TemplatePackContentRoot)" />
-    <Copy SourceFiles="content/react/.template.config/template.json;content/vue/.template.config/template.json;content/svelte/.template.config/template.json;content/angular/.template.config/template.json"
-          DestinationFiles="$(TemplatePackContentRoot)react/.template.config/template.json;$(TemplatePackContentRoot)vue/.template.config/template.json;$(TemplatePackContentRoot)svelte/.template.config/template.json;$(TemplatePackContentRoot)angular/.template.config/template.json" />
+    <Copy SourceFiles="content/runic-app/.template.config/template.json"
+          DestinationFiles="$(TemplatePackContentRoot)runic-app/.template.config/template.json" />
 
     <PropertyGroup>
-      <_ReactTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)react/.template.config/template.json'))</_ReactTemplateJson>
-      <_ReactStampedTemplateJson>$([System.String]::Copy('$(_ReactTemplateJson)').Replace('__RUNIC_VIEWS_NUGET_VERSION_DEFAULT__', '$(RunicViewsTemplateVersion)').Replace('__DOTNET_RUNIC_VERSION_DEFAULT__', '$(DotNetRunicTemplateVersion)').Replace('__VIEWS_RUNTIME_NPM_VERSION_DEFAULT__', '$(ViewsRuntimeTemplateVersion)').Replace('__VIEWS_REACT_NPM_VERSION_DEFAULT__', '$(ViewsReactTemplateVersion)').Replace('__BUN_PACKAGE_MANAGER_VERSION__', '$(BunTemplateVersion)').Replace('__NPM_PACKAGE_MANAGER_VERSION__', '$(NpmTemplateVersion)').Replace('__PNPM_PACKAGE_MANAGER_VERSION__', '$(PnpmTemplateVersion)'))</_ReactStampedTemplateJson>
-      <_VueTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)vue/.template.config/template.json'))</_VueTemplateJson>
-      <_VueStampedTemplateJson>$([System.String]::Copy('$(_VueTemplateJson)').Replace('__RUNIC_VIEWS_NUGET_VERSION_DEFAULT__', '$(RunicViewsTemplateVersion)').Replace('__DOTNET_RUNIC_VERSION_DEFAULT__', '$(DotNetRunicTemplateVersion)').Replace('__VIEWS_RUNTIME_NPM_VERSION_DEFAULT__', '$(ViewsRuntimeTemplateVersion)').Replace('__VIEWS_VUE_NPM_VERSION_DEFAULT__', '$(ViewsVueTemplateVersion)').Replace('__BUN_PACKAGE_MANAGER_VERSION__', '$(BunTemplateVersion)').Replace('__NPM_PACKAGE_MANAGER_VERSION__', '$(NpmTemplateVersion)').Replace('__PNPM_PACKAGE_MANAGER_VERSION__', '$(PnpmTemplateVersion)'))</_VueStampedTemplateJson>
-      <_SvelteTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)svelte/.template.config/template.json'))</_SvelteTemplateJson>
-      <_SvelteStampedTemplateJson>$([System.String]::Copy('$(_SvelteTemplateJson)').Replace('__RUNIC_VIEWS_NUGET_VERSION_DEFAULT__', '$(RunicViewsTemplateVersion)').Replace('__DOTNET_RUNIC_VERSION_DEFAULT__', '$(DotNetRunicTemplateVersion)').Replace('__VIEWS_RUNTIME_NPM_VERSION_DEFAULT__', '$(ViewsRuntimeTemplateVersion)').Replace('__VIEWS_SVELTE_NPM_VERSION_DEFAULT__', '$(ViewsSvelteTemplateVersion)').Replace('__BUN_PACKAGE_MANAGER_VERSION__', '$(BunTemplateVersion)').Replace('__NPM_PACKAGE_MANAGER_VERSION__', '$(NpmTemplateVersion)').Replace('__PNPM_PACKAGE_MANAGER_VERSION__', '$(PnpmTemplateVersion)'))</_SvelteStampedTemplateJson>
-      <_AngularTemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)angular/.template.config/template.json'))</_AngularTemplateJson>
-      <_AngularStampedTemplateJson>$([System.String]::Copy('$(_AngularTemplateJson)').Replace('__RUNIC_VIEWS_NUGET_VERSION_DEFAULT__', '$(RunicViewsTemplateVersion)').Replace('__DOTNET_RUNIC_VERSION_DEFAULT__', '$(DotNetRunicTemplateVersion)').Replace('__VIEWS_RUNTIME_NPM_VERSION_DEFAULT__', '$(ViewsRuntimeTemplateVersion)').Replace('__VIEWS_ANGULAR_NPM_VERSION_DEFAULT__', '$(ViewsAngularTemplateVersion)').Replace('__BUN_PACKAGE_MANAGER_VERSION__', '$(BunTemplateVersion)').Replace('__NPM_PACKAGE_MANAGER_VERSION__', '$(NpmTemplateVersion)').Replace('__PNPM_PACKAGE_MANAGER_VERSION__', '$(PnpmTemplateVersion)'))</_AngularStampedTemplateJson>
+      <_TemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)runic-app/.template.config/template.json'))</_TemplateJson>
+      <_StampedTemplateJson>$([System.String]::Copy('$(_TemplateJson)').Replace('__RUNIC_NUGET_VERSION_DEFAULT__', '$(RunicNuGetTemplateVersion)').Replace('__RUNIC_NPM_VERSION_DEFAULT__', '$(RunicNpmTemplateVersion)').Replace('__BUN_PACKAGE_MANAGER_VERSION__', '$(BunTemplateVersion)').Replace('__NPM_PACKAGE_MANAGER_VERSION__', '$(NpmTemplateVersion)').Replace('__PNPM_PACKAGE_MANAGER_VERSION__', '$(PnpmTemplateVersion)'))</_StampedTemplateJson>
     </PropertyGroup>
-    <WriteLinesToFile File="$(TemplatePackContentRoot)react/.template.config/template.json"
-                      Lines="$(_ReactStampedTemplateJson)"
-                      Overwrite="true" />
-    <WriteLinesToFile File="$(TemplatePackContentRoot)vue/.template.config/template.json"
-                      Lines="$(_VueStampedTemplateJson)"
-                      Overwrite="true" />
-    <WriteLinesToFile File="$(TemplatePackContentRoot)svelte/.template.config/template.json"
-                      Lines="$(_SvelteStampedTemplateJson)"
-                      Overwrite="true" />
-    <WriteLinesToFile File="$(TemplatePackContentRoot)angular/.template.config/template.json"
-                      Lines="$(_AngularStampedTemplateJson)"
+    <WriteLinesToFile File="$(TemplatePackContentRoot)runic-app/.template.config/template.json"
+                      Lines="$(_StampedTemplateJson)"
                       Overwrite="true" />
 
     <Exec Command="bun &quot;$(MSBuildProjectDirectory)/../../eng/release/stage-template-locks.mjs&quot; &quot;$(MSBuildProjectDirectory)/content&quot; &quot;$(RunicTemplateNpmDirectory)&quot; &quot;$(TemplatePackContentRoot)&quot;" />
 
     <ItemGroup>
       <Content Remove="content/**/package-lock.json;content/**/pnpm-lock.yaml;content/**/bun.lock" />
-      <Content Remove="content/react/.template.config/template.json" />
-      <Content Remove="content/vue/.template.config/template.json" />
-      <Content Remove="content/svelte/.template.config/template.json" />
-      <Content Remove="content/angular/.template.config/template.json" />
+      <Content Remove="content/runic-app/.template.config/template.json" />
       <Content Remove="$(TemplatePackContentRoot)**/*" />
-      <Content Include="$(TemplatePackContentRoot)react/.template.config/template.json" Pack="true" PackagePath="content/content/react/.template.config/" />
-      <Content Include="$(TemplatePackContentRoot)vue/.template.config/template.json" Pack="true" PackagePath="content/content/vue/.template.config/" />
-      <Content Include="$(TemplatePackContentRoot)svelte/.template.config/template.json" Pack="true" PackagePath="content/content/svelte/.template.config/" />
-      <Content Include="$(TemplatePackContentRoot)angular/.template.config/template.json" Pack="true" PackagePath="content/content/angular/.template.config/" />
-      <Content Include="$(TemplatePackContentRoot)react/Frontend/*" Pack="true" PackagePath="content/content/react/Frontend/" />
-      <Content Include="$(TemplatePackContentRoot)vue/Frontend/*" Pack="true" PackagePath="content/content/vue/Frontend/" />
-      <Content Include="$(TemplatePackContentRoot)svelte/Frontend/*" Pack="true" PackagePath="content/content/svelte/Frontend/" />
-      <Content Include="$(TemplatePackContentRoot)angular/Frontend/*" Pack="true" PackagePath="content/content/angular/Frontend/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/.template.config/template.json" Pack="true" PackagePath="content/content/runic-app/.template.config/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/frontends/react/*" Pack="true" PackagePath="content/content/runic-app/frontends/react/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/frontends/vue/*" Pack="true" PackagePath="content/content/runic-app/frontends/vue/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/frontends/svelte/*" Pack="true" PackagePath="content/content/runic-app/frontends/svelte/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/frontends/angular/*" Pack="true" PackagePath="content/content/runic-app/frontends/angular/" />
     </ItemGroup>
   </Target>
   <Import Project="../../eng/build/application.targets" />
