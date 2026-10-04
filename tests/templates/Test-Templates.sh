@@ -282,6 +282,12 @@ verify_template() {
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   test -d "$output/Frontend/node_modules"
   test -f "$output/Frontend/dist/index.html"
+  # Runic Desktop serves each Window below its own path, where root-absolute
+  # asset URLs leave the page blank. Desktop variants are not started here.
+  if rg -n '(src|href)="/[^/]' "$output/Frontend/dist/index.html"; then
+    echo "The built frontend document references root-absolute URLs." >&2
+    exit 1
+  fi
   test -f "$output/Frontend/src/generated/workspace.ts"
   if [[ "$framework" == vue && "$manager" == bun ]]; then
     # vue-tsc finds no .vue files under the Bun runtime and passes, so check
