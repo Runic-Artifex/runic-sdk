@@ -15,6 +15,19 @@ imports, benchmark receipts and archived source trees are excluded from updates.
 Native SDK headers, Nix inputs, runtime releases and the local container image also
 need the checks below.
 
+## October 2026 decisions
+
+| Area | Decision and compatibility reason |
+| --- | --- |
+| .NET SDK | Move SDK 10.0.400 to 10.0.401 (runtime 10.0.12, the September security release). nixpkgs packages exactly 10.0.401, and CI's setup-dotnet installs it from `global.json`. The flake now fails evaluation when the nixpkgs SDK differs from `global.json`, which disables roll-forward. |
+| Node | Move to Node 24.21.0, the latest Node 24 LTS release. nixpkgs `nodejs_24` now packages the same version, which resolves September's 24.19/24.20 mismatch. The flake asserts it matches `.node-version`. Stay on Node 24: Node 26 (26.10.0) is still Current, not LTS. Vite 8.3 and SvelteKit 3 allow both; Angular 22.2 allows `>=26`. Moving would also mean widening every package and starter `engines` range (`>=24.18.0 <25`). Recheck after Node 26 enters LTS. |
+| Bun/npm/pnpm | Bun 1.4.2 is still the latest stable release, so it stays. Move npm 12.0.2 to 12.2.0 and pnpm 12.3.4 to 12.9.1 in the flake (verified archive hashes), CI setup and starter defaults. pnpm 12 records its own launcher in the first document of each starter's `pnpm-lock.yaml`. Regenerate that document with the pinned pnpm, because `--frozen-lockfile` rejects a different version. |
+| Actions | Move `microsoft/setup-msbuild` v2.0.0 to v3.0.0 (commit SHA). v3 only moves the action to the Node 24 runtime, and the job uses no inputs. setup-bun v2.2.0 and NuGet/login v1.2.0 are already current. First-party actions keep major tags: checkout v7, cache v6, upload-artifact v7, download-artifact v8, setup-dotnet v6 and setup-node v7 are the current majors. |
+| Runners | Keep `ubuntu-24.04`. `ubuntu-26.04` is available, but `ubuntu-latest` still maps to 24.04. Moving would also change local act's 24.04 runner image, its apt package set and the native WebKit/GTK baseline. Move all three together in a separate change. `windows-latest` is Windows Server 2025 with VS 2026; `macos-26` is current. |
+| Nix/local CI | Refresh nixpkgs from 2026-09-07 to 2026-09-30. The `catthehacker/ubuntu:act-24.04` index digest is unchanged, so the local runner image stays as is. Rename the deprecated `xorg.xorgserver`/`xorg.xf86videodummy` attributes in the KDE Xorg container. |
+| Patches | Keep both. act 0.2.89 is still the latest release and nektos/act#6115 is still open. nixpkgs still packages AT-SPI 2.60.6. Upstream 2.60.7, 2.62.0.1 and `main` still send the `Embedded` message without releasing it. |
+| WebView2 | No header is vendored. If the NuGet version moves to 1.0.4258.31, change `WindowsWebView2Interop.cs`'s target version to that SDK's `CORE_WEBVIEW_TARGET_PRODUCT_VERSION`, `154.0.4258.31`, and review the vtable layout as described in `WindowsWebView2Interop.md`. |
+
 ## September 2026 decisions
 
 | Area | Decision and compatibility reason |
@@ -97,4 +110,7 @@ Sources: [Effect migration](https://github.com/Effect-TS/effect/blob/main/MIGRAT
 [.NET release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json),
 [cache v6.1.0](https://github.com/actions/cache/releases/tag/v6.1.0),
 [setup-node v7](https://github.com/actions/setup-node/releases/tag/v7.0.0),
-[act releases](https://github.com/nektos/act/releases).
+[act releases](https://github.com/nektos/act/releases),
+[Node releases](https://nodejs.org/dist/index.json),
+[setup-msbuild v3](https://github.com/microsoft/setup-msbuild/releases/tag/v3),
+[runner images](https://github.com/actions/runner-images#available-images).
