@@ -15,6 +15,12 @@ imports, benchmark receipts and archived source trees are excluded from updates.
 Native SDK headers, Nix inputs, runtime releases and the local container image also
 need the checks below.
 
+## October 2026 decisions
+
+| Area | Decision and compatibility reason |
+| --- | --- |
+| NuGet | Move Extensions and System.DirectoryServices.Protocols to 10.0.12, Test SDK to 18.10.1, coverlet to 10.1.0, SourceLink to 10.0.401 (matching the 10.0.401 SDK), CsWin32 to 0.3.346 and WebView2 to 1.0.4258.31 (target product version 154.0.4258.31; its `WebView2.h` is unchanged, so the hand-written vtables and IIDs still match). MetadataLoadContext moves to 10.0.12: it was not held for MSBuild or analyzer loading, and nothing has referenced it since the inspector was removed. Move ReactiveUI/ReactiveUI.Reactive to 26.0.1 and Binding to 9.1.0. The public API is unchanged; the majors drop .NET 11 runtime-async, and Primitives 9 binds a lone `SubscribeSafe` lambda to `onNext`. Runic has no such calls. The VS extension takes VSSDK.BuildTools 18.9.820, a build-only change: the in-process API stays at 17.14 and the host range stays `[17.14,19.0)`. Only the Windows CI job checks the packaged VSIX. Keep MSBuild Framework/StringTools at 18.9.6. SDK 10.0.400 ships MSBuild 18.9.6, and 10.0.401 ships 18.9.11, which is not on NuGet; 18.9.6 is the newest published reference that both hosts satisfy. 18.10.1 is the VS 18.10 / 10.0.5xx MSBuild, and no released SDK carries it yet. The translations build task runs in the host MSBuild, so move with the first 10.0.5xx SDK. Keep xUnit 2.9.3 and the runner 4.0.0, which are current. |
+
 ## September 2026 decisions
 
 | Area | Decision and compatibility reason |
