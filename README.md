@@ -99,7 +99,7 @@ bun run affected main    # Changed components plus their dependent components
 Package consumers use a fresh NuGet cache and map Runic identities to the local
 candidate feed. npm consumers install tarballs outside the workspace and reject
 source links or unpublished dependency specifiers. Template acceptance additionally
-requires Bash, npm 12.0.2, and pnpm 12.3.4. Artifacts are written to
+requires Bash, npm 12.2.0, and pnpm 12.9.1. Artifacts are written to
 `artifacts/packages`; these commands never publish packages.
 
 `eng/workspace.json` lists maintained artifacts and component dependencies.

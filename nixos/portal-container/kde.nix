@@ -49,11 +49,11 @@
       };
     };
   };
-  environment.systemPackages = lib.optionals runicXorg [ pkgs.kdePackages.kwin-x11 pkgs.xrandr pkgs.xsettingsd pkgs.xorg.xorgserver ];
+  environment.systemPackages = lib.optionals runicXorg [ pkgs.kdePackages.kwin-x11 pkgs.xrandr pkgs.xsettingsd pkgs.xorg-server ];
   systemd.user.services.runic-xorg = lib.mkIf runicXorg {
     description = "Private software-only Xorg test display";
     serviceConfig = {
-      ExecStart = "${pkgs.xorg.xorgserver}/bin/Xorg :0 -config /etc/runic-xorg.conf -logfile /home/runic/Xorg.log -noreset -nolisten tcp";
+      ExecStart = "${pkgs.xorg-server}/bin/Xorg :0 -config /etc/runic-xorg.conf -logfile /home/runic/Xorg.log -noreset -nolisten tcp";
       ExecStartPost = "${pkgs.writeShellScript "wait-runic-xorg" ''
         for attempt in $(seq 1 100); do
           ${pkgs.xprop}/bin/xprop -display :0 -root >/dev/null 2>&1 && exit 0
@@ -71,8 +71,8 @@
       Option "AllowMouseOpenFail" "true"
     EndSection
     Section "Files"
-      ModulePath "${pkgs.xorg.xf86videodummy}/lib/xorg/modules"
-      ModulePath "${pkgs.xorg.xorgserver}/lib/xorg/modules"
+      ModulePath "${pkgs.xf86-video-dummy}/lib/xorg/modules"
+      ModulePath "${pkgs.xorg-server}/lib/xorg/modules"
     EndSection
     Section "Device"
       Identifier "dummy"

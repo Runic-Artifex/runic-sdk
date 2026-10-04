@@ -88,7 +88,14 @@
         let
           pkgs = import nixpkgs { inherit system; };
           inherit (pkgs) lib;
-          dotnet = pkgs.dotnetCorePackages.sdk_10_0;
+          # global.json disables SDK roll-forward and CI installs `.node-version`; fail at
+          # evaluation when a nixpkgs update moves either away from the repository pins.
+          pinned = pkg: expected: label:
+            assert lib.assertMsg (pkg.version == expected)
+              "nixpkgs provides ${label} ${pkg.version}, but the repository pins ${expected}";
+            pkg;
+          dotnet = pinned pkgs.dotnetCorePackages.sdk_10_0 (lib.importJSON ./global.json).sdk.version ".NET SDK";
+          nodejs = pinned pkgs.nodejs_24 (lib.fileContents ./.node-version) "Node";
           # act 0.2.89 needs the upstream artifact protocol fix for upload v7/download v8.
           # Remove this patch once the pinned nixpkgs act contains nektos/act#6115.
           actForCi = pkgs.act.overrideAttrs (old: {
@@ -129,32 +136,32 @@
             '';
           };
           npmSource = pkgs.fetchzip {
-            url = "https://registry.npmjs.org/npm/-/npm-12.0.2.tgz";
-            hash = "sha256-GMlNf3g1qGZESoES60OH2OYHXJ7Kv1v15HhYEw20fmc=";
+            url = "https://registry.npmjs.org/npm/-/npm-12.2.0.tgz";
+            hash = "sha256-qhUNqf1W0WGysd7g1u3AVim/wzCZ3uxGULmz5HyvDgA=";
           };
-          npmForCompatibility = pkgs.runCommand "npm-12.0.2" {
+          npmForCompatibility = pkgs.runCommand "npm-12.2.0" {
             nativeBuildInputs = [ pkgs.makeWrapper ];
           } ''
             mkdir -p "$out/bin"
             # Keep real Node and the selected npm together for compatibility tests.
-            ln -s "${pkgs.nodejs_24}/bin/node" "$out/bin/node"
-            makeWrapper "${pkgs.nodejs_24}/bin/node" "$out/bin/npm" \
+            ln -s "${nodejs}/bin/node" "$out/bin/node"
+            makeWrapper "${nodejs}/bin/node" "$out/bin/npm" \
               --add-flags "${npmSource}/bin/npm-cli.js"
-            makeWrapper "${pkgs.nodejs_24}/bin/node" "$out/bin/npx" \
+            makeWrapper "${nodejs}/bin/node" "$out/bin/npx" \
               --add-flags "${npmSource}/bin/npx-cli.js"
           '';
           pnpmArchive = if system == "x86_64-linux" then {
             platform = "linux-x64";
-            hash = "sha256-4mngwZG2hfp3rEPqywKezJ0ZO/8OxdB8jxatjTcIP2U=";
+            hash = "sha256-BpfzKeM4Qa5DHc6aRgJnm2iMtJd3DRDXrUBU0gr+MgM=";
           } else {
             platform = "linux-arm64";
-            hash = "sha256-94c7TD59PdJeY8STn9Bln8sfYkzn6Jd8In5zMSvmZQ4=";
+            hash = "sha256-wIbnJTrRsZgFtsnxkOg5oOaSUEtc/GaWv8eVT4GfIf0=";
           };
           pnpmForCompatibility = pkgs.stdenvNoCC.mkDerivation {
             pname = "pnpm";
-            version = "12.3.4";
+            version = "12.9.1";
             src = pkgs.fetchzip {
-              url = "https://registry.npmjs.org/@pnpm/exe.${pnpmArchive.platform}/-/exe.${pnpmArchive.platform}-12.3.4.tgz";
+              url = "https://registry.npmjs.org/@pnpm/exe.${pnpmArchive.platform}/-/exe.${pnpmArchive.platform}-12.9.1.tgz";
               inherit (pnpmArchive) hash;
             };
             nativeBuildInputs = [ pkgs.autoPatchelfHook ];
@@ -197,7 +204,7 @@
               bun_1_4_2
               npmForCompatibility
               pnpmForCompatibility
-              nodejs_24
+              nodejs
               python3
               powershell
               actForCi
