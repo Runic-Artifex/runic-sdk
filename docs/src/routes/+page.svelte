@@ -1,12 +1,13 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import ActionLink from '#lib/components/ActionLink.svelte';
+  import CreatorHero from '#lib/components/CreatorHero.svelte';
   import ProductCard from '#lib/components/ProductCard.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import * as Card from '#lib/components/ui/card/index.js';
   import { Separator } from '#lib/components/ui/separator/index.js';
   import { activeProducts } from '#lib/docs-data.js';
-  import { releaseSummary } from '#lib/release-docs.js';
+  import { currentRelease, releaseSummary } from '#lib/release-docs.js';
 </script>
 
 <svelte:head>
@@ -34,40 +35,7 @@
 </svelte:head>
 
 <div>
-  <section class="hero shell">
-    <div class="hero-copy">
-      <p class="eyebrow">Runic SDK</p>
-      <h1>Build with only the tools you need.</h1>
-      <p class="lede">
-        Runic Artifex is a family of open-source .NET tools for desktop and
-        browser UI, application hosting, assets, localization, and command-line
-        apps. Each product works independently and connects through documented
-        integrations when needed.
-      </p>
-      <div class="actions">
-        <ActionLink href={resolve('/getting-started')}
-          >Build your first app</ActionLink
-        >
-        <ActionLink href={resolve('/architecture')} variant="outline"
-          >See how they fit together</ActionLink
-        >
-      </div>
-    </div>
-    <Card.Root
-      class="hero-map"
-      aria-label="Runic Artifex product relationship summary"
-    >
-      <div class="map-core">
-        <span>Application composition</span><strong>Runic Application</strong>
-      </div>
-      <div class="map-ring">
-        <span>Views</span><span>Desktop</span><span>Assets</span><span
-          >Translations</span
-        ><span>CLI</span>
-      </div>
-      <p>Products own their cores and official integrations.</p>
-    </Card.Root>
-  </section>
+  <CreatorHero version={currentRelease.version} />
 
   <section class="section shell">
     <div class="section-heading split-heading">

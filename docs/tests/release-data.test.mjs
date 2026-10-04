@@ -39,8 +39,9 @@ test('commands cover libraries, templates, tools and npm packages', () => {
     [
       'Runic.Application.Templates',
       'dotnet-template',
-      'dotnet new install Runic.Application.Templates::1.2.3-preview.4',
+      'dotnet new install Runic.Application.Templates@1.2.3-preview.4',
     ],
+    ['Runic.Create', 'dotnet-tool-exec', 'dnx Runic.Create@1.2.3-preview.4'],
     [
       'dotnet-runic',
       'dotnet-tool',

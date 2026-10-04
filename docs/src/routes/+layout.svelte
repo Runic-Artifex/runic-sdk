@@ -27,6 +27,7 @@
 
   const navigation = [
     { href: '/getting-started', label: 'Start' },
+    { href: '/create', label: 'Create' },
     { href: '/products', label: 'Products' },
     { href: '/views', label: 'Window and View' },
     { href: '/architecture', label: 'Architecture' },

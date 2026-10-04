@@ -54,11 +54,13 @@ const packages = ['nuget', 'npm'].flatMap((ecosystem) =>
       installKind:
         ecosystem === 'npm'
           ? 'npm-package'
-          : entry.name.startsWith('dotnet-')
-            ? 'dotnet-tool'
-            : entry.name.endsWith('.Templates')
-              ? 'dotnet-template'
-              : 'nuget-package',
+          : entry.name === 'Runic.Create'
+            ? 'dotnet-tool-exec'
+            : entry.name.startsWith('dotnet-')
+              ? 'dotnet-tool'
+              : entry.name.endsWith('.Templates')
+                ? 'dotnet-template'
+                : 'nuget-package',
     };
   }),
 );
