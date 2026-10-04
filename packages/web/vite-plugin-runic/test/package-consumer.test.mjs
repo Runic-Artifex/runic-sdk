@@ -39,8 +39,8 @@ test("packed package is source-free and works from an isolated consumer", { time
         type: "module",
         dependencies: {
           "@runic-artifex/vite-plugin-runic": `file:${tarball}`,
-          vite: "8.2.2",
-          "@vitejs/devtools": "0.5.2",
+          vite: "8.3.2",
+          "@vitejs/devtools": "0.7.6",
           typescript: "6.0.3",
         },
       }),

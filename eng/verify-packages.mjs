@@ -301,7 +301,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           "@types/node": "24.19.1",
           effect: "4.0.0",
           svelte: "5.57.1",
-          vite: "8.2.2",
+          vite: "8.3.2",
           "@angular/core": "22.2.1",
           react: "19.3.0",
           "@types/react": "19.3.0",
