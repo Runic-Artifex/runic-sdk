@@ -585,6 +585,7 @@ jobs:
       - name: Publish Window and View application with NativeAOT
         shell: bash
         run: |
+          bun run --cwd packages/web/views build
           dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
           dotnet publish tests/fixtures/application/cswebui-window-probes/CsWebUiWindowProbes.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-probes-aot
           if [[ "$RUNNER_OS" == Linux ]]; then

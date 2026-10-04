@@ -27,6 +27,7 @@ jobs:
           repository: Runic-Artifex/DynamicData
           ref: edd2d175794afc86e964a06cb55329f44793009f
           path: .cache/dynamicdata-fork
+          fetch-depth: 0
           persist-credentials: false
       - name: Run generated consumer
         run: dotnet run --project tests/fixtures/application/dynamicdata -c Release -p:DynamicDataForkRoot="$GITHUB_WORKSPACE/.cache/dynamicdata-fork"
