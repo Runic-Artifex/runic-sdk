@@ -110,11 +110,11 @@ importers:
   .:
     dependencies:
       '@runic-artifex/react':
-        specifier: 0.5.0-preview.3
-        version: 0.5.0-preview.3(react@19.2.8)
+        specifier: 0.6.0-preview.1
+        version: 0.6.0-preview.1(react@19.2.8)
       '@runic-artifex/views':
-        specifier: 0.5.0-preview.3
-        version: 0.5.0-preview.3
+        specifier: 0.6.0-preview.1
+        version: 0.6.0-preview.1
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -242,13 +242,13 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@runic-artifex/react@0.5.0-preview.3':
+  '@runic-artifex/react@0.6.0-preview.1':
     resolution: {integrity: sha512-g3TqfrlLdw4NufeZs4ZwdajRG0CtOEX3lBnsNABpsOvXR+PKy4i5UQnezxalvI8y2KISwevhYYSXOurnVmipXw==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
       react: '>=18.3.0 <20'
 
-  '@runic-artifex/views@0.5.0-preview.3':
+  '@runic-artifex/views@0.6.0-preview.1':
     resolution: {integrity: sha512-bXE9lv7J/Ft/DaRqHLJwwvFriTi8czuevHr6w9eKfrmSIQqsVNtRaCcL/+mc1PRlwxjTucTT3dKJICKTzYDPlA==}
     engines: {node: '>=24.18.0 <25'}
 
@@ -511,11 +511,11 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@runic-artifex/react@0.5.0-preview.3(react@19.2.8)':
+  '@runic-artifex/react@0.6.0-preview.1(react@19.2.8)':
     dependencies:
       react: 19.2.8
 
-  '@runic-artifex/views@0.5.0-preview.3': {}
+  '@runic-artifex/views@0.6.0-preview.1': {}
 
   '@types/react-dom@19.2.7(@types/react@19.2.18)':
     dependencies:

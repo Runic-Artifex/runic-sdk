@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/react",
-  "version": "0.5.0-preview.3",
+  "version": "0.6.0-preview.1",
   "description": "React hooks for generated Runic Views clients",
   "license": "MIT",
   "type": "module",
