@@ -34,10 +34,11 @@ internal static partial class FrontendDevelopmentDocument
                 ? path[1..]
                 : path.StartsWith('/') ? path : "/" + path;
             // The native host serves webui.js, and the Runic host packages copy
-            // their client scripts into the runtime web root.
+            // their client scripts into the runtime web root. Runic Desktop serves
+            // each Window below its own path, so keep them relative to the base.
             if (normalized is "/webui.js" or "/runic-cswebui.js" or "/runic-desktop-views.js")
             {
-                return match.Value;
+                return match.Groups["prefix"].Value + normalized[1..] + match.Groups["suffix"].Value;
             }
 
             return match.Groups["prefix"].Value +
