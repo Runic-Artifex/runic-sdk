@@ -23,8 +23,8 @@
     <ViewsVueTemplateVersion Condition="'$(ViewsVueTemplateVersion)' == ''">$(RunicSdkVersion)</ViewsVueTemplateVersion>
     <ViewsRuntimeTemplateVersion Condition="'$(ViewsRuntimeTemplateVersion)' == ''">$(RunicSdkVersion)</ViewsRuntimeTemplateVersion>
     <BunTemplateVersion Condition="'$(BunTemplateVersion)' == ''">1.4.2</BunTemplateVersion>
-    <NpmTemplateVersion Condition="'$(NpmTemplateVersion)' == ''">12.0.2</NpmTemplateVersion>
-    <PnpmTemplateVersion Condition="'$(PnpmTemplateVersion)' == ''">12.3.4</PnpmTemplateVersion>
+    <NpmTemplateVersion Condition="'$(NpmTemplateVersion)' == ''">12.2.0</NpmTemplateVersion>
+    <PnpmTemplateVersion Condition="'$(PnpmTemplateVersion)' == ''">12.9.1</PnpmTemplateVersion>
   </PropertyGroup>
 
   <ItemGroup>

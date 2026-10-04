@@ -136,10 +136,10 @@
             '';
           };
           npmSource = pkgs.fetchzip {
-            url = "https://registry.npmjs.org/npm/-/npm-12.0.2.tgz";
-            hash = "sha256-GMlNf3g1qGZESoES60OH2OYHXJ7Kv1v15HhYEw20fmc=";
+            url = "https://registry.npmjs.org/npm/-/npm-12.2.0.tgz";
+            hash = "sha256-qhUNqf1W0WGysd7g1u3AVim/wzCZ3uxGULmz5HyvDgA=";
           };
-          npmForCompatibility = pkgs.runCommand "npm-12.0.2" {
+          npmForCompatibility = pkgs.runCommand "npm-12.2.0" {
             nativeBuildInputs = [ pkgs.makeWrapper ];
           } ''
             mkdir -p "$out/bin"
@@ -152,16 +152,16 @@
           '';
           pnpmArchive = if system == "x86_64-linux" then {
             platform = "linux-x64";
-            hash = "sha256-4mngwZG2hfp3rEPqywKezJ0ZO/8OxdB8jxatjTcIP2U=";
+            hash = "sha256-BpfzKeM4Qa5DHc6aRgJnm2iMtJd3DRDXrUBU0gr+MgM=";
           } else {
             platform = "linux-arm64";
-            hash = "sha256-94c7TD59PdJeY8STn9Bln8sfYkzn6Jd8In5zMSvmZQ4=";
+            hash = "sha256-wIbnJTrRsZgFtsnxkOg5oOaSUEtc/GaWv8eVT4GfIf0=";
           };
           pnpmForCompatibility = pkgs.stdenvNoCC.mkDerivation {
             pname = "pnpm";
-            version = "12.3.4";
+            version = "12.9.1";
             src = pkgs.fetchzip {
-              url = "https://registry.npmjs.org/@pnpm/exe.${pnpmArchive.platform}/-/exe.${pnpmArchive.platform}-12.3.4.tgz";
+              url = "https://registry.npmjs.org/@pnpm/exe.${pnpmArchive.platform}/-/exe.${pnpmArchive.platform}-12.9.1.tgz";
               inherit (pnpmArchive) hash;
             };
             nativeBuildInputs = [ pkgs.autoPatchelfHook ];
