@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { root, workspace, run } from "../run.mjs";
 import { readToolchain } from "../toolchain.mjs";
 import { nodeCompatibility } from "../node-compatibility.mjs";
+import { templateFrontendDirectory, templateFrontends } from "../release/template-locks.mjs";
 
 const toolchain = readToolchain(root);
 const temporary = await mkdtemp(join(tmpdir(), "runic-template-locks-"));
@@ -27,8 +28,8 @@ try {
     if (!address) await new Promise(resolve => setTimeout(resolve, 25));
   }
   if (!address) throw new Error("Candidate registry did not become ready.");
-  for (const framework of ["angular", "react", "svelte", "vue"]) {
-    const source = join(root, "tools/Runic.Application.Templates/content", framework, "Frontend");
+  for (const framework of templateFrontends) {
+    const source = join(root, "tools/Runic.Application.Templates/content", templateFrontendDirectory(framework));
     const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
     for (const section of ["dependencies", "devDependencies"]) {
       for (const name of Object.keys(manifest[section] ?? {})) {

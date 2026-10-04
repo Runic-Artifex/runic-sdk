@@ -1,6 +1,6 @@
 import {test, expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {templateRunicPackages, verifyTemplateLock} from './template-locks.mjs';
+import {templateFrontendDirectory, templateFrontends, templateRunicPackages, verifyTemplateLock} from './template-locks.mjs';
 
 const name = '@runic-artifex/svelte';
 const version = '0.2.0-preview.1';
@@ -32,9 +32,9 @@ test('unknown or missing Runic resolutions fail closed', () => {
   expect(() => verifyTemplateLock('{"packages":{"":{}}}', 'package-lock.json', candidates)).toThrow('no Runic');
 });
 // Real committed pnpm/Bun layouts exercise parser boundaries and peer suffixes.
-for (const framework of ['react', 'vue', 'svelte', 'angular']) {
+for (const framework of templateFrontends) {
   test(`${framework} real locks parse every Runic package and reject a changed candidate`, () => {
-    const base = new URL(`../../tools/Runic.Application.Templates/content/${framework}/Frontend/`, import.meta.url);
+    const base = new URL(`../../tools/Runic.Application.Templates/content/${templateFrontendDirectory(framework)}/`, import.meta.url);
     const npm = JSON.parse(readFileSync(new URL('package-lock.json', base), 'utf8'));
     const real = new Map(Object.entries(npm.packages).filter(([p]) => p.startsWith('node_modules/@runic-artifex/')).map(([p, v]) => [p.slice('node_modules/'.length), {version: v.version, integrity: v.integrity}]));
     const expectedPackages = templateRunicPackages[framework];

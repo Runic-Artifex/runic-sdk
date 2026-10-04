@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/dotnetcli.host",
+  "symbolInfo": {
+    "frontend": { "longName": "frontend", "shortName": "" },
+    "packageManager": { "longName": "package-manager", "shortName": "" },
+    "host": { "longName": "host", "shortName": "" },
+    "viewModels": { "longName": "view-models", "shortName": "" },
+    "runicVersion": { "longName": "runic-version", "shortName": "", "isHidden": true },
+    "runicNpmVersion": { "longName": "runic-npm-version", "shortName": "", "isHidden": true }
+  },
+  "usageExamples": [
+    "--frontend svelte --package-manager bun",
+    "--frontend vue --host desktop --view-models reactiveui"
+  ]
+}

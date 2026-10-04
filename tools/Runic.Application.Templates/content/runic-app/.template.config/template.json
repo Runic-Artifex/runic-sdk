@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Runic Artifex",
+  "classifications": [
+    "Desktop",
+    "Runic Views",
+    "React",
+    "Vue",
+    "Svelte",
+    "Angular"
+  ],
+  "identity": "Runic.Application.Templates.App",
+  "name": "Runic application",
+  "description": "A desktop application with C# ViewModels and a React, Vue, Svelte, or Angular frontend.",
+  "shortName": "runic-app",
+  "sourceName": "RunicWindowApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [
+        ".template.config/**/*",
+        "frontends/**/*",
+        "**/*.filelist",
+        "**/*.user"
+      ]
+    },
+    {
+      "source": "./frontends/react/",
+      "target": "./Frontend/",
+      "condition": "(frontend == 'react')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
+    },
+    {
+      "source": "./frontends/vue/",
+      "target": "./Frontend/",
+      "condition": "(frontend == 'vue')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
+    },
+    {
+      "source": "./frontends/svelte/",
+      "target": "./Frontend/",
+      "condition": "(frontend == 'svelte')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
+    },
+    {
+      "source": "./frontends/angular/",
+      "target": "./Frontend/",
+      "condition": "(frontend == 'angular')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
+    }
+  ],
+  "symbols": {
+    "frontend": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "react",
+      "displayName": "Frontend",
+      "description": "The web framework that renders the ViewModels.",
+      "choices": [
+        { "choice": "react", "displayName": "React", "description": "React 19 with Vite" },
+        { "choice": "vue", "displayName": "Vue", "description": "Vue 3 with Vite" },
+        { "choice": "svelte", "displayName": "Svelte", "description": "Svelte 5 with Vite" },
+        { "choice": "angular", "displayName": "Angular", "description": "Angular with the Angular CLI" }
+      ]
+    },
+    "packageManager": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "npm",
+      "replaces": "__PACKAGE_MANAGER_NAME__",
+      "displayName": "Package manager",
+      "description": "JavaScript package manager used for frontend restore and development.",
+      "choices": [
+        { "choice": "npm", "displayName": "npm", "description": "npm with package-lock.json" },
+        { "choice": "pnpm", "displayName": "pnpm", "description": "pnpm with pnpm-lock.yaml" },
+        { "choice": "bun", "displayName": "Bun", "description": "Bun with bun.lock" }
+      ]
+    },
+    "host": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "cswebui",
+      "displayName": "Window host",
+      "description": "How the application presents its Window.",
+      "choices": [
+        { "choice": "cswebui", "displayName": "CS-WebUI", "description": "An installed browser in app mode, then the platform WebView" },
+        { "choice": "desktop", "displayName": "Runic Desktop", "description": "A native window with the embedded WebView and Runic platform services" }
+      ]
+    },
+    "viewModels": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "toolkit",
+      "displayName": "ViewModels",
+      "description": "The MVVM library for the C# ViewModels.",
+      "choices": [
+        { "choice": "toolkit", "displayName": "CommunityToolkit.Mvvm", "description": "Source-generated properties and relay commands" },
+        { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "Reactive objects and commands on the Window's model context" }
+      ]
+    },
+    "runicVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__RUNIC_NUGET_VERSION_DEFAULT__",
+      "replaces": "__RUNIC_NUGET_VERSION__",
+      "description": "Version of the Runic NuGet packages and the dotnet-runic tool."
+    },
+    "runicNpmVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__RUNIC_NPM_VERSION_DEFAULT__",
+      "replaces": "__RUNIC_NPM_VERSION__",
+      "description": "Version of the Runic npm packages."
+    },
+    "packageManagerDeclaration": {
+      "type": "generated",
+      "generator": "switch",
+      "replaces": "__PACKAGE_MANAGER__",
+      "parameters": {
+        "evaluator": "C++",
+        "datatype": "string",
+        "cases": [
+          { "condition": "(packageManager == 'pnpm')", "value": "pnpm@__PNPM_PACKAGE_MANAGER_VERSION__" },
+          { "condition": "(packageManager == 'bun')", "value": "bun@__BUN_PACKAGE_MANAGER_VERSION__" },
+          { "value": "npm@__NPM_PACKAGE_MANAGER_VERSION__" }
+        ]
+      }
+    },
+    "frontendName": {
+      "type": "generated",
+      "generator": "switch",
+      "replaces": "__FRONTEND_NAME__",
+      "parameters": {
+        "evaluator": "C++",
+        "datatype": "string",
+        "cases": [
+          { "condition": "(frontend == 'vue')", "value": "Vue" },
+          { "condition": "(frontend == 'svelte')", "value": "Svelte" },
+          { "condition": "(frontend == 'angular')", "value": "Angular" },
+          { "value": "React" }
+        ]
+      }
+    },
+    "developmentServerName": {
+      "type": "generated",
+      "generator": "switch",
+      "replaces": "__DEVELOPMENT_SERVER_NAME__",
+      "parameters": {
+        "evaluator": "C++",
+        "datatype": "string",
+        "cases": [
+          { "condition": "(frontend == 'angular')", "value": "Angular CLI" },
+          { "value": "Vite" }
+        ]
+      }
+    },
+    "frontendPackageName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "npmPackageName",
+      "replaces": "@runic-artifex/runic-app-starter",
+      "description": "The frontend package.json name, derived from the project name."
+    }
+  },
+  "forms": {
+    "npmPackageName": {
+      "identifier": "kebabCase"
+    }
+  },
+  "primaryOutputs": [
+    {
+      "path": "RunicWindowApp.csproj"
+    }
+  ]
+}

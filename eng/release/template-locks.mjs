@@ -11,6 +11,10 @@ export const templateRunicPackages = Object.freeze({
   angular: ['@runic-artifex/angular', '@runic-artifex/views'],
 });
 
+// The runic-app template keeps one frontend directory per --frontend choice.
+export const templateFrontends = Object.freeze(Object.keys(templateRunicPackages));
+export const templateFrontendDirectory = framework => `runic-app/frontends/${framework}`;
+
 export function readNpmCandidates(archives) {
   return new Map(archives.map(archive => {
     const manifest = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], {encoding: 'utf8'}));
@@ -76,10 +80,10 @@ export function verifyTemplateLock(text, filename, candidates, { requireRunic = 
 export function verifyPackagedTemplateLocks(nupkg, archives) {
   const candidates = readNpmCandidates(archives);
   const files = JSON.parse(execFileSync('python3', ['-c', 'import zipfile,json,sys\nwith zipfile.ZipFile(sys.argv[1]) as z: print(json.dumps({n:z.read(n).decode() for n in z.namelist() if n.endswith(("package-lock.json","pnpm-lock.yaml","bun.lock"))}))', nupkg], {encoding: 'utf8', maxBuffer: 32 * 1024 * 1024}));
-  const expected = ['react', 'vue', 'svelte', 'angular'].flatMap(framework => ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock'].map(lock => `content/content/${framework}/Frontend/${lock}`));
+  const expected = templateFrontends.flatMap(framework => ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock'].map(lock => `content/content/${templateFrontendDirectory(framework)}/${lock}`));
   assert.deepEqual(Object.keys(files).sort(), expected.sort(), 'Packaged template lock inventory differs');
   const entries = Object.entries(files).reduce((total, [filename, text]) => {
-    const framework = filename.match(/content\/content\/(react|vue|svelte|angular)\/Frontend\//)?.[1];
+    const framework = filename.match(/content\/content\/runic-app\/frontends\/(react|vue|svelte|angular)\//)?.[1];
     return total + verifyTemplateLock(text, filename, candidates, { expectedPackages: templateRunicPackages[framework] });
   }, 0);
   return {locks: expected.length, entries};

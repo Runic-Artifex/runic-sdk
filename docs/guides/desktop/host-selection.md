@@ -1,8 +1,9 @@
 # Choose a presentation host
 
-The current `Runic.Application.Templates` starter uses the CS-WebUI integration
-for its .NET Window and View composition. Install a matching template version,
-then choose React, Vue, Svelte, or Angular with the corresponding template name.
+The `runic-app` template (and `dnx Runic.Create`, which runs it) asks for the
+host: `--host cswebui`, the default, or `--host desktop` for Runic Desktop. Both
+use the same Window, Views, and generated TypeScript clients; only `Program.cs`,
+the Window class, the host package, and the host script in `index.html` differ.
 For a starter walkthrough, see [getting started](../application/getting-started/README.md)
 and the [first Window example](../../../examples/first-window/README.md).
 
@@ -14,8 +15,8 @@ also use its lower-level API directly.
 `Runic.Desktop` is an independent presentation library for browser and embedded
 WebView windows. Choose its embedded backend and fallback policy explicitly; its
 [package guide](../../../packages/dotnet/Runic.Desktop/README.md) documents native
-prerequisites. Do not assume a template's CS-WebUI composition changes to Desktop
-when a provider is installed.
+prerequisites. An existing CS-WebUI project does not switch to Desktop when a provider is
+installed; compare a `--host desktop` project to see the changes.
 
 [`Runic.Application.Desktop`](../../../packages/dotnet/Runic.Application.Desktop/README.md)
 connects generated Windows and Views to a Desktop surface. The

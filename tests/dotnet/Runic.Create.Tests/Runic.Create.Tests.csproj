@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <AssemblyName>Runic.Create.Tests</AssemblyName>
+    <RootNamespace>Runic.Create.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../tools/Runic.Create/Runic.Create.csproj" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

@@ -185,8 +185,10 @@ serve_and_fetch() {
 verify_template() {
   local framework="$1"
   local manager="$2"
-  local project_name="Acceptance${framework^}${manager^}"
-  local output="$template_tmp/$framework-$manager"
+  local host="$3"
+  local view_models="$4"
+  local project_name="Acceptance${framework^}${manager^}${host^}${view_models^}"
+  local output="$template_tmp/$framework-$manager-$host-$view_models"
   local expected_manager_version
   local selected_lock
   case "$manager" in
@@ -195,21 +197,15 @@ verify_template() {
     bun) expected_manager_version="$bun_version"; selected_lock=bun.lock ;;
   esac
 
-  template_options=(
-    --name "$project_name"
-    --output "$output"
-    --packageManager "$manager"
-    --runicViewsVersion "$package_version"
-    --dotnetRunicVersion "$package_version"
-    --viewsRuntimeVersion "$views_npm_version"
-  )
-  case "$framework" in
-    react) template_options+=(--viewsReactVersion "$views_npm_version") ;;
-    vue) template_options+=(--viewsVueVersion "$views_npm_version") ;;
-    angular) template_options+=(--viewsAngularVersion "$views_npm_version") ;;
-    svelte) template_options+=(--viewsSvelteVersion "$views_npm_version") ;;
-  esac
-  dotnet new "runic-app-$framework" "${template_options[@]}"
+  dotnet new runic-app \
+    --name "$project_name" \
+    --output "$output" \
+    --frontend "$framework" \
+    --package-manager "$manager" \
+    --host "$host" \
+    --view-models "$view_models" \
+    --runic-version "$package_version" \
+    --runic-npm-version "$views_npm_version"
 
   test -f "$output/Frontend/$selected_lock"
   for other_lock in package-lock.json pnpm-lock.yaml bun.lock; do
@@ -220,13 +216,36 @@ verify_template() {
   package_name="$(sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
   grep -Fq "\"name\": \"$package_name\"" "$output/Frontend/package.json"
   grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
-  grep -Fq 'Runic.Application.CsWebUi' "$output/$project_name.csproj"
+  local index_html="$output/Frontend/index.html"
+  [[ "$framework" == angular ]] && index_html="$output/Frontend/src/index.html"
+  case "$host" in
+    cswebui)
+      grep -Fq 'Runic.Application.CsWebUi' "$output/$project_name.csproj"
+      grep -Fq 'runic-cswebui.js' "$index_html"
+      ;;
+    desktop)
+      grep -Fq 'Runic.Application.Desktop' "$output/$project_name.csproj"
+      grep -Fq 'runic-desktop-views.js' "$index_html"
+      ;;
+  esac
+  case "$view_models" in
+    toolkit) grep -Fq 'CommunityToolkit.Mvvm' "$output/$project_name.csproj" ;;
+    reactiveui) grep -Fq 'Runic.Application.ReactiveUI' "$output/$project_name.csproj" ;;
+  esac
+  if rg -n '^\s*#(if|elif|else|endif)\b|<!--#|__[A-Z][A-Z_]+__' "$output" --glob '!Frontend/*lock*' --glob '!*.lock'; then
+    echo "The generated $framework project contains unprocessed template syntax." >&2
+    exit 1
+  fi
   if grep -Eq 'RunicBridgeBootstrap|RunicApplicationFrontend|RunicBridgeComposition' "$output/$project_name.csproj"; then
     echo "The generated $framework project declares settings the Runic packages default." >&2
     exit 1
   fi
-  if rg -ni 'Runic\.Application\.Bridge|Runic\.Desktop|application-bridge|@runic-artifex/(views-angular|views-svelte|desktop)' "$output"; then
+  if rg -ni 'Runic\.Application\.Bridge|application-bridge|@runic-artifex/(views-angular|views-svelte|desktop)' "$output"; then
     echo "The generated $framework template contains a removed Bridge or Desktop package." >&2
+    exit 1
+  fi
+  if [[ "$host" == cswebui ]] && rg -ni 'Runic\.Desktop' "$output"; then
+    echo "The generated CS-WebUI project references Runic Desktop." >&2
     exit 1
   fi
   configure_candidate_registry "$manager" "$output"
@@ -239,7 +258,9 @@ verify_template() {
     exit 1
   fi
   grep -Fq 'WARN compatibility-set: The project has not been restored yet' "$output/doctor-unrestored.txt"
-  if [[ "$manager" == npm ]]; then
+  # RUNIC_APPLICATION_SERVE_ONLY is a CS-WebUI host contract. Desktop variants
+  # open a native window, so automation covers their generation, build, and types.
+  if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
       dotnet runic dev
   fi
@@ -269,19 +290,66 @@ verify_template() {
   else
     frontend_script "$manager" "$output/Frontend" typecheck
   fi
-  serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
-    dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
-  printf 'TEMPLATE_OK|%s|%s\n' "$framework" "$manager"
+  if [[ "$host" == cswebui ]]; then
+    serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
+      dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
+  fi
+  printf 'TEMPLATE_OK|%s|%s|%s|%s\n' "$framework" "$manager" "$host" "$view_models"
+}
+
+# The guided creator must produce exactly what its printed dotnet new command
+# produces, using the packaged tool and the candidate template.
+verify_creator() {
+  local creator_directory="$template_tmp/creator"
+  local options=(--frontend vue --package-manager pnpm --host desktop --view-models reactiveui)
+  dotnet tool install Runic.Create \
+    --tool-path "$tool_directory" \
+    --version "$package_version" \
+    "${tool_source_options[@]}" \
+    "${tool_restore_options[@]}"
+  mkdir -p "$creator_directory/guided" "$creator_directory/direct"
+  (cd "$creator_directory/guided" && "$tool_directory/runic-create" AcceptanceCreator "${options[@]}" \
+    --template-source "$package_directory" --dry-run) > "$creator_directory/plan.txt"
+  grep -Fq "dotnet new runic-app --name AcceptanceCreator ${options[*]}" "$creator_directory/plan.txt"
+  grep -Fq "dnx Runic.Create@$package_version -- AcceptanceCreator ${options[*]}" "$creator_directory/plan.txt"
+  test ! -e "$creator_directory/guided/AcceptanceCreator"
+  (cd "$creator_directory/guided" && "$tool_directory/runic-create" AcceptanceCreator "${options[@]}" \
+    --template-source "$package_directory") > "$creator_directory/create.txt"
+  (cd "$creator_directory/direct" && dotnet new runic-app --name AcceptanceCreator "${options[@]}")
+  diff -r "$creator_directory/guided/AcceptanceCreator" "$creator_directory/direct/AcceptanceCreator"
+  grep -Fq 'dotnet runic dev' "$creator_directory/create.txt"
+  if (cd "$creator_directory/guided" && "$tool_directory/runic-create" Other --frontend qt --yes --dry-run) \
+    > "$creator_directory/invalid.txt" 2>&1; then
+    echo "The creator accepted an unknown frontend." >&2
+    exit 1
+  fi
+  grep -Fq 'react, vue, svelte, angular' "$creator_directory/invalid.txt"
+  echo 'CREATOR_OK'
 }
 
 frameworks=(react vue svelte angular)
 managers=(npm pnpm bun)
+# Every frontend and package manager uses the default host and ViewModels.
+# Pairwise variants then cover each frontend and package manager with Runic
+# Desktop and ReactiveUI, and every host and ViewModel pairing.
+variants=(
+  "react pnpm desktop reactiveui"
+  "vue bun desktop reactiveui"
+  "svelte npm desktop reactiveui"
+  "angular pnpm desktop reactiveui"
+  "svelte bun desktop toolkit"
+  "angular npm cswebui reactiveui"
+)
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
   read -r -a frameworks <<< "$RUNIC_TEMPLATE_FRAMEWORKS"
 fi
 if [[ -n "${RUNIC_TEMPLATE_MANAGERS:-}" ]]; then
   read -r -a managers <<< "$RUNIC_TEMPLATE_MANAGERS"
+fi
+if [[ -n "${RUNIC_TEMPLATE_VARIANTS+set}" ]]; then
+  # Semicolon-separated "frontend manager host view-models" entries; empty skips them.
+  IFS=';' read -r -a variants <<< "$RUNIC_TEMPLATE_VARIANTS"
 fi
 for framework in "${frameworks[@]}"; do
   case "$framework" in
@@ -296,8 +364,13 @@ for manager in "${managers[@]}"; do
   esac
 done
 
+verify_creator
 for manager in "${managers[@]}"; do
   for framework in "${frameworks[@]}"; do
-    verify_template "$framework" "$manager"
+    verify_template "$framework" "$manager" cswebui toolkit
   done
+done
+for variant in "${variants[@]}"; do
+  read -r -a fields <<< "$variant"
+  verify_template "${fields[@]}"
 done

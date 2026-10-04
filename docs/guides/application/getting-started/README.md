@@ -1,28 +1,43 @@
 # Getting started
 
-Install the published templates from NuGet and create a starter app:
+Create a starter app with the guided creator and run it:
 
 ```sh
-dotnet new install Runic.Application.Templates::<VERSION>
-dotnet new runic-app-react -n MyApp
+dnx Runic.Create@<VERSION>
 cd MyApp
 dotnet tool restore
 dotnet runic dev
 ```
 
-Choose `react`, `vue`, `svelte`, or `angular` as the template short name. The
-templates use npm by default; add `--packageManager pnpm` or
-`--packageManager bun` to `dotnet new` to use another package manager. You need
-the .NET 10 SDK and Node.js 24 with npm or pnpm, or Bun 1.4.
+`dnx` ships with the .NET 10 SDK and runs the creator without installing it.
+The creator asks for the project name, frontend, package manager, Window host,
+and ViewModel library. It installs `Runic.Application.Templates`, runs
+`dotnet new runic-app`, and prints both commands so you can recreate the
+project without questions:
+
+```sh
+dotnet new install Runic.Application.Templates@<VERSION>
+dotnet new runic-app --name MyApp --frontend svelte --package-manager bun --host desktop --view-models reactiveui
+```
+
+| Option | Choices | Default |
+| --- | --- | --- |
+| `--frontend` | `react`, `vue`, `svelte`, `angular` | `react` |
+| `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
+| `--host` | `cswebui`, `desktop` | `cswebui` |
+| `--view-models` | `toolkit` (CommunityToolkit.Mvvm), `reactiveui` | `toolkit` |
+
+You need the .NET 10 SDK and Node.js 24 with npm or pnpm, or Bun 1.4.
 
 `dotnet runic dev` restores the .NET and frontend packages, builds the app,
-starts the frontend development server, and opens the app through CS-WebUI in
-an installed browser's app mode, falling back to the platform WebView.
+starts the frontend development server, and opens the app. The CS-WebUI host
+uses an installed browser's app mode, falling back to the platform WebView; the
+Runic Desktop host opens a native window with the embedded WebView.
 `dotnet runic doctor` checks the prerequisites at any point. The generated
 README describes the project layout, the ignored `Frontend/src/generated`
 clients, publishing, and the project settings. The
-[docs site](https://docs.runic-artifex.eu/getting-started/) has the same steps
-for each package manager.
+[project creator](https://docs.runic-artifex.eu/create/) builds the command for
+your choices and previews the generated files.
 
 The starter uses a .NET Window and View contract with a generated TypeScript
 client. The frontend owns its rendered components; .NET owns the typed model and

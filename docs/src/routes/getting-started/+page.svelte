@@ -1,60 +1,15 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import CommandBlock from '#lib/components/CommandBlock.svelte';
   import ContentCard from '#lib/components/ContentCard.svelte';
-  import { Button } from '#lib/components/ui/button/index.js';
-  import {
-    catalogRows,
-    packageInstallCommand,
-    currentRelease,
-  } from '#lib/release-docs.js';
-  const template = catalogRows.find(
-    (entry) => entry.name === 'Runic.Application.Templates',
-  )!;
+  import { creatorCommands, defaultSelection } from '#lib/creator.js';
+  import { currentRelease } from '#lib/release-docs.js';
 
-  // The templates default to npm. pnpm and Bun differ only in one option, so
-  // every package manager gets the same first-run sequence.
-  const managers = [
-    {
-      id: 'npm',
-      label: 'npm',
-      option: '',
-      prerequisite: 'Node.js 24 with npm',
-      href: 'https://nodejs.org/en/download',
-    },
-    {
-      id: 'pnpm',
-      label: 'pnpm',
-      option: ' --packageManager pnpm',
-      prerequisite: 'Node.js 24 with pnpm 12',
-      href: 'https://pnpm.io/installation',
-    },
-    {
-      id: 'bun',
-      label: 'Bun',
-      option: ' --packageManager bun',
-      prerequisite: 'Bun 1.4 or later',
-      href: 'https://bun.sh',
-    },
-  ] as const;
-  type ManagerId = (typeof managers)[number]['id'];
-  let selected = $state<ManagerId>('npm');
-  let manager = $derived(managers.find((entry) => entry.id === selected)!);
-  let quickStart = $derived(`${packageInstallCommand(template)}
-dotnet new runic-app-react -n MyApp${manager.option}
-cd MyApp
-dotnet tool restore
-dotnet runic dev`);
-
-  function selectWithKeyboard(event: KeyboardEvent) {
-    const step =
-      event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (step === 0) return;
-    event.preventDefault();
-    const index = managers.findIndex((entry) => entry.id === selected);
-    const next = managers[(index + step + managers.length) % managers.length];
-    selected = next.id;
-    document.getElementById(`manager-tab-${next.id}`)?.focus();
-  }
+  const commands = creatorCommands(
+    currentRelease.version,
+    'MyApp',
+    defaultSelection(),
+  );
 </script>
 
 <svelte:head>
@@ -81,8 +36,8 @@ dotnet runic dev`);
     <h1>Build your first Runic app.</h1>
     <p class="lede">
       Use C# for application logic and React, Vue, Svelte or Angular for the
-      frontend. The template connects them and opens your app in a browser app
-      window.
+      frontend. One command creates a project that connects them and opens your
+      app.
     </p>
   </section>
   <section class="content-grid shell">
@@ -96,14 +51,15 @@ dotnet runic dev`);
           >.NET 10 SDK</a
         >
         and a JavaScript package manager: Node.js 24 with npm or pnpm, or Bun 1.4.
-        Choose one below; the commands are otherwise the same.
+        The creator asks which one to use.
       </p>
       <p>
-        The template's window uses CS-WebUI. It opens your app in an installed
-        browser in app mode; Chrome, Edge and other Chromium-based browsers work
-        best, and Firefox works without app mode. Without a browser it falls
-        back to the platform WebView: the Edge WebView2 Runtime on Windows, GTK
-        3 with WebKitGTK 4.1 on Linux, or WKWebView on macOS. Run
+        The default CS-WebUI host opens your app in an installed browser in app
+        mode; Chrome, Edge and other Chromium-based browsers work best, and
+        Firefox works without app mode. Without a browser it falls back to the
+        platform WebView: the Edge WebView2 Runtime on Windows, GTK 3 with
+        WebKitGTK 4.1 on Linux, or WKWebView on macOS. The Runic Desktop host
+        uses that WebView in a native window. Run
         <code>dotnet runic doctor</code> in the generated project to check your setup.
       </p>
     </ContentCard>
@@ -112,53 +68,33 @@ dotnet runic dev`);
       title="Create and run"
       full
     >
-      <div
-        class="flex flex-wrap gap-2"
-        role="tablist"
-        aria-label="JavaScript package manager"
-      >
-        {#each managers as entry (entry.id)}
-          <Button
-            id={`manager-tab-${entry.id}`}
-            role="tab"
-            size="sm"
-            variant={selected === entry.id ? 'secondary' : 'ghost'}
-            aria-selected={selected === entry.id}
-            aria-controls="manager-commands"
-            tabindex={selected === entry.id ? 0 : -1}
-            onclick={() => (selected = entry.id)}
-            onkeydown={selectWithKeyboard}>{entry.label}</Button
-          >
-        {/each}
-      </div>
-      <div
-        id="manager-commands"
-        role="tabpanel"
-        aria-labelledby={`manager-tab-${selected}`}
-      >
-        <pre><code>{quickStart}</code></pre>
-        <p>
-          Requires the .NET 10 SDK and <a href={manager.href} rel="external"
-            >{manager.prerequisite}</a
-          >.
-        </p>
-      </div>
+      <CommandBlock command={commands.interactive} />
       <p>
-        This installs the published template from NuGet; Runic frontend packages
-        come from npm. <code>dotnet tool restore</code> installs the project's
+        The creator asks for a project name, frontend, package manager, Window
+        host, and ViewModel library, then creates the project and prints the
+        next steps. <code>dnx</code> ships with the .NET 10 SDK and runs the creator
+        without installing it. Then start the app:
+      </p>
+      <CommandBlock command={commands.nextSteps.join('\n')} />
+      <p>
+        <code>dotnet tool restore</code> installs the project's
         <code>dotnet runic</code>
         tool. <code>dotnet runic dev</code>
         restores the .NET and frontend packages, builds the app, starts the frontend
         development server and opens the app. Frontend edits reload in place; C# edits
-        rebuild and restart the app.
-      </p>
-      <p>
-        Replace <code>react</code> with <code>vue</code>, <code>svelte</code> or
-        <code>angular</code> to choose your frontend. Vue type checking also
-        needs Node.js when using Bun. Plain <code>dotnet build</code> and
+        rebuild and restart the app. Plain <code>dotnet build</code> and
         <code>dotnet run</code> work too: the first build installs the frontend packages
         and builds the production frontend.
       </p>
+      <p>
+        Prefer to choose in the browser? <a
+          class="text-link"
+          href={resolve('/create')}>Put your app together</a
+        >
+        and copy one command. The creator runs the
+        <code>runic-app</code> template, which you can also use directly:
+      </p>
+      <CommandBlock command={`${commands.install}\n${commands.create}`} />
     </ContentCard>
     <ContentCard eyebrow="Make it yours" title="Change the counter" full>
       <p>
@@ -192,9 +128,10 @@ dotnet runic dev`);
     </ContentCard>
     <ContentCard eyebrow="Native windows" title="Choose a host">
       <p>
-        The starter uses the CS-WebUI host. For native windows, embedded
-        WebViews, file dialogs and other platform services, use the Runic
-        Desktop host through <code>Runic.Application.Desktop</code>; the
+        The creator asks for the host. CS-WebUI is the default. Choose Runic
+        Desktop (<code>--host desktop</code>) for native windows, embedded
+        WebViews, file dialogs and other platform services; existing projects
+        can add <code>Runic.Application.Desktop</code>. The
         <a
           class="text-link"
           href="https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/host-selection.md"
