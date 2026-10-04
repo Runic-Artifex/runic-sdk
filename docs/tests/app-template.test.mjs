@@ -151,6 +151,6 @@ test('keeps the Editor dropdown wrapper snapshot byte-equivalent', async () => {
   assert.equal(files.length, 18);
   assert.equal(
     hash.digest('hex'),
-    'a6c0279ac20717664f271ce234549e4992dc8bc4aba9c285c3ae2de8615e13a2',
+    '47f1cc79753eb82c50e0f57f1daf8bebc9abe5e421e19dee6f9bc232035a523c',
   );
 });

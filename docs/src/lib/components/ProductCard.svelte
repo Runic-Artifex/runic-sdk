@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import * as Card from '$lib/components/ui/card';
-  import type { Product } from '$lib/docs-data';
+  import * as Card from '#lib/components/ui/card/index.js';
+  import type { Product } from '#lib/docs-data.js';
 
   let {
     product,

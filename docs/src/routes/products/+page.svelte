@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ProductCard from '$lib/components/ProductCard.svelte';
-  import { activeProducts } from '$lib/docs-data';
+  import ProductCard from '#lib/components/ProductCard.svelte';
+  import { activeProducts } from '#lib/docs-data.js';
 </script>
 
 <svelte:head>

@@ -4,9 +4,9 @@
     isThemePalette,
     type ThemeMode,
     type ThemePalette,
-  } from '$lib/appearance';
-  import { Button } from '$lib/components/ui/button';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+  } from '#lib/appearance.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
   import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
   import MonitorIcon from '@lucide/svelte/icons/monitor';
   import MoonIcon from '@lucide/svelte/icons/moon';

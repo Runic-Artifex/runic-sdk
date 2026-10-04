@@ -50,11 +50,11 @@
   "peerDependencies": {
     "@runic-artifex/svelte": "0.6.0-preview.1",
     "@runic-artifex/vite-plugin-runic": "0.6.0-preview.1",
-    "@sveltejs/adapter-static": ">=3 <4",
-    "@sveltejs/kit": ">=2.53.0 <3",
+    "@sveltejs/adapter-static": ">=4 <5",
+    "@sveltejs/kit": ">=3 <4",
     "@sveltejs/vite-plugin-svelte": ">=7 <8",
-    "svelte": ">=5.46.4 <6",
-    "vite": ">=8 <9"
+    "svelte": ">=5.57.1 <6",
+    "vite": ">=8.0.12 <9"
   },
   "peerDependenciesMeta": {
     "@runic-artifex/svelte": {
@@ -77,15 +77,12 @@
   "engines": {
     "node": ">=24.18.0 <25"
   },
-  "dependencies": {
-    "@types/cookie": "0.6.0"
-  },
   "devDependencies": {
     "@runic-artifex/svelte": "workspace:*",
     "@runic-artifex/vite-plugin-runic": "workspace:*",
-    "@sveltejs/adapter-static": "3.0.10",
-    "@sveltejs/kit": "2.70.3",
-    "@sveltejs/package": "2.5.8",
+    "@sveltejs/adapter-static": "4.0.0",
+    "@sveltejs/kit": "3.0.0",
+    "@sveltejs/package": "3.0.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "24.19.1",
     "effect": "4.0.0",

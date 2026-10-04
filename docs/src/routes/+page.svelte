@@ -1,12 +1,12 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import ActionLink from '$lib/components/ActionLink.svelte';
-  import ProductCard from '$lib/components/ProductCard.svelte';
-  import { Badge } from '$lib/components/ui/badge';
-  import * as Card from '$lib/components/ui/card';
-  import { Separator } from '$lib/components/ui/separator';
-  import { activeProducts } from '$lib/docs-data';
-  import { releaseSummary } from '$lib/release-docs';
+  import ActionLink from '#lib/components/ActionLink.svelte';
+  import ProductCard from '#lib/components/ProductCard.svelte';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import * as Card from '#lib/components/ui/card/index.js';
+  import { Separator } from '#lib/components/ui/separator/index.js';
+  import { activeProducts } from '#lib/docs-data.js';
+  import { releaseSummary } from '#lib/release-docs.js';
 </script>
 
 <svelte:head>

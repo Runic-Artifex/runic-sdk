@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ErrorState from '$lib/components/ErrorState.svelte';
+  import ErrorState from '#lib/components/ErrorState.svelte';
 </script>
 
 <svelte:head>

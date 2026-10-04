@@ -8,12 +8,12 @@
     subscribeSystemAppearance,
     type ThemeMode,
     type ThemePalette,
-  } from '$lib/appearance';
-  import AppearanceMenu from '$lib/components/AppearanceMenu.svelte';
-  import { Button } from '$lib/components/ui/button';
-  import { Separator } from '$lib/components/ui/separator';
-  import * as Sheet from '$lib/components/ui/sheet';
-  import * as Tooltip from '$lib/components/ui/tooltip';
+  } from '#lib/appearance.js';
+  import AppearanceMenu from '#lib/components/AppearanceMenu.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Separator } from '#lib/components/ui/separator/index.js';
+  import * as Sheet from '#lib/components/ui/sheet/index.js';
+  import * as Tooltip from '#lib/components/ui/tooltip/index.js';
   import CodeXmlIcon from '@lucide/svelte/icons/code-xml';
   import MenuIcon from '@lucide/svelte/icons/menu';
   import { onMount, type Snippet } from 'svelte';

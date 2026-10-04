@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { getProduct, products } from '$lib/docs-data';
+import { getProduct, products } from '#lib/docs-data.js';
 import type { PageLoad } from './$types';
 
 export const entries = () =>

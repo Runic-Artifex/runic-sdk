@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import ActionLink from '$lib/components/ActionLink.svelte';
-  import * as Empty from '$lib/components/ui/empty';
+  import ActionLink from '#lib/components/ActionLink.svelte';
+  import * as Empty from '#lib/components/ui/empty/index.js';
   import FileQuestionIcon from '@lucide/svelte/icons/file-question';
 
   let {
