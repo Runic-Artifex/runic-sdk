@@ -15,12 +15,12 @@
   "dependencies": {
     "@runic-artifex/views": "__VIEWS_RUNTIME_NPM_VERSION__",
     "@runic-artifex/vue": "__VIEWS_VUE_NPM_VERSION__",
-    "vue": "3.5.42"
+    "vue": "3.5.43"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "6.0.8",
+    "@vitejs/plugin-vue": "6.0.9",
     "typescript": "6.0.3",
     "vite": "8.2.2",
-    "vue-tsc": "3.3.11"
+    "vue-tsc": "3.3.12"
   }
 }

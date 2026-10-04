@@ -30,10 +30,10 @@ try {
   assert.match(archiveTypes, /static ɵcmp:/);
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module", scripts: { build: "ng build" }, dependencies: {
     "@runic-artifex/angular": `file:${archive}`,
-    "@angular/common": "22.1.5", "@angular/core": "22.1.5", "@angular/platform-browser": "22.1.5", "rxjs": "7.8.2"
+    "@angular/common": "22.2.1", "@angular/core": "22.2.1", "@angular/platform-browser": "22.2.1", "rxjs": "7.8.2"
   }, devDependencies: {
-    "@angular/build": "22.1.7", "@angular/cli": "22.1.7", "@angular/compiler": "22.1.5",
-    "@angular/compiler-cli": "22.1.5", "typescript": "6.0.3"
+    "@angular/build": "22.2.1", "@angular/cli": "22.2.1", "@angular/compiler": "22.2.1",
+    "@angular/compiler-cli": "22.2.1", "typescript": "6.0.3"
   } }), "utf8");
   await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], { cwd: root });
   await writeFile(join(root, "angular.json"), JSON.stringify({

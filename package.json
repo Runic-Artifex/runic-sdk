@@ -39,7 +39,7 @@
   "devDependencies": {
     "@runic-artifex/views": "workspace:*",
     "typescript": "6.0.3",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0",
     "esbuild": "0.28.2",
     "playwright-core": "1.63.0"
   }
