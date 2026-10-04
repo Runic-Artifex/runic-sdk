@@ -61,14 +61,19 @@ public sealed class BridgeDataSubscriptionMember
 // reachable owner/property and collection edge a small subscription. Edits
 // reconcile only the affected edge, retaining subscriptions for every other
 // branch. Nodes are reference-keyed, which preserves shared DTOs and cycles.
-internal sealed class BridgeDataSubscriptions : IDisposable
+internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatchParticipant
 {
     private readonly object _gate = new();
     private readonly object _root;
     private readonly IReadOnlyList<BridgeDataSubscriptionMember> _members;
     private readonly Action _changed;
+    private readonly Func<INotifyCollectionChanged, NotifyCollectionChangedEventArgs, bool>? _collectionChanged;
+    private readonly Func<object, bool>? _itemChanged;
+    private readonly bool _rootObservedExternally;
+    private readonly IReadOnlySet<string>? _incrementalCollectionNames;
     private readonly BridgeModelTurn _modelTurn;
     private readonly Dictionary<NodeKey, Node> _nodes = new(NodeKeyComparer.Instance);
+    private readonly Dictionary<NodeKey, int> _incomingReferences = new(NodeKeyComparer.Instance);
     private readonly Dictionary<object, PropertyWatch> _propertyWatches =
         new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<INotifyCollectionChanged, CollectionWatch> _collectionWatches =
@@ -81,7 +86,11 @@ internal sealed class BridgeDataSubscriptions : IDisposable
     internal BridgeDataSubscriptions(
         object root,
         IReadOnlyList<BridgeDataSubscriptionMember> members,
-        Action changed)
+        Action changed,
+        Func<INotifyCollectionChanged, NotifyCollectionChangedEventArgs, bool>? collectionChanged = null,
+        Func<object, bool>? itemChanged = null,
+        bool rootObservedExternally = false,
+        IReadOnlySet<string>? incrementalCollectionNames = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(members);
@@ -89,6 +98,10 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         _root = root;
         _members = members;
         _changed = changed;
+        _collectionChanged = collectionChanged;
+        _itemChanged = itemChanged;
+        _rootObservedExternally = rootObservedExternally;
+        _incrementalCollectionNames = incrementalCollectionNames;
         _modelTurn = BridgeModelTurn.For(root);
         _rootKey = new(root, members);
         _modelTurn.Run(() =>
@@ -102,11 +115,14 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         // ObservableCollection raises bookkeeping properties immediately
         // before CollectionChanged. Its collection event reconciles the edge.
         if (owner is INotifyCollectionChanged && args.PropertyName is "Count" or "Item[]") return;
+        var itemOnly = false;
         var changed = _modelTurn.Run(() =>
         {
             lock (_gate)
             {
                 if (_disposed || !_propertyWatches.TryGetValue(owner, out var watch)) return false;
+                itemOnly = watch.Nodes.Count == 1 && watch.Nodes.All(node =>
+                    _incomingReferences.GetValueOrDefault(new(node.Owner, node.Members)) == 1);
                 var topologyMayHaveChanged = false;
                 foreach (var node in watch.Nodes.ToArray())
                 {
@@ -124,27 +140,43 @@ internal sealed class BridgeDataSubscriptions : IDisposable
                 // Scalar leaf updates still publish a new snapshot, but they
                 // cannot alter reachability. Avoid walking the entire graph
                 // and allocating a reachability set on that hot path.
-                if (topologyMayHaveChanged) SweepDetached();
+                if (topologyMayHaveChanged) SweepOrDefer();
                 return true;
             }
         });
-        if (changed) _changed();
+        // ViewModelBridge observes the root itself; this graph owns only its
+        // child subscriptions and must not capture the root notification twice.
+        if (changed && (!_rootObservedExternally || !ReferenceEquals(owner, _root)) &&
+            (!itemOnly || _itemChanged?.Invoke(owner) != true)) _changed();
     }
 
     private void OnCollectionChanged(INotifyCollectionChanged collection, NotifyCollectionChangedEventArgs args)
     {
+        var collectionOnly = false;
         var changed = _modelTurn.Run(() =>
         {
             lock (_gate)
             {
                 if (_disposed || !_collectionWatches.TryGetValue(collection, out var watch)) return false;
+                collectionOnly = watch.Edges.All(edge => ReferenceEquals(edge.Node.Owner, _root) &&
+                    _incrementalCollectionNames?.Contains(edge.Member.Name) == true);
                 foreach (var edge in watch.Edges.ToArray()) ReconcileCollection(edge, args);
-                SweepDetached();
+                if (args.Action != NotifyCollectionChangedAction.Move) SweepOrDefer();
                 return true;
             }
         });
-        if (changed) _changed();
+        if (changed && (!collectionOnly || _collectionChanged?.Invoke(collection, args) != true)) _changed();
     }
+
+    private void SweepOrDefer()
+    {
+        if (!BridgeSnapshotBatch.TryDefer(_root, this)) SweepDetached();
+    }
+
+    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.Run(() =>
+    {
+        lock (_gate) if (!_disposed) SweepDetached();
+    });
 
     private void OnErrorsChanged(INotifyDataErrorInfo source, DataErrorsChangedEventArgs args)
     {
@@ -170,7 +202,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable
                 AddItems(edge, args.NewItems);
                 break;
             case NotifyCollectionChangedAction.Reset:
-                edge.Items.Clear();
+                ClearItems(edge);
                 AddItems(edge, edge.Member.EnumerateChildren!(edge.Value!));
                 break;
             // A move does not alter membership, but callers still receive a
@@ -178,7 +210,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable
             case NotifyCollectionChangedAction.Move:
                 break;
             default:
-                edge.Items.Clear();
+                ClearItems(edge);
                 AddItems(edge, edge.Member.EnumerateChildren!(edge.Value!));
                 break;
         }
@@ -194,15 +226,16 @@ internal sealed class BridgeDataSubscriptions : IDisposable
             // reconcile nested subscriptions without replacing the instance.
             if (forceCollectionRefresh && next is not null && edge.Member.EnumerateChildren is { } snapshotEnumerate)
             {
-                edge.Items.Clear();
+                ClearItems(edge);
                 AddItems(edge, snapshotEnumerate(next));
             }
             return;
         }
         DetachCollection(edge);
+        if (edge.ValueChild is { } previousChild) RemoveReference(previousChild);
         edge.Value = next;
         edge.ValueChild = null;
-        edge.Items.Clear();
+        ClearItems(edge);
         if (next is null) return;
 
         if (edge.Member.EnumerateChildren is { } enumerate)
@@ -213,6 +246,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         else if (edge.Member.Children.Count > 0)
         {
             edge.ValueChild = AddNode(next, edge.Member.Children);
+            if (edge.ValueChild is { } child) AddReference(child);
         }
     }
 
@@ -224,11 +258,14 @@ internal sealed class BridgeDataSubscriptions : IDisposable
             if (item is null) continue;
             var key = AddNode(item, edge.Member.Children);
             if (key is { } nodeKey)
+            {
                 edge.Items[nodeKey] = edge.Items.TryGetValue(nodeKey, out var count) ? count + 1 : 1;
+                AddReference(nodeKey);
+            }
         }
     }
 
-    private static void RemoveItems(Edge edge, IList? items)
+    private void RemoveItems(Edge edge, IList? items)
     {
         if (items is null) return;
         foreach (var item in items)
@@ -236,13 +273,30 @@ internal sealed class BridgeDataSubscriptions : IDisposable
             if (item is null) continue;
             var key = new NodeKey(item, edge.Member.Children);
             if (!edge.Items.TryGetValue(key, out var count)) continue;
+            RemoveReference(key);
             if (count == 1) edge.Items.Remove(key);
             else edge.Items[key] = count - 1;
         }
     }
 
+    private void AddReference(NodeKey key) => _incomingReferences[key] = _incomingReferences.GetValueOrDefault(key) + 1;
+
+    private void RemoveReference(NodeKey key, int count = 1)
+    {
+        var remaining = _incomingReferences.GetValueOrDefault(key) - count;
+        if (remaining > 0) _incomingReferences[key] = remaining;
+        else _incomingReferences.Remove(key);
+    }
+
+    private void ClearItems(Edge edge)
+    {
+        foreach (var pair in edge.Items) RemoveReference(pair.Key, pair.Value);
+        edge.Items.Clear();
+    }
+
     private NodeKey? AddNode(object owner, IReadOnlyList<BridgeDataSubscriptionMember> members)
     {
+        if (members.Count == 0 && owner is not INotifyPropertyChanged && owner is not INotifyDataErrorInfo) return null;
         // Boxing makes value-type identity unstable; value types cannot raise
         // useful nested notifications and are represented by their owner read.
         if (owner.GetType().IsValueType) return null;
@@ -343,7 +397,12 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         foreach (var pair in _nodes.ToArray())
         {
             if (reachable.Contains(pair.Key)) continue;
-            foreach (var edge in pair.Value.Edges) DetachCollection(edge);
+            foreach (var edge in pair.Value.Edges)
+            {
+                DetachCollection(edge);
+                if (edge.ValueChild is { } child) RemoveReference(child);
+                ClearItems(edge);
+            }
             DetachProperty(pair.Value);
             DetachErrors(pair.Value);
             _nodes.Remove(pair.Key);
@@ -373,6 +432,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable
             _collectionWatches.Clear();
             _errorWatches.Clear();
             _nodes.Clear();
+            _incomingReferences.Clear();
         }
     }
 

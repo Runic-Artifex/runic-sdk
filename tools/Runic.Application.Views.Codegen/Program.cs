@@ -378,11 +378,25 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 contentCollections.Add(property, itemModels);
                 continue;
             }
-            if (itemType == typeof(object) || typeof(INotifyPropertyChanged).IsAssignableFrom(itemType))
+            if (itemType == typeof(object) || typeof(INotifyPropertyChanged).IsAssignableFrom(itemType) &&
+                property.GetCustomAttribute<RunicCollectionAttribute>(true) is null)
                 throw new NotSupportedException($"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.");
         }
         valueProperties.Add(property, BridgeTypeGraph.Discover(property.PropertyType,
             nullability.Create(property), $"{model.Name}.{property.Name}"));
+    }
+    var incrementalCollections = new Dictionary<PropertyInfo, PropertyInfo>();
+    foreach (var property in properties)
+    {
+        if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is not { } attribute) continue;
+        if (property.SetMethod?.IsPublic == true || !valueProperties.TryGetValue(property, out var collectionGraph) ||
+            collectionGraph.Root.Kind is not (BridgeWireKind.Array or BridgeWireKind.List) || collectionGraph.Root.IsNullable ||
+            collectionGraph.Root.Element is not { IsNullable: false, Kind: BridgeWireKind.Dto } item)
+            throw new NotSupportedException($"{model.Name}.{property.Name}: RunicCollection requires a nonnullable, read-only collection of nonnullable DTO rows.");
+        var key = item.Members.SingleOrDefault(member => member.Property.Name == attribute.KeyProperty);
+        if (key is null || key.Type.IsNullable || key.Type.NonNullableType != typeof(string) && key.Type.NonNullableType != typeof(Guid) && key.Type.NonNullableType != typeof(int))
+            throw new NotSupportedException($"{model.Name}.{property.Name}: the collection key must name a nonnullable string, Guid or Int32 row property.");
+        incrementalCollections.Add(property, key.Property);
     }
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
     var contentBindings = contentProperties.Concat(contentCollections).ToArray();
@@ -510,7 +524,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("        ],");
     }
     else cs.AppendLine("        null,");
-    cs.AppendLine("        dataSubscriptions: DataMetadata");
+    cs.AppendLine("        dataSubscriptions: DataMetadata,");
+    cs.AppendLine("        collections: [");
+    foreach (var (property, key) in incrementalCollections)
+    {
+        // Validation aggregates must remain atomic with their full snapshot.
+        if (hasValidation) continue;
+        var itemType = BridgeTypeGraph.CSharpType(valueProperties[property].Root.Element!.NonNullableType);
+        var keyAccess = $"(({itemType})item!).{key.Name}";
+        var keyExpression = key.PropertyType == typeof(string) ? keyAccess
+            : key.PropertyType == typeof(Guid) ? keyAccess + ".ToString(\"D\")"
+            : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
+        cs.AppendLine($"            new global::Runic.Application.Views.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}),");
+    }
+    cs.AppendLine("        ]");
     cs.AppendLine("        )");
     cs.AppendLine("    {");
     if (hasContent) cs.AppendLine("        _content = content!; _owner = vm;");
@@ -912,7 +939,19 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (needsCheckedWriter)
         ts.AppendLine($"const checkedFieldNames = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
     ts.AppendLine();
+    if (incrementalCollections.Count > 0)
+    {
+        ts.AppendLine("const collectionDefinitions = {");
+        foreach (var (property, key) in incrementalCollections)
+        {
+            var graph = valueProperties[property];
+            var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
+            ts.AppendLine($"  {TsPropertyName(WireName(property))}: defineCollection(wire => {graph.EmitItemTypeScriptDecoder("wire")}, item => String({TsAccess("item", keyMember.WireName)})),");
+        }
+        ts.AppendLine("};");
+    }
     var connectOptions = "contract: bridgeContract, route, mount, hydrate"
+        + (incrementalCollections.Count > 0 ? ", collections: collectionDefinitions" : "")
         + (needsCheckedWriter ? ", checkedFields: checkedFieldNames" : "")
         + (interactions.Length > 0 ? ", interactions: interactionDefinitions" : "");
     ts.AppendLine($"export function connect{shortName}(): Promise<{clientName}> {{ return connect{shortName}At(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}); }}");
@@ -979,6 +1018,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
 
     var body = ts.ToString();
     var runtimeImports = new List<string> { "connectView", "viewReferences" };
+    if (incrementalCollections.Count > 0) runtimeImports.Add("defineCollection");
     if (body.Contains("bridgeWire.", StringComparison.Ordinal)) runtimeImports.Add("bridgeWire");
     if (body.Contains("new BridgeError(", StringComparison.Ordinal)) runtimeImports.Add("BridgeError");
     if (hasValidation) runtimeImports.AddRange(["decodeBridgeValidation", "type BridgeValidationState"]);

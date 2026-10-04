@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
+    <RunicBridgeCompositionType>DynamicDataExample.RunicBridgeComposition</RunicBridgeCompositionType>
+    <RunicBridgeFrontendBuildCommand>bun build.mjs</RunicBridgeFrontendBuildCommand>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ReactiveUI" />
+    <ProjectReference Include="$(DynamicDataForkRoot)/src/DynamicData/DynamicData.csproj" />
+    <ProjectReference Include="../../packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+    <ProjectReference Include="../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
+    <Compile Remove="Program.cs;Benchmarks.cs" />
+  </ItemGroup>
+  <Import Project="../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../packages/dotnet/Runic.Application.Desktop/build/Runic.Application.Desktop.targets" />
+  <Target Name="RequireDynamicDataFork" BeforeTargets="Restore;PrepareForBuild" Condition="!Exists('$(DynamicDataForkRoot)/src/DynamicData/DynamicData.csproj')">
+    <Error Text="Set DynamicDataForkRoot to a checkout of https://github.com/Runic-Artifex/DynamicData (see README.md)." />
+  </Target>
+</Project>

@@ -16,6 +16,7 @@
     <PackageReference Include="ReactiveUI.Reactive" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveCommandExecution.cs" Link="Shared/ReactiveCommandExecution.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/BridgeSnapshotObservableExtensions.cs" Link="Shared/BridgeSnapshotObservableExtensions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveInteractionDescriptor.cs" Link="Shared/ReactiveInteractionDescriptor.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactivePresentation.cs" Link="Shared/ReactivePresentation.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />

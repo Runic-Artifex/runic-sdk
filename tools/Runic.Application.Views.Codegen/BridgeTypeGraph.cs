@@ -37,6 +37,7 @@ internal sealed class BridgeTypeGraph
     internal string RootCSharpType() => CSharpNodeType(Root);
 
     internal string EmitTypeScriptDecoder(string expression) => EmitTypeScriptDecoder(Root, expression);
+    internal string EmitItemTypeScriptDecoder(string expression) => EmitTypeScriptDecoder(Root.Element!, expression);
 
     /// <summary>Emits the JSON-wire expression for a public TypeScript value.</summary>
     internal string EncodeTypeScript(string expression) => EncodeTypeScript(Root, expression);
@@ -59,6 +60,8 @@ internal sealed class BridgeTypeGraph
         source.AppendLine("{");
         source.AppendLine($"    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, {CSharpNodeType(Root)} value) => Write{Root.Id}(writer, value);");
         source.AppendLine($"    internal static {CSharpNodeType(Root)} Read(global::System.Text.Json.JsonElement element) => Read{Root.Id}(element);");
+        if (Root.Element is { } element)
+            source.AppendLine($"    internal static void WriteItem(global::System.Text.Json.Utf8JsonWriter writer, object? value) => Write{element.Id}(writer, ({CSharpNodeType(element)})value!);");
         source.AppendLine();
         foreach (var node in Nodes.OrderBy(node => node.Id))
         {

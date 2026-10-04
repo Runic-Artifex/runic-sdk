@@ -13,10 +13,49 @@ using Runic.Desktop;
 await using (var host = await DesktopHost.StartAsync())
 {
     await PublishDoesNotBlockAndCoalescesPerRoute(host);
+    await GeneratedCollectionDeliveryPreservesPendingFrames(host);
     await DisposedTransportReleasesRoutesAndDelivery(host);
     await DrainTimeoutClosesRoutesAndKeepsTheScopeUntilWorkEnds(host);
 }
 Console.WriteLine("Runic.Application.Desktop host adapter passed.");
+
+static async Task GeneratedCollectionDeliveryPreservesPendingFrames(DesktopHost host)
+{
+    await using var surface = await host.CreateSurfaceAsync();
+    var scripts = new List<string>();
+    var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var transport = new DesktopBridgeTransport(surface, script =>
+    {
+        lock (scripts)
+        {
+            scripts.Add(script);
+            if (scripts.Count == 1) { started.TrySetResult(); return release.Task; }
+        }
+        return Task.CompletedTask;
+    });
+    var model = new OrderedCollectionModel();
+    using var bridge = new OrderedCollectionBridge(transport, model);
+    try
+    {
+        model.Rows.Add(1);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        model.Rows.Add(2);
+        model.Rows.Add(3);
+        lock (scripts) Require(scripts.Count == 1, "Dependent frames bypassed the in-flight delivery.");
+        release.TrySetResult();
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            lock (scripts) if (scripts.Count == 3) break;
+            await Task.Delay(5);
+        }
+        lock (scripts)
+            Require(scripts.Count == 3 && scripts.Select((script, index) => script.Contains($"\"items\":[{index + 1}]", StringComparison.Ordinal)).All(value => value),
+                "Desktop coalesced or reordered dependent collection frames.");
+    }
+    finally { release.TrySetResult(); }
+}
 
 static async Task PublishDoesNotBlockAndCoalescesPerRoute(DesktopHost host)
 {
@@ -124,6 +163,22 @@ sealed class ScopeProbe : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 }
+
+sealed class OrderedCollectionModel : INotifyPropertyChanged
+{
+    public System.Collections.ObjectModel.ObservableCollection<int> Rows { get; } = [];
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+sealed class OrderedCollectionBridge(IBridgeTransport transport, OrderedCollectionModel model)
+    : ViewModelBridge<OrderedCollectionModel>(transport, model, "ordered", static (writer, vm, revision) =>
+    {
+        writer.WriteStartObject(); writer.WriteNumber("revision", revision); writer.WriteStartArray("rows");
+        foreach (var value in vm.Rows) writer.WriteNumberValue(value);
+        writer.WriteEndArray(); writer.WriteEndObject();
+    }, [new("Rows", vm => vm.Rows, null)], [], collections:
+    [new("rows", vm => vm.Rows, static (writer, item) => writer.WriteNumberValue((int)item!),
+        static item => ((int)item!).ToString(System.Globalization.CultureInfo.InvariantCulture))]);
 
 sealed class SlowModel : INotifyPropertyChanged
 {

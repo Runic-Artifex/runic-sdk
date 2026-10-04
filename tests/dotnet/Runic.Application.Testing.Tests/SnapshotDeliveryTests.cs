@@ -18,6 +18,23 @@ internal static class SnapshotDeliveryTests
         await transport.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         if (transport.Observed != 7)
             throw new InvalidOperationException("A native delivery callback could not read the model from outside its turn.");
+
+        using var slow = new SlowTransport();
+        using var delivery = new BridgeSnapshotDelivery(slow, "rows", BridgeModelTurn.For(new Model()));
+        try
+        {
+            if (!delivery.EnqueueDelta("first")) throw new InvalidOperationException("The first delta was rejected.");
+            await slow.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (var index = 0; index < 64; index++)
+                if (!delivery.EnqueueDelta($"delta {index}")) throw new InvalidOperationException("The bounded queue rejected a frame early.");
+            if (delivery.EnqueueDelta("overflow")) throw new InvalidOperationException("A slow host retained an unbounded delta queue.");
+            delivery.Enqueue("recovery snapshot");
+            slow.Release.Set();
+            await slow.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (!slow.Frames.SequenceEqual(["first", "recovery snapshot"]))
+                throw new InvalidOperationException("A recovery snapshot did not supersede pending deltas.");
+        }
+        finally { slow.Release.Set(); }
     }
 
     private sealed class Model : INotifyPropertyChanged
@@ -58,5 +75,22 @@ internal static class SnapshotDeliveryTests
             catch (Exception error) { Delivered.TrySetException(error); }
         }
         public void Dispose() => Inner.Dispose();
+    }
+
+    private sealed class SlowTransport : IBridgeTransport, IDisposable
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim Release { get; } = new();
+        public List<string> Frames { get; } = [];
+        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
+        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) => throw new NotSupportedException();
+        public void Publish(string name, string stateJson)
+        {
+            if (stateJson == "first") { Entered.TrySetResult(); Release.Wait(TimeSpan.FromSeconds(5)); }
+            Frames.Add(stateJson);
+            if (stateJson == "recovery snapshot") Completed.TrySetResult();
+        }
+        public void Dispose() => Release.Dispose();
     }
 }

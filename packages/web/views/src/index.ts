@@ -1,6 +1,8 @@
 export { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind } from "./errors.js";
 export { bridgeWire, decodeBridgeValidation, type BridgeValidationMessage, type BridgeValidationState } from "./wire.js";
 export { waitForBridge, type RunicBridgeClient } from "./transport.js";
+export { defineCollection, type BridgeCollectionDefinition } from "./collections.js";
+export { collectionViewport, type CollectionViewport } from "./viewport.js";
 export {
   connectView,
   viewReferences,

@@ -29,3 +29,11 @@ public interface IBridgeTransport
     /// <summary>Delivers an encoded state snapshot to the browser listener for <paramref name="name"/>.</summary>
     void Publish(string name, string stateJson);
 }
+
+/// <summary>A host that can acknowledge state delivery before the next dependent frame is sent.</summary>
+public interface IAsyncBridgeTransport : IBridgeTransport
+{
+    /// <summary>Delivers one frame without coalescing it with other frames.</summary>
+    /// <remarks>Generated bridges await this outside the model context. Slow delivery is bounded by the bridge's recovery-snapshot queue.</remarks>
+    ValueTask PublishAsync(string name, string stateJson);
+}

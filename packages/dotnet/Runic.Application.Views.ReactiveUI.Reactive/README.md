@@ -46,3 +46,7 @@ It also brings the shared ReactiveUI.SourceGenerators 4.2.0 package; use the
 normal `ReactiveUI.SourceGenerators` attributes with
 `ReactiveUI.Reactive.ReactiveObject`. There is no separate Reactive-flavor
 source-generator package.
+
+`BatchBridgeSnapshots(model)` is also available in this adapter's namespace.
+Place it after `ObserveOn(modelScheduler)` and before collection binding; see
+the [DynamicData guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/guides/dynamicdata.md).
