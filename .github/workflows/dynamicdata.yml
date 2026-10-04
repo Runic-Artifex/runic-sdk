@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: Runic-Artifex/DynamicData
-          ref: 4effb83c858bcbd198479015b99827ae1fd1efa0
+          ref: edd2d175794afc86e964a06cb55329f44793009f
           path: .cache/dynamicdata-fork
           persist-credentials: false
       - name: Run generated consumer
