@@ -110,11 +110,11 @@ importers:
   .:
     dependencies:
       '@runic-artifex/svelte':
-        specifier: 0.5.0-preview.3
-        version: 0.5.0-preview.3(svelte@5.57.0)
+        specifier: 0.6.0-preview.1
+        version: 0.6.0-preview.1(svelte@5.57.0)
       '@runic-artifex/views':
-        specifier: 0.5.0-preview.3
-        version: 0.5.0-preview.3
+        specifier: 0.6.0-preview.1
+        version: 0.6.0-preview.1
       svelte:
         specifier: 5.57.0
         version: 5.57.0
@@ -252,13 +252,13 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@runic-artifex/svelte@0.5.0-preview.3':
+  '@runic-artifex/svelte@0.6.0-preview.1':
     resolution: {integrity: sha512-Ma+Vw2IgR9Z/hccH9WvAQZD4I9HT+xUjisuFVPz3gGNVGUv7w3sQCTQ+Tb5TlaktKv4FiVRivbN1GgAfNbOJfA==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
       svelte: '>=5.46.4 <6'
 
-  '@runic-artifex/views@0.5.0-preview.3':
+  '@runic-artifex/views@0.6.0-preview.1':
     resolution: {integrity: sha512-bXE9lv7J/Ft/DaRqHLJwwvFriTi8czuevHr6w9eKfrmSIQqsVNtRaCcL/+mc1PRlwxjTucTT3dKJICKTzYDPlA==}
     engines: {node: '>=24.18.0 <25'}
 
@@ -610,11 +610,11 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@runic-artifex/svelte@0.5.0-preview.3(svelte@5.57.0)':
+  '@runic-artifex/svelte@0.6.0-preview.1(svelte@5.57.0)':
     dependencies:
       svelte: 5.57.0
 
-  '@runic-artifex/views@0.5.0-preview.3': {}
+  '@runic-artifex/views@0.6.0-preview.1': {}
 
   '@sveltejs/acorn-typescript@1.0.13(acorn@8.18.0)':
     dependencies:
