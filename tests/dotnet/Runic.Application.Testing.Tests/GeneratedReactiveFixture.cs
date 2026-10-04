@@ -7,7 +7,7 @@ using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
 
 /// <summary>
-/// Exercises the ReactiveUI 25 generators before the Runic bridge's compiled
+/// Exercises the ReactiveUI 26 generators before the Runic bridge's compiled
 /// model inspection runs. The bridge only sees the generated public members.
 /// </summary>
 public sealed partial class GeneratedReactiveViewModel : ReactiveObject, IDisposable

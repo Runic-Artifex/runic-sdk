@@ -41,7 +41,7 @@ processes, networks. No --only means every capability in the selected suite.
 
 ## Generated bindings
 
-All Windows interop uses pinned CsWin32 0.3.333 generated bindings with preserved
+All Windows interop uses pinned CsWin32 0.3.346 generated bindings with preserved
 HRESULTs; LDAP retains System.DirectoryServices.Protocols. No runtime/SDK
 installation is needed on the VM, and no generated native type is public.
 
