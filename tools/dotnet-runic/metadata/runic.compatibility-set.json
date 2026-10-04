@@ -97,6 +97,11 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Create",
+      "version": "0.6.0-preview.1"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Translations",
       "version": "0.6.0-preview.1"
     },
