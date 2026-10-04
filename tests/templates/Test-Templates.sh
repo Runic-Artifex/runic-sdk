@@ -262,7 +262,13 @@ verify_template() {
   test -d "$output/Frontend/node_modules"
   test -f "$output/Frontend/dist/index.html"
   test -f "$output/Frontend/src/generated/workspace.ts"
-  frontend_script "$manager" "$output/Frontend" typecheck
+  if [[ "$framework" == vue && "$manager" == bun ]]; then
+    # vue-tsc finds no .vue files under the Bun runtime and passes, so check
+    # with Node as a plain `bun run` does.
+    (cd "$output/Frontend" && bun run typecheck)
+  else
+    frontend_script "$manager" "$output/Frontend" typecheck
+  fi
   serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
     dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   printf 'TEMPLATE_OK|%s|%s\n' "$framework" "$manager"

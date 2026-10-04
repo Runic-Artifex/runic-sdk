@@ -97,5 +97,4 @@ The comparison baseline is SDK commit `81c1f8b5`, before the CLI follow-up.
 The API takes inspiration from [Typer's function authoring](https://typer.tiangolo.com/tutorial/first-steps/),
 [clap's declarations](https://github.com/clap-rs/clap), and
 [Effect CLI's command composition](https://github.com/Effect-TS/effect/tree/main/packages/effect/src/unstable/cli).
-The real `runic-bridge` consumer uses Effect 4.0.0-rc.112. These are design references,
-not executable cross-language benchmarks or claims of complete feature parity.
+These are design references, not executable cross-language benchmarks or claims of complete feature parity.

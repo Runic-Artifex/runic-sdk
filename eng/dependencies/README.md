@@ -76,7 +76,7 @@ below).
 | `@types/node` | 24.19.1, the latest 24.x. The toolchain stays on Node 24 LTS; Node 26 is not LTS yet. |
 | `@types/cookie` | Removed. SvelteKit 3 uses cookie 2, which ships its own types, and the locale handle now derives its options from `Cookies.set`. |
 | VS Code extension | Move `vscode-languageclient` to 10.1.2, which requires VS Code `^1.91` and a `LogOutputChannel` and no longer ships `terminateProcess.sh`, and `@vscode/vsce` to 4.0.0. Keep `@types/vscode` 1.100.0 to match `engines.vscode` `^1.100.0`; types newer than the engine floor would require raising it without an API need. |
-| Vue checker under Bun | Rechecked with Vue 3.5.43 and vue-tsc 3.3.12. Under Bun 1.4.2 the checker still omits `.vue` files: `--listFilesOnly` lists none and a deliberate template prop error passes, while Node reports it. Keep the Node compatibility typecheck. |
+| Vue checker under Bun | Rechecked with Vue 3.5.43 and vue-tsc 3.3.12. Under Bun 1.4.2 the checker still omits `.vue` files: `--listFilesOnly` lists none and a deliberate template prop error passes, while Node reports it. Keep the Node compatibility typecheck; the template matrix runs the Vue starter's typecheck with Node in its Bun lane. |
 
 ## Effect 4 migration
 
