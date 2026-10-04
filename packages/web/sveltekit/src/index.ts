@@ -40,9 +40,9 @@ export function runicToolkitAdapter(options: RunicToolkitSvelteKitAdapterOptions
   return {
     name: "@runic-artifex/sveltekit",
     async adapt(builder) {
-      if (desktop && mode === "spa" && builder.config.kit.router.type !== "hash") {
+      if (desktop && mode === "spa" && builder.config.router.type !== "hash") {
         throw new Error(
-          "The Runic SvelteKit SPA adapter requires kit.router.type to be 'hash' so its output remains relocatable under a Desktop surface namespace.",
+          "The Runic SvelteKit SPA adapter requires router.type to be 'hash' so its output remains relocatable under a Desktop surface namespace.",
         );
       }
       await delegate.adapt(builder);
@@ -57,7 +57,7 @@ export function runicToolkitAdapter(options: RunicToolkitSvelteKitAdapterOptions
         await makeDesktopEntrypointRelocatable(
           out,
           entrypoint,
-          mode === "spa" ? builder.config.kit.appDir : undefined,
+          mode === "spa" ? builder.config.appDir : undefined,
         );
       }
       const manifest: RunicToolkitSvelteKitManifest = {

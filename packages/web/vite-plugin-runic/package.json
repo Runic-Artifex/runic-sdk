@@ -33,7 +33,7 @@
     "pack:preview": "bun pm pack"
   },
   "peerDependencies": {
-    "@vitejs/devtools": "^0.5.2",
+    "@vitejs/devtools": "^0.7.6",
     "vite": "^8.0.0"
   },
   "peerDependenciesMeta": {
@@ -42,11 +42,11 @@
     }
   },
   "devDependencies": {
-    "@types/node": "24.13.3",
-    "@vitejs/devtools": "0.5.2",
-    "@vitejs/devtools-kit": "0.5.2",
+    "@types/node": "24.19.1",
+    "@vitejs/devtools": "0.7.6",
+    "@vitejs/devtools-kit": "0.7.6",
     "typescript": "6.0.3",
-    "vite": "8.2.2"
+    "vite": "8.3.2"
   },
   "engines": {
     "node": ">=24.18.0 <25"

@@ -44,17 +44,12 @@ need the checks below.
 | Effect | Adopt the explicitly requested 4.0.0-rc.112 as a coordinated API migration, covering the runtime, schema compiler, generated facades, consumers and templates. Do not mix Effect 3/4 services or widen peers to claim untested compatibility. |
 | Web/framework packages | Align current stable versions across maintained packages and template manifests, regenerate each supported package manager's locks, and test real packed consumers. Use DevTools/kit 0.5.2 with devframe 0.9.16. Vite 8.2.2 only accepts DevTools `^0.4 || ^0.5`; 0.7.3 fails clean npm peer resolution. The Bun browser check verifies the real dock renders and receives live diagnostics through the upstream SSE transport. |
 
-Vue 3.5.42 / vue-tsc 3.3.11 still fails to resolve `.vue` imports when its checker
-runs under Bun 1.4.2. Keep the documented Node compatibility typecheck; Bun-only
-Vue production builds remain required.
+The Vue checker limitation under Bun is still present; see the October notes below.
+Keep the documented Node compatibility typecheck; Bun-only Vue production builds
+remain required.
 
-Vite 8.3.0-beta.1 accepts DevTools `^0.7.1`, so it is the next candidate for
-DevTools 0.7.3. It is deferred because the latest React, Vue and SvelteKit plugin
-peer ranges exclude that Vite prerelease. A clean npm 12 install with Vite
-8.3.0-beta.1, DevTools 0.7.3 and the React plugin 6.1.1 fails with `ERESOLVE`.
-Recheck these upstream peers before updating the coordinated stack; do not require
-starter users to bypass dependency validation. DevTools 0.5.2 remains an upgrade
-from the previously committed 0.4.12.
+The September DevTools deferral (Vite 8.2 accepted only DevTools `^0.4 || ^0.5`)
+is resolved by the October move to stable Vite 8.3 and DevTools 0.7.6.
 
 Regenerate starter lockfiles after building web packages with
 `bun eng/dependencies/update-template-locks.mjs`. It packs local candidates into a
@@ -65,13 +60,28 @@ candidates. pnpm 12 needs its installation script to materialize its native laun
 
 The web wave passed the complete build, documentation checks, editor checks, Svelte
 and SvelteKit tests, and installed npm consumers. The DevTools tests also check real
-Node startup and Chromium rendering with Bun. Retain `@types/cookie` 0.6.0: 1.0 is a
-deprecated stub for modern cookie versions, while SvelteKit still uses cookie 0.6.
+Node startup and Chromium rendering with Bun. In September `@types/cookie` stayed on
+0.6.0 because SvelteKit 2 used cookie 0.6; SvelteKit 3 removed that reason (see
+below).
+
+## October 2026 decisions
+
+| Area | Decision and compatibility reason |
+| --- | --- |
+| Web patch/minor | Align Angular 22.2.1, React/React DOM and their types 19.3.0, Svelte 5.57.1 with vite-plugin-svelte 7.3.1, Vue 3.5.43 with plugin-vue 6.0.9 and vue-tsc 3.3.12, Vitest 5.0.3, happy-dom 20.14.5, ESLint 10.12.0, typescript-eslint 8.71.0, Prettier 3.9.9, globals 17.13.0, bits-ui 2.19.5, shadcn-svelte 1.7.0, @lucide/svelte 1.52.0, tailwind-merge 3.7.0 and tslib 2.8.1 across workspace packages, docs, the editor, examples, starters and the packed-consumer checks. |
+| Effect | Move the remaining `4.0.0-rc.112` pins (workspace root, the SvelteKit package's development dependency and the packed-consumer check) to the final 4.0.0. The Views runtime replaced the Effect-based Application Bridge, so the starters and runtime no longer pin Effect. |
+| Vite and DevTools | Adopt Vite 8.3.2 with `@vitejs/devtools` and `devtools-kit` 0.7.6 (devframe 1.2.0). Vite 8.3 accepts only DevTools `^0.7.1`; the React 6.1.1, Vue 6.0.9 and Svelte 7.3.1 Vite plugins accept `^8.0.0`. A clean `npm install --strict-peer-deps` of that stack, SvelteKit 3 and the packed Runic Vite, Svelte and SvelteKit packages resolves. The kit API used by the dock is unchanged and the Bun Chromium dock test passes. `vite-plugin-runic` raises its optional DevTools peer to `^0.7.6`. |
+| SvelteKit | Adopt `@sveltejs/kit` 3.0.0, `@sveltejs/package` 3.0.0 and `adapter-static` 4.0.0. The docs, editor and fixtures were migrated with `sv migrate sveltekit-3`, keeping only its `#lib` specifier rewrites. Configuration moves into `sveltekit()` in `vite.config.ts`, and tsconfigs extend `$app/tsconfig`. No ecosystem package blocks the move: vite-plugin-svelte 7.3.1, svelte-check 4.7.6, eslint-plugin-svelte 3.23.0 and prettier-plugin-svelte 4.1.1 accept it, bits-ui does not depend on Kit, and shadcn-svelte 1.7.0 resolves `#lib` subpath aliases. `@runic-artifex/sveltekit` now peers on Kit `>=3 <4`, adapter-static `>=4 <5`, Svelte `>=5.57.1` and Vite `>=8.0.12`, matching Kit 3's requirements. Kit 2 is no longer tested. The Svelte starter uses vite-plugin-svelte without Kit. |
+| TypeScript | Keep 6.0.3 everywhere; no maintained manifest still pins a 7.x compiler. TypeScript 7.0.2 is deferred because Angular 22.2.1 (`compiler-cli`, `build`) peers `>=6.0 <6.1`, typescript-eslint 8.71.0 peers `<6.1.0`, svelte-check 4.7.6 peers `^5 \|\| ^6`, and SvelteKit 3 and `@sveltejs/package` 3 peer `^6.0.0`. |
+| `@types/node` | 24.19.1, the latest 24.x. The toolchain stays on Node 24 LTS; Node 26 is not LTS yet. |
+| `@types/cookie` | Removed. SvelteKit 3 uses cookie 2, which ships its own types, and the locale handle now derives its options from `Cookies.set`. |
+| VS Code extension | Move `vscode-languageclient` to 10.1.2, which requires VS Code `^1.91` and a `LogOutputChannel` and no longer ships `terminateProcess.sh`, and `@vscode/vsce` to 4.0.0. Keep `@types/vscode` 1.100.0 to match `engines.vscode` `^1.100.0`; types newer than the engine floor would require raising it without an API need. |
+| Vue checker under Bun | Rechecked with Vue 3.5.43 and vue-tsc 3.3.12. Under Bun 1.4.2 the checker still omits `.vue` files: `--listFilesOnly` lists none and a deliberate template prop error passes, while Node reports it. Keep the Node compatibility typecheck. |
 
 ## Effect 4 migration
 
-The bridge, Desktop transport, compiler, framework consumers and starters pin
-`4.0.0-rc.112` together. Regenerate C#-authority facades with `contract:generate`;
+The bridge, Desktop transport, compiler, framework consumers and starters pinned
+`4.0.0-rc.112` together; the remaining pins now use 4.0.0 (see October decisions). Regenerate C#-authority facades with `contract:generate`;
 they now expose `Schema.Codec` and Effect 4 checks. Effect-authority applications
 use `Schema.Union([schemas])`, `Schema.Literals([values])`, `.annotate(...)`, and
 `.check(Schema.isBetween({ minimum, maximum }))` in place of the Effect 3 forms.

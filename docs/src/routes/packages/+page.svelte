@@ -1,10 +1,10 @@
 <script lang="ts">
-  import ContentCard from '$lib/components/ContentCard.svelte';
+  import ContentCard from '#lib/components/ContentCard.svelte';
   import {
     currentRelease,
     catalogRows,
     packageInstallCommand,
-  } from '$lib/release-docs';
+  } from '#lib/release-docs.js';
 </script>
 
 <svelte:head>

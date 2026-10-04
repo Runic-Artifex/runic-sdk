@@ -46,13 +46,13 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "devDependencies": {
-    "@angular/common": "22.1.5",
-    "@angular/compiler": "22.1.5",
-    "@angular/compiler-cli": "22.1.5",
-    "@angular/core": "22.1.5",
-    "@angular/platform-browser": "22.1.5",
-    "happy-dom": "20.14.0",
+    "@angular/common": "22.2.1",
+    "@angular/compiler": "22.2.1",
+    "@angular/compiler-cli": "22.2.1",
+    "@angular/core": "22.2.1",
+    "@angular/platform-browser": "22.2.1",
+    "happy-dom": "20.14.5",
     "typescript": "6.0.3",
-    "vitest": "5.0.0"
+    "vitest": "5.0.3"
   }
 }

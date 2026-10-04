@@ -1,18 +1,18 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import ActionLink from '$lib/components/ActionLink.svelte';
-  import Notice from '$lib/components/Notice.svelte';
-  import { Badge } from '$lib/components/ui/badge';
-  import * as Breadcrumb from '$lib/components/ui/breadcrumb';
-  import * as Card from '$lib/components/ui/card';
-  import { Separator } from '$lib/components/ui/separator';
-  import type { Product } from '$lib/docs-data';
+  import ActionLink from '#lib/components/ActionLink.svelte';
+  import Notice from '#lib/components/Notice.svelte';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import * as Breadcrumb from '#lib/components/ui/breadcrumb/index.js';
+  import * as Card from '#lib/components/ui/card/index.js';
+  import { Separator } from '#lib/components/ui/separator/index.js';
+  import type { Product } from '#lib/docs-data.js';
   import {
     catalogRows,
     currentRelease,
     packageInstallCommand,
     versionLabel,
-  } from '$lib/release-docs';
+  } from '#lib/release-docs.js';
 
   let { product }: { product: Product } = $props();
   let isApplication = $derived(product.kind === 'application');

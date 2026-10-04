@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import ContentCard from '$lib/components/ContentCard.svelte';
-  import { currentRelease, releaseSummary } from '$lib/release-docs';
+  import ContentCard from '#lib/components/ContentCard.svelte';
+  import { currentRelease, releaseSummary } from '#lib/release-docs.js';
 </script>
 
 <svelte:head>

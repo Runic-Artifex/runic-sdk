@@ -1,4 +1,4 @@
-import { activeVersionForProduct } from '$lib/release-docs';
+import { activeVersionForProduct } from '#lib/release-docs.js';
 
 type ReleaseProductId = string;
 type ReleaseMetadata = {
@@ -26,7 +26,7 @@ export type Product = {
   kind?: 'package-family' | 'application';
   related?: {
     href:
-      '/products/runic-translations/' | '/products/runic-translations-editor/';
+      'products/runic-translations/' | 'products/runic-translations-editor/';
     label: string;
   };
 };
@@ -196,7 +196,7 @@ export const products: Product[] = [
       'The desktop authoring experience and its releases belong to Runic Translations Editor',
     ],
     related: {
-      href: '/products/runic-translations-editor/',
+      href: 'products/runic-translations-editor/',
       label: 'Explore the source-only Editor',
     },
   },
@@ -225,7 +225,7 @@ export const products: Product[] = [
     ],
     kind: 'application',
     related: {
-      href: '/products/runic-translations/',
+      href: 'products/runic-translations/',
       label: 'Explore Runic Translations',
     },
   },

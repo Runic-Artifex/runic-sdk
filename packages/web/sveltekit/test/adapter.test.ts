@@ -64,10 +64,10 @@ describe("runicToolkitAdapter", () => {
   test("rejects a pathname-routed SPA that cannot move under a native surface namespace", async () => {
     const adapter = runicToolkitAdapter({ mode: "spa", desktop: true, out });
     const builder = {
-      config: { kit: { router: { type: "pathname" } } },
+      config: { router: { type: "pathname" } },
     };
 
-    await expect(adapter.adapt(builder as never)).rejects.toThrow("requires kit.router.type to be 'hash'");
+    await expect(adapter.adapt(builder as never)).rejects.toThrow("requires router.type to be 'hash'");
   });
 
   test("fails closed when a multi-page prerendered app has no deterministic entrypoint", async () => {
@@ -93,13 +93,11 @@ describe("runicToolkitAdapter", () => {
       writePrerendered: vi.fn(),
       log,
       config: {
-        kit: {
-          paths: { base: "" },
-          appDir: "_app",
-          router: { type: "pathname" },
-          files: { routes: "src/routes" },
-          prerender: { entries: ["*"] },
-        },
+        paths: { base: "" },
+        appDir: "_app",
+        router: { type: "pathname" },
+        files: { routes: "src/routes" },
+        prerender: { entries: ["*"] },
       },
     };
     await expect(adapter.adapt(builder as never)).rejects.toThrow("needs an explicit entrypoint");
@@ -135,13 +133,11 @@ function desktopSpaBuilder(options: Readonly<{
     }),
     log,
     config: {
-      kit: {
-        paths: { base: "" },
-        appDir: options.appDir ?? "_app",
-        router: { type: "hash" },
-        files: { routes: "src/routes" },
-        prerender: { entries: ["*"] },
-      },
+      paths: { base: "" },
+      appDir: options.appDir ?? "_app",
+      router: { type: "hash" },
+      files: { routes: "src/routes" },
+      prerender: { entries: ["*"] },
     },
   };
 }

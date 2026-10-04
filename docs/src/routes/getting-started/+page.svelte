@@ -1,12 +1,12 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import ContentCard from '$lib/components/ContentCard.svelte';
-  import { Button } from '$lib/components/ui/button';
+  import ContentCard from '#lib/components/ContentCard.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
   import {
     catalogRows,
     packageInstallCommand,
     currentRelease,
-  } from '$lib/release-docs';
+  } from '#lib/release-docs.js';
   const template = catalogRows.find(
     (entry) => entry.name === 'Runic.Application.Templates',
   )!;
