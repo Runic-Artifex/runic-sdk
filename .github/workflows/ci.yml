@@ -447,6 +447,10 @@ jobs:
         with:
           node: "true"
       - uses: ./.github/actions/install-browser
+      # Generated Views clients import the workspace runtime from its build output.
+      - name: Build the shared Views runtime
+        working-directory: packages/web/views
+        run: bun run --bun build
       - name: Build managed desktop contracts
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       - name: Test managed desktop contracts
