@@ -11,7 +11,7 @@ keep the older `Views` name.
 | [`Runic.Application.ReactiveUI`](../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md) | `packages/dotnet/Runic.Application.Views.ReactiveUI` | `Runic.Application.Views.ReactiveUI` |
 | [`Runic.Application.Testing`](../../../../packages/dotnet/Runic.Application.Testing/README.md)             | `packages/dotnet/Runic.Application.Testing`          | `Runic.Application.Testing`          |
 
-- [ReactiveUI 25 capabilities and Avalonia comparison](reactiveui.md)
+- [ReactiveUI 26 capabilities and Avalonia comparison](reactiveui.md)
 - [Views build targets](../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets), shipped in the `Runic.Application` package
 - [`dotnet runic`](../../../../tools/dotnet-runic/README.md) development and doctor commands
 - [`@runic-artifex/views`](../../../../packages/web/views/README.md): the shared browser runtime and mock Bridge for generated clients

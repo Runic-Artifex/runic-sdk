@@ -1,6 +1,6 @@
 # ReactiveUI integration for Runic Views
 
-`Runic.Application.ReactiveUI` is the default ReactiveUI 25 adapter for Runic
+`Runic.Application.ReactiveUI` is the default ReactiveUI 26 adapter for Runic
 Views. It references ReactiveUI's `ReactiveUI.Primitives` flavor and has no
 CommunityToolkit dependency. It provides:
 
@@ -21,14 +21,25 @@ generated content routes. The [Reactive Notes](https://github.com/Runic-Artifex/
 example covers multiple views over one ViewModel, routed content, explicit view
 contracts, and activation lifetimes.
 
-## ReactiveUI 25
+## ReactiveUI 26
 
-This package targets ReactiveUI **25.1.1**, Binding **8.8.1**, Primitives
-**8.4.0**, and SourceGenerators **4.2.0**. ReactiveUI 25 moved `IViewFor<T>` and
+This package targets ReactiveUI **26.0.1**, Binding **9.1.0**, Primitives
+**9.0.0**, and SourceGenerators **4.2.0**. ReactiveUI 26 and Binding 9 keep the
+25/8.x public API; they are majors because their .NET 11 assemblies no longer
+use runtime-async, so they also work on Mono. Runic's adapter API and generated
+contracts are unchanged; rebuild the app against the 26 packages.
+
+Primitives 9 changes `SubscribeSafe`: a single lambda is now the `onNext`
+handler. Rename error-only calls, such as `source.SubscribeSafe(ex => Log(ex))`,
+to `SubscribeSafeErrors`. Binding 9 also makes `BindCommandUnsafe` and
+`BindInteractionUnsafe` dispose the binding they replace when the control chain
+changes.
+
+When moving from ReactiveUI 24, note that ReactiveUI 25 moved `IViewFor<T>` and
 `IViewLocator` to `ReactiveUI.Binding`, so upgrade the Runic adapter, app, and
 generated web client together. An adapter binary compiled against ReactiveUI
-24 can fail at runtime against ReactiveUI 25 even if a dependency override
-compiles.
+24 can fail at runtime against ReactiveUI 25 or later even if a dependency
+override compiles.
 
 ReactiveUI now includes shared source generators. Remove old explicit generator
 pins or update them to 4.2.0 or later. The SDK centrally pins 4.2.0; the same

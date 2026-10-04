@@ -1,12 +1,14 @@
-# ReactiveUI 25 support
+# ReactiveUI 26 support
 
-Runic supports **ReactiveUI 25.1.1**, Binding **8.8.1**, Primitives **8.4.0**,
+Runic supports **ReactiveUI 26.0.1**, Binding **9.1.0**, Primitives **9.0.0**,
 and SourceGenerators **4.2.0**. The default integration uses
 `ReactiveUI.Primitives`; applications using the System.Reactive distribution select
 `Runic.Application.ReactiveUI.Reactive`. Select one flavor for an application,
 then rebuild the application and its generated clients together when moving
-from ReactiveUI 24. The [adapter migration notes](../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#reactiveui-25)
-cover the namespace changes. If an interface-typed generic command leaves the
+between ReactiveUI majors. ReactiveUI 26 keeps the ReactiveUI 25 public API, so
+moving from 25 needs no Runic source change; the [adapter migration notes](../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#reactiveui-26)
+cover the Primitives 9 `SubscribeSafe` change and the namespace changes from
+ReactiveUI 24. If an interface-typed generic command leaves the
 flavor ambiguous, set `RunicBridgeReactiveUiFlavor=reactive` in the generating
 project for the System.Reactive flavor.
 
@@ -249,8 +251,8 @@ turn; `ExecutionContext.SuppressFlow()` remains respected.
 
 ## Avalonia comparison
 
-[ReactiveUI.Avalonia 12.1.3](https://github.com/reactiveui/ReactiveUI.Avalonia/tree/v12.1.3/src/ReactiveUI.Avalonia)
-also targets ReactiveUI 25. It supplies Avalonia controls, property binding,
+[ReactiveUI.Avalonia 12.1.6](https://github.com/reactiveui/ReactiveUI.Avalonia/tree/v12.1.6/src/ReactiveUI.Avalonia)
+also targets ReactiveUI 26. It supplies Avalonia controls, property binding,
 visual-tree activation, routed hosts, and dispatcher integration. Runic's
 equivalents are logical .NET presentations, acknowledged browser mounts,
 explicit content maps, generated frontend contracts, and a host-neutral model
@@ -273,8 +275,10 @@ availability; scheduler FIFO/cancellation/ambient-context flow; scoped DI and
 custom-registration preservation; plus .NET fallback and typed browser
 interaction paths.
 
-Upstream: [ReactiveUI 25.0.0](https://github.com/reactiveui/ReactiveUI/releases/tag/25.0.0),
-[25.0.1](https://github.com/reactiveui/ReactiveUI/releases/tag/25.0.1),
-[25.1.1](https://github.com/reactiveui/ReactiveUI/releases/tag/25.1.1),
-[Binding 8.8.1](https://github.com/reactiveui/ReactiveUI.Binding.SourceGenerators/releases/tag/v8.8.1),
+Upstream: [ReactiveUI 26.0.0](https://github.com/reactiveui/ReactiveUI/releases/tag/26.0.0),
+[26.0.1](https://github.com/reactiveui/ReactiveUI/releases/tag/26.0.1),
+[Binding 9.0.0](https://github.com/reactiveui/ReactiveUI.Binding.SourceGenerators/releases/tag/v9.0.0),
+[Binding 9.1.0](https://github.com/reactiveui/ReactiveUI.Binding.SourceGenerators/releases/tag/v9.1.0),
+[Primitives 9.0.0](https://github.com/reactiveui/Primitives/releases/tag/v9.0.0),
+[ReactiveUI 25.0.0](https://github.com/reactiveui/ReactiveUI/releases/tag/25.0.0)
 and the [Binding migration guide](https://www.reactiveui.net/documentation/reactiveui/upgrading/reactiveui-binding-migration/).
