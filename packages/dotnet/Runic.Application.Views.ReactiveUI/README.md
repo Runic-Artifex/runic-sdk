@@ -137,6 +137,12 @@ and model-context ownership.
 
 ## System.Reactive flavor
 
+For DynamicData changesets, place `BatchBridgeSnapshots(model)` after
+`ObserveOn(modelSequencer)` and before `Bind` or `SortAndBind`. The downstream
+delivery owns the batch even when scheduling is deferred. Annotate a read-only
+DTO collection with `[RunicCollection(nameof(Row.Id))]` to publish indexed
+updates. See the [DynamicData guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/guides/dynamicdata.md).
+
 Applications using `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`,
 `System.Reactive.Unit`, or `IScheduler` should instead reference
 [`Runic.Application.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/README.md).

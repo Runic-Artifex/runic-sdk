@@ -229,6 +229,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly IDisposable[] _bindings;
     private readonly INotifyDataErrorInfo? _errors;
     private readonly Dictionary<string, INotifyCollectionChanged> _collections = new();
+    private readonly BridgeCollectionDescriptor<T>[] _incrementalCollections;
+    private readonly HashSet<string> _generatedCollectionNames;
+    private readonly List<BridgeCollectionChange<T>> _pendingCollectionChanges = [];
+    private readonly Dictionary<BridgeCollectionDescriptor<T>, Dictionary<object, int>> _collectionIndexes = [];
+    private long _publishedRevision;
+    private bool _requiresSnapshot;
     private long _revision;
     private bool _disposed;
     private int _detaching;
@@ -244,9 +250,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         string? contractFingerprint = null,
         WindowContentSession? content = null,
         BridgeInteractionDescriptor<T>[]? interactions = null,
-        BridgeDataSubscriptionMember[]? dataSubscriptions = null)
+        BridgeDataSubscriptionMember[]? dataSubscriptions = null,
+        BridgeCollectionDescriptor<T>[]? collections = null)
         : this(transport, vm, name, writeSnapshot, null, properties, [], commands,
-            contractFingerprint, content, interactions, dataSubscriptions)
+            contractFingerprint, content, interactions, dataSubscriptions, collections)
     {
     }
 
@@ -262,9 +269,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         string? contractFingerprint = null,
         WindowContentSession? content = null,
         BridgeInteractionDescriptor<T>[]? interactions = null,
-        BridgeDataSubscriptionMember[]? dataSubscriptions = null)
+        BridgeDataSubscriptionMember[]? dataSubscriptions = null,
+        BridgeCollectionDescriptor<T>[]? collections = null)
         : this(transport, vm, name, null, writeSnapshot, properties, checkedProperties,
-            commands, contractFingerprint, content, interactions, dataSubscriptions)
+            commands, contractFingerprint, content, interactions, dataSubscriptions, collections)
     {
     }
 
@@ -280,7 +288,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         string? contractFingerprint,
         WindowContentSession? content,
         BridgeInteractionDescriptor<T>[]? interactions,
-        BridgeDataSubscriptionMember[]? dataSubscriptions)
+        BridgeDataSubscriptionMember[]? dataSubscriptions,
+        BridgeCollectionDescriptor<T>[]? collections)
     {
         _transport = transport;
         _vm = vm;
@@ -291,6 +300,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         // same route while a browser still holds the former state. Drawing
         // revisions from the window keeps that route's order monotonic.
         _revision = content?.NextRevision() ?? 0;
+        _publishedRevision = _revision;
+        _incrementalCollections = collections ?? [];
+        _generatedCollectionNames = dataSubscriptions?.Where(member => member.EnumerateChildren is not null)
+            .Select(member => member.PropertyName).ToHashSet(StringComparer.Ordinal) ?? [];
         _delivery = new(transport, name, _modelTurn);
         _name = name;
         _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
@@ -308,7 +321,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             if (content is not null && interactions is not null)
                 foreach (var interaction in interactions) bindings.Add(interaction.Attach(content, vm, name));
             if (dataSubscriptions is { Length: > 0 })
-                bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, Publish));
+                bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, Publish, TryPublishCollection, TryPublishItem,
+                    rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal)));
             // Register the per-window observer before this Bridge subscribes
             // its snapshot publisher. A synchronous setter then advances the
             // field version before any emitted state can describe the value.
@@ -848,7 +862,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             Publish();
         }
     }
-    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => Publish();
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (sender is not INotifyCollectionChanged collection || !TryPublishCollection(collection, e)) Publish();
+    }
     private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => Publish();
     private void OnCanExecuteChanged(object? sender, EventArgs e) => Publish();
 
@@ -865,6 +882,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         {
             if (IsInactive) return;
             _revision = NextRevision();
+            _requiresSnapshot = true;
             // Capture is more expensive than queue delivery. A batch defers
             // only capture, never the revision: route replies that serialize
             // state during the batch must remain newer than their predecessor.
@@ -882,7 +900,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             if (IsInactive) return;
             // Each notification already advanced the revision in PublishCore.
             // The outer batch only serializes the final revision once.
-            PublishSnapshotCore();
+            PublishCollectionOrSnapshotCore();
         }
     }
 
@@ -892,12 +910,119 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         {
             var state = WriteSnapshot();
             if (!IsInactive) _delivery.Enqueue(state);
+            _publishedRevision = _revision;
+            _requiresSnapshot = false;
+            _pendingCollectionChanges.Clear();
         }
         catch (BridgeSnapshotDetachedException)
         {
             // The session detached this route after this callback started.
             // There is no current endpoint to publish to.
         }
+    }
+
+    private bool TryPublishCollection(INotifyCollectionChanged collection, NotifyCollectionChangedEventArgs args)
+    {
+        return _modelTurn.Run(() =>
+        {
+            lock (_modelGate)
+            {
+                if (IsInactive) return true;
+                var descriptors = _incrementalCollections.Where(descriptor => ReferenceEquals(descriptor.Get(_vm), collection)).ToArray();
+                if (descriptors.Length == 0) return false;
+                foreach (var descriptor in descriptors) _collectionIndexes.Remove(descriptor);
+                _revision = NextRevision();
+                var kind = args.Action switch
+                {
+                    NotifyCollectionChangedAction.Add => "add",
+                    NotifyCollectionChangedAction.Remove => "remove",
+                    NotifyCollectionChangedAction.Replace => "replace",
+                    NotifyCollectionChangedAction.Move => "move",
+                    _ => "reset"
+                };
+                if (kind == "reset" || args.NewStartingIndex < 0 && kind is "add" or "replace" or "move" ||
+                    args.OldStartingIndex < 0 && kind is "remove" or "replace" or "move") _requiresSnapshot = true;
+                if (!_requiresSnapshot)
+                    foreach (var descriptor in descriptors)
+                    {
+                        var keys = (kind == "add" ? args.NewItems : args.OldItems)?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [];
+                        var items = kind is "add" or "replace"
+                            ? args.NewItems?.Cast<object?>().Select(item => WriteJson(writer => descriptor.WriteItem(writer, item))).ToArray() ?? []
+                            : [];
+                        _pendingCollectionChanges.Add(new(descriptor, kind,
+                            kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
+                            args.OldStartingIndex, keys, items));
+                        if (_pendingCollectionChanges.Count > 4096) { _requiresSnapshot = true; break; }
+                    }
+                if (!BridgeSnapshotBatch.TryDefer(_vm, this)) PublishCollectionOrSnapshotCore();
+                return true;
+            }
+        });
+    }
+
+    private void PublishCollectionOrSnapshotCore()
+    {
+        if (_requiresSnapshot || _pendingCollectionChanges.Count == 0) { PublishSnapshotCore(); return; }
+        var delta = WriteJson(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("__runicDelta", 1);
+            writer.WriteNumber("baseRevision", _publishedRevision);
+            writer.WriteNumber("revision", _revision);
+            writer.WriteStartArray("changes");
+            foreach (var change in _pendingCollectionChanges)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("field", change.Descriptor.Name);
+                writer.WriteString("kind", change.Kind);
+                writer.WriteNumber("index", change.Index);
+                writer.WriteNumber("oldIndex", change.OldIndex);
+                writer.WriteStartArray("keys");
+                foreach (var key in change.Keys) writer.WriteStringValue(key);
+                writer.WriteEndArray();
+                writer.WriteStartArray("items");
+                foreach (var item in change.Items) writer.WriteRawValue(item);
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        });
+        if (!_delivery.EnqueueDelta(delta)) { PublishSnapshotCore(); return; }
+        _publishedRevision = _revision;
+        _pendingCollectionChanges.Clear();
+    }
+
+    private bool TryPublishItem(object item)
+    {
+        return _modelTurn.Run(() =>
+        {
+            lock (_modelGate)
+            {
+                if (IsInactive) return true;
+                var handled = false;
+                foreach (var descriptor in _incrementalCollections)
+                {
+                    if (descriptor.Get(_vm) is not System.Collections.IList rows) continue;
+                    if (!_collectionIndexes.TryGetValue(descriptor, out var indexes))
+                    {
+                        indexes = new(ReferenceEqualityComparer.Instance);
+                        for (var index = 0; index < rows.Count; index++)
+                            if (rows[index] is { } row) indexes[row] = index;
+                        _collectionIndexes[descriptor] = indexes;
+                    }
+                    if (!indexes.TryGetValue(item, out var at) || at >= rows.Count || !ReferenceEquals(rows[at], item)) continue;
+                    if (!handled) _revision = NextRevision();
+                    handled = true;
+                    if (!_requiresSnapshot)
+                        _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
+                            [descriptor.Key(item)], [WriteJson(writer => descriptor.WriteItem(writer, item))]));
+                    if (_pendingCollectionChanges.Count > 4096) _requiresSnapshot = true;
+                }
+                if (handled && !BridgeSnapshotBatch.TryDefer(_vm, this)) PublishCollectionOrSnapshotCore();
+                return handled;
+            }
+        });
     }
 
     Type IHotReloadableBridge.ContractModelType => typeof(T);
@@ -921,8 +1046,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private void RefreshCollectionSubscriptions()
     {
+        _collectionIndexes.Clear();
         foreach (var property in _properties)
         {
+            if (_generatedCollectionNames.Contains(property.Name)) continue;
             var next = property.Get(_vm) as INotifyCollectionChanged;
             _collections.TryGetValue(property.Name, out var previous);
             if (ReferenceEquals(previous, next)) continue;

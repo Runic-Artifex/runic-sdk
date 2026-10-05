@@ -5,3 +5,4 @@
 - [Getting started with templates](../getting-started/README.md)
 - [Package and build reference](../reference/README.md)
 - [SDK contribution guide](../contributing/README.md)
+- [DynamicData collections and viewports](dynamicdata.md)

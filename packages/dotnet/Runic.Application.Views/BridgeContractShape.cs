@@ -68,6 +68,8 @@ public static class BridgeContractShape
                 continue;
             }
             if (kind != "state") continue;
+            if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is { } collection)
+                parts.Add($"collection:{TypeName(model)}:{WireName(property)}:key:{collection.KeyProperty}");
             if (ContentModels(property, model, models).Length > 0)
             {
                 parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}");

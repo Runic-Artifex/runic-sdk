@@ -12,7 +12,7 @@ namespace Runic.Application.Views.Desktop;
 /// delivery, while the surface itself stays open. A window uses this to close its
 /// browser routes before accepted operations have drained.
 /// </remarks>
-public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
+public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IDisposable
 {
     private readonly object _gate = new();
     private readonly DesktopSurface _surface;
@@ -75,6 +75,16 @@ public sealed class DesktopBridgeTransport : IBridgeTransport, IDisposable
             _deliveries.Add(name, new Delivery());
         }
         _ = DeliverAsync(name, stateJson);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask PublishAsync(string name, string stateJson)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(stateJson);
+        lock (_gate) if (_disposed) return;
+        var callback = $"\"{JavaScriptEncoder.Default.Encode($"__{name}Changed")}\"";
+        await _runJavaScript($"globalThis[{callback}]?.({stateJson});").ConfigureAwait(false);
     }
 
     /// <summary>Removes every registered capability and stops state delivery; the surface stays open.</summary>

@@ -4,6 +4,7 @@ import { OperationChannel, type BridgeStreamOperation } from "./operations.js";
 import { sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import { bridgeWire } from "./wire.js";
+import { applyCollectionDelta, validateCollections, type BridgeCollectionDefinition } from "./collections.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState> {
@@ -43,6 +44,8 @@ export interface ViewConnectOptions<TState> {
   /** Wire names of fields with checked writes. */
   readonly checkedFields?: readonly string[];
   readonly interactions?: Readonly<Record<string, InteractionDefinition>>;
+  /** Generated codecs for opt-in keyed collection changes. */
+  readonly collections?: Readonly<Record<string, BridgeCollectionDefinition>>;
 }
 
 /** The runtime half of a generated client. Generated code is its only intended caller. */
@@ -81,16 +84,46 @@ function unpack(json: string, entry: SharedEntry): unknown {
 }
 
 function createEntry(contract: string, route: string, bridge: RunicBridgeClient, routeEntry: SharedRoute,
-  hydrate: (wire: unknown) => unknown): SharedEntry {
+  hydrate: (wire: unknown) => unknown, collections: Readonly<Record<string, BridgeCollectionDefinition>> = {}): SharedEntry {
+  let recovering: Promise<void> | undefined;
+  function recover(): void {
+    if (recovering || !entry.active || !routeEntry.active) return;
+    const request = (async () => { unpack(await bridge.call(`${route}Snapshot`), entry); })();
+    recovering = request;
+    const settled = () => { if (recovering === request) recovering = undefined; };
+    request.then(settled, error => { settled(); reportBridgeError(error); });
+  }
   const entry: SharedEntry = {
     contract, route, bridge, routeEntry, leases: new Set(), hydrate, current: undefined, wire: undefined, revision: undefined,
     initializing: undefined, active: true,
     accept(wire) {
       const revision = (wire as { readonly revision: number }).revision;
       if (!entry.active || !routeEntry.active) return entry.current ?? entry.hydrate(wire);
+      const delta = wire as { readonly __runicDelta?: unknown; readonly baseRevision?: unknown; readonly changes?: unknown };
+      if (delta.__runicDelta !== undefined) {
+        if (typeof revision !== "number" || !Number.isSafeInteger(revision) || delta.__runicDelta !== 1) { recover(); return entry.current; }
+        if (entry.revision !== undefined && revision <= entry.revision) return entry.current;
+        if (entry.current === undefined || delta.baseRevision !== entry.revision ||
+          typeof delta.baseRevision !== "number" || revision <= delta.baseRevision) { recover(); return entry.current; }
+        let current: unknown;
+        try { current = applyCollectionDelta(entry.current, delta.changes, collections); }
+        catch { recover(); return entry.current; }
+        entry.current = current;
+        entry.revision = revision;
+        // Checked field baselines are unchanged by collection-only frames.
+        entry.wire = { ...(entry.wire as object), revision };
+        for (const lease of entry.leases) if (!lease.disposed) {
+          lease.current = current;
+          for (const listener of lease.listeners) {
+            try { listener(current); } catch (error) { reportBridgeError(error); }
+          }
+        }
+        return current;
+      }
       if (entry.current === undefined || entry.revision === undefined || revision >= entry.revision) {
         // Decode first: a state that fails validation must not advance the revision.
         const current = entry.hydrate(wire);
+        validateCollections(current, collections);
         entry.revision = revision;
         entry.wire = wire;
         entry.current = current;
@@ -132,7 +165,7 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
   if (routeEntry.entries.size !== 0 && !routeEntry.entries.has(contractId))
     throw new BridgeError("failed", "This route already has an incompatible Bridge contract.");
   const shared = routeEntry.entries.get(contractId)
-    ?? createEntry(contractId, route, bridge, routeEntry, wire => options.hydrate(wire as never));
+    ?? createEntry(contractId, route, bridge, routeEntry, wire => options.hydrate(wire as never), options.collections);
   const mountToken = options.mount ? `${runtime.mountSession}:${globalThis.crypto.randomUUID()}` : undefined;
   const lease: SharedLease = { disposed: false, current: undefined, listeners: new Set(), mounted: false, mountToken };
   shared.leases.add(lease);

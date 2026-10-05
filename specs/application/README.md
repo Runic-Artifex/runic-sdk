@@ -28,7 +28,10 @@ publication:
   `clientId:connectionId`; Desktop uses its connection id for both, so a
   reconnect has new keys.
 - `Publish(route, state)` makes the browser call `__{route}Changed(state)`.
-  Delivery coalesces: a newer state of a route may replace one not yet sent.
+  Full snapshots coalesce: a newer state may replace one not yet sent.
+  Dependent collection deltas remain ordered. An `IAsyncBridgeTransport`
+  acknowledges each delivery outside the model context before the next frame
+  is sent; Desktop implements this path.
 
 The browser host script defines `__runicBridge`:
 
@@ -89,6 +92,35 @@ increase, including when a route is re-attached to a new bridge, but they are
 not contiguous. A reply captures the current revision without advancing it. A
 client accepts a state whose revision is at least the one it holds and ignores
 an older one. A snapshot batch defers capture, never the revision.
+
+## Collection deltas
+
+An opt-in `[RunicCollection]` read-only DTO collection publishes:
+
+```json
+{ "__runicDelta": 1, "baseRevision": 12, "revision": 16,
+  "changes": [{ "field": "rows", "kind": "replace", "index": 2,
+    "oldIndex": 2, "keys": ["42"], "items": [{ "id": 42, "label": "updated" }] }] }
+```
+
+`field` is the generated wire name. `kind` is `add`, `remove`, `replace` or
+`move`; operations apply sequentially to the field's array. Keys identify new
+rows for adds and old rows otherwise. Replaces may change the key by replacing
+the entire object; direct row notifications require a stable key. Removes and
+moves have no `items`; moves use the final insertion index after removal.
+
+The client accepts a delta only when `baseRevision` equals its current revision
+and `revision` increases. It validates indices, keys and generated row codecs,
+then applies the whole frame atomically, preserving unchanged row identities.
+Duplicates are ignored. Gaps or malformed frames trigger one snapshot read.
+Command replies and reconnects remain full snapshots.
+
+Reset, mixed-state changes, validation and ambiguous shared DTO paths use full
+snapshots. A batch above 4,096 operations falls back to a full snapshot. Delivery
+retains at most 64 pending frames or 1 MiB of encoded characters before a full
+snapshot supersedes pending work. The new published revision becomes the next
+delta's baseline. Opt-in contracts require matching generated clients and
+runtime packages; rebuild them together.
 
 ## Content
 

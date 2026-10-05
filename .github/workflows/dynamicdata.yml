@@ -1,0 +1,42 @@
+name: DynamicData consumer
+on:
+  push:
+    branches: [main]
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', '.github/workflows/dynamicdata.yml']
+  pull_request:
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', '.github/workflows/dynamicdata.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dynamicdata-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
+jobs:
+  consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - uses: actions/checkout@v7
+        with:
+          repository: Runic-Artifex/DynamicData
+          ref: edd2d175794afc86e964a06cb55329f44793009f
+          path: .cache/dynamicdata-fork
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run generated consumer
+        run: dotnet run --project tests/fixtures/application/dynamicdata -c Release -p:DynamicDataForkRoot="$GITHUB_WORKSPACE/.cache/dynamicdata-fork"
+      - name: Build runnable example and check generated TypeScript
+        run: |
+          bun run --cwd packages/web/views build
+          dotnet build examples/dynamicdata -c Release -p:DynamicDataForkRoot="$GITHUB_WORKSPACE/.cache/dynamicdata-fork"
+          bun x --no-install tsc -p examples/dynamicdata/Frontend/tsconfig.json
+      - name: Run NativeAOT consumer
+        run: |
+          dotnet publish tests/fixtures/application/dynamicdata -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:DynamicDataForkRoot="$GITHUB_WORKSPACE/.cache/dynamicdata-fork" -o artifacts/dynamicdata-aot
+          artifacts/dynamicdata-aot/DynamicDataProof

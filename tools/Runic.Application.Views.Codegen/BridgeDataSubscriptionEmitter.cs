@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Runic.Application.Views;
 using System.Text.Json.Serialization;
+using System.ComponentModel;
 
 // Emits the delegate graph consumed by BridgeDataSubscriptions. The runtime
 // follows only these direct accesses, so nested DTO/list changes stay AOT-safe.
@@ -60,12 +61,25 @@ internal static class BridgeDataSubscriptionEmitter
         if (node.Kind is BridgeWireKind.StringDictionary)
             return CollectionElementChildren(node.Value!);
         if (node.Kind is BridgeWireKind.Dto)
-            return node.Members.Select(member => new Child(member.WireName, member.Property.Name,
+            return node.Members.Where(member => typeof(INotifyPropertyChanged).IsAssignableFrom(node.NonNullableType) ||
+                typeof(INotifyDataErrorInfo).IsAssignableFrom(node.NonNullableType) || MayNotify(member.Type, []))
+                .Select(member => new Child(member.WireName, member.Property.Name,
                 $"static owner => (({BridgeTypeGraph.CSharpType(node.NonNullableType)})owner).{member.Property.Name}", member.Type)).ToList();
         if (node.Kind is BridgeWireKind.Union)
             return node.Cases.SelectMany(@case => @case.Type.Members.Select(member => new Child(member.WireName, member.Property.Name,
                 $"static owner => owner is {BridgeTypeGraph.CSharpType(@case.Type.Type)} current ? current.{member.Property.Name} : null", member.Type))).ToList();
         return [];
+    }
+
+    private static bool MayNotify(BridgeTypeNode node, HashSet<BridgeTypeNode> visited)
+    {
+        if (!visited.Add(node)) return false;
+        if (node.Kind is BridgeWireKind.Array or BridgeWireKind.List or BridgeWireKind.StringDictionary ||
+            node.Kind is BridgeWireKind.Dto && !node.NonNullableType.IsSealed ||
+            typeof(INotifyPropertyChanged).IsAssignableFrom(node.NonNullableType) ||
+            typeof(INotifyDataErrorInfo).IsAssignableFrom(node.NonNullableType)) return true;
+        return node.Members.Any(member => MayNotify(member.Type, visited)) ||
+            node.Cases.Any(@case => MayNotify(@case.Type, visited));
     }
 
     // A collection member's metadata describes one element, not the
