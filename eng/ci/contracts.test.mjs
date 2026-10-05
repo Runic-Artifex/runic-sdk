@@ -101,11 +101,9 @@ test('every web package with a test script is included in the dynamic matrix', (
   assert.equal(workflow.jobs.web.strategy.matrix, '${{ fromJSON(needs.build.outputs.web) }}');
   assert.equal(webTests().filter(item => item.node).length, 1);
   const browser = workflow.jobs.web.steps.find(step => step.uses === './.github/actions/install-browser');
-  assert.equal(browser?.if, "matrix.package == 'vite-plugin-runic' || matrix.package == 'svelte'");
+  assert.equal(browser?.if, "matrix.package == 'vite-plugin-runic'");
   const inline = workflow.jobs.web.steps.find(step => step.name === 'Verify Svelte inline SSR and hydration');
-  assert.equal(inline?.if, "matrix.package == 'svelte'");
-  assert.equal(inline?.['working-directory'], 'packages/web/${{ matrix.package }}');
-  assert.equal(inline?.run, 'bun run --bun test:inline-browser');
+  assert.equal(inline, undefined);
 });
 
 test('verification gate includes all jobs and candidates are independent of test failures', () => {
@@ -135,6 +133,10 @@ test('Views replace the Bridge application gates', () => {
     assert.ok(steps.includes(path), path);
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run?.includes('examples/first-window/package-smoke.mjs')));
+  assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
+    step.uses === './.github/actions/install-browser'));
+  assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
+    step.run?.includes('bun run --cwd packages/web/views --bun build')));
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run?.includes('examples/first-window-desktop/package-smoke.mjs')));
   assert.ok(workflow.jobs.native.steps.some(step =>

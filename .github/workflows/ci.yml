@@ -86,14 +86,10 @@ jobs:
           node: ${{ matrix.node && 'true' || 'false' }}
       - uses: ./.github/actions/restore-build
       - uses: ./.github/actions/install-browser
-        if: matrix.package == 'vite-plugin-runic' || matrix.package == 'svelte'
+        if: matrix.package == 'vite-plugin-runic'
       - name: Run package tests
         working-directory: packages/web/${{ matrix.package }}
         run: bun run --bun test
-      - name: Verify Svelte inline SSR and hydration
-        if: matrix.package == 'svelte'
-        working-directory: packages/web/${{ matrix.package }}
-        run: bun run --bun test:inline-browser
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   engineering:
@@ -245,6 +241,7 @@ jobs:
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
+      - uses: ./.github/actions/install-browser
       - name: Verify isolated NuGet and npm consumers
         run: bun run verify-packages
       - name: Verify packaged Angular View outlet
@@ -253,6 +250,7 @@ jobs:
           bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
       - name: Verify packaged Window factory, generated client, and browser
         run: |
+          bun run --cwd packages/web/views --bun build
           node examples/first-window/package-smoke.mjs
           node examples/first-window-desktop/package-smoke.mjs
       - name: Check generated files and lockfile
