@@ -173,6 +173,18 @@ serve_and_fetch() {
   curl -fsS -c "$cookies" -b "$cookies" "$url/runic-cswebui.js" > /dev/null
   if [[ "$expect_development" == true ]]; then
     grep -Fq 'http://127.0.0.1:' "$document"
+    # An IDE or terminal may end only dotnet runic dev; it must stop the
+    # frontend and native host processes it started.
+    kill -TERM "$served_group"
+    for _ in $(seq 1 60); do
+      pgrep -g "$served_group" > /dev/null || break
+      sleep 0.5
+    done
+    if pgrep -g "$served_group" > /dev/null; then
+      echo "dotnet runic dev left processes running after SIGTERM:" >&2
+      ps -o pid,args -g "$served_group" >&2
+      exit 1
+    fi
   else
     if grep -Fq 'http://127.0.0.1:' "$document"; then
       echo "The production build served a development document." >&2

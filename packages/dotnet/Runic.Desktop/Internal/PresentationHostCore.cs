@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Desktop.Internal;
@@ -43,6 +44,8 @@ internal sealed class PresentationHostCore : IAsyncDisposable
     }
 
     internal int Port => _baseUrl?.Port ?? _options.Port;
+
+    internal IServiceProvider? Services => _application?.Services;
 
     internal bool IsPublic => _options.NetworkExposure == PresentationNetworkExposure.AllInterfaces;
 
@@ -151,6 +154,9 @@ internal sealed class PresentationHostCore : IAsyncDisposable
             : WebApplication.CreateSlimBuilder();
         if (MinimalHost) builder.WebHost.UseKestrelCore().UseSockets();
         builder.Logging.ClearProviders();
+        // The default console lifetime cancels SIGINT, SIGQUIT and SIGTERM and only
+        // stops this embedded server, so the application would ignore them.
+        builder.Services.AddSingleton<IHostLifetime, ProcessOwnedLifetime>();
         _options.ConfigureServices?.Invoke(builder.Services);
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -377,4 +383,12 @@ internal sealed class PresentationSurfaceRegistration : IAsyncDisposable
         source.SetResult();
         return source;
     }
+}
+
+// The application, not its embedded presentation server, owns process signals.
+internal sealed class ProcessOwnedLifetime : IHostLifetime
+{
+    public Task WaitForStartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
