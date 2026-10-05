@@ -120,7 +120,7 @@ test("affected detection follows component code and its dependents", () => {
 test("development workspaces and workflows use the SDK layout", () => {
   for (const path of json("package.json").workspaces) {
     assert.ok(
-      /^(packages\/web\/|apps\/|docs$)/.test(
+      /^(packages\/web\/|apps\/)/.test(
         path,
       ),
       `unexpected development workspace: ${path}`,

@@ -33,7 +33,6 @@ async function main() {
   if (args.includes("--help") || args.includes("-h")) {
     console.log(`Usage: bun run ci [act options]
   --list                         List jobs from the real SDK workflow
-  --job docs                     Run documentation verification
   --job managed --matrix suite:platform
   --job views                    Run Window and View journeys
   --job templates                Run template checks and their prerequisites

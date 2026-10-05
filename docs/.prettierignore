@@ -1,9 +1,0 @@
-.svelte-kit
-build
-dist
-node_modules
-release-authority
-package-lock.json
-public/schemas/translations
-src/lib/components/ui/dropdown-menu
-static

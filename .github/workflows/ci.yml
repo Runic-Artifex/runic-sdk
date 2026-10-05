@@ -184,24 +184,6 @@ jobs:
           node examples/notes-reactive-views/ide-host-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
-  docs:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-sdk
-        with:
-          dotnet: "false"
-      - name: Check documentation types
-        working-directory: docs
-        run: bun run --bun check
-      - name: Build and test documentation and release data
-        working-directory: docs
-        run: bun run --bun test
-      - name: Check generated files and lockfile
-        run: bun eng/ci/source-state.mjs check
   packages:
     name: Materialize package candidates
     needs: build
@@ -467,7 +449,7 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [build, managed, web, engineering, framework-consumers, views, docs, packages, package-consumers, templates, native]
+    needs: [build, managed, web, engineering, framework-consumers, views, packages, package-consumers, templates, native]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every verification job to pass

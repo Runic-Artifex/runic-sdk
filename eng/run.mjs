@@ -82,7 +82,6 @@ function core() {
 function build() {
   core();
   web("build");
-  run("bun", ["run", "--bun", "build"], resolve(root, "docs"));
 }
 function pack(built = false) {
   run("bun", ["eng/generate-shipping-projects.mjs", "--check"]);
@@ -197,12 +196,9 @@ async function main() {
         ...process.argv.slice(3),
       ]);
       break;
-    case "dev:docs":
-      run("bun", ["run", "dev"], resolve(root, "docs"));
-      break;
     default:
       throw new Error(
-        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:first-window, example:notes, or dev:docs. Run bun run ci for workflow verification.",
+        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:first-window, example:notes. Run bun run ci for workflow verification.",
       );
   }
 }

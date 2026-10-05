@@ -1,7 +1,7 @@
 # GTK4 sandbox fixture
 
 This is a disposable Linux desktop test application, not a production packaging recipe.
-Use the [container runner](../../../../docs/guides/desktop/container-automation.md)
+Use the [container runner](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/container-automation.md)
 for automated runtime preparation and execution. The manual guest steps below
 remain available for the legacy VM helpers.
 It uses a standard GNOME Platform runtime so both the application sandbox and
@@ -22,7 +22,7 @@ standard Flatpak runtime. The portable target pack avoids those paths without
 turning off globalization. Only the disposable test executable gets its ELF
 interpreter/runpath adjusted. Output: `artifacts/gtk4-flatpak/Runic.Desktop.Gtk4.Smoke`.
 
-The maintained [container runner](../../../../docs/guides/desktop/container-automation.md)
+The maintained [container runner](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/container-automation.md)
 prepares the pinned runtime outside the isolated desktop. For a manually managed
 disposable test guest, install the standard runtime:
 
@@ -48,7 +48,7 @@ The installer overwrites only three named test inputs in
 The fixture must deny direct access to `private.txt`, open `granted.txt` through
 the portal, and reject atomic replacement of `save-target.txt` without changing
 it. Also check cancellation and closing the owner during a pending picker.
-Use the [container runner](../../../../docs/guides/desktop/container-automation.md)
+Use the [container runner](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/container-automation.md)
 for GNOME or KDE automation. The installer accepts an optional second argument,
 `wayland` (default) or `x11`, and grants only that display socket. The managed
 KDE `--backend x11` mode supplies the XIM environment for real Pinyin input. Native accessibility is checked outside the application

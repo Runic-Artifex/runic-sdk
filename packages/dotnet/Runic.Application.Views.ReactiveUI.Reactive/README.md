@@ -49,4 +49,4 @@ source-generator package.
 
 `BatchBridgeSnapshots(model)` is also available in this adapter's namespace.
 Place it after `ObserveOn(modelScheduler)` and before collection binding; see
-the [DynamicData guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/application/guides/dynamicdata.md).
+the [DynamicData guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/guides/dynamicdata.md).

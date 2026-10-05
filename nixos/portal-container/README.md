@@ -4,7 +4,7 @@ Managed systemd-nspawn is the preferred Linux integration runner. The separate
 GNOME and Plasma configurations start real desktop sessions with independent
 Wayland displays, session buses, portal backends and PipeWire instances. They
 use software rendering and have no host desktop sockets, home, physical devices
-or external network bindings. See the [container automation guide](../../docs/guides/desktop/container-automation.md)
+or external network bindings. See the [container automation guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/container-automation.md)
 for preparation, builds, execution and collected results.
 
 `run.py` owns the container lifecycle. It uses the activated host's managed-nspawn
@@ -84,5 +84,5 @@ Standalone Plasma/Xorg is also available as
 `nixosConfigurations.runic-headless-kde-xorg`. Select it with the runner's
 `--desktop kde --session xorg` options. It uses a private dummy Xorg display and
 XTEST input; `--scaling` checks desktop DPI through XSettings. See the
-[container automation guide](../../docs/guides/desktop/container-automation.md#gtk-x11-backend)
+[container automation guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/container-automation.md#gtk-x11-backend)
 for coverage and limitations.

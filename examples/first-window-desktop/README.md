@@ -4,7 +4,7 @@ The counter from [First Window](../first-window/README.md) hosted by Runic
 Desktop instead of CS-WebUI, with a ReactiveUI ViewModel. Use this host when an
 application needs a native window, an embedded WebView, or the platform
 services described in the
-[host selection guide](../../docs/guides/desktop/host-selection.md).
+[host selection guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-selection.md).
 
 | File | What it does |
 | --- | --- |

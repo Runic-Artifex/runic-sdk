@@ -27,7 +27,8 @@ The compiler tests require a C++20-capable `clang++`.
 | Cross-package consumer checks | `tests/web`, `tests/templates` |
 | Required consumer inputs and invalid-data fixtures | `tests/fixtures` |
 | Shared contracts, schemas and conformance data | `specs/<component>` |
-| User and architecture guidance | `docs`, `docs/guides` |
+| Package guidance and product specifications | Package READMEs, `specs` |
+| Shared portal and portal guides | [runic-site/docs](https://github.com/Runic-Artifex/runic-site/tree/main/docs) |
 | Build, CI and release tooling | `eng` |
 
 Update `eng/workspace.json` when adding an artifact or changing ownership.
@@ -51,8 +52,6 @@ bun run test --list
 bun run test application
 bun run test web/svelte
 bun run test eng/release/contracts.test.mjs
-cd docs
-direnv exec .. bun run test
 bun run test tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj
 ```
 

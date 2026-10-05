@@ -18,7 +18,6 @@ systemctl --user start podman.socket
 nix develop
 bun run ci --list
 bun run ci                          # Entire Linux workflow, including native checks
-bun run ci --job docs
 bun run ci --job managed --matrix suite:platform
 bun run ci --job web --matrix package:svelte
 bun run ci --job views
