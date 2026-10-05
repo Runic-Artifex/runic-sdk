@@ -82,13 +82,6 @@ function core() {
 function build() {
   core();
   web("build");
-  run("dotnet", [
-    "build",
-    "apps/translations-editor/Runic.Translations.Editor.csproj",
-    "-c",
-    configuration,
-    "--nologo",
-  ]);
   run("bun", ["run", "--bun", "build"], resolve(root, "docs"));
 }
 function pack(built = false) {
@@ -207,20 +200,9 @@ async function main() {
     case "dev:docs":
       run("bun", ["run", "dev"], resolve(root, "docs"));
       break;
-    case "dev:editor":
-      core();
-      web("build");
-      run("dotnet", [
-        "run",
-        "--project",
-        "apps/translations-editor/Runic.Translations.Editor.csproj",
-        "-c",
-        configuration,
-      ]);
-      break;
     default:
       throw new Error(
-        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:first-window, example:notes, dev:docs, or dev:editor. Run bun run ci for workflow verification.",
+        "Use bootstrap, build, build-core, build-web, pack, pack-built, verify-packages, affected, example:first-window, example:notes, or dev:docs. Run bun run ci for workflow verification.",
       );
   }
 }

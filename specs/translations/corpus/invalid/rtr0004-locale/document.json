@@ -1,7 +1,0 @@
-{
-  "schemaVersion": 1,
-  "catalog": "app",
-  "locale": "fr",
-  "layer": "base",
-  "resources": { "Common": { "Save": "Enregistrer" } }
-}

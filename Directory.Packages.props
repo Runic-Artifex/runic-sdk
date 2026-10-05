@@ -46,14 +46,13 @@
     <PackageVersion Include="Runic.Assets" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.AspNetCore" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.Desktop" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.CommandLine" Version="$(RunicSdkVersion)" />
+    <!-- Command Line is released independently from this SDK. -->
+    <PackageVersion Include="Runic.CommandLine" Version="0.6.0-preview.1" />
+    <PackageVersion Include="Runic.CommandLine.Spectre" Version="0.6.0-preview.1" />
     <PackageVersion Include="Runic.Desktop.Gtk4" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux.Gtk4" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux.Portal" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Desktop" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Translations" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Translations.Build" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Translations.Tooling" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />

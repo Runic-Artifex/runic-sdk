@@ -69,9 +69,11 @@ assert.equal(
   packages.length,
   'Package identities must be unique',
 );
-const output = new URL('../src/lib/published-release.json', import.meta.url);
+const output = new URL('../src/lib/active-sdk-release.json', import.meta.url);
 await writeFile(
   output,
   JSON.stringify({ version, url: release.url, packages }, null, 2) + '\n',
 );
-console.log(`Updated docs for ${tag}. Review and commit ${output.pathname}.`);
+console.log(
+  `Updated the active SDK catalog for ${tag}. Review and commit ${output.pathname}.`,
+);

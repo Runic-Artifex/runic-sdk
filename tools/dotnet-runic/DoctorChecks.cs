@@ -246,7 +246,8 @@ internal static class DoctorChecks
                     selected++;
                     if (type == "package" && !StringComparer.Ordinal.Equals(version, expected.Version)) mismatches.Add($"{identity} {version} (expected {expected.Version})");
                 }
-                else if (type == "package" && IsRunicIdentity(identity)) mismatches.Add($"{identity} {version} (not selected by {Authority.Id})");
+                else if (type == "package" && IsRunicIdentity(identity) && !IsIndependentlyReleasedNuGetIdentity(identity))
+                    mismatches.Add($"{identity} {version} (not selected by {Authority.Id})");
             }
             if (!hasViewsHost) mismatches.Add("a Runic Views host package (Runic.Application.CsWebUi or Runic.Application.Desktop) is missing");
         }
@@ -272,7 +273,8 @@ internal static class DoctorChecks
                         selected++;
                         if (!StringComparer.Ordinal.Equals(version, expected.Version)) mismatches.Add($"{dependency.Name} {version} (expected {expected.Version})");
                     }
-                    else mismatches.Add($"{dependency.Name} (not selected by {Authority.Id})");
+                    else if (!IsIndependentlyReleasedNpmIdentity(dependency.Name))
+                        mismatches.Add($"{dependency.Name} (not selected by {Authority.Id})");
                 }
             }
         }
@@ -339,6 +341,15 @@ internal static class DoctorChecks
     private static bool IsRunicIdentity(string identity) =>
         identity.StartsWith("Runic", StringComparison.OrdinalIgnoreCase) ||
         identity.StartsWith("dotnet-runic", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsIndependentlyReleasedNuGetIdentity(string identity) =>
+        identity.StartsWith("Runic.CommandLine", StringComparison.OrdinalIgnoreCase) ||
+        identity.StartsWith("Runic.Translations", StringComparison.OrdinalIgnoreCase) ||
+        StringComparer.OrdinalIgnoreCase.Equals(identity, "dotnet-runic-translations");
+
+    private static bool IsIndependentlyReleasedNpmIdentity(string identity) =>
+        StringComparer.Ordinal.Equals(identity, "@runic-artifex/vite-plugin-runic-translations") ||
+        identity.StartsWith("@runic-artifex/translations", StringComparison.Ordinal);
 
     private static int? ParseTargetFrameworkMajor(string targetFramework)
     {

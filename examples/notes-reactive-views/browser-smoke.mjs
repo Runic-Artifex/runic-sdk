@@ -62,15 +62,17 @@ try {
     const resolve = pending.get(message.id);
     if (resolve) { pending.delete(message.id); resolve(message); }
   });
-  async function evaluate(expression) {
+  async function command(method, params = {}) {
     const id = ++nextId;
     const result = new Promise(resolve => pending.set(id, resolve));
-    socket.send(JSON.stringify({ id, method: "Runtime.evaluate", params: {
-      expression, awaitPromise: true, returnByValue: true
-    } }));
+    socket.send(JSON.stringify({ id, method, params }));
     const response = await result;
     if (response.error || response.result?.exceptionDetails) throw new Error(JSON.stringify(response));
-    return response.result.result.value;
+    return response.result;
+  }
+  async function evaluate(expression) {
+    const result = await command("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+    return result.result.value;
   }
   const query = expression => evaluate(expression);
   const click = async selector => {
@@ -241,7 +243,8 @@ try {
   if ((await snapshot(compactRoute)).state?.activationCount !== 2)
     throw new Error("Compact View did not reconnect to the original ViewModel.");
 
-  await evaluate("window.__runicReloadProbe = true; location.reload()");
+  await evaluate("window.__runicReloadProbe = true");
+  await command("Page.reload");
   try { await retry(async () => await query('window.__runicReloadProbe === undefined && document.readyState === "complete"')); }
   catch (cause) {
     const detail = await query('({ url: location.href, marker: window.__runicReloadProbe, ready: document.readyState, navigation: performance.getEntriesByType("navigation")[0]?.type, status: document.querySelector("#status")?.textContent })');

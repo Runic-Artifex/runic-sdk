@@ -18,14 +18,10 @@
     <None Update="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="metadata/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
-    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
-    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
-                      PrivateAssets="all"
-                      ReferenceOutputAssembly="false"
-                      OutputItemType="Analyzer" />
+    <PackageReference Include="Runic.CommandLine" />
   </ItemGroup>
   <Import Project="../../eng/build/application.targets" />
   <ItemGroup>
-    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
+    <PackageReference Include="Runic.CommandLine.Spectre" />
   </ItemGroup>
 </Project>

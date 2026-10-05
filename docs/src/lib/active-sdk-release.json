@@ -1,0 +1,180 @@
+{
+  "version": "0.6.0-preview.1",
+  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.6.0-preview.1",
+  "packages": [
+    {
+      "identity": "Runic.Platform.Administration.Windows",
+      "ecosystem": "nuget",
+      "product": "administration-windows",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Assets",
+      "ecosystem": "nuget",
+      "product": "assets",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Assets.AspNetCore",
+      "ecosystem": "nuget",
+      "product": "assets",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Assets.Desktop",
+      "ecosystem": "nuget",
+      "product": "assets",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Desktop",
+      "ecosystem": "nuget",
+      "product": "desktop",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Testing",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.ReactiveUI",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.ReactiveUI.Reactive",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.CsWebUi",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Desktop",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Application.Templates",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "dotnet-template"
+    },
+    {
+      "identity": "dotnet-runic",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "dotnet-tool"
+    },
+    {
+      "identity": "Runic.Create",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "dotnet-tool-exec"
+    },
+    {
+      "identity": "Runic.Platform",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Runtime",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Windows",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Linux",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.MacOS",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Desktop.Gtk4",
+      "ecosystem": "nuget",
+      "product": "desktop",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Linux.Portal",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "Runic.Platform.Linux.Gtk4",
+      "ecosystem": "nuget",
+      "product": "platform",
+      "installKind": "nuget-package"
+    },
+    {
+      "identity": "@runic-artifex/angular",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/vite-plugin-runic",
+      "ecosystem": "npm",
+      "product": "vite",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/svelte",
+      "ecosystem": "npm",
+      "product": "svelte",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/sveltekit",
+      "ecosystem": "npm",
+      "product": "svelte",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/views",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/react",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/vue",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    }
+  ]
+}

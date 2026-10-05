@@ -1,12 +1,12 @@
 import { test, expect } from 'bun:test';
 import { selection } from './test.mjs';
 test('focused selections include only their managed suite or web package', () => {
-  const commandLine = selection('command-line');
-  expect(commandLine.kind).toBe('managed');
-  expect(commandLine.paths.length).toBeGreaterThan(0);
-  expect(commandLine.paths.every(p => p.includes('Runic.CommandLine') || p.startsWith('examples/command-line/'))).toBe(true);
+  const assets = selection('assets');
+  expect(assets.kind).toBe('managed');
+  expect(assets.paths.length).toBeGreaterThan(0);
+  expect(assets.paths.every(p => p.includes('Runic.Assets'))).toBe(true);
   expect(selection('web/svelte')).toEqual({kind: 'web', paths: ['packages/web/svelte']});
-  expect(() => selection('command-lien')).toThrow('Unknown test scope');
+  expect(() => selection('command-line')).toThrow('Unknown test scope');
 });
 test('single file and single .NET test project avoid full workspace execution', () => {
   expect(selection('eng/release/contracts.test.mjs').paths).toHaveLength(1);

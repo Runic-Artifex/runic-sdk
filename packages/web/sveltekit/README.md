@@ -1,7 +1,7 @@
 # `@runic-artifex/sveltekit`
 
-SvelteKit adapter and locale routing helpers for Runic Desktop and Runic
-Translations. Application Views use the `@runic-artifex/svelte/views` export.
+SvelteKit adapter for Runic Desktop applications. Application Views use the
+`@runic-artifex/svelte/views` export.
 
 ```ts
 // vite.config.ts
@@ -19,6 +19,8 @@ their configuration through the `sveltekit()` Vite plugin. The adapter emits a
 relocatable page and `runic-toolkit.sveltekit.json` manifest. Use `mode: "spa"`
 with `router: { type: "hash" }` for a Desktop SPA. The
 `@runic-artifex/sveltekit/page-options` entry point provides matching route
-options. `@runic-artifex/sveltekit/translations` supplies locale routing and
-server request helpers, while `/translations/navigation` supplies browser
-navigation helpers.
+options.
+
+Translation routing helpers moved to
+[`@runic-artifex/translations-sveltekit`](https://github.com/Runic-Artifex/runic-translations-sdk/tree/main/packages/web/translations-sveltekit).
+Use a prior SDK preview until application imports have been migrated.
